@@ -1,10 +1,12 @@
 /**
- * WorkspaceDesignOverlay — CreatorHub Design (Nivå 3): live-overlay på den EKTE Team
- * Workspace-ruten. Tre moduser:
+ * WorkspaceDesignOverlay — CreatorHub Design (Nivå 3 + Fase B): live-overlay på den EKTE
+ * Team Workspace-ruten. Moduser:
  *  - Annotate: hover-highlight + klikk ekte shell-elementer → pins med fri-tekst intent.
  *  - Tweaks:   juster aksent live (--ws-accent* på :root) + lagre til workspace (PUT).
- *  - Handoff:  pakk pins + token-kontekst til en Claude Code-bundle (fil-peker + computed
- *              styles) for STRUKTURELLE endringer (det token/nav/copy-data ikke dekker).
+ *  - Edit:     klikk element → property-inspector (typografi/utseende/spacing) som skriver
+ *              live til elementets stil (forhåndsvisning) og fanges i Handoff-bundelen.
+ *  - Handoff:  pakk pins + edits + token-kontekst til en Claude Code-bundle (fil-peker +
+ *              computed styles) for STRUKTURELLE endringer (det token/nav/copy-data ikke dekker).
  * Aktiveres med ?design=1. Bruker INGEN window.alert/confirm/prompt (blokkerer extension).
  * Selvstendig: inline styles, ingen MUI (unngår å arve dark-temaet).
  */
@@ -15,6 +17,7 @@ type ElDesc = {
   style: Record<string, string>; rect: { x: number; y: number; w: number; h: number };
 };
 type Note = { id: number; d: ElDesc; intent: string };
+type Edits = Record<string, Record<string, string>>; // selector → { cssProp: value }
 
 const PANEL = '#FBFAF6', INK = '#171C28', INK2 = '#5C6270', LINE = '#E7E3D8', ACC = '#EE7A08';
 
@@ -46,19 +49,24 @@ export default function WorkspaceDesignOverlay({
   targetFile = 'frontend/client/src/components/workspace/WorkspaceShell.tsx',
   workspace = 'creatorhub',
 }: { onClose?: () => void; targetFile?: string; workspace?: string }) {
-  const [mode, setMode] = React.useState<'annotate' | 'tweaks'>('annotate');
+  const [mode, setMode] = React.useState<'annotate' | 'tweaks' | 'edit'>('annotate');
   const [notes, setNotes] = React.useState<Note[]>([]);
   const [hover, setHover] = React.useState<ElDesc | null>(null);
   const [accent, setAccent] = React.useState('#ff8c00');
   const [bundle, setBundle] = React.useState<string | null>(null);
   const [saveMsg, setSaveMsg] = React.useState('');
+  // Edit-modus
+  const [sel, setSel] = React.useState<HTMLElement | null>(null);
+  const [selDesc, setSelDesc] = React.useState<ElDesc | null>(null);
+  const [insp, setInsp] = React.useState<Record<string, string>>({});
+  const [edits, setEdits] = React.useState<Edits>({});
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
 
   const inOverlay = (t: EventTarget | null) => t instanceof Element && !!t.closest('[data-chd]');
 
   React.useEffect(() => {
-    if (mode !== 'annotate') { setHover(null); return; }
+    if (mode !== 'annotate' && mode !== 'edit') { setHover(null); return; }
     const onMove = (e: MouseEvent) => {
       const t = e.target as Element;
       if (inOverlay(t)) { setHover(null); return; }
@@ -66,9 +74,22 @@ export default function WorkspaceDesignOverlay({
     };
     const onClick = (e: MouseEvent) => {
       const t = e.target as Element;
-      if (inOverlay(t)) return;            // klikk i panelet → la knappene virke
-      e.preventDefault(); e.stopPropagation(); // ellers: fang klikket som annotering
-      setNotes((n) => [...n, { id: nextId.current++, d: describe(t), intent: '' }]);
+      if (inOverlay(t)) return;             // klikk i panelet → la knappene virke
+      e.preventDefault(); e.stopPropagation(); // ellers: fang klikket (blokker shell-nav)
+      if (mode === 'annotate') {
+        setNotes((n) => [...n, { id: nextId.current++, d: describe(t), intent: '' }]);
+      } else {
+        const el = t as HTMLElement, cs = getComputedStyle(el);
+        setSel(el); setSelDesc(describe(el));
+        setInsp({
+          fontSize: String(Math.round(parseFloat(cs.fontSize)) || ''),
+          fontWeight: cs.fontWeight,
+          color: cs.color,
+          background: cs.backgroundColor,
+          borderRadius: String(Math.round(parseFloat(cs.borderRadius)) || 0),
+          padding: cs.padding,
+        });
+      }
     };
     document.addEventListener('mousemove', onMove, true);
     document.addEventListener('click', onClick, true);
@@ -90,10 +111,21 @@ export default function WorkspaceDesignOverlay({
     } catch { setSaveMsg('Nettverksfeil'); }
   };
 
+  // Edit: skriv en css-prop live til valgt element + registrer i edits (for Handoff).
+  const applyStyle = (field: string, cssProp: string, rawValue: string, unit = '') => {
+    setInsp((s) => ({ ...s, [field]: rawValue }));
+    if (!sel || !selDesc) return;
+    const value = rawValue === '' ? '' : rawValue + unit;
+    sel.style.setProperty(cssProp, value);
+    const key = selOf(selDesc);
+    setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
+  };
+
   const buildBundle = () => setBundle(JSON.stringify({
     tool: 'creatorhub-design-handoff', targetFile, route, workspace,
     tokenContext: hexVars(accent),
-    instruction: 'Bygg inn disse (strukturelle) endringene i WorkspaceShell. Merkevare/nav/copy administreres allerede som data — ikke hardkod dem.',
+    instruction: 'Bygg inn disse endringene i WorkspaceShell. Merkevare/nav/copy administreres allerede som data — ikke hardkod dem. `edits` er direkte stil-endringer fra Edit-modus; `notes` er annoteringer.',
+    edits: Object.entries(edits).map(([element, changes]) => ({ element, changes })),
     notes: notes.map((n) => ({ element: selOf(n.d), text: n.d.text, computed: n.d.style, intent: n.intent || '(ingen intent skrevet)' })),
   }, null, 2));
 
@@ -106,13 +138,21 @@ export default function WorkspaceDesignOverlay({
     fontWeight: 700, fontSize: 13, cursor: 'pointer',
   });
   const cta: React.CSSProperties = { padding: '7px 13px', borderRadius: 8, border: 0, background: ACC, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' };
+  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 7, padding: '6px 8px', fontSize: 12.5, fontFamily: 'monospace' };
+  const flabel: React.CSSProperties = { fontSize: 11.5, color: INK2, fontWeight: 600, marginBottom: 3, display: 'block' };
+  const section: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: '#9AA1AE', margin: '4px 0 2px' };
+  const highlight = mode === 'edit' ? (selDesc?.rect || null) : (hover?.rect || null);
 
   return (
     <div data-chd style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'none', fontFamily: 'system-ui, sans-serif' }}>
-      {/* Hover-highlight (annotate) */}
-      {mode === 'annotate' && hover && (
+      {/* Hover/selection-highlight */}
+      {(mode === 'annotate' || mode === 'edit') && hover && (
         <div style={{ position: 'fixed', left: hover.rect.x, top: hover.rect.y, width: hover.rect.w, height: hover.rect.h,
-          border: `2px solid ${ACC}`, borderRadius: 6, background: 'rgba(238,122,8,0.06)', pointerEvents: 'none' }} />
+          border: `2px dashed ${ACC}`, borderRadius: 6, background: 'rgba(238,122,8,0.05)', pointerEvents: 'none' }} />
+      )}
+      {mode === 'edit' && selDesc && (
+        <div style={{ position: 'fixed', left: selDesc.rect.x - 1, top: selDesc.rect.y - 1, width: selDesc.rect.w + 2, height: selDesc.rect.h + 2,
+          border: `2px solid ${ACC}`, borderRadius: 6, pointerEvents: 'none', boxShadow: '0 0 0 3px rgba(238,122,8,0.18)' }} />
       )}
       {/* Pins */}
       {notes.map((n, i) => (
@@ -128,6 +168,7 @@ export default function WorkspaceDesignOverlay({
         <span style={{ fontWeight: 800, color: INK, fontSize: 13, marginRight: 4 }}>CreatorHub Design</span>
         <button data-chd style={btn(mode === 'annotate')} onClick={() => setMode('annotate')}>Annotate</button>
         <button data-chd style={btn(mode === 'tweaks')} onClick={() => setMode('tweaks')}>Tweaks</button>
+        <button data-chd style={btn(mode === 'edit')} onClick={() => setMode('edit')}>Edit</button>
         <button data-chd style={cta} onClick={buildBundle}>Send til Claude Code</button>
         <button data-chd style={{ ...btn(false), border: 0 }} onClick={onClose} title="Lukk">✕</button>
       </div>
@@ -137,10 +178,10 @@ export default function WorkspaceDesignOverlay({
         background: PANEL, border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,.18)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${LINE}`, color: INK, fontWeight: 800, fontSize: 14 }}>
-          {mode === 'annotate' ? `Annoteringer (${notes.length})` : 'Tweaks — merkevare'}
+          {mode === 'annotate' ? `Annoteringer (${notes.length})` : mode === 'tweaks' ? 'Tweaks — merkevare' : 'Edit — egenskaper'}
         </div>
 
-        {mode === 'annotate' ? (
+        {mode === 'annotate' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {notes.length === 0 && <p style={{ color: INK2, fontSize: 13, margin: 0 }}>Klikk et element i shell-en for å annotere. Beskriv endringen — den pakkes til Claude Code.</p>}
             {notes.map((n, i) => (
@@ -157,7 +198,9 @@ export default function WorkspaceDesignOverlay({
               </div>
             ))}
           </div>
-        ) : (
+        )}
+
+        {mode === 'tweaks' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={{ fontSize: 13, color: INK, fontWeight: 700 }}>Aksent (live)</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -168,6 +211,47 @@ export default function WorkspaceDesignOverlay({
             <p style={{ fontSize: 12, color: INK2, margin: 0 }}>Endrer <code>--ws-accent*</code> på :root umiddelbart — hele skallet re-farges. «Lagre» skriver til workspace-tokens (samme som N1).</p>
             <button data-chd style={cta} onClick={saveAccent}>Lagre til workspace</button>
             {saveMsg && <div style={{ fontSize: 12.5, color: INK2 }}>{saveMsg}</div>}
+          </div>
+        )}
+
+        {mode === 'edit' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {!selDesc && <p style={{ color: INK2, fontSize: 13, margin: 0 }}>Klikk et element i shell-en for å redigere egenskapene. Endringene forhåndsvises live og pakkes til Claude Code.</p>}
+            {selDesc && (
+              <>
+                <code style={{ fontSize: 11.5, color: INK, background: '#fff', border: `1px solid ${LINE}`, borderRadius: 6, padding: '5px 7px', wordBreak: 'break-all' }}>{selOf(selDesc)}</code>
+
+                <div style={section}>Typografi</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}><label style={flabel}>Størrelse (px)</label>
+                    <input data-chd type="number" style={field} value={insp.fontSize ?? ''} onChange={(e) => applyStyle('fontSize', 'font-size', e.target.value, 'px')} /></div>
+                  <div style={{ flex: 1 }}><label style={flabel}>Vekt</label>
+                    <input data-chd style={field} value={insp.fontWeight ?? ''} onChange={(e) => applyStyle('fontWeight', 'font-weight', e.target.value)} /></div>
+                </div>
+                <label style={flabel}>Tekstfarge</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.color, flexShrink: 0 }} />
+                  <input data-chd style={field} value={insp.color ?? ''} onChange={(e) => applyStyle('color', 'color', e.target.value)} />
+                </div>
+
+                <div style={section}>Utseende</div>
+                <label style={flabel}>Bakgrunn</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.background, flexShrink: 0 }} />
+                  <input data-chd style={field} value={insp.background ?? ''} onChange={(e) => applyStyle('background', 'background-color', e.target.value)} />
+                </div>
+                <label style={flabel}>Radius (px)</label>
+                <input data-chd type="number" style={field} value={insp.borderRadius ?? ''} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} />
+
+                <div style={section}>Spacing</div>
+                <label style={flabel}>Padding</label>
+                <input data-chd style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
+
+                <p style={{ fontSize: 11.5, color: INK2, margin: '6px 0 0' }}>
+                  Endringer er live-forhåndsvisning på elementet. «Send til Claude Code» pakker dem ({Object.keys(edits).length} element{Object.keys(edits).length === 1 ? '' : 'er'}) inn i bundelen for å bygges inn permanent.
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>
