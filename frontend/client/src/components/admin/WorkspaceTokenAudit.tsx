@@ -25,11 +25,12 @@ function timeAgo(iso: string): string {
   } catch { return iso; }
 }
 
-export default function WorkspaceTokenAudit({ workspace, refreshKey = 0, onReverted }: { workspace: string; refreshKey?: number; onReverted?: () => void }) {
+export default function WorkspaceTokenAudit({ workspace, refreshKey = 0, onReverted, undoAllowed = false }: { workspace: string; refreshKey?: number; onReverted?: () => void; undoAllowed?: boolean }) {
   const [entries, setEntries] = React.useState<AuditEntry[]>([]);
   const [loaded, setLoaded] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const canUndo = entries.some((e) => e.action === 'updated');
+  // Undo krever super_admin (undoAllowed) OG at det finnes en endring å angre.
+  const canUndo = undoAllowed && entries.some((e) => e.action === 'updated');
 
   const undo = async () => {
     setBusy(true);
@@ -59,10 +60,12 @@ export default function WorkspaceTokenAudit({ workspace, refreshKey = 0, onRever
             flatene som nå styres av data.
           </Typography>
         </Box>
-        <Button size="small" variant="outlined" onClick={undo} disabled={!canUndo || busy}
-          aria-label={`Angre siste design-token-endring for ${workspace}`} sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-          {busy ? 'Angrer…' : 'Angre siste endring'}
-        </Button>
+        {undoAllowed && (
+          <Button size="small" variant="outlined" onClick={undo} disabled={!canUndo || busy}
+            aria-label={`Angre siste design-token-endring for ${workspace} (super_admin)`} sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {busy ? 'Angrer…' : 'Angre siste endring'}
+          </Button>
+        )}
       </Stack>
       {loaded && entries.length === 0 && (
         <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>

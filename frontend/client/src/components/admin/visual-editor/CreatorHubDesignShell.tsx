@@ -24,29 +24,34 @@ const SUBTABS = [
   { value: 'connectors', label: 'Konnektorer' },
 ];
 
-// Konnektorer per workspace (live data → auto-infografikk). Utvides etter hvert.
-const CONNECTORS: Record<string, { path: string; desc: string }[]> = {
-  leadgrid: [
-    { path: '/api/infographics/leadgrid/momentum.png?view=score|activity|breakdown|goal', desc: 'Salgs-momentum (donut/stat-bar)' },
-    { path: '/api/infographics/leadgrid/leaderboard.png?metric=leads|prizes|value', desc: 'Team-podium' },
-    { path: '/api/infographics/leadgrid/commission.png?period=month&view=total|byseller', desc: 'Provisjon' },
-  ],
-};
+// Konnektorer hentes fra det backend-styrte registeret (/api/design/connectors) — én kilde
+// til sannhet, utvides backend-side (ikke frontend-hardkode).
+type Connector = { id: string; path: string; desc: string; status: 'live' | 'planned' };
 
 function ConnectorsPanel({ ws }: { ws: string }) {
-  const conns = CONNECTORS[ws] || [];
+  const [conns, setConns] = React.useState<Connector[]>([]);
+  React.useEffect(() => {
+    fetch(`/api/design/connectors?ws=${encodeURIComponent(ws)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { connectors: [] }))
+      .then((d) => setConns(Array.isArray(d.connectors) ? d.connectors : []))
+      .catch(() => setConns([]));
+  }, [ws]);
   return (
     <Stack spacing={1.5}>
       <Typography variant="body2" color="text.secondary">
         Live data-konnektorer for <b>{ws}</b> — henter ferske tall og rendrer auto-valgt infografikk (RBAC-gated, kun egen org).
-        Dette er noe Claude Design <b>ikke</b> har: data-bundne, alltid-ferske flater.
+        Dette er noe Claude Design <b>ikke</b> har: data-bundne, alltid-ferske flater. Registeret er backend-styrt.
       </Typography>
       {conns.length === 0 ? (
         <Typography variant="body2" sx={{ fontStyle: 'italic' }}>Ingen konnektorer for dette workspacet enda.</Typography>
       ) : conns.map((c) => (
-        <Paper key={c.path} variant="outlined" sx={{ p: 1.2 }}>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>{c.desc}</Typography>
-          <Link variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{c.path}</Link>
+        <Paper key={c.id} variant="outlined" sx={{ p: 1.2 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="body2" sx={{ fontWeight: 700, flex: 1 }}>{c.desc}</Typography>
+            <Chip size="small" label={c.status === 'live' ? 'Live' : 'Kommer'}
+              color={c.status === 'live' ? 'success' : 'default'} variant={c.status === 'live' ? 'filled' : 'outlined'} />
+          </Stack>
+          {c.status === 'live' && <Link variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{c.path}</Link>}
         </Paper>
       ))}
     </Stack>

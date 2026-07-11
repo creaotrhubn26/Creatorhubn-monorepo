@@ -12,6 +12,7 @@ import WorkspaceNavEditor from './WorkspaceNavEditor';
 import WorkspaceCopyEditor from './WorkspaceCopyEditor';
 import WorkspaceChromeEditor from './WorkspaceChromeEditor';
 import WorkspaceTokenAudit from './WorkspaceTokenAudit';
+import { useAuth } from '@/hooks/useAuth';
 
 const WORKSPACES = [
   { value: 'global', label: 'Global (delt basis)' },
@@ -35,6 +36,8 @@ function b64url(obj: unknown): string {
 export default function DesignTokensTab({ workspace }: { workspace?: string } = {}) {
   // Når shell-en styrer workspace (prop), skjuler vi den egne velgeren.
   const controlled = typeof workspace === 'string' && workspace.length > 0;
+  // Rolle-tier (Fase D): kun super_admin ser reset/undo (destruktive governance-ops).
+  const isSuperAdmin = (useAuth() as any)?.user?.role === 'super_admin';
   const [wsState, setWs] = React.useState('creatorhub');
   const ws = controlled ? (workspace as string) : wsState;
   const [tokens, setTokens] = React.useState<Record<string, string>>({});
@@ -117,10 +120,12 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
               ))}
               <Stack direction="row" spacing={1.5} alignItems="center">
                 <Button variant="contained" onClick={save}>Lagre tokens for «{ws}»</Button>
-                <Button variant="outlined" color="warning" onClick={reset} onBlur={() => setResetArm(false)}
-                  aria-label={resetArm ? 'Bekreft: tilbakestill workspace til standard' : 'Tilbakestill workspace til standard'}>
-                  {resetArm ? 'Sikker? Klikk igjen' : 'Tilbakestill til standard'}
-                </Button>
+                {isSuperAdmin && (
+                  <Button variant="outlined" color="warning" onClick={reset} onBlur={() => setResetArm(false)}
+                    aria-label={resetArm ? 'Bekreft: tilbakestill workspace til standard' : 'Tilbakestill workspace til standard (super_admin)'}>
+                    {resetArm ? 'Sikker? Klikk igjen' : 'Tilbakestill til standard'}
+                  </Button>
+                )}
               </Stack>
             </Stack>
             <Box sx={{ minWidth: 280 }}>
@@ -144,7 +149,7 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
         </>
       )}
       <Divider />
-      <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey}
+      <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey} undoAllowed={isSuperAdmin}
         onReverted={() => { load(ws); setPreviewKey((k) => k + 1); setMsg({ type: 'success', text: 'Siste endring angret.' }); }} />
       <Divider />
       <Typography variant="caption" color="text.secondary">
