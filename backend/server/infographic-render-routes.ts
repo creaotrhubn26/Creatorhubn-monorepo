@@ -14,6 +14,7 @@
 
 import type { Express, Request, Response } from 'express';
 import { assembleHtml, pickTemplate } from './infographic-engine.js';
+import { INTER_FONT_CSS } from './infographic-fonts.js';
 import { renderHtmlToImage } from './render-engine.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 
@@ -85,7 +86,7 @@ export function registerInfographicRenderRoutes(
         if (!r.ok) { res.status(502).json({ error: 'Kunne ikke hente mal.' }); return; }
         const templateHtml = await r.text();
         if (templateHtml.length > MAX_TEMPLATE_BYTES) { res.status(413).json({ error: 'Mal for stor.' }); return; }
-        const html = assembleHtml(templateHtml, data, { progress: 1, width, height });
+        const html = assembleHtml(templateHtml, data, { progress: 1, width, height, fontsCss: INTER_FONT_CSS });
         const buf = await renderHtmlToImage(html, { width, height, deviceScaleFactor: 2, format: 'png', waitForMs: 400, blockExternalRequests: true });
         if (imgCache.size >= IMG_CACHE_MAX) imgCache.delete(imgCache.keys().next().value as string);
         imgCache.set(key, { buf, at: now });
@@ -116,7 +117,8 @@ export function registerInfographicRenderRoutes(
 
       const data: Record<string, unknown> = (b.data && typeof b.data === 'object') ? { ...(b.data as Record<string, unknown>) } : {};
       if (typeof b.accent === 'string') data.accent = b.accent;
-      const fontsCss = typeof b.fontsCss === 'string' ? b.fontsCss : undefined;
+      // Inter bundlet som standard; egendefinert fontsCss legges til (ikke erstattes).
+      const fontsCss = INTER_FONT_CSS + (typeof b.fontsCss === 'string' ? b.fontsCss : '');
       const format = b.format === 'jpeg' || b.format === 'html' ? b.format : 'png';
       const width = clampDim(b.width, 1200);
       const height = clampDim(b.height, 630);
