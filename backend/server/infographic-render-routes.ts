@@ -22,7 +22,7 @@ import {
   listTemplates, listTemplatesAdmin, getTemplateHtml, pickTemplateId,
   upsertTemplate, deleteTemplate,
 } from './infographic-templates-store.js';
-import { getTokens, getRawTokens, setTokens, resetTokens } from './design-tokens-store.js';
+import { getTokens, getRawTokens, setTokens, resetTokens, replaceTokens } from './design-tokens-store.js';
 
 type Sessions = Map<string, { userId?: string }>;
 type AdminGuard = (req: Request, res: Response) => { email: string } | null;
@@ -254,20 +254,49 @@ export function registerInfographicRenderRoutes(
     if (!admin) return;
     const ws = String(req.params.ws);
     const patch = (req.body ?? {}) as Record<string, unknown>;
+    // Pre-image (Fase D undo): eksakt overstyrings-tilstand FØR endringen, for «Angre».
+    const prev = await getRawTokens(pool, ws).catch(() => ({}));
     const result = await setTokens(pool, ws, patch);
     if ('error' in result) { res.status(400).json(result); return; }
     // Fase D governance-audit: append til eksisterende admin_activity_log (mig 138) — hvem
-    // endret hvilke token-grupper når. Defensiv: mangler tabellen → hopp over (ikke-kritisk).
+    // endret hvilke token-grupper når (+ pre-image for undo). Defensiv: mangler tabell → hopp over.
     try {
       const keys = Object.keys(patch);
       await pool.query(
         `INSERT INTO admin_activity_log (user_id, entity_type, entity_id, action, summary, details)
          VALUES ($1, 'design_tokens', $2, 'updated', $3, $4::jsonb)`,
         [(admin as any).userId ?? 'unknown', ws, `Endret design-tokens (${keys.join(', ') || '—'}) for «${ws}»`,
-          JSON.stringify({ email: (admin as any).email ?? null, keys, patch })],
+          JSON.stringify({ email: (admin as any).email ?? null, keys, patch, prev })],
       );
     } catch { /* audit ikke-kritisk */ }
     res.json({ ok: true });
+  });
+
+  // POST undo = angre siste token-endring for et workspace (Fase D) — gjenopprett pre-image.
+  app.post('/api/admin/design/tokens/:ws/undo', async (req: Request, res: Response) => {
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
+    const ws = String(req.params.ws);
+    try {
+      const q = await pool.query(
+        `SELECT details FROM admin_activity_log
+         WHERE entity_type = 'design_tokens' AND entity_id = $1 AND action = 'updated'
+         ORDER BY created_at DESC LIMIT 1`, [ws],
+      );
+      if (!q.rows[0]) { res.status(404).json({ error: 'Ingen endring å angre.' }); return; }
+      const prev = (q.rows[0].details && (q.rows[0].details as any).prev) || {};
+      const result = await replaceTokens(pool, ws, prev as Record<string, unknown>);
+      if ('error' in result) { res.status(400).json(result); return; }
+      try {
+        await pool.query(
+          `INSERT INTO admin_activity_log (user_id, entity_type, entity_id, action, summary, details)
+           VALUES ($1, 'design_tokens', $2, 'undone', $3, $4::jsonb)`,
+          [(admin as any).userId ?? 'unknown', ws, `Angret siste design-token-endring for «${ws}»`,
+            JSON.stringify({ email: (admin as any).email ?? null, keys: ['(undo)'] })],
+        );
+      } catch { /* audit ikke-kritisk */ }
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: 'Angre feilet.' }); }
   });
 
   // GET endringslogg for et workspaces design-tokens (admin) — Fase D governance-innsyn.

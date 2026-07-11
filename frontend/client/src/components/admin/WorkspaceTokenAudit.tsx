@@ -4,7 +4,7 @@
  * → hvem endret hvilke token-grupper når. Oppdateres når `refreshKey` endres (etter lagring).
  */
 import React from 'react';
-import { Box, Chip, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, Stack, Typography } from '@mui/material';
 
 type AuditEntry = {
   user_id: string;
@@ -25,9 +25,20 @@ function timeAgo(iso: string): string {
   } catch { return iso; }
 }
 
-export default function WorkspaceTokenAudit({ workspace, refreshKey = 0 }: { workspace: string; refreshKey?: number }) {
+export default function WorkspaceTokenAudit({ workspace, refreshKey = 0, onReverted }: { workspace: string; refreshKey?: number; onReverted?: () => void }) {
   const [entries, setEntries] = React.useState<AuditEntry[]>([]);
   const [loaded, setLoaded] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const canUndo = entries.some((e) => e.action === 'updated');
+
+  const undo = async () => {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}/undo`, { method: 'POST', credentials: 'same-origin' });
+      if (r.ok) onReverted?.(); // parent laster tokens + bumper refreshKey → loggen re-hentes
+    } catch { /* ignorer */ }
+    finally { setBusy(false); }
+  };
 
   React.useEffect(() => {
     let live = true;
@@ -40,13 +51,19 @@ export default function WorkspaceTokenAudit({ workspace, refreshKey = 0 }: { wor
 
   return (
     <Stack spacing={1.5}>
-      <Box>
-        <Typography variant="h6" sx={{ fontWeight: 800 }}>Endringslogg</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Hvem endret hvilke tokens når — append-only revisjonsspor for «{workspace}». Governance for
-          flatene som nå styres av data.
-        </Typography>
-      </Box>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5}>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>Endringslogg</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Hvem endret hvilke tokens når — append-only revisjonsspor for «{workspace}». Governance for
+            flatene som nå styres av data.
+          </Typography>
+        </Box>
+        <Button size="small" variant="outlined" onClick={undo} disabled={!canUndo || busy}
+          aria-label={`Angre siste design-token-endring for ${workspace}`} sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+          {busy ? 'Angrer…' : 'Angre siste endring'}
+        </Button>
+      </Stack>
       {loaded && entries.length === 0 && (
         <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
           Ingen registrerte endringer enda.
