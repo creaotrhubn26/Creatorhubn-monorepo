@@ -469,6 +469,22 @@ export function createWebSocketServer(
           }
 
           case 'event': {
+            // Realtime events are relayed to other connected clients, which run
+            // handlers keyed by event.type (item_selected, project_updated,
+            // notifications, …). An UNauthenticated socket may not inject them —
+            // this closes anonymous, cross-client event spoofing into every
+            // logged-in user's UI. NOTE: these events still carry no
+            // server-verified project binding, so delivery remains a global
+            // fan-out among authenticated sockets; per-tenant scoping is a
+            // separate, larger change tracked for a future round.
+            if (!authenticated) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'unauthenticated', code: 'auth_required' },
+                timestamp: new Date().toISOString(),
+              }));
+              break;
+            }
             const eventPayload = data.event;
             if (!eventPayload || typeof eventPayload !== 'object') {
               ws.send(JSON.stringify({
@@ -588,6 +604,8 @@ export function createWebSocketServer(
           }
 
           case 'typing_indicator': {
+            // No anonymous typing noise attributed to unauthenticated sockets.
+            if (!authenticated) break;
             // Identity is server-bound (never the client-claimed data.userId).
             broadcast(clients, {
               type: 'typing_indicator',
@@ -600,6 +618,9 @@ export function createWebSocketServer(
           }
 
           case 'presence_update': {
+            // No anonymous presence spoofing; server-generated presence on
+            // connect/disconnect is emitted separately and is unaffected.
+            if (!authenticated) break;
             // Identity is server-bound (never the client-claimed data.userId).
             broadcast(clients, {
               type: 'presence_update',
@@ -651,6 +672,20 @@ export function createWebSocketServer(
           }
 
           case 'join_session': {
+            // A collaboration session room may only be joined by an
+            // authenticated socket. Sessions carry no server-side membership
+            // model (client-supplied ids), so authentication is the ceiling —
+            // it closes anonymous room-join, presence spoofing, and forged
+            // participant_joined / session_updated events into another user's
+            // session room.
+            if (!authenticated) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'unauthenticated', code: 'auth_required' },
+                timestamp: new Date().toISOString(),
+              }));
+              break;
+            }
             const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
             if (!sessionId) {
               ws.send(JSON.stringify({
