@@ -62,6 +62,7 @@ import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-recon
 import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-routes.js";
 import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-thumbnail-routes.js";
 import { registerInfographicRenderRoutes } from "./infographic-render-routes.js";
+import { registerInfographicLeadgridRoutes } from "./infographic-leadgrid-connector.js";
 import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
 import { registerRoleRoomUserStorageRoutes } from "./role-room-user-storage-routes.js";
 import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes.js";
@@ -2394,6 +2395,7 @@ registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
 registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
 registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
 registerInfographicRenderRoutes(app, { activeSessions, pool, requireAdminSession });
+registerInfographicLeadgridRoutes(app, { activeSessions, pool });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomUserStorageRoutes(app, { pool, activeSessions });
 registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
