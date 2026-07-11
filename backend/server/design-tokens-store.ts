@@ -116,3 +116,29 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   invalidateTokensCache();
   return { ok: true };
 }
+
+// Kanonisk merkevare-seed pr. produkt (matcher mig 0380) — brukes ved reset så en flate
+// aldri faller til den nøytrale globale blåen ved «tilbakestill».
+const CANONICAL_SEED: Record<string, Record<string, string>> = {
+  creatorhub: { accent: '#ff8c00', accentDark: '#e07b00', bgSoft: '#fff4e6' },
+  leadgrid: { accent: '#2f6df0' },
+};
+
+/** Reset (Fase D): fjern ALLE admin-overstyringer for et workspace → tilbake til standard.
+ *  Produkter med kanonisk merkevare re-seedes (creatorhub→oransje), ellers ren (arver
+ *  literaler/global). Idempotent. */
+export async function resetTokens(pool: Pool, workspace: string): Promise<{ error: string } | { ok: true }> {
+  const ws = workspace === 'global' ? 'global' : normalizeWorkspace(workspace);
+  if (!ws) return { error: 'Ugyldig workspace.' };
+  await pool.query(`DELETE FROM workspace_design_tokens WHERE workspace_id = $1`, [ws]);
+  const seed = CANONICAL_SEED[ws];
+  if (seed) {
+    await pool.query(
+      `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
+       ON CONFLICT (workspace_id) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = NOW()`,
+      [ws, JSON.stringify(seed)],
+    );
+  }
+  invalidateTokensCache();
+  return { ok: true };
+}

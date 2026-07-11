@@ -66,6 +66,21 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
     } catch (e) { setMsg({ type: 'error', text: (e as Error).message }); }
   };
 
+  // Fase D: tilbakestill workspacet til standard (fjern overstyringer, re-seed merkevare).
+  // Bekreft-på-klikk (to trinn) i stedet for window.confirm (blokkerer ikke, a11y-vennlig).
+  const [resetArm, setResetArm] = React.useState(false);
+  const reset = async () => {
+    if (!resetArm) { setResetArm(true); return; }
+    setResetArm(false); setMsg(null);
+    try {
+      const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(ws)}`, { method: 'DELETE', credentials: 'same-origin' });
+      const dd = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg({ type: 'error', text: dd.error || 'Tilbakestilling feilet' }); return; }
+      setMsg({ type: 'success', text: `«${ws}» tilbakestilt til standard.` });
+      load(ws); setPreviewKey((k) => k + 1);
+    } catch (e) { setMsg({ type: 'error', text: (e as Error).message }); }
+  };
+
   // Live-preview: donut med workspacets aksent (fra det redigerte feltet).
   const d = b64url({ value: '87%', label: 'Merkevare' });
   const previewSrc = `/api/infographics/render.png?tpl=donut&d=${d}&accent=${encodeURIComponent(tokens.accent || '#2f6df0')}&_=${previewKey}`;
@@ -93,15 +108,20 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
                 <Stack key={f.key} direction="row" spacing={1.5} alignItems="center">
                   {f.type === 'color' && (
                     <input type="color" value={tokens[f.key] || '#000000'} onChange={(e) => set(f.key, e.target.value)}
+                      aria-label={`${f.label} — fargevelger`}
                       style={{ width: 40, height: 34, border: 'none', background: 'none', cursor: 'pointer' }} />
                   )}
                   <TextField label={f.label} size="small" value={tokens[f.key] || ''} onChange={(e) => set(f.key, e.target.value)}
                     fullWidth sx={f.type === 'text' ? { fontFamily: 'monospace' } : undefined} />
                 </Stack>
               ))}
-              <Box>
+              <Stack direction="row" spacing={1.5} alignItems="center">
                 <Button variant="contained" onClick={save}>Lagre tokens for «{ws}»</Button>
-              </Box>
+                <Button variant="outlined" color="warning" onClick={reset} onBlur={() => setResetArm(false)}
+                  aria-label={resetArm ? 'Bekreft: tilbakestill workspace til standard' : 'Tilbakestill workspace til standard'}>
+                  {resetArm ? 'Sikker? Klikk igjen' : 'Tilbakestill til standard'}
+                </Button>
+              </Stack>
             </Stack>
             <Box sx={{ minWidth: 280 }}>
               <Typography variant="caption" color="text.secondary">Live-preview (aksent):</Typography>
