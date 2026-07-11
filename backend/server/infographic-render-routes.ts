@@ -250,9 +250,36 @@ export function registerInfographicRenderRoutes(
 
   // PUT overstyr tokens for et workspace (admin). Body = patch (kun kjente string-tokens).
   app.put('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
-    if (!requireAdminSession(req, res)) return;
-    const result = await setTokens(pool, String(req.params.ws), (req.body ?? {}) as Record<string, unknown>);
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
+    const ws = String(req.params.ws);
+    const patch = (req.body ?? {}) as Record<string, unknown>;
+    const result = await setTokens(pool, ws, patch);
     if ('error' in result) { res.status(400).json(result); return; }
+    // Fase D governance-audit: append til eksisterende admin_activity_log (mig 138) — hvem
+    // endret hvilke token-grupper når. Defensiv: mangler tabellen → hopp over (ikke-kritisk).
+    try {
+      const keys = Object.keys(patch);
+      await pool.query(
+        `INSERT INTO admin_activity_log (user_id, entity_type, entity_id, action, summary, details)
+         VALUES ($1, 'design_tokens', $2, 'updated', $3, $4::jsonb)`,
+        [(admin as any).userId ?? 'unknown', ws, `Endret design-tokens (${keys.join(', ') || '—'}) for «${ws}»`,
+          JSON.stringify({ email: (admin as any).email ?? null, keys, patch })],
+      );
+    } catch { /* audit ikke-kritisk */ }
     res.json({ ok: true });
+  });
+
+  // GET endringslogg for et workspaces design-tokens (admin) — Fase D governance-innsyn.
+  app.get('/api/admin/design/tokens/:ws/audit', async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const r = await pool.query(
+        `SELECT user_id, action, summary, details, created_at FROM admin_activity_log
+         WHERE entity_type = 'design_tokens' AND entity_id = $1 ORDER BY created_at DESC LIMIT 30`,
+        [String(req.params.ws)],
+      );
+      res.json({ entries: r.rows });
+    } catch { res.json({ entries: [] }); }
   });
 }

@@ -11,6 +11,7 @@ import {
 import WorkspaceNavEditor from './WorkspaceNavEditor';
 import WorkspaceCopyEditor from './WorkspaceCopyEditor';
 import WorkspaceChromeEditor from './WorkspaceChromeEditor';
+import WorkspaceTokenAudit from './WorkspaceTokenAudit';
 
 const WORKSPACES = [
   { value: 'global', label: 'Global (delt basis)' },
@@ -122,6 +123,8 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
           <WorkspaceCopyEditor workspace="creatorhub" />
         </>
       )}
+      <Divider />
+      <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey} />
       <Divider />
       <Typography variant="caption" color="text.secondary">
         Neste steg i CreatorHub Design: justerings-knotter i overlay-editoren skrur på nettopp disse tokenene.
