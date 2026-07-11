@@ -1,0 +1,57 @@
+<style>
+  #wrap{display:flex;flex-direction:column;gap:20px;padding:44px 56px;width:max-content;
+    font-family:Inter,"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;background:#fff;border-radius:26px;
+    box-shadow:0 28px 70px rgba(20,40,80,.12);opacity:0;transform:scale(.94)}
+  .ttl{font-size:22px;font-weight:800;color:#1f2d4a;text-align:center}
+  .row{display:flex;align-items:center;gap:34px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:150px}
+  .cell .v{font-size:56px;font-weight:800;letter-spacing:-1px}
+  .cell .l{font-size:15px;color:#7a8699;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .before .v{color:#9aa6b8}
+  .after .v{color:var(--a,#2f6df0)}
+  .arrow{display:flex;flex-direction:column;align-items:center;gap:2px;opacity:0}
+  .arrow .sym{font-size:34px;color:var(--a,#2f6df0);line-height:1}
+  .arrow .delta{font-size:15px;font-weight:800;padding:2px 10px;border-radius:20px}
+</style>
+<div id="wrap">
+  <div class="ttl" data-d="0"></div>
+  <div class="row">
+    <div class="cell before"><div class="v" data-to="0">0</div><div class="l" data-bl></div></div>
+    <div class="arrow" data-d="0.5"><div class="sym">&rarr;</div><div class="delta"></div></div>
+    <div class="cell after"><div class="v" data-to="0">0</div><div class="l" data-al></div></div>
+  </div>
+</div>
+<script>
+  var CFG = window.__CFG__ || {};
+  document.documentElement.style.setProperty('--a', CFG.accent || '#2f6df0');
+  var cards = CFG.cards || [];
+  var b = CFG.before || cards[0] || {}, a = CFG.after || cards[1] || {};
+  if (CFG.title) document.querySelector('.ttl').textContent = CFG.title;
+  document.querySelector('.before .l').textContent = b.label || 'Før';
+  document.querySelector('.after .l').textContent = a.label || 'Etter';
+  var bv = document.querySelector('.before .v'), av = document.querySelector('.after .v');
+  bv.dataset.to = b.value != null ? b.value : '0';
+  av.dataset.to = a.value != null ? a.value : '0';
+  // Delta-% når begge er rene tall.
+  function n(x){var m=String(x).match(/-?\d+(?:[.,]\d+)?/);return m?parseFloat(m[0].replace(',','.')):null;}
+  var nb = n(b.value), na = n(a.value), deltaEl = document.querySelector('.delta');
+  if (nb != null && na != null && nb !== 0) {
+    var d = Math.round((na - nb) / Math.abs(nb) * 100);
+    var up = d >= 0;
+    deltaEl.textContent = (up ? '+' : '') + d + '%';
+    deltaEl.style.color = up ? '#0a7d38' : '#c0392b';
+    deltaEl.style.background = up ? '#e6f6ec' : '#fdecea';
+  }
+  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+  function num(el,p){var to=el.dataset.to,m=String(to).match(/^([-+]?\d+(?:[.,]\d+)?)(.*)$/);if(!m){el.textContent=to;return;}var dec=(m[1].split(/[.,]/)[1]||'').length,v=parseFloat(m[1].replace(',','.'))*p;el.textContent=(dec?v.toFixed(dec):Math.round(v))+m[2];}
+  window.setProgress = function (p) {
+    var w = document.getElementById('wrap'); var e = ease(Math.min(1, p / .3));
+    if (w) { w.style.opacity = e; w.style.transform = 'scale(' + (0.94 + 0.06 * e) + ')'; }
+    var np = ease(Math.max(0, Math.min(1, (p - .1) / .7)));
+    num(bv, np); num(av, np);
+    document.querySelectorAll('[data-d]').forEach(function (el) {
+      el.style.opacity = ease(Math.max(0, Math.min(1, (p - (+el.dataset.d)) / 0.5)));
+    });
+  };
+  window.setProgress(0);
+</script>

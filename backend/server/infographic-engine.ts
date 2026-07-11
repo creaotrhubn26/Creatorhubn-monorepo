@@ -75,3 +75,60 @@ export function assembleHtml(templateHtml: string, cfg: Record<string, unknown>,
     + (fit ? `<script>${FIT}</script>` : '')
     + `<script>${driver(autoplaySec, loop, progress)}</script>`;
 }
+
+// ── SMART AUTO-VELG ─────────────────────────────────────────────────────────
+// «Kobles til hva som helst» → gi vilkårlig data, motoren velger malen fra data-
+// formen. Ren funksjon (testbar), returnerer KUN kjente bibliotek-stier (SSRF-trygt).
+
+export const INFOGRAPHIC_TEMPLATE_LIBRARY = {
+  bigNumber: '/embed/templates/big-number.html',
+  statBar: '/embed/templates/stat-bar.html',
+  donut: '/embed/templates/donut.html',
+  comparison: '/embed/templates/comparison.html',
+  timeline: '/embed/templates/timeline.html',
+} as const;
+
+export type InfographicTemplateKey = keyof typeof INFOGRAPHIC_TEMPLATE_LIBRARY;
+
+function looksLikePercent(v: unknown): boolean {
+  if (typeof v === 'number') return v > 0 && v <= 1;
+  if (typeof v !== 'string') return false;
+  const s = v.trim();
+  if (s.endsWith('%')) return true;
+  const n = parseFloat(s.replace(',', '.'));
+  return Number.isFinite(n) && n > 0 && n <= 1;
+}
+
+/**
+ * Velg beste mal ut fra data-formen. Presedens:
+ *  1. steps[] / kort med desc|when|date        → timeline
+ *  2. before&after / eksakt 2 kort             → comparison
+ *  3. ett tall som ser ut som prosent          → donut
+ *  4. ett tall / ett kort                      → big-number
+ *  5. ≥2 kort                                  → stat-bar
+ * Returnerer bibliotek-STIEN (ikke nøkkelen).
+ */
+export function pickTemplate(data: Record<string, unknown> | null | undefined): string {
+  const L = INFOGRAPHIC_TEMPLATE_LIBRARY;
+  const d = data || {};
+  const cards = Array.isArray(d.cards) ? (d.cards as Record<string, unknown>[]) : [];
+
+  // 1. Tidslinje
+  if (Array.isArray(d.steps) && d.steps.length > 0) return L.timeline;
+  if (cards.length >= 2 && cards.some((c) => c && (c.desc != null || c.when != null || c.date != null))) return L.timeline;
+
+  // 2. Sammenligning
+  if (d.before != null && d.after != null) return L.comparison;
+  if (cards.length === 2) return L.comparison;
+
+  // 3/4. Enkelt-verdi
+  const single = d.value != null ? d.value : cards.length === 1 ? cards[0]?.value : undefined;
+  if (single != null && cards.length <= 1) {
+    return looksLikePercent(single) ? L.donut : L.bigNumber;
+  }
+
+  // 5. Flere KPI-er
+  if (cards.length >= 2) return L.statBar;
+
+  return L.bigNumber;
+}
