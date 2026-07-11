@@ -166,6 +166,13 @@ function wsAccentVars(hex?: string | null): React.CSSProperties {
   } as React.CSSProperties;
 }
 
+// CreatorHub Design (Fase B): chrome-token-nøkkel → CSS-var (shell-bakgrunn/panel/ramme/tekst).
+const WS_CHROME_VAR: Record<string, string> = {
+  bg: '--ws-bg', bgSidebar: '--ws-bg-sidebar', panel: '--ws-panel', panelSolid: '--ws-panel-solid',
+  panelAlt: '--ws-panel-alt', panelInput: '--ws-panel-input', border: '--ws-border', borderSoft: '--ws-border-soft',
+  text: '--ws-text', textDim: '--ws-text-dim', textFaint: '--ws-text-faint',
+};
+
 /** CreatorHub Design: henter design-tokens (ws=creatorhub) ÉN gang og bruker dem på shell-en:
  *  - accent → --ws-accent* på :root (document.documentElement, IKKE shell-Box — MUI Menu/Dialog/
  *    Tooltip rendres via Portal til <body>, utenfor Box-treet; kun :root når portalene også).
@@ -185,6 +192,13 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
           Object.keys(vars).forEach((k) => root.style.setProperty(k, String((vars as any)[k])));
         }
         if (d.tokens.copy && typeof d.tokens.copy === 'object') setCopy(d.tokens.copy);
+        if (d.tokens.chrome && typeof d.tokens.chrome === 'object') {
+          const root = document.documentElement;
+          Object.keys(d.tokens.chrome).forEach((k) => {
+            const cssVar = WS_CHROME_VAR[k], val = (d.tokens.chrome as any)[k];
+            if (cssVar && typeof val === 'string' && val) root.style.setProperty(cssVar, val);
+          });
+        }
       })
       .catch(() => {});
     return () => { live = false; };
