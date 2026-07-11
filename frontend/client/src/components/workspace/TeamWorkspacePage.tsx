@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import WorkspaceShell from './WorkspaceShell';
+import WorkspaceDesignOverlay from './WorkspaceDesignOverlay';
 import OversiktTab from './tabs/OversiktTab';
 import ProsjektplanTab from './tabs/ProsjektplanTab';
 import ProduksjonskartTab from './tabs/ProduksjonskartTab';
@@ -238,6 +239,10 @@ const TeamWorkspacePage: React.FC = () => {
   // CreatorHub Design (Nivå 2): nav-overstyringer som DATA (design-tokens, ws=creatorhub).
   // Patch pr. key (label/badge/hidden/order) — tom/feil → WS_NAV-fallback (uendret).
   const [navOv, setNavOv] = useState<Record<string, any> | null>(null);
+  // CreatorHub Design (Nivå 3): live-overlay på ekte ruten, aktivert med ?design=1.
+  const [designMode, setDesignMode] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
@@ -311,6 +316,7 @@ const TeamWorkspacePage: React.FC = () => {
       onInvite={() => goTab('team')}
     >
       {content}
+      {designMode && <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>
