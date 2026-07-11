@@ -22,6 +22,7 @@ import {
   listTemplates, listTemplatesAdmin, getTemplateHtml, pickTemplateId,
   upsertTemplate, deleteTemplate,
 } from './infographic-templates-store.js';
+import { getTokens, setTokens } from './design-tokens-store.js';
 
 type Sessions = Map<string, { userId?: string }>;
 type AdminGuard = (req: Request, res: Response) => { email: string } | null;
@@ -88,10 +89,13 @@ export function registerInfographicRenderRoutes(
       const width = clampDim(req.query.w, 1200);
       const height = clampDim(req.query.h, 630);
       const dRaw = typeof req.query.d === 'string' ? req.query.d : '';
-      const accent = typeof req.query.accent === 'string' ? req.query.accent : '';
+      const accentQ = typeof req.query.accent === 'string' ? req.query.accent : '';
       // Data parses FØR mal-valg, så `tpl=auto` kan la motoren velge mal fra data-formen.
       let data: Record<string, unknown> = {};
       if (dRaw) { try { data = JSON.parse(Buffer.from(dRaw, 'base64url').toString('utf8')); } catch { /* tom */ } }
+      // Aksent: query > data > workspace-merkevare (design-token). Gjør render on-brand per produkt.
+      let accent = accentQ;
+      if (!accent && data.accent == null) accent = (await getTokens(pool, req.query.ws as string | undefined)).accent;
       if (accent) data.accent = accent;
       // Løs `tpl` → en mal-ID. Maler er DATA (DB): «auto» velger fra registeret;
       // «/embed/…html» (gamle blokker) og bare id-er mapper til samme DB-id.
@@ -225,6 +229,22 @@ export function registerInfographicRenderRoutes(
   app.delete('/api/admin/infographics/templates/:id', async (req: Request, res: Response) => {
     if (!requireAdminSession(req, res)) return;
     const result = await deleteTemplate(pool, String(req.params.id));
+    if ('error' in result) { res.status(400).json(result); return; }
+    res.json({ ok: true });
+  });
+
+  // ── DESIGN-TOKENS (merkevare som data per workspace) ─────────────────────
+  // GET effektive tokens (global + workspace). Offentlig (til preview/render/klient).
+  app.get('/api/design/tokens', async (req: Request, res: Response) => {
+    const tokens = await getTokens(pool, req.query.ws as string | undefined);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({ workspace: (req.query.ws as string) || 'global', tokens });
+  });
+
+  // PUT overstyr tokens for et workspace (admin). Body = patch (kun kjente string-tokens).
+  app.put('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    const result = await setTokens(pool, String(req.params.ws), (req.body ?? {}) as Record<string, unknown>);
     if ('error' in result) { res.status(400).json(result); return; }
     res.json({ ok: true });
   });

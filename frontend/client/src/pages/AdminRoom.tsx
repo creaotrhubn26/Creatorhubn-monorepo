@@ -107,6 +107,7 @@ import { COMPETITOR_CONFIGS } from '../components/role-room/components/Competito
 import { MARKETING_PAGES, PILLAR_LABELS } from '../components/admin/content-marketing/marketingPagesConfig';
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
 import InfographicTemplatesTab from '../components/admin/InfographicTemplatesTab';
+import DesignTokensTab from '../components/admin/DesignTokensTab';
 import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
 import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
 import { PAGE_TEMPLATES, type TemplateKind } from '../components/role-room/cms/pageTemplates';
@@ -118,7 +119,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'integrations' | 'infographic-templates';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'integrations' | 'infographic-templates' | 'design-tokens';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4606,6 +4607,7 @@ export default function AdminRoom() {
   else if (tab === 'analytics') content = <AnalyticsTab />;
   else if (tab === 'cms') content = <CmsTab />;
   else if (tab === 'infographic-templates') content = <InfographicTemplatesTab />;
+  else if (tab === 'design-tokens') content = <DesignTokensTab />;
   else if (tab === 'presence') content = <PresenceTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
   else if (tab === 'prototype-testers') content = <PrototypeTestersTab />;
@@ -4665,6 +4667,7 @@ export default function AdminRoom() {
           <Tab value="analytics" label="Analytics" />
           <Tab value="cms" label="CMS" />
           <Tab value="infographic-templates" label="Infografikk-maler" />
+          <Tab value="design-tokens" label="Design-tokens" />
           <Tab value="presence" label="Presence" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
           <Tab value="prototype-testers" label="Prototype-testere" />

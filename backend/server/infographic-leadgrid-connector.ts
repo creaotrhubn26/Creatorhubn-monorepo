@@ -16,6 +16,7 @@ import { assembleHtml } from './infographic-engine.js';
 import { INTER_FONT_CSS } from './infographic-fonts.js';
 import { renderHtmlToImage } from './render-engine.js';
 import { getTemplateHtml, pickTemplateId } from './infographic-templates-store.js';
+import { getTokens } from './design-tokens-store.js';
 
 /** Første navn (leaderboard-etiketter skal være korte). */
 function firstName(full: string): string { return (full || '').trim().split(/\s+/)[0] || full; }
@@ -119,7 +120,7 @@ export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Po
     if (!orgId) { res.status(400).json({ error: 'mangler_organization_id' }); return; }
 
     const view = typeof req.query.view === 'string' && VIEWS.has(req.query.view) ? req.query.view : 'score';
-    const accent = typeof req.query.accent === 'string' ? req.query.accent : '#2f6df0';
+    const accent = typeof req.query.accent === 'string' ? req.query.accent : (await getTokens(pool, LEADGRID_WS)).accent;
     const width = clampDim(req.query.w, 1200);
     const height = clampDim(req.query.h, 630);
     const key = `${orgId}|${view}|${accent}|${width}x${height}`;
@@ -153,7 +154,7 @@ export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Po
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     if (!orgId) { res.status(400).json({ error: 'mangler_organization_id' }); return; }
     const metric = ['leads', 'prizes', 'value'].includes(String(req.query.metric)) ? String(req.query.metric) : 'leads';
-    const accent = typeof req.query.accent === 'string' ? req.query.accent : '#2f6df0';
+    const accent = typeof req.query.accent === 'string' ? req.query.accent : (await getTokens(pool, LEADGRID_WS)).accent;
     const width = clampDim(req.query.w, 1200); const height = clampDim(req.query.h, 630);
     const top = Math.min(6, Math.max(2, parseInt(String(req.query.top ?? '4'), 10) || 4));
     const key = `lb|${orgId}|${metric}|${top}|${accent}|${width}x${height}`;
