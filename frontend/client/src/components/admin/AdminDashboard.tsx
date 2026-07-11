@@ -1459,7 +1459,7 @@ export default function AdminDashboard({
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['creatorhub-design', 'integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -1493,6 +1493,7 @@ export default function AdminDashboard({
     'workspace-preview': 'Forhåndsvis hver profesjons workspace-grensesnitt (foto/video/produsent/vendor) for å inspisere layout/flyt. «Vis som ekte bruker» kommer i Del 2.',
     'debug-tool': 'Diagnose-verktøy: sjekk hvorfor en bruker har (eller ikke har) tilgang (identitet/godkjenning/compliance/magic-link/routing) + system-helse (PayPal/Stripe/e-post/DB/migrasjoner).',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
+    'creatorhub-design': 'Administrer produkt-flatene som data — merkevare, navigasjon, tekst, maler og konnektorer per workspace (CreatorHub / The Role Room / Leadgrid).',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
