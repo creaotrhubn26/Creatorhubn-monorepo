@@ -2393,7 +2393,7 @@ registerRoleRoomBillingAlertsRoutes(app, { pool, requireAdminSession });
 registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
 registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
 registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
-registerInfographicRenderRoutes(app, { activeSessions });
+registerInfographicRenderRoutes(app, { activeSessions, pool, requireAdminSession });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomUserStorageRoutes(app, { pool, activeSessions });
 registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });

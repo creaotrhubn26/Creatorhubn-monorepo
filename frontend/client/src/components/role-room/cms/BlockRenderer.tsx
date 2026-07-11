@@ -162,9 +162,11 @@ function encodeData(data: unknown): string {
 // Dispatcher (ingen hooks) → egne under-komponenter for server-render (<img>) vs
 // klient (Web Component). Holder hooks ubetingede i hver (rules-of-hooks).
 function InfographicView({ block }: { block: InfographicBlock }) {
-  // «auto» (smart mal-valg) finnes bare server-side → tvinger img-pathen.
-  const isAuto = block.templateUrl === 'auto';
-  if (isAuto || (block.serverRender && block.templateUrl && block.templateUrl.startsWith('/embed/'))) {
+  // Bibliotek-maler er DATA (server-side DB): «auto» + bare mal-id-er (uten skråstrek)
+  // finnes bare server-side → tvinger img-pathen. Inline HTML / URL-er kan kjøre klient-side.
+  const url = block.templateUrl || '';
+  const isServerId = url === 'auto' || /^[a-z0-9][a-z0-9-]*$/.test(url);
+  if (!block.templateHtml && (isServerId || (block.serverRender && url.startsWith('/embed/')))) {
     return <InfographicImgView block={block} />;
   }
   return <InfographicLiveView block={block} />;

@@ -13,12 +13,19 @@
 //   • Størrelses-/dimensjons-tak.
 
 import type { Express, Request, Response } from 'express';
-import { assembleHtml, pickTemplate } from './infographic-engine.js';
+import type { Pool } from 'pg';
+import { assembleHtml } from './infographic-engine.js';
 import { INTER_FONT_CSS } from './infographic-fonts.js';
 import { renderHtmlToImage } from './render-engine.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
+import {
+  listTemplates, listTemplatesAdmin, getTemplateHtml, pickTemplateId,
+  upsertTemplate, deleteTemplate,
+} from './infographic-templates-store.js';
 
 type Sessions = Map<string, { userId?: string }>;
+type AdminGuard = (req: Request, res: Response) => { email: string } | null;
+const TEMPLATE_ID_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
 
 const MAX_TEMPLATE_BYTES = 500_000;   // 500 KB mal-HTML
 const MAX_DIM = 3000;
@@ -48,10 +55,27 @@ const IMG_CACHE_MAX = 300;
 const TEMPLATE_BASE = process.env.INFOGRAPHIC_TEMPLATE_BASE || 'http://localhost:5001';
 const SAFE_TPL = /^\/embed\/[A-Za-z0-9._/-]+\.html$/;
 
+// /embed/(templates/)?<id>.html → <id>  (back-compat for gamle CMS-blokker)
+function embedPathToId(p: string): string {
+  return p.replace(/^\/embed\/(?:templates\/)?/, '').replace(/\.html$/, '');
+}
+// innebygd id → /embed-sti (fallback-fetch før migrasjon)
+function builtinEmbedPath(id: string): string {
+  return id === 'demo-template' ? '/embed/demo-template.html' : `/embed/templates/${id}.html`;
+}
+
 export function registerInfographicRenderRoutes(
   app: Express,
-  deps: { activeSessions: Sessions },
+  deps: { activeSessions: Sessions; pool: Pool; requireAdminSession: AdminGuard },
 ): void {
+  const { pool, requireAdminSession } = deps;
+
+  // GET /api/infographics/templates — OFFENTLIG liste (id+label+kategori) til mal-velger.
+  app.get('/api/infographics/templates', async (_req: Request, res: Response) => {
+    const rows = await listTemplates(pool);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({ templates: rows.map((t) => ({ id: t.id, label: t.label, category: t.category, isBuiltin: t.isBuiltin })) });
+  });
   // GET /api/infographics/render.png — OFFENTLIG (til <img> i CMS-sider). Rendrer en
   // HOSTET bibliotek-mal (?tpl=/embed/…) med data (?d=base64url-JSON) → PNG. SEO-vennlig,
   // ingen klient-JS. Cachet + IP-rate-limitet. KUN /embed/-maler (ingen vilkårlig HTML/host).
@@ -68,13 +92,24 @@ export function registerInfographicRenderRoutes(
       let data: Record<string, unknown> = {};
       if (dRaw) { try { data = JSON.parse(Buffer.from(dRaw, 'base64url').toString('utf8')); } catch { /* tom */ } }
       if (accent) data.accent = accent;
-      // Smart auto-velg: pickTemplate returnerer KUN kjente bibliotek-stier (SSRF-trygt).
-      const tpl = rawTpl === 'auto' ? pickTemplate(data) : rawTpl;
-      if (!SAFE_TPL.test(tpl) || tpl.includes('..')) {
-        res.status(400).json({ error: 'Ugyldig tpl — kun /embed/*.html-maler eller «auto».' });
+      // Løs `tpl` → en mal-ID. Maler er DATA (DB): «auto» velger fra registeret;
+      // «/embed/…html» (gamle blokker) og bare id-er mapper til samme DB-id.
+      let id: string;
+      let embedFallback: string | null = null;
+      if (rawTpl === 'auto') {
+        id = await pickTemplateId(pool, data);
+        embedFallback = builtinEmbedPath(id);
+      } else if (SAFE_TPL.test(rawTpl) && !rawTpl.includes('..')) {
+        id = embedPathToId(rawTpl);
+        embedFallback = rawTpl;
+      } else if (TEMPLATE_ID_RE.test(rawTpl)) {
+        id = rawTpl;
+        embedFallback = builtinEmbedPath(id);
+      } else {
+        res.status(400).json({ error: 'Ugyldig tpl — mal-id, /embed/*.html eller «auto».' });
         return;
       }
-      const key = `${tpl}|${width}x${height}|${accent}|${dRaw}`;
+      const key = `${id}|${width}x${height}|${accent}|${dRaw}`;
       const now = Date.now();
       const hit = imgCache.get(key);
       if (hit && now - hit.at < IMG_CACHE_TTL_MS) {
@@ -82,9 +117,13 @@ export function registerInfographicRenderRoutes(
         return;
       }
       try {
-        const r = await fetch(`${TEMPLATE_BASE}${tpl}`);
-        if (!r.ok) { res.status(502).json({ error: 'Kunne ikke hente mal.' }); return; }
-        const templateHtml = await r.text();
+        // Primært: HTML fra DB-registeret. Fallback (før migrasjon): hostet /embed-fil.
+        let templateHtml = await getTemplateHtml(pool, id);
+        if (!templateHtml && embedFallback && SAFE_TPL.test(embedFallback)) {
+          const r = await fetch(`${TEMPLATE_BASE}${embedFallback}`);
+          if (r.ok) templateHtml = await r.text();
+        }
+        if (!templateHtml) { res.status(404).json({ error: 'Ukjent mal.' }); return; }
         if (templateHtml.length > MAX_TEMPLATE_BYTES) { res.status(413).json({ error: 'Mal for stor.' }); return; }
         const html = assembleHtml(templateHtml, data, { progress: 1, width, height, fontsCss: INTER_FONT_CSS });
         const buf = await renderHtmlToImage(html, { width, height, deviceScaleFactor: 2, format: 'png', waitForMs: 400, blockExternalRequests: true });
@@ -146,4 +185,45 @@ export function registerInfographicRenderRoutes(
       }
     },
   );
+
+  // ── ADMIN: mal-CRUD (legg til/rediger maler UTEN app-deploy) ──────────────
+  // GET liste (m/ inaktive + metadata) til admin-UI.
+  app.get('/api/admin/infographics/templates', async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      res.json({ templates: await listTemplatesAdmin(pool) });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // POST/PUT upsert. Validering (id, kontrakt, størrelse) i store.
+  const upsertHandler = async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const result = await upsertTemplate(pool, {
+      id: String(b.id ?? ''),
+      label: String(b.label ?? ''),
+      html: String(b.html ?? ''),
+      category: (b.category as never) ?? 'other',
+      autoPriority: typeof b.autoPriority === 'number' ? b.autoPriority : 0,
+      accentDefault: typeof b.accent === 'string' ? b.accent : (typeof b.accentDefault === 'string' ? b.accentDefault : null),
+      active: b.active !== false,
+    });
+    if ('error' in result) { res.status(400).json(result); return; }
+    res.json({ ok: true });
+  };
+  app.post('/api/admin/infographics/templates', upsertHandler);
+  app.put('/api/admin/infographics/templates/:id', (req, res) => {
+    (req.body as Record<string, unknown>).id = req.params.id;
+    return upsertHandler(req, res);
+  });
+
+  // DELETE (innebygde beskyttet i store).
+  app.delete('/api/admin/infographics/templates/:id', async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    const result = await deleteTemplate(pool, String(req.params.id));
+    if ('error' in result) { res.status(400).json(result); return; }
+    res.json({ ok: true });
+  });
 }
