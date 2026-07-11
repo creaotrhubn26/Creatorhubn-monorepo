@@ -22,7 +22,7 @@ import {
   listTemplates, listTemplatesAdmin, getTemplateHtml, pickTemplateId,
   upsertTemplate, deleteTemplate,
 } from './infographic-templates-store.js';
-import { getTokens, getRawTokens, setTokens } from './design-tokens-store.js';
+import { getTokens, getRawTokens, setTokens, resetTokens } from './design-tokens-store.js';
 
 type Sessions = Map<string, { userId?: string }>;
 type AdminGuard = (req: Request, res: Response) => { email: string } | null;
@@ -281,5 +281,24 @@ export function registerInfographicRenderRoutes(
       );
       res.json({ entries: r.rows });
     } catch { res.json({ entries: [] }); }
+  });
+
+  // DELETE = tilbakestill workspacet til standard (Fase D) — fjern alle overstyringer,
+  // re-seed kanonisk merkevare for produkter. Audit-logges.
+  app.delete('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
+    const ws = String(req.params.ws);
+    const result = await resetTokens(pool, ws);
+    if ('error' in result) { res.status(400).json(result); return; }
+    try {
+      await pool.query(
+        `INSERT INTO admin_activity_log (user_id, entity_type, entity_id, action, summary, details)
+         VALUES ($1, 'design_tokens', $2, 'reset', $3, $4::jsonb)`,
+        [(admin as any).userId ?? 'unknown', ws, `Tilbakestilte design-tokens for «${ws}» til standard`,
+          JSON.stringify({ email: (admin as any).email ?? null, keys: ['(reset)'] })],
+      );
+    } catch { /* audit ikke-kritisk */ }
+    res.json({ ok: true });
   });
 }

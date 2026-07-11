@@ -132,6 +132,30 @@ export default function WorkspaceDesignOverlay({
   const setIntent = (id: number, v: string) => setNotes((n) => n.map((x) => (x.id === id ? { ...x, intent: v } : x)));
   const removeNote = (id: number) => setNotes((n) => n.filter((x) => x.id !== id));
 
+  // Tastatur-snarveier (WCAG 2.1.1 Keyboard): A/T/E = modus, Esc = av-velg/lukk,
+  // ⌘/Ctrl+↵ = Send til Claude Code. Ignorerer taster mens man skriver i felt.
+  const buildBundleRef = React.useRef(buildBundle);
+  buildBundleRef.current = buildBundle;
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (bundle) { if (e.key === 'Escape') { e.preventDefault(); setBundle(null); } return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); buildBundleRef.current(); return; }
+      if (typing) return;
+      if (e.key === 'Escape') { e.preventDefault(); if (mode === 'edit' && sel) { setSel(null); setSelDesc(null); } else onClose?.(); }
+      else if (e.key.toLowerCase() === 'a') setMode('annotate');
+      else if (e.key.toLowerCase() === 't') setMode('tweaks');
+      else if (e.key.toLowerCase() === 'e') setMode('edit');
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mode, sel, bundle, onClose]);
+
+  // Dialog-fokus (WCAG 2.4.3): flytt fokus inn i Handoff-modalen når den åpnes.
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => { if (bundle && dialogRef.current) dialogRef.current.focus(); }, [bundle]);
+
   const btn = (active: boolean): React.CSSProperties => ({
     padding: '6px 12px', borderRadius: 8, border: `1px solid ${active ? ACC : LINE}`,
     background: active ? 'rgba(238,122,8,0.10)' : '#fff', color: active ? '#8a4708' : INK2,
@@ -145,6 +169,8 @@ export default function WorkspaceDesignOverlay({
 
   return (
     <div data-chd style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'none', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Fokus-synlighet (WCAG 2.4.7) — inline styles kan ikke :focus-visible, så vi injiserer. */}
+      <style>{`[data-chd] button:focus-visible,[data-chd] input:focus-visible,[data-chd] textarea:focus-visible,[data-chd][tabindex]:focus-visible{outline:2px solid ${ACC};outline-offset:2px;border-radius:8px}`}</style>
       {/* Hover/selection-highlight */}
       {(mode === 'annotate' || mode === 'edit') && hover && (
         <div style={{ position: 'fixed', left: hover.rect.x, top: hover.rect.y, width: hover.rect.w, height: hover.rect.h,
@@ -162,19 +188,20 @@ export default function WorkspaceDesignOverlay({
       ))}
 
       {/* Toppbar */}
-      <div data-chd style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'auto',
+      <div data-chd role="toolbar" aria-label="CreatorHub Design — verktøy" style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'auto',
         display: 'flex', alignItems: 'center', gap: 8, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12,
         padding: '7px 10px', boxShadow: '0 8px 30px rgba(0,0,0,.18)' }}>
         <span style={{ fontWeight: 800, color: INK, fontSize: 13, marginRight: 4 }}>CreatorHub Design</span>
-        <button data-chd style={btn(mode === 'annotate')} onClick={() => setMode('annotate')}>Annotate</button>
-        <button data-chd style={btn(mode === 'tweaks')} onClick={() => setMode('tweaks')}>Tweaks</button>
-        <button data-chd style={btn(mode === 'edit')} onClick={() => setMode('edit')}>Edit</button>
-        <button data-chd style={cta} onClick={buildBundle}>Send til Claude Code</button>
-        <button data-chd style={{ ...btn(false), border: 0 }} onClick={onClose} title="Lukk">✕</button>
+        <button data-chd style={btn(mode === 'annotate')} aria-pressed={mode === 'annotate'} title="Annotate (A)" onClick={() => setMode('annotate')}>Annotate</button>
+        <button data-chd style={btn(mode === 'tweaks')} aria-pressed={mode === 'tweaks'} title="Tweaks (T)" onClick={() => setMode('tweaks')}>Tweaks</button>
+        <button data-chd style={btn(mode === 'edit')} aria-pressed={mode === 'edit'} title="Edit (E)" onClick={() => setMode('edit')}>Edit</button>
+        <button data-chd style={cta} title="Send til Claude Code (⌘/Ctrl+↵)" onClick={buildBundle}>Send til Claude Code</button>
+        <button data-chd style={{ ...btn(false), border: 0 }} onClick={onClose} aria-label="Lukk CreatorHub Design (Esc)" title="Lukk (Esc)">✕</button>
       </div>
 
       {/* Høyrepanel */}
-      <div data-chd style={{ position: 'fixed', top: 62, right: 12, bottom: 12, width: 320, pointerEvents: 'auto',
+      <div data-chd role="region" aria-label={mode === 'annotate' ? 'Annoteringer' : mode === 'tweaks' ? 'Tweaks — merkevare' : 'Edit — egenskaper'}
+        style={{ position: 'fixed', top: 62, right: 12, bottom: 12, width: 320, pointerEvents: 'auto',
         background: PANEL, border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,.18)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${LINE}`, color: INK, fontWeight: 800, fontSize: 14 }}>
@@ -193,7 +220,7 @@ export default function WorkspaceDesignOverlay({
                 </div>
                 {n.d.text && <div style={{ fontSize: 11.5, color: INK2, marginBottom: 6 }}>«{n.d.text}»</div>}
                 <textarea data-chd value={n.intent} onChange={(e) => setIntent(n.id, e.target.value)}
-                  placeholder="Hva skal endres?" rows={2}
+                  placeholder="Hva skal endres?" rows={2} aria-label="Beskriv endringen for Claude Code"
                   style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 7, padding: 7, fontSize: 12.5, resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
             ))}
@@ -204,8 +231,8 @@ export default function WorkspaceDesignOverlay({
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={{ fontSize: 13, color: INK, fontWeight: 700 }}>Aksent (live)</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input data-chd type="color" value={accent} onChange={(e) => applyAccent(e.target.value)} style={{ width: 44, height: 34, border: 'none', background: 'none', cursor: 'pointer' }} />
-              <input data-chd type="text" value={accent} onChange={(e) => applyAccent(e.target.value)}
+              <input data-chd type="color" aria-label="Aksent — fargevelger" value={accent} onChange={(e) => applyAccent(e.target.value)} style={{ width: 44, height: 34, border: 'none', background: 'none', cursor: 'pointer' }} />
+              <input data-chd type="text" aria-label="Aksent — hex-verdi" value={accent} onChange={(e) => applyAccent(e.target.value)}
                 style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 7, padding: '7px 9px', fontSize: 13, fontFamily: 'monospace' }} />
             </div>
             <p style={{ fontSize: 12, color: INK2, margin: 0 }}>Endrer <code>--ws-accent*</code> på :root umiddelbart — hele skallet re-farges. «Lagre» skriver til workspace-tokens (samme som N1).</p>
@@ -224,28 +251,28 @@ export default function WorkspaceDesignOverlay({
                 <div style={section}>Typografi</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}><label style={flabel}>Størrelse (px)</label>
-                    <input data-chd type="number" style={field} value={insp.fontSize ?? ''} onChange={(e) => applyStyle('fontSize', 'font-size', e.target.value, 'px')} /></div>
+                    <input data-chd aria-label="Font-størrelse i piksler" type="number" style={field} value={insp.fontSize ?? ''} onChange={(e) => applyStyle('fontSize', 'font-size', e.target.value, 'px')} /></div>
                   <div style={{ flex: 1 }}><label style={flabel}>Vekt</label>
-                    <input data-chd style={field} value={insp.fontWeight ?? ''} onChange={(e) => applyStyle('fontWeight', 'font-weight', e.target.value)} /></div>
+                    <input data-chd aria-label="Font-vekt" style={field} value={insp.fontWeight ?? ''} onChange={(e) => applyStyle('fontWeight', 'font-weight', e.target.value)} /></div>
                 </div>
                 <label style={flabel}>Tekstfarge</label>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.color, flexShrink: 0 }} />
-                  <input data-chd style={field} value={insp.color ?? ''} onChange={(e) => applyStyle('color', 'color', e.target.value)} />
+                  <input data-chd aria-label="Tekstfarge" style={field} value={insp.color ?? ''} onChange={(e) => applyStyle('color', 'color', e.target.value)} />
                 </div>
 
                 <div style={section}>Utseende</div>
                 <label style={flabel}>Bakgrunn</label>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.background, flexShrink: 0 }} />
-                  <input data-chd style={field} value={insp.background ?? ''} onChange={(e) => applyStyle('background', 'background-color', e.target.value)} />
+                  <input data-chd aria-label="Bakgrunnsfarge" style={field} value={insp.background ?? ''} onChange={(e) => applyStyle('background', 'background-color', e.target.value)} />
                 </div>
                 <label style={flabel}>Radius (px)</label>
-                <input data-chd type="number" style={field} value={insp.borderRadius ?? ''} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} />
+                <input data-chd aria-label="Radius i piksler" type="number" style={field} value={insp.borderRadius ?? ''} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} />
 
                 <div style={section}>Spacing</div>
                 <label style={flabel}>Padding</label>
-                <input data-chd style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
+                <input data-chd aria-label="Padding" style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
 
                 <p style={{ fontSize: 11.5, color: INK2, margin: '6px 0 0' }}>
                   Endringer er live-forhåndsvisning på elementet. «Send til Claude Code» pakker dem ({Object.keys(edits).length} element{Object.keys(edits).length === 1 ? '' : 'er'}) inn i bundelen for å bygges inn permanent.
@@ -259,7 +286,8 @@ export default function WorkspaceDesignOverlay({
       {/* Handoff-bundle */}
       {bundle && (
         <div data-chd style={{ position: 'fixed', inset: 0, pointerEvents: 'auto', background: 'rgba(10,12,20,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 620, maxWidth: '92vw', maxHeight: '84vh', background: PANEL, border: `1px solid ${LINE}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Handoff-bundle til Claude Code" tabIndex={-1}
+            style={{ width: 620, maxWidth: '92vw', maxHeight: '84vh', background: PANEL, border: `1px solid ${LINE}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '13px 16px', borderBottom: `1px solid ${LINE}`, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center' }}>
               Handoff-bundle → Claude Code
               <span style={{ marginLeft: 'auto', fontSize: 12, color: INK2, fontWeight: 500 }}>{targetFile}</span>
