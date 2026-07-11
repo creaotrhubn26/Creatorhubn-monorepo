@@ -150,12 +150,49 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
+/**
+ * CreatorHub Design (Nivå 1): avled aksent-familien fra ÉN accent-hex → CSS-variabler.
+ * Ugyldig/manglende hex → tomt objekt (literal-fallbackene i workspaceTheme gjelder → identisk).
+ */
+function wsAccentVars(hex?: string | null): React.CSSProperties {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return {};
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const dark = '#' + [r, g, b].map((x) => Math.round(x * 0.9).toString(16).padStart(2, '0')).join('');
+  return {
+    '--ws-accent': hex,
+    '--ws-accent-hover': dark,
+    '--ws-accent-soft': `rgba(${r},${g},${b},0.14)`,
+    '--ws-accent-border': `rgba(${r},${g},${b},0.42)`,
+  } as React.CSSProperties;
+}
+
+/** Henter workspace-aksenten (design-tokens, ws=creatorhub) og setter --ws-accent* på
+ *  :root (document.documentElement). :root — IKKE shell-Box — fordi MUI Menu/Dialog/Tooltip
+ *  rendres via Portal til <body>, utenfor Box-treet; kun :root når portalene også.
+ *  Endres aksenten via CreatorHub Design (PUT), re-farges hele skallet ved neste last. */
+function useWorkspaceAccent(): void {
+  React.useEffect(() => {
+    let live = true;
+    fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !d || !d.tokens || !d.tokens.accent) return;
+        const vars = wsAccentVars(d.tokens.accent);
+        const root = document.documentElement;
+        Object.keys(vars).forEach((k) => root.style.setProperty(k, String((vars as any)[k])));
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+}
+
 const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const t = makeT(SHELL_T, useWsLocale());
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
   const [mobileNav, setMobileNav] = React.useState(false); // sidebar som slide-in på mobil
+  useWorkspaceAccent(); // CreatorHub Design: aksent fra design-tokens → --ws-accent* på :root
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (
