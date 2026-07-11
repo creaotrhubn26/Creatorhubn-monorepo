@@ -202,9 +202,14 @@ export function setupWeddingAssistantSubcontractRoutes(deps: WeddingAssistantSub
   app.get("/api/wedding/assistant-invite/:token/contract", async (req, res) => {
     try {
       await ensureSchema(pool);
+      // KUN invite-token — ikke `OR id = $1`. Assistent-UUID er ikke en
+      // hemmelighet på linje med invite-token; fallback på id lot hvem som
+      // helst med en assistent-ID lese full kontrakt-PII (fotografens
+      // e-post/org.nr, brudeparets navn, kompensasjon). Signerings-ruten
+      // under bruker allerede token-only.
       const r = await pool.query(
         `SELECT id, subcontract_terms, subcontract_signed_at, subcontract_signer_name
-           FROM wedding_assistants WHERE invite_token = $1 OR id = $1 LIMIT 1`,
+           FROM wedding_assistants WHERE invite_token = $1 LIMIT 1`,
         [req.params.token],
       );
       if (!r.rows.length) return res.status(404).json({ error: "Invitasjon finnes ikke" });
