@@ -166,33 +166,41 @@ function wsAccentVars(hex?: string | null): React.CSSProperties {
   } as React.CSSProperties;
 }
 
-/** Henter workspace-aksenten (design-tokens, ws=creatorhub) og setter --ws-accent* på
- *  :root (document.documentElement). :root — IKKE shell-Box — fordi MUI Menu/Dialog/Tooltip
- *  rendres via Portal til <body>, utenfor Box-treet; kun :root når portalene også.
- *  Endres aksenten via CreatorHub Design (PUT), re-farges hele skallet ved neste last. */
-function useWorkspaceAccent(): void {
+/** CreatorHub Design: henter design-tokens (ws=creatorhub) ÉN gang og bruker dem på shell-en:
+ *  - accent → --ws-accent* på :root (document.documentElement, IKKE shell-Box — MUI Menu/Dialog/
+ *    Tooltip rendres via Portal til <body>, utenfor Box-treet; kun :root når portalene også).
+ *  - copy  → returneres for å overstyre t()-tekster (Nivå 2b).
+ *  Endres via CreatorHub Design (PUT), slår inn ved neste last. */
+function useWorkspaceDesign(): { copy: Record<string, string> } {
+  const [copy, setCopy] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!live || !d || !d.tokens || !d.tokens.accent) return;
-        const vars = wsAccentVars(d.tokens.accent);
-        const root = document.documentElement;
-        Object.keys(vars).forEach((k) => root.style.setProperty(k, String((vars as any)[k])));
+        if (!live || !d || !d.tokens) return;
+        if (d.tokens.accent) {
+          const vars = wsAccentVars(d.tokens.accent);
+          const root = document.documentElement;
+          Object.keys(vars).forEach((k) => root.style.setProperty(k, String((vars as any)[k])));
+        }
+        if (d.tokens.copy && typeof d.tokens.copy === 'object') setCopy(d.tokens.copy);
       })
       .catch(() => {});
     return () => { live = false; };
   }, []);
+  return { copy };
 }
 
 const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
-  const t = makeT(SHELL_T, useWsLocale());
+  const baseT = makeT(SHELL_T, useWsLocale());
+  const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
+  // t() med copy-overstyring (Nivå 2b): tokens.copy[key] vinner, ellers locale-dict.
+  const t = (k: string) => { const o = copyOv[k]; return typeof o === 'string' && o ? o : baseT(k); };
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
   const [mobileNav, setMobileNav] = React.useState(false); // sidebar som slide-in på mobil
-  useWorkspaceAccent(); // CreatorHub Design: aksent fra design-tokens → --ws-accent* på :root
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (

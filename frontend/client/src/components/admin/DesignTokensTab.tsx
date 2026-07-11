@@ -9,6 +9,7 @@ import {
   Box, Button, Card, CardContent, MenuItem, Stack, TextField, Typography, Alert, Divider,
 } from '@mui/material';
 import WorkspaceNavEditor from './WorkspaceNavEditor';
+import WorkspaceCopyEditor from './WorkspaceCopyEditor';
 
 const WORKSPACES = [
   { value: 'global', label: 'Global (delt basis)' },
@@ -114,6 +115,8 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
         <>
           <Divider />
           <WorkspaceNavEditor workspace="creatorhub" />
+          <Divider />
+          <WorkspaceCopyEditor workspace="creatorhub" />
         </>
       )}
       <Divider />
