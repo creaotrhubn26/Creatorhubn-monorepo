@@ -6293,7 +6293,16 @@ export function createCommunicationRouter(
   });
 
   // ─── GET /api/admin/communication/users ───────────────────
-  router.get('/api/admin/communication/users', async (_req, res) => {
+  router.get('/api/admin/communication/users', async (req, res) => {
+    // SECURITY: this returns platform-wide message senders enriched with real
+    // e-post + full name + presence. It was ungated (`_req`) so ANY
+    // unauthenticated caller could harvest up to 100 users' e-post/navn and
+    // enumerate the platform. Require an authenticated session. (Residual: the
+    // list is platform-wide rather than tenant-scoped; both live consumers are
+    // in-app chat directories, so tightening to admin-only is a product/UX
+    // decision left as a flagged follow-up.)
+    const authed = await resolveAuthedUser(req);
+    if (!authed) return res.status(401).json({ error: 'unauthorized' });
     try {
       // Distinkte sendere fra meldinger, beriket med ekte navn + presence.
       // Online = user_presence.last_seen_at innen 90 sek og ikke idle (samme
@@ -6335,7 +6344,11 @@ export function createCommunicationRouter(
   });
 
   // ─── GET /api/admin/communication/stats ───────────────────
-  router.get('/api/admin/communication/stats', async (_req, res) => {
+  router.get('/api/admin/communication/stats', async (req, res) => {
+    // SECURITY: leaks global message/channel/unread counts. Was ungated
+    // (`_req`) — require an authenticated session (see /users above).
+    const authed = await resolveAuthedUser(req);
+    if (!authed) return res.status(401).json({ error: 'unauthorized' });
     try {
       const totalMessages = await db
         .select({ count: sql<number>`count(*)::int` })
