@@ -50,9 +50,13 @@ const clampDim = (v: unknown, def: number): number => {
   return Number.isFinite(n) ? Math.min(3000, Math.max(64, n)) : def;
 };
 
-/** Data → auto-valgt mal → PNG-buffer (delt av alle konnektor-ruter). null = mal mangler. */
+// Leadgrid-konnektorene rendrer i 'leadgrid'-workspacet (Leadgrid-maler foretrekkes,
+// faller tilbake til globale). Holder Leadgrid-flatene atskilt fra andre produkter.
+const LEADGRID_WS = 'leadgrid';
+
+/** Data → auto-valgt mal (leadgrid-workspace) → PNG-buffer. null = mal mangler. */
 async function renderToBuffer(pool: Pool, data: Record<string, unknown>, width: number, height: number): Promise<Buffer | null> {
-  const id = await pickTemplateId(pool, data);
+  const id = await pickTemplateId(pool, data, LEADGRID_WS);
   const templateHtml = await getTemplateHtml(pool, id);
   if (!templateHtml) return null;
   const html = assembleHtml(templateHtml, data, { progress: 1, width, height, fontsCss: INTER_FONT_CSS });
@@ -128,7 +132,7 @@ export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Po
     try {
       const momentum = await computeTodayMomentum(pool, orgId);
       const data = shapeMomentum(momentum, view, accent);
-      const id = await pickTemplateId(pool, data);            // donut for score, stat-bar for aktivitet
+      const id = await pickTemplateId(pool, data, LEADGRID_WS); // donut for score, stat-bar for aktivitet
       const templateHtml = await getTemplateHtml(pool, id);
       if (!templateHtml) { res.status(404).json({ error: 'Mal utilgjengelig.' }); return; }
       const html = assembleHtml(templateHtml, data, { progress: 1, width, height, fontsCss: INTER_FONT_CSS });

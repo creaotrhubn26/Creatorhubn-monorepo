@@ -13,8 +13,16 @@ import {
 
 interface TemplateRow {
   id: string; label: string; category: string; autoPriority: number;
-  accentDefault: string | null; isBuiltin: boolean; active: boolean;
+  accentDefault: string | null; isBuiltin: boolean; active: boolean; workspaceId: string | null;
 }
+
+// Workspaces (produkt/merkevare). Tom = Global (delt av alle).
+const WORKSPACES = [
+  { value: '', label: 'Global (delt av alle)' },
+  { value: 'creatorhub', label: 'CreatorHub' },
+  { value: 'theroleroom', label: 'The Role Room' },
+  { value: 'leadgrid', label: 'Leadgrid' },
+];
 
 const CATEGORIES = [
   { value: 'single', label: 'Enkelt tall' },
@@ -35,7 +43,7 @@ const SAMPLE_BY_CATEGORY: Record<string, unknown> = {
   other: { value: '42', label: 'Eksempel' },
 };
 
-const EMPTY = { id: '', label: '', category: 'single', accent: '#2f6df0', autoPriority: 0, active: true, html: '' };
+const EMPTY = { id: '', label: '', category: 'single', accent: '#2f6df0', autoPriority: 0, active: true, html: '', workspace: '' };
 
 function b64url(obj: unknown): string {
   const s = JSON.stringify(obj);
@@ -66,7 +74,7 @@ export default function InfographicTemplatesTab() {
     setEditingId(row.id);
     setForm({
       id: row.id, label: row.label, category: row.category, accent: row.accentDefault || '#2f6df0',
-      autoPriority: row.autoPriority, active: row.active, html: '',
+      autoPriority: row.autoPriority, active: row.active, html: '', workspace: row.workspaceId || '',
     });
     setMsg({ type: 'success', text: `Redigerer «${row.id}». La HTML-feltet stå tomt for å beholde eksisterende HTML.` });
   };
@@ -77,6 +85,7 @@ export default function InfographicTemplatesTab() {
     const body: Record<string, unknown> = {
       id: form.id, label: form.label, category: form.category,
       accent: form.accent, autoPriority: Number(form.autoPriority) || 0, active: form.active,
+      workspaceId: form.workspace || null,
     };
     if (form.html.trim() || !isEdit) body.html = form.html;
     // Ved redigering uten ny HTML: hent eksisterende og send med (upsert krever html).
@@ -145,6 +154,11 @@ export default function InfographicTemplatesTab() {
                 onChange={(e) => set({ category: e.target.value })} sx={{ flex: 1 }}>
                 {CATEGORIES.map((c) => <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>)}
               </TextField>
+              <TextField select label="Workspace" size="small" value={form.workspace}
+                onChange={(e) => set({ workspace: e.target.value })} sx={{ flex: 1 }}
+                helperText="hvilket produkt malen tilhører">
+                {WORKSPACES.map((w) => <MenuItem key={w.value} value={w.value}>{w.label}</MenuItem>)}
+              </TextField>
               <TextField label="Aksentfarge" size="small" value={form.accent}
                 onChange={(e) => set({ accent: e.target.value })} sx={{ width: 140 }} />
               <TextField label="Auto-prioritet" size="small" type="number" value={form.autoPriority}
@@ -186,7 +200,9 @@ export default function InfographicTemplatesTab() {
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {r.label} <Typography component="span" variant="caption" color="text.secondary">({r.id})</Typography>
                   </Typography>
-                  <Stack direction="row" spacing={0.75} sx={{ mt: 0.5 }}>
+                  <Stack direction="row" spacing={0.75} sx={{ mt: 0.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+                    <Chip size="small" color={r.workspaceId ? 'secondary' : 'default'}
+                      label={r.workspaceId ? (WORKSPACES.find((w) => w.value === r.workspaceId)?.label ?? r.workspaceId) : 'Global'} />
                     <Chip size="small" label={r.category} />
                     {r.isBuiltin && <Chip size="small" color="info" label="Innebygd" />}
                     {!r.active && <Chip size="small" color="warning" label="Inaktiv" />}
