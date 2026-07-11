@@ -459,6 +459,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
     async (req, res) => {
       const session = getActiveSession(req);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
       const { take_id, duration_ms, video_url, stream_uid, hls_manifest,
               thumbnail_url, metadata } = (req.body || {}) as Record<string, unknown>;
       if (!take_id) return res.status(400).json({ error: "take_id er påkrevd" });
@@ -473,10 +475,13 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
                   thumbnail_url = COALESCE($5, thumbnail_url),
                   metadata = COALESCE($6::jsonb, metadata)
             WHERE id = $7::uuid
+              AND project_id IN (
+                SELECT id FROM talent_selftape_projects WHERE talent_id = $8::uuid
+              )
             RETURNING *`,
           [duration_ms ?? null, video_url ?? null, stream_uid ?? null,
            hls_manifest ?? null, thumbnail_url ?? null,
-           metadata ? JSON.stringify(metadata) : null, take_id],
+           metadata ? JSON.stringify(metadata) : null, take_id, talentId],
         );
         if (!r.rowCount) return res.status(404).json({ error: "Take ikke funnet" });
         // Sett som current_take_id på prosjektet
@@ -766,8 +771,11 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
              LEFT JOIN agency_orgs a ON a.id = s.agency_org_id
              LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
             WHERE s.project_id = $1::uuid
+              AND s.project_id IN (
+                SELECT id FROM talent_selftape_projects WHERE talent_id = $2::uuid
+              )
             ORDER BY s.created_at ASC`,
-          [req.params.projectId],
+          [req.params.projectId, talentId],
         );
         return res.json({ submissions: r.rows });
       } catch (err) {
@@ -782,6 +790,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
     async (req, res) => {
       const session = getActiveSession(req);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
       const { take_id, target_type, agency_org_id, casting_project_id,
               casting_role_id, deadline_at } = (req.body || {}) as Record<string, unknown>;
       if (!take_id || !target_type) {
@@ -792,16 +802,28 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         const privateToken = target_type === "private_link"
           ? crypto.randomBytes(24).toString("base64url")
           : null;
+        // Scope INSERT: både prosjektet OG taken må tilhøre innlogget talent,
+        // ellers kan en angriper feste en submission (og private_token) på et
+        // annet talents prosjekt/take.
         const r = await pool.query(
           `INSERT INTO talent_selftape_submissions
              (project_id, take_id, target_type, agency_org_id, casting_project_id,
               casting_role_id, deadline_at, private_token, status)
-           VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, 'ready')
+           SELECT $1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, 'ready'
+            WHERE EXISTS (
+                    SELECT 1 FROM talent_selftape_projects
+                     WHERE id = $1::uuid AND talent_id = $9::uuid
+                  )
+              AND EXISTS (
+                    SELECT 1 FROM talent_selftape_takes t
+                     WHERE t.id = $2::uuid AND t.project_id = $1::uuid
+                  )
            RETURNING *`,
           [req.params.projectId, take_id, target_type, agency_org_id ?? null,
            casting_project_id ?? null, casting_role_id ?? null,
-           deadline_at ?? null, privateToken],
+           deadline_at ?? null, privateToken, talentId],
         );
+        if (!r.rowCount) return res.status(404).json({ error: "Prosjekt eller take ikke funnet" });
         return res.status(201).json({ submission: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/submissions POST] failed", err);
@@ -859,13 +881,18 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   app.post("/api/role-room/talents/selftapes/submissions/:id/send", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const r = await pool.query(
         `UPDATE talent_selftape_submissions
             SET status = 'submitted', submitted_at = now(), status_updated_at = now()
           WHERE id = $1::uuid AND status IN ('draft','ready')
+            AND project_id IN (
+              SELECT id FROM talent_selftape_projects WHERE talent_id = $2::uuid
+            )
           RETURNING *`,
-        [req.params.id],
+        [req.params.id, talentId],
       );
       if (!r.rowCount) {
         return res.status(409).json({ error: "Submission kan ikke sendes (allerede sendt eller ikke klar)" });
@@ -927,14 +954,19 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
     async (req, res) => {
       const session = getActiveSession(req);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
       const newToken = crypto.randomBytes(24).toString("base64url");
       try {
         const r = await pool.query(
           `UPDATE talent_selftape_submissions
               SET private_token = $1, status_updated_at = now()
             WHERE id = $2::uuid AND target_type = 'private_link'
+              AND project_id IN (
+                SELECT id FROM talent_selftape_projects WHERE talent_id = $3::uuid
+              )
             RETURNING id::text, private_token`,
-          [newToken, req.params.id],
+          [newToken, req.params.id, talentId],
         );
         if (!r.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
         return res.json({ submission: r.rows[0] });
@@ -947,13 +979,21 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
 
   // ── GET /submissions/:id/history — events ────────────────────────
   app.get("/api/role-room/talents/selftapes/submissions/:id/history", async (req, res) => {
+    const session = getActiveSession(req);
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const r = await pool.query(
         `SELECT id::text, event_type, actor_label, details, created_at::text
            FROM talent_selftape_submission_events
           WHERE submission_id = $1::uuid
+            AND submission_id IN (
+              SELECT s.id FROM talent_selftape_submissions s
+              JOIN talent_selftape_projects p ON p.id = s.project_id
+              WHERE p.talent_id = $2::uuid
+            )
           ORDER BY created_at DESC LIMIT 50`,
-        [req.params.id],
+        [req.params.id, talentId],
       );
       return res.json({ events: r.rows });
     } catch (err) {
