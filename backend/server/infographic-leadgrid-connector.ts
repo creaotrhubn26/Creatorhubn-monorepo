@@ -45,13 +45,14 @@ const CACHE_TTL_MS = 60_000;
 
 const TREND_LABEL: Record<string, string> = { rising: 'Stigende ▲', stable: 'Stabilt', falling: 'Fallende ▼' };
 
-/** Momentum → infografikk-data, avhengig av `view`. */
+const VIEWS = new Set(['score', 'activity', 'breakdown', 'goal']);
+
+/** Momentum → infografikk-data, avhengig av `view` (alt fra momentum-objektet, ingen ekstra spørring). */
 function shapeMomentum(m: Awaited<ReturnType<typeof computeTodayMomentum>>, view: string, accent: string): Record<string, unknown> {
+  const a = m.todayActivity;
   if (view === 'activity') {
-    const a = m.todayActivity;
     return {
-      accent,
-      title: 'Aktivitet i dag',
+      accent, title: 'Aktivitet i dag',
       cards: [
         { value: String(a.contacts), label: 'Kontakter' },
         { value: String(a.meetings), label: 'Møter' },
@@ -59,6 +60,24 @@ function shapeMomentum(m: Awaited<ReturnType<typeof computeTodayMomentum>>, view
         { value: String(a.pipelineMoves), label: 'Pipeline' },
       ],
     };
+  }
+  if (view === 'breakdown') {
+    // Momentum-analyse: de tre del-scorene (0-100) som KPI-er.
+    return {
+      accent, title: 'Momentum-analyse',
+      cards: [
+        { value: String(Math.round(m.breakdown.activityScore)), label: 'Aktivitet' },
+        { value: String(Math.round(m.breakdown.velocityScore)), label: 'Tempo' },
+        { value: String(Math.round(m.breakdown.decayScore)), label: 'Ferskhet' },
+      ],
+    };
+  }
+  if (view === 'goal') {
+    // Dagens måloppnåelse: samlet faktisk vs daglig mål på tvers av de 4 metrikkene → prosent.
+    const done = a.contacts + a.followups + a.meetings + a.pipelineMoves;
+    const target = a.contactsTarget + a.followupsTarget + a.meetingsTarget + a.pipelineMovesTarget;
+    const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
+    return { accent, value: String(pct) + '%', label: 'Dagens mål' };
   }
   // default: score som donut/prosent (0-100), trend i label.
   return { accent, value: String(Math.round(m.score)) + '%', label: 'Momentum · ' + (TREND_LABEL[m.trend] || m.trend) };
@@ -75,7 +94,7 @@ export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Po
     const orgId = await resolveOrgIdSmart(req, pool, session.userId);
     if (!orgId) { res.status(400).json({ error: 'mangler_organization_id' }); return; }
 
-    const view = req.query.view === 'activity' ? 'activity' : 'score';
+    const view = typeof req.query.view === 'string' && VIEWS.has(req.query.view) ? req.query.view : 'score';
     const accent = typeof req.query.accent === 'string' ? req.query.accent : '#2f6df0';
     const width = clampDim(req.query.w, 1200);
     const height = clampDim(req.query.h, 630);
