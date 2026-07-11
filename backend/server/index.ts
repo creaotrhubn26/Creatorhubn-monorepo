@@ -624,6 +624,7 @@ import { registerGeoVisibilityRoutes } from "./market-intelligence/geo-visibilit
 import { registerModuleFeaturesRoutes } from "./feature-flags/module-features-routes.js";
 import { registerIntegrationsAdminRoutes } from "./integrations/integrations-admin-routes.js";
 import { registerOwnedChannelsRoutes } from "./integrations/owned-channels-routes.js";
+import { registerKeywordPlannerRoutes } from "./integrations/keyword-planner-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
@@ -25067,6 +25068,13 @@ registerModuleFeaturesRoutes({ app, pool, activeSessions });
 registerIntegrationsAdminRoutes({ app, pool, activeSessions });
 // GSC/GA4 → normalized_signals-synk + AI-trafikk-lesning (integrasjonsplanen steg 3)
 registerOwnedChannelsRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Keyword Planner — søkevolum m/ cache-først (integrasjonsplanen steg 5)
+registerKeywordPlannerRoutes({
   app,
   pool,
   activeSessions,
