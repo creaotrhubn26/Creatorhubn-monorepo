@@ -473,10 +473,7 @@ export function createWebSocketServer(
             // handlers keyed by event.type (item_selected, project_updated,
             // notifications, …). An UNauthenticated socket may not inject them —
             // this closes anonymous, cross-client event spoofing into every
-            // logged-in user's UI. NOTE: these events still carry no
-            // server-verified project binding, so delivery remains a global
-            // fan-out among authenticated sockets; per-tenant scoping is a
-            // separate, larger change tracked for a future round.
+            // logged-in user's UI.
             if (!authenticated) {
               ws.send(JSON.stringify({
                 type: 'error',
@@ -495,11 +492,24 @@ export function createWebSocketServer(
               break;
             }
 
-            broadcast(clients, {
+            const eventMessage = {
               type: 'event',
               event: eventPayload,
               timestamp: new Date().toISOString(),
-            }, clientId);
+            };
+            // Round 40: if the sender is bound to a collaboration room (joined a
+            // session, wedding or liveset room whose membership the server
+            // verified on join), confine delivery to co-members of that exact
+            // room instead of a global fan-out. Roomless dashboard sockets keep
+            // the legacy global relay — those events still carry no
+            // server-verified project binding, so their consumers additionally
+            // reject cross-tenant events client-side (see UniversalShowcase).
+            const eventSenderRoom = clients.get(clientId)?.room;
+            if (eventSenderRoom) {
+              broadcastToRoom(clients, eventSenderRoom, eventMessage, clientId);
+            } else {
+              broadcast(clients, eventMessage, clientId);
+            }
             break;
           }
 

@@ -796,7 +796,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Additional state for real-time features
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showcaseItems, setShowcaseItems] = useState<ShowcaseItem[]>([]);
-  
+  // Round 40 (defensive): realtime item_* events arrive over a global fan-out
+  // with no server-verified project binding. Keep a live ref of owned item ids
+  // so the realtime handlers can reject events for items this showcase does not
+  // hold (cross-tenant noise / crafted mutations) without stale-closure bugs.
+  const showcaseItemIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    showcaseItemIdsRef.current = new Set(showcaseItems.map((i) => String(i.id)));
+  }, [showcaseItems]);
+
   // Academy navigation state
   const [showAcademy, setShowAcademy] = useState(false);
   // Dashboard navigation state
@@ -1201,21 +1209,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Real-time event handling
   useEffect(() => {
+    // Round 40: these events reach us over a global fan-out with no
+    // server-verified project binding, so a crafted item_* event from another
+    // authenticated tenant could otherwise inject selections or splat arbitrary
+    // fields onto this showcase's state. Act ONLY on items this showcase owns,
+    // and never spread the raw, unauthenticated-origin `updates` object —
+    // mirror a whitelist of benign display fields instead.
+    const SAFE_UPDATE_KEYS = ['title', 'caption', 'description', 'status', 'rating', 'tags', 'order', 'category'];
+
     const handleItemSelected = (event: any) => {
-      if (event.data.itemId) {
-        setSelectedItems(prev => [...prev, event.data.itemId.toString()]);
-        showInfoToast(`${event.data.userName} selected an item`);
-  }
-};
+      const itemId = event?.data?.itemId != null ? String(event.data.itemId) : '';
+      if (!itemId || !showcaseItemIdsRef.current.has(itemId)) return;
+      setSelectedItems(prev => (prev.includes(itemId) ? prev : [...prev, itemId]));
+      showInfoToast(`${event?.data?.userName ?? 'Someone'} selected an item`);
+    };
 
     const handleItemUpdated = (event: any) => {
-      if (event.data.itemId) {
-        showInfoToast(`${event.data.userName} updated an item`);
-        // Refresh the item data
-        setShowcaseItems(prev => prev.map(item => 
-          item.id === event.data.itemId.toString() ? { ...item, ...event.data.updates } : item
-        ));
-      }
+      const itemId = event?.data?.itemId != null ? String(event.data.itemId) : '';
+      if (!itemId || !showcaseItemIdsRef.current.has(itemId)) return;
+      const incoming = (event?.data?.updates && typeof event.data.updates === 'object') ? event.data.updates : {};
+      const safe: Record<string, any> = {};
+      for (const k of SAFE_UPDATE_KEYS) if (k in incoming) safe[k] = incoming[k];
+      showInfoToast(`${event?.data?.userName ?? 'Someone'} updated an item`);
+      if (Object.keys(safe).length === 0) return;
+      setShowcaseItems(prev => prev.map(item =>
+        String(item.id) === itemId ? { ...item, ...safe } : item
+      ));
     };
 
     const handleUserJoined = (event: any) => {
