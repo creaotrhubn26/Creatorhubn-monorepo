@@ -22,7 +22,7 @@ import {
   listTemplates, listTemplatesAdmin, getTemplateHtml, pickTemplateId,
   upsertTemplate, deleteTemplate,
 } from './infographic-templates-store.js';
-import { getTokens, setTokens } from './design-tokens-store.js';
+import { getTokens, getRawTokens, setTokens } from './design-tokens-store.js';
 
 type Sessions = Map<string, { userId?: string }>;
 type AdminGuard = (req: Request, res: Response) => { email: string } | null;
@@ -236,7 +236,12 @@ export function registerInfographicRenderRoutes(
   // ── DESIGN-TOKENS (merkevare som data per workspace) ─────────────────────
   // GET effektive tokens (global + workspace). Offentlig (til preview/render/klient).
   app.get('/api/design/tokens', async (req: Request, res: Response) => {
-    const tokens = await getTokens(pool, req.query.ws as string | undefined);
+    // ?raw=1 → KUN eksplisitte workspace-overstyringer (ikke global-basis) for flater
+    // som må beholde egne literaler til admin faktisk overstyrer (Role Room Talents).
+    const raw = req.query.raw === '1' || req.query.raw === 'true';
+    const tokens = raw
+      ? await getRawTokens(pool, req.query.ws as string | undefined)
+      : await getTokens(pool, req.query.ws as string | undefined);
     res.setHeader('Cache-Control', 'public, max-age=60');
     res.json({ workspace: (req.query.ws as string) || 'global', tokens });
   });
