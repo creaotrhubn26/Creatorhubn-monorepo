@@ -750,9 +750,13 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
 // Lite bibliotek av hostede infographic-maler (public/embed/…). Velges i editoren;
 // «Egendefinert» lar admin lime inn egen mal-URL.
 const INFOGRAPHIC_TEMPLATE_LIBRARY: { label: string; url: string }[] = [
+  { label: '✨ Auto (velg mal fra data)', url: 'auto' },
   { label: 'KPI-kort (tellende tall)', url: '/embed/demo-template.html' },
   { label: 'Stat-bar (horisontal)', url: '/embed/templates/stat-bar.html' },
   { label: 'Stort tall', url: '/embed/templates/big-number.html' },
+  { label: 'Donut (prosent / andel)', url: '/embed/templates/donut.html' },
+  { label: 'Sammenligning (før/etter)', url: '/embed/templates/comparison.html' },
+  { label: 'Tidslinje (steg)', url: '/embed/templates/timeline.html' },
 ];
 
 function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpdate: (b: InfographicBlock) => void }) {

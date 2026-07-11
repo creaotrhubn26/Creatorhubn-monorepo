@@ -13,7 +13,7 @@
 //   • Størrelses-/dimensjons-tak.
 
 import type { Express, Request, Response } from 'express';
-import { assembleHtml } from './infographic-engine.js';
+import { assembleHtml, pickTemplate } from './infographic-engine.js';
 import { renderHtmlToImage } from './render-engine.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 
@@ -58,15 +58,21 @@ export function registerInfographicRenderRoutes(
     '/api/infographics/render.png',
     aiRateLimit({ windowMs: 60_000, max: 60, label: 'infographic-render-img' }),
     async (req: Request, res: Response) => {
-      const tpl = String(req.query.tpl ?? '');
-      if (!SAFE_TPL.test(tpl) || tpl.includes('..')) {
-        res.status(400).json({ error: 'Ugyldig tpl — kun /embed/*.html-maler.' });
-        return;
-      }
+      const rawTpl = String(req.query.tpl ?? '');
       const width = clampDim(req.query.w, 1200);
       const height = clampDim(req.query.h, 630);
       const dRaw = typeof req.query.d === 'string' ? req.query.d : '';
       const accent = typeof req.query.accent === 'string' ? req.query.accent : '';
+      // Data parses FØR mal-valg, så `tpl=auto` kan la motoren velge mal fra data-formen.
+      let data: Record<string, unknown> = {};
+      if (dRaw) { try { data = JSON.parse(Buffer.from(dRaw, 'base64url').toString('utf8')); } catch { /* tom */ } }
+      if (accent) data.accent = accent;
+      // Smart auto-velg: pickTemplate returnerer KUN kjente bibliotek-stier (SSRF-trygt).
+      const tpl = rawTpl === 'auto' ? pickTemplate(data) : rawTpl;
+      if (!SAFE_TPL.test(tpl) || tpl.includes('..')) {
+        res.status(400).json({ error: 'Ugyldig tpl — kun /embed/*.html-maler eller «auto».' });
+        return;
+      }
       const key = `${tpl}|${width}x${height}|${accent}|${dRaw}`;
       const now = Date.now();
       const hit = imgCache.get(key);
@@ -74,9 +80,6 @@ export function registerInfographicRenderRoutes(
         res.type('image/png').setHeader('Cache-Control', 'public, max-age=86400').send(hit.buf);
         return;
       }
-      let data: Record<string, unknown> = {};
-      if (dRaw) { try { data = JSON.parse(Buffer.from(dRaw, 'base64url').toString('utf8')); } catch { /* tom */ } }
-      if (accent) data.accent = accent;
       try {
         const r = await fetch(`${TEMPLATE_BASE}${tpl}`);
         if (!r.ok) { res.status(502).json({ error: 'Kunne ikke hente mal.' }); return; }
