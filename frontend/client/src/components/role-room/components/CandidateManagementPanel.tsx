@@ -3288,7 +3288,7 @@ function CandidateManagementPanelInner({
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedCandidates.length}
                     onChange={handleSelectAll}
                     inputProps={{ 'aria-label': 'Velg alle kandidater' }}
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                   />
                 </TableCell>
                 <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Favoritt</TableCell>
@@ -3297,7 +3297,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Kandidat
                   </TableSortLabel>
@@ -3307,7 +3307,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -3317,7 +3317,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'roles'}
                     direction={sortField === 'roles' ? sortDirection : 'asc'}
                     onClick={() => handleSort('roles')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Roller
                   </TableSortLabel>
@@ -3343,7 +3343,7 @@ function CandidateManagementPanelInner({
                       checked={selectedIds.has(candidate.id)}
                       onChange={() => handleToggleSelect(candidate.id)}
                       inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3554,7 +3554,7 @@ function CandidateManagementPanelInner({
                           color: 'rgba(255,255,255,0.78)',
                           minWidth: TOUCH_TARGET_SIZE,
                           minHeight: TOUCH_TARGET_SIZE,
-                          '&:hover': { color: '#b86bff', bgcolor: 'rgba(184,107,255,0.1)' },
+                          '&:hover': { color: 'var(--role-accent, #b86bff)', bgcolor: 'rgba(184,107,255,0.1)' },
                         }}
                       >
                         <MoreVertIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
@@ -3603,7 +3603,7 @@ function CandidateManagementPanelInner({
                     overflow: 'hidden',
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.08)',
-                      borderColor: '#b86bff',
+                      borderColor: 'var(--role-accent, #b86bff)',
                       boxShadow: '0 8px 24px rgba(184,107,255,0.24)',
                       transform: 'translateY(-2px)',
                     },
@@ -3742,7 +3742,7 @@ function CandidateManagementPanelInner({
                           checked={selectedIds.has(candidate.id)}
                           onChange={() => handleToggleSelect(candidate.id)}
                           inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
-                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#b86bff' } }}
+                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                         />
                         <Typography
                           variant="h6"
@@ -3910,7 +3910,7 @@ function CandidateManagementPanelInner({
                             <Typography
                               variant="subtitle2"
                               sx={{
-                                color: '#b86bff',
+                                color: 'var(--role-accent, #b86bff)',
                                 fontWeight: 700,
                                 mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                                 fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
@@ -4043,7 +4043,7 @@ function CandidateManagementPanelInner({
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
-                              color: '#b86bff',
+                              color: 'var(--role-accent, #b86bff)',
                               '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
                               ...focusVisibleStyles,
                             }}
@@ -4273,7 +4273,7 @@ function CandidateManagementPanelInner({
         onClose={() => setUndoSnackbarOpen(false)}
         message="Kandidat slettet"
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#b86bff' }}>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: 'var(--role-accent, #b86bff)' }}>
             Angre
           </Button>
         }
@@ -4456,7 +4456,7 @@ function CandidateManagementPanelInner({
                         alignItems: 'center', 
                         gap: 0.5, 
                         mt: 1.5,
-                        color: '#b86bff',
+                        color: 'var(--role-accent, #b86bff)',
                         fontSize: '0.75rem',
                       }}>
                         <CheckIcon sx={{ fontSize: 14 }} />
@@ -4551,7 +4551,7 @@ function CandidateManagementPanelInner({
           }}
           sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' } }}
         >
-          <ListItemIcon sx={{ color: '#b86bff', minWidth: 36 }}>
+          <ListItemIcon sx={{ color: 'var(--role-accent, #b86bff)', minWidth: 36 }}>
             <EditIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Rediger</ListItemText>

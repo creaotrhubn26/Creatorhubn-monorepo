@@ -82,7 +82,7 @@ export function useAIRecommendation(
             if (idHolder.current) toast.removeToast(idHolder.current);
           }}
           sx={{
-            color: '#b86bff',
+            color: 'var(--role-accent, #b86bff)',
             fontWeight: 700,
             textTransform: 'none',
           }}

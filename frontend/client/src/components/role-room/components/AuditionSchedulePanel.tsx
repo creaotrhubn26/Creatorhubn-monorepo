@@ -4220,7 +4220,7 @@ function AuditionSchedulePanelInner({
                         minWidth: 32,
                         height: 32,
                         px: 1,
-                        bgcolor: safePage === p ? '#b86bff' : 'transparent',
+                        bgcolor: safePage === p ? 'var(--role-accent, #b86bff)' : 'transparent',
                         color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
                         fontWeight: safePage === p ? 700 : 500,
                         '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(184,107,255,0.18)' },

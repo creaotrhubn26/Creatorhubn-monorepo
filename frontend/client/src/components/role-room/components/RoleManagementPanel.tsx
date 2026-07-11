@@ -3116,18 +3116,18 @@ function RoleManagementPanelInner({
         >
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <TheaterComedyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#b86bff' }} />
+              <TheaterComedyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: 'var(--role-accent, #b86bff)' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#b86bff', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.total}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
           </Box>
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <TheaterComedyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#b86bff' }} />
+              <TheaterComedyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: 'var(--role-accent, #b86bff)' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#b86bff', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.open}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Åpne</Typography>
@@ -3239,8 +3239,8 @@ function RoleManagementPanelInner({
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
                 bgcolor: viewMode === 'grid' ? 'rgba(184,107,255,0.26)' : 'transparent',
-                color: viewMode === 'grid' ? '#b86bff' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'grid' ? '#b86bff' : 'rgba(255,255,255,0.2)',
+                color: viewMode === 'grid' ? 'var(--role-accent, #b86bff)' : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'grid' ? 'var(--role-accent, #b86bff)' : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -3257,8 +3257,8 @@ function RoleManagementPanelInner({
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
                 bgcolor: viewMode === 'table' ? 'rgba(184,107,255,0.26)' : 'transparent',
-                color: viewMode === 'table' ? '#b86bff' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'table' ? '#b86bff' : 'rgba(255,255,255,0.2)',
+                color: viewMode === 'table' ? 'var(--role-accent, #b86bff)' : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'table' ? 'var(--role-accent, #b86bff)' : 'rgba(255,255,255,0.2)',
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 ...focusVisibleStyles,
               }}
@@ -3299,7 +3299,7 @@ function RoleManagementPanelInner({
             mb: 2,
             bgcolor: 'rgba(184,107,255,0.14)',
             color: '#fff',
-            '& .MuiAlert-icon': { color: '#b86bff' },
+            '& .MuiAlert-icon': { color: 'var(--role-accent, #b86bff)' },
           }}
         >
           Viser {filteredAndSortedRoles.length} av {roles.length} roller
@@ -3343,7 +3343,7 @@ function RoleManagementPanelInner({
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedRoles.length}
                     onChange={handleSelectAll}
                     aria-label="Velg alle roller"
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                   />
                 </TableCell>
                 <TableCell sx={{ color: '#fff', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>Favoritt</TableCell>
@@ -3352,7 +3352,7 @@ function RoleManagementPanelInner({
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -3362,7 +3362,7 @@ function RoleManagementPanelInner({
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -3373,7 +3373,7 @@ function RoleManagementPanelInner({
                     active={sortField === 'candidates'}
                     direction={sortField === 'candidates' ? sortDirection : 'asc'}
                     onClick={() => handleSort('candidates')}
-                    sx={{ color: '#fff', '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Kandidater
                   </TableSortLabel>
@@ -3383,7 +3383,7 @@ function RoleManagementPanelInner({
                     active={sortField === 'scenes'}
                     direction={sortField === 'scenes' ? sortDirection : 'asc'}
                     onClick={() => handleSort('scenes')}
-                    sx={{ color: '#fff', '&:hover': { color: '#b86bff' } }}
+                    sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
                     Scener
                   </TableSortLabel>
@@ -3404,7 +3404,7 @@ function RoleManagementPanelInner({
                     <Checkbox
                       checked={selectedIds.has(role.id)}
                       onChange={() => handleToggleSelect(role.id)}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3428,7 +3428,7 @@ function RoleManagementPanelInner({
                     </Typography>
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Chip label={role.candidateIds?.length || 0} size="small" sx={{ bgcolor: 'rgba(184,107,255,0.26)', color: '#b86bff', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }} />
+                    <Chip label={role.candidateIds?.length || 0} size="small" sx={{ bgcolor: 'rgba(184,107,255,0.26)', color: 'var(--role-accent, #b86bff)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }} />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Chip label={role.sceneIds?.length || 0} size="small" sx={{ bgcolor: 'rgba(106,76,207,0.24)', color: '#cfa77d', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }} />
@@ -3446,7 +3446,7 @@ function RoleManagementPanelInner({
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => onEditRole(role)} sx={{ color: '#b86bff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton onClick={() => onEditRole(role)} sx={{ color: 'var(--role-accent, #b86bff)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
@@ -3494,7 +3494,7 @@ function RoleManagementPanelInner({
                     flexDirection: 'column',
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.08)',
-                      borderColor: '#b86bff',
+                      borderColor: 'var(--role-accent, #b86bff)',
                       boxShadow: '0 8px 24px rgba(184,107,255,0.24)',
                       transform: 'translateY(-2px)',
                     },
@@ -3508,7 +3508,7 @@ function RoleManagementPanelInner({
                         <Checkbox
                           checked={selectedIds.has(role.id)}
                           onChange={() => handleToggleSelect(role.id)}
-                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
+                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                         />
                         <Box sx={{ flex: 1 }}>
                           {/* Eye-catching Role Header */}
@@ -3655,7 +3655,7 @@ function RoleManagementPanelInner({
                               justifyContent: 'center',
                             }}
                           >
-                            <PersonIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 34 }, color: '#b86bff' }} />
+                            <PersonIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 34 }, color: 'var(--role-accent, #b86bff)' }} />
                           </Box>
                           <Box sx={{ flex: 1 }}>
                             <Typography
@@ -3841,7 +3841,7 @@ function RoleManagementPanelInner({
                           bgcolor: expandedCards.has(role.id)
                             ? 'rgba(184,107,255,0.30)'
                             : 'rgba(184,107,255,0.18)',
-                          color: expandedCards.has(role.id) ? '#b86bff' : '#fff',
+                          color: expandedCards.has(role.id) ? 'var(--role-accent, #b86bff)' : '#fff',
                           fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.9rem', xl: '1rem' },
                           fontWeight: 600,
                           minHeight: TOUCH_TARGET_SIZE,
@@ -3944,7 +3944,7 @@ function RoleManagementPanelInner({
         onClose={() => setUndoSnackbarOpen(false)}
         message="Rolle slettet"
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#b86bff', fontSize: isDesktop ? '1rem' : isTablet ? '0.875rem' : '0.8125rem' }}>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: 'var(--role-accent, #b86bff)', fontSize: isDesktop ? '1rem' : isTablet ? '0.875rem' : '0.8125rem' }}>
             Angre
           </Button>
         }

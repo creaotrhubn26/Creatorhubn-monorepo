@@ -225,7 +225,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
       case 'hovedrolle': return '#f59e0b';
       case 'birolle': return '#8f6b52';
       case 'statist': return '#6b7280';
-      default: return '#b86bff';
+      default: return 'var(--role-accent, #b86bff)';
     }
   };
 
@@ -729,7 +729,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                           height: 20,
                           fontSize: '0.7rem',
                           bgcolor: 'rgba(184,107,255,0.26)',
-                          color: '#b86bff',
+                          color: 'var(--role-accent, #b86bff)',
                         }}
                       />
                     ))}

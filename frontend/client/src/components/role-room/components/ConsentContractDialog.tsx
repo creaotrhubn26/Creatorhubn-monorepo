@@ -113,7 +113,7 @@ const TikTokIcon = () => (
 );
 
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
-const CONSENT_DIALOG_ACCENT = '#b86bff';
+const CONSENT_DIALOG_ACCENT = 'var(--role-accent, #b86bff)';
 
 const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
   const current = typeof sourceText === 'string' ? sourceText : '';
