@@ -92,8 +92,36 @@ interface TalentsAppProps {
   onLogout?: () => void;
 }
 
+/**
+ * CreatorHub Design (Fase C): token-driv Role Room-aksenten fra design-tokens
+ * (ws=theroleroom). Bruker RÅ override (?raw=1) — ingen eksplisitt aksent → ingen
+ * --rr-*-vars → literalene (lilla #a855f7) i theme.ts gjelder → identisk. Endres
+ * aksenten i CreatorHub Design (The Role Room-workspace), re-farges Talents ved neste last.
+ */
+function useTalentsBrand() {
+  useEffect(() => {
+    let live = true;
+    fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const hex = d && d.tokens && d.tokens.accent;
+        if (!live || typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+        const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+        const root = document.documentElement;
+        root.style.setProperty('--rr-accent', hex);
+        root.style.setProperty('--rr-border', `rgba(${r},${g},${b},0.18)`);
+        root.style.setProperty('--rr-border-strong', `rgba(${r},${g},${b},0.32)`);
+        root.style.setProperty('--rr-border-subtle', `rgba(${r},${g},${b},0.08)`);
+        root.style.setProperty('--rr-filmstrip', `rgba(${r},${g},${b},0.06)`);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+}
+
 export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
   const [page, setPage] = useState<TalentsAppPage>(initialPage ?? 'dashboard');
+  useTalentsBrand(); // CreatorHub Design: Role Room-aksent fra design-tokens
 
   // Demo-modus: leses fra URL én gang ved mount + persisteres ved navigasjon
   const demoMode = useMemo(

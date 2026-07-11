@@ -51,6 +51,15 @@ export async function getTokens(pool: Pool, workspace?: string | null): Promise<
   return merged;
 }
 
+/** RÅ overstyringer for et workspace — KUN eksplisitt satte tokens (ikke global-basis).
+ *  Brukes av flater som må beholde sine egne literaler til en admin faktisk overstyrer
+ *  (f.eks. Role Room Talents: tom rad → ingen --rr-*-vars → literalene i theme.ts gjelder). */
+export async function getRawTokens(pool: Pool, workspace?: string | null): Promise<Record<string, unknown>> {
+  const ws = normalizeWorkspace(workspace);
+  if (!ws) return {};
+  try { return (await readRow(pool, ws)) ?? {}; } catch { return {}; }
+}
+
 /** Sett/oppdater tokens for et workspace (admin). Slår sammen med eksisterende (patch). */
 export async function setTokens(pool: Pool, workspace: string, patch: Record<string, unknown>): Promise<{ error: string } | { ok: true }> {
   const ws = workspace === 'global' ? 'global' : normalizeWorkspace(workspace);
