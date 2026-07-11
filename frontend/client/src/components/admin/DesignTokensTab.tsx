@@ -144,7 +144,8 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
         </>
       )}
       <Divider />
-      <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey} />
+      <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey}
+        onReverted={() => { load(ws); setPreviewKey((k) => k + 1); setMsg({ type: 'success', text: 'Siste endring angret.' }); }} />
       <Divider />
       <Typography variant="caption" color="text.secondary">
         Neste steg i CreatorHub Design: justerings-knotter i overlay-editoren skrur på nettopp disse tokenene.

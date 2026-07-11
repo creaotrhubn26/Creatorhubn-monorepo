@@ -142,3 +142,21 @@ export async function resetTokens(pool: Pool, workspace: string): Promise<{ erro
   invalidateTokensCache();
   return { ok: true };
 }
+
+/** ERSTATT hele overstyrings-raden med `full` (ikke merge). Brukes av «Angre siste endring»
+ *  (Fase D) for å gjenopprette den EKSAKTE tilstanden før en endring. Tom → slett raden. */
+export async function replaceTokens(pool: Pool, workspace: string, full: Record<string, unknown>): Promise<{ error: string } | { ok: true }> {
+  const ws = workspace === 'global' ? 'global' : normalizeWorkspace(workspace);
+  if (!ws) return { error: 'Ugyldig workspace.' };
+  if (!full || Object.keys(full).length === 0) {
+    await pool.query(`DELETE FROM workspace_design_tokens WHERE workspace_id = $1`, [ws]);
+  } else {
+    await pool.query(
+      `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
+       ON CONFLICT (workspace_id) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = NOW()`,
+      [ws, JSON.stringify(full)],
+    );
+  }
+  invalidateTokensCache();
+  return { ok: true };
+}
