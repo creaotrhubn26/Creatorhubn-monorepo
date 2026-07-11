@@ -393,36 +393,30 @@ export function createCommunicationRouter(
     return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
   };
 
-  const readOptionalHeaderValue = (req: Request, headerName: string): string | null => {
-    const raw = req.headers[headerName.toLowerCase()];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    return toNonEmptyString(value);
-  };
-
-  const getPreferredGoogleWorkspaceIdentity = (
+  // SIKKERHET (kontoovertakelse/IDOR): identiteten som avgjør HVEM sine
+  // Google-OAuth-tokens som lastes (via resolveLiveGoogleWorkspaceContext →
+  // role_room_google_connections) MÅ utledes fra den autentiserte
+  // Bearer-sesjonen — ALDRI fra klientstyrte headere/query/body. Tidligere
+  // leste denne x-role-room-user-id / x-user-id / query.userId / payload.userId,
+  // som en angriper fritt kan spoofe: å sende `x-user-id: <offer>` lastet
+  // offerets Gmail/Drive/Tasks/Chat-tokens, dekrypterte dem og mintet et
+  // access-token på tvers av tenants (full kontoovertakelse på ~25 endepunkter).
+  // Nå: kun sesjonsutledet. Uten gyldig Bearer-sesjon faller vi LUKKET (null)
+  // slik at ingen Google-kontekst kan bygges. Frontenden sender alltid Bearer
+  // for innloggede produsenter (queryClient.getAuthHeader), så legitime flyter
+  // er uendret; sesjonens userId er nettopp role_room_google_connections.user_id.
+  const getPreferredGoogleWorkspaceIdentity = async (
     req: Request,
-    payload?: Record<string, unknown>,
-  ): { userId: string | null; userEmail: string | null } => {
-    const userId =
-      readOptionalHeaderValue(req, 'x-role-room-user-id')
-      || readOptionalHeaderValue(req, 'x-user-id')
-      || toNonEmptyString(req.query.userId)
-      || toNonEmptyString(payload?.userId)
-      || null;
-
-    const userEmail =
-      readOptionalHeaderValue(req, 'x-role-room-email')
-      || readOptionalHeaderValue(req, 'x-user-email')
-      || toNonEmptyString(req.query.userEmail)
-      || toNonEmptyString(payload?.userEmail)
-      || null;
-
-    return (
-      {
-        userId,
-        userEmail: userEmail?.toLowerCase() || null,
-      }
-    );
+    _payload?: Record<string, unknown>,
+  ): Promise<{ userId: string | null; userEmail: string | null }> => {
+    const authed = await resolveAuthedUser(req);
+    if (authed?.userId) {
+      return {
+        userId: authed.userId,
+        userEmail: authed.email?.toLowerCase() || null,
+      };
+    }
+    return { userId: null, userEmail: null };
   };
 
   const deriveRoleRoomGoogleEncryptionKey = (): Buffer | null => {
@@ -1089,6 +1083,15 @@ export function createCommunicationRouter(
       );
     };
 
+    // SIKKERHET (kontoovertakelse): identiteten er nå utledet fra Bearer-sesjonen
+    // (se getPreferredGoogleWorkspaceIdentity). Uten en autentisert identitet skal
+    // INGEN Google-kobling kunne løses — ellers ville auto-velg-fallbackene under
+    // gitt en uautentisert kaller en vilkårlig tenants tokens (spesielt farlig når
+    // det finnes nøyaktig én kobling, som i tidlig-fase-deploy). Fail-closed.
+    if (!preferredUserId && !preferredUserEmail) {
+      return null;
+    }
+
     let row: RoleRoomGoogleConnectionRow | null = null;
     if (preferredUserId) {
       row = await selectConnection(`user_id = $1`, [preferredUserId]);
@@ -1115,35 +1118,14 @@ export function createCommunicationRouter(
       }
     }
 
-    if (!row) {
-      const corporateConnectionCount = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-         FROM role_room_google_connections
-         WHERE ${baseWhere}
-           AND google_email IS NOT NULL
-           AND LOWER(split_part(google_email, '@', 2)) NOT IN ('gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com')`,
-      );
-      const availableCorporateConnections = Number.parseInt(corporateConnectionCount.rows[0]?.count ?? '0', 10);
-      if (availableCorporateConnections === 1) {
-        row = await selectConnection(
-          `google_email IS NOT NULL
-           AND LOWER(split_part(google_email, '@', 2)) NOT IN ('gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com')`,
-        );
-      }
-    }
-
-    if (!row) {
-      const countResult = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-         FROM role_room_google_connections
-         WHERE ${baseWhere}`,
-      );
-      const availableConnections = Number.parseInt(countResult.rows[0]?.count ?? '0', 10);
-      if (availableConnections === 1) {
-        row = await selectConnection();
-      }
-    }
-
+    // FJERNET (kontoovertakelse): tidligere auto-valgte denne «den eneste
+    // corporate-koblingen» eller «den eneste koblingen totalt» UTEN noen
+    // identitetskobling til kalleren. Det betød at en autentisert (eller, før
+    // fail-closed-guarden over, uautentisert) bruker uten egen Google-kobling
+    // fikk en annen tenants Gmail/Drive/Tasks-tokens når det fantes én kobling.
+    // Nå løses KUN kallerens egen kobling (user_id/google_email fra sesjonen)
+    // eller den operatør-konfigurerte GOOGLE_WORKSPACE_EMAIL-domenekoblingen
+    // (eksplisitt delt-arbeidsområde-intensjon). Uten treff: fail-closed.
     if (!row) {
       return null;
     }
@@ -1299,7 +1281,7 @@ export function createCommunicationRouter(
     response: globalThis.Response;
     body: unknown;
   } | null> => {
-    const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+    const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
     const context = await resolveLiveGoogleChatContext(preferredIdentity.userId, preferredIdentity.userEmail);
     if (!context) {
       return null;
@@ -2271,7 +2253,11 @@ export function createCommunicationRouter(
         hintPhone: toNonEmptyString(req.query.hintPhone),
         hintProjectId: toNonEmptyString(req.query.projectId),
         hintProjectName: toNonEmptyString(req.query.projectName),
-        preferredUserId: ownerUserId || readOptionalHeaderValue(req, 'x-user-id'),
+        // Sesjonsutledet eier (ikke spoofbar x-user-id). Uten sesjon er
+        // ownerUserId null → konteksten er allerede tom (fail-closed), så
+        // header-fallbacken hadde ingen legitim funksjon og ble en potensiell
+        // spoofbar identitet inn mot Drive-mappeoppslag. Fjernet.
+        preferredUserId: ownerUserId,
         ownerUserId,
       });
 
@@ -2497,7 +2483,7 @@ export function createCommunicationRouter(
   router.post('/api/universal-crm/context/drive-folder/ensure', async (req, res) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const preferredUserId = preferredIdentity.userId;
       const customerId = toNonEmptyString(payload.customerId);
       if (!preferredUserId || !customerId) {
@@ -2998,7 +2984,7 @@ export function createCommunicationRouter(
 
   router.get('/api/communication/email/status', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.json({
@@ -3056,7 +3042,7 @@ export function createCommunicationRouter(
 
   router.get('/api/communication/email/threads', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3172,7 +3158,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'threadId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3280,7 +3266,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'message is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3354,7 +3340,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'message is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3471,7 +3457,7 @@ export function createCommunicationRouter(
       // #7 — actually DELIVER via Gmail (this endpoint used to only persist a
       // row with status:'queued' and never send — a silent no-op). A "send"
       // that never sends is worse than an honest error.
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren. Koble Gmail i Innstillinger for å sende e-post.' });
@@ -3549,7 +3535,7 @@ export function createCommunicationRouter(
   // the timeline. Honest error when Gmail isn't connected.
   router.post('/api/universal-crm/inbound/gmail-sync', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const ownerUserId = preferredIdentity.userId;
       if (!ownerUserId) return res.status(400).json({ error: 'Mangler bruker-identitet.' });
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
@@ -3595,7 +3581,7 @@ export function createCommunicationRouter(
 
   router.get('/api/google-tasks/lists', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3630,7 +3616,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'listId er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3676,7 +3662,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'title er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3720,7 +3706,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'title er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3770,7 +3756,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'taskId og listId er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3815,7 +3801,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'taskId og listId er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -4418,7 +4404,7 @@ export function createCommunicationRouter(
   const buildGoogleDriveContext = async (req: Request, res: Response) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       // Triage-fix: resolveLiveGoogleWorkspaceContext kunne throw når
       // OAuth-tokens var utløpt eller bruker mangler workspace-kobling
       // — outer try/catch konverterte det til 500. Wrap separat og
@@ -4848,7 +4834,7 @@ export function createCommunicationRouter(
   const listGoogleDriveFiles = async (req: Request, res: Response) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4901,7 +4887,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5038,7 +5024,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5085,7 +5071,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5146,7 +5132,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5183,7 +5169,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId and permissionId are required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5224,7 +5210,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5289,7 +5275,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5378,7 +5364,7 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'Velg minst én fil å laste opp.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
