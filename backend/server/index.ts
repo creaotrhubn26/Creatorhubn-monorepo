@@ -31092,6 +31092,7 @@ setupRoleRoomEducationInquiriesRoutes({
 //   over slik at casting DELETE-handler kan rydde live-set state).
 setupRoleRoomProjectsRoutes({
   app,
+  pool,
   requireUserSession,
   compatStoreGet,
   legacyOffersByProject,

@@ -13,6 +13,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../migrations/schema.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { canAccessProject } from './project-team-routes.js';
+import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import crypto from 'crypto';
 
 type DB = NodePgDatabase<typeof schema>;
@@ -362,23 +363,31 @@ export function createWebSocketServer(
         record.authEmail = session.email;
       }
 
-      // Authorize Live Set room subscription. An UNauthenticated socket may not
-      // subscribe to a room's real-time production feed (this closes anonymous
-      // eavesdropping via ?room=liveset:*). Authentication-only mirrors the
-      // existing liveset REST posture (role-room-projects-routes uses
-      // requireUserSession, not project membership). Per-project scoping is a
-      // deferred coordinated WS+REST change. Other room types (wedding client
-      // view, plain chat) keep their existing behavior and are unaffected.
+      // Authorize Live Set room subscription. The socket must be authenticated
+      // AND a member (owner or RBAC role) of the addressed role-room project.
+      // This closes both anonymous eavesdropping via ?room=liveset:* and
+      // cross-project access by an arbitrary authenticated user (who could
+      // otherwise read AND inject roll/cut/note events into another
+      // production's live set). The membership predicate is the same one now
+      // enforced on the liveset REST endpoints (role-room-projects-routes), so
+      // the two layers are consistent — no legitimate crew member is blocked.
+      // Other room types (wedding client view, plain chat) are unaffected.
       const lsProject = parseLiveSetProjectId(room);
       if (lsProject) {
-        if (authenticated) {
+        const lsAllowed = authenticated
+          && (await canAccessRoleRoomProject(pool, connectedUserId, lsProject));
+        if (lsAllowed) {
           record.room = room;
         } else {
           record.room = undefined;
           try {
             ws.send(JSON.stringify({
               type: 'error',
-              payload: { message: 'forbidden_room', code: 'auth_required', room },
+              payload: {
+                message: 'forbidden_room',
+                code: authenticated ? 'liveset_forbidden' : 'auth_required',
+                room,
+              },
               timestamp: new Date().toISOString(),
             }));
           } catch { /* ignore */ }
@@ -622,7 +631,10 @@ export function createWebSocketServer(
               ? data.payload.room
               : `liveset:${data.projectId}:${data.shootingDayId}`;
             const joinProject = parseLiveSetProjectId(joinRoom);
-            if (authenticated && joinProject) {
+            // Re-affirm the room only for an authenticated MEMBER of the project
+            // (same predicate as the handshake gate and the REST endpoints).
+            if (authenticated && joinProject
+                && (await canAccessRoleRoomProject(pool, connectedUserId, joinProject))) {
               const c = clients.get(clientId);
               if (c) {
                 c.room = joinRoom;
