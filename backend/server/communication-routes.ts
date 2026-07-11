@@ -218,6 +218,18 @@ export function createCommunicationRouter(
     if (persisted?.userId) return { userId: String(persisted.userId), email: String(persisted.email || '') };
     return null;
   };
+  // Plattform-admin-sjekk (samme rolle-katalog som admin-communication-extras +
+  // broadcast: users.role IN admin/super_admin/owner). Fail-closed ved feil.
+  const isAdminUser = async (userId: string): Promise<boolean> => {
+    if (!userId) return false;
+    try {
+      const r = await pool.query(
+        `SELECT 1 FROM users WHERE id::text = $1 AND LOWER(COALESCE(role, '')) IN ('admin', 'super_admin', 'owner') LIMIT 1`,
+        [userId],
+      );
+      return r.rows.length > 0;
+    } catch { return false; }
+  };
   // Eier ELLER aktivt teammedlem (via user_id eller e-post). Returnerer et
   // visningsnavn utledet server-side (aldri klientstyrt) eller null hvis nektet.
   const resolveProjectAccess = async (projectId: string, user: AuthedUser): Promise<{ displayName: string } | null> => {
@@ -6294,15 +6306,15 @@ export function createCommunicationRouter(
 
   // ─── GET /api/admin/communication/users ───────────────────
   router.get('/api/admin/communication/users', async (req, res) => {
-    // SECURITY: this returns platform-wide message senders enriched with real
-    // e-post + full name + presence. It was ungated (`_req`) so ANY
-    // unauthenticated caller could harvest up to 100 users' e-post/navn and
-    // enumerate the platform. Require an authenticated session. (Residual: the
-    // list is platform-wide rather than tenant-scoped; both live consumers are
-    // in-app chat directories, so tightening to admin-only is a product/UX
-    // decision left as a flagged follow-up.)
+    // SECURITY: returns platform-wide message senders enriched with real e-post
+    // + full name + presence. Was ungated (`_req`) so ANY unauthenticated caller
+    // could harvest up to 100 users' e-post/navn and enumerate the platform.
+    // Now ADMIN-ONLY: the sole remaining consumer is the admin dashboard's
+    // AdminCommunicationPanel (the non-admin FullscreenChatWidget that used to
+    // depend on this list has been disabled). Require an admin session.
     const authed = await resolveAuthedUser(req);
     if (!authed) return res.status(401).json({ error: 'unauthorized' });
+    if (!(await isAdminUser(authed.userId))) return res.status(403).json({ error: 'forbidden' });
     try {
       // Distinkte sendere fra meldinger, beriket med ekte navn + presence.
       // Online = user_presence.last_seen_at innen 90 sek og ikke idle (samme
@@ -6346,9 +6358,10 @@ export function createCommunicationRouter(
   // ─── GET /api/admin/communication/stats ───────────────────
   router.get('/api/admin/communication/stats', async (req, res) => {
     // SECURITY: leaks global message/channel/unread counts. Was ungated
-    // (`_req`) — require an authenticated session (see /users above).
+    // (`_req`) — now admin-only (see /users above).
     const authed = await resolveAuthedUser(req);
     if (!authed) return res.status(401).json({ error: 'unauthorized' });
+    if (!(await isAdminUser(authed.userId))) return res.status(403).json({ error: 'forbidden' });
     try {
       const totalMessages = await db
         .select({ count: sql<number>`count(*)::int` })
