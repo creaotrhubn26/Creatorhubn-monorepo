@@ -14,6 +14,7 @@ import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import WorkspaceShell from './WorkspaceShell';
 import WorkspaceDesignOverlay from './WorkspaceDesignOverlay';
+import { createPortal } from 'react-dom';
 import OversiktTab from './tabs/OversiktTab';
 import ProsjektplanTab from './tabs/ProsjektplanTab';
 import ProduksjonskartTab from './tabs/ProduksjonskartTab';
@@ -316,18 +317,24 @@ const TeamWorkspacePage: React.FC = () => {
       onInvite={() => goTab('team')}
     >
       {content}
-      {/* CreatorHub Design (N3): admin-gated. FAB åpner live-overlayet på ekte ruten. */}
-      {isAdmin && !designMode && (
-        <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
-          sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 1200, display: 'flex', alignItems: 'center', gap: 1,
-            px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
-            border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
-            '&:hover': { bgcolor: '#fff' } }}>
-          <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
-          CreatorHub Design
-        </Box>
+      {/* CreatorHub Design (N3): admin-gated. Portalert til <body> så position:fixed er ekte
+          viewport-relativ (MUI-shell-wrappere lager containing-block-ancestorer som ellers
+          dytter FAB-en utenfor skjermen og forskyver overlay-pins). FAB åpner live-overlayet. */}
+      {isAdmin && typeof document !== 'undefined' && createPortal(
+        designMode ? (
+          <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />
+        ) : (
+          <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
+            sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 1,
+              px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
+              border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
+              '&:hover': { bgcolor: '#fff' } }}>
+            <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
+            CreatorHub Design
+          </Box>
+        ),
+        document.body,
       )}
-      {isAdmin && designMode && <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>
