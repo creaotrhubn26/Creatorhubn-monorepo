@@ -547,11 +547,13 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/reminders/config", async (req, res) => {
+    // SECURITY: previously read `?userId=` first with no session → passing
+    // ?userId=<victim> returned another tenant's reminder config. Derive the
+    // owner strictly from the authenticated session.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = session.userId;
       const stored = await compatStoreGet<unknown>(
         buildQuoteReminderConfigStoreKey(userId),
       );
@@ -583,11 +585,12 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/reminders/status", async (req, res) => {
+    // SECURITY: same as reminders/config — was `?userId=`-first with no
+    // session, leaking another tenant's reminder-run status. Session-only.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = session.userId;
       const storedStatus = await compatStoreGet<{ lastCheck?: string }>(
         buildQuoteReminderStatusStoreKey(userId),
       );
