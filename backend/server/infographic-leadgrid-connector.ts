@@ -10,10 +10,21 @@ import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { requireLeadMapPermission } from './lead-map-rbac-helper.js';
 import { computeTodayMomentum } from './leadgrid-momentum-service.js';
+import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
+import { getTeamLeaderboard, getCommissionEarnings } from './leadgrid-sales-data.js';
 import { assembleHtml } from './infographic-engine.js';
 import { INTER_FONT_CSS } from './infographic-fonts.js';
 import { renderHtmlToImage } from './render-engine.js';
 import { getTemplateHtml, pickTemplateId } from './infographic-templates-store.js';
+
+/** Første navn (leaderboard-etiketter skal være korte). */
+function firstName(full: string): string { return (full || '').trim().split(/\s+/)[0] || full; }
+/** Kompakt NOK: 45200 → «45,2k», 1200000 → «1,2M». Count-up-vennlig (tall + suffiks). */
+function compactNok(n: number): string {
+  if (n >= 1_000_000) return String(Math.round(n / 100_000) / 10).replace('.', ',') + 'M';
+  if (n >= 1_000) return String(Math.round(n / 100) / 10).replace('.', ',') + 'k';
+  return String(Math.round(n));
+}
 
 type SessionData = { userId: string; role?: string; email?: string };
 type Sessions = Map<string, SessionData>;
@@ -38,6 +49,15 @@ const clampDim = (v: unknown, def: number): number => {
   const n = typeof v === 'number' ? v : parseInt(String(v ?? ''), 10);
   return Number.isFinite(n) ? Math.min(3000, Math.max(64, n)) : def;
 };
+
+/** Data → auto-valgt mal → PNG-buffer (delt av alle konnektor-ruter). null = mal mangler. */
+async function renderToBuffer(pool: Pool, data: Record<string, unknown>, width: number, height: number): Promise<Buffer | null> {
+  const id = await pickTemplateId(pool, data);
+  const templateHtml = await getTemplateHtml(pool, id);
+  if (!templateHtml) return null;
+  const html = assembleHtml(templateHtml, data, { progress: 1, width, height, fontsCss: INTER_FONT_CSS });
+  return renderHtmlToImage(html, { width, height, deviceScaleFactor: 2, format: 'png', waitForMs: 400, blockExternalRequests: true });
+}
 
 // Kort cache (KPI endres gjennom dagen). Keyet på org+view+dims.
 const cache = new Map<string, { buf: Buffer; at: number }>();
@@ -119,5 +139,68 @@ export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Po
     } catch (e) {
       res.status(500).json({ error: 'Render feilet: ' + (e as Error).message });
     }
+  });
+
+  // GET /api/infographics/leadgrid/leaderboard.png — team-podium (samme scope som
+  // /sales-leadership/team-members: innlogget org-medlem). metric=leads|prizes|value.
+  app.get('/api/infographics/leadgrid/leaderboard.png', async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) { res.status(401).json({ error: 'Innlogging kreves' }); return; }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!orgId) { res.status(400).json({ error: 'mangler_organization_id' }); return; }
+    const metric = ['leads', 'prizes', 'value'].includes(String(req.query.metric)) ? String(req.query.metric) : 'leads';
+    const accent = typeof req.query.accent === 'string' ? req.query.accent : '#2f6df0';
+    const width = clampDim(req.query.w, 1200); const height = clampDim(req.query.h, 630);
+    const top = Math.min(6, Math.max(2, parseInt(String(req.query.top ?? '4'), 10) || 4));
+    const key = `lb|${orgId}|${metric}|${top}|${accent}|${width}x${height}`;
+    const now = Date.now(); const hit = cache.get(key);
+    if (hit && now - hit.at < CACHE_TTL_MS) { res.type('image/png').setHeader('Cache-Control', 'private, max-age=60').send(hit.buf); return; }
+    try {
+      const members = await getTeamLeaderboard(pool, orgId, session.userId);
+      const valOf = (m: typeof members[number]) => metric === 'prizes' ? m.won : metric === 'value' ? m.totalValueNok : m.leads;
+      const title = metric === 'prizes' ? 'Flest premier' : metric === 'value' ? 'Størst premie-verdi' : 'Flest leads';
+      const cards = [...members].sort((a, b) => valOf(b) - valOf(a)).slice(0, top)
+        .map((m) => ({ value: metric === 'value' ? compactNok(valOf(m)) : String(valOf(m)), label: firstName(m.name) }));
+      const data: Record<string, unknown> = cards.length ? { accent, title, cards } : { accent, value: '0', label: 'Ingen data enda' };
+      const buf = await renderToBuffer(pool, data, width, height);
+      if (!buf) { res.status(404).json({ error: 'Mal utilgjengelig.' }); return; }
+      if (cache.size >= 200) cache.delete(cache.keys().next().value as string);
+      cache.set(key, { buf, at: now });
+      res.type('image/png').setHeader('Cache-Control', 'private, max-age=60').send(buf);
+    } catch (e) { res.status(500).json({ error: 'Render feilet: ' + (e as Error).message }); }
+  });
+
+  // GET /api/infographics/leadgrid/commission.png — provisjon (samme scope som
+  // /sales-leadership/commission-earnings). period=month|quarter|year, view=total|byseller.
+  app.get('/api/infographics/leadgrid/commission.png', async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) { res.status(401).json({ error: 'Innlogging kreves' }); return; }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!orgId) { res.status(400).json({ error: 'mangler_organization_id' }); return; }
+    const period = String(req.query.period ?? 'month');
+    const view = req.query.view === 'byseller' ? 'byseller' : 'total';
+    const accent = typeof req.query.accent === 'string' ? req.query.accent : '#0a7d38';
+    const width = clampDim(req.query.w, 1200); const height = clampDim(req.query.h, 630);
+    const top = Math.min(6, Math.max(2, parseInt(String(req.query.top ?? '4'), 10) || 4));
+    const key = `com|${orgId}|${period}|${view}|${top}|${accent}|${width}x${height}`;
+    const now = Date.now(); const hit = cache.get(key);
+    if (hit && now - hit.at < CACHE_TTL_MS) { res.type('image/png').setHeader('Cache-Control', 'private, max-age=60').send(hit.buf); return; }
+    try {
+      const result = await getCommissionEarnings(pool, orgId, session.userId, period);
+      const periodLabel = result.period === 'quarter' ? 'dette kvartalet' : result.period === 'year' ? 'i år' : 'denne måneden';
+      let data: Record<string, unknown>;
+      if (view === 'byseller') {
+        const cards = result.members.filter((m) => m.commissionNok > 0).sort((a, b) => b.commissionNok - a.commissionNok).slice(0, top)
+          .map((m) => ({ value: compactNok(m.commissionNok), label: firstName(m.name) }));
+        data = cards.length ? { accent, title: 'Provisjon · ' + periodLabel, cards } : { accent, value: '0', label: 'Ingen provisjon ' + periodLabel };
+      } else {
+        data = { accent, value: 'kr ' + compactNok(result.totalCommissionNok), label: 'Provisjon · ' + periodLabel };
+      }
+      const buf = await renderToBuffer(pool, data, width, height);
+      if (!buf) { res.status(404).json({ error: 'Mal utilgjengelig.' }); return; }
+      if (cache.size >= 200) cache.delete(cache.keys().next().value as string);
+      cache.set(key, { buf, at: now });
+      res.type('image/png').setHeader('Cache-Control', 'private, max-age=60').send(buf);
+    } catch (e) { res.status(500).json({ error: 'Render feilet: ' + (e as Error).message }); }
   });
 }
