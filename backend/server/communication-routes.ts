@@ -1729,17 +1729,23 @@ export function createCommunicationRouter(
     } as const;
   };
 
-  const fetchCrmCustomerById = async (customerId: string | null) => {
-    if (!customerId) {
+  // Eier-scope: crm_customers er per-tenant (owner_user_id, jf. universal-crm-
+  // routes). Uten ownerId ELLER uten eier-filter kunne en kaller lese en ANNEN
+  // tenants kunde via customerId (cross-tenant IDOR). Null ownerId → null kunde.
+  const fetchCrmCustomerById = async (
+    customerId: string | null,
+    ownerId: string | null,
+  ) => {
+    if (!customerId || !ownerId) {
       return null;
     }
 
     const result = await pool.query<CrmCustomerRow>(
       `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
          FROM crm_customers
-        WHERE id::text = $1
+        WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
         LIMIT 1`,
-      [customerId],
+      [customerId, ownerId],
     );
     return mapCrmCustomer(result.rows[0]);
   };
@@ -1783,12 +1789,20 @@ export function createCommunicationRouter(
     };
   };
 
+  // Eier-scope alle forslag: uten dette lekket fuzzy-oppslag (e-post/telefon/
+  // navn) EN ANNEN tenants kunder — uautentisert PII-søk. ownerId er påkrevd;
+  // null → ingen forslag (aldri ufiltrert på tvers av tenants).
   const fetchSuggestedCrmCustomers = async (params: {
+    ownerId: string | null;
     customerId?: string | null;
     email?: string | null;
     phone?: string | null;
     name?: string | null;
   }) => {
+    if (!params.ownerId) {
+      return [] as Array<ReturnType<typeof mapCrmCustomer> & { matchReason: string; matchStrength: number }>;
+    }
+    const ownerId = params.ownerId;
     const candidates = new Map<string, ReturnType<typeof mapCrmCustomer> & {
       matchReason: string;
       matchStrength: number;
@@ -1808,9 +1822,9 @@ export function createCommunicationRouter(
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE id::text = $1
+          WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
           LIMIT 1`,
-        [params.customerId],
+        [params.customerId, ownerId],
       );
       addRows(result.rows, 'valgt klient', 100);
     }
@@ -1819,10 +1833,10 @@ export function createCommunicationRouter(
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE LOWER(email) = LOWER($1)
+          WHERE LOWER(email) = LOWER($1) AND owner_user_id::text = $2 AND deleted_at IS NULL
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 3`,
-        [params.email],
+        [params.email, ownerId],
       );
       addRows(result.rows, 'e-post', 96);
     }
@@ -1832,10 +1846,10 @@ export function createCommunicationRouter(
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE regexp_replace(COALESCE(phone, ''), '\D', '', 'g') = $1
+          WHERE regexp_replace(COALESCE(phone, ''), '\D', '', 'g') = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 3`,
-        [phoneDigits],
+        [phoneDigits, ownerId],
       );
       addRows(result.rows, 'telefon', 88);
     }
@@ -1845,13 +1859,13 @@ export function createCommunicationRouter(
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE name ILIKE $1 OR company ILIKE $1
+          WHERE (name ILIKE $1 OR company ILIKE $1) AND owner_user_id::text = $3 AND deleted_at IS NULL
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
             updated_at DESC NULLS LAST,
             created_at DESC NULLS LAST
           LIMIT 6`,
-        [`%${normalizedName}%`, normalizedName],
+        [`%${normalizedName}%`, normalizedName, ownerId],
       );
       addRows(result.rows, 'navn', 72);
     }
@@ -1871,6 +1885,7 @@ export function createCommunicationRouter(
     hintProjectId?: string | null;
     hintProjectName?: string | null;
     preferredUserId?: string | null;
+    ownerUserId?: string | null;
   }) => {
     await ensureCrmConversationLinksTable();
     await ensureContractsCompatibilitySchema(pool);
@@ -1900,8 +1915,10 @@ export function createCommunicationRouter(
     const hintEmail = params.hintEmail || internalHints.email;
     const hintPhone = params.hintPhone || internalHints.phone;
 
-    const linkedCustomer = await fetchCrmCustomerById(toNonEmptyString(linkRow?.customer_id));
+    const ownerUserId = params.ownerUserId || null;
+    const linkedCustomer = await fetchCrmCustomerById(toNonEmptyString(linkRow?.customer_id), ownerUserId);
     const suggestedCustomers = await fetchSuggestedCrmCustomers({
+      ownerId: ownerUserId,
       customerId: params.hintCustomerId || null,
       email: hintEmail,
       phone: hintPhone,
@@ -1961,12 +1978,13 @@ export function createCommunicationRouter(
       openTasks = taskResult.rows.map(mapCrmTask).filter(Boolean);
     }
 
-    const commercialProjectId =
-      toNonEmptyString(linkRow?.project_id)
-      || params.hintProjectId
-      || linkedCustomer?.projectId
-      || null;
-    const commercialEmail = hintEmail || linkedCustomer?.email || null;
+    // Kommersielle oppslag (tilbud/kontrakt) utledes KUN fra den eier-verifiserte
+    // kunden — aldri fra klient-oppgitte hints. Ellers kunne hintEmail/hintProjectId
+    // dra en annen tenants quotes/contracts (beløp, status) på tvers av tenants.
+    const commercialProjectId = linkedCustomer
+      ? (toNonEmptyString(linkRow?.project_id) || linkedCustomer.projectId || null)
+      : null;
+    const commercialEmail = linkedCustomer?.email || null;
     let latestQuote: ReturnType<typeof mapConversationQuoteSummary> = null;
     let latestContract: ReturnType<typeof mapConversationContractSummary> = null;
 
@@ -2239,6 +2257,11 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'conversationId is required' });
       }
 
+      // Eier-identitet fra Bearer-sesjon (ikke spoofbar x-user-id). Uten dette
+      // returnerer motoren tom/ulenket kontekst — ingen kundedata på tvers av
+      // tenants (fail-closed, jf. CRM-kontekst-eierscope).
+      const ownerUserId = (await resolveAuthedUser(req))?.userId || null;
+
       const context = await fetchConversationCrmContext({
         provider: normalizeCrmConversationProvider(req.query.provider),
         conversationId: rawConversationId,
@@ -2248,7 +2271,8 @@ export function createCommunicationRouter(
         hintPhone: toNonEmptyString(req.query.hintPhone),
         hintProjectId: toNonEmptyString(req.query.projectId),
         hintProjectName: toNonEmptyString(req.query.projectName),
-        preferredUserId: readOptionalHeaderValue(req, 'x-user-id'),
+        preferredUserId: ownerUserId || readOptionalHeaderValue(req, 'x-user-id'),
+        ownerUserId,
       });
 
       return res.json(context);
@@ -2262,15 +2286,18 @@ export function createCommunicationRouter(
     try {
       await ensureCrmConversationLinksTable();
 
+      // Eier-gate: en samtale kan KUN lenkes til en kunde kalleren selv eier.
+      // Uten dette kunne hvem som helst lenke sin egen samtale til en ANNEN
+      // tenants kunde og deretter lese kundens dossier via by-conversation.
+      const linkOwnerId = (await resolveAuthedUser(req))?.userId || null;
+      if (!linkOwnerId) return res.status(401).json({ error: 'unauthorized' });
+
       const payload = (req.body || {}) as Record<string, unknown>;
       const conversationId = toNonEmptyString(payload.conversationId);
       const customerId = toNonEmptyString(payload.customerId);
       const provider = normalizeCrmConversationProvider(payload.provider);
       const matchedBy = toNonEmptyString(payload.matchedBy) || 'manual';
-      const createdBy =
-        toNonEmptyString(payload.createdBy) ||
-        readOptionalHeaderValue(req, 'x-user-id') ||
-        readOptionalHeaderValue(req, 'x-user-email');
+      const createdBy = linkOwnerId;
       const projectId = toNonEmptyString(payload.projectId);
       const dealId = toNonEmptyString(payload.dealId);
       const confidence = Math.max(0, Math.min(100, parseFiniteInteger(payload.confidence, 100)));
@@ -2281,6 +2308,14 @@ export function createCommunicationRouter(
 
       if (!conversationId || !customerId) {
         return res.status(400).json({ error: 'conversationId and customerId are required' });
+      }
+
+      const ownsCustomer = await pool.query(
+        `SELECT 1 FROM crm_customers WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL LIMIT 1`,
+        [customerId, linkOwnerId],
+      );
+      if (!ownsCustomer.rowCount) {
+        return res.status(404).json({ error: 'customer_not_found' });
       }
 
       await pool.query(
@@ -2314,7 +2349,8 @@ export function createCommunicationRouter(
         provider,
         conversationId,
         hintCustomerId: customerId,
-        preferredUserId: readOptionalHeaderValue(req, 'x-user-id'),
+        preferredUserId: linkOwnerId,
+        ownerUserId: linkOwnerId,
       });
 
       return res.json({ success: true, context });
@@ -2328,6 +2364,9 @@ export function createCommunicationRouter(
     try {
       await ensureCrmConversationLinksTable();
 
+      const unlinkOwnerId = (await resolveAuthedUser(req))?.userId || null;
+      if (!unlinkOwnerId) return res.status(401).json({ error: 'unauthorized' });
+
       const payload = (req.body || {}) as Record<string, unknown>;
       const conversationId = toNonEmptyString(payload.conversationId);
       const provider = normalizeCrmConversationProvider(payload.provider);
@@ -2336,10 +2375,19 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'conversationId is required' });
       }
 
+      // Eier-scope: fjern bare lenken hvis den peker på kallerens egen kunde
+      // (eller en ulenket rad). Ellers kunne en fremmed slette en annen tenants
+      // samtale-kobling (write-IDOR).
       await pool.query(
         `DELETE FROM crm_conversation_links
-          WHERE provider = $1 AND conversation_id = $2`,
-        [provider, conversationId],
+          WHERE provider = $1 AND conversation_id = $2
+            AND (
+              customer_id IS NULL
+              OR customer_id::text IN (
+                SELECT id::text FROM crm_customers WHERE owner_user_id::text = $3
+              )
+            )`,
+        [provider, conversationId, unlinkOwnerId],
       );
 
       return res.json({ success: true });
@@ -2365,10 +2413,12 @@ export function createCommunicationRouter(
       const projectType = toNonEmptyString(payload.projectType);
       const source = toNonEmptyString(payload.source) || 'chat-conversation';
       const notes = toNonEmptyString(payload.notes);
-      const createdBy =
-        toNonEmptyString(payload.createdBy) ||
-        readOptionalHeaderValue(req, 'x-user-id') ||
-        readOptionalHeaderValue(req, 'x-user-email');
+      // Eier fra Bearer-sesjon: den nye kunden MÅ stemples med owner_user_id,
+      // ellers blir den foreldreløs (usynlig i CRM-lista, som filtrerer på eier)
+      // OG lesbar av alle via kontekst-motoren. Krev autentisering.
+      const ownerUserId = (await resolveAuthedUser(req))?.userId || null;
+      if (!ownerUserId) return res.status(401).json({ error: 'unauthorized' });
+      const createdBy = ownerUserId;
       const status = toNonEmptyString(payload.status) || 'lead';
 
       if (!conversationId || !name) {
@@ -2377,9 +2427,9 @@ export function createCommunicationRouter(
 
       const customerResult = await pool.query<CrmCustomerRow>(
         `INSERT INTO crm_customers (
-           id, name, email, phone, company, profession, project_type, status, source, notes, custom_fields, created_at, updated_at
+           id, name, email, phone, company, profession, project_type, status, source, notes, custom_fields, owner_user_id, created_at, updated_at
          ) VALUES (
-           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, NOW(), NOW()
+           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, NOW(), NOW()
          )
          RETURNING id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at`,
         [
@@ -2397,6 +2447,7 @@ export function createCommunicationRouter(
             provider,
             createdFrom: 'universal-chat-widget',
           }),
+          ownerUserId,
         ],
       );
 
@@ -2432,7 +2483,8 @@ export function createCommunicationRouter(
         provider,
         conversationId,
         hintCustomerId: customer.id,
-        preferredUserId: readOptionalHeaderValue(req, 'x-user-id'),
+        preferredUserId: ownerUserId,
+        ownerUserId,
       });
 
       return res.status(201).json({ success: true, customer, context });
@@ -2457,12 +2509,14 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
       }
 
+      // Eier-scope: du kan bare opprette kundemappe for din EGEN CRM-kunde.
+      const driveOwnerId = (await resolveAuthedUser(req))?.userId || preferredUserId;
       const customerResult = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE id::text = $1
+          WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
           LIMIT 1`,
-        [customerId],
+        [customerId, driveOwnerId],
       );
       const customer = customerResult.rows[0];
       if (!customer) {
@@ -2501,6 +2555,10 @@ export function createCommunicationRouter(
 
   router.post('/api/universal-crm/context/log-activity', async (req, res) => {
     try {
+      // Eier fra Bearer-sesjon: aktiviteter logges KUN på kallerens egen kunde.
+      const activityOwnerId = (await resolveAuthedUser(req))?.userId || null;
+      if (!activityOwnerId) return res.status(401).json({ error: 'unauthorized' });
+
       const payload = (req.body || {}) as Record<string, unknown>;
       const conversationId = toNonEmptyString(payload.conversationId);
       const provider = normalizeCrmConversationProvider(payload.provider);
@@ -2510,10 +2568,7 @@ export function createCommunicationRouter(
       const direction = toNonEmptyString(payload.direction);
       const outcome = toNonEmptyString(payload.outcome);
       const scheduledAt = toNonEmptyString(payload.scheduledAt);
-      const assignedTo =
-        toNonEmptyString(payload.assignedTo) ||
-        readOptionalHeaderValue(req, 'x-user-id') ||
-        readOptionalHeaderValue(req, 'x-user-email');
+      const assignedTo = toNonEmptyString(payload.assignedTo) || activityOwnerId;
 
       if (!conversationId || !type || !subject) {
         return res.status(400).json({ error: 'conversationId, type and subject are required' });
@@ -2527,11 +2582,21 @@ export function createCommunicationRouter(
         return res.status(409).json({ error: 'Conversation is not linked to a CRM customer' });
       }
 
+      // Eier-gate: verifiser at den lenkede kunden faktisk tilhører kalleren før
+      // vi skriver aktivitet/oppgave (ellers write-IDOR mot en annen tenants kunde).
+      const ownsActivityCustomer = await pool.query(
+        `SELECT 1 FROM crm_customers WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL LIMIT 1`,
+        [customerId, activityOwnerId],
+      );
+      if (!ownsActivityCustomer.rowCount) {
+        return res.status(404).json({ error: 'customer_not_found' });
+      }
+
       const activityResult = await pool.query<CrmActivityRow>(
         `INSERT INTO crm_activities (
-           id, customer_id, deal_id, type, subject, description, scheduled_at, direction, outcome, created_at, updated_at
+           id, customer_id, deal_id, type, subject, description, scheduled_at, direction, outcome, owner_user_id, created_at, updated_at
          ) VALUES (
-           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()
+           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
          )
          RETURNING id, type, subject, description, scheduled_at, direction, outcome, created_at, updated_at`,
         [
@@ -2543,6 +2608,7 @@ export function createCommunicationRouter(
           scheduledAt,
           direction,
           outcome,
+          activityOwnerId,
         ],
       );
 

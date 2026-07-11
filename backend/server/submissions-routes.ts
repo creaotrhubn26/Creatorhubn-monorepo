@@ -420,6 +420,13 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.post("/api/submissions/:id/mark-converted", async (req, res) => {
+    // Auth + eier-scope: endepunktet hadde INGEN auth og oppdaterte
+    // client_submissions/legacy.projects kun på id → enhver (også
+    // uautentisert) kunne markere en vilkårlig forespørsel som konvertert
+    // og injisere submissionId i et vilkårlig prosjekt (cross-tenant
+    // write-IDOR). Samme kontrakt som søster-ruten /:id/status.
+    const _sCallerId = compatResolveUserId(req);
+    if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const { projectId } = req.body ?? {};
@@ -431,9 +438,9 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
          SET status = 'converted',
              internal_notes = COALESCE(internal_notes, '') || E'\nKonvertert til prosjekt: ' || $1,
              updated_at = NOW()
-         WHERE id = $2
+         WHERE id = $2 AND vendor_id = $3
          RETURNING *`,
-        [projectId, id],
+        [projectId, id, _sCallerId],
       );
       if (result.rowCount === 0) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
@@ -444,8 +451,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
           `UPDATE legacy.projects
            SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('submissionId', $1::text),
                updated_at = NOW()
-           WHERE id = $2`,
-          [String(id), String(projectId)],
+           WHERE id = $2 AND user_id = $3`,
+          [String(id), String(projectId), _sCallerId],
         );
       } catch (linkErr) {
         console.warn(

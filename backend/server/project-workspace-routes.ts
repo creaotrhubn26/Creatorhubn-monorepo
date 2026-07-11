@@ -1739,6 +1739,18 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensurePhotoSchema();
+      // Eier-scope: guard beviser tilgang til prosjektet, men assetId er
+      // caller-oppgitt. Uten å bekrefte at asset-en hører til DETTE prosjektet
+      // kunne eieren av et vilkårlig prosjekt sette rejected/flagged (og
+      // review_status via upsert, keyet globalt på asset_id) på en ANNEN
+      // fotografs capture_asset (cross-tenant write-IDOR). Samme session_id-
+      // scoping som bulk-approve nedenfor.
+      const sessionIds = await photoSessionIds(req.params.projectId);
+      const owns = await pool.query(
+        `SELECT 1 FROM capture_assets WHERE id = $1 AND session_id = ANY($2::uuid[]) LIMIT 1`,
+        [req.params.assetId, sessionIds],
+      ).catch(() => ({ rowCount: 0 }));
+      if (!owns.rowCount) return res.status(404).json({ error: "asset_not_found" });
       const status = req.body?.reviewStatus ? String(req.body.reviewStatus).slice(0, 20) : null;
       await pool.query(
         `INSERT INTO project_photo_review (asset_id, project_id, review_status, updated_by, updated_at)

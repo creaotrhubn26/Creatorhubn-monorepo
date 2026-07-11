@@ -518,11 +518,17 @@ export function setupPhotographerProjectsRoutes(
       // den gamle UPDATEn feilet stille og forespørselen ble liggende som «ny».
       if (newProjectId && submissionId) {
         try {
+          // Eier-scope: submissionId kommer fra request-body. Uten
+          // vendor_id-filter kunne en fotograf markere EN ANNEN fotografs
+          // innkommende forespørsel som konvertert og om-lenke den til sitt
+          // eget prosjekt (cross-tenant write-IDOR — offeret mister leadet
+          // fra «nye»-listen). vendor_id er eier-kolonnen (jf. submissions-
+          // routes' `WHERE id AND vendor_id`); fremmed id → rowCount 0 = no-op.
           await pool.query(
             `UPDATE client_submissions
                 SET project_id = $1, status = 'converted', updated_at = NOW()
-              WHERE id = $2`,
-            [newProjectId, submissionId],
+              WHERE id = $2 AND vendor_id = $3`,
+            [newProjectId, submissionId, photographerId],
           );
         } catch { /* tabellen finnes kanskje ikke i alle env */ }
       }

@@ -444,24 +444,28 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         `🎬 Nytt prosjekt opprettet: "${projectName}" (${projectId}) av ${userId}${customerId ? ` for kunde ${customerId}` : ""}`,
       );
 
-      // If created from CRM customer, link project back to customer
+      // If created from CRM customer, link project back to customer.
+      // Eier-scope owner_user_id: customerId er caller-oppgitt — uten filter
+      // kunne man om-lenke en annen brukers CRM-kunde til sitt eget prosjekt.
       if (customerId) {
         await pool
           .query(
-            `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2`,
-            [projectId, customerId],
+            `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2 AND owner_user_id = $3`,
+            [projectId, customerId, userId],
           )
           .catch((err: any) =>
             console.error("Failed to link project to CRM customer:", err.message),
           );
       }
 
-      // If this project came from a submission, update submission status
+      // If this project came from a submission, update submission status.
+      // Eier-scope vendor_id: submissionId er caller-oppgitt — uten filter
+      // kunne man markere en annen fotografs forespørsel som «booked» (IDOR).
       if (data.submissionId) {
         await pool
           .query(
-            `UPDATE client_submissions SET status = 'booked', updated_at = NOW() WHERE id = $1`,
-            [data.submissionId],
+            `UPDATE client_submissions SET status = 'booked', updated_at = NOW() WHERE id = $1 AND vendor_id = $2`,
+            [data.submissionId, userId],
           )
           .catch(() => {});
       }

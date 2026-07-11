@@ -681,20 +681,26 @@ export async function fetchTiktokAttribution(
 ): Promise<TiktokAttributionSnapshot | null> {
   // 1) Sjekk cache
   if (!opts.forceRefresh) {
+    // Eier-scope: cachen MÅ filtreres på producer_user_id (stemples ved
+    // INSERT under). Uten dette kunne enhver innlogget produsent lese en
+    // annen tenants cachede ROAS/annonsekost/omsetning ved å oppgi offerets
+    // TikTok advertiser_id — denne cache-lesingen kjører FØR den producer-
+    // scopede token-hentingen, så den ville kortslutte autorisasjonen (IDOR).
     const cached = await pool.query(
       `SELECT click_conversions, view_through_conversions, total_attributed_revenue,
               total_ad_spend, roas, event_breakdown, fetched_at
          FROM tiktok_attribution_snapshots
-        WHERE advertiser_id = $1
-          AND date_range_start = $2::date
-          AND date_range_end = $3::date
+        WHERE producer_user_id = $1::uuid
+          AND advertiser_id = $2
+          AND date_range_start = $3::date
+          AND date_range_end = $4::date
           AND expires_at > NOW()
-          ${opts.configId ? "AND config_id = $4::uuid" : "AND config_id IS NULL"}
+          ${opts.configId ? "AND config_id = $5::uuid" : "AND config_id IS NULL"}
         ORDER BY fetched_at DESC
         LIMIT 1`,
       opts.configId
-        ? [opts.advertiserId, opts.startDate, opts.endDate, opts.configId]
-        : [opts.advertiserId, opts.startDate, opts.endDate],
+        ? [opts.producerUserId, opts.advertiserId, opts.startDate, opts.endDate, opts.configId]
+        : [opts.producerUserId, opts.advertiserId, opts.startDate, opts.endDate],
     ).catch(() => ({ rows: [] }));
     if (cached.rows.length > 0) {
       const c = cached.rows[0];
