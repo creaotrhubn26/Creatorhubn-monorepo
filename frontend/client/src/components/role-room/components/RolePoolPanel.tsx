@@ -60,12 +60,12 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   }, [projects, selectedRole?.name]);
 
   const TOUCH_TARGET = 44;
-  const roleTabAccent = '#b86bff';
+  const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.24)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
   const roleText = '#f3eaff';
   const roleTextMuted = 'rgba(220,205,255,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";

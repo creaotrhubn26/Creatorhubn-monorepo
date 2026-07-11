@@ -1142,12 +1142,12 @@ export function CrewManagementPanel({
     return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
   }, [user]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
-  const roleTabAccent = '#b86bff';
+  const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
   const roleText = '#ffffff';
   const roleTextMuted = 'rgba(255,255,255,0.92)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
