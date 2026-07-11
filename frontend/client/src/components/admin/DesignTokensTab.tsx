@@ -8,6 +8,7 @@ import React from 'react';
 import {
   Box, Button, Card, CardContent, MenuItem, Stack, TextField, Typography, Alert, Divider,
 } from '@mui/material';
+import WorkspaceNavEditor from './WorkspaceNavEditor';
 
 const WORKSPACES = [
   { value: 'global', label: 'Global (delt basis)' },
@@ -28,8 +29,11 @@ function b64url(obj: unknown): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export default function DesignTokensTab() {
-  const [ws, setWs] = React.useState('creatorhub');
+export default function DesignTokensTab({ workspace }: { workspace?: string } = {}) {
+  // Når shell-en styrer workspace (prop), skjuler vi den egne velgeren.
+  const controlled = typeof workspace === 'string' && workspace.length > 0;
+  const [wsState, setWs] = React.useState('creatorhub');
+  const ws = controlled ? (workspace as string) : wsState;
   const [tokens, setTokens] = React.useState<Record<string, string>>({});
   const [msg, setMsg] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [previewKey, setPreviewKey] = React.useState(0);
@@ -72,9 +76,11 @@ export default function DesignTokensTab() {
       </Typography>
       {msg && <Alert severity={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>}
 
-      <TextField select label="Workspace" size="small" value={ws} onChange={(e) => setWs(e.target.value)} sx={{ maxWidth: 280 }}>
-        {WORKSPACES.map((w) => <MenuItem key={w.value} value={w.value}>{w.label}</MenuItem>)}
-      </TextField>
+      {!controlled && (
+        <TextField select label="Workspace" size="small" value={ws} onChange={(e) => setWs(e.target.value)} sx={{ maxWidth: 280 }}>
+          {WORKSPACES.map((w) => <MenuItem key={w.value} value={w.value}>{w.label}</MenuItem>)}
+        </TextField>
+      )}
 
       <Card variant="outlined">
         <CardContent>
@@ -104,6 +110,12 @@ export default function DesignTokensTab() {
           </Stack>
         </CardContent>
       </Card>
+      {ws === 'creatorhub' && (
+        <>
+          <Divider />
+          <WorkspaceNavEditor workspace="creatorhub" />
+        </>
+      )}
       <Divider />
       <Typography variant="caption" color="text.secondary">
         Neste steg i CreatorHub Design: justerings-knotter i overlay-editoren skrur på nettopp disse tokenene.

@@ -60,6 +60,33 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   for (const [k, v] of Object.entries(patch || {})) {
     if (typeof v === 'string' && v.length <= 200 && /^[A-Za-z0-9#,._"'()\-\s]*$/.test(v)) clean[k] = v;
   }
+  // CreatorHub Design (Nivå 2): strukturerte overstyringer som DATA.
+  //  nav  = patch pr. nav-key (label/badge/hidden/order/group) — shell-en slår den på WS_NAV.
+  //  copy = strengoverstyringer (knapper/gruppetitler). Erstatter hele under-objektet ved lagring
+  //  (JSONB `||` er grunn merge), så editoren sender fullt nav/copy-objekt pr. save.
+  const navIn = (patch as any)?.nav;
+  if (navIn && typeof navIn === 'object' && !Array.isArray(navIn)) {
+    const nav: Record<string, Record<string, unknown>> = {};
+    for (const [key, raw] of Object.entries(navIn as Record<string, unknown>)) {
+      if (!/^[a-z0-9-]{1,40}$/.test(key) || !raw || typeof raw !== 'object') continue;
+      const o = raw as Record<string, unknown>; const item: Record<string, unknown> = {};
+      if (typeof o.label === 'string' && o.label.length <= 120) item.label = o.label;
+      if (typeof o.badge === 'number' && o.badge >= 0 && o.badge <= 9999) item.badge = Math.floor(o.badge);
+      if (typeof o.hidden === 'boolean') item.hidden = o.hidden;
+      if (typeof o.order === 'number' && Number.isFinite(o.order)) item.order = o.order;
+      if (o.group === 'hoved' || o.group === 'rom' || o.group === 'klient') item.group = o.group;
+      if (Object.keys(item).length) nav[key] = item;
+    }
+    clean.nav = nav;
+  }
+  const copyIn = (patch as any)?.copy;
+  if (copyIn && typeof copyIn === 'object' && !Array.isArray(copyIn)) {
+    const copy: Record<string, string> = {};
+    for (const [k, v] of Object.entries(copyIn as Record<string, unknown>)) {
+      if (/^[a-zA-Z0-9._-]{1,60}$/.test(k) && typeof v === 'string' && v.length <= 200) copy[k] = v;
+    }
+    clean.copy = copy;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,
