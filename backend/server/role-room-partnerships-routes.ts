@@ -211,6 +211,18 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   // Body: { agency_org_id, production_user_id, message? }
   // Sjekker proposer ER agency-admin på agency_org_id ELLER ER production_user_id.
   app.post("/api/role-room/partnerships/propose", async (req, res) => {
+    // Sikkerhet: demo-modus (?demo=1) gir en syntetisk demo-agency-sesjon for
+    // LESE-utforsking. `propose` er den eneste mutasjonen som tar en motpart-id
+    // (production_user_id) fra body, og det finnes ingen demo-produksjonsbruker
+    // å foreslå til — så et demo-forslag ville uunngåelig skrevet en EKTE
+    // partnership-rad mot en vilkårlig ekte bruker + trigget en ekte e-post,
+    // uautentisert. Det bryter demo-invariansen ("kan ikke endre prod-data").
+    // Blokker derfor propose i demo-modus (ingen legitim demo-flyt bruker den).
+    if (isDemoRequest(req)) {
+      return res
+        .status(403)
+        .json({ error: "Partnership-forslag er ikke tilgjengelig i demo-modus" });
+    }
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
