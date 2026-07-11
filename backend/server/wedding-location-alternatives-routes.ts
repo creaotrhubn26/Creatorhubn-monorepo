@@ -21,6 +21,41 @@ import type express from "express";
 import { notifyPlanBActivation, notifyPlanBDeactivation } from "./wedding-notifications-helper";
 import { broadcastEventToRoom } from "./websocket-chat";
 import { sendPushToUser } from "./web-push-routes";
+import { canAccessProject } from "./project-team-routes";
+
+/**
+ * Authorize the session user against a wedding before mutating its locations /
+ * timeline and pushing plan-B events into its `wedding:<id>` realtime room.
+ *
+ * Mirrors the round-37 WS room predicate (canAccessWeddingRoom, photographer
+ * path): the caller must own the wedding_timelines row (user_id / photographer_id)
+ * or have team access to the linked project. Fail closed on any error.
+ *
+ * Prior to this, both /activate and /deactivate only required *a* logged-in
+ * session (requireUserSession) plus a valid altId↔weddingId pair — an IDOR that
+ * let any authenticated user shift another couple's timeline events and inject
+ * spoofed plan_b_activated / plan_b_deactivated events into their wedding room.
+ * The couple portal is token-based (/api/wedding/client/:token/…) and never held
+ * a session, so it never reached these endpoints; this guard adds no regression.
+ */
+async function callerOwnsWedding(pool: any, weddingId: string, userId: string): Promise<boolean> {
+  if (!userId || !weddingId) return false;
+  try {
+    const r = await pool.query(
+      `SELECT user_id, photographer_id, project_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const row = r.rows[0];
+    if (!row) return false;
+    if (row.user_id && String(row.user_id) === userId) return true;
+    if (row.photographer_id && String(row.photographer_id) === userId) return true;
+    if (row.project_id && (await canAccessProject(pool, userId, String(row.project_id)))) return true;
+    return false;
+  } catch (e) {
+    console.error("[plan-b] callerOwnsWedding error:", e);
+    return false;
+  }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -177,8 +212,12 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
-      const triggeredBy = (req.body?.triggeredBy as string) || (uid ? "photographer" : "couple");
       const { weddingId, altId } = req.params;
+      // Authorize the caller against THIS wedding before any mutation/broadcast.
+      if (!(await callerOwnsWedding(pool, weddingId, uid))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
+      const triggeredBy = (req.body?.triggeredBy as string) || (uid ? "photographer" : "couple");
 
       const alt = await pool.query(
         `SELECT * FROM wedding_locations WHERE id = $1 AND wedding_id = $2`,
@@ -306,6 +345,10 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       const { weddingId, altId } = req.params;
+      // Authorize the caller against THIS wedding before any mutation/broadcast.
+      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const alt = await pool.query(
         `SELECT alternative_for_location_id FROM wedding_locations WHERE id = $1 AND wedding_id = $2`,
         [altId, weddingId],
