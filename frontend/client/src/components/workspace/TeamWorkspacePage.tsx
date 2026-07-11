@@ -97,7 +97,7 @@ const TeamWorkspacePage: React.FC = () => {
   const [, paramsTab] = useRoute('/workspace/:projectId/:tab');
   const projectId = paramsTab?.projectId || params?.projectId || 'sample';
   const [, navigate] = useLocation();
-  const { user, logout, isPrototypeTester } = useAuth();
+  const { user, logout, isPrototypeTester, isAdmin } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   // URL er sannhetskilden for aktiv fane — så navigate('/workspace/:id/:tab')
@@ -316,7 +316,18 @@ const TeamWorkspacePage: React.FC = () => {
       onInvite={() => goTab('team')}
     >
       {content}
-      {designMode && <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />}
+      {/* CreatorHub Design (N3): admin-gated. FAB åpner live-overlayet på ekte ruten. */}
+      {isAdmin && !designMode && (
+        <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
+          sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 1200, display: 'flex', alignItems: 'center', gap: 1,
+            px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
+            border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
+            '&:hover': { bgcolor: '#fff' } }}>
+          <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
+          CreatorHub Design
+        </Box>
+      )}
+      {isAdmin && designMode && <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>
