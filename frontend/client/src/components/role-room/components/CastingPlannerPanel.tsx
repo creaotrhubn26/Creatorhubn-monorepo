@@ -4728,7 +4728,7 @@ type RoleRoomProjectWorkspaceState = {
     };
   }, [currentProject, isContentProducerDemoProject, isContentProducerMode, permissionsLoading]);
 
-  const roleDialogAccentColor = '#b86bff';
+  const roleDialogAccentColor = 'var(--role-accent, #b86bff)';
   const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
   const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();

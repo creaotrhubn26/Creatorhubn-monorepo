@@ -61,7 +61,7 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
 export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: ConsentManagementPanelProps) {
   const consentModalZIndex = Z_INDEX.dialog + 50;
   const consentModalBackdropZIndex = consentModalZIndex - 1;
-  const consentDialogAccentColor = '#b86bff';
+  const consentDialogAccentColor = 'var(--role-accent, #b86bff)';
   const consentMenuProps = {
     container: typeof document !== 'undefined' ? document.body : undefined,
     sx: { zIndex: Z_INDEX.dialogSelect + 50 },

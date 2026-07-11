@@ -551,7 +551,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             checked={isAllSelected}
             indeterminate={selectedIds.size > 0 && !isAllSelected}
             onChange={onSelectAll}
-            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: '#b86bff' }, p: 0.5 }}
+            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: 'var(--role-accent, #b86bff)' }, p: 0.5 }}
           />
           <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Velg alle</Typography>
         </Box>
@@ -560,7 +560,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           size="small" variant="outlined"
           startIcon={<AssignIcon sx={{ fontSize: 15 }} />}
           onClick={onAssignDay}
-          sx={{ borderColor: 'rgba(184,107,255,0.45)', color: '#b86bff', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+          sx={{ borderColor: 'rgba(184,107,255,0.45)', color: 'var(--role-accent, #b86bff)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' } }}
         >
           Tilordne dag
@@ -609,7 +609,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             label={selectedIds.size}
             size="small"
             onDelete={onDeselect}
-            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: '#b86bff', fontWeight: 700, height: 22, fontSize: 12 }}
+            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: 'var(--role-accent, #b86bff)', fontWeight: 700, height: 22, fontSize: 12 }}
           />
           <Tooltip title="Synkroniser">
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><SyncIcon sx={{ fontSize: 18 }} /></IconButton>
@@ -654,7 +654,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
       PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(184,107,255,0.32)' } }}>
-      <DialogTitle sx={{ color: '#b86bff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <DialogTitle sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
         <PersonAddIcon /> Inviter crewmedlem
       </DialogTitle>
       <DialogContent>
@@ -677,7 +677,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Avbryt</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!name.trim()}
-          sx={{ bgcolor: '#b86bff', color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}>
+          sx={{ bgcolor: 'var(--role-accent, #b86bff)', color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}>
           Send invitasjon
         </Button>
       </DialogActions>
