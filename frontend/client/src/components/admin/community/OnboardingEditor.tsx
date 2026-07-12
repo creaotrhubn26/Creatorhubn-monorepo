@@ -254,7 +254,7 @@ export default function OnboardingEditor() {
             startIcon={<Save />}
             onClick={handleSaveConfig}
             disabled={readOnly}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+            sx={{ bgcolor: 'var(--ws-accent, #ff8c00)', '&:hover': { bgcolor: '#e67e00' } }}
           >
             Save Changes
           </Button>

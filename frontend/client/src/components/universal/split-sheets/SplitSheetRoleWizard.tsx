@@ -394,18 +394,18 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
           boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
           minHeight: '70vh',
           '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255,0.72)' },
-          '& .MuiInputLabel-root.Mui-focused': { color: '#ff8c00' },
+          '& .MuiInputLabel-root.Mui-focused': { color: 'var(--ws-accent, #ff8c00)' },
           '& .MuiOutlinedInput-root': {
             color: '#fff5e8',
             '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
             '&:hover fieldset': { borderColor: 'rgba(255, 140, 0,0.4)' },
-            '&.Mui-focused fieldset': { borderColor: '#ff8c00' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--ws-accent, #ff8c00)' },
           },
           '& .MuiStepLabel-label': { color: 'rgba(255, 255, 255,0.62)' },
-          '& .MuiStepLabel-label.Mui-active': { color: '#ff8c00', fontWeight: 700 },
+          '& .MuiStepLabel-label.Mui-active': { color: 'var(--ws-accent, #ff8c00)', fontWeight: 700 },
           '& .MuiStepLabel-label.Mui-completed': { color: '#fff5e8' },
           '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.22)' },
-          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#ff8c00' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: 'var(--ws-accent, #ff8c00)' },
         },
       }}
     >
@@ -419,11 +419,11 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
       }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar sx={{ bgcolor: 'rgba(255, 140, 0,0.18)', color: '#ff8c00' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255, 140, 0,0.18)', color: 'var(--ws-accent, #ff8c00)' }}>
               <MoneyIcon />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>
                 {source === 'inquiry-suggestion' ? 'Forslag fra forespørsel' : 'Split Sheet'}
               </Typography>
               <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, letterSpacing: '-0.02em' }}>
@@ -467,7 +467,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      bgcolor: active || completed ? '#ff8c00' : 'rgba(255,255,255,0.10)',
+                      bgcolor: active || completed ? 'var(--ws-accent, #ff8c00)' : 'rgba(255,255,255,0.10)',
                       color: active || completed ? '#150d05' : 'rgba(255, 255, 255,0.5)',
                       transition: 'all 0.3s',
                     }}>
@@ -523,7 +523,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       textTransform: 'none',
                       color: '#fff5e8',
                       borderColor: 'rgba(255, 140, 0,0.32)',
-                      '&:hover': { borderColor: '#ff8c00', bgcolor: 'rgba(255, 140, 0,0.08)' },
+                      '&:hover': { borderColor: 'var(--ws-accent, #ff8c00)', bgcolor: 'rgba(255, 140, 0,0.08)' },
                     }}
                   >
                     Velg fra team
@@ -536,7 +536,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       borderRadius: '999px',
                       px: 2,
                       py: 0.75,
-                      bgcolor: '#ff8c00',
+                      bgcolor: 'var(--ws-accent, #ff8c00)',
                       color: '#150d05',
                       fontWeight: 700,
                       textTransform: 'none',
@@ -581,7 +581,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       <Stack direction="row" spacing={2} alignItems="center">
                         <Avatar sx={{
                           bgcolor: alpha('#ff8c00', 0.18),
-                          color: '#ff8c00',
+                          color: 'var(--ws-accent, #ff8c00)',
                           fontSize: 14,
                           fontWeight: 700,
                         }}>
@@ -756,7 +756,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   }}
                 >
                   <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5 }}>
-                    <Avatar sx={{ bgcolor: alpha('#ff8c00', 0.18), color: '#ff8c00' }}>
+                    <Avatar sx={{ bgcolor: alpha('#ff8c00', 0.18), color: 'var(--ws-accent, #ff8c00)' }}>
                       {p.name.charAt(0).toUpperCase() || '?'}
                     </Avatar>
                     <Box sx={{ flex: 1 }}>
@@ -834,7 +834,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       p: 2,
                       cursor: 'pointer',
                       bgcolor: active ? 'rgba(255, 140, 0,0.12)' : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${active ? '#ff8c00' : 'rgba(255,255,255,0.08)'}`,
+                      border: `1px solid ${active ? 'var(--ws-accent, #ff8c00)' : 'rgba(255,255,255,0.08)'}`,
                       borderRadius: 2,
                       boxShadow: 'none',
                       transition: 'all 0.2s',
@@ -842,10 +842,10 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   >
                     <FormControlLabel
                       value={opt.v}
-                      control={<Radio sx={{ color: 'rgba(255, 255, 255,0.5)', '&.Mui-checked': { color: '#ff8c00' } }} />}
+                      control={<Radio sx={{ color: 'rgba(255, 255, 255,0.5)', '&.Mui-checked': { color: 'var(--ws-accent, #ff8c00)' } }} />}
                       label={
                         <Box sx={{ ml: 0.5 }}>
-                          <Typography variant="body1" sx={{ fontWeight: 700, color: active ? '#ff8c00' : '#fff5e8' }}>
+                          <Typography variant="body1" sx={{ fontWeight: 700, color: active ? 'var(--ws-accent, #ff8c00)' : '#fff5e8' }}>
                             {opt.label}
                           </Typography>
                           <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
@@ -872,7 +872,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   max={Math.floor(100 / Math.max(1, participants.length))}
                   step={1}
                   sx={{
-                    color: '#ff8c00',
+                    color: 'var(--ws-accent, #ff8c00)',
                     '& .MuiSlider-rail': { bgcolor: 'rgba(255,255,255,0.12)' },
                   }}
                 />
@@ -925,7 +925,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               borderRadius: 2,
               boxShadow: 'none',
             }}>
-              <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>Total</Typography>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>Total</Typography>
               <Stack direction="row" alignItems="baseline" spacing={1}>
                 <Typography variant="h3" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>
                   {projectAmount.toLocaleString('nb-NO')}
@@ -984,7 +984,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               borderRadius: 2,
               boxShadow: 'none',
             }}>
-              <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.14em', mb: 1, display: 'block' }}>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.14em', mb: 1, display: 'block' }}>
                 Fordeling
               </Typography>
               <Box sx={{ width: '100%', height: 280 }}>
@@ -1039,7 +1039,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   }}
                 >
                   <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
-                    <Avatar sx={{ bgcolor: alpha('#ff8c00', 0.18), color: '#ff8c00', fontWeight: 700 }}>
+                    <Avatar sx={{ bgcolor: alpha('#ff8c00', 0.18), color: 'var(--ws-accent, #ff8c00)', fontWeight: 700 }}>
                       {split.name.charAt(0).toUpperCase() || (idx + 1).toString()}
                     </Avatar>
                     <Box sx={{ flex: 1 }}>
@@ -1049,7 +1049,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       </Typography>
                     </Box>
                     <Box sx={{ textAlign: 'right' }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#ff8c00', fontFamily: '"Space Grotesk", sans-serif' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: 'var(--ws-accent, #ff8c00)', fontFamily: '"Space Grotesk", sans-serif' }}>
                         {split.shareKr.toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
@@ -1065,7 +1065,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       borderRadius: 3,
                       bgcolor: 'rgba(255,255,255,0.06)',
                       '& .MuiLinearProgress-bar': {
-                        bgcolor: '#ff8c00',
+                        bgcolor: 'var(--ws-accent, #ff8c00)',
                         borderRadius: 3,
                       },
                     }}
@@ -1080,7 +1080,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 bgcolor: 'rgba(255, 140, 0,0.08)',
                 color: '#fff5e8',
                 border: '1px solid rgba(255, 140, 0,0.22)',
-                '& .MuiAlert-icon': { color: '#ff8c00' },
+                '& .MuiAlert-icon': { color: 'var(--ws-accent, #ff8c00)' },
               }}
             >
               Etter "Opprett & send" får hvert team-medlem en e-post med signerings-lenke. Splitt-en aktiveres når alle har signert.
@@ -1116,7 +1116,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               py: 1.1,
               fontWeight: 700,
               textTransform: 'none',
-              bgcolor: '#ff8c00',
+              bgcolor: 'var(--ws-accent, #ff8c00)',
               color: '#150d05',
               '&:hover': { bgcolor: '#ffc788' },
               '&.Mui-disabled': { bgcolor: 'rgba(255, 140, 0,0.3)', color: 'rgba(21,13,5,0.5)' },
@@ -1135,7 +1135,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               py: 1.1,
               fontWeight: 700,
               textTransform: 'none',
-              bgcolor: '#ff8c00',
+              bgcolor: 'var(--ws-accent, #ff8c00)',
               color: '#150d05',
               '&:hover': { bgcolor: '#ffc788' },
             }}
@@ -1164,7 +1164,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         <Box sx={{ p: 3 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>
                 Velg medlemmer
               </Typography>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>Fra team-direktoratet</Typography>

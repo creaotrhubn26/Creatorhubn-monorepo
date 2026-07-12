@@ -96,7 +96,7 @@ interface FormData {
 }
 
 const PALETTE = {
-  bg: "#0a0512", accent: "#a78bfa", text: "#f4f0ff",
+  bg: "#0a0512", accent: "var(--lgl-accent, #a78bfa)", text: "#f4f0ff",
   textMuted: "rgba(244,240,255,0.72)", textFaint: "rgba(244,240,255,0.45)",
 };
 

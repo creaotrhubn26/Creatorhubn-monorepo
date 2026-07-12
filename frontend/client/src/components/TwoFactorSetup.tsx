@@ -162,7 +162,7 @@ export default function TwoFactorSetup({ onSetupComplete }: TwoFactorSetupProps)
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 2 }}>
-        <ShieldIcon sx={{ color: '#22d3ee' }} />
+        <ShieldIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           To-faktor-autentisering (TOTP)
         </Typography>

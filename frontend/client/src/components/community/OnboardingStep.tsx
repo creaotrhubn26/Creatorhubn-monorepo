@@ -69,7 +69,7 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
           <Box sx={{ mt: 2 }}>
             {step.content.items?.map((item: string, itemIndex: number) => (
               <Box key={itemIndex} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <CheckCircle sx={{ color: '#ff8c00' }} fontSize="small" />
+                <CheckCircle sx={{ color: 'var(--ws-accent, #ff8c00)' }} fontSize="small" />
                 <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                   {item}
                 </Typography>
@@ -99,13 +99,13 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
             color: `${isActive || isCompleted ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.72)'} !important`,
           },
           '& .MuiStepIcon-root': {
-            color: isActive || isCompleted ? '#ff8c00' : 'rgba(255,255,255,0.18)',
+            color: isActive || isCompleted ? 'var(--ws-accent, #ff8c00)' : 'rgba(255,255,255,0.18)',
           },
           '& .MuiStepIcon-root.Mui-completed': {
-            color: '#ff8c00',
+            color: 'var(--ws-accent, #ff8c00)',
           },
           '& .MuiStepIcon-root.Mui-active': {
-            color: '#ff8c00',
+            color: 'var(--ws-accent, #ff8c00)',
           },
           '& .MuiStepIcon-text': {
             fill: '#0a0f1a',
