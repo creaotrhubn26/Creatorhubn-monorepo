@@ -26,7 +26,7 @@ import { apiRequest } from '@/lib/queryClient';
 // Per-bruker-nøkkel: en global nøkkel skjulte sjekklisten for ALLE kontoer på
 // samme nettleser og overlevde logg-ut/inn.
 const dismissKeyFor = (userId?: string) => `getting-started-dismissed:${userId || 'anon'}`;
-const ACCENT = '#ff8c00';
+const ACCENT = 'var(--ws-accent, #ff8c00)';
 const TEXT = '#fff5e8';
 const DIM = 'rgba(246,242,234,0.72)';
 const FAINT = 'rgba(246,242,234,0.45)';

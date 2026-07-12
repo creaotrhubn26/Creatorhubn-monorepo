@@ -468,7 +468,7 @@ export const KeyboardShortcutsGuide: React.FC<KeyboardShortcutsGuideProps> = ({
           borderRadius: 2
         }}>
           <Typography variant="subtitle2" gutterBottom sx={{
-            color: '#ff8c00',
+            color: 'var(--ws-accent, #ff8c00)',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',

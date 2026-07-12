@@ -16,7 +16,7 @@ import PushPin from '@mui/icons-material/PushPin';
 import PeopleAlt from '@mui/icons-material/PeopleAlt';
 import Lightbulb from '@mui/icons-material/Lightbulb';
 
-const BG = '#0b1120', PANEL = '#0f1729', BORDER = 'rgba(255,255,255,0.12)', TEXT = 'rgba(255,255,255,0.95)', MUTED = 'rgba(255,255,255,0.62)', FAINT = 'rgba(255,255,255,0.4)', ACCENT = '#ff8c00', GREEN = '#34d399';
+const BG = '#0b1120', PANEL = '#0f1729', BORDER = 'rgba(255,255,255,0.12)', TEXT = 'rgba(255,255,255,0.95)', MUTED = 'rgba(255,255,255,0.62)', FAINT = 'rgba(255,255,255,0.4)', ACCENT = 'var(--ws-accent, #ff8c00)', GREEN = '#34d399';
 
 const Shot: React.FC<{ src: string; alt: string; caption: string }> = ({ src, alt, caption }) => (
   <Box component="figure" sx={{ m: 0, mt: 1.5 }}>
