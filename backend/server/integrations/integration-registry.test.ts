@@ -41,19 +41,22 @@ describe("integration-registry (kodedrevet konfig)", () => {
     expect(registry.get("ssb")?.availabilityStatus).toBe("active");
   });
 
-  it("no unbuilt integration is servable (No Fake Integrations)", () => {
+  it("no unbuilt/unavailable integration is servable (No Fake Integrations)", () => {
     const registry = getIntegrationRegistry();
-    for (const id of ["google-trends-alpha", "google-ads-keyword-planner", "manual-trend-import", "reddit", "cohere"]) {
+    // keyword-planner: implementert men 'configured' til første prod-oppslag;
+    // trends-alpha: awaitingApproval; reddit/cohere: missingCredentials
+    for (const id of ["google-trends-alpha", "google-ads-keyword-planner", "reddit", "cohere"]) {
       const e = registry.get(id);
       expect(e, id).toBeDefined();
       expect(isServable(e!), `${id} skal ikke være servable`).toBe(false);
     }
   });
 
-  it("trends fallback chain currently resolves to nothing servable → widgets must show Unavailable", () => {
+  it("trends fallback chain resolves to manual-trend-import (bygget 2026-07-11)", () => {
     const registry = getIntegrationRegistry();
-    // alpha → keyword-planner → manual-import: ingen av dem er bygget ennå
-    expect(resolveServableIntegration(registry, "google-trends-alpha")).toBeNull();
+    // alpha (awaitingApproval) → keyword-planner (configured) → manual-import (active)
+    const resolved = resolveServableIntegration(registry, "google-trends-alpha");
+    expect(resolved?.integrationId).toBe("manual-trend-import");
   });
 
   it("active integrations are servable", () => {
