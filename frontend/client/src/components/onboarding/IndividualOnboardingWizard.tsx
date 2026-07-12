@@ -962,7 +962,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
                       size="small"
                       sx={{
                         position: 'absolute', top: 12, right: 12,
-                        bgcolor: '#ffba6c', color: '#150d05',
+                        bgcolor: 'var(--chl-accent, #ffba6c)', color: '#150d05',
                         fontWeight: 800, fontSize: '0.66rem',
                       }}
                     />
@@ -990,11 +990,11 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
                       transition: 'all 0.2s',
                       minHeight: 220,
                       display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                      '&:hover': { transform: 'translateY(-3px)', borderColor: '#ffba6c' },
+                      '&:hover': { transform: 'translateY(-3px)', borderColor: 'var(--chl-accent, #ffba6c)' },
                     }}
                   >
                     <Stack spacing={1.5} alignItems="center" textAlign="center">
-                      <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c', width: 72, height: 72 }}>
+                      <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: 'var(--chl-accent, #ffba6c)', width: 72, height: 72 }}>
                         <StorageIcon sx={{ fontSize: 40 }} />
                       </Avatar>
                       <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff5e8' }}>
@@ -1213,7 +1213,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
                     <Stack direction="row" alignItems="center" spacing={1}>
                       {b2Status.isVerified
                         ? <VerifiedIcon sx={{ color: '#10b981' }} />
-                        : <ErrorIcon sx={{ color: '#ffba6c' }} />}
+                        : <ErrorIcon sx={{ color: 'var(--chl-accent, #ffba6c)' }} />}
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {b2Status.isVerified
                           ? 'Lagret og verifisert mot bucket'
