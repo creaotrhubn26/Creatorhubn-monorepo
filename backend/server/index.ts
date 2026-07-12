@@ -16558,6 +16558,26 @@ async function findByIdInDbProjectArrays(
   return null;
 }
 
+// Owner-or-active-member gate for a casting/role-room project. Same predicate
+// as the canonical viewerCanAccessProject copies in the role-room route files;
+// used by the inline legacy project-agreements mutators below (which resolve the
+// agreement GLOBALLY by id and must not let a caller mutate another tenant's).
+async function callerCanAccessCastingProject(
+  projectId: string,
+  viewerId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ owns: boolean; member: boolean }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM casting_projects
+               WHERE id = $1 AND created_by = $2) AS owns,
+       EXISTS(SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+                 AND deactivated_at IS NULL) AS member`,
+    [projectId, viewerId],
+  );
+  return rows[0]?.owns === true || rows[0]?.member === true;
+}
+
 function normalizeProjectAgreementStatus(
   value: unknown,
 ): "draft" | "sent" | "signed" {
@@ -16659,7 +16679,8 @@ function createProjectAgreementRecord(
 app.put(
   "/api/role-room/project-agreements/:agreementId/status",
   async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyProjectAgreementsByProject,
       req.params.agreementId,
@@ -16680,6 +16701,12 @@ app.put(
     }
     if (!location) {
       res.status(404).json({ error: "Agreement not found" });
+      return;
+    }
+    // BOLA-gate (object-first): the agreement is resolved globally by id — verify
+    // caller access to its actual project before changing its (NDA) status.
+    if (!(await callerCanAccessCastingProject(location.projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const current = getProjectItems(
@@ -16714,7 +16741,8 @@ app.put(
 app.patch(
   "/api/role-room/project-agreements/:agreementId",
   async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyProjectAgreementsByProject,
       req.params.agreementId,
@@ -16735,6 +16763,12 @@ app.patch(
     }
     if (!location) {
       res.status(404).json({ error: "Agreement not found" });
+      return;
+    }
+    // BOLA-gate (object-first): the agreement is resolved globally by id — verify
+    // caller access to its actual project before editing its counterparty fields.
+    if (!(await callerCanAccessCastingProject(location.projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const current = getProjectItems(
