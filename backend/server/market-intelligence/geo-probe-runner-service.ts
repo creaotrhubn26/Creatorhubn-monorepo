@@ -22,6 +22,7 @@ import { getGeoProbeEngines, type GeoEngineId } from "./geo-probe-engines.js";
 import { extractDiscoveredBrands } from "./geo-brand-extraction.js";
 import { getPromptSet, getPromptSetById, type GeoPrompt, type GeoPromptSet } from "./geo-prompt-set-service.js";
 import { insertNormalizedSignals } from "../integrations/normalized-signal-store.js";
+import { recordAiUsage, sumUsage, type TokenUsage } from "../integrations/ai-usage.js";
 import type { NormalizedSignal } from "../integrations/normalized-signal-schema.js";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -306,17 +307,31 @@ export async function executeProbeRun(
 
   const allBrands = [promptSet.targetBrand, ...promptSet.competitorBrands];
 
+  // Forbruks-bokføring (steg 9): akkumuler per leverandør, skriv én
+  // UPSERT per leverandør etter løkka — bokføring velter aldri målingen.
+  const usageByProvider = new Map<string, { calls: number; usage: TokenUsage[] }>();
+  const noteUsage = (provider: string, usage: TokenUsage | null) => {
+    const entry = usageByProvider.get(provider) ?? { calls: 0, usage: [] };
+    entry.calls += 1;
+    if (usage) entry.usage.push(usage);
+    usageByProvider.set(provider, entry);
+  };
+
   try {
     for (const pair of missing) {
       const prompt = promptById.get(pair.promptId);
       const engine = engineById.get(pair.engine);
       if (!prompt || !engine) continue;
-      const answer = await engine.ask(prompt.text);
-      if (answer === null) continue; // telles som frafall i finaliseringen
+      const probeAnswer = await engine.ask(prompt.text);
+      if (probeAnswer === null) continue; // telles som frafall i finaliseringen
+      noteUsage(engine.engineId, probeAnswer.usage);
+      const answer = probeAnswer.text;
       const mentioned = extractBrandMentions(answer, allBrands);
       const urls = extractUrls(answer);
       const targetMention = mentioned.find((m) => m.name === promptSet.targetBrand);
-      const discovered = await extractDiscoveredBrands(answer, allBrands);
+      const discovered = await extractDiscoveredBrands(answer, allBrands, (u) =>
+        noteUsage("anthropic-extraction", u),
+      );
       await pool.query(
         `INSERT INTO geo_probe_results (
            run_id, prompt_id, engine, mentioned_brands, cited_urls,
@@ -354,6 +369,16 @@ export async function executeProbeRun(
     let signalsSkippedReason: string | undefined;
     const completedAt = new Date().toISOString();
     if (promptSet.organizationId && UUID_PATTERN.test(promptSet.organizationId)) {
+      for (const [provider, entry] of usageByProvider) {
+        const isExtraction = provider === "anthropic-extraction";
+        await recordAiUsage(pool, {
+          organizationId: promptSet.organizationId,
+          provider: isExtraction ? "anthropic" : provider,
+          operation: isExtraction ? "geo-brand-extraction" : "geo-probe",
+          calls: entry.calls,
+          ...sumUsage(entry.usage),
+        });
+      }
       const signals = aggregateToSignals(forAggregation, {
         organizationId: promptSet.organizationId,
         workspaceId: promptSet.workspaceOwnerUserId,

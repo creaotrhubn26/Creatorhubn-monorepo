@@ -92,11 +92,12 @@ async function main() {
 
   for (const prompt of prompts) {
     for (const engine of configured) {
-      const answer = await engine.ask(prompt.text);
-      if (answer === null) {
+      const probeAnswer = await engine.ask(prompt.text);
+      if (probeAnswer === null) {
         failures++;
         continue;
       }
+      const answer = probeAnswer.text;
       const mentioned = extractBrandMentions(answer, allBrands);
       const urls = extractUrls(answer);
       const targetHit = mentioned.some((m) => m.name === CONFIG.targetBrand);

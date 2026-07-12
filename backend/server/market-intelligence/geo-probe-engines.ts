@@ -21,12 +21,18 @@ import { callExternalApi } from "../external-api.js";
 
 export type GeoEngineId = "anthropic" | "openai" | "perplexity";
 
+export interface GeoProbeAnswer {
+  text: string;
+  /** Token-forbruk fra API-svaret; null når leverandøren ikke rapporterer det. */
+  usage: { inputTokens: number; outputTokens: number } | null;
+}
+
 export interface GeoProbeEngine {
   engineId: GeoEngineId;
   /** Har motoren credentials i dette miljøet? */
   isConfigured(): boolean;
   /** Still spørsmålet som en sluttbruker. null = feil/utilgjengelig. */
-  ask(prompt: string): Promise<string | null>;
+  ask(prompt: string): Promise<GeoProbeAnswer | null>;
 }
 
 const PROBE_TIMEOUT_MS = 30_000;
@@ -44,7 +50,7 @@ class AnthropicEngine implements GeoProbeEngine {
     return Boolean(process.env.ANTHROPIC_API_KEY);
   }
 
-  async ask(prompt: string): Promise<string | null> {
+  async ask(prompt: string): Promise<GeoProbeAnswer | null> {
     if (!this.isConfigured()) return null;
     try {
       if (!anthropicClient) {
@@ -61,7 +67,13 @@ class AnthropicEngine implements GeoProbeEngine {
         .map((c) => c.text)
         .join("\n")
         .trim();
-      return text || null;
+      if (!text) return null;
+      return {
+        text,
+        usage: response.usage
+          ? { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens }
+          : null,
+      };
     } catch (err) {
       console.warn("[geo-probe:anthropic] ask failed:", String(err).slice(0, 200));
       return null;
@@ -76,10 +88,11 @@ class OpenAiEngine implements GeoProbeEngine {
     return Boolean(process.env.OPENAI_API_KEY);
   }
 
-  async ask(prompt: string): Promise<string | null> {
+  async ask(prompt: string): Promise<GeoProbeAnswer | null> {
     if (!this.isConfigured()) return null;
     const result = await callExternalApi<{
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
     }>("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       timeoutMs: PROBE_TIMEOUT_MS,
@@ -98,7 +111,7 @@ class OpenAiEngine implements GeoProbeEngine {
       }),
     });
     if (!result.ok) return null;
-    return result.data.choices?.[0]?.message?.content?.trim() || null;
+    return toAnswer(result.data);
   }
 }
 
@@ -109,10 +122,11 @@ class PerplexityEngine implements GeoProbeEngine {
     return Boolean(process.env.PERPLEXITY_API_KEY);
   }
 
-  async ask(prompt: string): Promise<string | null> {
+  async ask(prompt: string): Promise<GeoProbeAnswer | null> {
     if (!this.isConfigured()) return null;
     const result = await callExternalApi<{
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
     }>("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       timeoutMs: PROBE_TIMEOUT_MS,
@@ -131,8 +145,26 @@ class PerplexityEngine implements GeoProbeEngine {
       }),
     });
     if (!result.ok) return null;
-    return result.data.choices?.[0]?.message?.content?.trim() || null;
+    return toAnswer(result.data);
   }
+}
+
+/** OpenAI-kompatibel respons (OpenAI/Perplexity) → GeoProbeAnswer. */
+function toAnswer(data: {
+  choices?: Array<{ message?: { content?: string } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}): GeoProbeAnswer | null {
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) return null;
+  return {
+    text,
+    usage: data.usage
+      ? {
+          inputTokens: data.usage.prompt_tokens ?? 0,
+          outputTokens: data.usage.completion_tokens ?? 0,
+        }
+      : null,
+  };
 }
 
 /** Alle motorer, konfigurert eller ei — caller skiller på isConfigured(). */
