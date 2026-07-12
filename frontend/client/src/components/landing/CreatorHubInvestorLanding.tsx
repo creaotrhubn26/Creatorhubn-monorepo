@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { Suspense, useEffect, useState } from 'react';
-import { useLandingAccent } from '@/hooks/useLandingAccent';
+import { useLandingBrand } from '@/hooks/useLandingAccent';
 import {
   AccountTree,
   ArrowForward,
@@ -538,7 +538,7 @@ function SectionHeading({
 export default function CreatorHubInvestorLanding({
   mode,
 }: CreatorHubInvestorLandingProps) {
-  useLandingAccent('creatorhub', '--chl-accent'); // CreatorHub Design: token-drevet landing-aksent
+  useLandingBrand('creatorhub', { landingAccent: '--chl-accent', landingBg: '--chl-bg', landingText: '--chl-text' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [prototypeTesterFormOpen, setPrototypeTesterFormOpen] = useState(false);
@@ -744,16 +744,16 @@ export default function CreatorHubInvestorLanding({
   }
 
   return (
-    <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea' }}>
+    <Box sx={{ bgcolor: 'var(--chl-bg, #05060a)', color: '#f6f2ea' }}>
       <GlobalStyles
         styles={{
           html: { scrollBehavior: 'smooth' },
           body: {
-            backgroundColor: '#05060a',
+            backgroundColor: 'var(--chl-bg, #05060a)',
             color: '#f6f2ea',
           },
           '#root': {
-            backgroundColor: '#05060a',
+            backgroundColor: 'var(--chl-bg, #05060a)',
           },
         }}
       />
@@ -801,7 +801,7 @@ export default function CreatorHubInvestorLanding({
                 sx={{
                   px: 0,
                   minWidth: 0,
-                  color: '#fff5e8',
+                  color: 'var(--chl-text, #fff5e8)',
                   textTransform: 'none',
                   '&:hover': { bgcolor: 'transparent' },
                 }}
@@ -832,7 +832,7 @@ export default function CreatorHubInvestorLanding({
                         fontSize: '0.82rem',
                         letterSpacing: '0.16em',
                         textTransform: 'uppercase',
-                        '&:hover': { color: '#fff5e8', bgcolor: 'transparent' },
+                        '&:hover': { color: 'var(--chl-text, #fff5e8)', bgcolor: 'transparent' },
                       }}
                     >
                       {item.label}
@@ -900,7 +900,7 @@ export default function CreatorHubInvestorLanding({
                 ) : (
                   <IconButton
                     onClick={() => setMenuOpen(true)}
-                    sx={{ color: '#fff5e8' }}
+                    sx={{ color: 'var(--chl-text, #fff5e8)' }}
                     aria-label="Open navigation"
                   >
                     <Menu />
@@ -1827,11 +1827,11 @@ export default function CreatorHubInvestorLanding({
                             fontWeight: 700,
                             textTransform: 'none',
                             bgcolor: plan.highlight ? 'var(--chl-accent, #ffba6c)' : 'transparent',
-                            color: plan.highlight ? '#150d05' : '#fff5e8',
+                            color: plan.highlight ? '#150d05' : 'var(--chl-text, #fff5e8)',
                             borderColor: plan.highlight ? 'var(--chl-accent, #ffba6c)' : 'rgba(255,255,255,0.16)',
                             '&:hover': {
                               bgcolor: plan.highlight ? '#ffc788' : 'rgba(255,255,255,0.05)',
-                              borderColor: plan.highlight ? '#ffc788' : '#fff5e8',
+                              borderColor: plan.highlight ? '#ffc788' : 'var(--chl-text, #fff5e8)',
                             },
                           }}
                         >
@@ -1937,11 +1937,11 @@ export default function CreatorHubInvestorLanding({
                         px: 2.5,
                         fontWeight: 700,
                         textTransform: 'none',
-                        color: '#fff5e8',
+                        color: 'var(--chl-text, #fff5e8)',
                         borderColor: 'rgba(255,255,255,0.18)',
                         '&:hover': {
                           bgcolor: 'rgba(255,255,255,0.05)',
-                          borderColor: '#fff5e8',
+                          borderColor: 'var(--chl-text, #fff5e8)',
                         },
                       }}
                     >
@@ -2099,9 +2099,9 @@ export default function CreatorHubInvestorLanding({
                     px: 3,
                     py: 1.3,
                     borderColor: 'rgba(255,245,232,0.22)',
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     '&:hover': {
-                      borderColor: '#fff5e8',
+                      borderColor: 'var(--chl-text, #fff5e8)',
                       bgcolor: 'rgba(255,255,255,0.04)',
                     },
                   }}
@@ -2138,7 +2138,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/creatorhub-innovasjon"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2151,7 +2151,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/partner"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2164,7 +2164,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/privacy-policy"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2177,7 +2177,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/terms-and-conditions"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2278,10 +2278,10 @@ export default function CreatorHubInvestorLanding({
               sx={{
                 borderRadius: '999px',
                 borderColor: 'rgba(255,245,232,0.22)',
-                color: '#fff5e8',
+                color: 'var(--chl-text, #fff5e8)',
                 fontWeight: 700,
                 '&:hover': {
-                  borderColor: '#fff5e8',
+                  borderColor: 'var(--chl-text, #fff5e8)',
                   bgcolor: 'rgba(255,255,255,0.04)',
                 },
               }}

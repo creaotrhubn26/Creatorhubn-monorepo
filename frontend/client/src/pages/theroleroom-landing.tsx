@@ -31,7 +31,7 @@ import CameraOutlinedIcon from '@mui/icons-material/CameraOutlined';
 import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import { useEffect, useState } from 'react';
-import { useLandingAccent } from '@/hooks/useLandingAccent';
+import { useLandingBrand } from '@/hooks/useLandingAccent';
 import LoginDialog from '@/components/role-room/components/LoginDialog';
 import BookDemoModal from '@/components/role-room/BookDemoModal';
 import {
@@ -42,14 +42,14 @@ import {
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 
 const palette = {
-  bgRoot: '#0a0118',
+  bgRoot: 'var(--rrl-bg, #0a0118)',
   bgShell: '#0f0721',
   bgCard: '#150b2e',
   bgElevated: '#1a0f3a',
   border: 'rgba(168, 85, 247, 0.18)',
   borderStrong: 'rgba(168, 85, 247, 0.32)',
   borderSubtle: 'rgba(168, 85, 247, 0.08)',
-  textPrimary: '#f5f3ff',
+  textPrimary: 'var(--rrl-text, #f5f3ff)',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
   // CreatorHub Design (landing-tokens): primær-aksenten er CSS-var-drevet fra design-tokens
@@ -223,7 +223,7 @@ interface TheRoleRoomLandingProps {
 }
 
 export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps = {}) {
-  useLandingAccent('theroleroom', '--rrl-accent'); // CreatorHub Design: token-drevet landing-aksent
+  useLandingBrand('theroleroom', { landingAccent: '--rrl-accent', landingBg: '--rrl-bg', landingText: '--rrl-text' });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 

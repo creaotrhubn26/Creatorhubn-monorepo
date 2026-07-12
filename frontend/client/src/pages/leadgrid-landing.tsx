@@ -29,7 +29,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useLandingAccent } from '@/hooks/useLandingAccent';
+import { useLandingBrand } from '@/hooks/useLandingAccent';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
@@ -60,7 +60,7 @@ import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
 
 const PALETTE = {
-  bg: '#0b0518',
+  bg: 'var(--lgl-bg, #0b0518)',
   bgAlt: '#13082b',
   card: 'rgba(167, 139, 250, 0.06)',
   cardBorder: 'rgba(167, 139, 250, 0.18)',
@@ -68,7 +68,7 @@ const PALETTE = {
   // nøkkel landingAccent). Literal-fallback = identisk (uavhengig av konnektor-blåen).
   accent: 'var(--lgl-accent, #A78BFA)',
   accentBright: '#C084FC',
-  text: '#F4F0FF',
+  text: 'var(--lgl-text, #F4F0FF)',
   textMuted: 'rgba(244, 240, 255, 0.72)',
   textFaint: 'rgba(244, 240, 255, 0.45)',
 };
@@ -172,7 +172,7 @@ function injectJsonLd(id: string, schema: Record<string, unknown>) {
 // ────────────────────────────────────────────────────────────
 
 export default function LeadgridLanding() {
-  useLandingAccent('leadgrid', '--lgl-accent'); // CreatorHub Design: token-drevet landing-aksent
+  useLandingBrand('leadgrid', { landingAccent: '--lgl-accent', landingBg: '--lgl-bg', landingText: '--lgl-text' });
   const [expStartOpen, setExpStartOpen] = useState(false);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)

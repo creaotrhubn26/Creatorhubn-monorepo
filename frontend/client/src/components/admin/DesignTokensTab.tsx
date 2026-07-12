@@ -27,6 +27,8 @@ const FIELDS: { key: string; label: string; type: 'color' | 'text' }[] = [
   { key: 'bgSoft', label: 'Myk bakgrunn', type: 'color' },
   { key: 'text', label: 'Tekstfarge', type: 'color' },
   { key: 'landingAccent', label: 'Landingsside-aksent', type: 'color' },
+  { key: 'landingBg', label: 'Landingsside-bakgrunn', type: 'color' },
+  { key: 'landingText', label: 'Landingsside-tekst', type: 'color' },
   { key: 'fontFamily', label: 'Font-family', type: 'text' },
 ];
 
