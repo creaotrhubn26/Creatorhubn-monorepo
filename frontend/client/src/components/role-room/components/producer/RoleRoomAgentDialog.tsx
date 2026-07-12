@@ -679,7 +679,7 @@ export default function RoleRoomAgentDialog({
                     color: '#cbd5e1',
                     fontSize: '0.72rem',
                     py: 0.2,
-                    '&:hover': { borderColor: '#22d3ee', color: '#22d3ee' },
+                    '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', color: 'var(--role-cyan, #22d3ee)' },
                   }}
                 >
                   System status
@@ -691,7 +691,7 @@ export default function RoleRoomAgentDialog({
                   onClick={() => setShowAdminChrome((v) => !v)}
                   aria-label={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'}
                   data-testid="agent-admin-toggle"
-                  sx={{ color: showAdminChrome ? '#22d3ee' : 'rgba(148,163,184,0.55)' }}
+                  sx={{ color: showAdminChrome ? 'var(--role-cyan, #22d3ee)' : 'rgba(148,163,184,0.55)' }}
                 >
                   <TuneIcon fontSize="small" />
                 </IconButton>
@@ -749,7 +749,7 @@ export default function RoleRoomAgentDialog({
           disabled={flowIndex < 0 || flowIndex >= tabFlow.length - 1}
           onClick={() => { if (flowIndex < tabFlow.length - 1) setActiveTab(tabFlow[flowIndex + 1]); }}
           data-testid="agent-next-step"
-          sx={{ textTransform: 'none', fontWeight: 700, color: '#22d3ee', borderColor: 'rgba(34,211,238,0.5)' }}
+          sx={{ textTransform: 'none', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', borderColor: 'rgba(34,211,238,0.5)' }}
         >
           Neste →
         </Button>
@@ -784,7 +784,7 @@ export default function RoleRoomAgentDialog({
             fontSize: { xs: '0.78rem', md: '0.875rem' },
           },
           '& .Mui-selected': { color: '#22d3ee !important' },
-          '& .MuiTabs-indicator': { bgcolor: '#22d3ee' },
+          '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
           '& .MuiTabs-scrollButtons': {
             color: 'rgba(226,232,240,0.72)',
             '&.Mui-disabled': { opacity: 0.3 },
@@ -855,7 +855,7 @@ export default function RoleRoomAgentDialog({
           mr: { xs: 0.5, md: 1 },
           fontSize: { xs: '0.78rem', md: '0.875rem' },
           fontWeight: isAdvancedTab(activeTab) ? 700 : 600,
-          color: isAdvancedTab(activeTab) ? '#22d3ee' : 'rgba(226,232,240,0.72)',
+          color: isAdvancedTab(activeTab) ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.72)',
         }}
       >
         Avansert
@@ -1184,7 +1184,7 @@ export default function RoleRoomAgentDialog({
               }}
             >
               <Stack direction="row" spacing={1.2} alignItems="center">
-                <CircularProgress size={22} sx={{ color: '#22d3ee' }} />
+                <CircularProgress size={22} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
                 <Box>
                   <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Jeg jobber…</Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.84rem' }}>
@@ -1297,7 +1297,7 @@ export default function RoleRoomAgentDialog({
               >
                 <Typography
                   sx={{
-                    color: '#22d3ee',
+                    color: 'var(--role-cyan, #22d3ee)',
                     fontWeight: 800,
                     fontSize: '0.74rem',
                     textTransform: 'uppercase',
@@ -1373,7 +1373,7 @@ export default function RoleRoomAgentDialog({
                       sx={{
                         fontWeight: 700,
                         bgcolor: selected ? 'rgba(34,211,238,0.18)' : 'rgba(148,163,184,0.12)',
-                        color: selected ? '#22d3ee' : 'rgba(226,232,240,0.7)',
+                        color: selected ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)',
                         border: selected ? '1px solid rgba(34,211,238,0.5)' : '1px solid transparent',
                       }}
                     />

@@ -1223,7 +1223,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               </Alert>
             )}
             {missingAvailabilityMembers.length > 0 && (
-              <Alert severity="info" sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: '#7dd3fc' }}>
+              <Alert severity="info" sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: 'var(--role-cyan, #7dd3fc)' }}>
                 {missingAvailabilityMembers.length} tekniske crewmedlemmer mangler tilgjengelighetsdata.
               </Alert>
             )}
@@ -1629,7 +1629,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                       variant="outlined"
                       startIcon={<AddIcon />}
                       onClick={assignUnassignedShotsToTechnical}
-                      sx={{ borderColor: 'rgba(56,189,248,0.45)', color: '#7dd3fc' }}
+                      sx={{ borderColor: 'rgba(56,189,248,0.45)', color: 'var(--role-cyan, #7dd3fc)' }}
                     >
                       Bulk-tilordne
                     </Button>
@@ -1761,7 +1761,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                               return next;
                             });
                           }}
-                          sx={{ minWidth: 'auto', color: '#7dd3fc', p: 0 }}
+                          sx={{ minWidth: 'auto', color: 'var(--role-cyan, #7dd3fc)', p: 0 }}
                         >
                           {isExpanded ? 'Skjul' : 'Detaljer'}
                         </Button>
@@ -2311,7 +2311,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               <Typography sx={{ fontWeight: 600 }}>Daglig teknisk callsheet</Typography>
             </Stack>
             <Stack direction="row" spacing={0.5}>
-              <Button size="small" variant="outlined" startIcon={<SendIcon />} onClick={sendCallSheet} sx={{ borderColor: 'rgba(56,189,248,0.5)', color: '#7dd3fc' }}>
+              <Button size="small" variant="outlined" startIcon={<SendIcon />} onClick={sendCallSheet} sx={{ borderColor: 'rgba(56,189,248,0.5)', color: 'var(--role-cyan, #7dd3fc)' }}>
                 Send callsheet
               </Button>
               <IconButton onClick={() => setShowCallSheetDrawer(false)} aria-label="Lukk callsheet" sx={{ color: '#f8fafc' }}>

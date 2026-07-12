@@ -28,7 +28,7 @@ const STEPS = [
     body: 'Her deler du tilganger (som Google Ads) trygt med produksjonsteamet — uten å sende passord på e-post eller Slack. Du legger dem inn, du bestemmer hvem som får se dem.',
   },
   {
-    icon: <LockIcon sx={{ fontSize: 40, color: '#7dd3fc' }} />,
+    icon: <LockIcon sx={{ fontSize: 40, color: 'var(--role-cyan, #7dd3fc)' }} />,
     title: 'Slik er det faktisk trygt',
     body: 'Alt krypteres i hvile (AES-256-GCM) og sendes over TLS. Vi dekrypterer kun i minnet i det øyeblikket et godkjent innsyn vises — aldri logget, aldri bufret i nettleseren. Vi lover ikke mer enn det vi faktisk gjør.',
   },

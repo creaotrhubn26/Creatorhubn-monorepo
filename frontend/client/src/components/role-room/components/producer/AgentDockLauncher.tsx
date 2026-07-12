@@ -31,7 +31,7 @@ import type {
   RoleRoomAgentToolUse,
 } from '../../services/roleRoomAgentClaudeApi';
 
-const ACCENT = '#22d3ee';
+const ACCENT = 'var(--role-cyan, #22d3ee)';
 const ACCENT_LIGHT = '#a5f3fc';
 const PANEL_BG = 'rgba(15,23,42,0.55)';
 const BORDER = '1px solid rgba(148,163,184,0.18)';

@@ -143,7 +143,7 @@ export default function AgentCommandPalette({
           borderBottom: '1px solid rgba(148,163,184,0.18)',
         }}
       >
-        <SearchIcon sx={{ color: RR_COLORS.accent ?? '#22d3ee', fontSize: 20 }} />
+        <SearchIcon sx={{ color: RR_COLORS.accent ?? 'var(--role-cyan, #22d3ee)', fontSize: 20 }} />
         <InputBase
           inputRef={inputRef}
           value={query}

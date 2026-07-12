@@ -126,7 +126,7 @@ export default function MentionsPanel() {
               size="small" label={`Alle (${counts.alle})`} clickable
               onClick={() => setStatusFilter('alle')}
               variant={statusFilter === 'alle' ? 'filled' : 'outlined'}
-              sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: statusFilter === 'alle' ? '#22d3ee' : 'rgba(226,232,240,0.7)' }}
+              sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: statusFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
             />
             {STATUSES.map((s) => (
               <Chip

@@ -327,7 +327,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
       }}
     >
       <Stack direction="row" spacing={1.4} alignItems="center" flexWrap="wrap" useFlexGap>
-        <LockIcon sx={{ color: '#22d3ee' }} />
+        <LockIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Box sx={{ flex: 1, minWidth: 220 }}>
           <Typography sx={{ color: '#f8fafc', fontSize: '0.92rem', fontWeight: 700 }}>
             Slipp magic-link neste gang — opprett en bruker
@@ -348,7 +348,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: '#22d3ee',
+            bgcolor: 'var(--role-cyan, #22d3ee)',
             color: '#0b1226',
             '&:hover': { bgcolor: '#06b6d4' },
           }}
@@ -421,7 +421,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
                       sx={{
                         textTransform: 'none',
                         fontWeight: 700,
-                        bgcolor: '#22d3ee',
+                        bgcolor: 'var(--role-cyan, #22d3ee)',
                         color: '#0b1226',
                         '&:hover': { bgcolor: '#06b6d4' },
                       }}
@@ -447,7 +447,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
 
           {/* Steg 2: sett passord — vises kun når kode er verifisert */}
           {codeStage === 'verified' ? (
-            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#22d3ee', mt: 0.4 }}>
+            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', mt: 0.4 }}>
               Steg 2 av 2 — Sett passord
             </Typography>
           ) : null}
@@ -504,7 +504,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                bgcolor: '#22d3ee',
+                bgcolor: 'var(--role-cyan, #22d3ee)',
                 color: '#0b1226',
                 '&:hover': { bgcolor: '#06b6d4' },
               }}

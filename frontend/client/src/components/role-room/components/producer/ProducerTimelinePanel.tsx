@@ -996,7 +996,7 @@ export default function ProducerTimelinePanel({
       </Stack>
       <Stack direction="row" spacing={1} flexWrap="wrap">
         <Chip size="small" label={`Fullført ${statusSummary.completed}`} sx={{ bgcolor: 'rgba(74,222,128,0.16)', color: '#86efac' }} />
-        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#7dd3fc' }} />
+        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'var(--role-cyan, #7dd3fc)' }} />
         <Chip size="small" label={`Planlagt ${statusSummary.planned}`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
         <Chip size="small" label={`Blokkert ${statusSummary.blocked}`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fca5a5' }} />
         <Chip size="small" label={`Fremdrift ${completionPct}%`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />

@@ -431,7 +431,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     >
       <DialogTitle sx={{ pb: 1.25 }}>
         <Stack direction="row" spacing={1.25} alignItems="center">
-          <PersonIcon sx={{ color: '#7dd3fc' }} />
+          <PersonIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
           <Box>
             <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>
               Konto, abonnement og team
@@ -451,7 +451,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             mb: 2,
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(255,255,255,0.72)' },
             '& .Mui-selected': { color: '#f8fafc' },
-            '& .MuiTabs-indicator': { bgcolor: '#7dd3fc' },
+            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
           }}
         >
           <Tab label="Oversikt" />
@@ -476,7 +476,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             {syncLoading ? (
               <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
-                <CircularProgress sx={{ color: '#7dd3fc' }} />
+                <CircularProgress sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
               </Box>
             ) : null}
 
@@ -526,7 +526,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                       }}
                       disabled={syncActionPending || !currentProject || queuedChanges.length === 0}
                       sx={{
-                        bgcolor: '#7dd3fc',
+                        bgcolor: 'var(--role-cyan, #7dd3fc)',
                         color: '#082f49',
                         fontWeight: 800,
                         '&:hover': { bgcolor: '#bae6fd' },
@@ -779,7 +779,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                             ? {
                                 bgcolor: '#38bdf8',
                                 color: '#082f49',
-                                '&:hover': { bgcolor: '#7dd3fc' },
+                                '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
                               }
                             : {
                                 borderColor: 'rgba(168,85,247,0.36)',
@@ -1020,7 +1020,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               justifyContent="space-between"
             >
               <Stack direction="row" spacing={1} alignItems="center">
-                <InstallMobileOutlinedIcon sx={{ color: '#7dd3fc', fontSize: 18 }} />
+                <InstallMobileOutlinedIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Mobilapp og varsler
                 </Typography>
@@ -1129,7 +1129,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 sx={pwaInstalled
                   ? { borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }
                   : {
-                      bgcolor: '#7dd3fc',
+                      bgcolor: 'var(--role-cyan, #7dd3fc)',
                       color: '#082f49',
                       fontWeight: 800,
                       '&:hover': { bgcolor: '#bae6fd' },
@@ -1371,7 +1371,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             <Stack spacing={1}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <SmsOutlinedIcon sx={{ color: '#7dd3fc', fontSize: 18 }} />
+                <SmsOutlinedIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Forbruk denne måneden
                 </Typography>

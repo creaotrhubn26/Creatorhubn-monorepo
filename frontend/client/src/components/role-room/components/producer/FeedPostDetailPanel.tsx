@@ -611,9 +611,9 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                color: '#22d3ee',
+                color: 'var(--role-cyan, #22d3ee)',
                 borderColor: 'rgba(34,211,238,0.5)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
               {post.customImageUrls && post.customImageUrls.length > 0 ? 'Endre utvalg' : 'Velg fra Drive'}
@@ -702,9 +702,9 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                color: '#22d3ee',
+                color: 'var(--role-cyan, #22d3ee)',
                 borderColor: 'rgba(34,211,238,0.5)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
               {post.customVideoDataUrl ? 'Bytt video' : 'Fra Drive'}
@@ -779,9 +779,9 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                color: '#22d3ee',
+                color: 'var(--role-cyan, #22d3ee)',
                 borderColor: 'rgba(34,211,238,0.5)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
               {post.customImageUrl ? 'Bytt bilde' : 'Fra Drive'}
@@ -994,7 +994,7 @@ export default function FeedPostDetailPanel({
           />
           <ColorSwatchInput
             label="Accent"
-            value={post.accentColor || '#22d3ee'}
+            value={post.accentColor || 'var(--role-cyan, #22d3ee)'}
             onChange={(value) => onUpdate({ accentColor: value })}
           />
           <ColorSwatchInput
@@ -1084,10 +1084,10 @@ export default function FeedPostDetailPanel({
               fontWeight: 700,
               fontSize: '0.72rem',
               color: concept === post.concept ? '#0b1220' : 'rgba(226,232,240,0.8)',
-              bgcolor: concept === post.concept ? '#22d3ee' : 'transparent',
+              bgcolor: concept === post.concept ? 'var(--role-cyan, #22d3ee)' : 'transparent',
               borderColor: 'rgba(148,163,184,0.28)',
               '&:hover': {
-                bgcolor: concept === post.concept ? '#22d3ee' : 'rgba(34,211,238,0.08)',
+                bgcolor: concept === post.concept ? 'var(--role-cyan, #22d3ee)' : 'rgba(34,211,238,0.08)',
               },
             }}
           />
@@ -1486,9 +1486,9 @@ export default function FeedPostDetailPanel({
         sx={{
           textTransform: 'none',
           fontWeight: 700,
-          color: '#22d3ee',
+          color: 'var(--role-cyan, #22d3ee)',
           borderColor: 'rgba(34,211,238,0.5)',
-          '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+          '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
         }}
       >
         Regenerer mal (placeholder)
@@ -1509,7 +1509,7 @@ const textFieldSx = {
     color: 'rgba(226,232,240,0.65)',
   },
   '& .Mui-focused .MuiOutlinedInput-notchedOutline': {
-    borderColor: '#22d3ee',
+    borderColor: 'var(--role-cyan, #22d3ee)',
   },
 };
 

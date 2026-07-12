@@ -286,7 +286,7 @@ const consentTypeConfig: Record<ConsentType, {
     IconComponent: PhotoIcon,
     label: 'Foto-samtykke',
     description: 'Tillater bruk av fotografier tatt under produksjonen',
-    color: '#00d4ff',
+    color: 'var(--role-cyan, #00d4ff)',
     defaultTitle: 'Samtykke for bruk av fotografier',
   },
   video_release: {
@@ -1331,8 +1331,8 @@ return (
                   sx={{ 
                     mb: 2, 
                     bgcolor: 'rgba(0,212,255,0.1)', 
-                    color: '#00d4ff',
-                    '& .MuiAlert-icon': { color: '#00d4ff' },
+                    color: 'var(--role-cyan, #00d4ff)',
+                    '& .MuiAlert-icon': { color: 'var(--role-cyan, #00d4ff)' },
                   }}
                   action={
                     <Button 
@@ -2358,13 +2358,13 @@ return (
                       </Box>
 
                       {sendMethod === 'email' && candidate?.contactInfo.email && (
-                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
                           Kontrakten sendes til: <strong>{candidate.contactInfo.email}</strong>
                         </Alert>
                       )}
 
                       {sendMethod === 'sms' && candidate?.contactInfo.phone && (
-                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
                           SMS sendes til: <strong>{candidate.contactInfo.phone}</strong>
                         </Alert>
                       )}

@@ -604,7 +604,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
               sx={{
                 textTransform: 'none',
                 fontSize: '0.74rem',
-                color: '#22d3ee',
+                color: 'var(--role-cyan, #22d3ee)',
                 '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >

@@ -330,7 +330,7 @@ ${appName} Sikkerhetsteam`,
 ];
 
 const templateTypeConfig: Record<string, { label: string; color: string; icon: ReactNode }> = {
-  invitation: { label: 'Invitasjon', color: '#00d4ff', icon: <EmailIcon /> },
+  invitation: { label: 'Invitasjon', color: 'var(--role-cyan, #00d4ff)', icon: <EmailIcon /> },
   callback: { label: 'Callback', color: '#8b5cf6', icon: <ScheduleIcon /> },
   confirmation: { label: 'Bekreftelse', color: '#10b981', icon: <CheckCircleIcon /> },
   rejection: { label: 'Avslag', color: '#ef4444', icon: <CancelIcon /> },
@@ -826,7 +826,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     const colors: Record<string, string> = {
       owner: '#ef4444',
       admin: '#8b5cf6',
-      editor: '#00d4ff',
+      editor: 'var(--role-cyan, #00d4ff)',
       viewer: '#6b7280',
     };
     return colors[role] || '#6b7280';
@@ -3252,7 +3252,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
       >
         <DialogTitle sx={{ color: '#fff', fontSize: fontSize.title, p: spacing }}>Generert Passord</DialogTitle>
         <DialogContent sx={{ p: spacing }}>
-          <Alert severity="info" sx={{ mb: spacing, bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff', fontSize: fontSize.body }}>
+          <Alert severity="info" sx={{ mb: spacing, bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)', fontSize: fontSize.body }}>
             Lagre dette passordet sikkert. Det kan ikke hentes igjen.
           </Alert>
           <Box

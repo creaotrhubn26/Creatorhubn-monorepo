@@ -223,7 +223,7 @@ export function ConsentStatusBadge({
             )}
             {summary.viewed > 0 && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <ViewedIcon sx={{ fontSize: 14, color: '#00d4ff' }} />
+                <ViewedIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #00d4ff)' }} />
                 <Typography variant="caption">{summary.viewed} sett</Typography>
               </Box>
             )}

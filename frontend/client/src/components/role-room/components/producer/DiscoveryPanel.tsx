@@ -95,7 +95,7 @@ export default function DiscoveryPanel() {
                 key={m.key} clickable icon={m.icon as any} label={m.label}
                 onClick={() => { setMode(m.key); setInput(''); setQuery(''); }}
                 variant={mode === m.key ? 'filled' : 'outlined'}
-                sx={{ fontWeight: 700, bgcolor: mode === m.key ? 'rgba(34,211,238,0.18)' : 'transparent', color: mode === m.key ? '#22d3ee' : 'rgba(226,232,240,0.7)' }}
+                sx={{ fontWeight: 700, bgcolor: mode === m.key ? 'rgba(34,211,238,0.18)' : 'transparent', color: mode === m.key ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
               />
             ))}
           </Stack>
@@ -176,7 +176,7 @@ export default function DiscoveryPanel() {
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                 <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{data.page.name || data.page.id}</Typography>
                 {data.page.verified === 'blue_verified' || data.page.verified === 'gray_verified' ? (
-                  <Chip size="small" label="Verifisert" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(56,189,248,0.2)', color: '#7dd3fc' }} />
+                  <Chip size="small" label="Verifisert" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(56,189,248,0.2)', color: 'var(--role-cyan, #7dd3fc)' }} />
                 ) : null}
               </Stack>
               <Stack direction="row" spacing={1.5} sx={{ mb: 0.6 }} flexWrap="wrap" useFlexGap>

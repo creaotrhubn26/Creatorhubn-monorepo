@@ -4032,7 +4032,7 @@ type RoleRoomProjectWorkspaceState = {
     { color: '#14b8a6', icon: SelectionTabIcon },
     { color: '#4caf50', icon: LocationIcon },
     { color: '#9c27b0', icon: CalendarIcon },
-    { color: '#00d4ff', icon: GroupsIcon },
+    { color: 'var(--role-cyan, #00d4ff)', icon: GroupsIcon },
     { color: '#9333ea', icon: EquipmentIcon },
     { color: '#ef4444', icon: VideocamIcon },
     { color: '#60a5fa', icon: PermMediaIcon },
@@ -8368,8 +8368,8 @@ type RoleRoomProjectWorkspaceState = {
                   flexShrink: 0,
                   p: 0,
                   '&:hover, &:active': {
-                    borderColor: '#00d4ff',
-                    color: '#00d4ff',
+                    borderColor: 'var(--role-cyan, #00d4ff)',
+                    color: 'var(--role-cyan, #00d4ff)',
                     bgcolor: 'rgba(0, 212, 255, 0.1)',
                   },
                 }}
@@ -8582,7 +8582,7 @@ type RoleRoomProjectWorkspaceState = {
                           width: useDenseDesktopHeader ? 8 : 10,
                           height: useDenseDesktopHeader ? 8 : 10,
                           borderRadius: '50%',
-                          bgcolor: headerActiveProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
+                          bgcolor: headerActiveProject ? 'var(--role-cyan, #22d3ee)' : 'rgba(255,255,255,0.22)',
                           border: headerActiveProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
                           boxShadow: headerActiveProject ? '0 0 12px rgba(34,211,238,0.45)' : 'none',
                           flexShrink: 0,
@@ -8680,7 +8680,7 @@ type RoleRoomProjectWorkspaceState = {
                       bgcolor: 'rgba(255,255,255,0.04)',
                       flexShrink: 0,
                       '&:hover': {
-                        color: '#7dd3fc',
+                        color: 'var(--role-cyan, #7dd3fc)',
                         bgcolor: 'rgba(96,165,250,0.12)',
                         borderColor: 'rgba(96,165,250,0.24)',
                       },
@@ -8752,7 +8752,7 @@ type RoleRoomProjectWorkspaceState = {
                       left: '8%',
                       right: '8%',
                       height: '3px',
-                      backgroundColor: '#00d4ff',
+                      backgroundColor: 'var(--role-cyan, #00d4ff)',
                       borderRadius: '3px 3px 0 0',
                       boxShadow: '0 0 10px rgba(0, 212, 255, 0.4)',
                     } : {},
@@ -8768,7 +8768,7 @@ type RoleRoomProjectWorkspaceState = {
                       boxShadow: `0 0 10px ${pinnedAccentColor}55`,
                     } : {},
                     '&:hover': {
-                      borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.16)',
+                      borderColor: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.16)',
                       background: isActive
                         ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.22) 0%, rgba(0, 180, 230, 0.16) 100%)'
                         : 'rgba(255,255,255,0.04)',
@@ -8790,7 +8790,7 @@ type RoleRoomProjectWorkspaceState = {
                           width: { xs: 10, sm: 12 },
                           height: { xs: 10, sm: 12 },
                           borderRadius: '50%',
-                          bgcolor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                          bgcolor: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.2)',
                           border: isActive ? '2px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
                           boxShadow: isActive ? '0 0 12px rgba(0, 212, 255, 0.45)' : 'none',
                           flexShrink: 0,
@@ -8900,7 +8900,7 @@ type RoleRoomProjectWorkspaceState = {
                       sx={{
                         color: isActive ? 'rgba(255,255,255,0.68)' : 'rgba(255,255,255,0.34)',
                         '&:hover, &:active': {
-                          color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.88)',
+                          color: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.88)',
                           bgcolor: isActive ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.08)',
                         },
                         width: safeHeaderProjectActionSizePx,
@@ -9042,7 +9042,7 @@ type RoleRoomProjectWorkspaceState = {
                   }}
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
-                  <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  <EditIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
                   Rediger prosjekt
                 </MenuItem>
                 {projectQuickActionsProject && !isTemplateProject(projectQuickActionsProject) && !isProtectedDemoProject(projectQuickActionsProject) ? (
@@ -9177,7 +9177,7 @@ type RoleRoomProjectWorkspaceState = {
                     bgcolor: 'rgba(255,255,255,0.03)',
                     p: 0,
                     '&:hover': {
-                      color: '#7dd3fc',
+                      color: 'var(--role-cyan, #7dd3fc)',
                       bgcolor: 'rgba(96,165,250,0.12)',
                       borderColor: 'rgba(96,165,250,0.22)',
                     },
@@ -9823,7 +9823,7 @@ type RoleRoomProjectWorkspaceState = {
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#bae6fd' : '#7dd3fc',
+                          color: isSelected ? '#bae6fd' : 'var(--role-cyan, #7dd3fc)',
                           fontWeight: 800,
                         }}
                       >
@@ -10129,7 +10129,7 @@ type RoleRoomProjectWorkspaceState = {
                     startTransition(() => setCandidateViewMode('list'));
                   }}
                   aria-label={branding.tokens.labels.listViewLabel}
-                  sx={{ color: candidateViewMode === 'list' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
+                  sx={{ color: candidateViewMode === 'list' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
                   <ViewListIcon sx={{ fontSize: 20 }} />
                 </IconButton>
@@ -10139,14 +10139,14 @@ type RoleRoomProjectWorkspaceState = {
                     startTransition(() => setCandidateViewMode('kanban'));
                   }}
                   aria-label={branding.tokens.labels.kanbanViewLabel}
-                  sx={{ color: candidateViewMode === 'kanban' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
+                  sx={{ color: candidateViewMode === 'kanban' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
                   <GroupIcon sx={{ fontSize: 20 }} />
                 </IconButton>
               </Box>
             </Box>
             {candidateViewMode === 'kanban' ? (
-              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: '#00d4ff' }} /></Box>}>
+              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /></Box>}>
                 <KanbanPanel
                   key={currentProject?.id ?? 'no-project'}
                   project={currentProject}
@@ -10169,8 +10169,8 @@ type RoleRoomProjectWorkspaceState = {
                   display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
                   bgcolor: 'rgba(0,212,255,0.1)', borderRadius: 1, border: '1px dashed rgba(0,212,255,0.4)',
                 }}>
-                  <SwapHorizIcon sx={{ fontSize: 18, color: '#00d4ff' }} />
-                  <Typography variant="body2" sx={{ color: '#00d4ff', fontSize: '0.8rem' }}>
+                  <SwapHorizIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #00d4ff)' }} />
+                  <Typography variant="body2" sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: '0.8rem' }}>
                     {branding.tokens.labels.draggingCandidateLabel.replace('{name}', draggedCandidate.name)}
                   </Typography>
                   <Button size="small" onClick={() => setDraggedCandidate(null)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: '0.75rem' }}>
@@ -10422,7 +10422,7 @@ type RoleRoomProjectWorkspaceState = {
                     label="CASTING BOARD"
                     sx={{
                       bgcolor: 'rgba(14,116,144,0.24)',
-                      color: '#7dd3fc',
+                      color: 'var(--role-cyan, #7dd3fc)',
                       border: '1px solid rgba(125,211,252,0.46)',
                       fontWeight: 700,
                     }}
@@ -10963,7 +10963,7 @@ type RoleRoomProjectWorkspaceState = {
                                             ? '#6ee7b7'
                                             : phase === 'callbacks'
                                               ? '#d8b4fe'
-                                              : '#7dd3fc',
+                                              : 'var(--role-cyan, #7dd3fc)',
                                         border: '1px solid rgba(148,163,184,0.32)',
                                       }}
                                     />
@@ -10999,7 +10999,7 @@ type RoleRoomProjectWorkspaceState = {
                                           fontSize: '0.6rem',
                                           fontWeight: 700,
                                           bgcolor: 'rgba(14,165,233,0.2)',
-                                          color: '#7dd3fc',
+                                          color: 'var(--role-cyan, #7dd3fc)',
                                           border: '1px solid rgba(56,189,248,0.44)',
                                         }}
                                       />
@@ -11073,7 +11073,7 @@ type RoleRoomProjectWorkspaceState = {
                                         ? '#6ee7b7'
                                         : selectedSelectionSummary.phase === 'callbacks'
                                           ? '#d8b4fe'
-                                          : '#7dd3fc',
+                                          : 'var(--role-cyan, #7dd3fc)',
                                     border: '1px solid rgba(148,163,184,0.3)',
                                   }}
                                 />
@@ -11112,7 +11112,7 @@ type RoleRoomProjectWorkspaceState = {
                                     fontSize: '0.61rem',
                                     fontWeight: 700,
                                     bgcolor: 'rgba(14,165,233,0.2)',
-                                    color: '#7dd3fc',
+                                    color: 'var(--role-cyan, #7dd3fc)',
                                     border: '1px solid rgba(56,189,248,0.44)',
                                   }}
                                 />
@@ -11193,7 +11193,7 @@ type RoleRoomProjectWorkspaceState = {
                                     Vurderingssignal
                                   </Typography>
                                   {([
-                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, '#22d3ee'],
+                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, 'var(--role-cyan, #22d3ee)'],
                                     ['Kjemi', selectedSelectionSignals.chemistry, '#c084fc'],
                                     ['Tilgjengelighet', selectedSelectionSignals.availability, '#4ade80'],
                                     ['Risiko', selectedSelectionSignals.risk, '#fb7185'],
@@ -11257,7 +11257,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Box>
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(2,6,23,0.6)', p: 0.7, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem' }}>
+                                <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.69rem' }}>
                                   Utvelgelsesnotater
                                 </Typography>
                                 <Box
@@ -11406,7 +11406,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Box>
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(3,37,65,0.3)', p: 0.7 }}>
-                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
+                                <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
                                   Anbefalt neste steg
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(186,230,253,0.92)', fontSize: '0.69rem', lineHeight: 1.35 }}>
@@ -12231,7 +12231,7 @@ type RoleRoomProjectWorkspaceState = {
                         mb: 2,
                       }}
                     >
-                      <ShotListIcon sx={{ fontSize: 38, color: '#7dd3fc' }} />
+                      <ShotListIcon sx={{ fontSize: 38, color: 'var(--role-cyan, #7dd3fc)' }} />
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
                       {profession ? getTerm('shotList') : branding.tokens.labels.shotList}
@@ -15508,7 +15508,7 @@ type RoleRoomProjectWorkspaceState = {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             <Badge color="error" badgeContent={producerInboxUnreadCount} invisible={producerInboxUnreadCount === 0}>
-              <InboxIcon sx={{ color: '#7dd3fc' }} />
+              <InboxIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
             </Badge>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 850, lineHeight: 1.15 }}>
@@ -15769,10 +15769,10 @@ type RoleRoomProjectWorkspaceState = {
                 px: 1.2,
                 bgcolor: 'rgba(0,212,255,0.14)',
                 border: '1px solid rgba(0,212,255,0.38)',
-                color: '#7dd3fc',
+                color: 'var(--role-cyan, #7dd3fc)',
                 '&:hover': {
                   bgcolor: 'rgba(0,212,255,0.22)',
-                  borderColor: '#22d3ee',
+                  borderColor: 'var(--role-cyan, #22d3ee)',
                 },
               }}
             >
@@ -15812,7 +15812,7 @@ type RoleRoomProjectWorkspaceState = {
                   bgcolor: 'rgba(255,255,255,0.03)',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.14)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
-                  '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #22d3ee)' },
                 },
                 '& .MuiInputBase-input::placeholder': {
                   color: 'rgba(255,255,255,0.58)',
@@ -16227,7 +16227,7 @@ type RoleRoomProjectWorkspaceState = {
                               height: 22,
                               maxWidth: 132,
                               bgcolor: isActive ? 'rgba(0,212,255,0.18)' : 'rgba(255,255,255,0.06)',
-                              color: isActive ? '#7dd3fc' : 'rgba(255,255,255,0.72)',
+                              color: isActive ? 'var(--role-cyan, #7dd3fc)' : 'rgba(255,255,255,0.72)',
                               border: isActive ? '1px solid rgba(0,212,255,0.28)' : '1px solid rgba(255,255,255,0.08)',
                               fontSize: '0.66rem',
                               fontWeight: 700,
@@ -16377,7 +16377,7 @@ type RoleRoomProjectWorkspaceState = {
                                 width: 10, 
                                 height: 10, 
                                 borderRadius: '50%', 
-                                bgcolor: isActive ? '#00d4ff' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
+                                bgcolor: isActive ? 'var(--role-cyan, #00d4ff)' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
                                 boxShadow: isActive ? '0 0 10px rgba(0,212,255,0.4)' : 'none',
                                 flexShrink: 0,
                               }} />
@@ -16541,7 +16541,7 @@ type RoleRoomProjectWorkspaceState = {
                                 textTransform: 'none',
                                 minHeight: 28,
                                 px: 1,
-                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : '#7dd3fc',
+                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : 'var(--role-cyan, #7dd3fc)',
                                 border: isProtectedDemo && !canMutateProtectedDemoData
                                   ? '1px solid rgba(244,114,182,0.32)'
                                   : '1px solid rgba(125,211,252,0.32)',
@@ -16735,7 +16735,7 @@ type RoleRoomProjectWorkspaceState = {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <KeyboardIcon sx={{ color: '#7dd3fc', fontSize: 21 }} />
+            <KeyboardIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 21 }} />
             <Typography sx={{ fontWeight: 700, fontSize: { xs: '0.96rem', sm: '1.02rem' } }}>
               Utvelgelse-snarveier
             </Typography>
@@ -16915,12 +16915,12 @@ type RoleRoomProjectWorkspaceState = {
                 border: '1.5px solid rgba(0, 212, 255, 0.4)',
                 alignSelf: 'flex-start',
               }}>
-                <Folder sx={{ color: '#00d4ff', fontSize: { xs: '0.875rem', sm: '1rem' } }} />
+                <Folder sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '0.875rem', sm: '1rem' } }} />
                 <Box>
                   <Typography variant="caption" sx={{
                     fontWeight: 700,
                     fontSize: '0.65rem',
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     display: 'block',
@@ -16931,7 +16931,7 @@ type RoleRoomProjectWorkspaceState = {
                   <Typography variant="caption" sx={{
                     fontWeight: 700,
                     fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     fontFamily: 'monospace',
                     letterSpacing: '0.3px',
                     display: 'block',
@@ -16994,7 +16994,7 @@ type RoleRoomProjectWorkspaceState = {
                     color: 'rgba(226,232,240,0.68)',
                     fontWeight: 800,
                   },
-                  '& .Mui-selected': { color: '#7dd3fc' },
+                  '& .Mui-selected': { color: 'var(--role-cyan, #7dd3fc)' },
                   '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
                 }}
               >
@@ -17046,7 +17046,7 @@ type RoleRoomProjectWorkspaceState = {
                     bgcolor: '#38bdf8',
                     color: '#082f49',
                     whiteSpace: 'nowrap',
-                    '&:hover': { bgcolor: '#7dd3fc' },
+                    '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
                   }}
                 >
                   Opprett nytt
@@ -17144,7 +17144,7 @@ type RoleRoomProjectWorkspaceState = {
                           <Typography sx={{ color: '#fff', fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                             {project.name}
                           </Typography>
-                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: '#7dd3fc', fontWeight: 800 }} /> : null}
+                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #7dd3fc)', fontWeight: 800 }} /> : null}
                         </Box>
                         <Typography sx={{ mt: 0.45, color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {[project.clientName, `Rolle: ${roleLabel}`, `Tilgang: ${accessLabel}`].filter(Boolean).join(' • ')}
@@ -17547,7 +17547,7 @@ type RoleRoomProjectWorkspaceState = {
             disabled={projectCopySubmitting || !projectCopyDialog?.name.trim()}
             variant="contained"
             startIcon={projectCopySubmitting ? <CircularProgress size={16} /> : <ContentCopyIcon />}
-            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#7dd3fc' } }}
+            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' } }}
           >
             Lag kopi
           </Button>

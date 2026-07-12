@@ -105,7 +105,7 @@ interface ProductionCalendarPanelProps {
 
 const EVENT_TYPES = [
   { value: 'audition', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
-  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: '#22d3ee' },
+  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
   { value: 'fitting', label: 'Kostyme/Fitting', icon: <CheckroomIcon />, color: '#ec4899' },
   { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: '#8b5cf6' },
   { value: 'shooting', label: 'Opptak', icon: <MovieIcon />, color: '#10b981' },
@@ -1042,7 +1042,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             events={events}
             eventTypeConfig={{
               audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-              selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+              selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
               fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
               rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
               shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
@@ -1063,7 +1063,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           events={events}
           eventTypeConfig={{
             audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-            selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+            selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
             fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
             rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
             shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },

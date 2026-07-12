@@ -455,7 +455,7 @@ export function MemoryCardBackupControlDialog({
   const paperBg = color.surface || '#0d1117';
   const textPrimary = color.textPrimary || '#ffffff';
   const textSecondary = color.textSecondary || 'rgba(255,255,255,0.8)';
-  const accent = color.accent || '#00d4ff';
+  const accent = color.accent || 'var(--role-cyan, #00d4ff)';
   const primary = color.primary || '#8b5cf6';
   const success = color.success || '#10b981';
   const warning = color.warning || '#f59e0b';

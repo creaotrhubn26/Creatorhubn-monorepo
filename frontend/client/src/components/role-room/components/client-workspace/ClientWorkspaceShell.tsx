@@ -19,6 +19,7 @@ import { useLocation, useParams } from 'wouter';
 import { getMyAccess, acceptInvite, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
 import BlockRenderer from '../../cms/BlockRenderer';
 import { useCmsBlocks } from '../../cms/useCmsBlocks';
+import { useRoleRoomBrand } from '../../hooks/useRoleRoomBrand';
 import { DEFAULT_LOCALE } from '../../cms/blockSchema';
 import {
   Alert,
@@ -98,6 +99,8 @@ export default function ClientWorkspaceShell({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeTab, setActiveTab] = useState<TabValue>(getInitialTab);
   const cmsHeroBlocks = useCmsBlocks('clientworkspace');
+  // CreatorHub Design: token-driv Role Room-merkevaren (cyan-familien) på producer/client-flatene.
+  useRoleRoomBrand();
 
   // ?preview=true → produsent ser sin egen klient-flate
   const isPreviewMode = useMemo(() => {
@@ -256,8 +259,8 @@ export default function ClientWorkspaceShell({
                 minHeight: 56,
                 textTransform: 'none',
               },
-              '& .MuiTab-root.Mui-selected': { color: '#22d3ee' },
-              '& .MuiTabs-indicator': { backgroundColor: '#22d3ee', height: 3 },
+              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)', height: 3 },
             }}
           >
             {TABS
@@ -279,7 +282,7 @@ export default function ClientWorkspaceShell({
         <Suspense
           fallback={
             <Stack direction="row" alignItems="center" justifyContent="center" sx={{ py: 6 }}>
-              <CircularProgress size={28} sx={{ color: '#22d3ee' }} />
+              <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             </Stack>
           }
         >
