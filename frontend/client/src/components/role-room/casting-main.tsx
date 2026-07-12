@@ -872,13 +872,19 @@ export default function CastingStandaloneApp() {
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!live || !d || d.raw !== true) return;
-        const hex = d.tokens && d.tokens.accent;
-        if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
-        const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+        if (!live || !d || d.raw !== true || !d.tokens) return;
         const root = document.documentElement;
-        root.style.setProperty('--role-accent', hex);
-        root.style.setProperty('--role-border', `rgba(${r},${g},${b},0.32)`);
+        const hex = d.tokens.accent;
+        if (typeof hex === 'string' && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+          const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+          root.style.setProperty('--role-accent', hex);
+          root.style.setProperty('--role-border', `rgba(${r},${g},${b},0.32)`);
+        }
+        // Portal-aksent (cyan-familien: Talent/Agency-portaler) — egen nøkkel, uavhengig av casting-lilla.
+        const portal = d.tokens.portalAccent;
+        if (typeof portal === 'string' && /^#[0-9a-fA-F]{6}$/.test(portal)) {
+          root.style.setProperty('--role-portal-accent', portal);
+        }
       })
       .catch(() => {});
     return () => { live = false; };
