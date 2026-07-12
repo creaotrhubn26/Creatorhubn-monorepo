@@ -865,6 +865,27 @@ export function setupRoleRoomAgentFeedPlanRoutes(
         error: "Bare kunden kan endre godkjenningspolicyen.",
       });
     }
+    // §5.1 BOLA-gate: the `client_reviewer` session role is self-selectable at
+    // login (auth-routes derives it from the caller-supplied requestedRole), so
+    // role ALONE is not authorization. The actor must be the client OF THIS
+    // project — verified against casting_user_roles by proven identity (user_id
+    // or the session's authenticated email). Without this, any logged-in user
+    // could flip requireClientApproval on any project and bypass §5.1.
+    const clientOnProject = await pool.query(
+      `SELECT 1 FROM casting_user_roles
+        WHERE project_id = $1
+          AND role IN ('client', 'client_reviewer')
+          AND deactivated_at IS NULL
+          AND (user_id = $2 OR (email IS NOT NULL AND lower(email) = lower($3)))
+        LIMIT 1`,
+      [projectId, session.userId, session.email ?? ""],
+    );
+    if (clientOnProject.rowCount === 0) {
+      return res.status(403).json({
+        success: false,
+        error: "Du er ikke registrert som kunde på dette prosjektet.",
+      });
+    }
     const body = (req.body || {}) as Record<string, unknown>;
     if (typeof body.requireClientApproval !== "boolean") {
       return res.status(400).json({ success: false, error: "requireClientApproval (boolean) er påkrevd." });
