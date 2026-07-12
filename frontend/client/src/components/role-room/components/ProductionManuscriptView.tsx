@@ -3619,7 +3619,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
-                  '&:hover': { color: '#8b5cf6', bgcolor: 'rgba(139, 92, 246, 0.15)' },
+                  '&:hover': { color: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139, 92, 246, 0.15)' },
                   '&:disabled': { opacity: 0.4 },
                   p: 1,
                 }}
@@ -4734,7 +4734,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           sx={{
                             color: ttsEnabled ? '#8b5cf6' : '#4b5563',
                             bgcolor: ttsEnabled ? 'rgba(139,92,246,0.1)' : 'transparent',
-                            '&:hover': { color: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.15)' },
+                            '&:hover': { color: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.15)' },
                             p: 0.5,
                           }}
                         >
@@ -4836,7 +4836,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               sx={{
                                 color: ttsUseCharacterVoices ? '#8b5cf6' : '#4b5563',
                                 p: 0.5,
-                                '&:hover': { color: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.15)' },
+                                '&:hover': { color: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.15)' },
                               }}
                             >
                               <TheaterIcon sx={{ fontSize: 14 }} />
@@ -5913,7 +5913,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     color: timelineScope === 'selected-scene' ? '#fff' : '#9ca3af',
                     bgcolor: timelineScope === 'selected-scene' ? 'rgba(139,92,246,0.22)' : 'rgba(255,255,255,0.04)',
                     border: timelineScope === 'selected-scene' ? '1px solid rgba(167,139,250,0.58)' : '1px solid #252d3d',
-                    '&:hover': { bgcolor: 'rgba(139,92,246,0.16)', borderColor: '#8b5cf6' },
+                    '&:hover': { bgcolor: 'rgba(139,92,246,0.16)', borderColor: 'var(--role-violet, #8b5cf6)' },
                     '&:disabled': { color: '#374151', borderColor: '#1e2536' },
                   }}
                 >
@@ -7041,8 +7041,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           border: '1px solid #374151',
                           '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
                           '& .MuiSelect-icon': { color: '#a78bfa' },
-                          '&:hover': { bgcolor: '#2d3748', borderColor: '#8b5cf6' },
-                          '&.Mui-focused': { borderColor: '#8b5cf6' },
+                          '&:hover': { bgcolor: '#2d3748', borderColor: 'var(--role-violet, #8b5cf6)' },
+                          '&.Mui-focused': { borderColor: 'var(--role-violet, #8b5cf6)' },
                         }}
                         MenuProps={{
                           sx: { zIndex: 1400 },
@@ -9589,7 +9589,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AssignmentIcon sx={{ color: '#8b5cf6' }} />
+          <AssignmentIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
           Pre-Production Checklist - Scene {selectedScene?.sceneNumber}
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
@@ -9634,7 +9634,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   { key: 'castConfirmed', label: 'Cast bekreftet tilgjengelig', icon: PeopleIcon, color: '#3b82f6' },
                   { key: 'propsReady', label: 'Rekvisitter klare', icon: TheaterIcon, color: '#f59e0b' },
                   { key: 'equipmentAllocated', label: 'Utstyr tildelt', icon: CameraIcon, color: '#ef4444' },
-                  { key: 'permitsObtained', label: 'Tillatelser innhentet', icon: AssignmentIcon, color: '#8b5cf6' },
+                  { key: 'permitsObtained', label: 'Tillatelser innhentet', icon: AssignmentIcon, color: 'var(--role-violet, #8b5cf6)' },
                   { key: 'scriptLocked', label: 'Manus låst', icon: NoteIcon, color: '#ec4899' },
                 ].map(({ key, label, icon: IconComponent, color }) => (
                   <Box

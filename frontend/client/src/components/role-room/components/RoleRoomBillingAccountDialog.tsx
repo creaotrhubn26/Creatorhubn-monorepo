@@ -1313,7 +1313,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             <Stack spacing={1}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <PeopleIcon sx={{ color: '#8b5cf6', fontSize: 18 }} />
+                <PeopleIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Teamet ditt
                 </Typography>

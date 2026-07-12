@@ -300,7 +300,7 @@ export const RoleNavConfigTab: React.FC = () => {
                       color: '#0b0815',
                       textTransform: 'none',
                       fontWeight: 700,
-                      '&:hover': { bgcolor: '#8b5cf6' },
+                      '&:hover': { bgcolor: 'var(--role-violet, #8b5cf6)' },
                     }}
                   >
                     {updateMut.isPending ? 'Lagrer…' : 'Lagre'}

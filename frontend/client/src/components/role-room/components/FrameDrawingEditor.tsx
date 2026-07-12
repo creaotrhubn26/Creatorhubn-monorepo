@@ -9314,7 +9314,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Brush sx={{ color: '#8b5cf6' }} />
+                <Brush sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                 <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                   {editorTitle}
                 </Typography>
@@ -9330,7 +9330,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 <Chip
                   label={`Frame: ${frameId.slice(-6)}`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: '#8b5cf6' }}
+                  sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: 'var(--role-violet, #8b5cf6)' }}
                 />
               )}
 
@@ -18363,7 +18363,7 @@ export const QuickDrawButton: FC<QuickDrawButtonProps> = ({
             '&:hover': { bgcolor: 'rgba(139,92,246,0.2)' },
           }}
         >
-          <Brush sx={{ color: '#8b5cf6' }} />
+          <Brush sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
         </IconButton>
       </Tooltip>
 

@@ -26,6 +26,7 @@ export function useRoleRoomBrand(): void {
         }
         if (valid(t.portalAccent)) root.style.setProperty('--role-portal-accent', t.portalAccent);
         if (valid(t.cyanAccent)) root.style.setProperty('--role-cyan', t.cyanAccent);
+        if (valid(t.violetAccent)) root.style.setProperty('--role-violet', t.violetAccent);
       })
       .catch(() => {});
     return () => { live = false; };

@@ -331,7 +331,7 @@ ${appName} Sikkerhetsteam`,
 
 const templateTypeConfig: Record<string, { label: string; color: string; icon: ReactNode }> = {
   invitation: { label: 'Invitasjon', color: 'var(--role-cyan, #00d4ff)', icon: <EmailIcon /> },
-  callback: { label: 'Callback', color: '#8b5cf6', icon: <ScheduleIcon /> },
+  callback: { label: 'Callback', color: 'var(--role-violet, #8b5cf6)', icon: <ScheduleIcon /> },
   confirmation: { label: 'Bekreftelse', color: '#10b981', icon: <CheckCircleIcon /> },
   rejection: { label: 'Avslag', color: '#ef4444', icon: <CancelIcon /> },
   reminder: { label: 'Påminnelse', color: '#f59e0b', icon: <CalendarIcon /> },
@@ -884,7 +884,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
       bgcolor: 'rgba(255,255,255,0.03)',
       '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-      '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+      '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
     },
     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
     '& .MuiInputBase-input': { color: '#fff' },
@@ -2263,7 +2263,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                 border: '1px solid rgba(139, 92, 246, 0.3)',
               }}
             >
-              <AdminPanelSettingsIcon sx={{ color: '#8b5cf6', fontSize: iconSize + 4 }} />
+              <AdminPanelSettingsIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: iconSize + 4 }} />
             </Box>
             <Box>
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: fontSize.title }}>
@@ -2301,9 +2301,9 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                 fontWeight: 500,
                 gap: 1,
                 px: spacing,
-                '&.Mui-selected': { color: '#8b5cf6' },
+                '&.Mui-selected': { color: 'var(--role-violet, #8b5cf6)' },
               },
-              '& .MuiTabs-indicator': { bgcolor: '#8b5cf6', height: 3 },
+              '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #8b5cf6)', height: 3 },
             }}
           >
             <Tab label="Brukere" icon={<PeopleIcon sx={{ fontSize: iconSize }} />} iconPosition="start" />
@@ -2325,7 +2325,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                   startIcon={<PersonAddIcon sx={{ fontSize: iconSize }} />}
                   onClick={() => setInviteDialogOpen(true)}
                   sx={{
-                    bgcolor: '#8b5cf6',
+                    bgcolor: 'var(--role-violet, #8b5cf6)',
                     '&:hover': { bgcolor: '#7c3aed' },
                     borderRadius: 2,
                     minHeight: buttonMinHeight,
@@ -2343,7 +2343,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                   sx={{
                     borderColor: 'rgba(255,255,255,0.2)',
                     color: 'rgba(255,255,255,0.8)',
-                    '&:hover': { borderColor: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.1)' },
+                    '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
                     borderRadius: 2,
                     minHeight: buttonMinHeight,
                     fontSize: fontSize.button,
@@ -2356,7 +2356,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
 
               {loading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress sx={{ color: '#8b5cf6' }} />
+                  <CircularProgress sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                 </Box>
               ) : (
                 <TableContainer
@@ -2414,7 +2414,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                               <Tooltip title="Generer nytt passord">
                                 <IconButton
                                   onClick={() => handleResetPassword(admin.id)}
-                                  sx={{ color: '#8b5cf6', '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' }, minWidth: iconButtonSize, minHeight: iconButtonSize }}
+                                  sx={{ color: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' }, minWidth: iconButtonSize, minHeight: iconButtonSize }}
                                 >
                                   <VpnKeyIcon sx={{ fontSize: iconSize }} />
                                 </IconButton>
@@ -2463,7 +2463,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                         color: '#fff',
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
                         '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
-                        '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+                        '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
                       }}
                     >
                       {roleRoomEmailTemplates.map((template) => (
@@ -2511,7 +2511,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                       variant="contained"
                       startIcon={<SaveIcon />}
                       onClick={handleSaveRoleRoomEmailMeta}
-                      sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight }}
+                      sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight }}
                     >
                       Lagre
                     </Button>
@@ -2932,7 +2932,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                   startIcon={<SaveIcon sx={{ fontSize: iconSize }} />}
                   onClick={handleBrandingSave}
                   sx={{
-                    bgcolor: '#8b5cf6',
+                    bgcolor: 'var(--role-violet, #8b5cf6)',
                     '&:hover': { bgcolor: '#7c3aed' },
                     borderRadius: 2,
                     minHeight: buttonMinHeight,
@@ -2948,7 +2948,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                   sx={{
                     borderColor: 'rgba(255,255,255,0.2)',
                     color: 'rgba(255,255,255,0.8)',
-                    '&:hover': { borderColor: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.1)' },
+                    '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
                     borderRadius: 2,
                     minHeight: buttonMinHeight,
                     fontSize: fontSize.button,
@@ -3208,7 +3208,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                   fontSize: fontSize.body,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#8b5cf6' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-violet, #8b5cf6)' },
                   '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               >
@@ -3230,7 +3230,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
           <Button
             variant="contained"
             onClick={handleInviteAdmin}
-            sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight, fontSize: fontSize.button }}
+            sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight, fontSize: fontSize.button }}
           >
             Opprett
           </Button>
@@ -3272,7 +3272,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
             <IconButton
               onClick={() => copyToClipboard(generatedPassword)}
               aria-label="Kopier passord"
-              sx={{ color: '#8b5cf6', minWidth: iconButtonSize, minHeight: iconButtonSize }}
+              sx={{ color: 'var(--role-violet, #8b5cf6)', minWidth: iconButtonSize, minHeight: iconButtonSize }}
             >
               <CopyIcon sx={{ fontSize: iconSize }} />
             </IconButton>
@@ -3282,7 +3282,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
           <Button
             variant="contained"
             onClick={() => setShowPasswordDialog(false)}
-            sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight, fontSize: fontSize.button }}
+            sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' }, minHeight: buttonMinHeight, fontSize: fontSize.button }}
           >
             Lukk
           </Button>

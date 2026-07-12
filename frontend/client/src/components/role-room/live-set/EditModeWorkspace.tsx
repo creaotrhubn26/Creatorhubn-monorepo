@@ -522,7 +522,7 @@ export const EditModeWorkspace: React.FC<EditModeWorkspaceProps> = ({ projectId,
               fontSize: 11,
               fontWeight: 700,
               letterSpacing: 0.5,
-              '&:hover': { borderColor: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.1)' },
+              '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
             }}
           >
             {generating ? 'GENERERER...' : 'GENERER DRAFT'}

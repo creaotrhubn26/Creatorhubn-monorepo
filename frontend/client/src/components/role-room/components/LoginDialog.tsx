@@ -1188,7 +1188,7 @@ function DanceInvitePasteEntry(): React.ReactElement {
         variant="contained"
         onClick={submit}
         sx={{
-          bgcolor: '#8b5cf6',
+          bgcolor: 'var(--role-violet, #8b5cf6)',
           '&:hover': { bgcolor: '#4c1d95' },
           textTransform: 'none',
           fontWeight: 600,

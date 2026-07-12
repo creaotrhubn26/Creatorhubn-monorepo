@@ -115,7 +115,7 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
   conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
   rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
   climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
-  falling_action: { color: '#8b5cf6', label: 'Fallende handling', Icon: FallingActionIcon },
+  falling_action: { color: 'var(--role-violet, #8b5cf6)', label: 'Fallende handling', Icon: FallingActionIcon },
   resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
   transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
   character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
@@ -821,7 +821,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
               height: 16,
               borderRadius: 2,
               bgcolor: 'rgba(139,92,246,0.2)',
-              '& .MuiLinearProgress-bar': { bgcolor: '#8b5cf6' },
+              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #8b5cf6)' },
             }}
           />
         </Box>

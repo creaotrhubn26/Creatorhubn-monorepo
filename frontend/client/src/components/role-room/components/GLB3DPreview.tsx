@@ -15,7 +15,7 @@ export interface PersonalityTrait {
 export const PERSONALITY_TRAITS: Record<string, PersonalityTrait> = {
   calm: { id: 'calm', name: 'Rolig', breathingSpeed: 0.3, swayAmount: 0.02, color: '#4a90d9' },
   energetic: { id: 'energetic', name: 'Energisk', breathingSpeed: 0.8, swayAmount: 0.05, color: '#ff6b35' },
-  mysterious: { id: 'mysterious', name: 'Mystisk', breathingSpeed: 0.4, swayAmount: 0.03, color: '#8b5cf6' },
+  mysterious: { id: 'mysterious', name: 'Mystisk', breathingSpeed: 0.4, swayAmount: 0.03, color: 'var(--role-violet, #8b5cf6)' },
   wise: { id: 'wise', name: 'Vis', breathingSpeed: 0.25, swayAmount: 0.015, color: '#10b981' },
 };
 

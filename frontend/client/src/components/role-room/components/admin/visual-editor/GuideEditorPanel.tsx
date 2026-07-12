@@ -1115,7 +1115,7 @@ export function GuideEditorPanel() {
           flexWrap: 'wrap',
         }}
       >
-        <GuideBookIcon sx={{ color: '#8b5cf6', fontSize: 18 }} />
+        <GuideBookIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 18 }} />
         <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.85rem', color: 'rgba(255,255,255,0.87)', flex: 1 }}>
           Guide-editor
         </Typography>
@@ -1189,7 +1189,7 @@ export function GuideEditorPanel() {
           startIcon={<SaveIcon sx={{ fontSize: 14 }} />}
           onClick={handleSave}
           sx={{
-            bgcolor: '#8b5cf6',
+            bgcolor: 'var(--role-violet, #8b5cf6)',
             '&:hover': { bgcolor: '#7c3aed' },
             textTransform: 'none',
             fontWeight: 700,
@@ -1438,7 +1438,7 @@ export function GuideEditorPanel() {
         PaperProps={{ sx: { bgcolor: '#12121e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 } }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <ImportIcon sx={{ color: '#8b5cf6', fontSize: 18 }} />
+          <ImportIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 18 }} />
           <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 700, fontSize: '0.9rem' }}>Importer guide-konfigurasjon</Typography>
           <IconButton size="small" onClick={() => setImportOpen(false)} aria-label="Lukk importdialog" sx={{ color: 'rgba(255,255,255,0.4)' }}>
             <CloseIcon sx={{ fontSize: 16 }} />
@@ -1468,7 +1468,7 @@ export function GuideEditorPanel() {
             variant="contained"
             disabled={!importText.trim()}
             onClick={handleImportConfirm}
-            sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 600 }}
+            sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 600 }}
           >
             Importer
           </Button>

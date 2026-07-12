@@ -3779,7 +3779,7 @@ function AuditionSchedulePanelInner({
                           size="small"
                           sx={{
                             bgcolor: 'rgba(139,92,246,0.15)',
-                            color: '#8b5cf6',
+                            color: 'var(--role-violet, #8b5cf6)',
                             height: { xs: 24, md: 28 },
                             fontSize: { xs: '0.7rem', md: '0.75rem' },
                           }}

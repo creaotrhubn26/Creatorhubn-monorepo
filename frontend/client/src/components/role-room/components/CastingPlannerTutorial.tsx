@@ -84,7 +84,7 @@ const rectsOverlap = (
 );
 
 const panelInfo = [
-  { name: 'Oversikt', icon: DashboardIcon, color: '#8b5cf6' },
+  { name: 'Oversikt', icon: DashboardIcon, color: 'var(--role-violet, #8b5cf6)' },
   { name: 'Role Room Studio', icon: ShotListIcon, color: '#ec4899' },
   { name: 'Roller', icon: RolesIcon, color: '#f48fb1' },
   { name: 'Kandidater', icon: CandidatesIcon, color: '#10b981' },
@@ -104,7 +104,7 @@ const panelInfo = [
 
 const stepIndicatorMeta: Record<string, { label: string; subtitle: string; icon: IconComponentType; color?: string }> = {
   'welcome': { label: 'Start', subtitle: 'Introduksjon', icon: TutorialIcon, color: '#e91e63' },
-  'overview': { label: 'Oversikt', subtitle: 'Status', icon: DashboardIcon, color: '#8b5cf6' },
+  'overview': { label: 'Oversikt', subtitle: 'Status', icon: DashboardIcon, color: 'var(--role-violet, #8b5cf6)' },
   'studio': { label: 'Role Room Studio', subtitle: 'Pre-produksjon', icon: ShotListIcon, color: '#ec4899' },
   'roles': { label: 'Roller', subtitle: 'Casting', icon: RolesIcon, color: '#f48fb1' },
   'candidates': { label: 'Kandidater', subtitle: 'Casting', icon: CandidatesIcon, color: '#10b981' },

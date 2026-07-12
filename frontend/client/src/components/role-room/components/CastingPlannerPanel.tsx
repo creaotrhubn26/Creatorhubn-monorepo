@@ -975,7 +975,7 @@ export function CastingPlannerPanel({
     },
     videographer: {
       name: branding.tokens.labels.professionVideographerName,
-      color: '#8b5cf6',
+      color: 'var(--role-violet, #8b5cf6)',
       icon: VideocamIcon,
       terminology: {
         project: branding.tokens.labels.termVideoProject,
@@ -9224,7 +9224,7 @@ type RoleRoomProjectWorkspaceState = {
                         aria-label={branding.tokens.labels.manageUsersLabel}
                         title={branding.tokens.labels.manageUsersLabel}
                         sx={{
-                          color: '#8b5cf6',
+                          color: 'var(--role-violet, #8b5cf6)',
                           width: safeHeaderActionButtonSizePx,
                           height: safeHeaderActionButtonSizePx,
                           p: 0,
@@ -9273,7 +9273,7 @@ type RoleRoomProjectWorkspaceState = {
               aria-label={branding.tokens.labels.loginLabel}
               title={branding.tokens.labels.loginLabel}
               sx={{
-                color: '#8b5cf6',
+                color: 'var(--role-violet, #8b5cf6)',
                 flexShrink: 0,
                 width: safeHeaderActionButtonSizePx,
                 height: safeHeaderActionButtonSizePx,
@@ -10008,7 +10008,7 @@ type RoleRoomProjectWorkspaceState = {
           ) : null}
           {projectsLoading ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-              <CircularProgress size={40} sx={{ color: '#8b5cf6' }} />
+              <CircularProgress size={40} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
               <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
                 {branding.tokens.labels.loadingLabel || 'Loading...'}
               </Typography>
@@ -13009,7 +13009,7 @@ type RoleRoomProjectWorkspaceState = {
                   {branding.tokens.labels.storyArcBackLabel}
                 </Button>
                 <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-                <StoryLogicIcon sx={{ color: '#8b5cf6' }} />
+                <StoryLogicIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff' }}>
                   {branding.tokens.labels.storyLogicHeader}
                 </Typography>

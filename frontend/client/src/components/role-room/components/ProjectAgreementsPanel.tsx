@@ -2040,7 +2040,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 variant="contained"
                 startIcon={<DescriptionIcon />}
                 onClick={openClientAgreementDialog}
-                sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#8b5cf6' }}
+                sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-violet, #8b5cf6)' }}
               >
                 Ny klientavtale
               </Button>
@@ -3215,7 +3215,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           mb: 2,
           '& .MuiTab-root': { color: 'rgba(255,255,255,0.78)', textTransform: 'none', fontWeight: 700 },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { bgcolor: '#8b5cf6' },
+          '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #8b5cf6)' },
         }}
       >
         <Tab label="Casting og rollekontrakter" />
@@ -3547,7 +3547,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             onClick={() => { void createAgreement('client', clientDraft, clientPreviewSections); }}
             startIcon={submitting ? <DescriptionIcon /> : <AddIcon />}
             disabled={submitting || !clientDraft.title.trim() || !clientDraft.disclosingPartyName.trim() || !clientDraft.counterpartyName.trim() || !clientDraft.purpose.trim()}
-            sx={{ bgcolor: '#8b5cf6' }}
+            sx={{ bgcolor: 'var(--role-violet, #8b5cf6)' }}
           >
             {`Opprett ${clientTemplateConfig.shortLabel.toLowerCase()}`}
           </Button>

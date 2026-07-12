@@ -107,7 +107,7 @@ const EVENT_TYPES = [
   { value: 'audition', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
   { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
   { value: 'fitting', label: 'Kostyme/Fitting', icon: <CheckroomIcon />, color: '#ec4899' },
-  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: '#8b5cf6' },
+  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: 'var(--role-violet, #8b5cf6)' },
   { value: 'shooting', label: 'Opptak', icon: <MovieIcon />, color: '#10b981' },
   { value: 'general', label: 'Generelt', icon: <EventIcon />, color: '#6b7280' },
 ];
@@ -1044,7 +1044,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
               selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
               fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-              rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+              rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
               shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
               general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
             }}
@@ -1065,7 +1065,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
             selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
             fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-            rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+            rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
             shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
             general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
           }}
@@ -1189,7 +1189,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
 
                         {eventCandidates.length > 0 && (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <PersonIcon sx={{ fontSize: 14, color: '#8b5cf6' }} />
+                            <PersonIcon sx={{ fontSize: 14, color: 'var(--role-violet, #8b5cf6)' }} />
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                               {eventCandidates.map(c => c.name).join(', ')}
                             </Typography>
