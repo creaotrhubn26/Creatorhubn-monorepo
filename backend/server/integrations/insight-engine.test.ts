@@ -71,6 +71,46 @@ describe("geo-sov-change-detektoren (min-utvalg-vakter)", () => {
   });
 });
 
+describe("new-discovered-competitor (stoppliste)", () => {
+  const detector = INSIGHT_DETECTORS.find((d) => d.detectorKey === "new-discovered-competitor")!;
+
+  function poolWith(rows: unknown[]) {
+    return { query: vi.fn(async () => ({ rows, rowCount: rows.length })) } as unknown as import("pg").Pool;
+  }
+
+  const base = {
+    set_name: "CreatorHub — fotografer og videografer",
+    run_id: "run-1",
+    target_brand: "CreatorHub",
+    competitor_brands: ["Studio Ninja"],
+    mentions: 5,
+  };
+
+  it("filtrerer generiske verktøy men beholder kategorispesifikke merker", async () => {
+    const out = await detector.run(
+      poolWith([
+        { ...base, brand: "Notion" },
+        { ...base, brand: "Dropbox" },
+        { ...base, brand: "Fiken" },
+      ]),
+      "org-1",
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].title).toContain("Fiken");
+  });
+
+  it("stopplisten er case-ufølsom og hopper over kjente konkurrenter", async () => {
+    const out = await detector.run(
+      poolWith([
+        { ...base, brand: "TRELLO" },
+        { ...base, brand: "studio ninja" },
+      ]),
+      "org-1",
+    );
+    expect(out).toEqual([]);
+  });
+});
+
 describe("runInsightDetectors", () => {
   it("én detektor-feil velter ikke motoren — rapporteres i errors", async () => {
     let call = 0;
