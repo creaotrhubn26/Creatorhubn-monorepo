@@ -26,6 +26,7 @@ const FIELDS: { key: string; label: string; type: 'color' | 'text' }[] = [
   { key: 'accentDark', label: 'Aksent (mørk)', type: 'color' },
   { key: 'bgSoft', label: 'Myk bakgrunn', type: 'color' },
   { key: 'text', label: 'Tekstfarge', type: 'color' },
+  { key: 'landingAccent', label: 'Landingsside-aksent', type: 'color' },
   { key: 'fontFamily', label: 'Font-family', type: 'text' },
 ];
 

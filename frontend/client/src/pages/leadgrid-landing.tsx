@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useLandingAccent } from '@/hooks/useLandingAccent';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
@@ -63,7 +64,9 @@ const PALETTE = {
   bgAlt: '#13082b',
   card: 'rgba(167, 139, 250, 0.06)',
   cardBorder: 'rgba(167, 139, 250, 0.18)',
-  accent: '#A78BFA',
+  // CreatorHub Design (landing-tokens): CSS-var-drevet fra design-tokens (ws=leadgrid,
+  // nøkkel landingAccent). Literal-fallback = identisk (uavhengig av konnektor-blåen).
+  accent: 'var(--lgl-accent, #A78BFA)',
   accentBright: '#C084FC',
   text: '#F4F0FF',
   textMuted: 'rgba(244, 240, 255, 0.72)',
@@ -169,6 +172,7 @@ function injectJsonLd(id: string, schema: Record<string, unknown>) {
 // ────────────────────────────────────────────────────────────
 
 export default function LeadgridLanding() {
+  useLandingAccent('leadgrid', '--lgl-accent'); // CreatorHub Design: token-drevet landing-aksent
   const [expStartOpen, setExpStartOpen] = useState(false);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
