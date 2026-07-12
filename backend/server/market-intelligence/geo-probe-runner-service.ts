@@ -19,6 +19,7 @@
 
 import type { Pool } from "pg";
 import { getGeoProbeEngines, type GeoEngineId } from "./geo-probe-engines.js";
+import { extractDiscoveredBrands } from "./geo-brand-extraction.js";
 import { getPromptSet, type GeoPrompt, type GeoPromptSet } from "./geo-prompt-set-service.js";
 import { insertNormalizedSignals } from "../integrations/normalized-signal-store.js";
 import type { NormalizedSignal } from "../integrations/normalized-signal-schema.js";
@@ -282,18 +283,20 @@ export async function runProbe(
         const urls = extractUrls(answer);
         const targetMention = mentioned.find((m) => m.name === promptSet.targetBrand);
         const targetCited = citesDomain(urls, promptSet.targetDomain);
+        // Merkevare-discovery: hvem nevnes UTOVER de kjente? Best-effort.
+        const discovered = await extractDiscoveredBrands(answer, allBrands);
 
         await pool.query(
           `INSERT INTO geo_probe_results (
              run_id, prompt_id, engine, mentioned_brands, cited_urls,
-             target_mentioned, target_rank, answer_excerpt
-           ) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
+             target_mentioned, target_rank, answer_excerpt, discovered_brands
+           ) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9::jsonb)
            ON CONFLICT (run_id, prompt_id, engine) DO NOTHING`,
           [
             runId, prompt.id, engine.engineId,
             JSON.stringify(mentioned), JSON.stringify(urls),
             Boolean(targetMention), targetMention?.rank ?? null,
-            answer.slice(0, 500),
+            answer.slice(0, 500), JSON.stringify(discovered),
           ],
         );
         forAggregation.push({
@@ -378,6 +381,8 @@ export interface GeoVisibilityReport {
   engineBreakdown: Array<{ engine: GeoEngineId; answers: number; targetMentioned: number }>;
   /** Trend: target share-of-voice per kjøring (eldste → nyeste). */
   trend: Array<{ runId: string; startedAt: string; targetSharePercent: number }>;
+  /** Merker AI-en nevner UTOVER de kjente (siste kjøring, topp 10). */
+  discoveredBrands: Array<{ brand: string; mentions: number }>;
 }
 
 export async function computeReport(
@@ -411,7 +416,7 @@ export async function computeReport(
         competitorBrands: promptSet.competitorBrands, region: promptSet.region,
         status: promptSet.status,
       },
-      latestRun: null, brandShare: [], missingTopics: [], engineBreakdown: [], trend: [],
+      latestRun: null, brandShare: [], missingTopics: [], engineBreakdown: [], trend: [], discoveredBrands: [],
     };
   }
 
@@ -421,11 +426,27 @@ export async function computeReport(
     engine: GeoEngineId;
     mentioned_brands: BrandMention[];
     target_mentioned: boolean;
+    discovered_brands: string[] | null;
   }>(
-    `SELECT prompt_id::text, engine, mentioned_brands, target_mentioned
+    `SELECT prompt_id::text, engine, mentioned_brands, target_mentioned,
+            discovered_brands
        FROM geo_probe_results WHERE run_id = $1::uuid`,
     [latest.id],
   );
+
+  // Discovery-aggregering: hvem nevnes utover de kjente merkene
+  const discoveredCounts = new Map<string, { brand: string; mentions: number }>();
+  for (const r of results.rows) {
+    for (const brand of r.discovered_brands ?? []) {
+      const key = brand.toLowerCase();
+      const entry = discoveredCounts.get(key) ?? { brand, mentions: 0 };
+      entry.mentions++;
+      discoveredCounts.set(key, entry);
+    }
+  }
+  const discoveredBrands = [...discoveredCounts.values()]
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, 10);
 
   const allBrands = [promptSet.targetBrand, ...promptSet.competitorBrands];
   const totalMentions = results.rows.reduce(
@@ -496,5 +517,6 @@ export async function computeReport(
     missingTopics,
     engineBreakdown,
     trend,
+    discoveredBrands,
   };
 }

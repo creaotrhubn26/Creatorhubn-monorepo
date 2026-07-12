@@ -58,6 +58,7 @@ interface GeoReport {
   missingTopics: Array<{ topic: string; prompts: number }>;
   engineBreakdown: Array<{ engine: string; answers: number; targetMentioned: number }>;
   trend: Array<{ runId: string; startedAt: string; targetSharePercent: number }>;
+  discoveredBrands?: Array<{ brand: string; mentions: number }>;
 }
 
 function authHeaders(): Record<string, string> {
@@ -344,6 +345,27 @@ export default function GeoVisibilityPanel() {
                             ))}
                           </Stack>
                         </Box>
+
+                        {(report.discoveredBrands?.length ?? 0) > 0 && (
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                              Andre merker AI-en nevner (utover konkurrentlisten)
+                            </Typography>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                              {report.discoveredBrands!.map((d) => (
+                                <Chip
+                                  key={d.brand}
+                                  size="small"
+                                  variant="outlined"
+                                  label={`${d.brand} (${d.mentions})`}
+                                />
+                              ))}
+                            </Stack>
+                            <Typography variant="caption" color="text.secondary">
+                              LLM-ekstrahert (best-effort) — kandidater til konkurrentlisten din.
+                            </Typography>
+                          </Box>
+                        )}
 
                         {report.missingTopics.length > 0 && (
                           <Alert severity="warning">
