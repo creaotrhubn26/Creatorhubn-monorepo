@@ -450,7 +450,7 @@ export default function RoleRoomFeedPlannerPanel({
           textAlign: 'center',
         }}
       >
-        <AutoAwesomeIcon sx={{ color: '#22d3ee', fontSize: 40 }} />
+        <AutoAwesomeIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 40 }} />
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1.05rem' }}>
           Analyser kunden først
         </Typography>
@@ -653,7 +653,7 @@ export default function RoleRoomFeedPlannerPanel({
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              color: '#22d3ee',
+              color: 'var(--role-cyan, #22d3ee)',
               '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
             }}
           >
@@ -704,7 +704,7 @@ export default function RoleRoomFeedPlannerPanel({
           bgcolor: 'rgba(34,211,238,0.06)',
           color: 'rgba(226,232,240,0.84)',
           border: '1px solid rgba(34,211,238,0.18)',
-          '& .MuiAlert-icon': { color: '#22d3ee' },
+          '& .MuiAlert-icon': { color: 'var(--role-cyan, #22d3ee)' },
         }}
       >
         Klikk på en post for å redigere, hente bilde fra Google Drive eller be AI om caption og publiseringstidspunkt. Dra for å endre rekkefølge.
@@ -866,7 +866,7 @@ function SaveStatusBadge({
   }
   if (saving) {
     return (
-      <Typography sx={{ color: '#22d3ee', fontSize: '0.74rem', fontWeight: 700 }}>
+      <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '0.74rem', fontWeight: 700 }}>
         Lagrer…
       </Typography>
     );
@@ -963,7 +963,7 @@ function BrandSummaryStrip({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#22d3ee',
+              color: 'var(--role-cyan, #22d3ee)',
               fontWeight: 800,
             }}
           >

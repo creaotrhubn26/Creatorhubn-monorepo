@@ -556,7 +556,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {config.relatedStudies && config.relatedStudies.length > 0 ? (
           <Box>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-              <SchoolIcon sx={{ color: '#22d3ee' }} />
+              <SchoolIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
               <Typography
                 component="h2"
                 sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.8rem' } }}
@@ -590,7 +590,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     bgcolor: 'rgba(2,6,23,0.34)',
                   }}
                 >
-                  <MovieFilterIcon sx={{ color: '#22d3ee', mt: 0.3, fontSize: 20 }} />
+                  <MovieFilterIcon sx={{ color: 'var(--role-cyan, #22d3ee)', mt: 0.3, fontSize: 20 }} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.95rem' }}>
                       {study.name}

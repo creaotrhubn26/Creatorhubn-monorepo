@@ -30,7 +30,7 @@ export default function ClientApprovalView({ projectId }: { projectId: string })
       <Suspense
         fallback={
           <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-            <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+            <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
           </Stack>
         }
       >

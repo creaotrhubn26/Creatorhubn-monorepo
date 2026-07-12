@@ -541,7 +541,7 @@ const STEPS: Step[] = [
                 { role: 'Casting Director', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#f59e0b' },
                 { role: 'Producer', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#10b981' },
                 { role: 'Admin', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#8b5cf6' },
-                { role: 'Agent', cols: 'All 5', add: '✓', move: '—', bulk: '—', event: '—', color: '#00d4ff' },
+                { role: 'Agent', cols: 'All 5', add: '✓', move: '—', bulk: '—', event: '—', color: 'var(--role-cyan, #00d4ff)' },
                 { role: 'Director', cols: 'Shortlist → Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#3b82f6' },
                 { role: 'Talent', cols: 'Pending → Confirmed + Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#ec4899' },
                 { role: 'Photographer', cols: 'Selected + Confirmed', add: '—', move: '—', bulk: '—', event: '—', color: '#f97316' },

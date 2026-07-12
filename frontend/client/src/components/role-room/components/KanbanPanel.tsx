@@ -281,7 +281,7 @@ interface KanbanColumn {
 
 const KANBAN_COLUMNS: KanbanColumn[] = [
   { status: 'pending',   label: 'Ingen status', color: '#6b7280' },
-  { status: 'requested', label: 'Forespurt',    color: '#00d4ff' },
+  { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)' },
   { status: 'shortlist', label: 'Vurderes',     color: '#ffb800' },
   { status: 'selected',  label: 'Valgt',        color: '#8b5cf6' },
   { status: 'confirmed', label: 'Bekreftet',    color: '#10b981' },
@@ -1405,7 +1405,7 @@ function KanbanPanelInner({
                                   size="small"
                                   sx={{
                                     bgcolor: 'rgba(0,212,255,0.15)',
-                                    color: '#00d4ff',
+                                    color: 'var(--role-cyan, #00d4ff)',
                                     fontSize: { xs: '9px', sm: '10px', md: '9.5px', lg: '11px', xl: '13px' },
                                     height: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 },
                                     maxWidth: { xs: 90, sm: 100, md: 95, lg: 110, xl: 130 },

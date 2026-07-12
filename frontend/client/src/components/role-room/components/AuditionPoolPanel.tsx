@@ -96,7 +96,7 @@ export const AuditionPoolPanel: FC<AuditionPoolPanelProps> = ({
       case 'callback': return '#8b5cf6';
       case 'førstegangs': return '#10b981';
       case 'kjemi-test': return '#ec4899';
-      default: return '#00d4ff';
+      default: return 'var(--role-cyan, #00d4ff)';
     }
   };
 
@@ -291,7 +291,7 @@ export const AuditionPoolPanel: FC<AuditionPoolPanelProps> = ({
                           height: 20,
                           fontSize: '0.7rem',
                           bgcolor: 'rgba(0,212,255,0.2)',
-                          color: '#00d4ff',
+                          color: 'var(--role-cyan, #00d4ff)',
                         }}
                       />
                     ))}

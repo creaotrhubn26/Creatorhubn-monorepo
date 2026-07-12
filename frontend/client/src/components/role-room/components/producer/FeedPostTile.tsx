@@ -32,7 +32,7 @@ function buildGradient(
   accentColor: string | null | undefined,
 ): string {
   const base = backgroundColor || '#0f172a';
-  const accent = accentColor || '#22d3ee';
+  const accent = accentColor || 'var(--role-cyan, #22d3ee)';
   return `linear-gradient(135deg, ${base} 0%, ${mixHex(base, accent, 0.3)} 55%, ${accent} 100%)`;
 }
 
@@ -278,8 +278,8 @@ export default function FeedPostTile({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              bgcolor: post.accentColor || '#22d3ee',
-              boxShadow: `0 0 8px ${post.accentColor || '#22d3ee'}`,
+              bgcolor: post.accentColor || 'var(--role-cyan, #22d3ee)',
+              boxShadow: `0 0 8px ${post.accentColor || 'var(--role-cyan, #22d3ee)'}`,
             }}
           />
           <Typography

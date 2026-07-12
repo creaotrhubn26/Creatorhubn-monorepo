@@ -885,6 +885,12 @@ export default function CastingStandaloneApp() {
         if (typeof portal === 'string' && /^#[0-9a-fA-F]{6}$/.test(portal)) {
           root.style.setProperty('--role-portal-accent', portal);
         }
+        // Cyan-aksent (dominerende cyan-familie i casting-planner/producer-flatene). Ingen override →
+        // --role-cyan uset → hver forekomst faller til sin egen literal (#00d4ff/#22d3ee/#7dd3fc) → identisk.
+        const cyan = d.tokens.cyanAccent;
+        if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
+          root.style.setProperty('--role-cyan', cyan);
+        }
       })
       .catch(() => {});
     return () => { live = false; };

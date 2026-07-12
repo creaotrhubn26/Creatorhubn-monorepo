@@ -578,7 +578,7 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
             onClick={() => onJumpToFormation?.(formationFrom.id)}
             sx={{
               height: 20, fontSize: 9.5, cursor: 'pointer',
-              bgcolor: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)',
+              bgcolor: 'rgba(6,182,212,0.15)', color: 'var(--role-cyan, #22d3ee)', border: '1px solid rgba(6,182,212,0.4)',
               '&:hover': { bgcolor: 'rgba(6,182,212,0.25)' },
             }}
           />

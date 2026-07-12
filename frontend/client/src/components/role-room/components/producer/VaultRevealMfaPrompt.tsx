@@ -134,7 +134,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
       PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-        <ShieldIcon sx={{ color: '#22d3ee' }} />
+        <ShieldIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Stack spacing={0.2}>
           <Typography sx={{ fontWeight: 800 }}>
             Bekreft for å se passord
@@ -160,8 +160,8 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
               mb: 1.8,
               borderBottom: '1px solid rgba(148,163,184,0.2)',
               '& .MuiTab-root': { color: 'rgba(226,232,240,0.6)', textTransform: 'none', minHeight: 36 },
-              '& .MuiTab-root.Mui-selected': { color: '#22d3ee' },
-              '& .MuiTabs-indicator': { bgcolor: '#22d3ee' },
+              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
+              '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
             }}
           >
             <Tab value="totp" label="Authenticator-app" icon={<ShieldIcon fontSize="small" />} iconPosition="start" />
@@ -201,10 +201,10 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
                 variant="outlined"
                 sx={{
                   textTransform: 'none',
-                  color: '#22d3ee',
+                  color: 'var(--role-cyan, #22d3ee)',
                   borderColor: 'rgba(34,211,238,0.4)',
                   alignSelf: 'flex-start',
-                  '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                  '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
                 }}
               >
                 {sendingEmail ? 'Sender…' : 'Send kode på e-post'}
@@ -264,7 +264,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: '#22d3ee',
+            bgcolor: 'var(--role-cyan, #22d3ee)',
             color: '#0b1226',
             '&:hover': { bgcolor: '#06b6d4' },
           }}

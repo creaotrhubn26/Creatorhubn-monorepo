@@ -74,7 +74,7 @@ interface TabSpec {
 const ALL_TABS: TabSpec[] = [
   { value: 'roles', label: 'Roller', Icon: TheaterIcon, color: '#f48fb1' },
   { value: 'candidates', label: 'Kandidater', Icon: PersonIcon, color: '#10b981' },
-  { value: 'crew', label: 'Crew', Icon: GroupIcon, color: '#00d4ff' },
+  { value: 'crew', label: 'Crew', Icon: GroupIcon, color: 'var(--role-cyan, #00d4ff)' },
   { value: 'schedule', label: 'Tidsplan', Icon: CalendarIcon, color: '#9c27b0' },
   { value: 'publishing', label: 'Publisering', Icon: YouTubeIcon, color: '#ff0000' },
   { value: 'carousel', label: 'Ukescontent', Icon: EditIcon, color: '#84cc16' },

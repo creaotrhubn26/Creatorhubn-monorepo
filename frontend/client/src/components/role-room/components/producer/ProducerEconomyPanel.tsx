@@ -326,7 +326,7 @@ export default function ProducerEconomyPanel({
         </Stack>
         <Stack direction="row" spacing={1} flexWrap="wrap">
           <Chip size="small" label={`Estimert ${Math.round(totals.estimate)} NOK`} sx={{ bgcolor: 'rgba(52,211,153,0.16)', color: '#86efac' }} />
-          <Chip size="small" label={`Godkjent ${Math.round(totals.approved)} NOK`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#7dd3fc' }} />
+          <Chip size="small" label={`Godkjent ${Math.round(totals.approved)} NOK`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'var(--role-cyan, #7dd3fc)' }} />
           <Chip size="small" label={`Faktisk ${Math.round(totals.actual)} NOK`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />
           <Chip
             size="small"

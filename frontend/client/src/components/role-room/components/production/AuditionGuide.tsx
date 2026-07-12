@@ -987,7 +987,7 @@ const STEPS_EN: Step[] = [
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
               {[
                 { label: 'Total', color: '#ffb800' },
-                { label: 'Upcoming', color: '#00d4ff' },
+                { label: 'Upcoming', color: 'var(--role-cyan, #00d4ff)' },
                 { label: 'Scheduled', color: '#94a3b8' },
                 { label: 'Completed', color: '#10b981' },
                 { label: 'Cancelled', color: '#ef4444' },

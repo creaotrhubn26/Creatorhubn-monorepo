@@ -168,7 +168,7 @@ export default function LinkedInConnectionCard({
               width: 38,
               height: 38,
               bgcolor: 'rgba(10,102,194,0.18)',
-              color: '#7dd3fc',
+              color: 'var(--role-cyan, #7dd3fc)',
               fontSize: '0.95rem',
               fontWeight: 700,
               border: '1px solid rgba(10,102,194,0.4)',

@@ -193,8 +193,8 @@ export function ProductionDashboard({
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 120 }}>
           <Card sx={{ bgcolor: 'rgba(0, 212, 255, 0.1)', border: '1px solid rgba(0, 212, 255, 0.3)' }}>
             <CardContent sx={{ textAlign: 'center', py: 2 }}>
-              <VideocamIcon sx={{ fontSize: 32, color: '#00d4ff', mb: 1 }} />
-              <Typography variant="h4" sx={{ color: '#00d4ff', fontWeight: 700 }}>
+              <VideocamIcon sx={{ fontSize: 32, color: 'var(--role-cyan, #00d4ff)', mb: 1 }} />
+              <Typography variant="h4" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700 }}>
                 {project.shotLists.reduce((sum, sl) => sum + sl.shots.length, 0)}
               </Typography>
               <Typography variant="caption" color="text.secondary">

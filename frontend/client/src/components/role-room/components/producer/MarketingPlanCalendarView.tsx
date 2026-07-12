@@ -22,7 +22,7 @@ interface Props {
 const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
-  image: '#22d3ee',
+  image: 'var(--role-cyan, #22d3ee)',
   story: '#a855f7',
   tiktok: '#ec4899',
   linkedin_post: '#3b82f6',

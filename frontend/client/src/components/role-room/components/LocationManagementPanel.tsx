@@ -174,7 +174,7 @@ const ROLE_ROOM_COLORS = {
   accentStrong: '#9333ea',
   accentSoft: 'rgba(168,85,247,0.18)',
   accentBorder: 'rgba(168,85,247,0.4)',
-  secondary: '#22d3ee',
+  secondary: 'var(--role-cyan, #22d3ee)',
   secondarySoft: 'rgba(34,211,238,0.18)',
   mutedText: 'rgba(255,255,255,0.74)',
   panel: 'rgba(20,16,46,0.72)',
@@ -182,7 +182,7 @@ const ROLE_ROOM_COLORS = {
 };
 
 const LOCATION_PRO_VIEWS_NAMESPACE = 'roleRoom_locationProViews';
-const APPROVED_ANNOTATION_COLORS = new Set(['#a855f7', '#22d3ee', '#34d399', '#f59e0b', '#ef4444', '#c084fc', '#8b5cf6']);
+const APPROVED_ANNOTATION_COLORS = new Set(['#a855f7', 'var(--role-cyan, #22d3ee)', '#34d399', '#f59e0b', '#ef4444', '#c084fc', '#8b5cf6']);
 
 const PRO_PRESET_LABELS: Record<ProPresetId, string> = {
   all: 'Alle',
@@ -974,7 +974,7 @@ export function LocationManagementPanel({
     const colors: Record<NonNullable<Location['type']>, string> = {
       studio: '#c084fc',
       outdoor: '#34d399',
-      indoor: '#22d3ee',
+      indoor: 'var(--role-cyan, #22d3ee)',
       virtual: '#a855f7',
       other: '#94a3b8',
     };
@@ -3974,7 +3974,7 @@ export function LocationManagementPanel({
               { key: 'permit_missing', label: 'Mangler tillatelse', value: operationalStats.permitMissing, color: '#fbbf24' },
               { key: 'high_risk', label: 'Høy risiko', value: operationalStats.highRisk, color: '#f87171' },
               { key: 'over_budget', label: 'Over budsjett', value: operationalStats.overBudget, color: '#fb7185' },
-              { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: '#22d3ee' },
+              { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: 'var(--role-cyan, #22d3ee)' },
               { key: 'all', label: 'Totalt i visning', value: operationalStats.total, color: '#c084fc' },
             ] as Array<{ key: OperationalFilterKey; label: string; value: number; color: string }>).map((item) => (
               <Button
@@ -4552,7 +4552,7 @@ export function LocationManagementPanel({
                       const loadFlowStatusMeta: Record<LoadFlowStatus, { label: string; color: string }> = {
                         planned: { label: 'Planlagt', color: '#c084fc' },
                         ready: { label: 'Klar', color: '#34d399' },
-                        in_progress: { label: 'Pågår', color: '#22d3ee' },
+                        in_progress: { label: 'Pågår', color: 'var(--role-cyan, #22d3ee)' },
                         completed: { label: 'Ferdig', color: '#86efac' },
                       };
                       const isEditingLoadFlow = editingLoadFlowIds.has(location.id);

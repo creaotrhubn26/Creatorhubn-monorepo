@@ -596,7 +596,7 @@ function CandidateManagementPanelInner({
       case 'selected': return '#8b5cf6';
       case 'shortlist': return '#ffb800';
       case 'rejected': return '#ef4444';
-      case 'requested': return '#00d4ff';
+      case 'requested': return 'var(--role-cyan, #00d4ff)';
       default: return '#6b7280';
     }
   };
@@ -3487,7 +3487,7 @@ function CandidateManagementPanelInner({
                             )}
                             {smsActive && (
                               <Tooltip title="Mottar audition-SMS">
-                                <SmsOutlinedIcon sx={{ fontSize: 14, color: '#7dd3fc' }} />
+                                <SmsOutlinedIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #7dd3fc)' }} />
                               </Tooltip>
                             )}
                             {emailActive && (

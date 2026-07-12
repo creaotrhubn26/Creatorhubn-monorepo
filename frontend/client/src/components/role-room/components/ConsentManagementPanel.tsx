@@ -321,7 +321,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
     const colors: Record<ConsentInvitationStatus, string> = {
       'not_sent': 'rgba(255,255,255,0.3)',
       'sent': '#ffb800',
-      'viewed': '#00d4ff',
+      'viewed': 'var(--role-cyan, #00d4ff)',
       'signed': '#10b981',
       'declined': '#ff4444',
     };
@@ -375,7 +375,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
           sx={{
-            bgcolor: '#00d4ff',
+            bgcolor: 'var(--role-cyan, #00d4ff)',
             color: '#000',
             fontWeight: 600,
             '&:hover': { bgcolor: '#00b8e6' },
@@ -407,7 +407,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 sx={{
                   bgcolor: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  '&:hover': { borderColor: consent.signed ? '#10b981' : '#00d4ff' },
+                  '&:hover': { borderColor: consent.signed ? '#10b981' : 'var(--role-cyan, #00d4ff)' },
                 }}
               >
                 <CardContent>
@@ -454,7 +454,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                         size="small"
                         onClick={() => handleOpenDialog(consent)}
                         aria-label="Rediger samtykke"
-                        sx={{ color: '#00d4ff' }}
+                        sx={{ color: 'var(--role-cyan, #00d4ff)' }}
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -594,8 +594,8 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   checked={formData.signed || false}
                   onChange={(e) => setFormData({ ...formData, signed: e.target.checked })}
                   sx={{
-                    color: '#00d4ff',
-                    '&.Mui-checked': { color: '#00d4ff' },
+                    color: 'var(--role-cyan, #00d4ff)',
+                    '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
                   }}
                 />
               }

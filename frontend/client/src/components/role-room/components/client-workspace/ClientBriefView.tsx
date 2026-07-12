@@ -34,7 +34,7 @@ export default function ClientBriefView({ projectId }: { projectId: string }) {
       </Box>
       {loading ? (
         <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-          <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+          <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         </Stack>
       ) : !published ? (
         <ClientAwaitingPublish noun="briefen" />
@@ -43,7 +43,7 @@ export default function ClientBriefView({ projectId }: { projectId: string }) {
           <Suspense
             fallback={
               <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-                <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+                <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
               </Stack>
             }
           >

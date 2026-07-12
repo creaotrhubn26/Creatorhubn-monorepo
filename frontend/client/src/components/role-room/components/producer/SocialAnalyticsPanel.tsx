@@ -45,7 +45,7 @@ import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert, MetricCard } from
 const PLATFORM_COLOR: Record<string, string> = {
   instagram: '#ec4899',
   facebook_page: '#3b82f6',
-  tiktok: '#22d3ee',
+  tiktok: 'var(--role-cyan, #22d3ee)',
   linkedin: '#0a66c2',
   youtube: '#ef4444',
   x: '#94a3b8',
@@ -422,7 +422,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
                           </Typography>
                         ) : null}
                         {p.scheduled > 0 ? (
-                          <Typography sx={{ color: '#7dd3fc', fontSize: '0.7rem', fontWeight: 600 }}>
+                          <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: '0.7rem', fontWeight: 600 }}>
                             {formatNumber(p.scheduled)} planlagt
                           </Typography>
                         ) : null}

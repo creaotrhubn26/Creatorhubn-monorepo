@@ -421,7 +421,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         })}
         {awaitingFirstToken ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={18} sx={{ color: '#22d3ee' }} />
+            <CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem' }}>
               The Role Room Agent tenker …
             </Typography>
@@ -486,7 +486,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             fontSize: { xs: '0.95rem', md: '0.95rem' },
             '& fieldset': { borderColor: 'rgba(148,163,184,0.3)' },
             '&:hover fieldset': { borderColor: 'rgba(34,211,238,0.5)' },
-            '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #22d3ee)' },
           },
           '& .MuiOutlinedInput-input::placeholder': {
             color: 'rgba(226,232,240,0.5)',
@@ -502,7 +502,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           width: { xs: 44, md: 48 },
           height: { xs: 44, md: 48 },
           flexShrink: 0,
-          bgcolor: '#22d3ee',
+          bgcolor: 'var(--role-cyan, #22d3ee)',
           color: '#082f49',
           '&:hover': { bgcolor: '#06b6d4' },
           '&.Mui-disabled': { bgcolor: 'rgba(34,211,238,0.25)', color: 'rgba(8,47,73,0.6)' },

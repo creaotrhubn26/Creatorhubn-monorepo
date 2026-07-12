@@ -80,7 +80,7 @@ interface DitBackupJob {
 
 const DEST_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   original: { label: 'Original', color: '#94a3b8' },
-  primary: { label: 'Primary', color: '#22d3ee' },
+  primary: { label: 'Primary', color: 'var(--role-cyan, #22d3ee)' },
   secondary: { label: 'Secondary', color: '#a78bfa' },
   offsite: { label: 'Offsite', color: '#f59e0b' },
   archive: { label: 'Archive', color: '#10b981' },
@@ -288,7 +288,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
           borderBottom: '1px solid rgba(148,163,184,0.16)',
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: 'rgba(226,232,240,0.78)', minHeight: 40, fontSize: '0.84rem' },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#22d3ee' },
+          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
         }}
       >
         <Tab value="jobs" label={`Jobs (${jobs.length})`} />
@@ -385,7 +385,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 size="small"
                 startIcon={<AddIcon />}
                 onClick={() => setAddDestOpen(true)}
-                sx={{ color: '#22d3ee', textTransform: 'none' }}
+                sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none' }}
               >
                 Ny destinasjon
               </Button>
@@ -429,7 +429,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem' }}>
                 Helper-tokens lar CLI-en på DIT-station rapportere status. Token vises kun EN gang ved generering.
               </Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: '#22d3ee', textTransform: 'none', flexShrink: 0 }}>
+              <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none', flexShrink: 0 }}>
                 Generér
               </Button>
             </Stack>
@@ -562,7 +562,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       <Box sx={{ p: 1.5, borderTop: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(0,0,0,0.32)' }}>
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', textAlign: 'center' }}>
           Native CLI-helper:{' '}
-          <Box component="span" sx={{ fontFamily: 'monospace', color: '#22d3ee' }}>
+          <Box component="span" sx={{ fontFamily: 'monospace', color: 'var(--role-cyan, #22d3ee)' }}>
             npx @theroleroom/dit-helper init
           </Box>
         </Typography>
@@ -639,7 +639,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
             variant="contained"
             disabled={!destDraft.label.trim() || savingDest}
             onClick={saveDestination}
-            sx={{ bgcolor: '#22d3ee', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
+            sx={{ bgcolor: 'var(--role-cyan, #22d3ee)', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
           >
             {savingDest ? 'Lagrer…' : 'Opprett'}
           </Button>

@@ -36,7 +36,7 @@ const PILL_PALETTE = {
   shooting: { color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
   rehearsal: { color: '#a78bfa', bg: 'rgba(167,139,250,0.14)' },
   audition: { color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
-  next: { color: '#22d3ee', bg: 'rgba(34,211,238,0.14)' },
+  next: { color: 'var(--role-cyan, #22d3ee)', bg: 'rgba(34,211,238,0.14)' },
 };
 
 function uniqueDayCount(events: CalendarEvent[]): number {

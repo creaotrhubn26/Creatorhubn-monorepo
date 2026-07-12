@@ -819,7 +819,7 @@ export default function SplitSheetEditor({
                   {/* NFF Section */}
                   {(unionSettings.isFilmWorker || unionSettings.unionMembership === 'nff_member' || unionSettings.unionMembership === 'both') && (
                     <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(0, 212, 255, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(0, 212, 255, 0.3)' }}>
-                      <Typography variant="subtitle2" sx={{ color: '#00d4ff', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
+                      <Typography variant="subtitle2" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
                         <MovieIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Norsk Filmforbund (NFF)
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 } }}>

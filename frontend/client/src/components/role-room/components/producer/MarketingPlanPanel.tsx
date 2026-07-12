@@ -556,9 +556,9 @@ export default function MarketingPlanPanel({
                 fontSize: '0.86rem',
                 minHeight: 36,
                 color: 'rgba(226,232,240,0.6)',
-                '&.Mui-selected': { color: '#22d3ee' },
+                '&.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
               },
-              '& .MuiTabs-indicator': { backgroundColor: '#22d3ee' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
             }}
           >
             <Tab value="strategy" label="Strategi" />
@@ -1303,9 +1303,9 @@ function PostsSection({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            color: '#22d3ee',
+            color: 'var(--role-cyan, #22d3ee)',
             borderColor: 'rgba(34,211,238,0.5)',
-            '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+            '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
           }}
         >
           {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
@@ -1323,7 +1323,7 @@ function PostsSection({
           // #152 — live progress for auto-generation
           <Alert
             severity="info"
-            icon={<CircularProgress size={18} sx={{ color: '#22d3ee' }} />}
+            icon={<CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />}
             sx={{
               bgcolor: 'rgba(34,211,238,0.08)',
               color: '#a5f3fc',
@@ -2094,7 +2094,7 @@ function PostCard({
                       textTransform: 'none',
                       fontSize: '0.76rem',
                       py: 0.3,
-                      color: previewOpen ? '#22d3ee' : 'rgba(226,232,240,0.7)',
+                      color: previewOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)',
                       minWidth: 0,
                     }}
                   >
@@ -2151,7 +2151,7 @@ function PostCard({
                     py: 0.3,
                     color: '#a5f3fc',
                     borderColor: 'rgba(34,211,238,0.4)',
-                    '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                    '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
                   }}
                 >
                   {accepting ? 'Aksepterer…' : 'Send → Feed-planner'}
@@ -2181,7 +2181,7 @@ function PostCard({
           sx={{
             textTransform: 'none',
             fontSize: '0.74rem',
-            color: toolsOpen ? '#22d3ee' : 'rgba(226,232,240,0.6)',
+            color: toolsOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.6)',
             py: 0,
             px: 0.6,
             minWidth: 0,
