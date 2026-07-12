@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { Refresh as RefreshIcon, Hub as HubIcon } from '@mui/icons-material';
 import CsvImportPanel from './CsvImportPanel';
+import AiUsagePanel from './AiUsagePanel';
 
 interface IntegrationEntry {
   integrationId: string;
@@ -242,6 +243,8 @@ export default function IntegrationCenterTab() {
       ))}
 
       <CsvImportPanel />
+
+      <AiUsagePanel />
 
       <Alert severity="info">
         v1 er read-only for registeret — aktivering/deaktivering, credential-

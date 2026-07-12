@@ -73,6 +73,7 @@ export function sanitizeDiscoveredBrands(
 export async function extractDiscoveredBrands(
   answerText: string,
   knownBrands: string[],
+  onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void,
 ): Promise<string[]> {
   const client = getAnthropic();
   if (!client || !answerText.trim()) return [];
@@ -83,6 +84,12 @@ export async function extractDiscoveredBrands(
       system: EXTRACTION_SYSTEM,
       messages: [{ role: "user", content: answerText.slice(0, 3000) }],
     });
+    if (response.usage && onUsage) {
+      onUsage({
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      });
+    }
     const text = response.content
       .filter((c): c is Anthropic.TextBlock => c.type === "text")
       .map((c) => c.text)
