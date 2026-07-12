@@ -31,6 +31,12 @@ interface Insight {
   topic: string | null;
   status: string;
   detected_at: string;
+  diagnosis?: {
+    status: "generated" | "insufficient_evidence";
+    narrative?: string;
+    reason?: string;
+    evidence?: Array<{ n: number; source: string; label: string; value: string | number }>;
+  } | null;
 }
 
 function authHeaders(): Record<string, string> {
@@ -144,6 +150,30 @@ export default function InsightsFeedPanel() {
                         {ins.explanation}
                       </Typography>
                       <Collapse in={isOpen}>
+                        {ins.diagnosis?.status === "generated" && ins.diagnosis.narrative && (
+                          <Box sx={{ mt: 1, p: 1, bgcolor: "rgba(96,165,250,0.08)", borderRadius: 1, borderLeft: "2px solid #60a5fa" }}>
+                            <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5, color: "#60a5fa" }}>
+                              Hvorfor? — AI-tolkning, bygger kun på evidensen under
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontSize: "0.82rem" }}>
+                              {ins.diagnosis.narrative}
+                            </Typography>
+                            {(ins.diagnosis.evidence ?? []).length > 0 && (
+                              <Box sx={{ mt: 0.75 }}>
+                                {ins.diagnosis.evidence!.map((e) => (
+                                  <Typography key={e.n} variant="caption" sx={{ display: "block", fontFamily: "monospace", opacity: 0.8 }}>
+                                    [{e.n}] ({e.source}) {e.label}: {e.value}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
+                        )}
+                        {ins.diagnosis?.status === "insufficient_evidence" && (
+                          <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 1 }}>
+                            Ingen «hvorfor»-tolkning: {ins.diagnosis.reason ?? "for tynt kryss-kilde-grunnlag"} — heller stillhet enn spekulasjon.
+                          </Typography>
+                        )}
                         <Box sx={{ mt: 1, p: 1, bgcolor: "rgba(148,163,184,0.06)", borderRadius: 1 }}>
                           <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>
                             Evidens ({ins.detector})
