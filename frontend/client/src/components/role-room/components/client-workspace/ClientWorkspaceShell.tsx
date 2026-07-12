@@ -143,10 +143,10 @@ export default function ClientWorkspaceShell({
     <Box
       sx={{
         minHeight: '100vh',
-        bgcolor: 'rgba(7,13,26,0.96)',
+        bgcolor: 'var(--role-chrome-bg, rgba(7,13,26,0.96))',
         background:
-          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(168,85,247,0.10) 0%, transparent 35%), #07101e',
-        color: '#e2e8f0',
+          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(168,85,247,0.10) 0%, transparent 35%), var(--role-chrome-bg, #07101e)',
+        color: 'var(--role-chrome-text, #e2e8f0)',
       }}
     >
       {/* Preview-banner — produsent som ser klient-flate */}
@@ -200,8 +200,8 @@ export default function ClientWorkspaceShell({
       {/* Header — logo + prosjekt + bruker-avatar */}
       <Box
         sx={{
-          borderBottom: '1px solid rgba(148,163,184,0.16)',
-          bgcolor: 'rgba(15,23,42,0.55)',
+          borderBottom: '1px solid var(--role-chrome-border, rgba(148,163,184,0.16))',
+          bgcolor: 'var(--role-chrome-panel, rgba(15,23,42,0.55))',
           backdropFilter: 'blur(8px)',
         }}
       >
@@ -237,8 +237,8 @@ export default function ClientWorkspaceShell({
           position: 'sticky',
           top: 0,
           zIndex: 10,
-          borderBottom: '1px solid rgba(148,163,184,0.16)',
-          bgcolor: 'rgba(15,23,42,0.92)',
+          borderBottom: '1px solid var(--role-chrome-border, rgba(148,163,184,0.16))',
+          bgcolor: 'var(--role-chrome-panel, rgba(15,23,42,0.92))',
           backdropFilter: 'blur(12px)',
         }}
       >

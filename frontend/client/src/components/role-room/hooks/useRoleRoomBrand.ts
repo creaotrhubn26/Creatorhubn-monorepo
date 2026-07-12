@@ -1,5 +1,16 @@
 import { useEffect } from 'react';
 
+// Chrome-nøkkel (design-tokens `chrome`-namespace) → CSS-var på :root. Nøklene matcher backend-ALLOWED
+// (bg/panelSolid/panel/border/text/textDim). Role Room-shellene faller tilbake fra disse via var(...).
+export const ROLE_CHROME_VAR: Record<string, string> = {
+  bg: '--role-chrome-bg',
+  panelSolid: '--role-chrome-panel',
+  panel: '--role-chrome-panel-glass',
+  border: '--role-chrome-border',
+  text: '--role-chrome-text',
+  textDim: '--role-chrome-text-dim',
+};
+
 /**
  * useRoleRoomBrand — CreatorHub Design: token-driv Role Room-merkevaren fra design-tokens
  * (ws=theroleroom, RÅ override m/ raw:true-markør). Setter CSS-vars på :root som de var-drevne
@@ -27,6 +38,16 @@ export function useRoleRoomBrand(): void {
         if (valid(t.portalAccent)) root.style.setProperty('--role-portal-accent', t.portalAccent);
         if (valid(t.cyanAccent)) root.style.setProperty('--role-cyan', t.cyanAccent);
         if (valid(t.violetAccent)) root.style.setProperty('--role-violet', t.violetAccent);
+        // Chrome (Fase B-paritet m/ CreatorHub): shell-overflate-farger → --role-chrome-* CSS-vars.
+        // Verdier kan være hex ELLER rgba() (backend har allerede validert mønsteret), så løs sjekk.
+        const chrome = t.chrome;
+        if (chrome && typeof chrome === 'object' && !Array.isArray(chrome)) {
+          const c = chrome as Record<string, unknown>;
+          for (const [k, cssVar] of Object.entries(ROLE_CHROME_VAR)) {
+            const v = c[k];
+            if (typeof v === 'string' && v) root.style.setProperty(cssVar, v);
+          }
+        }
       })
       .catch(() => {});
     return () => { live = false; };

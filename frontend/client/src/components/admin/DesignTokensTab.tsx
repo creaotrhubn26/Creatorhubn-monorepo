@@ -154,6 +154,12 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
           <WorkspaceCopyEditor workspace="creatorhub" />
         </>
       )}
+      {ws === 'theroleroom' && (
+        <>
+          <Divider />
+          <WorkspaceChromeEditor workspace="theroleroom" />
+        </>
+      )}
       <Divider />
       <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey} undoAllowed={isSuperAdmin}
         onReverted={() => { load(ws); setPreviewKey((k) => k + 1); setMsg({ type: 'success', text: 'Siste endring angret.' }); }} />
