@@ -729,6 +729,24 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
           .status(403)
           .json({ error: "Kun produksjonsteam-eier kan invitere byrået til prosjekter" });
       }
+      // IDOR-gate: verifiser at prosjektet faktisk eies av innlogget bruker.
+      // Uten dette kan produksjonsteam-eieren invitere byrået til ET HVILKET
+      // SOM HELST casting_project_id — også en ANNEN produsents prosjekt — som
+      // (a) lekker prosjekt-metadata (navn/type/datoer) tilbake via
+      // GET /:id/invitations + e-post til byrået, og (b) lar byrået foreslå
+      // talenter som ved aksept injiseres som casting_candidates i det fremmede
+      // prosjektet. Speiler eierskaps-sjekken i
+      // GET /casting-projects/:projectId/incoming-talent-proposals.
+      const ownedProj = await pool.query(
+        `SELECT created_by FROM casting_projects WHERE id = $1 LIMIT 1`,
+        [casting_project_id],
+      );
+      if (!ownedProj.rows[0]) {
+        return res.status(404).json({ error: "Prosjekt ikke funnet" });
+      }
+      if (ownedProj.rows[0].created_by !== session.userId) {
+        return res.status(403).json({ error: "Du eier ikke prosjektet" });
+      }
       // Sjekk også byrå-side global pause/stenging
       const agencyCheck = await fetchQualifiedAgency(pool, partnership.agency_org_id);
       if (agencyCheck) {
