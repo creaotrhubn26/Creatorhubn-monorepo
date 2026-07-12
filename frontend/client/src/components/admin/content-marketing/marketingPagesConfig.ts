@@ -26,7 +26,8 @@ export type MarketingPageKey =
   | 'produksjons-os'
   | 'innholdsprodusent-norge'
   | 'dansestudio-norge'
-  | 'verktoy-for-filmutdanninger';
+  | 'verktoy-for-filmutdanninger'
+  | 'norsk-casting-prosess';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -497,6 +498,25 @@ The Role Rooms partner-tilgang for utdanningsinstitusjoner:
 - AML-støtte når studenter caster mindreårige
 
 Guiden: https://theroleroom.com/verktoy-for-filmutdanninger`,
+  },
+  {
+    key: 'norsk-casting-prosess',
+    path: '/norsk-casting-prosess',
+    title: 'Slik jobber norske produksjonsselskaper med casting | The Role Room',
+    description:
+      'Castingprosessen i norsk film-, TV- og reklameproduksjon i fem steg: utlysning, skuespillerdatabase, selvtape-runder, callbacks og kontrakt — med GDPR-krav og verktøykostnader.',
+    pillar: 'education',
+    published: true,
+    linkedinDraft: `Hvordan caster norske produksjonsselskaper i 2026?
+
+Fem steg — og de fleste gjør fortsatt 3 av dem i e-post og Excel:
+1. Rollebeskrivelse og utlysning
+2. Skuespillerdatabase (GDPR!)
+3. Selvtape-runde (ikke WeTransfer)
+4. Callbacks med felles pipeline
+5. Kontrakt + samtykke med spor
+
+Hele workflowen: https://theroleroom.com/norsk-casting-prosess`,
   },
 ];
 
