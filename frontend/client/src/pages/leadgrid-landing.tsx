@@ -67,7 +67,7 @@ const PALETTE = {
   // CreatorHub Design (landing-tokens): CSS-var-drevet fra design-tokens (ws=leadgrid,
   // nøkkel landingAccent). Literal-fallback = identisk (uavhengig av konnektor-blåen).
   accent: 'var(--lgl-accent, #A78BFA)',
-  accentBright: '#C084FC',
+  accentBright: 'var(--lgl-accent-bright, #C084FC)',
   text: 'var(--lgl-text, #F4F0FF)',
   textMuted: 'rgba(244, 240, 255, 0.72)',
   textFaint: 'rgba(244, 240, 255, 0.45)',
