@@ -21,6 +21,7 @@ import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
 import InsightsFeedPanel from "./InsightsFeedPanel";
+import OpportunityScorePanel from "./OpportunityScorePanel";
 import GeoVisibilityPanel from "./GeoVisibilityPanel";
 import AiTrafficPanel from "./AiTrafficPanel";
 import { useModuleFeature } from "@/hooks/useModuleFeature";
@@ -94,6 +95,8 @@ export default function MarketIntelligenceSection({
           )}
 
           <InsightsFeedPanel />
+
+          <OpportunityScorePanel />
 
           <BrandKitPanel
             projectId={projectId}

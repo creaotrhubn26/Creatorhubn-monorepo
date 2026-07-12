@@ -629,6 +629,7 @@ import { registerKeywordPlannerRoutes } from "./integrations/keyword-planner-rou
 import { registerManualImportRoutes } from "./integrations/manual-import-routes.js";
 import { registerInsightsRoutes } from "./integrations/insights-routes.js";
 import { registerAiUsageRoutes } from "./integrations/ai-usage-routes.js";
+import { registerScoreModelRoutes } from "./integrations/score-model-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
@@ -25135,6 +25136,13 @@ registerInsightsRoutes({
 });
 // Per-org AI-forbrukstellere (integrasjonsanalysen steg 9)
 registerAiUsageRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Score-modeller fase 3 — GEO Opportunity Score (docs/integration-audit/11)
+registerScoreModelRoutes({
   app,
   pool,
   activeSessions,
