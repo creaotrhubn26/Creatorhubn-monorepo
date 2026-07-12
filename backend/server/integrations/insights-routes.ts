@@ -14,6 +14,7 @@ import {
   listOrganizationsWithSignals,
   runInsightDetectors,
 } from "./insight-engine.js";
+import { runInsightDiagnostics } from "./insight-diagnostics.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -59,13 +60,22 @@ export function registerInsightsRoutes({ app, pool, activeSessions, isAdminEmail
     try {
       const orgs = await listOrganizationsWithSignals(pool);
       const results = [];
+      let diagnosed = 0;
       for (const orgId of orgs) {
         results.push(await runInsightDetectors(pool, orgId));
+        // Fase 2: diagnostiser nye innsikter (best effort — velter aldri kjøringen)
+        try {
+          const d = await runInsightDiagnostics(pool, orgId);
+          diagnosed += d.generated;
+          if (d.errors.length > 0) console.warn("[insights] diagnose-feil:", d.errors.join(" | "));
+        } catch (err) {
+          console.warn("[insights] diagnostikk feilet for org", orgId, String(err).slice(0, 120));
+        }
       }
       const inserted = results.reduce((s, r) => s + r.inserted, 0);
       const errors = results.flatMap((r) => r.errors);
       if (errors.length > 0) console.warn("[insights] detektor-feil:", errors.join(" | "));
-      return res.json({ organizations: orgs.length, inserted, errors });
+      return res.json({ organizations: orgs.length, inserted, diagnosed, errors });
     } catch (err) {
       console.error("[insights] run failed", err);
       return res.status(500).json({ error: "run_failed" });
@@ -85,7 +95,7 @@ export function registerInsightsRoutes({ app, pool, activeSessions, isAdminEmail
       }
       const r = await pool.query(
         `SELECT id::text, detector, severity, confidence, title, explanation,
-                evidence, topic, status, detected_at::text
+                evidence, topic, status, detected_at::text, diagnosis
            FROM insights
           WHERE ${conditions.join(" AND ")}
           ORDER BY detected_at DESC LIMIT 50`,
