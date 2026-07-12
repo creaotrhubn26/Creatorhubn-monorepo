@@ -61,7 +61,7 @@ export default function LoginPageSimple() {
             'radial-gradient(circle at top, rgba(255, 186, 108, 0.28) 0%, rgba(20, 16, 11, 0.96) 52%, #060709 100%)',
         }}
       >
-        <CircularProgress sx={{ color: '#ffba6c' }} />
+        <CircularProgress sx={{ color: 'var(--chl-accent, #ffba6c)' }} />
       </Box>
     );
   }

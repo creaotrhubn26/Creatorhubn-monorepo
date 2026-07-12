@@ -269,7 +269,7 @@ function EmailBrandingStep({ state, onNext, onSnack }: {
     <Card>
       <CardContent>
         <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-          <EmailIcon sx={{ color: "#a78bfa" }} />
+          <EmailIcon sx={{ color: "var(--lgl-accent, #a78bfa)" }} />
           <Typography variant="h6" sx={{ fontWeight: 700 }}>Konfigurer e-post-branding</Typography>
         </Stack>
         <Typography color="text.secondary" sx={{ mb: 2 }}>

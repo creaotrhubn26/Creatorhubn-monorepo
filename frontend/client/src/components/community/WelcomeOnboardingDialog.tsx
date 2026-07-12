@@ -333,7 +333,7 @@ export default function WelcomeOnboardingDialog({
                       placeItems: 'center',
                       background:
                         activeStep === index
-                          ? 'linear-gradient(135deg, #ff8c00 0%, #ffd27a 100%)'
+                          ? 'linear-gradient(135deg, var(--ws-accent, #ff8c00) 0%, #ffd27a 100%)'
                           : index < activeStep
                             ? 'linear-gradient(135deg, #78d6a3 0%, #9af0c1 100%)'
                             : 'rgba(255,255,255,0.05)',
