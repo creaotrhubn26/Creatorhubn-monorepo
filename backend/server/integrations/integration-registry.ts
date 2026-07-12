@@ -425,10 +425,10 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     purpose: "Syntetisk probing mot Perplexity (nærmest ekte AI-søk; krever konto)",
     supportedDataTypes: ["ai_mention", "ai_mention_share", "ai_citation", "ai_recommendation_rank"],
     authenticationType: "api_key",
-    credentialReference: "PERPLEXITY_API_KEY — ikke opprettet ennå (manuell eier-handling)",
+    credentialReference: "PERPLEXITY_API_KEY",
     apiBaseUrl: "https://api.perplexity.ai",
     apiVersion: null,
-    availabilityStatus: "missingCredentials",
+    availabilityStatus: "active", // nøkkel verifisert + satt i Render 2026-07-12
     implementationStatus: "active",
     accessLevel: "app_granted",
     tenantScope: "per_org",
