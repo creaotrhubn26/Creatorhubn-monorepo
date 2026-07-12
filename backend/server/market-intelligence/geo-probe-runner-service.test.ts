@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateToSignals,
   citesDomain,
+  computeMissingPairs,
   extractBrandMentions,
   extractUrls,
   type ProbeResultForAggregation,
@@ -174,5 +175,30 @@ describe("sanitizeGeneratedPrompts", () => {
   it("returns [] on garbage input", () => {
     expect(sanitizeGeneratedPrompts(null, args)).toEqual([]);
     expect(sanitizeGeneratedPrompts({ prompts: "nope" }, args)).toEqual([]);
+  });
+});
+
+describe("computeMissingPairs (resumerbare kjøringer)", () => {
+  it("returns all pairs when nothing exists", () => {
+    const missing = computeMissingPairs(["p1", "p2"], ["anthropic", "openai"], []);
+    expect(missing).toHaveLength(4);
+  });
+
+  it("skips pairs that already have results (resume after restart)", () => {
+    const missing = computeMissingPairs(
+      ["p1", "p2"],
+      ["anthropic"],
+      [{ prompt_id: "p1", engine: "anthropic" }],
+    );
+    expect(missing).toEqual([{ promptId: "p2", engine: "anthropic" }]);
+  });
+
+  it("returns [] when the run is complete", () => {
+    const missing = computeMissingPairs(
+      ["p1"],
+      ["anthropic"],
+      [{ prompt_id: "p1", engine: "anthropic" }],
+    );
+    expect(missing).toEqual([]);
   });
 });
