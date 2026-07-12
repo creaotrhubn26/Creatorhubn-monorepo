@@ -24,7 +24,15 @@ export function useLandingBrand(workspace: string, map: Record<string, string>):
         const root = document.documentElement;
         for (const [tokenKey, cssVar] of Object.entries(JSON.parse(mapKey) as Record<string, string>)) {
           const v = tokens[tokenKey];
-          if (typeof v === 'string' && HEX6.test(v)) root.style.setProperty(cssVar, v);
+          if (typeof v !== 'string' || !HEX6.test(v)) continue;
+          root.style.setProperty(cssVar, v);
+          // Aksent-familie: avled lys-shade (bright) fra aksenten så den følger med ved
+          // overstyring — coherent recolor. Uten override settes ikke `-bright` → literal.
+          if (tokenKey === 'landingAccent') {
+            const r = parseInt(v.slice(1, 3), 16), g = parseInt(v.slice(3, 5), 16), b = parseInt(v.slice(5, 7), 16);
+            const bright = '#' + [r, g, b].map((x) => Math.round(x + (255 - x) * 0.22).toString(16).padStart(2, '0')).join('');
+            root.style.setProperty(`${cssVar}-bright`, bright);
+          }
         }
       })
       .catch(() => {});

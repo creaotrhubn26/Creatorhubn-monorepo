@@ -55,7 +55,7 @@ const palette = {
   // CreatorHub Design (landing-tokens): primær-aksenten er CSS-var-drevet fra design-tokens
   // (ws=theroleroom, nøkkel landingAccent). Literal-fallback = identisk uten override.
   accent: 'var(--rrl-accent, #a855f7)',
-  accentBright: '#c084fc',
+  accentBright: 'var(--rrl-accent-bright, #c084fc)',
   accentGradient: 'linear-gradient(135deg, var(--rrl-accent, #a855f7) 0%, #d946ef 100%)',
 };
 
