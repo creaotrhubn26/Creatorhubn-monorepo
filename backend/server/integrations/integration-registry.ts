@@ -126,14 +126,14 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     supportedDataTypes: ["relative_interest", "regional_interest", "related_queries"],
     authenticationType: "none",
     credentialReference: null,
-    enabled: false,
-    availabilityStatus: "discovered",
-    implementationStatus: "discovered", // bygges i Implementation Plan steg 4
+    enabled: true,
+    availabilityStatus: "active",
+    implementationStatus: "active", // manual-import-service + provider (2026-07-11)
     accessLevel: "user_granted",
     tenantScope: "per_org",
     syncMode: "manual_import",
     termsStatus: "ok",
-    documentationReference: "docs/integration-audit/05-adapter-architecture-normalized-data.md (§4)",
+    documentationReference: "backend/server/integrations/manual-import-service.ts",
   }),
 
   // ── Owned marketing (brukerens egne data) ──────────────────────────

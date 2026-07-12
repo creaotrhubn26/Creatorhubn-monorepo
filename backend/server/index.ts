@@ -626,6 +626,7 @@ import { registerModuleFeaturesRoutes } from "./feature-flags/module-features-ro
 import { registerIntegrationsAdminRoutes } from "./integrations/integrations-admin-routes.js";
 import { registerOwnedChannelsRoutes } from "./integrations/owned-channels-routes.js";
 import { registerKeywordPlannerRoutes } from "./integrations/keyword-planner-routes.js";
+import { registerManualImportRoutes } from "./integrations/manual-import-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
@@ -25077,6 +25078,13 @@ registerOwnedChannelsRoutes({
 });
 // Keyword Planner — søkevolum m/ cache-først (integrasjonsplanen steg 5)
 registerKeywordPlannerRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Manuell CSV-import → normalized_signals (integrasjonsplanen steg 4)
+registerManualImportRoutes({
   app,
   pool,
   activeSessions,

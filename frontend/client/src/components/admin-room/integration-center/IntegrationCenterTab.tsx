@@ -18,6 +18,7 @@ import {
   TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import { Refresh as RefreshIcon, Hub as HubIcon } from '@mui/icons-material';
+import CsvImportPanel from './CsvImportPanel';
 
 interface IntegrationEntry {
   integrationId: string;
@@ -240,9 +241,11 @@ export default function IntegrationCenterTab() {
         </Box>
       ))}
 
+      <CsvImportPanel />
+
       <Alert severity="info">
-        v1 er read-only — aktivering/deaktivering, credential-endringer og
-        fallback-valg gjøres foreløpig via registry-fila
+        v1 er read-only for registeret — aktivering/deaktivering, credential-
+        endringer og fallback-valg gjøres foreløpig via registry-fila
         (backend/server/integrations/integration-registry.ts) og Render-env.
         Skriveoperasjoner kommer i v2 (docs/integration-audit/07).
       </Alert>
