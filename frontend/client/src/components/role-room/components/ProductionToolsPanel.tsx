@@ -70,7 +70,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       label: 'Call Sheet',
       icon: <CallSheetIcon />,
       description: 'Generer call sheets med crew, cast og scener',
-      color: '#8b5cf6',
+      color: 'var(--role-violet, #8b5cf6)',
     },
     {
       id: 'shots',

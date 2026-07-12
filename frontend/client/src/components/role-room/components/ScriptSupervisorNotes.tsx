@@ -191,7 +191,7 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
 
   const getStatusConfig = (status: TakeLog['status']) => {
     const configs = {
-      print: { label: 'PRINT', color: '#8b5cf6', icon: <StarIcon /> },
+      print: { label: 'PRINT', color: 'var(--role-violet, #8b5cf6)', icon: <StarIcon /> },
       good: { label: 'GOOD', color: '#10b981', icon: <CheckIcon /> },
       hold: { label: 'HOLD', color: '#f59e0b', icon: <FlagIcon /> },
       ng: { label: 'NG', color: '#ef4444', icon: <ErrorIcon /> },
@@ -386,7 +386,7 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
         </Grid>
         <Grid size={{ xs: 4 }}>
           <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'rgba(139, 92, 246, 0.1)' }}>
-            <Typography variant="h3" sx={{ color: '#8b5cf6' }}>{printTakes}</Typography>
+            <Typography variant="h3" sx={{ color: 'var(--role-violet, #8b5cf6)' }}>{printTakes}</Typography>
             <Typography variant="caption" color="text.secondary">Print Takes</Typography>
           </Paper>
         </Grid>

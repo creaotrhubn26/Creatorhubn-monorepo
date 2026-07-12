@@ -167,8 +167,8 @@ export function ProductionDashboard({
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 120 }}>
           <Card sx={{ bgcolor: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
             <CardContent sx={{ textAlign: 'center', py: 2 }}>
-              <ViewInArIcon sx={{ fontSize: 32, color: '#8b5cf6', mb: 1 }} />
-              <Typography variant="h4" sx={{ color: '#8b5cf6', fontWeight: 700 }}>
+              <ViewInArIcon sx={{ fontSize: 32, color: 'var(--role-violet, #8b5cf6)', mb: 1 }} />
+              <Typography variant="h4" sx={{ color: 'var(--role-violet, #8b5cf6)', fontWeight: 700 }}>
                 {readyForScene}
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -239,7 +239,7 @@ export function ProductionDashboard({
             <Chip
               label={`${selectedCandidates} valgt`}
               size="small"
-              sx={{ bgcolor: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6' }}
+              sx={{ bgcolor: 'rgba(139, 92, 246, 0.2)', color: 'var(--role-violet, #8b5cf6)' }}
             />
             <Chip
               label={`${project.roles.length} roller`}
@@ -265,7 +265,7 @@ export function ProductionDashboard({
             onClick={handleTransferToScene}
             disabled={transferring || readyForScene === 0}
             sx={{
-              bgcolor: '#8b5cf6',
+              bgcolor: 'var(--role-violet, #8b5cf6)',
               py: 1.5,
               '&:hover': { bgcolor: '#7c3aed' },
               '&:disabled': { bgcolor: 'rgba(139, 92, 246, 0.3)' },
@@ -373,7 +373,7 @@ export function ProductionDashboard({
                     }}
                   >
                     {!candidate.photos[0] && (
-                      <PeopleIcon sx={{ fontSize: 20, color: '#8b5cf6' }} />
+                      <PeopleIcon sx={{ fontSize: 20, color: 'var(--role-violet, #8b5cf6)' }} />
                     )}
                   </Box>
                   <Box>

@@ -161,7 +161,7 @@ export default function CrewAvailabilityDrawer({
             fullWidth
             sx={{
               mb: 2,
-              bgcolor: '#8b5cf6',
+              bgcolor: 'var(--role-violet, #8b5cf6)',
               '&:hover': { bgcolor: '#7c3aed' },
             }}
           >
@@ -365,7 +365,7 @@ export default function CrewAvailabilityDrawer({
                 <Switch
                   checked={newEntry.is_recurring}
                   onChange={(e) => setNewEntry({ ...newEntry, is_recurring: e.target.checked })}
-                  sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#8b5cf6' } }}
+                  sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--role-violet, #8b5cf6)' } }}
                 />
               }
               label="Gjentakende"
@@ -381,7 +381,7 @@ export default function CrewAvailabilityDrawer({
             onClick={handleAddEntry}
             variant="contained"
             disabled={!newEntry.start_date || !newEntry.end_date}
-            sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
           >
             Lagre
           </Button>

@@ -3082,9 +3082,9 @@ function CandidateManagementPanelInner({
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#8b5cf6' }} />
+              <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: 'var(--role-violet, #8b5cf6)' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#8b5cf6', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.selected}</Typography>
+            <Typography variant="h4" sx={{ color: 'var(--role-violet, #8b5cf6)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.selected}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Valgt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -4015,7 +4015,7 @@ function CandidateManagementPanelInner({
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
-                              color: '#8b5cf6',
+                              color: 'var(--role-violet, #8b5cf6)',
                               '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' },
                               ...focusVisibleStyles,
                             }}
@@ -4303,7 +4303,7 @@ function CandidateManagementPanelInner({
           pb: 2,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <ViewInArIcon sx={{ color: '#8b5cf6', fontSize: 28 }} />
+            <ViewInArIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 28 }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               Forhåndsvisning - Legg til i scene
             </Typography>
@@ -4384,7 +4384,7 @@ function CandidateManagementPanelInner({
                         sx={{ 
                           width: 56, 
                           height: 56,
-                          bgcolor: '#8b5cf6',
+                          bgcolor: 'var(--role-violet, #8b5cf6)',
                           border: '2px solid rgba(139, 92, 246, 0.5)',
                           '& .MuiAvatar-img': {
                             objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
@@ -4505,7 +4505,7 @@ function CandidateManagementPanelInner({
             disabled={addingToScene || candidatesToPreview.length === 0}
             startIcon={addingToScene ? <CircularProgress size={18} color="inherit" /> : <ViewInArIcon />}
             sx={{
-              bgcolor: '#8b5cf6',
+              bgcolor: 'var(--role-violet, #8b5cf6)',
               color: '#fff',
               fontWeight: 600,
               px: 3,
@@ -4564,7 +4564,7 @@ function CandidateManagementPanelInner({
           }}
           sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(139,92,246,0.14)' } }}
         >
-          <ListItemIcon sx={{ color: '#8b5cf6', minWidth: 36 }}>
+          <ListItemIcon sx={{ color: 'var(--role-violet, #8b5cf6)', minWidth: 36 }}>
             <UploadIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Lagre til pool</ListItemText>

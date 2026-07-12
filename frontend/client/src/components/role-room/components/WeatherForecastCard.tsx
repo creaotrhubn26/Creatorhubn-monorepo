@@ -78,7 +78,7 @@ export function WeatherForecastCard({ forecast, alerts, date }: WeatherForecastC
     } else if (symbol.includes('snow')) {
       return <SnowIcon sx={{ color: '#fff', fontSize: 32 }} />;
     } else if (symbol.includes('thunder')) {
-      return <ThunderIcon sx={{ color: '#8b5cf6', fontSize: 32 }} />;
+      return <ThunderIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 32 }} />;
     }
     return <SunIcon sx={{ color: '#ffb800', fontSize: 32 }} />;
   };

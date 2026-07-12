@@ -146,7 +146,7 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
     identified: { label: 'Identifisert', color: '#6b7280' },
     planned: { label: 'Planlagt', color: '#3b82f6' },
     in_progress: { label: 'Pågår', color: '#f59e0b' },
-    review: { label: 'Review', color: '#8b5cf6' },
+    review: { label: 'Review', color: 'var(--role-violet, #8b5cf6)' },
     approved: { label: 'Godkjent', color: '#10b981' },
     final: { label: 'Final', color: '#059669' },
   };
@@ -155,7 +155,7 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
     simple: { label: 'Enkel', hours: '1-4 timer', color: '#10b981' },
     medium: { label: 'Medium', hours: '4-16 timer', color: '#f59e0b' },
     complex: { label: 'Kompleks', hours: '16-40 timer', color: '#ef4444' },
-    hero: { label: 'Hero Shot', hours: '40+ timer', color: '#8b5cf6' },
+    hero: { label: 'Hero Shot', hours: '40+ timer', color: 'var(--role-violet, #8b5cf6)' },
   };
 
   const [newNote, setNewNote] = useState<Partial<VfxNote>>({

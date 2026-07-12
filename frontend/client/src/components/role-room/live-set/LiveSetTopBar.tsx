@@ -250,7 +250,7 @@ export const LiveSetTopBar: React.FC<LiveSetTopBarProps> = ({
               </IconButton>
             </Tooltip>
           )}
-          <Avatar sx={{ width: 28, height: 28, bgcolor: '#8b5cf6', fontSize: 12 }}>D</Avatar>
+          <Avatar sx={{ width: 28, height: 28, bgcolor: 'var(--role-violet, #8b5cf6)', fontSize: 12 }}>D</Avatar>
           {onClose && (
             <Tooltip title="Lukk LIVE SET">
               <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(255,255,255,0.5)', ml: 0.5 }}>

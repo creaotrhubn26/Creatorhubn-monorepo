@@ -330,8 +330,8 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                   '& .MuiOutlinedInput-root': {
                     bgcolor: '#0d1117', color: '#fff',
                     '& fieldset': { borderColor: '#374151' },
-                    '&:hover fieldset': { borderColor: '#8b5cf6' },
-                    '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+                    '&:hover fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
                   },
                 }}
               />
@@ -340,7 +340,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 onClick={handleSearch}
                 disabled={loading || !query.trim()}
                 data-testid="pmv-add-shot-search-submit"
-                sx={{ bgcolor: '#8b5cf6', px: 3, '&:hover': { bgcolor: '#7c3aed' } }}
+                sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', px: 3, '&:hover': { bgcolor: '#7c3aed' } }}
               >
                 {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Søk'}
               </Button>
@@ -381,7 +381,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                       </Box>
                     )}
                     {selectedImage === r.url && (
-                      <Box sx={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', bgcolor: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Box sx={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', bgcolor: 'var(--role-violet, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <CheckIcon sx={{ fontSize: 14, color: '#fff' }} />
                       </Box>
                     )}
@@ -392,7 +392,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
 
             {loading && (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress sx={{ color: '#8b5cf6' }} />
+                <CircularProgress sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
               </Box>
             )}
           </Stack>

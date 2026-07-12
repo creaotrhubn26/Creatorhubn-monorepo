@@ -124,7 +124,7 @@ export const SceneInfoColumn: React.FC<SceneInfoColumnProps> = ({
             px: 1.5,
           },
           '& .Mui-selected': { color: '#fff !important' },
-          '& .MuiTabs-indicator': { backgroundColor: '#8b5cf6' },
+          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-violet, #8b5cf6)' },
         }}
       >
         <Tab value="info" label="SCENE INFO" />

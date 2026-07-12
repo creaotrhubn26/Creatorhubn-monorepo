@@ -117,7 +117,7 @@ import RoleRoomBrandMark from '../shared/RoleRoomBrandMark';
 
 // TROLL area configuration matching CastingPlannerPanel navigation colors/icons
 const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: string }> = {
-  project: { Icon: DashboardIcon, color: '#8b5cf6', label: 'Prosjekt' },
+  project: { Icon: DashboardIcon, color: 'var(--role-violet, #8b5cf6)', label: 'Prosjekt' },
   roles: { Icon: TheaterComedyIcon, color: '#f48fb1', label: 'Roller' },
   candidates: { Icon: RecentActorsIcon, color: '#10b981', label: 'Kandidater' },
   crew: { Icon: GroupsIcon, color: 'var(--role-cyan, #00d4ff)', label: 'Team' },

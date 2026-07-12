@@ -300,7 +300,7 @@ const consentTypeConfig: Record<ConsentType, {
     IconComponent: AudioIcon,
     label: 'Lyd-samtykke',
     description: 'Tillater bruk av lyd-opptak og stemme',
-    color: '#8b5cf6',
+    color: 'var(--role-violet, #8b5cf6)',
     defaultTitle: 'Samtykke for bruk av lyd-opptak',
   },
   location_release: {
@@ -1882,12 +1882,12 @@ return (
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <StorageIcon sx={{ color: '#8b5cf6' }} />
+                      <StorageIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                       <Typography fontWeight={600}>Lagringstid og sletting</Typography>
                       <Chip 
                         label="GDPR" 
                         size="small" 
-                        sx={{ bgcolor: '#8b5cf630', color: '#8b5cf6', fontSize: '0.7rem', height: 20 }} 
+                        sx={{ bgcolor: '#8b5cf630', color: 'var(--role-violet, #8b5cf6)', fontSize: '0.7rem', height: 20 }} 
                       />
                     </Box>
                   </AccordionSummary>

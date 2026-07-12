@@ -727,7 +727,7 @@ function CastingStandaloneRuntimeContent() {
             bgcolor: '#050816',
           }}
         >
-          <CircularProgress size={30} sx={{ color: '#8b5cf6' }} />
+          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
             {processingGoogleLogin
               ? 'Fullfører Google-innlogging…'
@@ -890,6 +890,11 @@ export default function CastingStandaloneApp() {
         const cyan = d.tokens.cyanAccent;
         if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
           root.style.setProperty('--role-cyan', cyan);
+        }
+        // Fiolett-aksent (primær sekundærfarge #8b5cf6 — dekorative flater, ikke kategorisk koding).
+        const violet = d.tokens.violetAccent;
+        if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
+          root.style.setProperty('--role-violet', violet);
         }
       })
       .catch(() => {});

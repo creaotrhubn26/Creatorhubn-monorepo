@@ -423,7 +423,7 @@ export const SymmetryMode: React.FC<SymmetryModeProps> = ({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              bgcolor: '#8b5cf6',
+              bgcolor: 'var(--role-violet, #8b5cf6)',
             }}
           />
           <Typography variant="caption" sx={{ color: '#a78bfa', fontSize: 10 }}>

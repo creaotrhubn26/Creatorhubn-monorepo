@@ -123,7 +123,7 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
               fontWeight: 700,
               letterSpacing: '0.2em',
               textTransform: 'uppercase',
-              color: '#8b5cf6',
+              color: 'var(--role-violet, #8b5cf6)',
               mb: 0.75,
             }}
           >
