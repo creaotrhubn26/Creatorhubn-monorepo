@@ -48,6 +48,7 @@ import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
 import { parseTalentPortalIntentFromWindow } from '../utils/talentPortal';
 import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 import { ROLE_ROOM_EDUCATION_PATH, getRoleRoomReturnPath, isRoleRoomStandaloneRuntime } from '../utils/runtime';
+import { useRoleRoomBrand } from '../hooks/useRoleRoomBrand';
 
 /* ─────────────────────────── types ────────────────────────────── */
 
@@ -1813,6 +1814,10 @@ export default function LoginDialog({
 }: LoginDialogProps) {
   const isMobile = useMediaQuery('(max-width:639px)');
   const isFullScreen = useMediaQuery('(max-width:479px)');
+  // CreatorHub Design: selv-brand login-dialogen (--role-cyan m.fl.) fra theroleroom-tokens, så
+  // cyan-aksenten retinter også når dialogen vises på landingssiden (der casting-shellet ikke er
+  // montert). Ingen override → vars uset → literalene (#22d3ee) gjelder → identisk.
+  useRoleRoomBrand();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
