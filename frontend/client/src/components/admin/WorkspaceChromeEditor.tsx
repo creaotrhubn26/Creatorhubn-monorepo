@@ -8,18 +8,32 @@
 import React from 'react';
 import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
 
-// Redigerbare chrome-nøkler (må matche WS_CHROME_VAR i WorkspaceShell + ALLOWED i store).
-const CHROME_FIELDS: { key: string; label: string; def: string }[] = [
-  { key: 'bg', label: 'App-bakgrunn', def: '#0a0f1a' },
-  { key: 'bgSidebar', label: 'Sidebar', def: '#0b1120' },
-  { key: 'panelSolid', label: 'Panel / kort', def: '#0f1729' },
-  { key: 'panel', label: 'Panel (glass)', def: 'rgba(15,23,42,0.72)' },
-  { key: 'border', label: 'Ramme', def: 'rgba(255,255,255,0.12)' },
-  { key: 'text', label: 'Tekst', def: 'rgba(255,255,255,0.95)' },
-  { key: 'textDim', label: 'Tekst (dempet)', def: 'rgba(255,255,255,0.62)' },
-];
+// Redigerbare chrome-nøkler pr. workspace (må matche WS_CHROME_VAR / ROLE_CHROME_VAR + ALLOWED i store).
+// `def` = literal-fallbacken i shellen (kun visning her; tomt felt lagres ikke).
+type ChromeField = { key: string; label: string; def: string };
+const CHROME_FIELDS_BY_WS: Record<string, ChromeField[]> = {
+  creatorhub: [
+    { key: 'bg', label: 'App-bakgrunn', def: '#0a0f1a' },
+    { key: 'bgSidebar', label: 'Sidebar', def: '#0b1120' },
+    { key: 'panelSolid', label: 'Panel / kort', def: '#0f1729' },
+    { key: 'panel', label: 'Panel (glass)', def: 'rgba(15,23,42,0.72)' },
+    { key: 'border', label: 'Ramme', def: 'rgba(255,255,255,0.12)' },
+    { key: 'text', label: 'Tekst', def: 'rgba(255,255,255,0.95)' },
+    { key: 'textDim', label: 'Tekst (dempet)', def: 'rgba(255,255,255,0.62)' },
+  ],
+  // The Role Room-shellens faktiske mørke slate-navy-overflater (ClientWorkspaceShell + casting).
+  theroleroom: [
+    { key: 'bg', label: 'App-bakgrunn', def: '#07101e' },
+    { key: 'panelSolid', label: 'Panel / topplinje', def: 'rgba(15,23,42,0.92)' },
+    { key: 'panel', label: 'Panel (glass)', def: 'rgba(15,23,42,0.55)' },
+    { key: 'border', label: 'Ramme', def: 'rgba(148,163,184,0.16)' },
+    { key: 'text', label: 'Tekst', def: '#e2e8f0' },
+    { key: 'textDim', label: 'Tekst (dempet)', def: 'rgba(226,232,240,0.7)' },
+  ],
+};
 
 export default function WorkspaceChromeEditor({ workspace = 'creatorhub' }: { workspace?: string } = {}) {
+  const CHROME_FIELDS = CHROME_FIELDS_BY_WS[workspace] ?? CHROME_FIELDS_BY_WS.creatorhub;
   const [chrome, setChrome] = React.useState<Record<string, string>>({});
   const [msg, setMsg] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -47,7 +61,7 @@ export default function WorkspaceChromeEditor({ workspace = 'creatorhub' }: { wo
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setMsg({ type: 'error', text: d.error || 'Lagring feilet' }); return; }
-      setMsg({ type: 'success', text: 'Chrome-paletten er lagret. WorkspaceShell bruker den ved neste last.' });
+      setMsg({ type: 'success', text: 'Chrome-paletten er lagret. Shell-en bruker den ved neste last.' });
     } catch (e) { setMsg({ type: 'error', text: (e as Error).message }); }
     finally { setSaving(false); }
   };
@@ -57,7 +71,7 @@ export default function WorkspaceChromeEditor({ workspace = 'creatorhub' }: { wo
       <Box>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>Shell-palett</Typography>
         <Typography variant="body2" color="text.secondary">
-          Overstyr bakgrunn, panel, ramme og tekst i Team Workspace-shell-en som data. Tomt felt =
+          Overstyr bakgrunn, panel, ramme og tekst i shell-en som data. Tomt felt =
           standard (mørk). Aksepterer hex eller rgba(). Ingen deploy.
         </Typography>
       </Box>

@@ -60,6 +60,7 @@ import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
 import { getActiveProfessionMode } from './config/professionMode';
+import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { Route } from 'wouter';
 import {
   Search as SearchTourIcon,
@@ -724,7 +725,7 @@ function CastingStandaloneRuntimeContent() {
             justifyContent: 'center',
             gap: 1.5,
             color: 'rgba(255,255,255,0.84)',
-            bgcolor: '#050816',
+            bgcolor: 'var(--role-chrome-bg, #050816)',
           }}
         >
           <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
@@ -895,6 +896,15 @@ export default function CastingStandaloneApp() {
         const violet = d.tokens.violetAccent;
         if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
           root.style.setProperty('--role-violet', violet);
+        }
+        // Chrome (Fase B-paritet): shell-overflate-farger → --role-chrome-* (hex ELLER rgba()).
+        const chrome = d.tokens.chrome;
+        if (chrome && typeof chrome === 'object' && !Array.isArray(chrome)) {
+          const c = chrome as Record<string, unknown>;
+          for (const [k, cssVar] of Object.entries(ROLE_CHROME_VAR)) {
+            const v = c[k];
+            if (typeof v === 'string' && v) root.style.setProperty(cssVar, v);
+          }
         }
       })
       .catch(() => {});
