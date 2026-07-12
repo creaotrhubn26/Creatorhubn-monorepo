@@ -29,6 +29,7 @@ const FIELDS: { key: string; label: string; type: 'color' | 'text' }[] = [
   { key: 'landingAccent', label: 'Landingsside-aksent', type: 'color' },
   { key: 'landingBg', label: 'Landingsside-bakgrunn', type: 'color' },
   { key: 'landingText', label: 'Landingsside-tekst', type: 'color' },
+  { key: 'portalAccent', label: 'Portal-aksent (Role Room)', type: 'color' },
   { key: 'fontFamily', label: 'Font-family', type: 'text' },
 ];
 
