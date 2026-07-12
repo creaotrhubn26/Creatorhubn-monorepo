@@ -109,6 +109,44 @@ export function setupRoleRoomMarketingPlanRoutes(
   const genLimit = aiRateLimit({ windowMs: 60_000, max: 12, label: "Marketing-plan AI" });
   const imageLimit = aiRateLimit({ windowMs: 60_000, max: 5, label: "Marketing-plan bilde-generering" });
 
+  // Sikkerhet (IDOR): en markedsplan tilhører ett prosjekt. requireAdminSession
+  // beviser KUN at kalleren er innlogget som admin — ikke at de har noe med
+  // DETTE prosjektet å gjøre. Tilgang til en plan gis derfor til plan-eier
+  // ELLER et aktivt prosjekt-medlem (produsent-team eller klient-reviewer) —
+  // nøyaktig samme grense som resolvePostEditor bruker for post-redigering.
+  // Uten dette kan en vilkårlig innlogget admin lese/endre andre produsenters
+  // planer ved å gjette/iterere projectId/planId.
+  const userIsProjectMember = async (projectId: string, userId: string): Promise<boolean> => {
+    try {
+      const r = await pool.query(
+        `SELECT 1 FROM casting_user_roles
+          WHERE project_id = $1 AND user_id = $2 AND deactivated_at IS NULL
+          LIMIT 1`,
+        [projectId, userId],
+      );
+      return Boolean(r.rows[0]);
+    } catch {
+      return false;
+    }
+  };
+
+  // Hent (project_id, owner_user_id) for en plan i én spørring. Brukes av de
+  // plan-id-nøklede endepunktene for eierskaps-/medlemskaps-sjekk.
+  const fetchPlanMeta = async (
+    planId: string,
+  ): Promise<{ projectId: string; ownerUserId: string } | null> => {
+    try {
+      const r = await pool.query<{ project_id: string; owner_user_id: string }>(
+        `SELECT project_id, owner_user_id FROM role_room_marketing_plans WHERE id = $1`,
+        [planId],
+      );
+      const row = r.rows[0];
+      return row ? { projectId: row.project_id, ownerUserId: row.owner_user_id } : null;
+    } catch {
+      return null;
+    }
+  };
+
   app.post("/api/role-room/marketing-plan/readiness", async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
@@ -258,6 +296,13 @@ export function setupRoleRoomMarketingPlanRoutes(
       return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     }
     const plan = await fetchActiveMarketingPlan(pool, projectId);
+    // Sikkerhet (IDOR): fetchActiveMarketingPlan scoper kun på project_id — ikke
+    // eier. Er kalleren hverken eier eller prosjekt-medlem, nekt. (plan === null
+    // lekker ingen data, så da slipper vi sjekken.)
+    if (plan && plan.ownerUserId !== session.userId
+        && !(await userIsProjectMember(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
+    }
     return res.json({ success: true, plan });
   });
 
@@ -267,6 +312,17 @@ export function setupRoleRoomMarketingPlanRoutes(
     const planId = String(req.params.planId || "").trim();
     if (!planId) {
       return res.status(400).json({ success: false, error: "planId er påkrevd." });
+    }
+    // Sikkerhet (IDOR): listPlanPosts scoper kun på plan_id — ikke eier.
+    // Verifiser at kalleren eier planen eller er prosjekt-medlem før vi
+    // returnerer post-innhold (hooks, script, captions, klient-notater).
+    const planMeta = await fetchPlanMeta(planId);
+    if (!planMeta) {
+      return res.status(404).json({ success: false, error: "Fant ikke planen." });
+    }
+    if (planMeta.ownerUserId !== session.userId
+        && !(await userIsProjectMember(planMeta.projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne planen." });
     }
     // ?since=ISO returnerer kun rader med updated_at > since.
     // Brukes av polling-loopen i MarketingPlanWorkspace for delta-
@@ -375,6 +431,20 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!projectId || postIds.length === 0 || !primaryPlatform) {
       return res.status(400).json({ success: false, error: "projectId, postIds og primaryPlatform er påkrevd." });
     }
+    // Sikkerhet (IDOR): bulkUpdatePlanPostsPlatform scoper kun UPDATE-en på
+    // project_id fra body — den verifiserer aldri at kalleren har noe med
+    // prosjektet å gjøre. Uten denne sjekken kunne en vilkårlig admin endre
+    // primary_platform på en annen produsents poster ved å oppgi deres
+    // projectId + postIds. Poster er redigerbare for eier + prosjekt-medlem
+    // (samme grense som post-PATCH via resolvePostEditor).
+    const ownsPlanOnProject = await pool.query(
+      `SELECT 1 FROM role_room_marketing_plans
+        WHERE project_id = $1 AND owner_user_id = $2 LIMIT 1`,
+      [projectId, session.userId],
+    );
+    if (!ownsPlanOnProject.rows[0] && !(await userIsProjectMember(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
+    }
     try {
       const updated = await bulkUpdatePlanPostsPlatform(pool, { projectId, postIds, primaryPlatform });
       return res.json({ success: true, updated });
@@ -394,6 +464,18 @@ export function setupRoleRoomMarketingPlanRoutes(
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
     if (!planId || !projectId) {
       return res.status(400).json({ success: false, error: "planId og projectId er påkrevd." });
+    }
+    // Sikkerhet (IDOR): activateMarketingPlan scoper kun på (id, project_id) —
+    // ikke eier. Uten denne sjekken kunne en vilkårlig admin aktivere en annen
+    // produsents draft-plan og trigge 30-post Claude-generering på deres regning
+    // + en versjons-snapshot. Plan-livssyklus er eier-styrt (likt /:planId/pillars
+    // og /generate-posts).
+    const activateMeta = await fetchPlanMeta(planId);
+    if (!activateMeta || activateMeta.projectId !== projectId) {
+      return res.status(404).json({ success: false, error: "Fant ikke planen." });
+    }
+    if (activateMeta.ownerUserId !== session.userId) {
+      return res.status(403).json({ success: false, error: "Du eier ikke planen." });
     }
     const ok = await activateMarketingPlan(pool, planId, projectId);
     if (!ok) {
@@ -483,6 +565,13 @@ export function setupRoleRoomMarketingPlanRoutes(
     }
     if (!plan || plan.id !== planId) {
       return res.status(404).json({ success: false, error: "Fant ingen plan å dele (sjekk projectId/planId)." });
+    }
+    // Sikkerhet (IDOR): fetchActiveMarketingPlan scoper kun på project_id.
+    // Uten eier-sjekk kunne en vilkårlig admin minte en signert 24t offentlig
+    // share-link som eksponerer en annen produsents komplette plan. Å dele
+    // planen er en eier-handling (likt de andre plan-livssyklus-endepunktene).
+    if (plan.ownerUserId !== session.userId) {
+      return res.status(403).json({ success: false, error: "Du eier ikke planen." });
     }
 
     const ttlMs = 24 * 60 * 60 * 1000;  // alltid 24t for plan-preview
