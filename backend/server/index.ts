@@ -627,6 +627,7 @@ import { registerIntegrationsAdminRoutes } from "./integrations/integrations-adm
 import { registerOwnedChannelsRoutes } from "./integrations/owned-channels-routes.js";
 import { registerKeywordPlannerRoutes } from "./integrations/keyword-planner-routes.js";
 import { registerManualImportRoutes } from "./integrations/manual-import-routes.js";
+import { registerInsightsRoutes } from "./integrations/insights-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
@@ -25085,6 +25086,13 @@ registerKeywordPlannerRoutes({
 });
 // Manuell CSV-import → normalized_signals (integrasjonsplanen steg 4)
 registerManualImportRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Innsiktsmotoren fase 1 — detektorer over normalized_signals (docs/integration-audit/10)
+registerInsightsRoutes({
   app,
   pool,
   activeSessions,
