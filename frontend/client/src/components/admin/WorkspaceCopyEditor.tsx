@@ -6,17 +6,26 @@
 import React from 'react';
 import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
 
-// Redigerbare shell-tekst-nøkler (må matche SHELL_T-nøklene i WorkspaceShell).
-const COPY_FIELDS: { key: string; label: string; def: string }[] = [
-  { key: 'newProject', label: 'Ny-prosjekt-knapp', def: 'Nytt prosjekt' },
-  { key: 'clientView', label: 'Kundevisning-knapp', def: 'Kundevisning' },
-  { key: 'inviteMember', label: 'Inviter-knapp', def: 'Inviter medlem' },
-  { key: 'groupHoved', label: 'Gruppe: hovedmeny', def: 'HOVEDMENY' },
-  { key: 'groupRom', label: 'Gruppe: smart rom', def: 'SMART ROM' },
-  { key: 'groupKlient', label: 'Gruppe: kundeportal', def: 'KUNDEPORTAL' },
-];
+// Redigerbare shell-tekst-nøkler pr. workspace (må matche t()-nøklene i shellen).
+type CopyField = { key: string; label: string; def: string };
+const COPY_FIELDS_BY_WS: Record<string, CopyField[]> = {
+  creatorhub: [
+    { key: 'newProject', label: 'Ny-prosjekt-knapp', def: 'Nytt prosjekt' },
+    { key: 'clientView', label: 'Kundevisning-knapp', def: 'Kundevisning' },
+    { key: 'inviteMember', label: 'Inviter-knapp', def: 'Inviter medlem' },
+    { key: 'groupHoved', label: 'Gruppe: hovedmeny', def: 'HOVEDMENY' },
+    { key: 'groupRom', label: 'Gruppe: smart rom', def: 'SMART ROM' },
+    { key: 'groupKlient', label: 'Gruppe: kundeportal', def: 'KUNDEPORTAL' },
+  ],
+  // The Role Room klient-shell (ClientWorkspaceShell) — header-strenger (tr()-nøkler).
+  theroleroom: [
+    { key: 'header.title', label: 'Header-tittel', def: 'The Role Room' },
+    { key: 'header.subtitle', label: 'Header-undertittel', def: 'Klient-flate' },
+  ],
+};
 
 export default function WorkspaceCopyEditor({ workspace = 'creatorhub' }: { workspace?: string } = {}) {
+  const COPY_FIELDS = COPY_FIELDS_BY_WS[workspace] ?? COPY_FIELDS_BY_WS.creatorhub;
   const [copy, setCopy] = React.useState<Record<string, string>>({});
   const [msg, setMsg] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -54,7 +63,7 @@ export default function WorkspaceCopyEditor({ workspace = 'creatorhub' }: { work
       <Box>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>Tekster</Typography>
         <Typography variant="body2" color="text.secondary">
-          Overstyr knappe- og gruppetekstene i Team Workspace. Tomt felt = standard (locale). Ingen deploy.
+          Overstyr knappe- og gruppetekstene i shell-en. Tomt felt = standard (locale). Ingen deploy.
         </Typography>
       </Box>
       {msg && <Alert severity={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>}

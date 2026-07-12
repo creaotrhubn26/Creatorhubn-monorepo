@@ -1,4 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
+// Nav-overstyring pr. tab-nøkkel (design-tokens `nav`-namespace) — label/skjul/rekkefølge.
+export type RoleNavOverride = { label?: string; badge?: string; hidden?: boolean; order?: number };
+// Det hooken returnerer for shell-konsumering (nav + copy). CSS-vars settes som bivirkning.
+export type RoleRoomBrand = { nav: Record<string, RoleNavOverride>; copy: Record<string, string> };
 
 // Chrome-nøkkel (design-tokens `chrome`-namespace) → CSS-var på :root. Nøklene matcher backend-ALLOWED
 // (bg/panelSolid/panel/border/text/textDim). Role Room-shellene faller tilbake fra disse via var(...).
@@ -19,7 +24,8 @@ export const ROLE_CHROME_VAR: Record<string, string> = {
  * Kalles fra Role Room-monteringspunktene (casting-main har en egen inline-kopi; denne dekker
  * client-workspace/producer-flatene der cyan-familien dominerer).
  */
-export function useRoleRoomBrand(): void {
+export function useRoleRoomBrand(): RoleRoomBrand {
+  const [brand, setBrand] = useState<RoleRoomBrand>({ nav: {}, copy: {} });
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
@@ -48,8 +54,14 @@ export function useRoleRoomBrand(): void {
             if (typeof v === 'string' && v) root.style.setProperty(cssVar, v);
           }
         }
+        // Nav + copy (Fase B-paritet): returneres for shell-konsumering (label/skjul/rekkefølge + strenger).
+        // Ingen override → tomme objekter → shellene bruker sine hardkodede literaler → identisk.
+        const nav = (t.nav && typeof t.nav === 'object' && !Array.isArray(t.nav)) ? (t.nav as Record<string, RoleNavOverride>) : {};
+        const copy = (t.copy && typeof t.copy === 'object' && !Array.isArray(t.copy)) ? (t.copy as Record<string, string>) : {};
+        if (Object.keys(nav).length || Object.keys(copy).length) setBrand({ nav, copy });
       })
       .catch(() => {});
     return () => { live = false; };
   }, []);
+  return brand;
 }
