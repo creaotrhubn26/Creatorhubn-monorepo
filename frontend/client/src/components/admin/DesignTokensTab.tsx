@@ -158,6 +158,10 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
         <>
           <Divider />
           <WorkspaceChromeEditor workspace="theroleroom" />
+          <Divider />
+          <WorkspaceNavEditor workspace="theroleroom" />
+          <Divider />
+          <WorkspaceCopyEditor workspace="theroleroom" />
         </>
       )}
       <Divider />

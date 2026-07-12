@@ -100,7 +100,9 @@ export default function ClientWorkspaceShell({
   const [activeTab, setActiveTab] = useState<TabValue>(getInitialTab);
   const cmsHeroBlocks = useCmsBlocks('clientworkspace');
   // CreatorHub Design: token-driv Role Room-merkevaren (cyan-familien) på producer/client-flatene.
-  useRoleRoomBrand();
+  // Returnerer nav/copy-overstyringer (Fase B-paritet): fane-label/skjul/rekkefølge + strenger.
+  const { nav: navOv, copy: copyOv } = useRoleRoomBrand();
+  const tr = (key: string, fallback: string) => (typeof copyOv[key] === 'string' && copyOv[key] ? copyOv[key] : fallback);
 
   // ?preview=true → produsent ser sin egen klient-flate
   const isPreviewMode = useMemo(() => {
@@ -122,6 +124,14 @@ export default function ClientWorkspaceShell({
   const TAB_AREA: Partial<Record<TabValue, AssistantArea>> = {
     economy: 'economy', brief: 'brief', meetings: 'meetings', merkevare: 'materials', plan: 'plan',
   };
+  // Nav-overstyring (Fase B-paritet): label (nav→copy→literal), skjul, rekkefølge. Ingen override →
+  // uendret literal/rekkefølge. Rekkefølge default = original indeks (stabil), admin kan flytte.
+  const effectiveTabs = useMemo(() => TABS
+    .map((t, i) => ({ ...t, label: navOv[t.value]?.label || tr(`tab.${t.value}`, t.label), order: navOv[t.value]?.order ?? i }))
+    .filter((t) => !navOv[t.value]?.hidden)
+    .sort((a, b) => a.order - b.order),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [navOv, copyOv]);
 
   const handleTabChange = (_e: React.SyntheticEvent, next: TabValue) => {
     setActiveTab(next);
@@ -214,11 +224,11 @@ export default function ClientWorkspaceShell({
               sx={{ width: 36, height: 36, borderRadius: 1.5 }}
             />
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#e2e8f0' }} noWrap>
-                The Role Room
+              <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--role-chrome-text, #e2e8f0)' }} noWrap>
+                {tr('header.title', 'The Role Room')}
               </Typography>
               <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }} noWrap>
-                Klient-flate · {projectId}
+                {tr('header.subtitle', 'Klient-flate')} · {projectId}
               </Typography>
             </Box>
           </Stack>
@@ -263,7 +273,7 @@ export default function ClientWorkspaceShell({
               '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)', height: 3 },
             }}
           >
-            {TABS
+            {effectiveTabs
               .filter((t) => !t.producerOnly || isPreviewMode)
               .filter((t) => {
                 if (!isAssistant) return true;

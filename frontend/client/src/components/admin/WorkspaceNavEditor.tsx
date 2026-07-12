@@ -12,7 +12,23 @@ import { WS_NAV } from '../workspace/workspaceTheme';
 
 type NavPatch = { label?: string; badge?: number; hidden?: boolean; order?: number };
 
-const GROUP_LABEL: Record<string, string> = { hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal' };
+const GROUP_LABEL: Record<string, string> = { hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal', faner: 'Klient-faner' };
+
+// The Role Room-klient-shell-fanene (ClientWorkspaceShell TABS) — nav-redigering for theroleroom.
+const ROLEROOM_NAV: Array<{ key: string; label: string; group: string }> = [
+  { key: 'economy', label: 'Økonomi', group: 'faner' },
+  { key: 'approval', label: 'Godkjenning', group: 'faner' },
+  { key: 'messages', label: 'Meldinger', group: 'faner' },
+  { key: 'brief', label: 'Brief', group: 'faner' },
+  { key: 'merkevare', label: 'Merkevare', group: 'faner' },
+  { key: 'meetings', label: 'Møter', group: 'faner' },
+  { key: 'content', label: 'Content Planner', group: 'faner' },
+  { key: 'vault', label: 'Tilganger', group: 'faner' },
+  { key: 'team', label: 'Team', group: 'faner' },
+  { key: 'roles', label: 'Roller', group: 'faner' },
+  { key: 'plan', label: 'Plan', group: 'faner' },
+  { key: 'marketing-plan', label: 'Markedsplan', group: 'faner' },
+];
 
 export default function WorkspaceNavEditor({ workspace = 'creatorhub' }: { workspace?: string } = {}) {
   const [ov, setOv] = React.useState<Record<string, NavPatch>>({});
@@ -51,21 +67,23 @@ export default function WorkspaceNavEditor({ workspace = 'creatorhub' }: { works
     finally { setSaving(false); }
   };
 
-  const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
+  const navItems: Array<{ key: string; label: string; group: string }> =
+    workspace === 'theroleroom' ? ROLEROOM_NAV : WS_NAV.map((n) => ({ key: n.key, label: n.label, group: n.group }));
+  const groups: string[] = workspace === 'theroleroom' ? ['faner'] : ['hoved', 'rom', 'klient'];
 
   return (
     <Stack spacing={2}>
       <Box>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>Navigasjon</Typography>
         <Typography variant="body2" color="text.secondary">
-          Overstyr venstremenyen i Team Workspace som data — endre navn, tell-badge, skjul en flate
+          Overstyr menyen som data — endre navn, tell-badge, skjul en flate
           eller endre rekkefølge. Tomt felt = standard. Ingen deploy.
         </Typography>
       </Box>
       {msg && <Alert severity={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>}
 
       {groups.map((g) => {
-        const items = WS_NAV.filter((n) => n.group === g);
+        const items = navItems.filter((n) => n.group === g);
         if (!items.length) return null;
         return (
           <Box key={g}>
