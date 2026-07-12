@@ -262,6 +262,21 @@ const gscPositionDropDetector: InsightDetector = {
 /** Discovery: ukjent merke må nevnes ≥ N ganger i siste kjøring. */
 const DISCOVERED_MIN_MENTIONS = 3;
 
+/**
+ * Generiske produktivitets-/infrastrukturverktøy: at AI nevner dem betyr
+ * ikke konkurranse i vår kategori (No Fake Insights). Kategorispesifikke
+ * merker (Fiken, Spotlight, Mindbody, DaVinci Resolve) skal IKKE hit —
+ * de er reelle kandidater eller kategorisignaler som må vurderes manuelt.
+ */
+export const GENERIC_TOOL_STOPLIST = new Set([
+  "notion", "trello", "asana", "monday.com", "airtable", "slack",
+  "discord", "zoom", "microsoft teams", "dropbox", "wetransfer",
+  "google drive", "google forms", "google kalender", "google calendar",
+  "google docs", "google sheets", "excel", "canva", "vimeo", "youtube",
+  "instagram", "facebook", "tiktok", "vipps", "stripe", "paypal",
+  "mailchimp", "wordpress", "squarespace", "wix",
+]);
+
 const newCompetitorDetector: InsightDetector = {
   detectorKey: "new-discovered-competitor",
   async run(pool, organizationId) {
@@ -297,7 +312,8 @@ const newCompetitorDetector: InsightDetector = {
       const known = new Set(
         [row.target_brand, ...(row.competitor_brands ?? [])].map((x) => x.toLowerCase()),
       );
-      if (known.has(row.brand.toLowerCase())) continue;
+      const brandLower = row.brand.toLowerCase();
+      if (known.has(brandLower) || GENERIC_TOOL_STOPLIST.has(brandLower)) continue;
       out.push({
         detector: this.detectorKey,
         dedupeKey: `new-competitor|${row.set_name}|${row.brand.toLowerCase()}`,
