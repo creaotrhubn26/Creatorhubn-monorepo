@@ -31,7 +31,7 @@ import {
   listPromptSets,
   setPromptEnabled,
 } from "./geo-prompt-set-service.js";
-import { computeReport, runProbe } from "./geo-probe-runner-service.js";
+import { computeReport, resumeStaleProbeRuns, runProbe } from "./geo-probe-runner-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -179,6 +179,23 @@ export function registerGeoVisibilityRoutes({
     }
   });
 
+  // ── Gjenoppta avbrutte kjøringer (token-gated, kalles også av
+  //    run-approved automatisk) ─────────────────────────────────────
+  app.post("/api/geo-visibility/cron/resume-stale", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.GEO_VISIBILITY_CRON_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const results = await resumeStaleProbeRuns(pool);
+      return res.json({ resumed: results });
+    } catch (err) {
+      console.error("[geo-visibility] resume-stale failed", err);
+      return res.status(500).json({ error: "resume_failed" });
+    }
+  });
+
   // ── Ukentlig cron (GitHub Actions) ────────────────────────────────
   app.post("/api/geo-visibility/cron/run-approved", async (req, res) => {
     const token = req.headers["x-cron-token"];
@@ -196,6 +213,9 @@ export function registerGeoVisibilityRoutes({
       // kostnads-/rate-sensitive, så settene kjøres ett om gangen.
       const started = sets.rows.map((s) => s.id);
       void (async () => {
+        // Selvhelbreding: fullfør kjøringer drept av deploy-restarts
+        await resumeStaleProbeRuns(pool).catch((err) =>
+          console.error("[geo-visibility] resume-stale feilet:", err));
         for (const s of sets.rows) {
           try {
             await runProbe(pool, s.id, s.workspace_owner_user_id);

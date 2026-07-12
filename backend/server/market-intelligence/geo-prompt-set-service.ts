@@ -314,6 +314,40 @@ export async function getPromptSet(
   };
 }
 
+/**
+ * INTERN loader uten owner-filter — kun for run-executor/resume der
+ * runId allerede autoriserer (run ble opprettet via eier-sjekket API).
+ */
+export async function getPromptSetById(
+  pool: Pool,
+  setId: string,
+): Promise<{ promptSet: GeoPromptSet; prompts: GeoPrompt[] } | null> {
+  const r = await pool.query<PromptSetRow>(
+    `SELECT ${SET_COLUMNS} FROM geo_prompt_sets WHERE id = $1::uuid`,
+    [setId],
+  );
+  if (!r.rows[0]) return null;
+  const p = await pool.query<{
+    id: string;
+    text: string;
+    topic: string;
+    intent: GeoPromptIntent;
+    enabled: boolean;
+    sort_order: number;
+  }>(
+    `SELECT id::text, text, topic, intent, enabled, sort_order
+       FROM geo_prompts WHERE prompt_set_id = $1::uuid ORDER BY sort_order`,
+    [setId],
+  );
+  return {
+    promptSet: rowToSet(r.rows[0]),
+    prompts: p.rows.map((row) => ({
+      id: row.id, text: row.text, topic: row.topic,
+      intent: row.intent, enabled: row.enabled, sortOrder: row.sort_order,
+    })),
+  };
+}
+
 export async function listPromptSets(
   pool: Pool,
   workspaceOwnerUserId: string,

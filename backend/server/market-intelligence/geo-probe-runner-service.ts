@@ -20,7 +20,7 @@
 import type { Pool } from "pg";
 import { getGeoProbeEngines, type GeoEngineId } from "./geo-probe-engines.js";
 import { extractDiscoveredBrands } from "./geo-brand-extraction.js";
-import { getPromptSet, type GeoPrompt, type GeoPromptSet } from "./geo-prompt-set-service.js";
+import { getPromptSet, getPromptSetById, type GeoPrompt, type GeoPromptSet } from "./geo-prompt-set-service.js";
 import { insertNormalizedSignals } from "../integrations/normalized-signal-store.js";
 import type { NormalizedSignal } from "../integrations/normalized-signal-schema.js";
 
@@ -237,6 +237,170 @@ export interface RunProbeResult {
   signalsInserted: number;
   /** Satt når signal-aggregering ble hoppet over (ingen ekte org-id). */
   signalsSkippedReason?: string;
+  /** true når kjøringen ble gjenopptatt etter avbrudd. */
+  resumed?: boolean;
+}
+
+/** Par (prompt × motor) som ennå ikke har resultat — ren funksjon, testet. */
+export function computeMissingPairs(
+  promptIds: string[],
+  engineIds: GeoEngineId[],
+  existing: Array<{ prompt_id: string; engine: string }>,
+): Array<{ promptId: string; engine: GeoEngineId }> {
+  const done = new Set(existing.map((e) => `${e.prompt_id}|${e.engine}`));
+  const missing: Array<{ promptId: string; engine: GeoEngineId }> = [];
+  for (const promptId of promptIds) {
+    for (const engine of engineIds) {
+      if (!done.has(`${promptId}|${engine}`)) missing.push({ promptId, engine });
+    }
+  }
+  return missing;
+}
+
+/**
+ * Idempotent executor: kjører manglende (prompt × motor)-par for en
+ * eksisterende run-rad og fullfører den. Trygg å kalle på nytt etter
+ * avbrudd (deploy-restart) — ferdige svar hoppes over via unique-
+ * indeksen, og aggregeringen leses fra DB, ikke prosessminne.
+ */
+export async function executeProbeRun(
+  pool: Pool,
+  runId: string,
+): Promise<RunProbeResult> {
+  const runRow = await pool.query<{
+    prompt_set_id: string;
+    started_at: string;
+    engines: GeoEngineId[];
+  }>(
+    `SELECT prompt_set_id::text, started_at::text, engines
+       FROM geo_probe_runs WHERE id = $1::uuid`,
+    [runId],
+  );
+  if (!runRow.rows[0]) throw new Error("run_not_found");
+  const run = runRow.rows[0];
+
+  const loaded = await getPromptSetById(pool, run.prompt_set_id);
+  if (!loaded) throw new Error("prompt_set_not_found");
+  const { promptSet, prompts } = loaded;
+  const enabledPrompts = prompts.filter((p) => p.enabled);
+  const promptById = new Map(enabledPrompts.map((p) => [p.id, p]));
+
+  const engines = getGeoProbeEngines();
+  const skipped = engines.filter((e) => !e.isConfigured()).map((e) => e.engineId);
+  // Bruk motorene runen ble startet med OG som fortsatt er konfigurert
+  const runEngines = engines.filter(
+    (e) => e.isConfigured() && run.engines.includes(e.engineId),
+  );
+  const engineById = new Map(runEngines.map((e) => [e.engineId, e]));
+
+  const existing = await pool.query<{ prompt_id: string; engine: string }>(
+    `SELECT prompt_id::text, engine FROM geo_probe_results WHERE run_id = $1::uuid`,
+    [runId],
+  );
+  const resumed = existing.rows.length > 0;
+  const missing = computeMissingPairs(
+    enabledPrompts.map((p) => p.id),
+    runEngines.map((e) => e.engineId),
+    existing.rows,
+  );
+
+  const allBrands = [promptSet.targetBrand, ...promptSet.competitorBrands];
+
+  try {
+    for (const pair of missing) {
+      const prompt = promptById.get(pair.promptId);
+      const engine = engineById.get(pair.engine);
+      if (!prompt || !engine) continue;
+      const answer = await engine.ask(prompt.text);
+      if (answer === null) continue; // telles som frafall i finaliseringen
+      const mentioned = extractBrandMentions(answer, allBrands);
+      const urls = extractUrls(answer);
+      const targetMention = mentioned.find((m) => m.name === promptSet.targetBrand);
+      const discovered = await extractDiscoveredBrands(answer, allBrands);
+      await pool.query(
+        `INSERT INTO geo_probe_results (
+           run_id, prompt_id, engine, mentioned_brands, cited_urls,
+           target_mentioned, target_rank, answer_excerpt, discovered_brands
+         ) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9::jsonb)
+         ON CONFLICT (run_id, prompt_id, engine) DO NOTHING`,
+        [
+          runId, prompt.id, engine.engineId,
+          JSON.stringify(mentioned), JSON.stringify(urls),
+          Boolean(targetMention), targetMention?.rank ?? null,
+          answer.slice(0, 500), JSON.stringify(discovered),
+        ],
+      );
+    }
+
+    // Finalisering — aggregat leses fra DB (overlever restarts)
+    const stored = await pool.query<{
+      prompt_id: string;
+      engine: GeoEngineId;
+      mentioned_brands: BrandMention[];
+      cited_urls: string[];
+    }>(
+      `SELECT prompt_id::text, engine, mentioned_brands, cited_urls
+         FROM geo_probe_results WHERE run_id = $1::uuid`,
+      [runId],
+    );
+    const forAggregation: ProbeResultForAggregation[] = stored.rows.map((r) => ({
+      promptTopic: promptById.get(r.prompt_id)?.topic ?? "ukjent",
+      engine: r.engine,
+      mentionedBrands: r.mentioned_brands ?? [],
+      targetCited: citesDomain(r.cited_urls ?? [], promptSet.targetDomain),
+    }));
+
+    let signalsInserted = 0;
+    let signalsSkippedReason: string | undefined;
+    const completedAt = new Date().toISOString();
+    if (promptSet.organizationId && UUID_PATTERN.test(promptSet.organizationId)) {
+      const signals = aggregateToSignals(forAggregation, {
+        organizationId: promptSet.organizationId,
+        workspaceId: promptSet.workspaceOwnerUserId,
+        projectId: promptSet.projectId ?? undefined,
+        runId,
+        targetBrand: promptSet.targetBrand,
+        competitorBrands: promptSet.competitorBrands,
+        region: promptSet.region,
+        periodStart: new Date(run.started_at).toISOString(),
+        periodEnd: completedAt,
+        collectedAt: completedAt,
+      });
+      const r = await insertNormalizedSignals(pool, signals);
+      signalsInserted = r.inserted;
+    } else {
+      signalsSkippedReason = "prompt-settet mangler organization_id — rapporten leses fra probe-tabellene";
+    }
+
+    const expected = enabledPrompts.length * runEngines.length;
+    const answers = stored.rows.length;
+    const status = answers >= expected && skipped.length === 0 ? "completed" : "partial";
+    await pool.query(
+      `UPDATE geo_probe_runs
+          SET status = $2, answers_total = $3, completed_at = now()
+        WHERE id = $1::uuid`,
+      [runId, status, answers],
+    );
+
+    return {
+      runId,
+      status,
+      enginesRun: runEngines.map((e) => e.engineId),
+      enginesSkipped: skipped,
+      answers,
+      signalsInserted,
+      signalsSkippedReason,
+      resumed,
+    };
+  } catch (err) {
+    await pool.query(
+      `UPDATE geo_probe_runs
+          SET status = 'failed', error_message = $2, completed_at = now()
+        WHERE id = $1::uuid`,
+      [runId, String(err).slice(0, 500)],
+    );
+    throw err;
+  }
 }
 
 export async function runProbe(
@@ -252,111 +416,47 @@ export async function runProbe(
   const enabledPrompts = prompts.filter((p) => p.enabled);
   if (enabledPrompts.length === 0) throw new Error("no_enabled_prompts");
 
-  const engines = getGeoProbeEngines();
-  const configured = engines.filter((e) => e.isConfigured());
-  const skipped = engines.filter((e) => !e.isConfigured()).map((e) => e.engineId);
+  const configured = getGeoProbeEngines().filter((e) => e.isConfigured());
   if (configured.length === 0) throw new Error("no_engines_configured");
 
-  const runRow = await pool.query<{ id: string; started_at: string }>(
+  const runRow = await pool.query<{ id: string }>(
     `INSERT INTO geo_probe_runs (prompt_set_id, engines, prompts_total)
      VALUES ($1::uuid, $2::jsonb, $3)
-     RETURNING id::text, started_at::text`,
+     RETURNING id::text`,
     [setId, JSON.stringify(configured.map((e) => e.engineId)), enabledPrompts.length],
   );
-  const runId = runRow.rows[0].id;
+  return executeProbeRun(pool, runRow.rows[0].id);
+}
 
-  const allBrands = [promptSet.targetBrand, ...promptSet.competitorBrands];
-  const forAggregation: ProbeResultForAggregation[] = [];
-  let answers = 0;
-  let failures = 0;
-
-  try {
-    for (const prompt of enabledPrompts) {
-      for (const engine of configured) {
-        const answer = await engine.ask(prompt.text);
-        if (answer === null) {
-          failures++;
-          continue;
-        }
-        answers++;
-        const mentioned = extractBrandMentions(answer, allBrands);
-        const urls = extractUrls(answer);
-        const targetMention = mentioned.find((m) => m.name === promptSet.targetBrand);
-        const targetCited = citesDomain(urls, promptSet.targetDomain);
-        // Merkevare-discovery: hvem nevnes UTOVER de kjente? Best-effort.
-        const discovered = await extractDiscoveredBrands(answer, allBrands);
-
-        await pool.query(
-          `INSERT INTO geo_probe_results (
-             run_id, prompt_id, engine, mentioned_brands, cited_urls,
-             target_mentioned, target_rank, answer_excerpt, discovered_brands
-           ) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9::jsonb)
-           ON CONFLICT (run_id, prompt_id, engine) DO NOTHING`,
-          [
-            runId, prompt.id, engine.engineId,
-            JSON.stringify(mentioned), JSON.stringify(urls),
-            Boolean(targetMention), targetMention?.rank ?? null,
-            answer.slice(0, 500), JSON.stringify(discovered),
-          ],
-        );
-        forAggregation.push({
-          promptTopic: prompt.topic,
-          engine: engine.engineId,
-          mentionedBrands: mentioned,
-          targetCited,
-        });
-      }
+/**
+ * Selvhelbreding: finn kjøringer som har stått i 'running' lenger enn
+ * terskelen (typisk drept av deploy-restart) og fullfør dem.
+ */
+export async function resumeStaleProbeRuns(
+  pool: Pool,
+  opts: { olderThanMinutes?: number; limit?: number } = {},
+): Promise<Array<{ runId: string; status: string; answers: number }>> {
+  const olderThan = opts.olderThanMinutes ?? 30;
+  const stale = await pool.query<{ id: string }>(
+    `SELECT id::text FROM geo_probe_runs
+      WHERE status = 'running'
+        AND started_at < now() - ($1 || ' minutes')::interval
+      ORDER BY started_at
+      LIMIT $2`,
+    [String(olderThan), opts.limit ?? 10],
+  );
+  const results: Array<{ runId: string; status: string; answers: number }> = [];
+  for (const row of stale.rows) {
+    try {
+      const r = await executeProbeRun(pool, row.id);
+      results.push({ runId: r.runId, status: r.status, answers: r.answers });
+      console.log(`[geo-resume] gjenopptok run ${row.id}: ${r.status} (${r.answers} svar)`);
+    } catch (err) {
+      console.error(`[geo-resume] run ${row.id} feilet:`, String(err).slice(0, 150));
+      results.push({ runId: row.id, status: "failed", answers: 0 });
     }
-
-    // Aggreger til normalized_signals — krever ekte org-UUID (FK)
-    let signalsInserted = 0;
-    let signalsSkippedReason: string | undefined;
-    const completedAt = new Date().toISOString();
-    if (promptSet.organizationId && UUID_PATTERN.test(promptSet.organizationId)) {
-      const signals = aggregateToSignals(forAggregation, {
-        organizationId: promptSet.organizationId,
-        workspaceId: workspaceOwnerUserId,
-        projectId: promptSet.projectId ?? undefined,
-        runId,
-        targetBrand: promptSet.targetBrand,
-        competitorBrands: promptSet.competitorBrands,
-        region: promptSet.region,
-        periodStart: new Date(runRow.rows[0].started_at).toISOString(),
-        periodEnd: completedAt,
-        collectedAt: completedAt,
-      });
-      const r = await insertNormalizedSignals(pool, signals);
-      signalsInserted = r.inserted;
-    } else {
-      signalsSkippedReason = "prompt-settet mangler organization_id — rapporten leses fra probe-tabellene";
-    }
-
-    const status = failures > 0 || skipped.length > 0 ? "partial" : "completed";
-    await pool.query(
-      `UPDATE geo_probe_runs
-          SET status = $2, answers_total = $3, completed_at = now()
-        WHERE id = $1::uuid`,
-      [runId, status, answers],
-    );
-
-    return {
-      runId,
-      status,
-      enginesRun: configured.map((e) => e.engineId),
-      enginesSkipped: skipped,
-      answers,
-      signalsInserted,
-      signalsSkippedReason,
-    };
-  } catch (err) {
-    await pool.query(
-      `UPDATE geo_probe_runs
-          SET status = 'failed', error_message = $2, completed_at = now()
-        WHERE id = $1::uuid`,
-      [runId, String(err).slice(0, 500)],
-    );
-    throw err;
   }
+  return results;
 }
 
 // ─────────────────────────────────────────────────────────────────────
