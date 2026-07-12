@@ -58,6 +58,13 @@ function ConnectorsPanel({ ws }: { ws: string }) {
   );
 }
 
+// Landingsside pr. workspace (produkt-hostene fra role-room/utils/runtime.ts + main-entry).
+const WORKSPACE_LANDING: Record<string, string> = {
+  creatorhub: 'https://creatorhubn.com/',
+  theroleroom: 'https://theroleroom.com/',
+  leadgrid: 'https://leadgrid.no/',
+};
+
 export default function CreatorHubDesignShell() {
   const [ws, setWs] = React.useState('creatorhub');
   const [sub, setSub] = React.useState('templates');
@@ -74,8 +81,15 @@ export default function CreatorHubDesignShell() {
         </ToggleButtonGroup>
       </Stack>
 
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
         <Chip size="small" color="primary" label={`Workspace: ${WORKSPACES.find((w) => w.value === ws)?.label}`} />
+        {WORKSPACE_LANDING[ws] && (
+          <Link href={WORKSPACE_LANDING[ws]} target="_blank" rel="noopener noreferrer" variant="body2"
+            underline="hover" sx={{ fontWeight: 600 }}
+            aria-label={`Åpne landingssiden for ${WORKSPACES.find((w) => w.value === ws)?.label} i ny fane`}>
+            Åpne landingsside ↗
+          </Link>
+        )}
       </Stack>
 
       <Tabs value={sub} onChange={(_e, v) => setSub(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
