@@ -12,10 +12,17 @@ import { WS_NAV } from '../workspace/workspaceTheme';
 
 type NavPatch = { label?: string; badge?: number; hidden?: boolean; order?: number };
 
-const GROUP_LABEL: Record<string, string> = { hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal', faner: 'Klient-faner' };
+const GROUP_LABEL: Record<string, string> = {
+  hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal',
+  faner: 'Klient-faner', producer: 'Producer-dashbord',
+};
 
-// The Role Room-klient-shell-fanene (ClientWorkspaceShell TABS) — nav-redigering for theroleroom.
+// The Role Room-nav-flaten: klient-shell (ClientWorkspaceShell TABS) + producer-dashbord
+// (RoleRoomDashboardPanel TAB_DEFS). Delt `theroleroom`-nav-namespace pr. nøkkel — en label/hidden
+// pr. key gjelder overalt nøkkelen rendres. Delte nøkler (roles/approval/brief/economy) står i klient-
+// gruppa (én rad = én key). Producer-gruppa har kun producer-eksklusive faner.
 const ROLEROOM_NAV: Array<{ key: string; label: string; group: string }> = [
+  // Klient-faner (delte nøkler bor her)
   { key: 'economy', label: 'Økonomi', group: 'faner' },
   { key: 'approval', label: 'Godkjenning', group: 'faner' },
   { key: 'messages', label: 'Meldinger', group: 'faner' },
@@ -28,6 +35,18 @@ const ROLEROOM_NAV: Array<{ key: string; label: string; group: string }> = [
   { key: 'roles', label: 'Roller', group: 'faner' },
   { key: 'plan', label: 'Plan', group: 'faner' },
   { key: 'marketing-plan', label: 'Markedsplan', group: 'faner' },
+  // Producer-eksklusive faner (RoleRoomDashboardPanel)
+  { key: 'candidates', label: 'Kandidater', group: 'producer' },
+  { key: 'crew', label: 'Crew', group: 'producer' },
+  { key: 'schedule', label: 'Tidsplan', group: 'producer' },
+  { key: 'publishing', label: 'Publisering', group: 'producer' },
+  { key: 'carousel', label: 'Ukescontent', group: 'producer' },
+  { key: 'planner', label: 'Planner', group: 'producer' },
+  { key: 'shooting', label: 'Skyting', group: 'producer' },
+  { key: 'shotlist', label: 'Shotliste', group: 'producer' },
+  { key: 'mannskap', label: 'Mannskap', group: 'producer' },
+  { key: 'agent', label: 'Agent', group: 'producer' },
+  { key: 'admin-room', label: 'Admin Room', group: 'producer' },
 ];
 
 export default function WorkspaceNavEditor({ workspace = 'creatorhub' }: { workspace?: string } = {}) {
@@ -69,7 +88,7 @@ export default function WorkspaceNavEditor({ workspace = 'creatorhub' }: { works
 
   const navItems: Array<{ key: string; label: string; group: string }> =
     workspace === 'theroleroom' ? ROLEROOM_NAV : WS_NAV.map((n) => ({ key: n.key, label: n.label, group: n.group }));
-  const groups: string[] = workspace === 'theroleroom' ? ['faner'] : ['hoved', 'rom', 'klient'];
+  const groups: string[] = workspace === 'theroleroom' ? ['faner', 'producer'] : ['hoved', 'rom', 'klient'];
 
   return (
     <Stack spacing={2}>

@@ -50,6 +50,7 @@ import GrantedAssetsCard from './components/producer/GrantedAssetsCard';
 import ClientEconomyPanel from './components/producer/ClientEconomyPanel';
 import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
+import { useRoleRoomBrand } from './hooks/useRoleRoomBrand';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
 import { roleRoomAnalytics } from './services/roleRoomAnalytics';
@@ -466,6 +467,16 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   // Påvirker top-Tabs, iPad side-rail og telefon-bottom-nav likt.
   const userPrimaryRole = currentUserProjectRoles[0]?.role ?? null;
   const platformEffectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
+  // CreatorHub Design (Fase B-paritet 3/3): design-tokens `nav`-overstyring KOMPONERT med det
+  // rolle-baserte tab-systemet — rekkefølge/sett eies av useRoleNavConfig; her legges KUN
+  // label + hidden oppå (orthogonalt). Ingen override → uendret label/synlighet → identisk.
+  const { nav: navRoomOv } = useRoleRoomBrand();
+  const tabLabel = useCallback(
+    (v: SubTabValue): string => navRoomOv[v]?.label || TAB_DEFS[v]?.label || v,
+    // TAB_DEFS er stabil (definert i render); navRoomOv endres kun ved token-hent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navRoomOv],
+  );
 
   // Project-spesifikk overstyring: team-leder kan styre hvilke tabs viewer
   // ser på dette prosjektet. Hvis tabValues=null → bruk platform-defaults.
@@ -488,13 +499,14 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   }, [selectedProjectId]);
 
   const effectiveTabs = useMemo(() => {
-    if (projectTabOverride && projectTabOverride.length > 0) {
-      return projectTabOverride.filter((t): t is SubTabValue =>
-        platformEffectiveTabs.includes(t as SubTabValue) || true,
-      ) as SubTabValue[];
-    }
-    return platformEffectiveTabs;
-  }, [projectTabOverride, platformEffectiveTabs]);
+    const base = (projectTabOverride && projectTabOverride.length > 0)
+      ? (projectTabOverride.filter((t): t is SubTabValue =>
+          platformEffectiveTabs.includes(t as SubTabValue) || true,
+        ) as SubTabValue[])
+      : platformEffectiveTabs;
+    // Design-tokens `nav`-overstyring: skjul flater admin har markert (orthogonalt til rolle-sett).
+    return base.filter((v) => !navRoomOv[v]?.hidden);
+  }, [projectTabOverride, platformEffectiveTabs, navRoomOv]);
 
   const canUsePublishing = useMemo(() => {
     const publishingRoles: UserRole['role'][] = [
@@ -1091,7 +1103,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     })
                     .map((v) => ({
                       value: v,
-                      label: TAB_DEFS[v].label,
+                      label: tabLabel(v),
                       Icon: TAB_DEFS[v].Icon,
                       highlight: TAB_DEFS[v].highlight,
                     }))}
@@ -1198,7 +1210,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                       <Tab
                         key={v}
                         value={v}
-                        label={def.label}
+                        label={tabLabel(v)}
                         icon={<TabIconComp fontSize="small" />}
                         iconPosition="start"
                         sx={def.highlight ? { minHeight: 48, color: '#a78bfa' } : { minHeight: 48 }}
@@ -1362,7 +1374,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 borderRadius: 1,
                 border: '1px solid',
                 borderColor: 'divider',
-                bgcolor: 'background.default',
+                bgcolor: 'var(--role-chrome-bg, #121212)',
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: 1.5,
@@ -1421,7 +1433,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         });
         const items: BottomNavItem[] = allowed.map((v) => ({
           value: v,
-          label: TAB_DEFS[v].label,
+          label: tabLabel(v),
           Icon: TAB_DEFS[v].Icon,
         }));
         const primaryItems = items.slice(0, 4);
