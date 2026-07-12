@@ -37,9 +37,9 @@ probe-data som produserer innsikts-kandidater med `severity`, `confidence`,
 
 | Fase | Innhold | Status |
 |---|---|---|
-| 1 | insights-tabell (0380), detektor-rammeverk, 4 detektorer, dedup, cron, feed i MI | **bygges nå** |
+| 1 | insights-tabell (0380), detektor-rammeverk, 4 detektorer, dedup, cron, feed i MI | **live i prod** |
 | 2 | Diagnostikk: kryss-kilde-kobling per topic, driver-dekomponering, evidens-grunnet LLM-narrativ («hvorfor») | neste |
-| 3 | Score-modeller (P2): konfigurerbare faktormodeller erstatter LLM-frihånd i opportunity-scoring — **faktorer/vekter er Daniels produktbeslutning** | krever beslutning |
+| 3 | Score-modeller (P2): konfigurerbare faktormodeller erstatter LLM-frihånd i opportunity-scoring — **faktorer/vekter er Daniels produktbeslutning** | maskineri bygget (doc 11) — vekter venter på Daniel |
 | 4 | Lukket løkke: anbefaling → handling (content-generator/kampanje/Leadgrid) → måling → modell-justering; Leadgrid won/lost som fasit | etter 3 |
 
 ## Fase 1-detektorene
