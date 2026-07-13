@@ -34,6 +34,7 @@ import { butlerChat, type ChatMessage } from "./butler-chat.js";
 import { getIndustryBenchmark, syncCompanyFinancials } from "./industry-benchmark.js";
 import { syncSsbMomentumSignals } from "./ssb-momentum-signal-sync.js";
 import { getTerritoryAnalysis } from "./territory-analysis.js";
+import { buildSolutionEvidence, draftGrantSection, IN_SECTIONS, type SolutionKey } from "./grant-application.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -431,6 +432,54 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[territory-analysis] failed", err);
       return res.status(500).json({ error: "analysis_failed" });
+    }
+  });
+
+  // JARVIS søknads-modus: løsningsbevis + IN-seksjonsutkast.
+  app.get("/api/integrations/grant-application/evidence", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const solution = String(req.query.solution ?? "");
+    if (!["leadgrid", "theroleroom", "creatorhub"].includes(solution)) {
+      return res.status(400).json({ error: "solution_kreves (leadgrid|theroleroom|creatorhub)" });
+    }
+    try {
+      const facts = await buildSolutionEvidence(pool, orgId, solution as SolutionKey);
+      return res.json({ solution, sections: IN_SECTIONS, facts });
+    } catch (err) {
+      console.error("[grant-evidence] failed", err);
+      return res.status(500).json({ error: "evidence_failed" });
+    }
+  });
+
+  app.post("/api/integrations/grant-application/draft", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.solution !== "string" || typeof body.sectionKey !== "string") {
+      return res.status(400).json({ error: "solution_og_sectionKey_kreves" });
+    }
+    try {
+      const result = await draftGrantSection(pool, orgId, {
+        solution: body.solution as SolutionKey,
+        sectionKey: body.sectionKey,
+        userNotes: typeof body.userNotes === "string" ? body.userNotes : undefined,
+      });
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[grant-draft] failed", err);
+      return res.status(500).json({ error: "draft_failed" });
     }
   });
 

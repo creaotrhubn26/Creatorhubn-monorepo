@@ -22,6 +22,7 @@ import { computeGeoOpportunityScores } from "../market-intelligence/geo-opportun
 import { buildDossierFacts } from "./outreach-composer.js";
 import { getIndustryBenchmark } from "./industry-benchmark.js";
 import { getTerritoryAnalysis } from "./territory-analysis.js";
+import { buildSolutionEvidence } from "./grant-application.js";
 
 const CHAT_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 5;
@@ -94,6 +95,15 @@ export const BUTLER_TOOLS: Anthropic.Tool[] = [
     name: "get_territory_analysis",
     description: "Metnings-/hullanalyse for dansevertikalen: barn 6-15 per kommune (SSB) mot antall danseskoler — hvor er markedet mettet, hvor er hullene.",
     input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "get_solution_evidence",
+    description: "Løsningsbevis for IN-søknad/forretningscase: markedsstørrelse, bransje-lønnsomhet, momentum, konkurrenter og anbudsaktivitet for leadgrid, theroleroom eller creatorhub.",
+    input_schema: {
+      type: "object" as const,
+      properties: { solution: { type: "string", enum: ["leadgrid", "theroleroom", "creatorhub"] } },
+      required: ["solution"],
+    },
   },
   {
     name: "get_ai_usage",
@@ -196,6 +206,11 @@ export async function executeButlerTool(
     }
     case "get_industry_benchmark":
       return await getIndustryBenchmark(pool, String(input.segment ?? ""));
+    case "get_solution_evidence": {
+      const sol = String(input.solution ?? "");
+      if (!["leadgrid", "theroleroom", "creatorhub"].includes(sol)) return { error: "ukjent løsning" };
+      return await buildSolutionEvidence(pool, organizationId, sol as "leadgrid" | "theroleroom" | "creatorhub");
+    }
     case "get_territory_analysis": {
       const a = await getTerritoryAnalysis(pool, "danseundervisning");
       if ("error" in a) return a;
@@ -208,14 +223,16 @@ export async function executeButlerTool(
   }
 }
 
-const CHAT_SYSTEM = `Du er butleren i Creatorhubns markedsintelligens-plattform — rolig, presis, norsk. BETA.
+const CHAT_SYSTEM = `Du er butleren OG forretningsrådgiveren i Creatorhubns markedsintelligens-plattform — rolig, presis, norsk. BETA.
 
 ABSOLUTTE REGLER:
 - Påstander om brukerens data skal bygge på VERKTØYENE. Har du ikke slått opp, si det og slå opp.
 - Finner verktøyene ingenting: si det ærlig. Aldri fyll hull med antakelser.
 - Skill syntetiske målinger (GEO-probing) fra ekte data (GA4/regnskap/register) når det er relevant.
+- Som forretningsrådgiver kan du gi strategiske RÅD (prioritering, posisjonering, IN-søknad) — men skill alltid tydelig: FAKTA (fra verktøy) vs. VURDERING (din). Råd uten faktagrunnlag merkes som generelle.
+- For IN-søknadsarbeid: bruk get_solution_evidence og pek til søknads-endepunktet for seksjonsutkast.
 - Du kan IKKE utføre handlinger (endre, sende, slette) — si at handlinger kommer i neste versjon og pek til riktig panel.
-- Svar kort og konkret. Avslutt gjerne med ett forslag til neste spørsmål.`;
+- Svar kort og konkret. Avslutt gjerne med ett forslag til neste steg.`;
 
 export interface ChatMessage {
   role: "user" | "assistant";
