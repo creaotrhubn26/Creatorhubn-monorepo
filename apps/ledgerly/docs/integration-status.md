@@ -10,7 +10,7 @@ Status rapporteres ærlig av API-et: `GET /api/integrations/status`
 | **EHF (e-faktura)** | **Ikke implementert** | XML-MIME-typer står i opplastings-allowlisten (`src/documents/service.ts`), men ingen EHF-parsing, ingen aksesspunkt-tilkobling. |
 | **SAF-T Financial-eksport** | **Implementert — validert mot offisiell XSD** | `src/saft/export.ts` genererer komplett fil (Header, kontoer m/ periodesaldo, kunder/leverandører, mva-koder, hovedbokstransaksjoner) fra hovedboken; valideres i test mot Skatteetatens XSD v1.10 (`vendor/saft/`). Nedlasting fra Rapporter-skjermen; hver eksport auditlogges. SourceDocuments-noden og Altinn-innsending gjenstår. |
 | **Altinn / Skatteetaten (innsending)** | **Ikke implementert** | MVA-rapporten bygges per SAF-T-kode (`src/vat/engine.ts`) men er alltid `status: 'draft'`; rettigheten `vat.submit` finnes. Ingen innsendingsklient. |
-| **OCR** | **Deterministisk tekstparser — ikke ekte OCR** | `DeterministicTextExtractor` (`src/pipeline/extract.ts`) parser tekstbærende innhold med regex. Fungerer på sandbox-fixtures og tekst-PDF-er; leser ikke skannede bilder. Port-grensesnittet `DocumentExtractor` er klart for en ekte motor. |
+| **OCR** | **Tesseract (nor+eng) — aktiv når installert** | `OcrExtractor` (`src/pipeline/ocr.ts`): Tesseract for bilder, pdftotext for PDF-tekstlag, deterministisk parsing av resultatet. Injection-kontroll kjøres på den tolkede teksten. Krever `tesseract-ocr`, `tesseract-ocr-nor`, `poppler-utils`; faller ellers ærlig tilbake til tekstparser (`/api/integrations/status` viser hvilken modus som kjører). |
 
 ## Hva som trengs for å aktivere hver
 

@@ -23,11 +23,12 @@ function parseAmount(raw: string, currency: string): bigint | undefined {
 
 const CURRENCY_RE = /\b(NOK|EUR|USD|SEK|DKK|GBP)\b/;
 
-export class DeterministicTextExtractor implements DocumentExtractor {
-  readonly name = 'deterministic-mvp';
-
-  async extract(content: Buffer, filename: string, _mimeType: string): Promise<ExtractedData> {
-    const text = content.toString('utf8');
+/**
+ * Parser dokumenttekst (fra tekst-PDF, OCR eller råtekst) til strukturert skjema.
+ * Deles av DeterministicTextExtractor og OcrExtractor.
+ */
+export function parseDocumentText(text: string, filename: string): ExtractedData {
+  {
     const lower = text.toLowerCase();
 
     let documentType: DocumentType = 'unknown';
@@ -87,5 +88,13 @@ export class DeterministicTextExtractor implements DocumentExtractor {
       result.vatBreakdown = [{ ratePct: vatRate, baseMinor: netMinor, vatMinor }];
     }
     return result;
+  }
+}
+
+export class DeterministicTextExtractor implements DocumentExtractor {
+  readonly name = 'deterministic-mvp';
+
+  async extract(content: Buffer, filename: string, _mimeType: string): Promise<ExtractedData> {
+    return parseDocumentText(content.toString('utf8'), filename);
   }
 }

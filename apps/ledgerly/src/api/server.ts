@@ -19,7 +19,7 @@ import {
   trialBalance,
 } from '../ledger/reports.js';
 import { createOrganization, ensureUser, getMembershipRole } from '../orgs/service.js';
-import { DeterministicTextExtractor } from '../pipeline/extract.js';
+import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
   approveAndPost,
   ingestFromGmail,
@@ -65,6 +65,10 @@ export interface ApiDeps {
   storage?: ObjectStorage | undefined;
   /** Katalog med bygget web-UI (vite dist). Serveres statisk når satt. */
   webDistDir?: string | undefined;
+  /** Uttrekksmotor (OCR eller deterministisk). Default: deterministisk tekstparser. */
+  extractor?: DocumentExtractor | undefined;
+  /** Faktisk OCR-tilgjengelighet, til ærlig integrasjonsstatus. */
+  ocrStatus?: { tesseract: boolean; pdftotext: boolean } | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -76,7 +80,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
   const pipelineDeps: PipelineDeps = {
     db: deps.db,
     rules: deps.rules,
-    extractor: new DeterministicTextExtractor(),
+    extractor: deps.extractor ?? new DeterministicTextExtractor(),
     suggestionEngine: new DeterministicSuggestionEngine(),
     storage: deps.storage,
   };
@@ -471,7 +475,10 @@ export function createApiServer(deps: ApiDeps): express.Express {
         active: false,
         note: 'Gmail kjører mot sandbox-adapter. Ekte OAuth-tilkobling krever Google Cloud-prosjekt og klienthemmeligheter (se docs/integration-status.md).',
       },
-      bank: { mode: 'not_implemented', active: false },
+      bank: { mode: 'manual_csv', active: true, note: 'Manuell CSV-import med deterministisk matching. Ingen PSD2-/open banking-tilkobling.' },
+      ocr: deps.ocrStatus?.tesseract
+        ? { mode: 'tesseract', active: true, note: `Tesseract (nor+eng) for bilder${deps.ocrStatus.pdftotext ? ', pdftotext for PDF' : ''}. Kvalitet avhenger av bildekvalitet — avvik går til kontrollkø.` }
+        : { mode: 'deterministic_text', active: false, note: 'tesseract-ocr er ikke installert på verten — skannede bilder tolkes ikke. Installer tesseract-ocr + tesseract-ocr-nor.' },
       ehf: { mode: 'not_implemented', active: false },
       altinn: { mode: 'not_implemented', active: false },
     });

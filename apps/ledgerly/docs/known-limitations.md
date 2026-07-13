@@ -38,9 +38,13 @@ skjult for brukeren i API-et (integrasjonsstatus, estimat-forbehold osv. sier fr
 
 ## Faglige forenklinger
 
-- **OCR er en tekstparser.** `DeterministicTextExtractor` (`src/pipeline/extract.ts`)
-  leser tekstbærende innhold med regex; skannede bilder gir tomt/mangelfullt uttrekk
-  (som havner i kontrollkø, ikke bokføres feil).
+- **OCR: Tesseract for bilder, pdftotext for PDF.** `OcrExtractor` (`src/pipeline/ocr.ts`)
+  tolker kvitteringsbilder (nor+eng) og PDF-tekstlag; den tolkede teksten går gjennom
+  samme validering OG prompt-injection-kontroll som annen tekst (tekst som kun finnes
+  som piksler fanges — testet). Krever `tesseract-ocr` + `tesseract-ocr-nor` +
+  `poppler-utils` på verten; uten dem faller systemet tilbake til ren tekstparser og
+  sier fra i integrasjonsstatusen. OCR-kvalitet avhenger av bildekvalitet — mangelfulle
+  uttrekk havner i kontrollkøen, de bokføres ikke.
 - **2026-satser er uverifisert.** Lagt inn per kunnskapsdato 2026-01 med
   `verifiedBy: 'system-bootstrap'`; særlig trygdeavgiften for 2026 må kontrolleres mot
   Skatteetaten før produksjon (`docs/compliance-source-register.md`).

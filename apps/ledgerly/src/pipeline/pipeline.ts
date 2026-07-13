@@ -174,6 +174,30 @@ export async function processIncomingDocument(
   }
 
   const data = await deps.extractor.extract(params.content, params.filename, params.mimeType);
+
+  // Sikkerhetskontroll også av det uttrekksmotoren faktisk LESTE (OCR-tekst
+  // fra bilder er usynlig i bytekontrollen over).
+  if (data.rawText) {
+    const textScan = sanitizeUntrustedText(data.rawText);
+    if (textScan.suspicious) {
+      await markDocumentStatus(deps.db, {
+        organizationId: params.organizationId,
+        documentId: doc.id,
+        actor: params.actor,
+        status: 'quarantined',
+        reason: `Mistenkelig innhold i tolket tekst: ${textScan.matches.join('; ')}`,
+      });
+      return {
+        documentId: doc.id,
+        filename: params.filename,
+        status: 'quarantined',
+        quarantineReason:
+          'Den tolkede teksten inneholder mønstre som ligner manipulasjonsforsøk og må kontrolleres manuelt.',
+      };
+    }
+    delete data.rawText; // persisteres aldri
+  }
+
   const issues = validateExtraction(deps.rules, data);
 
   // Duplikat på forretningsnøkkel (leverandør + fakturanr + beløp).

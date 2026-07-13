@@ -43,6 +43,12 @@ export interface VatBreakdownLine {
 
 export interface ExtractedData {
   documentType: DocumentType;
+  /**
+   * Rå tekst slik uttrekksmotoren leste den (OCR/pdftotext). Persisteres ikke —
+   * brukes av pipelinen til sikkerhetskontroll (prompt injection) av innhold
+   * som ellers er usynlig i bildebytes.
+   */
+  rawText?: string;
   vendorName?: string;
   vendorOrgNumber?: string;
   invoiceNumber?: string;
