@@ -46,6 +46,7 @@ import {
   updateThreadTitle,
 } from "./role-room-agent-threads.js";
 import { handleAgentStream } from "./role-room-agent-stream.js";
+import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
 
 type SessionData = {
   userId: string;
@@ -162,6 +163,15 @@ export function registerRoleRoomAgentThreadsRoutes(
       const projectId = body.project_id ?? body.projectId ?? "";
       if (!projectId) {
         res.status(400).json({ error: "project_id required" });
+        return;
+      }
+      // Eierskaps-gate: en tråd må bindes til et prosjekt kalleren eier/er
+      // medlem av. Uten dette kunne enhver innlogget bruker opprette en tråd
+      // (eid av seg selv) mot et fremmed prosjekt-UUID og deretter drive
+      // agent-streamen mot det (BOLA). handleAgentStream har nå samme gate,
+      // men vi avviser her også så en fremmed-bundet tråd aldri opprettes.
+      if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+        res.status(403).json({ error: "project_access_denied" });
         return;
       }
       const title = typeof body.title === "string"

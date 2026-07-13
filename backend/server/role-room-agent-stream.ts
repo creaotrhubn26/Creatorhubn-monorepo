@@ -29,6 +29,7 @@ import {
 } from './role-room-agent-definition.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
+import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import {
   appendMessage,
   createStreamingPlaceholder,
@@ -92,6 +93,21 @@ export async function handleAgentStream(
   }
   if (userMessage.length > 4000) {
     res.status(400).json({ error: 'userMessage too long' });
+    return;
+  }
+
+  // SECURITY (BOLA-fiks): kalleren må eie eller være medlem av prosjektet.
+  // handleAgentStream leser projectId fra req.params og er den delte "sink"-en
+  // for BEGGE inngangene — /projects/:projectId/agent/stream (projectId fra URL)
+  // og /agent/threads/:id/messages (projectId avledet fra en tråd som ble
+  // opprettet med et body-oppgitt project_id). Ingen av dem verifiserte
+  // prosjekt-medlemskap, så en hvilken som helst innlogget bruker kunne kjøre
+  // agenten mot et vilkårlig prosjekt-UUID: offerets workspace-kontekst
+  // (feed-godkjenningsstatus o.l.) ble injisert i modell-svaret, og consent +
+  // AI-audit ble forbrukt/forurenset under offerets project_id. Entitlement/
+  // rate-limit er kaller-scoped (userId) og stopper ikke dette. Fail-closed.
+  if (!(await canAccessRoleRoomProject(pool, userId, projectId))) {
+    res.status(403).json({ error: 'project_access_denied' });
     return;
   }
 
