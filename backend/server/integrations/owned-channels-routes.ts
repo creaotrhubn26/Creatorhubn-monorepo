@@ -30,6 +30,7 @@ import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
+import { butlerChat, type ChatMessage } from "./butler-chat.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -322,6 +323,33 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[outreach-composer] failed", err);
       return res.status(500).json({ error: "compose_failed" });
+    }
+  });
+
+  // Butler-chat (JARVIS J2, BETA) — les-verktøy mot egne data.
+  app.post("/api/integrations/butler/chat", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const body = (req.body ?? {}) as { messages?: unknown };
+    if (!Array.isArray(body.messages)) return res.status(400).json({ error: "messages_kreves" });
+    const history = body.messages
+      .filter((m): m is ChatMessage =>
+        typeof m === "object" && m !== null &&
+        ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+        typeof (m as ChatMessage).content === "string")
+      .slice(-20);
+    try {
+      const result = await butlerChat(pool, orgId, history);
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[butler-chat] failed", err);
+      return res.status(500).json({ error: "chat_failed" });
     }
   });
 
