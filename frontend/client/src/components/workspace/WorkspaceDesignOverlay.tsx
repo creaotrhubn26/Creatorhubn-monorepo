@@ -267,6 +267,24 @@ export default function WorkspaceDesignOverlay({
     });
     return hit ? hit.key : '';
   };
+  // AI-slot-mapping: la Claude foreslå kilde for ALLE slots på én gang (semantisk match).
+  const [aiMapLoading, setAiMapLoading] = React.useState(false);
+  const aiMapSlots = async () => {
+    const specs = components[pickComp] || [];
+    const slots = specs.filter((s) => s.type === 'infographic').map((s) => ({ id: s.id, label: s.text || 'infographic' }));
+    if (!slots.length) return;
+    setAiMapLoading(true);
+    try {
+      const resp = await fetch('/api/admin/design/map-slots', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slots, sources: sources.map((s) => ({ key: s.key, label: s.label, type: s.live ? 'live' : 'manual' })) }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (d && d.mapping) setSlotBindings((b) => ({ ...b, ...d.mapping }));
+    } catch { /* ignorer */ }
+    finally { setAiMapLoading(false); }
+  };
+
   // Slot-deteksjon: når en komponent velges for innsetting, finn data-slots (infographics) og
   // auto-foreslå kilde for hver → veiviseren fylles ut.
   React.useEffect(() => {
@@ -730,7 +748,11 @@ export default function WorkspaceDesignOverlay({
                   const connected = slots.filter((s) => slotBindings[s.id] && sources.find((x) => x.key === slotBindings[s.id])).length;
                   return (
                     <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
-                      <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Koble data-slots ({connected}/{slots.length} ✓)</div>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 800, fontSize: 12, color: INK }}>Koble data-slots ({connected}/{slots.length} ✓)</span>
+                        <button data-chd onClick={aiMapSlots} disabled={aiMapLoading} title="La AI foreslå kilde for alle slots"
+                          style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>{aiMapLoading ? 'Tenker…' : '✨ AI-foreslå'}</button>
+                      </div>
                       {slots.map((slot) => {
                         const chosen = slotBindings[slot.id] || '';
                         const bound = sources.find((s) => s.key === chosen);

@@ -23,7 +23,7 @@ import {
   upsertTemplate, deleteTemplate,
 } from './infographic-templates-store.js';
 import { getTokens, getRawTokens, setTokens, resetTokens, replaceTokens } from './design-tokens-store.js';
-import { generateDesignSuggestions } from './design-suggest.js';
+import { generateDesignSuggestions, mapSlotsToSources } from './design-suggest.js';
 import { resolveConnector, listLiveConnectors } from './design-connectors.js';
 
 type Sessions = Map<string, { userId?: string }>;
@@ -357,6 +357,17 @@ export function registerInfographicRenderRoutes(
       else res.json({ ok: false, reason: `Fant ingen definert kilde «${source}» — legg den til i Design-tokens → metrics.` });
     } catch { res.json({ ok: false, reason: 'Kunne ikke hente kilder.' }); }
   });
+
+  // POST AI-slot-mapping: komponentens data-slots + tilgjengelige kilder → Claude → validert mapping.
+  app.post('/api/admin/design/map-slots',
+    aiRateLimit({ windowMs: 60_000, max: 20, label: 'design-map-slots' }),
+    async (req: Request, res: Response) => {
+      if (!requireAdminSession(req, res)) return;
+      const b = (req.body ?? {}) as { slots?: unknown; sources?: unknown };
+      const slots = Array.isArray(b.slots) ? b.slots.slice(0, 20).map((s: any) => ({ id: String(s?.id ?? '').slice(0, 40), label: String(s?.label ?? '').slice(0, 120) })).filter((s) => s.id) : [];
+      const sources = Array.isArray(b.sources) ? b.sources.slice(0, 60).map((s: any) => ({ key: String(s?.key ?? '').slice(0, 60), label: s?.label != null ? String(s.label).slice(0, 120) : undefined, type: s?.type != null ? String(s.type).slice(0, 20) : undefined })).filter((s) => s.key) : [];
+      res.json(await mapSlotsToSources(slots, sources));
+    });
 
   // POST design-forslag (AI): element-kontekst → Claude → strukturerte, forhåndsvisbare forslag.
   app.post('/api/admin/design/suggest',

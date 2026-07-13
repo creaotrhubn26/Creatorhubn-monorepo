@@ -26,6 +26,44 @@ export type ElementContext = {
 };
 export type DesignSuggestion = { text: string; apply?: { prop: string; value: string } };
 
+export type SlotInput = { id: string; label: string };
+export type SourceInput = { key: string; label?: string; type?: string };
+
+/** AI-slot-mapping: koble en komponents data-slots til de best passende datakildene (semantisk match).
+ *  Validerer at hver mappet nøkkel finnes i den oppgitte kilde-lista — aldri blind tillit til LLM. */
+export async function mapSlotsToSources(slots: SlotInput[], sources: SourceInput[]): Promise<{ mapping: Record<string, string>; error?: string }> {
+  const client = getAnthropic();
+  if (!client) return { mapping: {}, error: 'AI utilgjengelig (mangler ANTHROPIC_API_KEY).' };
+  if (!slots.length || !sources.length) return { mapping: {} };
+  const validKeys = new Set(sources.map((s) => s.key));
+  const prompt = `Du kobler data-slots i en design-komponent til datakilder. Velg den BESTE kilden for hvert slot basert på semantisk match (navn/etikett/type).
+
+Slots:
+${slots.map((s) => `- ${s.id}: "${s.label}"`).join('\n')}
+
+Tilgjengelige kilder:
+${sources.map((s) => `- ${s.key}${s.label ? ` (${s.label})` : ''}${s.type ? ` [${s.type}]` : ''}`).join('\n')}
+
+Svar KUN med JSON, ingen tekst utenfor: {"mapping":{"<slot-id>":"<kilde-nøkkel>"}}. Bruk KUN kilde-nøkler fra lista. Utelat slots uten en god match.`;
+  try {
+    const response = await client.messages.create({ model: MODEL, max_tokens: 500, temperature: 0.2, messages: [{ role: 'user', content: prompt }] });
+    logAIUsage(response as any, { feature: 'creatorhub-design/map-slots' }).catch(() => undefined);
+    const block = response.content[0];
+    if (!block || block.type !== 'text') return { mapping: {} };
+    const raw = block.text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { return { mapping: {}, error: 'Kunne ikke tolke AI-svaret.' }; }
+    const m = (parsed as { mapping?: Record<string, unknown> }).mapping || {};
+    const out: Record<string, string> = {};
+    for (const [slotId, key] of Object.entries(m)) {
+      if (typeof key === 'string' && validKeys.has(key) && /^[A-Za-z0-9_-]{1,40}$/.test(slotId)) out[slotId] = key;
+    }
+    return { mapping: out };
+  } catch (e) {
+    return { mapping: {}, error: e instanceof Error ? e.message : 'AI-feil' };
+  }
+}
+
 export async function generateDesignSuggestions(ctx: ElementContext): Promise<{ suggestions: DesignSuggestion[]; error?: string }> {
   const client = getAnthropic();
   if (!client) return { suggestions: [], error: 'AI utilgjengelig (mangler ANTHROPIC_API_KEY).' };
