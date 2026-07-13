@@ -69,9 +69,37 @@ maskineri vi selger:
 - Timeføring på prosjektet (kreves ved tilskudd)
 - Milepælsbudsjett — IN utbetaler mot milepæler, ikke forskudd
 
-## 6. Verktøystøtte i plattformen
+## 6. Research-funn (innovasjonnorge.no, 2026-07-13)
 
-Outreach-composeren har fått **institusjons-modus** (`institution` i
-compose-API-et): formell henvendelse med avsender-fakta som nummerert
-dossier og samme siterings-validering — brukes til IN-dialogen,
-datatilgangs-e-postene og senere søknadsutkast.
+- **Oppstartstilskudd 1** (markedsavklaring): inntil 100 000 kr; selskap
+  < 3 år; krav: nyhetsverdi + betydelig internasjonalt vekstpotensial
+  (eller verdiskaping/omstilling i distriktene).
+- **Oppstartstilskudd 2/3** (kommersialisering): inntil 700 000 kr;
+  selskap < 5 år; KRAV: løsningen må være TESTET mot potensielle kunder.
+- Alle søknader: annen offentlig støtte oppgis; gjennomføringsevne +
+  kapitaltilgang + eierinvolvering dokumenteres.
+
+## 7. Vinkling per løsning (søknads-modusens bevis)
+
+| Løsning | Sterkeste IN-argument | Bevis fra plattformen |
+|---|---|---|
+| **The Role Room** | Vekstmarked + first-mover i AI-synlighet | Film/TV-indeks 63,5→129,2; 7 691 selskaper; GEO-metodikk i drift; utdanning ubesatt i AI-svar |
+| **Leadgrid** | Innovasjonshøyde: CRM m/ innebygd offentlig-data-intelligens | Anbuds-/konkurs-/regnskaps-triggere ingen norsk SMB-CRM har; dokumentert konkurransebilde (Badger Maps/Route4Me) |
+| **CreatorHub** | Størst adresserbart marked + målt smerte | 8 961 fotografvirksomheter; median driftsmargin 4,3 % (effektiviserings-caset i tall) |
+
+Anbefaling: ÉN søknad om plattformen med The Role Room som spydspiss
+(sterkest vekstdokumentasjon) — IN støtter selskapet, ikke produktlinjer,
+og tre parallelle søknader fra samme org svekker alle tre.
+
+## 8. Verktøystøtte i plattformen
+
+- **Institusjons-modus** i composeren: formelle henvendelser (IN-dialog,
+  datatilgangs-e-poster) med avsender-fakta som sitert dossier.
+- **Søknads-modus** (grant-application): `GET .../grant-application/
+  evidence?solution=` bygger løsningsbeviset fra plattformdataene;
+  `POST .../grant-application/draft` skriver én IN-seksjon av gangen med
+  siterings-plikt — manglende opplysninger markeres [FYLL INN], aldri
+  gjettet.
+- **Butleren som forretningsrådgiver**: get_solution_evidence i chatten —
+  «hva har vi av bevis for TRR-søknaden?» besvares med tallene; råd
+  merkes som råd, fakta som fakta.
