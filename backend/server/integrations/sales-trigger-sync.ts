@@ -44,7 +44,39 @@ export function isFreshTrigger(e: TriggerEvent, now: Date): boolean {
   return age <= MAX_TRIGGER_AGE_DAYS;
 }
 
-/** Vertikal → søkeord. Nøkkel = geo_prompt_sets.name (samme kobling som ellers). */
+/**
+ * Anbuds-sourcing per vertikal — KVALITETSRUNDEN 2026-07-13:
+ * Tekstsøk ga 60-70 % støy (TED matcher alle EU-språk — fransk «dans»
+ * traff vintervedlikehold; «foto» traff photocopy/beskrivelser).
+ * CPV-koder er anbudsverdenens NACE: presise, verifiserte mot begge
+ * API-er (treff-tall i kommentar). Norsk tekstsøk beholdes KUN der det
+ * beviste seg i første fangst.
+ */
+export const TENDER_SOURCING: Record<string, { cpv: string[]; doffinText: string[] }> = {
+  "CreatorHub — fotografer og videografer": {
+    cpv: ["79961000"], // fototjenester — 63 Doffin-treff verifisert, inkl. «Kjøp av foto- og videotenester»
+    doffinText: [],
+  },
+  "The Role Room — casting og produksjon": {
+    cpv: ["92111000"], // film-/videoproduksjon — 166 treff verifisert
+    doffinText: [],
+  },
+  "The Role Room — dansestudio": {
+    cpv: ["92312000", "92310000"], // kunstneriske tjenester — 69/90 treff; dans-anbud er sjeldne, ærlig bredde
+    doffinText: [],
+  },
+  // Utdanning: 80000000 er for bred (2459 treff) — bevisst usourcet inntil presis kode finnes
+  "Leadgrid — små bedrifter (feltsalg/leads)": {
+    cpv: [],
+    doffinText: ["håndverkertjenester"], // beviste seg: rammeavtalene er leads for Leadgrids kunder
+  },
+  "Leadgrid — salgsteam og større organisasjoner": {
+    cpv: [],
+    doffinText: ["CRM"], // beviste seg: fant markedsdialogen
+  },
+};
+
+/** Vertikal → søkeord for MEDIE-kilder (GDELT/RSS — ord-grense-matchet). */
 export const TRIGGER_KEYWORDS: Record<string, string[]> = {
   "CreatorHub — fotografer og videografer": ["foto", "video", "film"],
   "The Role Room — casting og produksjon": ["film", "tv-produksjon", "casting"],
@@ -151,7 +183,7 @@ export function mapGdeltArticles(articles: GdeltArticle[], topic: string): Trigg
 // Kilde-kall
 // ─────────────────────────────────────────────────────────────────────
 
-async function fetchTedTenders(keyword: string, topic: string): Promise<TriggerEvent[]> {
+async function fetchTedTenders(cpv: string, topic: string): Promise<TriggerEvent[]> {
   const result = await callExternalApi<{ notices?: TedNotice[] }>(
     "https://api.ted.europa.eu/v3/notices/search",
     {
@@ -160,9 +192,10 @@ async function fetchTedTenders(keyword: string, topic: string): Promise<TriggerE
       label: "ted-tenders",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        // SORT BY må stå i spørrestrengen — eget sort-felt avvises av API-et
-        // (verifisert 2026-07-13; feilen var stille og ga 0 hendelser)
-        query: `place-of-performance IN (NOR) AND notice-title ~ ("${keyword}") SORT BY publication-date DESC`,
+        // CPV i stedet for tittel-tekst: TED søker titler på ALLE EU-språk,
+        // så fransk «dans» traff vintervedlikehold (kvalitetsrunden 13.07).
+        // SORT BY må stå i spørrestrengen — eget sort-felt avvises av API-et.
+        query: `place-of-performance IN (NOR) AND classification-cpv IN (${cpv}) SORT BY publication-date DESC`,
         fields: ["publication-number", "notice-title", "publication-date"],
         limit: 10,
       }),
@@ -253,11 +286,17 @@ export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] 
  * Doffin public API (Azure APIM — dof-notices-prod-api). Aktiveres av
  * DOFFIN_API_KEY (gratis abonnementsnøkkel fra utviklerportalen).
  */
-async function fetchDoffinTenders(keyword: string, topic: string): Promise<TriggerEvent[]> {
+async function fetchDoffinTenders(
+  query: { cpv?: string; text?: string },
+  topic: string,
+): Promise<TriggerEvent[]> {
   const key = process.env.DOFFIN_API_KEY;
   if (!key) return [];
+  const param = query.cpv
+    ? `cpvCode=${encodeURIComponent(query.cpv)}`
+    : `searchString=${encodeURIComponent(query.text ?? "")}`;
   const result = await callExternalApi<{ hits?: DoffinHit[]; notices?: DoffinHit[] }>(
-    `https://api.doffin.no/public/v2/search?searchString=${encodeURIComponent(keyword)}&numHitsPerPage=10`,
+    `https://api.doffin.no/public/v2/search?${param}&numHitsPerPage=10`,
     {
       method: "GET",
       timeoutMs: 15_000,
@@ -309,14 +348,23 @@ export async function syncSalesTriggers(pool: Pool): Promise<TriggerSyncResult> 
   };
 
   for (const set of sets.rows) {
+    const sourcing = TENDER_SOURCING[set.name];
     const keywords = TRIGGER_KEYWORDS[set.name];
-    if (!keywords) continue;
+    if (!sourcing && !keywords) continue;
     verticalsChecked += 1;
     try {
-      const tenders = await fetchTedTenders(keywords[0], set.name);
-      const doffin = await fetchDoffinTenders(keywords[0], set.name);
-      const media = await fetchGdeltMentions(`(${keywords.join(" OR ")}) ${GDELT_STRATEGY_TERMS}`, set.name);
-      for (const e of [...tenders, ...doffin, ...media]) await insertEvent(set.organization_id, e);
+      const events: TriggerEvent[] = [];
+      for (const cpv of sourcing?.cpv ?? []) {
+        events.push(...(await fetchTedTenders(cpv, set.name)));
+        events.push(...(await fetchDoffinTenders({ cpv }, set.name)));
+      }
+      for (const text of sourcing?.doffinText ?? []) {
+        events.push(...(await fetchDoffinTenders({ text }, set.name)));
+      }
+      if (keywords) {
+        events.push(...(await fetchGdeltMentions(`(${keywords.join(" OR ")}) ${GDELT_STRATEGY_TERMS}`, set.name)));
+      }
+      for (const e of events) await insertEvent(set.organization_id, e);
     } catch (err) {
       errors.push(`${set.name}: ${String(err).slice(0, 100)}`);
     }
