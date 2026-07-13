@@ -11,7 +11,7 @@
  * Selvstendig: inline styles, ingen MUI (unngår å arve dark-temaet).
  */
 import React from 'react';
-import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, type ElementEdits, type InsertSpec } from './elementEdits';
+import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, type ElementEdits, type InsertSpec } from './elementEdits';
 
 type ElDesc = {
   tag: string; id?: string; cls?: string; text?: string;
@@ -137,6 +137,16 @@ export default function WorkspaceDesignOverlay({
   const [compName, setCompName] = React.useState('');
   const [pickComp, setPickComp] = React.useState('');
   const [slotBindings, setSlotBindings] = React.useState<Record<string, string>>({}); // data-slot → kilde (ved gjenbruk)
+  // Varianter / A-B
+  type VariantData = { elementEdits?: Edits; elementText?: Record<string, string>; elementAnim?: Record<string, string>; elementInserts?: Record<string, InsertSpec[]>; elementBindings?: Record<string, string> };
+  const [variants, setVariants] = React.useState<Record<string, VariantData>>({});
+  const [variantMode, setVariantMode] = React.useState<'off' | 'active' | 'ab'>('off');
+  const [variantActive, setVariantActive] = React.useState('');
+  const [variantAb, setVariantAb] = React.useState<string[]>([]);
+  const [newVariantName, setNewVariantName] = React.useState('');
+  const [editingVariant, setEditingVariant] = React.useState<string | null>(null);
+  const [abStats, setAbStats] = React.useState<Record<string, number>>({});
+  const [reloadKey, setReloadKey] = React.useState(0);
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
 
@@ -369,11 +379,56 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
           if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
+          if (d.tokens.designVariants && typeof d.tokens.designVariants === 'object') setVariants(d.tokens.designVariants as Record<string, VariantData>);
+          const vc = d.tokens.variantConfig as { mode?: string; active?: string; ab?: string[] } | undefined;
+          if (vc) { setVariantMode((['off', 'active', 'ab'].includes(vc.mode || '') ? vc.mode : 'off') as 'off' | 'active' | 'ab'); setVariantActive(vc.active || ''); setVariantAb(Array.isArray(vc.ab) ? vc.ab : []); }
         }
       })
       .catch(() => {});
     return () => { live = false; };
-  }, [workspace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace, reloadKey]);
+
+  // ── Varianter / A-B ──────────────────────────────────────────────────────────────────────────
+  const currentMaps = (): VariantData => ({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits });
+  const buildSaveBody = (): Record<string, unknown> => {
+    const vcfg = { mode: variantMode, active: variantActive, ab: variantAb };
+    if (editingVariant) {
+      // Redigerer en variant → skriv maps'ene tilbake til DEN varianten (rør ikke base).
+      const updated = { ...variants, [editingVariant]: currentMaps() };
+      setVariants(updated);
+      return { designVariants: updated, variantConfig: vcfg };
+    }
+    return { ...currentMaps(), designComponents: components, designVariants: variants, variantConfig: vcfg };
+  };
+  const saveAsVariant = () => {
+    const name = newVariantName.trim();
+    if (!name) return;
+    setVariants((v) => ({ ...v, [name]: currentMaps() }));
+    setNewVariantName('');
+    setSaveMsg(`Variant «${name}» opprettet — trykk «Lagre endringer» for å persistere.`);
+  };
+  const editVariant = (name: string) => {
+    const v = variants[name];
+    if (!v) return;
+    setEdits((v.elementEdits as Edits) || {}); setTextEdits(v.elementText || {}); setAnimEdits(v.elementAnim || {}); setInsertEdits(v.elementInserts || {}); setBindEdits(v.elementBindings || {});
+    setEditingVariant(name);
+    // Live-preview av variantens stil/animasjon (tekst/inserts vises fullt etter lagring+last).
+    const css = [buildEditsCss((v.elementEdits as ElementEdits) || {}), buildAnimCss((v.elementAnim as Record<string, string>) || {})].filter(Boolean).join('\n');
+    let tag = document.getElementById('chd-element-edits') as HTMLStyleElement | null;
+    if (!tag) { tag = document.createElement('style'); tag.id = 'chd-element-edits'; document.head.appendChild(tag); }
+    tag.textContent = css;
+  };
+  const exitVariant = () => { setEditingVariant(null); setReloadKey((k) => k + 1); };
+  const deleteVariant = (name: string) => {
+    setVariants((v) => { const n = { ...v }; delete n[name]; return n; });
+    if (variantActive === name) setVariantActive('');
+    setVariantAb((ab) => ab.filter((x) => x !== name));
+    if (editingVariant === name) exitVariant();
+  };
+  const fetchAbStats = async () => {
+    try { const r = await fetch(`/api/admin/design/ab-stats?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && d.exposures) setAbStats(d.exposures); } catch { /* ignorer */ }
+  };
 
   // Persister per-element-edits til workspacet (gjelder alle brukere ved neste last).
   const saveEdits = async () => {
@@ -381,7 +436,7 @@ export default function WorkspaceDesignOverlay({
     try {
       const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
         method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits, designComponents: components }),
+        body: JSON.stringify(buildSaveBody()),
       });
       const n = new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size;
       setSaveMsg(r.ok ? `Lagret ${n} element ✓` : 'Avvist (krever admin)');
@@ -648,6 +703,58 @@ export default function WorkspaceDesignOverlay({
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+            {(editKeys.length > 0 || Object.keys(variants).length > 0 || editingVariant) && (
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Varianter / A-B</div>
+                {editingVariant ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11.5, color: '#7c3aed', flex: 1 }}>✎ Redigerer «{editingVariant}» — «Lagre endringer» oppdaterer denne varianten.</span>
+                    <button data-chd onClick={exitVariant} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Ferdig</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input data-chd style={{ ...field, flex: 1 }} placeholder="Nytt variant-navn" value={newVariantName} onChange={(e) => setNewVariantName(e.target.value)} />
+                      <button data-chd onClick={saveAsVariant} style={{ ...btn(false), padding: '3px 9px', fontSize: 11, whiteSpace: 'nowrap' }}>Lagre som variant</button>
+                    </div>
+                    {Object.keys(variants).map((n) => (
+                      <div key={n} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ flex: 1, fontSize: 11, color: INK, wordBreak: 'break-word' }}>{n}{abStats[n] != null ? ` · ${abStats[n]} visn.` : ''}</span>
+                        <button data-chd onClick={() => editVariant(n)} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Rediger</button>
+                        <button data-chd onClick={() => deleteVariant(n)} aria-label={`Slett ${n}`} style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2, flexShrink: 0 }}>✕</button>
+                      </div>
+                    ))}
+                    {Object.keys(variants).length > 0 && (
+                      <>
+                        <label style={flabel}>Hva besøkende ser</label>
+                        <select data-chd style={field} value={variantMode} onChange={(e) => setVariantMode(e.target.value as 'off' | 'active' | 'ab')}>
+                          <option value="off">Av (base/standard)</option>
+                          <option value="active">Aktiv variant</option>
+                          <option value="ab">A/B-test</option>
+                        </select>
+                        {variantMode === 'active' && (
+                          <select data-chd style={field} value={variantActive} onChange={(e) => setVariantActive(e.target.value)}>
+                            <option value="">— Velg variant —</option>
+                            {Object.keys(variants).map((n) => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        )}
+                        {variantMode === 'ab' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {Object.keys(variants).map((n) => (
+                              <label key={n} style={{ fontSize: 11, color: INK, display: 'flex', gap: 5, alignItems: 'center' }}>
+                                <input type="checkbox" data-chd checked={variantAb.includes(n)} onChange={(e) => setVariantAb((ab) => e.target.checked ? [...ab, n] : ab.filter((x) => x !== n))} /> {n}{abStats[n] != null ? ` · ${abStats[n]} visn.` : ''}
+                              </label>
+                            ))}
+                            <button data-chd onClick={fetchAbStats} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5, alignSelf: 'flex-start' }}>Hent A/B-stats</button>
+                          </div>
+                        )}
+                        <div style={{ fontSize: 10.5, color: INK2 }}>«Lagre endringer» persisterer varianter + visning.</div>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             )}
