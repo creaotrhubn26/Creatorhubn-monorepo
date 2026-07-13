@@ -636,6 +636,18 @@ export default function LeadMapPanel() {
       status: 'active' | 'in_liquidation' | 'bankrupt';
     };
     contacts?: Array<{ role: string; name: string }>;
+    financials?: {
+      year: number;
+      currency: string;
+      revenue: number | null;
+      operatingResult: number | null;
+      resultBeforeTax: number | null;
+      netResult: number | null;
+      equity: number | null;
+      totalAssets: number | null;
+      equityRatio: number | null;
+      operatingMargin: number | null;
+    } | null;
   };
   const [enrichmentByLeadId, setEnrichmentByLeadId] = useState<Record<string, Enrichment | null>>({});
   const [enrichingLeadId, setEnrichingLeadId] = useState<string | null>(null);
@@ -3505,6 +3517,57 @@ export default function LeadMapPanel() {
                         </Box>
                       )}
                     </Stack>
+                    {enrichment.financials && (
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
+                          Regnskap {enrichment.financials.year} ({enrichment.financials.currency}) — Regnskapsregisteret
+                        </Typography>
+                        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                          {([
+                            ['Omsetning', enrichment.financials.revenue, 'kr'],
+                            ['Driftsres.', enrichment.financials.operatingResult, 'kr'],
+                            ['Årsresultat', enrichment.financials.netResult, 'kr'],
+                            ['Egenkapital', enrichment.financials.equity, 'kr'],
+                          ] as Array<[string, number | null, string]>).map(([label, value]) => (
+                            value != null && (
+                              <Box key={label}>
+                                <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  {label}
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: palette.textPrimary }}>
+                                  {new Intl.NumberFormat('nb-NO', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}
+                                </Typography>
+                              </Box>
+                            )
+                          ))}
+                          {enrichment.financials.equityRatio != null && (
+                            <Box>
+                              <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                Soliditet
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: palette.textPrimary }}>
+                                {Math.round(enrichment.financials.equityRatio * 100)} %
+                              </Typography>
+                            </Box>
+                          )}
+                          {enrichment.financials.operatingMargin != null && (
+                            <Box>
+                              <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                Driftsmargin
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: enrichment.financials.operatingMargin < 0 ? '#f87171' : palette.textPrimary }}>
+                                {Math.round(enrichment.financials.operatingMargin * 100)} %
+                              </Typography>
+                            </Box>
+                          )}
+                        </Stack>
+                      </Box>
+                    )}
+                    {enrichment.financials === null && enrichment.found && (
+                      <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, mt: 1 }}>
+                        Ingen årsregnskap i Regnskapsregisteret (ENK leverer ikke, eller første regnskap er ikke levert ennå).
+                      </Typography>
+                    )}
                     {enrichment.contacts && enrichment.contacts.length > 0 && (
                       <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
                         <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
