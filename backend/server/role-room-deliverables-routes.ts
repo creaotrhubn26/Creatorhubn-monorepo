@@ -65,13 +65,25 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
     return viewerId;
   }
 
+  /**
+   * En scoped assistent uten `deliverables`-området kan verken se eller endre
+   * leveranser. GET skjuler radene; write-stiene må håndheve det samme (ellers
+   * kan en assistent som ikke ser leveranser likevel opprette/endre/slette dem).
+   */
+  async function assistantBlocksDeliverables(projectId: string, viewerId: string): Promise<boolean> {
+    const asst = await getAssistantAreas(pool, projectId, { userId: viewerId });
+    return asst != null && asst.areas.deliverables !== true;
+  }
+
   app.get('/api/role-room/projects/:projectId/deliverables', async (req, res) => {
     try {
       const viewerId = await authorize(req, res);
       if (!viewerId) return;
       // Assistent uten leveranse-tilgang ser ingenting.
-      const asst = await getAssistantAreas(pool, String(req.params.projectId).trim(), { userId: viewerId });
-      if (asst && asst.areas.deliverables !== true) { res.json({ success: true, items: [] }); return; }
+      if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
+        res.json({ success: true, items: [] });
+        return;
+      }
       const items = await listDeliverables(pool, String(req.params.projectId).trim());
       res.json({ success: true, items });
     } catch (error) {
@@ -84,6 +96,10 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
     try {
       const viewerId = await authorize(req, res);
       if (!viewerId) return;
+      if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
+        res.status(403).json({ error: 'ingen_tilgang' });
+        return;
+      }
       const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
       const created = await createDeliverable(pool, {
         projectId: String(req.params.projectId).trim(),
@@ -114,6 +130,10 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
     try {
       const viewerId = await authorize(req, res);
       if (!viewerId) return;
+      if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
+        res.status(403).json({ error: 'ingen_tilgang' });
+        return;
+      }
       const id = String(req.params.id || '').trim();
       const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
       const updated = await updateDeliverable(pool, id, String(req.params.projectId).trim(), {
@@ -144,6 +164,10 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
     try {
       const viewerId = await authorize(req, res);
       if (!viewerId) return;
+      if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
+        res.status(403).json({ error: 'ingen_tilgang' });
+        return;
+      }
       const ok = await deleteDeliverable(pool, String(req.params.id).trim(), String(req.params.projectId).trim());
       if (!ok) {
         res.status(404).json({ error: 'Fant ikke leveransen' });
