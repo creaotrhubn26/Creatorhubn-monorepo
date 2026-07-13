@@ -76,6 +76,8 @@ docker/
 !ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
 !backend/gfpgan-runner/GPU_DEPLOY.md
 !apps/resolve-script-manager/RELEASE.md
+# Ledgerly (norsk regnskapsplattform): all dokumentasjon versjonskontrolleres
+!apps/ledgerly/**/*.md
 # THE-ROLE-ROOM-strategi-dokumenter (produktdok, BankID, ENHETSOKONOMI, DPA, VERIFISERING)
 # Whitelistet 2026-06-07 — disse er kilden til sannhet for produkt-positionering og
 # må følges med i versjonkontroll for å holde landing-/pitch-/blog-arbeid i sync.
