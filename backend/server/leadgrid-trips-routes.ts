@@ -17,6 +17,13 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+
+// Roller som administrerer Leadgrid Go-dashbordet (ser hele teamet). Org
+// tildeler disse via team-styring; i tillegg respekteres en eksplisitt
+// `leadgrid_go.admin`-permission for finkorning senere.
+const GO_ADMIN_ROLES = new Set(["admin", "salgssjef"]);
 
 const VALID_PURPOSES = new Set(["unconfirmed", "business", "commute", "privateUse"]);
 
@@ -79,6 +86,8 @@ const rowToDto = (r: any) => ({
 });
 
 const UUID_RE = /^[0-9a-fA-F-]{36}$/;
+
+const emptyTotals = () => ({ drivers: 0, active_drivers: 0, km: 0, amount: 0, tolls: 0, unconfirmed: 0 });
 
 function purposeLabel(p: string): string {
   switch (p) {
@@ -229,6 +238,93 @@ export function registerLeadgridTripsRoutes(deps: {
     } catch (err) {
       console.warn("[leadgrid-trips] delete failed:", (err as Error).message);
       return res.status(500).json({ error: "trip_delete_failed" });
+    }
+  });
+
+  // ── GET /trips/team — admin-oversikt over hele teamet (org-scopet) ─
+  app.get("/api/leadgrid/trips/team", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const { role, permissions } = await resolveEffectivePermissions(pool, orgId, session.userId);
+      const isGoAdmin =
+        (role && GO_ADMIN_ROLES.has(role)) ||
+        permissions.has("leadgrid_go.admin") ||
+        permissions.has("teams.view");
+      if (!isGoAdmin) return res.status(403).json({ error: "not_go_admin" });
+
+      // Teammedlemmer + visningsnavn.
+      const mem = await pool.query(
+        `SELECT om.user_id, om.role,
+                COALESCE(up.display_name, u.email, om.user_id) AS name
+           FROM organization_members om
+           LEFT JOIN user_profiles up
+             ON up.user_id = om.user_id AND up.organization_id = om.organization_id
+           LEFT JOIN users u ON u.id = om.user_id
+          WHERE om.organization_id = $1`,
+        [orgId],
+      );
+      const memberIds: string[] = mem.rows.map((r) => r.user_id);
+      if (memberIds.length === 0) return res.json({ role, drivers: [], totals: emptyTotals() });
+
+      const from = String(req.query.from || "");
+      const to = String(req.query.to || "");
+      const params: any[] = [memberIds];
+      let dateWhere = "";
+      if (from) { params.push(from); dateWhere += ` AND start_date >= $${params.length}`; }
+      if (to) { params.push(to); dateWhere += ` AND start_date <= $${params.length}`; }
+
+      const agg = await pool.query(
+        `SELECT user_id,
+                COUNT(*)::int AS trips,
+                COALESCE(SUM(distance_km),0) AS km,
+                COALESCE(SUM(CASE WHEN purpose='business' THEN distance_km ELSE 0 END),0) AS business_km,
+                COALESCE(SUM(CASE WHEN purpose='business' THEN COALESCE(mileage_amount,0) ELSE 0 END),0) AS amount,
+                COALESCE(SUM(COALESCE(toll_amount,0)),0) AS tolls,
+                COUNT(*) FILTER (WHERE purpose='unconfirmed')::int AS unconfirmed,
+                MAX(vehicle_name) AS vehicle_name,
+                MAX(vehicle_plate) AS vehicle_plate,
+                MAX(start_date) AS last_trip
+           FROM leadgrid_trips
+          WHERE user_id = ANY($1)${dateWhere}
+          GROUP BY user_id`,
+        params,
+      );
+      const byUser = new Map<string, any>(agg.rows.map((r) => [r.user_id, r]));
+      const drivers = mem.rows
+        .map((m) => {
+          const a = byUser.get(m.user_id);
+          return {
+            user_id: m.user_id,
+            name: m.name,
+            role: m.role,
+            trips: a?.trips ?? 0,
+            km: Number(a?.km ?? 0),
+            business_km: Number(a?.business_km ?? 0),
+            amount: Number(a?.amount ?? 0),
+            tolls: Number(a?.tolls ?? 0),
+            unconfirmed: a?.unconfirmed ?? 0,
+            vehicle_name: a?.vehicle_name ?? null,
+            vehicle_plate: a?.vehicle_plate ?? null,
+            last_trip: a?.last_trip ? isoNoMillis(a.last_trip) : null,
+          };
+        })
+        .sort((x, y) => y.business_km - x.business_km);
+
+      const totals = {
+        drivers: drivers.length,
+        active_drivers: drivers.filter((d) => d.trips > 0).length,
+        km: drivers.reduce((s, d) => s + d.business_km, 0),
+        amount: drivers.reduce((s, d) => s + d.amount, 0),
+        tolls: drivers.reduce((s, d) => s + d.tolls, 0),
+        unconfirmed: drivers.reduce((s, d) => s + d.unconfirmed, 0),
+      };
+      return res.json({ role, drivers, totals });
+    } catch (err) {
+      console.warn("[leadgrid-trips] team failed:", (err as Error).message);
+      return res.status(500).json({ error: "trips_team_failed" });
     }
   });
 
