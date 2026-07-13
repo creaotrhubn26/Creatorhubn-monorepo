@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  extractTenderRequirements,
   isFreshTrigger,
   mapDoffinHits,
   mapGdeltArticles,
@@ -93,6 +94,20 @@ describe("isFreshTrigger (gamle anbud er ikke salgsvindu)", () => {
     expect(isFreshTrigger({ ...base, publishedAt: "2026-07-03" }, now)).toBe(true);
     expect(isFreshTrigger({ ...base, publishedAt: "2016-09-21" }, now)).toBe(false);
     expect(isFreshTrigger({ ...base, publishedAt: null }, now)).toBe(true);
+  });
+});
+
+describe("extractTenderRequirements (deterministisk krav-leksikon)", () => {
+  it("finner krav i tekst, uavhengig av store/små bokstaver", () => {
+    const reqs = extractTenderRequirements(
+      "Rammeavtale for videoproduksjon. Leverandør må ha ISO 14001 og tilby elektronisk faktura (EHF). Krav om universell utforming (WCAG 2.1).",
+    );
+    expect(reqs).toEqual(expect.arrayContaining(["rammeavtale", "miljo", "ehf", "universell"]));
+    expect(reqs).not.toContain("sikkerhet");
+  });
+
+  it("tom tekst gir tom liste — ingen defaults", () => {
+    expect(extractTenderRequirements("")).toEqual([]);
   });
 });
 

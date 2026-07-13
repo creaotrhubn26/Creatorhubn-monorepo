@@ -56,6 +56,29 @@ export const TRIGGER_KEYWORDS: Record<string, string[]> = {
 
 const GDELT_STRATEGY_TERMS = '(bærekraftstrategi OR "ny strategi" OR satsing OR klimamål)';
 
+/**
+ * Krav-leksikon for anbudstekster (deterministisk — ingen LLM-gjetting).
+ * Justeringsflate: utvides når aggregatet viser hull.
+ */
+export const TENDER_REQUIREMENT_LEXICON: Array<{ key: string; label: string; patterns: string[] }> = [
+  { key: "miljo", label: "Miljøkrav", patterns: ["miljøkrav", "miljøsertifis", "iso 14001", "svanemerk", "miljøfyrtårn", "klimakrav", "utslippsfri"] },
+  { key: "kvalitet", label: "Kvalitetssystem", patterns: ["iso 9001", "kvalitetssystem", "kvalitetssikringssystem"] },
+  { key: "rammeavtale", label: "Rammeavtale", patterns: ["rammeavtale"] },
+  { key: "sikkerhet", label: "Sikkerhetsklarering", patterns: ["sikkerhetsklarering", "sikkerhetsavtale", "klarert personell"] },
+  { key: "personvern", label: "Personvern/GDPR", patterns: ["gdpr", "databehandleravtale", "personvernforordning"] },
+  { key: "universell", label: "Universell utforming", patterns: ["universell utforming", "wcag"] },
+  { key: "laerling", label: "Lærlingkrav", patterns: ["lærling"] },
+  { key: "ehf", label: "EHF-faktura", patterns: ["ehf", "elektronisk faktura"] },
+];
+
+/** Hvilke krav nevnes i anbudsteksten? Ren tekst-match, små bokstaver. */
+export function extractTenderRequirements(text: string): string[] {
+  const lower = text.toLowerCase();
+  return TENDER_REQUIREMENT_LEXICON
+    .filter((req) => req.patterns.some((p) => lower.includes(p)))
+    .map((req) => req.key);
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Rene mappere (enhetstestet)
 // ─────────────────────────────────────────────────────────────────────
@@ -170,11 +193,13 @@ interface DoffinHit {
   id?: string;
   heading?: string;
   title?: string;
+  description?: string;
   publicationDate?: string;
   deadline?: string;
   status?: string;
   estimatedValue?: { currencyCode?: string; amount?: number };
   buyer?: Array<{ name?: string }>;
+  cpvCodes?: string[];
 }
 
 /** Mapping verifisert mot faktisk API-respons 2026-07-13 (nøkkel aktiv). */
@@ -196,6 +221,8 @@ export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] 
         deadline: h.deadline?.slice(0, 10) ?? null,
         valueNok: h.estimatedValue?.currencyCode === "NOK" ? h.estimatedValue.amount ?? null : null,
         buyerName: h.buyer?.[0]?.name ?? null,
+        cpvCodes: (h.cpvCodes ?? []).slice(0, 10),
+        requirements: extractTenderRequirements(`${title} ${h.description ?? ""}`),
       },
     });
   }

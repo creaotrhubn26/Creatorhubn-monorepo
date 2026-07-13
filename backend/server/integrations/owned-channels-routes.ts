@@ -23,6 +23,7 @@ import { syncBrregMarketSignals } from "./brreg-market-signal-sync.js";
 import { syncSalesTriggers } from "./sales-trigger-sync.js";
 import { syncSsbTerritorySignals } from "./ssb-territory-signal-sync.js";
 import { runKonkursWatch } from "./konkurs-watch.js";
+import { TENDER_REQUIREMENT_LEXICON } from "./sales-trigger-sync.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -51,6 +52,63 @@ function getSession(
 export function registerOwnedChannelsRoutes({
   app, pool, activeSessions, isAdminEmail,
 }: Deps): void {
+  // «Hva krever markedet?» — aggregat over innsamlede anbud per vertikal:
+  // andel utlysninger som nevner hvert krav (deterministisk leksikon).
+  app.get("/api/integrations/tender-requirements", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    try {
+      const r = await pool.query<{ matched_topic: string; requirement: string; hits: number; total: number }>(
+        `WITH tenders AS (
+           SELECT matched_topic, raw
+             FROM trigger_events
+            WHERE organization_id = $1::uuid AND kind = 'tender'
+              AND created_at > now() - interval '180 days'
+         ),
+         totals AS (SELECT matched_topic, COUNT(*)::int AS total FROM tenders GROUP BY 1)
+         SELECT t.matched_topic, req.requirement, COUNT(*)::int AS hits, tot.total
+           FROM tenders t
+           JOIN totals tot USING (matched_topic),
+                jsonb_array_elements_text(COALESCE(t.raw->'requirements','[]'::jsonb)) req(requirement)
+          GROUP BY t.matched_topic, req.requirement, tot.total
+          ORDER BY t.matched_topic, hits DESC`,
+        [orgId],
+      );
+      const totalsRes = await pool.query<{ matched_topic: string; total: number }>(
+        `SELECT matched_topic, COUNT(*)::int AS total FROM trigger_events
+          WHERE organization_id = $1::uuid AND kind = 'tender'
+            AND created_at > now() - interval '180 days'
+          GROUP BY 1 ORDER BY 2 DESC`,
+        [orgId],
+      );
+      const labels = Object.fromEntries(TENDER_REQUIREMENT_LEXICON.map((x) => [x.key, x.label]));
+      return res.json({
+        windowDays: 180,
+        verticals: totalsRes.rows.map((t) => ({
+          topic: t.matched_topic,
+          tenders: t.total,
+          requirements: r.rows
+            .filter((row) => row.matched_topic === t.matched_topic)
+            .map((row) => ({
+              key: row.requirement,
+              label: labels[row.requirement] ?? row.requirement,
+              hits: row.hits,
+              share: Math.round((row.hits / t.total) * 100) / 100,
+            })),
+        })),
+        note: "Deterministisk tekst-leksikon over anbudsoverskrift+beskrivelse — nedre grense, ikke full kravanalyse av konkurransegrunnlag.",
+      });
+    } catch (err) {
+      console.error("[tender-requirements] failed", err);
+      return res.status(500).json({ error: "aggregate_failed" });
+    }
+  });
+
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.
   app.post("/api/integrations/sync/konkurs-watch", async (req, res) => {
     const token = req.headers["x-cron-token"];
