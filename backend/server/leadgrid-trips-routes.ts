@@ -69,9 +69,31 @@ async function ensureSchema(pool: Pool): Promise<void> {
       fuel TEXT NOT NULL DEFAULT 'unknown',
       kind TEXT NOT NULL DEFAULT 'car',
       is_company_car BOOLEAN NOT NULL DEFAULT false,
+      eu_control_due DATE,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  // EU-kontroll-kolonne for tabeller opprettet før 0374.
+  await pool.query(`ALTER TABLE leadgrid_vehicles ADD COLUMN IF NOT EXISTS eu_control_due DATE`);
+  // Kjøretøy-booking (delte firmabiler) — org-scopet (mig 0375).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_vehicle_bookings (
+      id UUID PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      vehicle_label TEXT NOT NULL,
+      vehicle_plate TEXT,
+      booked_by TEXT NOT NULL,
+      booked_by_name TEXT,
+      start_at TIMESTAMPTZ NOT NULL,
+      end_at TIMESTAMPTZ NOT NULL,
+      purpose TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_lg_vbookings_org ON leadgrid_vehicle_bookings (organization_id, start_at)`,
+  );
   schemaReady = true;
 }
 
@@ -335,7 +357,8 @@ export function registerLeadgridTripsRoutes(deps: {
         `SELECT om.user_id, om.role,
                 COALESCE(up.display_name, u.email, om.user_id) AS name,
                 v.display_name AS veh_name, v.plate AS veh_plate,
-                v.is_company_car AS is_company_car, v.fuel AS veh_fuel
+                v.is_company_car AS is_company_car, v.fuel AS veh_fuel,
+                v.eu_control_due AS eu_control_due
            FROM organization_members om
            LEFT JOIN user_profiles up
              ON up.user_id = om.user_id AND up.organization_id = om.organization_id
@@ -389,6 +412,8 @@ export function registerLeadgridTripsRoutes(deps: {
             vehicle_plate: m.veh_plate ?? a?.vehicle_plate ?? null,
             is_company_car: m.is_company_car ?? false,
             vehicle_fuel: m.veh_fuel ?? null,
+            eu_control_due: m.eu_control_due
+              ? new Date(m.eu_control_due).toISOString().slice(0, 10) : null,
             last_trip: a?.last_trip ? isoNoMillis(a.last_trip) : null,
           };
         })
@@ -576,24 +601,140 @@ export function registerLeadgridTripsRoutes(deps: {
     try {
       await ensureSchema(pool);
       const b = req.body || {};
+      const euDue = b.euControlDue ?? b.eu_control_due ?? null;
       await pool.query(
-        `INSERT INTO leadgrid_vehicles (user_id, plate, display_name, fuel, kind, is_company_car, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6, now())
+        `INSERT INTO leadgrid_vehicles (user_id, plate, display_name, fuel, kind, is_company_car, eu_control_due, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, now())
          ON CONFLICT (user_id) DO UPDATE SET
            plate = EXCLUDED.plate, display_name = EXCLUDED.display_name,
            fuel = EXCLUDED.fuel, kind = EXCLUDED.kind,
-           is_company_car = EXCLUDED.is_company_car, updated_at = now()`,
+           is_company_car = EXCLUDED.is_company_car,
+           eu_control_due = COALESCE(EXCLUDED.eu_control_due, leadgrid_vehicles.eu_control_due),
+           updated_at = now()`,
         [
           session.userId,
           b.plate ?? null, b.displayName ?? b.display_name ?? null,
           String(b.fuel ?? "unknown"), String(b.kind ?? "car"),
           b.isCompanyCar ?? b.is_company_car ?? false,
+          euDue ? String(euDue).slice(0, 10) : null,
         ],
       );
       return res.json({ ok: true });
     } catch (err) {
       console.warn("[leadgrid-trips] vehicle profile failed:", (err as Error).message);
       return res.status(500).json({ error: "vehicle_profile_failed" });
+    }
+  });
+
+  // ── GET /vehicle/fleet — org-ens firmabiler (til booking) ────────
+  app.get("/api/leadgrid/vehicle/fleet", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const r = await pool.query(
+        `SELECT v.user_id, v.plate, v.display_name, v.fuel, v.eu_control_due,
+                COALESCE(up.display_name, u.email, v.user_id) AS driver_name
+           FROM leadgrid_vehicles v
+           JOIN organization_members om ON om.user_id = v.user_id AND om.organization_id = $1
+           LEFT JOIN user_profiles up ON up.user_id = v.user_id AND up.organization_id = $1
+           LEFT JOIN users u ON u.id = v.user_id
+          WHERE v.is_company_car = true`,
+        [orgId],
+      );
+      return res.json({ vehicles: r.rows.map((x) => ({
+        plate: x.plate, display_name: x.display_name, fuel: x.fuel,
+        driver_name: x.driver_name,
+        eu_control_due: x.eu_control_due ? new Date(x.eu_control_due).toISOString().slice(0, 10) : null,
+      })) });
+    } catch (err) {
+      console.warn("[leadgrid-trips] fleet failed:", (err as Error).message);
+      return res.status(500).json({ error: "fleet_failed" });
+    }
+  });
+
+  // ── GET /vehicle/bookings — kommende reservasjoner i org ─────────
+  app.get("/api/leadgrid/vehicle/bookings", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const r = await pool.query(
+        `SELECT * FROM leadgrid_vehicle_bookings
+          WHERE organization_id = $1 AND status = 'active' AND end_at >= now()
+          ORDER BY start_at ASC LIMIT 200`,
+        [orgId],
+      );
+      return res.json({ bookings: r.rows.map((b) => ({
+        id: b.id, vehicle_label: b.vehicle_label, vehicle_plate: b.vehicle_plate,
+        booked_by: b.booked_by, booked_by_name: b.booked_by_name,
+        start_at: isoNoMillis(b.start_at), end_at: isoNoMillis(b.end_at),
+        purpose: b.purpose, is_mine: b.booked_by === session.userId,
+      })) });
+    } catch (err) {
+      console.warn("[leadgrid-trips] bookings list failed:", (err as Error).message);
+      return res.status(500).json({ error: "bookings_failed" });
+    }
+  });
+
+  // ── POST /vehicle/bookings — reserver (konflikt-sjekk) ───────────
+  app.post("/api/leadgrid/vehicle/bookings", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const b = req.body || {};
+      const label = String(b.vehicleLabel ?? b.vehicle_label ?? "").trim();
+      const plate = b.vehiclePlate ?? b.vehicle_plate ?? null;
+      const startAt = b.startAt ?? b.start_at;
+      const endAt = b.endAt ?? b.end_at;
+      if (!label || !startAt || !endAt) return res.status(400).json({ error: "missing_fields" });
+      if (new Date(endAt) <= new Date(startAt)) return res.status(400).json({ error: "end_before_start" });
+      // Konflikt: overlappende aktiv reservasjon for samme bil (plate el. label).
+      const conflict = await pool.query(
+        `SELECT 1 FROM leadgrid_vehicle_bookings
+          WHERE organization_id = $1 AND status = 'active'
+            AND COALESCE(vehicle_plate, vehicle_label) = COALESCE($2, $3)
+            AND tstzrange(start_at, end_at) && tstzrange($4, $5) LIMIT 1`,
+        [orgId, plate, label, startAt, endAt],
+      );
+      if ((conflict.rowCount ?? 0) > 0) return res.status(409).json({ error: "time_conflict" });
+      const id = (globalThis.crypto as any).randomUUID();
+      await pool.query(
+        `INSERT INTO leadgrid_vehicle_bookings
+           (id, organization_id, vehicle_label, vehicle_plate, booked_by, booked_by_name, start_at, end_at, purpose)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [id, orgId, label, plate, session.userId, b.bookedByName ?? b.booked_by_name ?? null,
+         startAt, endAt, String(b.purpose ?? "")],
+      );
+      return res.json({ ok: true, id });
+    } catch (err) {
+      console.warn("[leadgrid-trips] booking create failed:", (err as Error).message);
+      return res.status(500).json({ error: "booking_create_failed" });
+    }
+  });
+
+  // ── DELETE /vehicle/bookings/:id — kanseller egen reservasjon ────
+  app.delete("/api/leadgrid/vehicle/bookings/:id", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    const id = req.params.id;
+    if (!UUID_RE.test(id)) return res.status(400).json({ error: "invalid_id" });
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `UPDATE leadgrid_vehicle_bookings SET status = 'cancelled'
+          WHERE id = $1 AND booked_by = $2`,   // kun egen
+        [id, session.userId],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.warn("[leadgrid-trips] booking cancel failed:", (err as Error).message);
+      return res.status(500).json({ error: "booking_cancel_failed" });
     }
   });
 }

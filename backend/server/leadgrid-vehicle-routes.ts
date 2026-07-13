@@ -50,6 +50,8 @@ function extractTechnical(data: any): {
   make: string | null;
   model: string | null;
   body_kind: string | null;
+  eu_control_due: string | null;
+  first_registered: string | null;
 } {
   const k = data?.kjoretoydataListe?.[0];
   const teknisk = k?.godkjenning?.tekniskGodkjenning;
@@ -62,7 +64,17 @@ function extractTechnical(data: any): {
     teknisk?.kjoretoyklassifisering?.beskrivelse ??
     teknisk?.kjoretoyklassifisering?.kjoretoyklasse?.kodeBeskrivelse ??
     null;
-  return { fuel_code: fuelCode, make, model, body_kind: bodyKind };
+  // EU-kontroll (PKK) neste frist + førstegangsregistrering — regulatoriske
+  // datoer, ikke person-data. Til vedlikeholds-/kontroll-varsler.
+  const euDue = k?.periodiskKjoretoyKontroll?.kontrollfrist ?? null;
+  const firstReg =
+    k?.forstegangsregistrering?.registrertForstegangNorgeDato ??
+    k?.godkjenning?.forstegangsGodkjenning?.godkjenningsdato ??
+    null;
+  return {
+    fuel_code: fuelCode, make, model, body_kind: bodyKind,
+    eu_control_due: euDue, first_registered: firstReg,
+  };
 }
 
 export function registerLeadgridVehicleRoutes(deps: {
