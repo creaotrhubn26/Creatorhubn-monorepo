@@ -878,7 +878,7 @@ Migrasjon `139_role_nav_config.sql` er kjørt i Neon. Ingen kjente nye migrasjon
 
 #### G. Sikkerhet / observability
 
-- **Sterkt anbefalt:** roter Neon-passordet `npg_SM7AZYxyvK4L` som ble delt i klartekst i tidligere chat-tråd (allerede notert i sikkerhets-noter).
+- **Sterkt anbefalt:** roter Neon-passordet `npg_***ROTERT-SE-SIKKERHETSNOTAT***` som ble delt i klartekst i tidligere chat-tråd (allerede notert i sikkerhets-noter).
 - Tsc-sjekk er den eneste kvalitetsporten brukt i sesjonen. Det finnes ingen kjente integration-tester eller lint-pipeline koblet til extraction-arbeidet — fremtidige sesjoner bør vurdere å legge til automatisert end-to-end-test før de utsatte clustrene flyttes.
 
 ### Estimat for resterende arbeid (oppdatert sesjon 3)
@@ -1196,7 +1196,7 @@ Sandbox-proxyen blokkerer `git push` direkte. **Eneste vei ut er GitHub MCP-writ
 
 ## 🔐 Sikkerhets-noter
 
-- **Neon Postgres-passord** delt i klartekst i tidligere chat-tråd: `npg_SM7AZYxyvK4L`. **MÅ ROTERES** i Neon-konsollen før produksjons-bruk. Oppdater også Render env-vars + lokal `.env`.
+- **Neon Postgres-passord** delt i klartekst i tidligere chat-tråd: `npg_***ROTERT-SE-SIKKERHETSNOTAT***`. **MÅ ROTERES** i Neon-konsollen før produksjons-bruk. Oppdater også Render env-vars + lokal `.env`.
 - `ADMIN_ROOM_OWNER_EMAIL = "daniel@creatorhubn.com"` — produkt-eier-låst på både UI og backend.
 
 ---
