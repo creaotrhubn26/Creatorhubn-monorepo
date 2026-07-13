@@ -155,8 +155,9 @@ export function buildNotifCss(tokens: Record<string, unknown>): string {
 }
 
 // ── Innsatte elementer (Insert-modus): nye noder fra strukturert data, forankret til et element ──
-export type InsertSpec = { id: string; type: string; pos: 'before' | 'after'; text?: string; href?: string; src?: string };
+export type InsertSpec = { id: string; type: string; pos: 'before' | 'after'; text?: string; href?: string; src?: string; component?: string; slots?: Record<string, string> };
 export type ElementInserts = Record<string, InsertSpec[]>; // anker-selektor → spesifikasjoner
+export type DesignComponents = Record<string, InsertSpec[]>; // navn → komponent-spesifikasjoner
 
 const INSERT_TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic']);
 // URL trygg: relativ (/…) eller https:// — aldri javascript:/data:; ingen anførsel/vinkelparentes.
@@ -193,22 +194,43 @@ export function buildInsertNode(spec: InsertSpec): HTMLElement | null {
   return node;
 }
 
-/** Sett inn nye elementer forankret til selektorer; re-injiser når React fjerner dem (observer). */
-function applyInserts(inserts: ElementInserts): (() => void) | undefined {
+/** Sett inn nye elementer forankret til selektorer; re-injiser når React fjerner dem (observer).
+ *  `components` + `workspace` støtter LIVE-lenkede komponent-referanser (type 'component'):
+ *  master-spec'ene ekspanderes ved render, så endring av komponenten slår gjennom på alle instanser;
+ *  per-instans `slots` styrer hvilken datakilde hvert infographic-slot kobles til. */
+function applyInserts(inserts: ElementInserts, components: DesignComponents, workspace: string): (() => void) | undefined {
   const entries = Object.entries(inserts || {}).filter(([sel]) => isSafeSelector(sel));
   if (!entries.length) return undefined;
+  const insertNode = (anchor: Element, spec: InsertSpec, domId: string) => {
+    if (document.querySelector(`[data-chd-insert="${domId}"]`)) return; // allerede satt inn
+    const node = buildInsertNode({ ...spec, id: domId });
+    if (!node || !anchor.parentNode) return;
+    if (spec.pos === 'before') anchor.parentNode.insertBefore(node, anchor);
+    else anchor.parentNode.insertBefore(node, anchor.nextSibling);
+  };
   const apply = () => {
     for (const [sel, specs] of entries) {
       let anchor: Element | null = null;
       try { anchor = document.querySelector(sel); } catch { continue; }
       if (!anchor || !anchor.parentNode) continue;
       for (const spec of specs) {
-        if (!spec || !INSERT_TYPES.has(spec.type) || !/^[A-Za-z0-9_-]{1,40}$/.test(spec.id || '')) continue;
-        if (document.querySelector(`[data-chd-insert="${spec.id}"]`)) continue; // allerede satt inn
-        const node = buildInsertNode(spec);
-        if (!node) continue;
-        if (spec.pos === 'before') anchor.parentNode.insertBefore(node, anchor);
-        else anchor.parentNode.insertBefore(node, anchor.nextSibling);
+        if (!spec || !/^[A-Za-z0-9_-]{1,40}$/.test(spec.id || '')) continue;
+        // Live-lenket komponent → ekspander master-spec'ene med per-instans slot-kilder.
+        if (spec.type === 'component' && spec.component) {
+          const comp = components[spec.component];
+          if (!comp) continue;
+          for (const child of comp) {
+            if (!INSERT_TYPES.has(child.type)) continue;
+            const c: InsertSpec = { ...child };
+            const slotSrc = spec.slots && spec.slots[child.id];
+            if (child.type === 'infographic' && slotSrc) c.src = `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(slotSrc)}&ws=${encodeURIComponent(workspace)}`;
+            c.pos = spec.pos;
+            insertNode(anchor, c, `${spec.id}__${child.id}`);
+          }
+          continue;
+        }
+        if (!INSERT_TYPES.has(spec.type)) continue;
+        insertNode(anchor, spec, spec.id);
       }
     }
   };
@@ -275,9 +297,9 @@ export function useElementEdits(workspace: string): void {
         if (t.elementText && typeof t.elementText === 'object') {
           cleanupText = applyTextEdits(t.elementText as ElementText);
         }
-        // Innsatte elementer → nye noder (m/ observer-reinjeksjon).
+        // Innsatte elementer → nye noder (m/ observer-reinjeksjon); komponent-refs ekspanderes live.
         if (t.elementInserts && typeof t.elementInserts === 'object') {
-          cleanupInserts = applyInserts(t.elementInserts as ElementInserts);
+          cleanupInserts = applyInserts(t.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, workspace);
         }
         // Data-bindinger → elementtekst = metric-verdi el. LIVE connector-verdi (fra DB), koblet.
         if (t.elementBindings && typeof t.elementBindings === 'object') {
