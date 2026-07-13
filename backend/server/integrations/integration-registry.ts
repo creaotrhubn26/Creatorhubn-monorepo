@@ -421,7 +421,7 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     displayName: "SSB åpne API",
     category: "public_data",
     purpose: "Befolkning/alder/medianinntekt per kommune; lønnsstatistikk",
-    supportedDataTypes: ["population", "median_income", "salary_stats"],
+    supportedDataTypes: ["population", "median_income", "salary_stats", "businesses_in_region"],
     authenticationType: "none",
     credentialReference: null,
     apiBaseUrl: "https://data.ssb.no/api/v0",
