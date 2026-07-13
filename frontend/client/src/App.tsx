@@ -3,6 +3,8 @@ import { Switch, Route, useLocation, Redirect } from 'wouter';
 import { queryClient } from './lib/queryClient';
 import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from "@/hooks/useAuth";
+import { useElementEdits, detectDesignWorkspace } from "@/components/workspace/elementEdits";
+import WorkspaceDesignOverlay from "@/components/workspace/WorkspaceDesignOverlay";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 // Type definition for the current user response from /api/auth/current-user
 interface CurrentUser {
@@ -590,6 +592,14 @@ function syncAppFavicon(location: string) {
 
 function App() {
   const [location] = useLocation();
+  // CreatorHub Design (per-element-lag): GLOBALT mount — hele CreatorHub-appen (og Leadgrid-appen
+  // på dens host) får per-element-editoren. Runtime-hooken anvender lagrede edits for alle; ?design=1
+  // åpner live-editoren. Singleton-vakten i overlayet hindrer dobling mot per-side-mount.
+  const designWs = React.useMemo(() => detectDesignWorkspace(), []);
+  useElementEdits(designWs);
+  const [designMode, setDesignMode] = React.useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
 
   React.useEffect(() => {
     const isAcademyRoute = /^\/academy(?:$|[/-])/.test(location);
@@ -638,6 +648,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {designMode && <WorkspaceDesignOverlay workspace={designWs} targetFile="frontend/client/src/App.tsx" onClose={() => setDesignMode(false)} />}
       <ImpersonationBanner />
       <DemoModeProvider>
         <UniversalSessionProvider>
