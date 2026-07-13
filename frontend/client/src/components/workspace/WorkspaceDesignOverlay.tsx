@@ -136,6 +136,7 @@ export default function WorkspaceDesignOverlay({
   const [components, setComponents] = React.useState<Record<string, InsertSpec[]>>({}); // gjenbrukbare komponenter
   const [compName, setCompName] = React.useState('');
   const [pickComp, setPickComp] = React.useState('');
+  const [slotBindings, setSlotBindings] = React.useState<Record<string, string>>({}); // data-slot → kilde (ved gjenbruk)
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
 
@@ -252,6 +253,31 @@ export default function WorkspaceDesignOverlay({
     return () => { live = false; };
   }, [mode, workspace]);
 
+  // Auto-forslag på kilde for et data-slot: 1) gjenbruk gammel source= hvis den finnes ennå,
+  // 2) fuzzy-match slot-teksten mot kilde-nøkkel/-etikett. Tomt = ingen god match.
+  const suggestSource = (spec: InsertSpec): string => {
+    const m = (spec.src || '').match(/[?&]source=([A-Za-z0-9_-]+)/);
+    const old = m && m[1];
+    if (old && sources.find((s) => s.key === old)) return old;
+    const hay = (spec.text || '').toLowerCase().trim();
+    if (!hay) return '';
+    const hit = sources.find((s) => {
+      const k = s.key.toLowerCase(), l = String(s.label || '').toLowerCase();
+      return k.includes(hay) || l.includes(hay) || hay.includes(k) || (l && hay.includes(l));
+    });
+    return hit ? hit.key : '';
+  };
+  // Slot-deteksjon: når en komponent velges for innsetting, finn data-slots (infographics) og
+  // auto-foreslå kilde for hver → veiviseren fylles ut.
+  React.useEffect(() => {
+    if (insType !== 'component' || !pickComp) { setSlotBindings({}); return; }
+    const specs = components[pickComp] || [];
+    const init: Record<string, string> = {};
+    specs.filter((s) => s.type === 'infographic').forEach((s) => { init[s.id] = suggestSource(s); });
+    setSlotBindings(init);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [insType, pickComp, components, sources]);
+
   // Insert: legg et nytt element (overskrift/tekst/knapp/bilde/infographic/skille) ved ankeret.
   const b64url = (obj: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const infographicSrc = () => {
@@ -278,7 +304,14 @@ export default function WorkspaceDesignOverlay({
       const specs = components[pickComp];
       if (!specs || !specs.length) return;
       const key = uniqueSelector(sel);
-      const copies = specs.map((s) => ({ ...s, id: `ins-${nextId.current++}` }));
+      // Rebuild hvert infographic-slot med den VALGTE kilden (ikke arv gammel binding blindt).
+      const copies = specs.map((s) => {
+        const copy = { ...s, id: `ins-${nextId.current++}` };
+        if (s.type === 'infographic' && slotBindings[s.id]) {
+          copy.src = `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(slotBindings[s.id])}&ws=${encodeURIComponent(workspace)}&accent=${encodeURIComponent(accent)}`;
+        }
+        return copy;
+      });
       copies.forEach((spec) => {
         const node = buildInsertNode(spec);
         if (node && sel!.parentNode) { if (insPos === 'before') sel!.parentNode.insertBefore(node, sel); else sel!.parentNode.insertBefore(node, sel!.nextSibling); }
@@ -691,6 +724,33 @@ export default function WorkspaceDesignOverlay({
                     {Object.keys(components).map((n) => <option key={n} value={n}>{n} ({components[n].length} elementer)</option>)}
                   </select>
                 )}
+                {insType === 'component' && pickComp && (components[pickComp] || []).some((s) => s.type === 'infographic') && (() => {
+                  const slots = (components[pickComp] || []).filter((s) => s.type === 'infographic');
+                  const connected = slots.filter((s) => slotBindings[s.id] && sources.find((x) => x.key === slotBindings[s.id])).length;
+                  return (
+                    <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Koble data-slots ({connected}/{slots.length} ✓)</div>
+                      {slots.map((slot) => {
+                        const chosen = slotBindings[slot.id] || '';
+                        const bound = sources.find((s) => s.key === chosen);
+                        return (
+                          <div key={slot.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ fontSize: 11, color: INK2 }}>Slot: {slot.text || 'infographic'}</span>
+                            <select data-chd aria-label={`Kilde for ${slot.text || 'slot'}`} style={field} value={chosen}
+                              onChange={(e) => setSlotBindings((b) => ({ ...b, [slot.id]: e.target.value }))}>
+                              <option value="">— Velg kilde —</option>
+                              {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? '📊 ' : '✏️ '}{s.key}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                            </select>
+                            {chosen && (bound
+                              ? <div style={{ fontSize: 10.5, color: '#15803d' }}>✓ Verifisert{bound.live ? ' (live fra DB)' : ''}: {String(bound.value ?? '—')}</div>
+                              : <div style={{ fontSize: 10.5, color: '#b45309' }}>⚠ ikke verifisert — kilden finnes ikke</div>)}
+                          </div>
+                        );
+                      })}
+                      {connected < slots.length && <div style={{ fontSize: 10.5, color: '#b45309' }}>Koble alle slots for en fullstendig komponent.</div>}
+                    </div>
+                  );
+                })()}
                 {insType !== 'divider' && insType !== 'component' && (
                   <input data-chd style={field}
                     placeholder={insType === 'infographic' ? 'Verdi (f.eks. 75%)' : insType === 'image' ? 'Alt-tekst' : 'Tekst'}
