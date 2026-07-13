@@ -69,7 +69,9 @@ function sanitizeElementEdits(input: unknown): Record<string, Record<string, str
   const out: Record<string, Record<string, string>> = {};
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
   const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
-    'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration']);
+    'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
+    // Auto-layout (flex): container-oppsett.
+    'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap']);
   const VAL_RE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
   let n = 0;
   for (const [sel, propsRaw] of Object.entries(input as Record<string, unknown>)) {

@@ -26,6 +26,8 @@ export const EDITABLE_CSS_PROPS = new Set<string>([
   'color', 'background-color', 'background', 'border-color', 'border-radius',
   'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing',
   'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
+  // Auto-layout (flex).
+  'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap',
 ]);
 
 // Verdi-sanitering: samme trygge tegnsett som backend (hex/rgba/px/nøkkelord). Ikke url()/expression.
