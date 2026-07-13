@@ -23,6 +23,7 @@ import {
   upsertTemplate, deleteTemplate,
 } from './infographic-templates-store.js';
 import { getTokens, getRawTokens, setTokens, resetTokens, replaceTokens } from './design-tokens-store.js';
+import { generateDesignSuggestions } from './design-suggest.js';
 
 type Sessions = Map<string, { userId?: string }>;
 type AdminGuard = (req: Request, res: Response) => { email: string } | null;
@@ -308,6 +309,26 @@ export function registerInfographicRenderRoutes(
     } catch { /* audit ikke-kritisk */ }
     res.json({ ok: true });
   });
+
+  // POST design-forslag (AI): element-kontekst → Claude → strukturerte, forhåndsvisbare forslag.
+  app.post('/api/admin/design/suggest',
+    aiRateLimit({ windowMs: 60_000, max: 20, label: 'design-suggest' }),
+    async (req: Request, res: Response) => {
+      if (!requireAdminSession(req, res)) return;
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const el = (b.element ?? {}) as Record<string, unknown>;
+      const str = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : undefined);
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined);
+      const result = await generateDesignSuggestions({
+        workspace: str(b.workspace, 40), accent: str(b.accent, 40),
+        tag: str(el.tag, 20), role: str(el.role, 30), text: str(el.text, 200),
+        color: str(el.color, 40), background: str(el.background, 60),
+        fontSize: str(el.fontSize, 20), fontWeight: str(el.fontWeight, 20),
+        borderRadius: str(el.borderRadius, 20), padding: str(el.padding, 40),
+        width: num(el.width), height: num(el.height),
+      });
+      res.json(result);
+    });
 
   // POST undo = angre siste token-endring for et workspace (Fase D) — gjenopprett pre-image.
   app.post('/api/admin/design/tokens/:ws/undo', async (req: Request, res: Response) => {

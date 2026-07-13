@@ -298,6 +298,55 @@ export default function WorkspaceDesignOverlay({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const suggestions = React.useMemo(() => (sel ? analyzeElement(sel) : []), [sel, insp]);
 
+  // AI-forslag + forhåndsvisning: én forhåndsvisning om gangen (apply live UTEN å registrere;
+  // «Bruk» commiter via applyStyle, «Angre» gjenoppretter den forrige inline-verdien).
+  const [aiSug, setAiSug] = React.useState<Array<{ text: string; apply?: { prop: string; value: string } }>>([]);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiMsg, setAiMsg] = React.useState('');
+  const [preview, setPreview] = React.useState<{ key: string; prop: string; value: string; prevInline: string } | null>(null);
+  const revertActive = () => { if (preview && sel) { if (preview.prevInline) sel.style.setProperty(preview.prop, preview.prevInline); else sel.style.removeProperty(preview.prop); } };
+  const doPreview = (key: string, prop: string, value: string) => {
+    if (!sel) return;
+    revertActive();
+    const prevInline = sel.style.getPropertyValue(prop);
+    sel.style.setProperty(prop, value);
+    setPreview({ key, prop, value, prevInline });
+  };
+  const commitPreview = () => { if (preview) { applyStyle(preview.prop, preview.prop, preview.value, ''); setPreview(null); } };
+  const revertPreview = () => { revertActive(); setPreview(null); };
+
+  const fetchAiSuggestions = async () => {
+    if (!sel) return;
+    setAiLoading(true); setAiMsg(''); setAiSug([]);
+    const cs = getComputedStyle(sel); const r = sel.getBoundingClientRect();
+    try {
+      const resp = await fetch('/api/admin/design/suggest', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace, accent, element: {
+          tag: sel.tagName.toLowerCase(), role: sel.getAttribute('role') || '', text: (sel.textContent || '').slice(0, 200),
+          color: cs.color, background: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight,
+          borderRadius: cs.borderRadius, padding: cs.padding, width: Math.round(r.width), height: Math.round(r.height),
+        } }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok) { setAiMsg(d.error || 'Avvist (krever admin)'); return; }
+      if (d.error) setAiMsg(d.error);
+      setAiSug(Array.isArray(d.suggestions) ? d.suggestions : []);
+    } catch { setAiMsg('Nettverksfeil'); }
+    finally { setAiLoading(false); }
+  };
+  // Forhåndsvis/Bruk/Angre-knapper for et forslag med en konkret (prop, value)-endring.
+  const renderSugActions = (key: string, prop?: string, value?: string) => {
+    if (!prop || !value) return null;
+    if (preview?.key === key) return (
+      <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+        <button data-chd onClick={commitPreview} style={{ ...cta, padding: '3px 9px', fontSize: 11 }}>Bruk</button>
+        <button data-chd onClick={revertPreview} style={{ ...btn(false), padding: '3px 9px', fontSize: 11 }}>Angre</button>
+      </div>
+    );
+    return <button data-chd onClick={() => doPreview(key, prop, value)} style={{ ...btn(false), marginTop: 5, padding: '3px 9px', fontSize: 11 }}>Forhåndsvis</button>;
+  };
+
   const buildBundle = () => setBundle(JSON.stringify({
     tool: 'creatorhub-design-handoff', targetFile, route, workspace,
     tokenContext: hexVars(accent),
@@ -458,14 +507,28 @@ export default function WorkspaceDesignOverlay({
                     {suggestions.map((s) => (
                       <div key={s.id} style={{ border: `1px solid ${LINE}`, borderLeft: `3px solid ${s.severity === 'high' ? '#dc2626' : s.severity === 'med' ? '#d97706' : '#2563eb'}`, borderRadius: 6, padding: '6px 8px' }}>
                         <div style={{ fontSize: 11.5, color: INK, lineHeight: 1.35 }}>{s.text}</div>
-                        {s.fixLabel && s.fixField && s.fixProp && s.fixValue && (
-                          <button data-chd onClick={() => applyStyle(s.fixField!, s.fixProp!, s.fixValue!, s.fixUnit || '')}
-                            style={{ ...btn(false), marginTop: 5, padding: '3px 9px', fontSize: 11 }}>{s.fixLabel}</button>
-                        )}
+                        {renderSugActions('h:' + s.id, s.fixProp, s.fixValue ? s.fixValue + (s.fixUnit || '') : undefined)}
                       </div>
                     ))}
                   </div>
                 )}
+
+                {/* AI-forslag: rikere, kontekstuelle råd fra Claude — hver forhåndsvisbar før bruk. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ ...section, margin: 0 }}>AI-forslag</span>
+                    <button data-chd onClick={fetchAiSuggestions} disabled={aiLoading}
+                      style={{ marginLeft: 'auto', ...btn(false), padding: '3px 9px', fontSize: 11 }}>{aiLoading ? 'Tenker…' : 'Hent forslag'}</button>
+                  </div>
+                  {aiMsg && <div style={{ fontSize: 11, color: INK2 }}>{aiMsg}</div>}
+                  {aiSug.map((s, i) => (
+                    <div key={i} style={{ border: `1px solid ${LINE}`, borderLeft: '3px solid #7c3aed', borderRadius: 6, padding: '6px 8px' }}>
+                      <div style={{ fontSize: 11.5, color: INK, lineHeight: 1.35 }}>{s.text}</div>
+                      {s.apply && <div style={{ fontSize: 10, color: INK2, marginTop: 2 }}>{s.apply.prop}: {s.apply.value}</div>}
+                      {renderSugActions('ai:' + i, s.apply?.prop, s.apply?.value)}
+                    </div>
+                  ))}
+                </div>
 
                 {sel && sel.children.length === 0 && (
                   <>
