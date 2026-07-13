@@ -84,6 +84,10 @@ export interface EnrichmentResult {
   orgNr?: string;
   source: "brreg";
   fetchedAt: string;
+  /** true = koblet automatisk via navnesøk (nattlig jobb) — UI viser «bekreft». */
+  autoLinked?: boolean;
+  /** Navnet BRREG-treffet hadde — så brukeren kan vurdere koblingen. */
+  matchedName?: string;
   company?: {
     name: string;
     orgNr: string;
@@ -127,12 +131,36 @@ function fullName(p?: { fornavn?: string; etternavn?: string; mellomnavn?: strin
 }
 
 /** Finn org-nr ved fritekst-søk. Returner første treff (best match). */
-async function findOrgNumberByName(name: string): Promise<string | null> {
+async function findOrgNumberByName(name: string): Promise<{ orgNr: string; navn: string } | null> {
   const url = `${BRREG_API}/enheter?navn=${encodeURIComponent(name)}&size=3`;
   const r = await fetchWithTimeout(url);
   if (!r.ok) return null;
   const body = await r.json() as { _embedded?: { enheter?: BrregUnit[] } };
-  return body._embedded?.enheter?.[0]?.organisasjonsnummer ?? null;
+  const hit = body._embedded?.enheter?.[0];
+  return hit?.organisasjonsnummer ? { orgNr: hit.organisasjonsnummer, navn: hit.navn ?? "" } : null;
+}
+
+/**
+ * Match-vakt for AUTOMATISK kobling: normaliserte navn (uten org-form-
+ * suffiks) må inneholde hverandre. «Foto Hansen» ↔ «FOTO HANSEN AS» er
+ * ok; «Hansen» ↔ «Hansen Bygg og Anlegg AS» er det ikke (for kort/vagt).
+ */
+export function namesMatchForAutoLink(leadName: string, brregName: string): boolean {
+  const norm = (x: string) =>
+    x.toLowerCase()
+      .replace(/(as|asa|ans|da|enk|sa|ba)/g, " ")
+      .replace(/[^a-z0-9æøå]+/g, " ")
+      .trim();
+  const a = norm(leadName);
+  const b = norm(brregName);
+  if (a.length < 5 || b.length === 0) return false;
+  if (a === b) return true;
+  // Containment godtas kun for navn med substans (≥2 ord eller ≥10 tegn):
+  // «hansen» ⊂ «hansen bygg og anlegg» er for vagt til auto-kobling.
+  const substantial = (x: string) => x.split(" ").length >= 2 || x.length >= 10;
+  if (b.includes(a) && substantial(a)) return true;
+  if (a.includes(b) && substantial(b)) return true;
+  return false;
 }
 
 /** Hent firma-detaljer på org-nr. */
@@ -241,6 +269,8 @@ export async function enrichLeadWithBrreg(
     leadId: string;
     workspaceOwnerUserId: string;
     forceRefresh?: boolean;
+    /** Nattlig jobb: krever navne-match-vakt og merker resultatet autoLinked. */
+    autoMode?: boolean;
   },
 ): Promise<EnrichmentResult> {
   // 1. Hent lead m/ scope
@@ -260,8 +290,30 @@ export async function enrichLeadWithBrreg(
 
   // 2. Finn org-nr (cached eller søk)
   let orgNr = lead.enrichment_org_nr;
+  let autoLinked = false;
+  let matchedName: string | undefined;
   if (!orgNr) {
-    orgNr = await findOrgNumberByName(lead.name);
+    const hit = await findOrgNumberByName(lead.name);
+    if (hit && args.autoMode && !namesMatchForAutoLink(lead.name, hit.navn)) {
+      // Match-vakten sier nei: aldri koble automatisk på vagt navnetreff.
+      const result: EnrichmentResult = {
+        found: false,
+        source: "brreg",
+        fetchedAt: new Date().toISOString(),
+        matchedName: hit.navn,
+      };
+      await pool.query(
+        `UPDATE crm_customers SET enrichment_data = $3::jsonb, enriched_at = NOW()
+          WHERE id = $1 AND owner_user_id = $2`,
+        [lead.id, args.workspaceOwnerUserId, JSON.stringify(result)],
+      );
+      return result;
+    }
+    orgNr = hit?.orgNr ?? null;
+    if (orgNr && args.autoMode) {
+      autoLinked = true;
+      matchedName = hit!.navn;
+    }
     if (!orgNr) {
       const result: EnrichmentResult = {
         found: false,
@@ -297,6 +349,7 @@ export async function enrichLeadWithBrreg(
     orgNr,
     source: "brreg",
     fetchedAt: new Date().toISOString(),
+    ...(autoLinked ? { autoLinked: true, matchedName } : {}),
     company: {
       name: company.navn,
       orgNr: company.organisasjonsnummer,

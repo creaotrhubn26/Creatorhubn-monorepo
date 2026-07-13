@@ -635,6 +635,8 @@ export default function LeadMapPanel() {
       isInLiquidation: boolean;
       status: 'active' | 'in_liquidation' | 'bankrupt';
     };
+    autoLinked?: boolean;
+    matchedName?: string;
     contacts?: Array<{ role: string; name: string }>;
     financials?: {
       year: number;
@@ -3573,6 +3575,11 @@ export default function LeadMapPanel() {
                     {enrichment.financials === null && enrichment.found && (
                       <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, mt: 1 }}>
                         Ingen årsregnskap i Regnskapsregisteret (ENK leverer ikke, eller første regnskap er ikke levert ennå).
+                      </Typography>
+                    )}
+                    {enrichment.autoLinked && (
+                      <Typography sx={{ fontSize: '0.68rem', color: '#f59e0b', mt: 0.6, fontWeight: 700 }}>
+                        ⚠ Automatisk koblet til «{enrichment.matchedName}» via navnesøk — bekreft at det er riktig selskap (Oppdater-knappen re-kjører med koblingen).
                       </Typography>
                     )}
                     {enrichment.ip && (

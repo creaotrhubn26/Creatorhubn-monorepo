@@ -26,6 +26,7 @@ import { runKonkursWatch } from "./konkurs-watch.js";
 import { TENDER_REQUIREMENT_LEXICON } from "./sales-trigger-sync.js";
 import { runMediaWatch } from "./media-watch.js";
 import { syncProspectSegments } from "./prospect-segment-sync.js";
+import { runAutoEnrichment } from "./auto-enrichment.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -180,6 +181,23 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[prospects] list failed", err);
       return res.status(500).json({ error: "list_failed" });
+    }
+  });
+
+  // Auto-berikelse: koble orgnr på uberikede CRM-selskaper (match-vakt).
+  app.post("/api/integrations/sync/auto-enrichment", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await runAutoEnrichment(pool);
+      if (result.errors.length > 0) console.warn("[auto-enrichment]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[auto-enrichment] failed", err);
+      return res.status(500).json({ error: "enrichment_failed" });
     }
   });
 
