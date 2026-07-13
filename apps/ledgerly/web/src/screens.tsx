@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { api, kr, STATUS_LABELS } from './api';
+import { api, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
 import { useLoad } from './App';
+import { CardSkeleton, Disclosure, EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
 
 /* ── Delte typer (speiler API-svarene) ─────────────────────────────────── */
 
@@ -34,21 +35,38 @@ interface Explanation {
   }[];
 }
 
-function badgeClass(status: string): string {
-  if (['posted', 'approved', 'matched', 'valid'].includes(status)) return 'ok';
-  if (['needs_review', 'duplicate', 'suggested'].includes(status)) return 'warn';
-  if (['quarantined', 'rejected', 'discrepancy'].includes(status)) return 'danger';
-  if (['extracted'].includes(status)) return 'accent';
-  return 'neutral';
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge ${badgeClass(status)}`}>{STATUS_LABELS[status] ?? status}</span>;
-}
+const SOURCE_LABELS: Record<string, string> = {
+  gmail: 'Gmail',
+  upload: 'Opplasting',
+  mobile: 'Mobil',
+  forward: 'Videresendt',
+  integration: 'Integrasjon',
+};
 
 function thisYear(): { from: string; to: string } {
   const year = new Date().getFullYear();
   return { from: `${year}-01-01`, to: `${year}-12-31` };
+}
+
+/** Kodebiblioteket: vennlige navn foran tekniske koder, i hele UI-et. */
+function useCodeLibrary(orgId: string) {
+  const lib = useLoad(() => loadCodeLibrary(orgId), [orgId]);
+  return {
+    account: (num: string | null | undefined): AccountInfo | undefined =>
+      num ? lib.data?.accounts.get(num) : undefined,
+    vatCode: (code: string | null | undefined): VatCodeInfo | undefined =>
+      code ? lib.data?.vatCodes.get(code) : undefined,
+  };
+}
+
+function AccountLabel({ number, info }: { number: string; info: AccountInfo | undefined }) {
+  if (!info) return <>{number}</>;
+  return (
+    <>
+      {info.friendlyName}
+      <span className="code">({number})</span>
+    </>
+  );
 }
 
 /* ── Oversikt: operativt kontrollsenter ────────────────────────────────── */
@@ -61,79 +79,104 @@ export function OverviewScreen({
   onOpenDocument: (id: string) => void;
 }) {
   const { from, to } = thisYear();
-  const docs = useLoad(
-    () => api<DocumentRow[]>('GET', `/api/organizations/${orgId}/documents`),
-    [orgId],
-  );
+  const docs = useLoad(() => api<DocumentRow[]>('GET', `/api/organizations/${orgId}/documents`), [orgId]);
   const tax = useLoad(
     () =>
-      api<{ estimatedTaxMinor: string; recommendedReserveMinor: string; vatNetPayableMinor: string }>(
+      api<{ recommendedReserveMinor: string }>(
         'GET',
         `/api/organizations/${orgId}/tax/estimate?from=${from}&to=${to}`,
       ),
     [orgId],
   );
   const bank = useLoad(
-    () =>
-      api<{ id: string }[]>('GET', `/api/organizations/${orgId}/bank/transactions?status=unmatched`),
+    () => api<{ id: string }[]>('GET', `/api/organizations/${orgId}/bank/transactions?status=unmatched`),
     [orgId],
   );
 
   const all = docs.data ?? [];
   const needsAction = all.filter((d) => ['needs_review', 'quarantined', 'extracted'].includes(d.status));
   const count = (s: string) => all.filter((d) => d.status === s).length;
+  const reviewCount = count('needs_review') + count('quarantined');
 
   return (
     <div>
-      <h1>Oversikt</h1>
-      <p className="subtitle">Det viktigste først: hva trenger oppmerksomhet nå.</p>
-      <div className="cards">
-        <div className="card">
-          <div className="label">Klar til kontroll</div>
-          <div className="value">{count('extracted')}</div>
-          <div className="hint">Bilag med forslag som venter på godkjenning</div>
-        </div>
-        <div className="card">
-          <div className="label">Trenger gjennomgang</div>
-          <div className="value">{count('needs_review') + count('quarantined')}</div>
-          <div className="hint">Avvik i summer eller sikkerhetskarantene</div>
-        </div>
-        <div className="card">
-          <div className="label">Uavstemte banktransaksjoner</div>
-          <div className="value">{bank.data?.length ?? '–'}</div>
-          <div className="hint">Betalinger uten kobling til bilag</div>
-        </div>
-        <div className="card">
-          <div className="label">Anbefalt reserve (skatt + MVA)</div>
-          <div className="value">{tax.data ? kr(tax.data.recommendedReserveMinor) : '–'}</div>
-          <div className="hint">Estimat — se «Skatt og reserver» for forutsetninger</div>
-        </div>
+      <div className="page-head">
+        <h1>Oversikt</h1>
+        <p className="subtitle">Det viktigste først: hva trenger oppmerksomhet nå.</p>
       </div>
+      {docs.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        <div className="cards">
+          <div className={`card${count('extracted') > 0 ? ' attention' : ''}`}>
+            <div className="label">Klar til kontroll</div>
+            <div className="value">{count('extracted')}</div>
+            <div className="hint">Bilag med forslag som venter på din godkjenning</div>
+          </div>
+          <div className={`card${reviewCount > 0 ? ' attention' : ''}`}>
+            <div className="label">Trenger gjennomgang</div>
+            <div className="value">{reviewCount}</div>
+            <div className="hint">Avvik i summer eller sikkerhetskarantene</div>
+          </div>
+          <div className="card">
+            <div className="label">Uavstemte banktransaksjoner</div>
+            <div className="value">{bank.data?.length ?? '–'}</div>
+            <div className="hint">Betalinger uten kobling til bilag</div>
+          </div>
+          <div className="card">
+            <div className="label">Anbefalt reserve (skatt + MVA)</div>
+            <div className="value">{tax.data ? kr(tax.data.recommendedReserveMinor) : '–'}</div>
+            <div className="hint">Estimat — se «Skatt og reserver» for forutsetningene</div>
+          </div>
+        </div>
+      )}
 
       <h2>Bilag som venter på deg</h2>
-      {needsAction.length === 0 ? (
-        <p className="subtitle">Ingenting venter. Godt jobbet.</p>
+      {docs.loading ? (
+        <TableSkeleton />
+      ) : needsAction.length === 0 ? (
+        <EmptyState
+          icon="✓"
+          title="Ingenting venter"
+          desc="Alle mottatte bilag er behandlet. Nye dokumenter dukker opp her når de kommer inn via Gmail, mobil eller opplasting."
+        />
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Fil</th>
-              <th>Kilde</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {needsAction.map((d) => (
-              <tr key={d.id} className="clickable" onClick={() => onOpenDocument(d.id)}>
-                <td>{d.filename}</td>
-                <td>{d.source}</td>
-                <td>
-                  <StatusBadge status={d.status} />
-                </td>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dokument</th>
+                <th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {needsAction.map((d) => (
+                <tr
+                  key={d.id}
+                  className="clickable"
+                  tabIndex={0}
+                  onClick={() => onOpenDocument(d.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && onOpenDocument(d.id)}
+                >
+                  <td>
+                    <div className="primary-line">{d.filename}</div>
+                    <div className="secondary-line">
+                      {SOURCE_LABELS[d.source] ?? d.source} · {d.created_at?.slice(0, 10)}
+                    </div>
+                  </td>
+                  <td>
+                    <StatusBadge status={d.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {docs.error && <div className="error">{docs.error}</div>}
     </div>
@@ -142,43 +185,89 @@ export function OverviewScreen({
 
 /* ── Bilagsinnboks ─────────────────────────────────────────────────────── */
 
+const INBOX_FILTERS: { key: string | null; label: string }[] = [
+  { key: null, label: 'Alle' },
+  { key: 'extracted', label: 'Klar til kontroll' },
+  { key: 'needs_review', label: 'Trenger gjennomgang' },
+  { key: 'posted', label: 'Bokført' },
+  { key: 'duplicate', label: 'Duplikater' },
+  { key: 'quarantined', label: 'Karantene' },
+];
+
 export function DocumentsScreen({ orgId, onOpen }: { orgId: string; onOpen: (id: string) => void }) {
+  const [filter, setFilter] = useState<string | null>(null);
   const docs = useLoad(
-    () => api<DocumentRow[]>('GET', `/api/organizations/${orgId}/documents`),
-    [orgId],
+    () =>
+      api<DocumentRow[]>(
+        'GET',
+        `/api/organizations/${orgId}/documents${filter ? `?status=${filter}` : ''}`,
+      ),
+    [orgId, filter],
   );
   return (
     <div>
-      <h1>Bilagsinnboks</h1>
-      <p className="subtitle">Alle mottatte dokumenter, uansett kilde.</p>
+      <div className="page-head">
+        <h1>Bilagsinnboks</h1>
+        <p className="subtitle">Alle mottatte dokumenter, uansett kilde.</p>
+      </div>
+      <div className="actions" style={{ marginBottom: 14 }}>
+        {INBOX_FILTERS.map((f) => (
+          <button
+            key={f.label}
+            className={filter === f.key ? 'primary' : 'secondary'}
+            onClick={() => setFilter(f.key)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       {docs.error && <div className="error">{docs.error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>Fil</th>
-            <th>Kilde</th>
-            <th>Status</th>
-            <th>Mottatt</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(docs.data ?? []).map((d) => (
-            <tr key={d.id} className="clickable" onClick={() => onOpen(d.id)}>
-              <td>{d.filename}</td>
-              <td>{d.source}</td>
-              <td>
-                <StatusBadge status={d.status} />
-              </td>
-              <td>{d.created_at?.slice(0, 10)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {docs.loading ? (
+        <TableSkeleton rows={6} />
+      ) : (docs.data ?? []).length === 0 ? (
+        <EmptyState
+          icon="📄"
+          title={filter ? 'Ingen bilag i denne kategorien' : 'Ingen bilag ennå'}
+          desc="Importer fra Gmail eller last opp en kvittering eller faktura, så tolker vi den og foreslår bokføring."
+        />
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dokument</th>
+                <th>Kilde</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(docs.data ?? []).map((d) => (
+                <tr
+                  key={d.id}
+                  className="clickable"
+                  tabIndex={0}
+                  onClick={() => onOpen(d.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && onOpen(d.id)}
+                >
+                  <td>
+                    <div className="primary-line">{d.filename}</div>
+                    <div className="secondary-line">{d.created_at?.slice(0, 10)}</div>
+                  </td>
+                  <td>{SOURCE_LABELS[d.source] ?? d.source}</td>
+                  <td>
+                    <StatusBadge status={d.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ── Bilagsdetalj med forklarbart forslag og godkjenning ───────────────── */
+/* ── Bilagsdetalj: forklarbart forslag og godkjenning ──────────────────── */
 
 export function DocumentDetailScreen({
   orgId,
@@ -209,6 +298,8 @@ export function DocumentDetailScreen({
     () => api<Detail>('GET', `/api/organizations/${orgId}/documents/${documentId}`),
     [orgId, documentId],
   );
+  const lib = useCodeLibrary(orgId);
+  const toast = useToast();
   const [showWhy, setShowWhy] = useState(false);
   const [account, setAccount] = useState('');
   const [vatCode, setVatCode] = useState('');
@@ -221,6 +312,8 @@ export function DocumentDetailScreen({
   const d = detail.data;
   const suggestion = d?.suggestions.find((s) => s.status === 'proposed') ?? d?.suggestions[0];
   const needsRate = d?.extraction?.currency && d.extraction.currency !== 'NOK';
+  const sugAccount = suggestion?.suggestion.suggestedAccountNumber;
+  const sugVat = suggestion?.suggestion.suggestedVatCode;
 
   const approve = async () => {
     if (!suggestion) return;
@@ -240,6 +333,7 @@ export function DocumentDetailScreen({
         body,
       );
       setPosted(res);
+      toast(`Bokført som bilag nr. ${res.entryNumber}`, 'ok');
       detail.reload();
     } catch (err) {
       setError((err as Error).message);
@@ -248,18 +342,29 @@ export function DocumentDetailScreen({
     }
   };
 
+  if (detail.loading) return <TableSkeleton rows={6} />;
+
   return (
     <div>
       <button className="secondary" onClick={onBack}>
         ← Tilbake
       </button>
-      <h1 style={{ marginTop: 12 }}>{d?.document.filename ?? 'Laster…'}</h1>
-      {d && <StatusBadge status={d.document.status} />}
+      <div className="page-head" style={{ marginTop: 14 }}>
+        <h1>{d?.document.filename ?? 'Ukjent dokument'}</h1>
+        {d && <StatusBadge status={d.document.status} />}
+      </div>
       {detail.error && <div className="error">{detail.error}</div>}
+
+      {d?.document.status === 'quarantined' && (
+        <div className="notice">
+          Dokumentet er satt i sikkerhetskarantene fordi innholdet ligner et manipulasjonsforsøk.
+          En person med dokumentansvar må vurdere det manuelt. Ingenting er bokført.
+        </div>
+      )}
 
       {d?.extraction && (
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Hva vi fant i dokumentet</h2>
+          <h2>Hva vi fant i dokumentet</h2>
           <dl className="kv">
             <dt>Leverandør</dt>
             <dd>{d.extraction.vendor_name ?? '–'}</dd>
@@ -274,7 +379,9 @@ export function DocumentDetailScreen({
             <dt>MVA</dt>
             <dd>{d.extraction.vat_minor ? kr(d.extraction.vat_minor) : '–'}</dd>
             <dt>Totalt</dt>
-            <dd>{d.extraction.gross_minor ? kr(d.extraction.gross_minor) : '–'}</dd>
+            <dd>
+              <strong>{d.extraction.gross_minor ? kr(d.extraction.gross_minor) : '–'}</strong>
+            </dd>
           </dl>
           {d.extraction.validation_issues && d.extraction.validation_issues.length > 0 && (
             <>
@@ -282,7 +389,7 @@ export function DocumentDetailScreen({
               <ul className="compact">
                 {d.extraction.validation_issues.map((issue, i) => (
                   <li key={i}>
-                    <span className={`badge ${issue.severity === 'error' ? 'danger' : 'warn'}`}>
+                    <span className={`badge plain ${issue.severity === 'error' ? 'danger' : 'warn'}`}>
                       {issue.severity === 'error' ? 'Feil' : 'Advarsel'}
                     </span>{' '}
                     {issue.message}
@@ -296,12 +403,17 @@ export function DocumentDetailScreen({
 
       {suggestion && d && d.document.status !== 'posted' && (
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Vårt forslag</h2>
+          <h2>Vårt forslag</h2>
           <dl className="kv">
-            <dt>Kategori (konto)</dt>
-            <dd>{suggestion.suggestion.suggestedAccountNumber}</dd>
-            <dt>MVA-kode</dt>
-            <dd>{suggestion.suggestion.suggestedVatCode}</dd>
+            <dt>Kategori</dt>
+            <dd>
+              <AccountLabel number={sugAccount!} info={lib.account(sugAccount)} />
+            </dd>
+            <dt>MVA-behandling</dt>
+            <dd>
+              {lib.vatCode(sugVat)?.name ?? sugVat}
+              <span className="code">(kode {sugVat})</span>
+            </dd>
             <dt>Næringsandel</dt>
             <dd>{suggestion.suggestion.businessUsePercentage} %</dd>
             <dt>Behandling</dt>
@@ -309,14 +421,12 @@ export function DocumentDetailScreen({
               {suggestion.suggestion.capitalizationAssessment === 'expense'
                 ? 'Kostnadsføres direkte'
                 : suggestion.suggestion.capitalizationAssessment === 'asset'
-                  ? 'Bør vurderes som eiendel (avskrives)'
-                  : 'Usikker — krever vurdering'}
+                  ? 'Bør vurderes som eiendel (avskrives over flere år)'
+                  : 'Usikker — krever din vurdering'}
             </dd>
-            <dt>Sikkerhet</dt>
-            <dd>{Math.round(suggestion.suggestion.confidence * 100)} %</dd>
           </dl>
           <div className="actions">
-            <button className="secondary" onClick={() => setShowWhy(!showWhy)}>
+            <button className="secondary" aria-expanded={showWhy} onClick={() => setShowWhy(!showWhy)}>
               Hvorfor foreslår dere dette?
             </button>
           </div>
@@ -354,7 +464,8 @@ export function DocumentDetailScreen({
                   <ul className="compact">
                     {d.explanation.alternatives.map((a, i) => (
                       <li key={i}>
-                        Konto {a.accountNumber} / kode {a.vatCode}: {a.whenApplicable}
+                        <AccountLabel number={a.accountNumber} info={lib.account(a.accountNumber)} />:{' '}
+                        {a.whenApplicable}
                       </li>
                     ))}
                   </ul>
@@ -377,35 +488,35 @@ export function DocumentDetailScreen({
                   </ul>
                 </>
               )}
+              <Disclosure label="Vis tekniske detaljer">
+                <dl className="kv" style={{ marginTop: 8 }}>
+                  <dt>Kontonummer</dt>
+                  <dd>{sugAccount}</dd>
+                  <dt>SAF-T MVA-kode</dt>
+                  <dd>{sugVat}</dd>
+                  <dt>Modellsikkerhet</dt>
+                  <dd>{Math.round((d.explanation.confidence ?? 0) * 100)} %</dd>
+                  <dt>Dokument-hash (SHA-256)</dt>
+                  <dd style={{ wordBreak: 'break-all', fontSize: 12.5 }}>{d.document.sha256}</dd>
+                </dl>
+              </Disclosure>
             </div>
           )}
 
           <h2>Kontroller og godkjenn</h2>
-          <p className="subtitle">
-            Du kan overstyre forslaget. Ingenting bokføres før du godkjenner.
-          </p>
+          <p className="subtitle">Du kan overstyre forslaget. Ingenting bokføres før du godkjenner.</p>
           <div className="row">
             <div>
               <label htmlFor="acc">Konto (overstyr)</label>
-              <input
-                id="acc"
-                placeholder={suggestion.suggestion.suggestedAccountNumber}
-                value={account}
-                onChange={(e) => setAccount(e.target.value)}
-              />
+              <input id="acc" placeholder={sugAccount} value={account} onChange={(e) => setAccount(e.target.value)} />
             </div>
             <div>
               <label htmlFor="vatc">MVA-kode (overstyr)</label>
-              <input
-                id="vatc"
-                placeholder={suggestion.suggestion.suggestedVatCode}
-                value={vatCode}
-                onChange={(e) => setVatCode(e.target.value)}
-              />
+              <input id="vatc" placeholder={sugVat} value={vatCode} onChange={(e) => setVatCode(e.target.value)} />
             </div>
             <div>
               <label htmlFor="bu">Næringsandel %</label>
-              <input id="bu" value={businessUse} onChange={(e) => setBusinessUse(e.target.value)} />
+              <input id="bu" inputMode="numeric" value={businessUse} onChange={(e) => setBusinessUse(e.target.value)} />
             </div>
             {needsRate && (
               <div>
@@ -417,15 +528,13 @@ export function DocumentDetailScreen({
           {error && <div className="error">{error}</div>}
           <div className="actions">
             <button className="primary" disabled={busy || (Boolean(needsRate) && !rate)} onClick={approve}>
-              Godkjenn og bokfør
+              {busy ? 'Bokfører…' : 'Godkjenn og bokfør'}
             </button>
           </div>
         </div>
       )}
       {posted && (
-        <div className="success">
-          Bokført som bilag nr. {posted.entryNumber}. Rapportene er oppdatert.
-        </div>
+        <div className="success">Bokført som bilag nr. {posted.entryNumber}. Rapportene er oppdatert.</div>
       )}
       {d?.document.status === 'posted' && !posted && (
         <div className="success">Dette bilaget er bokført.</div>
@@ -447,6 +556,7 @@ export function GmailScreen({
   const [afterDate, setAfterDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [result, setResult] = useState<{
     scannedMessages: number;
     connectionState: string;
@@ -462,7 +572,13 @@ export function GmailScreen({
         labels: labels.split(',').map((l) => l.trim()).filter(Boolean),
       };
       if (afterDate) body['afterDate'] = afterDate;
-      setResult(await api('POST', `/api/organizations/${orgId}/gmail/import`, body));
+      const res = await api<NonNullable<typeof result>>(
+        'POST',
+        `/api/organizations/${orgId}/gmail/import`,
+        body,
+      );
+      setResult(res);
+      toast(`Skannet ${res.scannedMessages} meldinger, ${res.importedDocuments.length} dokumenter behandlet`, 'ok');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -472,57 +588,75 @@ export function GmailScreen({
 
   return (
     <div>
-      <h1>Gmail-import</h1>
-      <p className="subtitle">
-        Vi leser kun e-post innenfor etikettene og perioden du velger — aldri hele postkassen.
-      </p>
-      <div className="panel">
-        <span className="badge warn">Sandbox</span>{' '}
-        <span className="subtitle">
-          Ekte Gmail-tilkobling er ikke aktivert ennå (krever Google OAuth-oppsett). Importen under
-          kjører mot et realistisk testdatasett.
-        </span>
+      <div className="page-head">
+        <h1>Gmail-import</h1>
+        <p className="subtitle">
+          Vi leser kun e-post innenfor etikettene og perioden du velger — aldri hele postkassen. Du
+          kan koble fra når som helst.
+        </p>
       </div>
-      <div className="row">
-        <div>
-          <label htmlFor="labels">Etiketter (kommaseparert)</label>
-          <input id="labels" value={labels} onChange={(e) => setLabels(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="after">Fra dato (valgfritt)</label>
-          <input id="after" placeholder="ÅÅÅÅ-MM-DD" value={afterDate} onChange={(e) => setAfterDate(e.target.value)} />
-        </div>
-        <div>
-          <button className="primary" disabled={busy} onClick={runImport}>
-            Importer
-          </button>
+      <div className="notice">
+        <strong>Sandbox:</strong> Ekte Gmail-tilkobling er ikke aktivert ennå (krever Google
+        OAuth-oppsett). Importen under kjører mot et realistisk testdatasett.
+      </div>
+      <div className="panel">
+        <div className="row">
+          <div>
+            <label htmlFor="labels">Etiketter (kommaseparert)</label>
+            <input id="labels" value={labels} onChange={(e) => setLabels(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="after">Fra dato (valgfritt)</label>
+            <input id="after" placeholder="ÅÅÅÅ-MM-DD" value={afterDate} onChange={(e) => setAfterDate(e.target.value)} />
+          </div>
+          <div>
+            <button className="primary" disabled={busy} onClick={runImport}>
+              {busy ? 'Importerer…' : 'Importer'}
+            </button>
+          </div>
         </div>
       </div>
       {error && <div className="error">{error}</div>}
       {result && (
         <>
-          <p style={{ marginTop: 16 }}>
-            Skannet {result.scannedMessages} meldinger. Tilkobling: {result.connectionState} (
-            {result.integrationMode}).
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Fil</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.importedDocuments.map((doc) => (
-                <tr key={doc.documentId} className="clickable" onClick={() => onOpenDocument(doc.documentId)}>
-                  <td>{doc.filename}</td>
-                  <td>
-                    <StatusBadge status={doc.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2>
+            Resultat{' '}
+            <span className="badge neutral plain">{result.scannedMessages} meldinger skannet</span>
+          </h2>
+          {result.importedDocuments.length === 0 ? (
+            <EmptyState
+              icon="📭"
+              title="Ingen dokumenter funnet"
+              desc="Prøv en annen etikett eller datoperiode. Vi leter etter fakturaer, kvitteringer og kreditnotaer."
+            />
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fil</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.importedDocuments.map((doc) => (
+                    <tr
+                      key={doc.documentId}
+                      className="clickable"
+                      tabIndex={0}
+                      onClick={() => onOpenDocument(doc.documentId)}
+                      onKeyDown={(e) => e.key === 'Enter' && onOpenDocument(doc.documentId)}
+                    >
+                      <td>{doc.filename}</td>
+                      <td>
+                        <StatusBadge status={doc.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -547,20 +681,14 @@ export function BankScreen({ orgId }: { orgId: string }) {
     explanation: string;
     status: string;
   }
-  const txs = useLoad(
-    () => api<BankTx[]>('GET', `/api/organizations/${orgId}/bank/transactions`),
-    [orgId],
-  );
-  const matches = useLoad(
-    () => api<Match[]>('GET', `/api/organizations/${orgId}/bank/matches`),
-    [orgId],
-  );
+  const txs = useLoad(() => api<BankTx[]>('GET', `/api/organizations/${orgId}/bank/transactions`), [orgId]);
+  const matches = useLoad(() => api<Match[]>('GET', `/api/organizations/${orgId}/bank/matches`), [orgId]);
+  const toast = useToast();
   const [accountName, setAccountName] = useState('Driftskonto');
   const [accountNo, setAccountNo] = useState('');
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [csv, setCsv] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const createAccount = async () => {
@@ -572,7 +700,7 @@ export function BankScreen({ orgId }: { orgId: string }) {
         ibanOrAccount: accountNo,
       });
       setBankAccountId(res.id);
-      setInfo('Bankkonto opprettet. Lim inn kontoutskrift (CSV) under.');
+      toast('Bankkonto opprettet', 'ok');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -590,8 +718,9 @@ export function BankScreen({ orgId }: { orgId: string }) {
         `/api/organizations/${orgId}/bank-accounts/${bankAccountId}/import`,
         { csv },
       );
-      setInfo(
-        `Importerte ${res.imported} transaksjoner (${res.skippedDuplicates} duplikater hoppet over). ${res.suggestions.length} matchforslag.`,
+      toast(
+        `Importerte ${res.imported} transaksjoner (${res.skippedDuplicates} duplikater hoppet over) — ${res.suggestions.length} matchforslag`,
+        'ok',
       );
       txs.reload();
       matches.reload();
@@ -606,11 +735,16 @@ export function BankScreen({ orgId }: { orgId: string }) {
     setError(null);
     try {
       if (approve) {
-        await api('POST', `/api/organizations/${orgId}/bank/matches/${matchId}/approve`);
+        const entry = await api<{ entryNumber: number }>(
+          'POST',
+          `/api/organizations/${orgId}/bank/matches/${matchId}/approve`,
+        );
+        toast(`Betaling bokført som bilag nr. ${entry.entryNumber}`, 'ok');
       } else {
         const reason = prompt('Hvorfor avvises treffet?');
         if (!reason) return;
         await api('POST', `/api/organizations/${orgId}/bank/matches/${matchId}/reject`, { reason });
+        toast('Treffet ble avvist', 'info');
       }
       txs.reload();
       matches.reload();
@@ -619,19 +753,25 @@ export function BankScreen({ orgId }: { orgId: string }) {
     }
   };
 
+  const openMatches = (matches.data ?? []).filter((m) => m.status === 'suggested');
+
   return (
     <div>
-      <h1>Bank og avstemming</h1>
-      <p className="subtitle">
-        Import bokfører aldri noe alene — du godkjenner hvert treff, og forklaringen viser hvorfor
-        det ble foreslått.
-      </p>
+      <div className="page-head">
+        <h1>Bank og avstemming</h1>
+        <p className="subtitle">
+          Import bokfører aldri noe alene — du godkjenner hvert treff, og forklaringen viser hvorfor
+          det ble foreslått.
+        </p>
+      </div>
       {error && <div className="error">{error}</div>}
-      {info && <div className="success">{info}</div>}
 
       {!bankAccountId && (
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Koble til bankkonto (manuell import)</h2>
+          <h2>Koble til bankkonto (manuell import)</h2>
+          <p className="subtitle">
+            Automatisk banktilkobling kommer senere — foreløpig limer du inn kontoutskriften som CSV.
+          </p>
           <div className="row">
             <div>
               <label htmlFor="bn">Navn</label>
@@ -652,34 +792,39 @@ export function BankScreen({ orgId }: { orgId: string }) {
 
       {bankAccountId && (
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Importer kontoutskrift (CSV)</h2>
+          <h2>Importer kontoutskrift (CSV)</h2>
           <p className="subtitle">Format: Dato;Beskrivelse;Beløp;Motpart;KID;Referanse</p>
-          <textarea rows={6} value={csv} onChange={(e) => setCsv(e.target.value)} />
+          <textarea rows={6} value={csv} onChange={(e) => setCsv(e.target.value)} aria-label="CSV-innhold" />
           <div className="actions">
             <button className="primary" disabled={busy || !csv} onClick={importCsv}>
-              Importer og finn treff
+              {busy ? 'Importerer…' : 'Importer og finn treff'}
             </button>
           </div>
         </div>
       )}
 
       <h2>Matchforslag</h2>
-      {(matches.data ?? []).filter((m) => m.status === 'suggested').length === 0 ? (
-        <p className="subtitle">Ingen åpne forslag.</p>
+      {matches.loading ? (
+        <TableSkeleton rows={2} />
+      ) : openMatches.length === 0 ? (
+        <EmptyState
+          icon="🔗"
+          title="Ingen åpne forslag"
+          desc="Når en betaling ligner på et bokført bilag (KID, beløp og dato), foreslår vi koblingen her."
+        />
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Beløp</th>
-              <th>Forklaring</th>
-              <th>Type</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(matches.data ?? [])
-              .filter((m) => m.status === 'suggested')
-              .map((m) => (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="num">Beløp</th>
+                <th>Hvorfor foreslått</th>
+                <th>Type</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {openMatches.map((m) => (
                 <tr key={m.id}>
                   <td className="num">{kr(m.matched_amount_minor)}</td>
                   <td>{m.explanation}</td>
@@ -700,36 +845,49 @@ export function BankScreen({ orgId }: { orgId: string }) {
                   </td>
                 </tr>
               ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>Transaksjoner</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Dato</th>
-            <th>Beskrivelse</th>
-            <th className="num">Beløp</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(txs.data ?? []).map((t) => (
-            <tr key={t.id}>
-              <td>{t.booked_date}</td>
-              <td>
-                {t.description}
-                {t.counterparty ? ` — ${t.counterparty}` : ''}
-              </td>
-              <td className="num">{kr(t.amount_minor)}</td>
-              <td>
-                <StatusBadge status={t.status} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {txs.loading ? (
+        <TableSkeleton rows={4} />
+      ) : (txs.data ?? []).length === 0 ? (
+        <EmptyState
+          icon="🏦"
+          title="Ingen transaksjoner importert"
+          desc="Opprett en bankkonto og importer kontoutskriften for å komme i gang med avstemming."
+        />
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Dato</th>
+                <th>Beskrivelse</th>
+                <th className="num">Beløp</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(txs.data ?? []).map((t) => (
+                <tr key={t.id}>
+                  <td>{t.booked_date}</td>
+                  <td>
+                    <div className="primary-line">{t.description}</div>
+                    {t.counterparty && <div className="secondary-line">{t.counterparty}</div>}
+                  </td>
+                  <td className="num">{kr(t.amount_minor)}</td>
+                  <td>
+                    <StatusBadge status={t.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -741,7 +899,6 @@ export function ReportsScreen({ orgId }: { orgId: string }) {
     revenueMinor: string;
     expenseMinor: string;
     resultMinor: string;
-    byAccount: { accountNumber: string; accountName: string; balanceMinor: string; accountType: string }[];
   }
   interface TbRow {
     accountNumber: string;
@@ -750,57 +907,79 @@ export function ReportsScreen({ orgId }: { orgId: string }) {
     creditMinor: string;
     balanceMinor: string;
   }
-  const pnl = useLoad(
-    () => api<Pnl>('GET', `/api/organizations/${orgId}/reports/income-statement`),
-    [orgId],
-  );
-  const tb = useLoad(
-    () => api<TbRow[]>('GET', `/api/organizations/${orgId}/reports/trial-balance`),
-    [orgId],
-  );
+  const lib = useCodeLibrary(orgId);
+  const pnl = useLoad(() => api<Pnl>('GET', `/api/organizations/${orgId}/reports/income-statement`), [orgId]);
+  const tb = useLoad(() => api<TbRow[]>('GET', `/api/organizations/${orgId}/reports/trial-balance`), [orgId]);
 
   return (
     <div>
-      <h1>Rapporter</h1>
-      <p className="subtitle">Alle tall kommer fra hovedboken — aldri fra AI.</p>
-      <div className="cards">
-        <div className="card">
-          <div className="label">Inntekter (alle perioder)</div>
-          <div className="value">{pnl.data ? kr(pnl.data.revenueMinor) : '–'}</div>
-        </div>
-        <div className="card">
-          <div className="label">Kostnader</div>
-          <div className="value">{pnl.data ? kr(pnl.data.expenseMinor) : '–'}</div>
-        </div>
-        <div className="card">
-          <div className="label">Resultat</div>
-          <div className="value">{pnl.data ? kr(pnl.data.resultMinor) : '–'}</div>
-        </div>
+      <div className="page-head">
+        <h1>Rapporter</h1>
+        <p className="subtitle">Alle tall kommer fra hovedboken — aldri fra AI.</p>
       </div>
+      {pnl.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        <div className="cards">
+          <div className="card">
+            <div className="label">Inntekter (alle perioder)</div>
+            <div className="value">{pnl.data ? kr(pnl.data.revenueMinor) : '–'}</div>
+          </div>
+          <div className="card">
+            <div className="label">Kostnader</div>
+            <div className="value">{pnl.data ? kr(pnl.data.expenseMinor) : '–'}</div>
+          </div>
+          <div className="card">
+            <div className="label">Resultat</div>
+            <div className="value">{pnl.data ? kr(pnl.data.resultMinor) : '–'}</div>
+          </div>
+        </div>
+      )}
       <h2>Saldobalanse</h2>
       {tb.error && <div className="error">{tb.error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>Konto</th>
-            <th>Navn</th>
-            <th className="num">Debet</th>
-            <th className="num">Kredit</th>
-            <th className="num">Saldo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(tb.data ?? []).map((r) => (
-            <tr key={r.accountNumber}>
-              <td>{r.accountNumber}</td>
-              <td>{r.accountName}</td>
-              <td className="num">{kr(r.debitMinor)}</td>
-              <td className="num">{kr(r.creditMinor)}</td>
-              <td className="num">{kr(r.balanceMinor)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {tb.loading ? (
+        <TableSkeleton rows={6} />
+      ) : (tb.data ?? []).length === 0 ? (
+        <EmptyState
+          icon="📊"
+          title="Ingen bokførte posteringer ennå"
+          desc="Når du godkjenner ditt første bilag, dukker tallene opp her — med komplett spor tilbake til dokumentet."
+        />
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Konto</th>
+                <th className="num">Debet</th>
+                <th className="num">Kredit</th>
+                <th className="num">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(tb.data ?? []).map((r) => (
+                <tr key={r.accountNumber}>
+                  <td>
+                    <div className="primary-line">
+                      {lib.account(r.accountNumber)?.friendlyName ?? r.accountName}
+                    </div>
+                    <div className="secondary-line">
+                      {r.accountNumber} · {r.accountName}
+                    </div>
+                  </td>
+                  <td className="num">{kr(r.debitMinor)}</td>
+                  <td className="num">{kr(r.creditMinor)}</td>
+                  <td className="num">{kr(r.balanceMinor)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -826,12 +1005,14 @@ export function VatScreen({ orgId }: { orgId: string }) {
   const r = report.data;
   return (
     <div>
-      <h1>MVA</h1>
-      <p className="subtitle">
-        Foreløpig oversikt for valgt periode. Innsending til Skatteetaten krever egen
-        signeringshandling og er ikke aktivert ennå.
-      </p>
-      <div className="row" style={{ maxWidth: 480 }}>
+      <div className="page-head">
+        <h1>MVA</h1>
+        <p className="subtitle">
+          Foreløpig oversikt for valgt periode. Innsending til Skatteetaten krever egen
+          signeringshandling og er ikke aktivert ennå.
+        </p>
+      </div>
+      <div className="row" style={{ maxWidth: 460 }}>
         <div>
           <label htmlFor="vfrom">Fra</label>
           <input id="vfrom" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -842,56 +1023,76 @@ export function VatScreen({ orgId }: { orgId: string }) {
         </div>
       </div>
       {report.error && <div className="error">{report.error}</div>}
-      {r && (
-        <>
-          <div className="cards">
-            <div className="card">
-              <div className="label">Utgående MVA (fra salg)</div>
-              <div className="value">{kr(r.outputVatMinor)}</div>
-            </div>
-            <div className="card">
-              <div className="label">Inngående MVA (fradrag)</div>
-              <div className="value">{kr(r.deductibleInputVatMinor)}</div>
-            </div>
-            <div className="card">
-              <div className="label">{BigInt(r.netPayableMinor) >= 0n ? 'Å betale' : 'Til gode'}</div>
-              <div className="value">{kr(BigInt(r.netPayableMinor) < 0n ? (-BigInt(r.netPayableMinor)).toString() : r.netPayableMinor)}</div>
-              <div className="hint">
-                Status: <span className="badge neutral">Kladd</span>
+      {report.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        r && (
+          <>
+            <div className="cards">
+              <div className="card">
+                <div className="label">Utgående MVA (fra salg)</div>
+                <div className="value">{kr(r.outputVatMinor)}</div>
+              </div>
+              <div className="card">
+                <div className="label">Inngående MVA (fradrag)</div>
+                <div className="value">{kr(r.deductibleInputVatMinor)}</div>
+              </div>
+              <div className="card">
+                <div className="label">{BigInt(r.netPayableMinor) >= 0n ? 'Å betale' : 'Til gode'}</div>
+                <div className="value">
+                  {kr(BigInt(r.netPayableMinor) < 0n ? (-BigInt(r.netPayableMinor)).toString() : r.netPayableMinor)}
+                </div>
+                <div className="hint">
+                  Status: <span className="badge neutral plain">Kladd</span>
+                </div>
               </div>
             </div>
-          </div>
-          {r.warnings.length > 0 && (
-            <div className="error">
-              <ul className="compact">
-                {r.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <h2>Per MVA-kode</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Kode</th>
-                <th>Navn</th>
-                <th className="num">Grunnlag</th>
-                <th className="num">MVA</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.lines.map((line) => (
-                <tr key={line.vatCode}>
-                  <td>{line.vatCode}</td>
-                  <td>{line.name}</td>
-                  <td className="num">{kr(line.baseMinor)}</td>
-                  <td className="num">{kr(line.vatMinor)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+            {r.warnings.length > 0 && (
+              <div className="notice">
+                <ul className="compact">
+                  {r.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <h2>Per MVA-kode</h2>
+            {r.lines.length === 0 ? (
+              <EmptyState
+                icon="％"
+                title="Ingen MVA-bevegelser i perioden"
+                desc="Bokfør bilag med MVA-koder, så bygges spesifikasjonen opp her — sporbar tilbake til hver postering."
+              />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Kode</th>
+                      <th>Beskrivelse</th>
+                      <th className="num">Grunnlag</th>
+                      <th className="num">MVA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.lines.map((line) => (
+                      <tr key={line.vatCode}>
+                        <td className="num">{line.vatCode}</td>
+                        <td>{line.name}</td>
+                        <td className="num">{kr(line.baseMinor)}</td>
+                        <td className="num">{kr(line.vatMinor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )
       )}
     </div>
   );
@@ -905,7 +1106,6 @@ export function TaxScreen({ orgId }: { orgId: string }) {
   const [to, setTo] = useState(defaults.to);
   interface Estimate {
     accountingResultMinor: string;
-    estimatedTaxableResultMinor: string;
     estimatedTaxMinor: string;
     recommendedReserveMinor: string;
     calculatedAt: string;
@@ -923,87 +1123,99 @@ export function TaxScreen({ orgId }: { orgId: string }) {
   const scenarioLabel: Record<string, string> = { low: 'Lavt', expected: 'Forventet', high: 'Høyt' };
   return (
     <div>
-      <h1>Skatt og reserver</h1>
-      <p className="subtitle">Et løpende estimat — ikke en garanti. Forutsetningene står nederst.</p>
-      <div className="row" style={{ maxWidth: 480 }}>
+      <div className="page-head">
+        <h1>Skatt og reserver</h1>
+        <p className="subtitle">Et løpende estimat — ikke en garanti. Forutsetningene står nederst.</p>
+      </div>
+      <div className="row" style={{ maxWidth: 460 }}>
         <div>
           <label htmlFor="tfrom">Fra</label>
-          <input id="tfrom" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input id="tfrom" value={from} onChange={(e2) => setFrom(e2.target.value)} />
         </div>
         <div>
           <label htmlFor="tto">Til</label>
-          <input id="tto" value={to} onChange={(e) => setTo(e.target.value)} />
+          <input id="tto" value={to} onChange={(e2) => setTo(e2.target.value)} />
         </div>
       </div>
       {est.error && <div className="error">{est.error}</div>}
-      {e && (
-        <>
-          <div className="cards">
-            <div className="card">
-              <div className="label">Resultat hittil</div>
-              <div className="value">{kr(e.accountingResultMinor)}</div>
-            </div>
-            <div className="card">
-              <div className="label">Estimert skatt</div>
-              <div className="value">{kr(e.estimatedTaxMinor)}</div>
-            </div>
-            <div className="card">
-              <div className="label">Bør settes av (skatt + MVA)</div>
-              <div className="value">{kr(e.recommendedReserveMinor)}</div>
-            </div>
-          </div>
-          <h2>Slik er estimatet satt sammen</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Komponent</th>
-                <th className="num">Sats</th>
-                <th className="num">Beløp</th>
-                <th>Regel</th>
-              </tr>
-            </thead>
-            <tbody>
-              {e.components.map((c) => (
-                <tr key={c.ruleId}>
-                  <td>{c.name}</td>
-                  <td className="num">{c.ratePct} %</td>
-                  <td className="num">{kr(c.amountMinor)}</td>
-                  <td>
-                    <span className="badge neutral">
-                      {c.ruleId} v{c.ruleVersion}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <h2>Scenarioer</h2>
-          <div className="cards">
-            {e.scenarios.map((s) => (
-              <div className="card" key={s.label}>
-                <div className="label">{scenarioLabel[s.label] ?? s.label}</div>
-                <div className="value">{kr(s.estimatedTaxMinor)}</div>
+      {est.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        e && (
+          <>
+            <div className="cards">
+              <div className="card">
+                <div className="label">Resultat i perioden</div>
+                <div className="value">{kr(e.accountingResultMinor)}</div>
               </div>
-            ))}
-          </div>
-          <div className="panel">
-            <strong>Datagrunnlag:</strong> {e.dataBasis}
-            <br />
-            <strong>Beregnet:</strong> {e.calculatedAt.slice(0, 16).replace('T', ' ')}
-            <h2>Usikkerhet</h2>
-            <ul className="compact">
-              {e.uncertaintyNotes.map((n, i) => (
-                <li key={i}>{n}</li>
+              <div className="card">
+                <div className="label">Estimert skatt</div>
+                <div className="value">{kr(e.estimatedTaxMinor)}</div>
+              </div>
+              <div className="card">
+                <div className="label">Bør settes av (skatt + MVA)</div>
+                <div className="value">{kr(e.recommendedReserveMinor)}</div>
+              </div>
+            </div>
+            <h2>Slik er estimatet satt sammen</h2>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Komponent</th>
+                    <th className="num">Sats</th>
+                    <th className="num">Beløp</th>
+                    <th>Regel</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {e.components.map((c) => (
+                    <tr key={c.ruleId}>
+                      <td>{c.name}</td>
+                      <td className="num">{c.ratePct} %</td>
+                      <td className="num">{kr(c.amountMinor)}</td>
+                      <td>
+                        <span className="badge neutral plain">
+                          {c.ruleId} v{c.ruleVersion}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <h2>Scenarioer</h2>
+            <div className="cards">
+              {e.scenarios.map((s) => (
+                <div className="card" key={s.label}>
+                  <div className="label">{scenarioLabel[s.label] ?? s.label}</div>
+                  <div className="value">{kr(s.estimatedTaxMinor)}</div>
+                </div>
               ))}
-            </ul>
-            <h2>Ikke medregnet</h2>
-            <ul className="compact">
-              {e.notIncluded.map((n, i) => (
-                <li key={i}>{n}</li>
-              ))}
-            </ul>
-          </div>
-        </>
+            </div>
+            <div className="panel">
+              <strong>Datagrunnlag:</strong> {e.dataBasis}
+              <br />
+              <strong>Beregnet:</strong> {e.calculatedAt.slice(0, 16).replace('T', ' ')}
+              <h2>Usikkerhet</h2>
+              <ul className="compact">
+                {e.uncertaintyNotes.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+              </ul>
+              <h2>Ikke medregnet</h2>
+              <ul className="compact">
+                {e.notIncluded.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )
       )}
     </div>
   );

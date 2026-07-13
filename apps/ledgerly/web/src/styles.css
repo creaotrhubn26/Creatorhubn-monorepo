@@ -1,101 +1,270 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Designsystem — «rolig norsk fintech»
+   Prinsipper: innhold foran pynt, tall alltid tabulære, én aksentfarge,
+   tydelige fokus- og tilstandsstiler, mørk modus følger systemet.
+   ───────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --bg: #f6f7f9;
+  /* Flater og tekst */
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --border: #e2e5ea;
-  --text: #1c2430;
-  --muted: #5b6572;
-  --accent: #1f5eff;
-  --accent-soft: #e8efff;
-  --ok: #157347;
-  --ok-soft: #e6f4ec;
-  --warn: #9a6700;
-  --warn-soft: #fff4d6;
-  --danger: #b42318;
-  --danger-soft: #fde8e6;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --surface-2: #fafbfc;
+  --border: #e3e6ea;
+  --border-strong: #cdd3da;
+  --text: #16202b;
+  --text-2: #55606c;
+  --text-3: #8a93a0;
+
+  /* Aksent og semantikk */
+  --accent: #2352c8;
+  --accent-hover: #1c44a6;
+  --accent-soft: #e9effc;
+  --ok: #196b45;
+  --ok-soft: #e2f3ea;
+  --warn: #8a5b00;
+  --warn-soft: #fbf0d3;
+  --danger: #b3261e;
+  --danger-soft: #fbe7e5;
+
+  /* Geometri og typografi */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --font: 'Avenir Next', 'Segoe UI Variable', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161c;
+    --surface: #1a2029;
+    --surface-2: #1f2631;
+    --border: #2b3441;
+    --border-strong: #3a4553;
+    --text: #e8ebef;
+    --text-2: #a9b2bd;
+    --text-3: #76808c;
+    --accent: #6f96f2;
+    --accent-hover: #8badf5;
+    --accent-soft: #22314e;
+    --ok: #59c389;
+    --ok-soft: #16352a;
+    --warn: #e5b45b;
+    --warn-soft: #3a2f14;
+    --danger: #f08a83;
+    --danger-soft: #442020;
+    --shadow: none;
+  }
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 17px; margin: 24px 0 8px; }
+html { -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55; }
+
+h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 2px; }
+h2 { font-size: 16.5px; font-weight: 650; letter-spacing: -0.01em; margin: 26px 0 10px; }
 p { margin: 4px 0; }
-a { color: var(--accent); }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.subtitle { color: var(--text-2); font-size: 14px; }
+.mono, .num { font-variant-numeric: tabular-nums lining-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── App-skall ──────────────────────────────────────────────────────────── */
 
 .layout { display: flex; min-height: 100vh; }
 .sidebar {
-  width: 220px; flex-shrink: 0; background: var(--surface);
-  border-right: 1px solid var(--border); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px;
+  width: 232px; flex-shrink: 0; background: var(--surface);
+  border-right: 1px solid var(--border); padding: 18px 12px 14px;
+  display: flex; flex-direction: column; gap: 2px;
+  position: sticky; top: 0; height: 100vh;
 }
-.sidebar .brand { font-weight: 700; font-size: 17px; padding: 6px 10px 14px; }
-.sidebar button {
-  display: block; width: 100%; text-align: left; background: none; border: 0;
-  padding: 8px 10px; border-radius: 8px; font-size: 14.5px; color: var(--text); cursor: pointer;
+.brand { display: flex; align-items: center; gap: 9px; padding: 2px 10px 16px; }
+.brand .logo {
+  width: 28px; height: 28px; border-radius: 8px; background: var(--accent);
+  color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 15px;
 }
-.sidebar button:hover { background: var(--bg); }
-.sidebar button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.brand .name { font-weight: 700; font-size: 16.5px; letter-spacing: -0.01em; }
+
+.sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+.navlink {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: 0; padding: 8px 10px; border-radius: var(--radius-sm);
+  font-size: 14.5px; font-family: inherit; color: var(--text-2); cursor: pointer;
+}
+.navlink svg { width: 17px; height: 17px; flex-shrink: 0; opacity: 0.75; }
+.navlink:hover { background: var(--surface-2); color: var(--text); }
+.navlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.navlink.active svg { opacity: 1; }
 .sidebar .spacer { flex: 1; }
+.sidebar .whoami { padding: 8px 10px; font-size: 13px; color: var(--text-3); border-top: 1px solid var(--border); }
 
-.main { flex: 1; padding: 24px 28px; max-width: 1100px; }
-.subtitle { color: var(--muted); font-size: 14px; }
+.main { flex: 1; padding: 28px 32px 48px; max-width: 1080px; }
+.page-head { margin-bottom: 18px; }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0; }
+/* ── Kort ───────────────────────────────────────────────────────────────── */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 12px; margin: 18px 0; }
 .card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 15px 17px; box-shadow: var(--shadow);
 }
-.card .label { color: var(--muted); font-size: 13px; }
-.card .value { font-size: 21px; font-weight: 700; margin-top: 2px; }
-.card .hint { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.card .label { color: var(--text-2); font-size: 13px; font-weight: 550; }
+.card .value { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.card .hint { color: var(--text-3); font-size: 12.5px; margin-top: 5px; line-height: 1.4; }
+.card.attention { border-color: var(--warn); }
+.card.attention .value { color: var(--warn); }
 
-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-th { background: var(--bg); color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.02em; }
+/* ── Tabeller ───────────────────────────────────────────────────────────── */
+
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow-x: auto; box-shadow: var(--shadow);
+}
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+th {
+  color: var(--text-3); font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.05em; background: var(--surface-2);
+  white-space: nowrap;
+}
 tr:last-child td { border-bottom: 0; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: right; }
 tr.clickable { cursor: pointer; }
-tr.clickable:hover td { background: #fafbfd; }
+tr.clickable:hover td { background: var(--surface-2); }
+td .primary-line { font-weight: 550; }
+td .secondary-line { color: var(--text-3); font-size: 12.5px; }
 
-.badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12.5px; font-weight: 600; }
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px;
+  border-radius: 99px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+.badge.plain::before { display: none; }
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.danger { background: var(--danger-soft); color: var(--danger); }
-.badge.neutral { background: var(--bg); color: var(--muted); }
+.badge.neutral { background: var(--bg); color: var(--text-2); }
 .badge.accent { background: var(--accent-soft); color: var(--accent); }
 
-button.primary, button.secondary, button.danger {
-  border-radius: 9px; padding: 8px 16px; font-size: 14.5px; cursor: pointer; border: 1px solid transparent;
+/* ── Knapper og skjema ──────────────────────────────────────────────────── */
+
+button.primary, button.secondary, button.danger, button.ghost {
+  border-radius: 9px; padding: 8px 16px; font-size: 14.5px; font-weight: 570;
+  font-family: inherit; cursor: pointer; border: 1px solid transparent;
+  transition: background 120ms ease, border-color 120ms ease;
 }
-button.primary { background: var(--accent); color: white; }
-button.primary:disabled { opacity: 0.5; cursor: default; }
-button.secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+button.primary { background: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+button.primary:disabled { opacity: 0.45; cursor: default; }
+button.secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
+button.secondary:hover { border-color: var(--text-3); }
 button.danger { background: var(--surface); border-color: var(--danger); color: var(--danger); }
+button.ghost { background: none; color: var(--accent); padding: 6px 8px; }
 
 input, select, textarea {
-  border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font-size: 14.5px;
-  width: 100%; background: var(--surface); color: var(--text); font-family: inherit;
+  border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 11px;
+  font-size: 14.5px; width: 100%; background: var(--surface); color: var(--text);
+  font-family: inherit;
 }
-label { display: block; font-size: 13.5px; color: var(--muted); margin: 12px 0 4px; }
+input::placeholder, textarea::placeholder { color: var(--text-3); }
+label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2); margin: 12px 0 5px; }
 
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
-.panel.explain { background: #fbfcff; border-color: #d5e0ff; }
+/* ── Paneler, meldinger, lister ─────────────────────────────────────────── */
+
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px; margin: 14px 0; box-shadow: var(--shadow);
+}
+.panel.explain { background: var(--surface-2); border-color: var(--accent-soft); box-shadow: none; }
+.panel h2:first-child { margin-top: 0; }
+
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-.row > * { flex: 1; min-width: 160px; }
-.actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-.error { color: var(--danger); background: var(--danger-soft); border-radius: 9px; padding: 8px 12px; margin: 10px 0; font-size: 14px; }
-.success { color: var(--ok); background: var(--ok-soft); border-radius: 9px; padding: 8px 12px; margin: 10px 0; font-size: 14px; }
+.row > * { flex: 1; min-width: 150px; }
+.actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+
+.error { color: var(--danger); background: var(--danger-soft); border-radius: 9px; padding: 9px 13px; margin: 10px 0; font-size: 14px; }
+.success { color: var(--ok); background: var(--ok-soft); border-radius: 9px; padding: 9px 13px; margin: 10px 0; font-size: 14px; }
+.notice { color: var(--warn); background: var(--warn-soft); border-radius: 9px; padding: 9px 13px; margin: 10px 0; font-size: 14px; }
+
 ul.compact { margin: 6px 0; padding-left: 20px; }
-ul.compact li { margin: 3px 0; font-size: 14px; }
-.kv { display: grid; grid-template-columns: 180px 1fr; gap: 4px 14px; font-size: 14px; }
-.kv dt { color: var(--muted); }
+ul.compact li { margin: 4px 0; font-size: 14px; }
+
+.kv { display: grid; grid-template-columns: 170px 1fr; gap: 6px 16px; font-size: 14.5px; }
+.kv dt { color: var(--text-2); }
 .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+.kv dd .code { color: var(--text-3); font-size: 13px; margin-left: 7px; }
 
-.auth-wrap { min-height: 100vh; display: grid; place-items: center; }
-.auth-card { width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+/* ── Tilstander: tom, laster, skjelett ──────────────────────────────────── */
 
-@media (max-width: 760px) {
+.empty {
+  text-align: center; padding: 44px 20px; color: var(--text-2);
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius);
+}
+.empty .icon { font-size: 26px; margin-bottom: 6px; }
+.empty .title { font-weight: 650; color: var(--text); margin-bottom: 3px; }
+.empty .desc { font-size: 13.5px; max-width: 380px; margin: 0 auto; }
+
+.skeleton {
+  border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--border) 25%, var(--surface-2) 50%, var(--border) 75%);
+  background-size: 200% 100%; animation: shimmer 1.3s infinite linear; min-height: 14px;
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* ── Toasts ─────────────────────────────────────────────────────────────── */
+
+.toasts { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+.toast {
+  background: var(--text); color: var(--bg); padding: 11px 16px; border-radius: 10px;
+  font-size: 14px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); max-width: 380px;
+  animation: toast-in 160ms ease-out;
+}
+.toast.ok { background: var(--ok); color: #fff; }
+.toast.danger { background: var(--danger); color: #fff; }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── Progressiv visning ─────────────────────────────────────────────────── */
+
+.disclosure { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
+.disclosure > button {
+  background: none; border: 0; color: var(--text-2); font-size: 13.5px; font-family: inherit;
+  cursor: pointer; padding: 4px 0; display: flex; align-items: center; gap: 6px;
+}
+.disclosure > button:hover { color: var(--text); }
+.disclosure .chev { transition: transform 120ms; }
+.disclosure.open .chev { transform: rotate(90deg); }
+
+/* ── Innlogging ─────────────────────────────────────────────────────────── */
+
+.auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.auth-card {
+  width: 400px; max-width: 100%; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 16px; padding: 30px; box-shadow: var(--shadow);
+}
+.auth-card .brand { padding: 0 0 10px; }
+
+/* ── Mobil ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 780px) {
   .layout { flex-direction: column; }
-  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); }
-  .sidebar button { width: auto; }
-  .main { padding: 16px; }
-  .kv { grid-template-columns: 1fr; }
+  .sidebar {
+    width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap;
+    align-items: center; border-right: 0; border-bottom: 1px solid var(--border); padding: 10px 12px;
+  }
+  .sidebar nav { flex-direction: row; flex-wrap: wrap; }
+  .navlink { width: auto; padding: 7px 10px; }
+  .navlink svg { display: none; }
+  .brand { padding: 0 8px 0 0; }
+  .sidebar .whoami, .sidebar .spacer { display: none; }
+  .main { padding: 18px 16px 40px; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv dt { margin-top: 8px; }
 }

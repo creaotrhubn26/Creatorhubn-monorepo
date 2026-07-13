@@ -59,3 +59,24 @@ UI-et skal ikke finne på egne forklaringer eller tall: all tekst kommer fra
 kodebiblioteket/regelregisteret, alle tall fra hovedboken. Estimater (skattepanelet,
 `src/tax/estimate.ts`) skal alltid vises med `uncertaintyNotes`, `notIncluded` og
 scenarioer — aldri som fasit.
+
+## Designsystem (web/)
+
+Implementert i `web/src/styles.css` + `web/src/ui.tsx`:
+
+- **Tokens**: farger, radier, skygger og typografi som CSS-variabler; mørk modus følger
+  `prefers-color-scheme` automatisk.
+- **Vanlig norsk foran koder i praksis**: kodebiblioteket lastes én gang
+  (`loadCodeLibrary` i `web/src/api.ts`) og brukes overalt — forslag viser
+  «Datautstyr og elektronikk (6551)» og «Fradragsberettiget inngående mva, høy sats
+  (kode 1)», saldobalansen viser vennlig navn med kontonummer som sekundærlinje.
+- **Progressiv visning**: tekniske detaljer (kontonummer, SAF-T-kode, modellsikkerhet,
+  dokument-hash) ligger bak en «Vis tekniske detaljer»-disclosure i forklaringspanelet.
+- **Tilstander**: skeleton-lasting, tomtilstander med veiledning («Ingenting venter»,
+  «Ingen transaksjoner importert») og feilmeldinger på alle skjermer; toasts bekrefter
+  handlinger (bokføring, import, avstemming).
+- **Tilgjengelighet**: synlig `:focus-visible`, tastaturnavigerbare tabellrader
+  (Enter åpner), `aria-expanded`/`aria-current`/`aria-live`, ekte `<form>`-innsending
+  på innlogging, `prefers-reduced-motion` respekteres.
+- **Verifisering**: hele flyten kjøres i browser av `scripts/ui-smoke.mjs` (lys modus);
+  mørk modus er visuelt verifisert med egne skjermbilder.

@@ -12,6 +12,14 @@ export function setToken(t: string): void {
   sessionStorage.setItem('ledgerly.token', t);
 }
 
+export function setUserEmail(email: string): void {
+  sessionStorage.setItem('ledgerly.email', email);
+}
+
+export function getUserEmail(): string | null {
+  return sessionStorage.getItem('ledgerly.email');
+}
+
 export function setOrgId(id: string): void {
   currentOrgId = id;
   sessionStorage.setItem('ledgerly.orgId', id);
@@ -70,6 +78,43 @@ export function kr(minor: string | number | null | undefined): string {
   const whole = (abs / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const frac = (abs % 100n).toString().padStart(2, '0');
   return `${neg ? '−' : ''}${whole},${frac} kr`;
+}
+
+/* ── Kodebibliotek: vanlig norsk foran tekniske koder ──────────────────── */
+
+export interface AccountInfo {
+  number: string;
+  name: string;
+  friendlyName: string;
+  plainExplanation: string;
+}
+
+export interface VatCodeInfo {
+  code: string;
+  name: string;
+  plainExplanation: string;
+}
+
+interface CodeLibrary {
+  accounts: Map<string, AccountInfo>;
+  vatCodes: Map<string, VatCodeInfo>;
+}
+
+let codeLibraryPromise: Promise<CodeLibrary> | null = null;
+
+/** Lastes én gang per session; brukes til å vise vennlige navn i hele UI-et. */
+export function loadCodeLibrary(orgId: string): Promise<CodeLibrary> {
+  codeLibraryPromise ??= (async () => {
+    const [accounts, vatCodes] = await Promise.all([
+      api<AccountInfo[]>('GET', `/api/organizations/${orgId}/code-library/accounts`),
+      api<VatCodeInfo[]>('GET', `/api/organizations/${orgId}/code-library/vat-codes`),
+    ]);
+    return {
+      accounts: new Map(accounts.map((a) => [a.number, a])),
+      vatCodes: new Map(vatCodes.map((v) => [v.code, v])),
+    };
+  })();
+  return codeLibraryPromise;
 }
 
 export const STATUS_LABELS: Record<string, string> = {
