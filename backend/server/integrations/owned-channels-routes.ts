@@ -27,6 +27,7 @@ import { TENDER_REQUIREMENT_LEXICON } from "./sales-trigger-sync.js";
 import { runMediaWatch } from "./media-watch.js";
 import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { runAutoEnrichment } from "./auto-enrichment.js";
+import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -198,6 +199,31 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[auto-enrichment] failed", err);
       return res.status(500).json({ error: "enrichment_failed" });
+    }
+  });
+
+  // Tilbudsstrategi-brief per anbud (on-demand — koster tokens).
+  app.post("/api/integrations/tenders/strategy-brief", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.source !== "string" || typeof body.eventId !== "string") {
+      return res.status(400).json({ error: "source_og_eventId_kreves" });
+    }
+    try {
+      const result = await generateTenderStrategyBrief(pool, orgId, body.source, body.eventId, {
+        force: body.force === true,
+      });
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[tender-strategy] failed", err);
+      return res.status(500).json({ error: "brief_failed" });
     }
   });
 

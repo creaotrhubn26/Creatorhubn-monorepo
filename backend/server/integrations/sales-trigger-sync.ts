@@ -222,6 +222,7 @@ export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] 
         valueNok: h.estimatedValue?.currencyCode === "NOK" ? h.estimatedValue.amount ?? null : null,
         buyerName: h.buyer?.[0]?.name ?? null,
         cpvCodes: (h.cpvCodes ?? []).slice(0, 10),
+        description: h.description?.slice(0, 1200) ?? null,
         requirements: extractTenderRequirements(`${title} ${h.description ?? ""}`),
       },
     });
