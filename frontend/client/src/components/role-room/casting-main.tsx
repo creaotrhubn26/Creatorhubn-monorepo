@@ -61,6 +61,8 @@ import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
 import { getActiveProfessionMode } from './config/professionMode';
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
+import { useElementEdits } from '@/components/workspace/elementEdits';
+import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import { Route } from 'wouter';
 import {
   Search as SearchTourIcon,
@@ -426,6 +428,12 @@ function CastingStandaloneRuntimeContent() {
   useAriaHiddenFocusFix(true);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
   const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
+  // CreatorHub Design (per-element-lag): anvend lagrede stil-edits for theroleroom (alle brukere).
+  useElementEdits('theroleroom');
+  // Live per-element-editor på ?design=1 (persist er server-side admin-gated → trygt uten egen gate).
+  const [designMode, setDesignMode] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   const handledGoogleTransferRef = useRef<string | null>(null);
   const handledClientInviteTransferRef = useRef<string | null>(null);
 
@@ -714,6 +722,15 @@ function CastingStandaloneRuntimeContent() {
         URL ?super=1 eller /super-admin åpner overlayen direkte.
       */}
       <SuperAdminOverlay />
+
+      {/* CreatorHub Design: live per-element-editor på ?design=1 (workspace=theroleroom). */}
+      {designMode && (
+        <WorkspaceDesignOverlay
+          workspace="theroleroom"
+          targetFile="frontend/client/src/components/role-room/casting-main.tsx"
+          onClose={() => setDesignMode(false)}
+        />
+      )}
 
       {!authResolved || processingGoogleLogin || processingClientInviteLogin ? (
         <Box
