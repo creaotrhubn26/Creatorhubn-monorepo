@@ -30,6 +30,10 @@ beforeAll(async () => {
     name: 'Söta & Bråten <AS>', // spesialtegn med vilje
     orgForm: 'AS',
     vatStatus: 'registered',
+    orgNumber: '910015842',
+    streetAddress: 'Bråtenveien 3 & 5', // spesialtegn med vilje
+    postalCode: '7030',
+    city: 'Trondheim',
     createdByUserId: userId,
   });
   orgId = org.id;

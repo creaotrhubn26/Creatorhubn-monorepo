@@ -27,9 +27,13 @@ try {
   await page.fill('#name', 'UI Smoke');
   await page.click('button:has-text("Logg inn")');
 
-  // 2. Opprett virksomhet
+  // 2. Opprett virksomhet — med org.nr. og adresse (kreves for fakturautstedelse)
   await page.waitForSelector('#orgname', { timeout: 5000 });
   await page.fill('#orgname', 'UI Smoke ENK');
+  await page.fill('#orgnr', '987654325');
+  await page.fill('#orgstreet', 'Smoketestveien 1');
+  await page.fill('#orgpostal', '0180');
+  await page.fill('#orgcity', 'Oslo');
   await page.click('button:has-text("Opprett")');
   await page.waitForSelector('h1:has-text("Oversikt")', { timeout: 5000 });
   await page.screenshot({ path: `${SHOTS}/01-oversikt.png`, fullPage: true });
@@ -143,6 +147,20 @@ try {
   if (!/^\d{8,}$/.test(kidCell?.trim() ?? '')) await fail(`Ugyldig KID i lista: ${kidCell}`);
   await page.screenshot({ path: `${SHOTS}/14-faktura.png`, fullPage: true });
 
+  // 12b. Salgsdokumentet inneholder pliktig innhold (adresse + «MVA»-suffiks)
+  const [docPage] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.click('tr:has-text("Testkunde AS") button:has-text("Vis")'),
+  ]);
+  await docPage.waitForSelector('h1:has-text("Faktura")', { timeout: 5000 });
+  const docHtml = await docPage.content();
+  if (!docHtml.includes('Org.nr.: NO 987 654 325 MVA'))
+    await fail('Salgsdokumentet mangler org.nr. med MVA-suffiks');
+  if (!docHtml.includes('Smoketestveien 1')) await fail('Salgsdokumentet mangler selgers adresse');
+  if (!docHtml.includes('Merverdiavgift per sats')) await fail('Salgsdokumentet mangler mva-spesifikasjon');
+  await docPage.screenshot({ path: `${SHOTS}/14b-salgsdokument.png`, fullPage: true });
+  await docPage.close();
+
   // 13. Innbetaling med KID matches og markerer fakturaen betalt
   await page.click('nav button:has-text("Bank og avstemming")');
   await page.waitForSelector('h1:has-text("Bank og avstemming")');
@@ -163,6 +181,14 @@ try {
   await page.click('nav button:has-text("Salg og faktura")');
   await page.waitForSelector('tr:has-text("Testkunde AS") .badge:has-text("Betalt")', { timeout: 8000 });
   await page.screenshot({ path: `${SHOTS}/15-faktura-betalt.png`, fullPage: true });
+
+  // 14. Virksomhetsskjermen viser lagrede fakturaopplysninger
+  await page.click('nav button:has-text("Virksomhet")');
+  await page.waitForSelector('h1:has-text("Virksomhet")');
+  await page.waitForFunction(() => document.querySelector('#set-street')?.value !== '');
+  const streetVal = await page.inputValue('#set-street');
+  if (streetVal !== 'Smoketestveien 1') await fail(`Virksomhetsadressen mangler: «${streetVal}»`);
+  await page.screenshot({ path: `${SHOTS}/16-virksomhet.png`, fullPage: true });
 
   console.log('UI-SMOKE OK');
   await browser.close();

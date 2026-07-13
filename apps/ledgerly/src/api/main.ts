@@ -6,6 +6,7 @@ import { createPool } from '../db/pool.js';
 import { DeterministicTextExtractor } from '../pipeline/extract.js';
 import { isOcrAvailable, OcrExtractor } from '../pipeline/ocr.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
+import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -22,6 +23,8 @@ const app = createApiServer({
   webDistDir: existsSync(webDistDir) ? webDistDir : undefined,
   extractor: ocrStatus.tesseract ? new OcrExtractor() : new DeterministicTextExtractor(),
   ocrStatus,
+  // Åpne data fra Brønnøysundregistrene — ekte klient, ingen nøkkel kreves.
+  vatRegister: new BrregVatRegisterClient(),
 });
 console.log(
   ocrStatus.tesseract

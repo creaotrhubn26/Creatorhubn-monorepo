@@ -50,7 +50,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = unknown>(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PATCH',
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -67,6 +67,18 @@ export async function api<T = unknown>(
     throw new ApiError(json?.error?.message ?? `Feil (${res.status})`, res.status, json?.error?.code);
   }
   return json as T;
+}
+
+/** Henter rått innhold (f.eks. HTML-salgsdokument) med auth-header. */
+export async function apiText(path: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (token) headers['authorization'] = `Bearer ${token}`;
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new ApiError(json?.error?.message ?? `Feil (${res.status})`, res.status, json?.error?.code);
+  }
+  return res.text();
 }
 
 /** Formaterer øre (streng/bigint) som kroner med norsk format. */

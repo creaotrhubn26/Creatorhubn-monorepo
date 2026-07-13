@@ -18,7 +18,15 @@ import {
   subledger,
   trialBalance,
 } from '../ledger/reports.js';
-import { createOrganization, ensureUser, getMembershipRole } from '../orgs/service.js';
+import {
+  createOrganization,
+  ensureUser,
+  getMembershipRole,
+  getOrganizationProfile,
+  updateOrganizationSettings,
+} from '../orgs/service.js';
+import type { VatRegisterLookup } from '../integrations/brreg.js';
+import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
   approveAndPost,
@@ -70,6 +78,8 @@ export interface ApiDeps {
   extractor?: DocumentExtractor | undefined;
   /** Faktisk OCR-tilgjengelighet, til ærlig integrasjonsstatus. */
   ocrStatus?: { tesseract: boolean; pdftotext: boolean } | undefined;
+  /** Oppslag mot MVA-registeret (Brreg åpne data). Uten denne er kontrollen utilgjengelig. */
+  vatRegister?: VatRegisterLookup | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -154,6 +164,9 @@ export function createApiServer(deps: ApiDeps): express.Express {
           orgNumber: z.string().regex(/^\d{9}$/).optional(),
           orgForm: z.enum(['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF']),
           vatStatus: z.enum(['registered', 'not_registered', 'pending']),
+          streetAddress: z.string().min(1).max(200).optional(),
+          postalCode: z.string().regex(/^\d{4}$/).optional(),
+          city: z.string().min(1).max(100).optional(),
         })
         .parse(req.body);
       const org = await createOrganization(deps.db, {
@@ -162,12 +175,128 @@ export function createApiServer(deps: ApiDeps): express.Express {
         vatStatus: body.vatStatus,
         createdByUserId: req.auth!.userId,
         ...(body.orgNumber ? { orgNumber: body.orgNumber } : {}),
+        ...(body.streetAddress ? { streetAddress: body.streetAddress } : {}),
+        ...(body.postalCode ? { postalCode: body.postalCode } : {}),
+        ...(body.city ? { city: body.city } : {}),
       });
       res.status(201).json(toJson(org));
     } catch (err) {
       next(err);
     }
   });
+
+  app.get(
+    '/api/organizations/:orgId/profile',
+    requireAuth,
+    requireOrgPermission('documents.view'),
+    async (req, res, next) => {
+      try {
+        res.json(toJson(await getOrganizationProfile(deps.db, req.params.orgId!)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.patch(
+    '/api/organizations/:orgId/settings',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            orgNumber: z.string().regex(/^\d{9}$/).optional(),
+            streetAddress: z.string().min(1).max(200).optional(),
+            postalCode: z.string().regex(/^\d{4}$/).optional(),
+            city: z.string().min(1).max(100).optional(),
+            vatStatus: z.enum(['registered', 'not_registered', 'pending']).optional(),
+          })
+          .parse(req.body);
+        const profile = await updateOrganizationSettings(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ...(body.orgNumber ? { orgNumber: body.orgNumber } : {}),
+          ...(body.streetAddress ? { streetAddress: body.streetAddress } : {}),
+          ...(body.postalCode ? { postalCode: body.postalCode } : {}),
+          ...(body.city ? { city: body.city } : {}),
+          ...(body.vatStatus ? { vatStatus: body.vatStatus } : {}),
+        });
+        res.json(toJson(profile));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Kontroll mot MVA-registeret (Brreg åpne data). Registeret er fasit for om
+  // «MVA» kan stå bak org.nr. på salgsdokumenter — lokal status er en påstand.
+  app.post(
+    '/api/organizations/:orgId/vat-register-check',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.vatRegister) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message: 'Oppslag mot Enhetsregisteret er ikke konfigurert i dette miljøet.',
+            },
+          });
+          return;
+        }
+        const profile = await getOrganizationProfile(deps.db, req.params.orgId!);
+        if (!profile.orgNumber) {
+          res.status(400).json({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Virksomheten mangler organisasjonsnummer — legg det inn først.',
+            },
+          });
+          return;
+        }
+        const result = await deps.vatRegister.lookup(profile.orgNumber);
+        const registered = result.found ? (result.registeredInVatRegister ?? false) : null;
+        await withTransaction(deps.db, async (client) => {
+          await client.query(
+            `UPDATE organizations
+             SET vat_register_checked_at = now(), vat_register_registered = $2,
+                 updated_at = now(), version = version + 1
+             WHERE id = $1`,
+            [req.params.orgId, registered],
+          );
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'organization.vat_register_checked',
+            entityType: 'organization',
+            entityId: req.params.orgId!,
+            newValue: {
+              orgNumber: profile.orgNumber,
+              found: result.found,
+              registeredInVatRegister: registered,
+              source: 'data.brreg.no/enhetsregisteret',
+            },
+          });
+        });
+        const mismatch =
+          result.found &&
+          ((profile.vatStatus === 'registered' && registered === false) ||
+            (profile.vatStatus !== 'registered' && registered === true));
+        res.json({
+          orgNumber: profile.orgNumber,
+          found: result.found,
+          registryName: result.name ?? null,
+          registeredInVatRegister: registered,
+          localVatStatus: profile.vatStatus,
+          mismatch,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // ── Kodebibliotek ────────────────────────────────────────────────────────
   app.get(
@@ -482,6 +611,9 @@ export function createApiServer(deps: ApiDeps): express.Express {
       ocr: deps.ocrStatus?.tesseract
         ? { mode: 'tesseract', active: true, note: `Tesseract (nor+eng) for bilder${deps.ocrStatus.pdftotext ? ', pdftotext for PDF' : ''}. Kvalitet avhenger av bildekvalitet — avvik går til kontrollkø.` }
         : { mode: 'deterministic_text', active: false, note: 'tesseract-ocr er ikke installert på verten — skannede bilder tolkes ikke. Installer tesseract-ocr + tesseract-ocr-nor.' },
+      brreg: deps.vatRegister
+        ? { mode: 'open_api', active: true, note: 'Oppslag mot Enhetsregisteret (data.brreg.no) for MVA-registerkontroll. Åpne data, ingen nøkkel.' }
+        : { mode: 'not_configured', active: false, note: 'MVA-registerkontroll er ikke konfigurert i dette miljøet.' },
       ehf: { mode: 'not_implemented', active: false },
       altinn: { mode: 'not_implemented', active: false },
     });
@@ -825,14 +957,28 @@ export function createApiServer(deps: ApiDeps): express.Express {
             name: z.string().min(1).max(200),
             email: z.string().email().optional(),
             orgNumber: z.string().regex(/^\d{9}$/).optional(),
+            streetAddress: z.string().min(1).max(200).optional(),
+            postalCode: z.string().regex(/^\d{4}$/).optional(),
+            city: z.string().min(1).max(100).optional(),
           })
           .parse(req.body);
         const id = newId();
         await withTransaction(deps.db, async (client) => {
           await client.query(
-            `INSERT INTO customers (id, organization_id, name, email, org_number, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6)`,
-            [id, req.params.orgId, body.name, body.email ?? null, body.orgNumber ?? null, req.auth!.userId],
+            `INSERT INTO customers
+               (id, organization_id, name, email, org_number, street_address, postal_code, city, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [
+              id,
+              req.params.orgId,
+              body.name,
+              body.email ?? null,
+              body.orgNumber ?? null,
+              body.streetAddress ?? null,
+              body.postalCode ?? null,
+              body.city ?? null,
+              req.auth!.userId,
+            ],
           );
           await recordAuditEvent(client, {
             organizationId: req.params.orgId!,
@@ -857,7 +1003,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
     async (req, res, next) => {
       try {
         const rows = await deps.db.query(
-          `SELECT id, name, email, org_number FROM customers
+          `SELECT id, name, email, org_number, street_address, postal_code, city FROM customers
            WHERE organization_id = $1 AND status = 'active' ORDER BY name LIMIT 500`,
           [req.params.orgId],
         );
@@ -891,6 +1037,8 @@ export function createApiServer(deps: ApiDeps): express.Express {
             lines: z.array(invoiceLineSchema).min(1).max(100),
             invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
             dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            deliveryPlace: z.string().min(1).max(200).optional(),
           })
           .parse(req.body);
         const draft = await createInvoiceDraft(deps.db, deps.rules, {
@@ -907,6 +1055,8 @@ export function createApiServer(deps: ApiDeps): express.Express {
           })),
           ...(body.invoiceDate ? { invoiceDate: body.invoiceDate } : {}),
           ...(body.dueDate ? { dueDate: body.dueDate } : {}),
+          ...(body.deliveryDate ? { deliveryDate: body.deliveryDate } : {}),
+          ...(body.deliveryPlace ? { deliveryPlace: body.deliveryPlace } : {}),
         });
         res.status(201).json(toJson(draft));
       } catch (err) {
@@ -973,6 +1123,34 @@ export function createApiServer(deps: ApiDeps): express.Express {
           reason: body.reason,
         });
         res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Salgsdokumentet som utskriftsvennlig HTML. Hver gjengivelse auditlogges.
+  app.get(
+    '/api/organizations/:orgId/invoices/:invoiceId/document',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const doc = await renderInvoiceDocument(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          invoiceId: req.params.invoiceId!,
+        });
+        await withTransaction(deps.db, async (client) => {
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'invoice.document_rendered',
+            entityType: 'invoice',
+            entityId: req.params.invoiceId!,
+            newValue: { invoiceNumber: doc.invoiceNumber, kind: doc.kind },
+          });
+        });
+        res.type('html').send(doc.html);
       } catch (err) {
         next(err);
       }

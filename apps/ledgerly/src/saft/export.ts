@@ -66,12 +66,28 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
   if (params.fromDate > params.toDate) throw new ValidationError('fromDate må være før toDate.');
 
   const org = await db.query(
-    `SELECT name, org_number FROM organizations WHERE id = $1`,
+    `SELECT name, org_number, street_address, postal_code, city FROM organizations WHERE id = $1`,
     [params.organizationId],
   );
   if (!org.rowCount) throw new NotFoundError('Organisasjonen finnes ikke.');
   const orgName: string = org.rows[0].name;
   const orgNumber: string = org.rows[0].org_number ?? '000000000';
+  // AddressStructure: alle barn er valgfrie, men rekkefølgen er låst i XSD-en
+  // (StreetName før City før PostalCode før Country).
+  const addressXml = (street: string | null, postal: string | null, city: string | null): string => {
+    const parts = [
+      street ? `<n1:StreetName>${esc(street)}</n1:StreetName>` : '',
+      city ? `<n1:City>${esc(city)}</n1:City>` : '',
+      postal ? `<n1:PostalCode>${esc(postal)}</n1:PostalCode>` : '',
+      street || postal || city ? '<n1:Country>NO</n1:Country>' : '',
+    ].filter(Boolean);
+    return parts.length ? `<n1:Address>${parts.join('')}</n1:Address>` : '<n1:Address/>';
+  };
+  const companyAddressXml = addressXml(
+    org.rows[0].street_address,
+    org.rows[0].postal_code,
+    org.rows[0].city,
+  );
   // XSD krever kontaktperson i Header/Company; vi bruker organisasjonens eier.
   const ownerRes = await db.query(
     `SELECT u.display_name FROM memberships m
@@ -130,14 +146,14 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
 
   // ── Kunder og leverandører med reskontrosaldo ────────────────────────────
   const customers = await db.query(
-    `SELECT c.id, c.name, c.org_number,
+    `SELECT c.id, c.name, c.org_number, c.street_address, c.postal_code, c.city,
             COALESCE(SUM(CASE WHEN e.entry_date < $2 THEN l.debit_minor - l.credit_minor END), 0)::TEXT AS opening,
             COALESCE(SUM(CASE WHEN e.entry_date <= $3 THEN l.debit_minor - l.credit_minor END), 0)::TEXT AS closing
      FROM customers c
      LEFT JOIN journal_lines l ON l.customer_id = c.id
      LEFT JOIN journal_entries e ON e.id = l.entry_id
      WHERE c.organization_id = $1
-     GROUP BY c.id, c.name, c.org_number ORDER BY c.name`,
+     GROUP BY c.id, c.name, c.org_number, c.street_address, c.postal_code, c.city ORDER BY c.name`,
     [params.organizationId, params.fromDate, params.toDate],
   );
   const customersXml = customers.rows
@@ -147,7 +163,7 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
       return `      <n1:Customer>
         ${c.org_number ? `<n1:RegistrationNumber>${esc(c.org_number)}</n1:RegistrationNumber>` : ''}
         <n1:Name>${esc(c.name)}</n1:Name>
-        <n1:Address/>
+        ${addressXml(c.street_address, c.postal_code, c.city)}
         <n1:CustomerID>${saftId(c.id)}</n1:CustomerID>
         ${opening >= 0n ? `<n1:OpeningDebitBalance>${amt(opening)}</n1:OpeningDebitBalance>` : `<n1:OpeningCreditBalance>${amt(opening)}</n1:OpeningCreditBalance>`}
         ${closing >= 0n ? `<n1:ClosingDebitBalance>${amt(closing)}</n1:ClosingDebitBalance>` : `<n1:ClosingCreditBalance>${amt(closing)}</n1:ClosingCreditBalance>`}
@@ -298,7 +314,7 @@ ${linesXml}
     <n1:Company>
       <n1:RegistrationNumber>${esc(orgNumber)}</n1:RegistrationNumber>
       <n1:Name>${esc(orgName)}</n1:Name>
-      <n1:Address/>
+      ${companyAddressXml}
       <n1:Contact>
         <n1:ContactPerson>
           <n1:FirstName>NotUsed</n1:FirstName>

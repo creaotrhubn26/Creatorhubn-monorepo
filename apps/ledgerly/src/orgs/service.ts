@@ -1,7 +1,7 @@
 import type { Actor } from '../audit/audit.js';
 import { recordAuditEvent } from '../audit/audit.js';
 import { STANDARD_ACCOUNTS } from '../coa/accounts.js';
-import type { Db } from '../db/pool.js';
+import type { Db, DbClient } from '../db/pool.js';
 import { withTransaction } from '../db/pool.js';
 import type { OrganizationForm, VatRegistrationStatus } from '../rules/types.js';
 import { ConflictError, ValidationError } from '../shared/errors.js';
@@ -12,6 +12,10 @@ export interface CreateOrganizationInput {
   orgNumber?: string;
   orgForm: OrganizationForm;
   vatStatus: VatRegistrationStatus;
+  /** Forretningsadresse — kreves på salgsdokumenter (bokføringsforskriften § 5-1-1). */
+  streetAddress?: string;
+  postalCode?: string;
+  city?: string;
   /** Brukeren som oppretter blir owner. */
   createdByUserId: string;
 }
@@ -54,9 +58,20 @@ export async function createOrganization(
     }
     const orgId = newId();
     await client.query(
-      `INSERT INTO organizations (id, name, org_number, org_form, vat_status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [orgId, input.name.trim(), input.orgNumber ?? null, input.orgForm, input.vatStatus, input.createdByUserId],
+      `INSERT INTO organizations
+         (id, name, org_number, org_form, vat_status, street_address, postal_code, city, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        orgId,
+        input.name.trim(),
+        input.orgNumber ?? null,
+        input.orgForm,
+        input.vatStatus,
+        input.streetAddress?.trim() || null,
+        input.postalCode?.trim() || null,
+        input.city?.trim() || null,
+        input.createdByUserId,
+      ],
     );
     await client.query(
       `INSERT INTO memberships (id, organization_id, user_id, role, created_by)
@@ -85,6 +100,114 @@ export async function createOrganization(
       newValue: { name: input.name, orgForm: input.orgForm, vatStatus: input.vatStatus },
     });
     return { id: orgId, name: input.name.trim(), orgForm: input.orgForm, vatStatus: input.vatStatus };
+  });
+}
+
+export interface OrganizationProfile {
+  id: string;
+  name: string;
+  orgNumber: string | null;
+  orgForm: OrganizationForm;
+  vatStatus: VatRegistrationStatus;
+  streetAddress: string | null;
+  postalCode: string | null;
+  city: string | null;
+  vatRegisterCheckedAt: string | null;
+  vatRegisterRegistered: boolean | null;
+}
+
+export async function getOrganizationProfile(
+  db: Db | DbClient,
+  organizationId: string,
+): Promise<OrganizationProfile> {
+  const res = await db.query(
+    `SELECT id, name, org_number, org_form, vat_status, street_address, postal_code, city,
+            vat_register_checked_at::TEXT AS vat_register_checked_at, vat_register_registered
+     FROM organizations WHERE id = $1`,
+    [organizationId],
+  );
+  if (!res.rowCount) throw new ValidationError('Organisasjonen finnes ikke.');
+  const r = res.rows[0];
+  return {
+    id: r.id,
+    name: r.name,
+    orgNumber: r.org_number,
+    orgForm: r.org_form,
+    vatStatus: r.vat_status,
+    streetAddress: r.street_address,
+    postalCode: r.postal_code,
+    city: r.city,
+    vatRegisterCheckedAt: r.vat_register_checked_at,
+    vatRegisterRegistered: r.vat_register_registered,
+  };
+}
+
+export interface UpdateOrganizationSettingsInput {
+  organizationId: string;
+  actor: Actor;
+  orgNumber?: string;
+  streetAddress?: string;
+  postalCode?: string;
+  city?: string;
+  vatStatus?: VatRegistrationStatus;
+}
+
+/** Oppdaterer fakturaopplysningene (adresse, org.nr., MVA-status) med revisjonsspor. */
+export async function updateOrganizationSettings(
+  db: Db,
+  input: UpdateOrganizationSettingsInput,
+): Promise<OrganizationProfile> {
+  if (input.orgNumber !== undefined && !isValidOrgNumber(input.orgNumber)) {
+    throw new ValidationError(`Ugyldig organisasjonsnummer: ${input.orgNumber}`);
+  }
+  return withTransaction(db, async (client) => {
+    const before = await client.query(
+      `SELECT org_number, street_address, postal_code, city, vat_status
+       FROM organizations WHERE id = $1 FOR UPDATE`,
+      [input.organizationId],
+    );
+    if (!before.rowCount) throw new ValidationError('Organisasjonen finnes ikke.');
+    if (input.orgNumber !== undefined) {
+      const dupe = await client.query(
+        `SELECT id FROM organizations WHERE org_number = $1 AND id <> $2`,
+        [input.orgNumber, input.organizationId],
+      );
+      if (dupe.rowCount) throw new ConflictError('Organisasjonsnummeret er allerede registrert.');
+    }
+    await client.query(
+      `UPDATE organizations SET
+         org_number = COALESCE($2, org_number),
+         street_address = COALESCE($3, street_address),
+         postal_code = COALESCE($4, postal_code),
+         city = COALESCE($5, city),
+         vat_status = COALESCE($6, vat_status),
+         updated_at = now(), version = version + 1
+       WHERE id = $1`,
+      [
+        input.organizationId,
+        input.orgNumber ?? null,
+        input.streetAddress?.trim() || null,
+        input.postalCode?.trim() || null,
+        input.city?.trim() || null,
+        input.vatStatus ?? null,
+      ],
+    );
+    await recordAuditEvent(client, {
+      organizationId: input.organizationId,
+      actor: input.actor,
+      action: 'organization.settings_updated',
+      entityType: 'organization',
+      entityId: input.organizationId,
+      previousValue: before.rows[0],
+      newValue: {
+        orgNumber: input.orgNumber,
+        streetAddress: input.streetAddress,
+        postalCode: input.postalCode,
+        city: input.city,
+        vatStatus: input.vatStatus,
+      },
+    });
+    return getOrganizationProfile(client, input.organizationId);
   });
 }
 

@@ -43,8 +43,10 @@ og test mot Altinns innsendingsvalidator.
 | Utstedt faktura kan ikke endres/slettes | ✅ DB-triggere; rettes med kreditnota |
 | Kreditnota refererer original | ✅ `credits_invoice_id` |
 | MVA spesifisert per sats | ✅ per linje, deterministisk fra regelregisteret |
-| Komplett innholdskrav (selgers adresse, leveringssted, «MVA»-suffiks-kontroll mot MVA-registeret) | 🟡 kjernen finnes; adressefelt, leveringsinfo og oppslag mot MVA-registeret mangler |
-| Utsending (PDF/EHF/e-post) | ❌ ikke bygget |
+| Komplett innholdskrav (selgers adresse, leveringstid/-sted, «MVA»-suffiks) | ✅ adressefelt på selger/kjøper (migrasjon 0006), leveringsdato/-sted per faktura, «MVA» bak org.nr. kun ved registrert status, «Foretaksregisteret» for AS; utstedelse blokkeres til selgeropplysningene er komplette, og mva-faktura krever MVA-registrering (mval. § 15-11) |
+| Salgsdokument kan gjengis (utskriftsvennlig) | ✅ `GET /invoices/:id/document` — HTML med alle pliktige felter, mva per sats; kladder avvises; hver gjengivelse auditlogges |
+| Kontroll mot MVA-registeret | ✅ Brreg-oppslag (åpne data) med lagret resultat, avviksflagg og revisjonsspor (`src/integrations/brreg.ts`) |
+| Utsending (PDF/EHF/e-post) | ❌ ikke bygget — dokumentet finnes som HTML, men ingen forsendelseskanal |
 
 ## 5. Versjonerte regler
 

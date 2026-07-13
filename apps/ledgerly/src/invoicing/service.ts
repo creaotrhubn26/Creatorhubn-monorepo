@@ -64,6 +64,10 @@ export interface CreateInvoiceInput {
   lines: InvoiceLineInput[];
   invoiceDate?: string;
   dueDate?: string;
+  /** Tidspunkt for levering (bokføringsforskriften § 5-1-1 nr. 4). Fakturadato hvis tom. */
+  deliveryDate?: string;
+  /** Leveringssted, når det er relevant for ytelsen. */
+  deliveryPlace?: string;
 }
 
 interface ComputedLine {
@@ -136,6 +140,8 @@ async function insertInvoice(
     creditsInvoiceId?: string;
     invoiceDate?: string;
     dueDate?: string;
+    deliveryDate?: string;
+    deliveryPlace?: string;
     computed: ReturnType<typeof computeLines>;
   },
 ): Promise<string> {
@@ -148,8 +154,8 @@ async function insertInvoice(
   await client.query(
     `INSERT INTO invoices
        (id, organization_id, customer_id, kind, credits_invoice_id, invoice_date, due_date,
-        net_minor, vat_minor, gross_minor, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        delivery_date, delivery_place, net_minor, vat_minor, gross_minor, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       id,
       params.organizationId,
@@ -158,6 +164,8 @@ async function insertInvoice(
       params.creditsInvoiceId ?? null,
       params.invoiceDate ?? null,
       params.dueDate ?? null,
+      params.deliveryDate ?? null,
+      params.deliveryPlace?.trim() || null,
       params.computed.netMinor.toString(),
       params.computed.vatMinor.toString(),
       params.computed.grossMinor.toString(),
@@ -213,6 +221,8 @@ export async function createInvoiceDraft(
     };
     if (input.invoiceDate !== undefined) insertParams.invoiceDate = input.invoiceDate;
     if (input.dueDate !== undefined) insertParams.dueDate = input.dueDate;
+    if (input.deliveryDate !== undefined) insertParams.deliveryDate = input.deliveryDate;
+    if (input.deliveryPlace !== undefined) insertParams.deliveryPlace = input.deliveryPlace;
     const id = await insertInvoice(client, insertParams);
     await recordAuditEvent(client, {
       organizationId: input.organizationId,
@@ -240,8 +250,11 @@ export async function issueInvoice(
 
   // Fase 1 (transaksjon): tildel nummer/KID og lås fakturaen.
   const issued = await withTransaction(db, async (client) => {
+    // invoice_date hentes som ::TEXT — pg-driverens Date-objekt + toISOString
+    // flytter datoen én dag i ikke-UTC-tidssoner (kjent felle, se docs).
     const inv = await client.query(
-      `SELECT i.*, c.name AS customer_name FROM invoices i
+      `SELECT i.*, i.invoice_date::TEXT AS invoice_date_text, c.name AS customer_name
+       FROM invoices i
        JOIN customers c ON c.id = i.customer_id
        WHERE i.id = $1 AND i.organization_id = $2 FOR UPDATE OF i`,
       [params.invoiceId, params.organizationId],
@@ -259,15 +272,37 @@ export async function issueInvoice(
     let kid: string;
     let invoiceDate: string;
     if (invoice.status === 'draft') {
+      // Innholdskravene i bokføringsforskriften § 5-1-1 håndheves før nummer
+      // tildeles: selgers adresse og org.nr. skal stå på salgsdokumentet, og
+      // mva kan bare oppkreves av virksomhet registrert i MVA-registeret
+      // (mval. § 15-11 — uregistrerte kan ikke skrive «MVA» eller kreve avgift).
+      const org = await client.query(
+        `SELECT org_number, street_address, postal_code, city, vat_status
+         FROM organizations WHERE id = $1`,
+        [params.organizationId],
+      );
+      const seller = org.rows[0];
+      const missing: string[] = [];
+      if (!seller.org_number) missing.push('organisasjonsnummer');
+      if (!seller.street_address) missing.push('gateadresse');
+      if (!seller.postal_code || !seller.city) missing.push('postnummer/sted');
+      if (missing.length) {
+        throw new ValidationError(
+          `Fakturaen kan ikke utstedes før virksomhetens fakturaopplysninger er komplette. ` +
+            `Mangler: ${missing.join(', ')}. Oppdater under «Virksomhet».`,
+        );
+      }
+      if (BigInt(invoice.vat_minor) > 0n && seller.vat_status !== 'registered') {
+        throw new ValidationError(
+          'Fakturaen inneholder merverdiavgift, men virksomheten er ikke registrert i ' +
+            'MVA-registeret. Uregistrerte virksomheter kan ikke oppkreve mva — bruk mva-kode ' +
+            '«6» (unntatt), eller oppdater MVA-statusen når registreringen er bekreftet.',
+        );
+      }
       invoiceDate =
         params.invoiceDate ??
-        (invoice.invoice_date
-          ? String(
-              invoice.invoice_date instanceof Date
-                ? invoice.invoice_date.toISOString().slice(0, 10)
-                : invoice.invoice_date,
-            )
-          : new Date().toISOString().slice(0, 10));
+        invoice.invoice_date_text ??
+        new Date().toISOString().slice(0, 10);
       const counter = await client.query(
         `UPDATE organization_counters SET next_invoice_number = next_invoice_number + 1
          WHERE organization_id = $1
@@ -295,11 +330,7 @@ export async function issueInvoice(
       // Allerede utstedt (idempotent gjenopptak): bruk eksisterende verdier.
       invoiceNumber = BigInt(invoice.invoice_number);
       kid = invoice.kid;
-      invoiceDate = String(
-        invoice.invoice_date instanceof Date
-          ? invoice.invoice_date.toISOString().slice(0, 10)
-          : invoice.invoice_date,
-      );
+      invoiceDate = String(invoice.invoice_date_text);
     }
 
     const lines = await client.query(

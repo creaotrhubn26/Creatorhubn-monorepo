@@ -35,6 +35,10 @@ beforeAll(async () => {
     name: 'Fakturatest ENK',
     orgForm: 'ENK',
     vatStatus: 'registered',
+    orgNumber: '910000004',
+    streetAddress: 'Fotoveien 12',
+    postalCode: '0561',
+    city: 'Oslo',
     createdByUserId: userId,
   });
   orgId = org.id;

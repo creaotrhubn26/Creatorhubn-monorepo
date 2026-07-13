@@ -3,7 +3,7 @@
  * Nummer og KID tildeles av serveren ved utstedelse — aldri i UI-et.
  */
 import { useState } from 'react';
-import { api, kr, parseKrToMinor } from './api';
+import { api, apiText, kr, parseKrToMinor } from './api';
 import { useLoad } from './App';
 import { DimensionSelect } from './screens-dimensions';
 import { EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
@@ -71,6 +71,9 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
   const [showBuilder, setShowBuilder] = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerStreet, setNewCustomerStreet] = useState('');
+  const [newCustomerPostal, setNewCustomerPostal] = useState('');
+  const [newCustomerCity, setNewCustomerCity] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [project, setProject] = useState('');
@@ -86,13 +89,33 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
     try {
       const res = await api<{ id: string }>('POST', `/api/organizations/${orgId}/customers`, {
         name: newCustomerName.trim(),
+        ...(newCustomerStreet.trim() ? { streetAddress: newCustomerStreet.trim() } : {}),
+        ...(newCustomerPostal.trim() ? { postalCode: newCustomerPostal.trim() } : {}),
+        ...(newCustomerCity.trim() ? { city: newCustomerCity.trim() } : {}),
       });
       toast('Kunde opprettet', 'ok');
       setNewCustomerName('');
+      setNewCustomerStreet('');
+      setNewCustomerPostal('');
+      setNewCustomerCity('');
       setCustomerId(res.id);
       customers.reload();
     } catch (err) {
       setError((err as Error).message);
+    }
+  };
+
+  /** Åpner salgsdokumentet (HTML) i egen fane — hentet med auth-header. */
+  const openDocument = async (invoiceId: string) => {
+    try {
+      const html = await apiText(`/api/organizations/${orgId}/invoices/${invoiceId}/document`);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+      }
+    } catch (err) {
+      toast((err as Error).message, 'danger');
     }
   };
 
@@ -217,14 +240,37 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
                 ))}
               </select>
             </div>
-            <div>
-              <label htmlFor="newcust">…eller opprett ny</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 2 }}>
+              <label htmlFor="newcust">…eller opprett ny (adresse anbefales på fakturaen)</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input
                   id="newcust"
                   placeholder="Kundenavn"
                   value={newCustomerName}
                   onChange={(e) => setNewCustomerName(e.target.value)}
+                  style={{ flex: '1 1 160px' }}
+                />
+                <input
+                  id="newcust-street"
+                  placeholder="Gateadresse"
+                  value={newCustomerStreet}
+                  onChange={(e) => setNewCustomerStreet(e.target.value)}
+                  style={{ flex: '1 1 160px' }}
+                />
+                <input
+                  id="newcust-postal"
+                  placeholder="Postnr."
+                  inputMode="numeric"
+                  value={newCustomerPostal}
+                  onChange={(e) => setNewCustomerPostal(e.target.value)}
+                  style={{ flex: '0 1 80px' }}
+                />
+                <input
+                  id="newcust-city"
+                  placeholder="Sted"
+                  value={newCustomerCity}
+                  onChange={(e) => setNewCustomerCity(e.target.value)}
+                  style={{ flex: '1 1 110px' }}
                 />
                 <button className="secondary" onClick={createCustomer} disabled={!newCustomerName.trim()}>
                   Opprett
@@ -351,6 +397,11 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
                       {inv.status === 'draft' && (
                         <button className="primary" onClick={() => issueDraft(inv.id)}>
                           Utsted
+                        </button>
+                      )}
+                      {inv.status !== 'draft' && (
+                        <button className="secondary" onClick={() => openDocument(inv.id)}>
+                          Vis
                         </button>
                       )}
                       {(inv.status === 'issued' || inv.status === 'paid') && inv.kind === 'invoice' && (

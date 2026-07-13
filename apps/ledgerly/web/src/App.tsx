@@ -12,6 +12,7 @@ import {
 } from './screens';
 import { DimensionsScreen } from './screens-dimensions';
 import { InvoicingScreen } from './screens-invoicing';
+import { OrgSettingsScreen } from './screens-org';
 import { AuditScreen, JournalScreen, LedgerScreen } from './screens-pro';
 import { Icons, ToastProvider } from './ui';
 
@@ -36,7 +37,8 @@ type Screen =
   | { name: 'journal' }
   | { name: 'audit' }
   | { name: 'invoicing' }
-  | { name: 'dimensions' };
+  | { name: 'dimensions' }
+  | { name: 'org' };
 
 const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
   { key: 'overview', label: 'Oversikt', icon: 'overview' },
@@ -48,6 +50,7 @@ const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = 
   { key: 'vat', label: 'MVA', icon: 'percent' },
   { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
   { key: 'reports', label: 'Rapporter', icon: 'chart' },
+  { key: 'org', label: 'Virksomhet', icon: 'shield' },
 ];
 
 /** Skjermer som kun vises i regnskapsførervisningen. */
@@ -166,6 +169,7 @@ export default function App() {
           {screen.name === 'bank' && <BankScreen orgId={orgId} />}
           {screen.name === 'invoicing' && <InvoicingScreen orgId={orgId} />}
           {screen.name === 'dimensions' && <DimensionsScreen orgId={orgId} />}
+          {screen.name === 'org' && <OrgSettingsScreen orgId={orgId} />}
           {screen.name === 'reports' && <ReportsScreen orgId={orgId} />}
           {screen.name === 'vat' && <VatScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}
@@ -242,6 +246,9 @@ function OrgSetupScreen({ onDone }: { onDone: (orgId: string) => void }) {
   const [orgForm, setOrgForm] = useState('ENK');
   const [vatStatus, setVatStatus] = useState('registered');
   const [orgNumber, setOrgNumber] = useState('');
+  const [street, setStreet] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -251,6 +258,9 @@ function OrgSetupScreen({ onDone }: { onDone: (orgId: string) => void }) {
     try {
       const body: Record<string, string> = { name, orgForm, vatStatus };
       if (orgNumber) body['orgNumber'] = orgNumber;
+      if (street) body['streetAddress'] = street;
+      if (postalCode) body['postalCode'] = postalCode;
+      if (city) body['city'] = city;
       const res = await api<{ id: string }>('POST', '/api/organizations', body);
       onDone(res.id);
     } catch (err) {
@@ -290,6 +300,18 @@ function OrgSetupScreen({ onDone }: { onDone: (orgId: string) => void }) {
           </select>
           <label htmlFor="orgnr">Organisasjonsnummer (valgfritt)</label>
           <input id="orgnr" inputMode="numeric" value={orgNumber} onChange={(e) => setOrgNumber(e.target.value)} placeholder="9 sifre" />
+          <label htmlFor="orgstreet">Gateadresse (kreves for fakturering)</label>
+          <input id="orgstreet" autoComplete="street-address" value={street} onChange={(e) => setStreet(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="orgpostal">Postnummer</label>
+              <input id="orgpostal" inputMode="numeric" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+            </div>
+            <div style={{ flex: 2 }}>
+              <label htmlFor="orgcity">Sted</label>
+              <input id="orgcity" value={city} onChange={(e) => setCity(e.target.value)} />
+            </div>
+          </div>
           {error && <div className="error">{error}</div>}
           <div className="actions">
             <button type="submit" className="primary" disabled={busy || !name}>

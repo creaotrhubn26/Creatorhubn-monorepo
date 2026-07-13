@@ -33,6 +33,10 @@ beforeAll(async () => {
     name: 'Prosjekt AS',
     orgForm: 'AS',
     vatStatus: 'registered',
+    orgNumber: '910007920',
+    streetAddress: 'Prosjektgata 1',
+    postalCode: '5003',
+    city: 'Bergen',
     createdByUserId: userId,
   });
   orgId = org.id;
