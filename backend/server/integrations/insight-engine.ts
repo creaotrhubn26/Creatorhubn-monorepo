@@ -337,7 +337,7 @@ const salesTriggerDetector: InsightDetector = {
     const r = await pool.query<{
       source: string;
       event_id: string;
-      kind: "tender" | "strategy_media" | "hire" | "ip_filing";
+      kind: "tender" | "strategy_media" | "hire" | "ip_filing" | "risk";
       title: string;
       url: string | null;
       published_at: string | null;
@@ -354,10 +354,12 @@ const salesTriggerDetector: InsightDetector = {
     return r.rows.map((row): InsightCandidate => ({
       detector: this.detectorKey,
       dedupeKey: `trigger|${row.source}|${row.event_id}`,
-      severity: row.kind === "tender" ? "important" : "notable",
+      severity: row.kind === "risk" ? "critical" : row.kind === "tender" ? "important" : "notable",
       confidence: 0.9, // faktisk hendelse med kilde — ikke statistisk estimat
       title:
-        row.kind === "tender"
+        row.kind === "risk"
+          ? `RISIKO: ${row.title.slice(0, 120)}`
+          : row.kind === "tender"
           ? `Anbud (${row.matched_topic}): ${row.title.slice(0, 120)}`
           : row.kind === "ip_filing"
           ? `Varemerke-aktivitet: ${row.title.slice(0, 120)}`
@@ -371,6 +373,8 @@ const salesTriggerDetector: InsightDetector = {
               row.raw?.deadline ? `FRIST ${row.raw.deadline}` : null,
               "Vurder om dere kan levere, alene eller som underleverandør.",
             ].filter(Boolean).join(" · ")
+          : row.kind === "risk"
+          ? `Registerstatus fra Enhetsregisteret (${row.published_at ?? "i dag"}). Sikre utestående krav og vurder leveransestopp — registerfakta, ikke rykter.`
           : row.kind === "ip_filing"
           ? `Fersk sak hos Patentstyret (${row.published_at ?? "nylig"}) — kan varsle lansering, rebrand eller nytt konsept hos ${row.matched_topic}. Godt tidspunkt for kontakt.`
           : `Medieomtale ${row.published_at ?? "siste uke"} som kan signalisere ny strategi/satsing hos ${row.matched_topic}. Les kilden før utspill.`,

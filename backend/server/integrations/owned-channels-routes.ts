@@ -22,6 +22,7 @@ import { syncLeadgridSalesSignals } from "./leadgrid-sales-signal-sync.js";
 import { syncBrregMarketSignals } from "./brreg-market-signal-sync.js";
 import { syncSalesTriggers } from "./sales-trigger-sync.js";
 import { syncSsbTerritorySignals } from "./ssb-territory-signal-sync.js";
+import { runKonkursWatch } from "./konkurs-watch.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -50,6 +51,23 @@ function getSession(
 export function registerOwnedChannelsRoutes({
   app, pool, activeSessions, isAdminEmail,
 }: Deps): void {
+  // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.
+  app.post("/api/integrations/sync/konkurs-watch", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await runKonkursWatch(pool);
+      if (result.errors.length > 0) console.warn("[konkurs-watch]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[konkurs-watch] failed", err);
+      return res.status(500).json({ error: "watch_failed" });
+    }
+  });
+
   // SSB territorietall: bedrifter per fylke x næring → normalized_signals.
   app.post("/api/integrations/sync/ssb-territory", async (req, res) => {
     const token = req.headers["x-cron-token"];
