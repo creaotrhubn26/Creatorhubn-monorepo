@@ -39,7 +39,7 @@ import { assembleDocument, createApplication, draftAndSaveSection, getApplicatio
 import { getDetectorPrecision } from "./system-precision.js";
 import { addExperiment, listExperimentsWithEffect } from "./geo-experiments.js";
 import { getLaunchTimingAnalysis } from "./launch-timing.js";
-import { composeToQueue, listQueue, publishViaDispatcher, transitionPost, verifyPublishIdentity, type PostStatus } from "./social-queue.js";
+import { composeToQueue, listQueue, publishViaDispatcher, sendToCockpit, transitionPost, verifyPublishIdentity, type PostStatus } from "./social-queue.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -657,6 +657,21 @@ export function registerOwnedChannelsRoutes({
     }
     const identity = await verifyPublishIdentity(pool, session.userId);
     return res.json({ identity });
+  });
+
+  // Broen: godkjent kø-post → Marketing Cockpit post-drafts (redigering/
+  // publisering/autopublish skjer i cockpitens eget maskineri).
+  app.post("/api/integrations/social-queue/:id/send-to-cockpit", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    try {
+      const result = await sendToCockpit(pool, orgId, req.params.id);
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[social-queue] send-to-cockpit failed", err);
+      return res.status(500).json({ error: "send_failed" });
+    }
   });
 
   app.post("/api/integrations/social-queue/:id/publish", async (req: Request, res: Response) => {

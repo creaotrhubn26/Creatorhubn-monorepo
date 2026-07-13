@@ -151,6 +151,61 @@ export async function publishViaDispatcher(
   return { ok: true, permalink };
 }
 
+/**
+ * Broen til Marketing Cockpit: godkjent kø-post → marketing_post_drafts
+ * (PostDraftsPanel gir redigering, publisering og autopublish-scheduler
+ * — produksjonsmaskineriet som allerede finnes). source_insight bærer
+ * faktagrunnlaget videre, så cockpiten VET hvor tallene kommer fra.
+ */
+const SOLUTION_BRAND_KEY: Record<string, string> = {
+  theroleroom: "theroleroom",
+  creatorhub: "creatorhub",
+  leadgrid: "leadgrid",
+};
+
+export async function sendToCockpit(
+  pool: Pool,
+  organizationId: string,
+  postId: string,
+): Promise<{ ok: true; draftId: string } | { error: string; status: number }> {
+  const current = await pool.query<{
+    status: PostStatus; platform: string; body: string; solution: string; facts: unknown;
+  }>(
+    `SELECT status, platform, body, solution, facts FROM social_intel_posts
+      WHERE id = $1::uuid AND organization_id = $2::uuid`,
+    [postId, organizationId],
+  );
+  if (current.rows.length === 0) return { error: "post_ikke_funnet", status: 404 };
+  const post = current.rows[0];
+  if (post.status !== "approved") return { error: "kun_godkjente_poster_kan_sendes", status: 409 };
+
+  const factsArr = Array.isArray(post.facts) ? (post.facts as Array<{ source?: string; label?: string }>) : [];
+  const sourceSummary = factsArr
+    .slice(0, 4)
+    .map((f) => `${f.source ?? "?"}: ${f.label ?? "?"}`)
+    .join(" · ");
+
+  const r = await pool.query<{ id: string }>(
+    `INSERT INTO marketing_post_drafts
+       (brand_key, platform, status, source_insight, caption, generated_with_model)
+     VALUES ($1, $2, 'draft', $3, $4, 'market-intelligence-queue')
+     RETURNING id::text`,
+    [
+      SOLUTION_BRAND_KEY[post.solution] ?? post.solution,
+      post.platform,
+      `Markedsintelligens (tall-validert): ${sourceSummary}`.slice(0, 500),
+      post.body,
+    ],
+  );
+  const draftId = r.rows[0].id;
+  await pool.query(
+    `UPDATE social_intel_posts SET external_id = $3
+      WHERE id = $1::uuid AND organization_id = $2::uuid`,
+    [postId, organizationId, `cockpit-draft-${draftId}`],
+  );
+  return { ok: true, draftId };
+}
+
 export async function transitionPost(
   pool: Pool,
   organizationId: string,
