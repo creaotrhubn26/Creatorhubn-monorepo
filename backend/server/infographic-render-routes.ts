@@ -93,6 +93,21 @@ export function registerInfographicRenderRoutes(
       // Data parses FØR mal-valg, så `tpl=auto` kan la motoren velge mal fra data-formen.
       let data: Record<string, unknown> = {};
       if (dRaw) { try { data = JSON.parse(Buffer.from(dRaw, 'base64url').toString('utf8')); } catch { /* tom */ } }
+      // Dynamisk KILDE (?source=<nøkkel>): slå opp en admin-kuratert marketing-metric fra workspacets
+      // design-tokens `metrics`-namespace → verdi/etikett flettes inn i data. «Koblet opp»: endre
+      // metricen ett sted, alle infographics som bruker nøkkelen oppdateres (innen cache-TTL).
+      const sourceKey = typeof req.query.source === 'string' ? req.query.source : '';
+      if (sourceKey && /^[A-Za-z0-9_-]{1,60}$/.test(sourceKey)) {
+        try {
+          const toks = await getTokens(pool, req.query.ws as string | undefined) as Record<string, unknown>;
+          const metrics = toks.metrics as Record<string, { value?: unknown; label?: unknown }> | undefined;
+          const m = metrics && typeof metrics === 'object' ? metrics[sourceKey] : undefined;
+          if (m && typeof m === 'object') {
+            if (m.value != null) data.value = m.value;
+            if (m.label != null) data.label = m.label;
+          }
+        } catch { /* metrics utilgjengelig → behold data som er */ }
+      }
       // Aksent: query > data > workspace-merkevare (design-token). Gjør render on-brand per produkt.
       let accent = accentQ;
       if (!accent && data.accent == null) accent = (await getTokens(pool, req.query.ws as string | undefined)).accent;
@@ -114,7 +129,7 @@ export function registerInfographicRenderRoutes(
         res.status(400).json({ error: 'Ugyldig tpl — mal-id, /embed/*.html eller «auto».' });
         return;
       }
-      const key = `${id}|${width}x${height}|${accent}|${dRaw}`;
+      const key = `${id}|${width}x${height}|${accent}|${dRaw}|${sourceKey}:${String(data.value ?? '')}:${String(data.label ?? '')}`;
       const now = Date.now();
       const hit = imgCache.get(key);
       if (hit && now - hit.at < IMG_CACHE_TTL_MS) {
