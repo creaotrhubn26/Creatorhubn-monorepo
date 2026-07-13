@@ -24074,7 +24074,9 @@ app.post("/api/tripletex/invoices/create", async (req, res) => {
 
 app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    // Session-only identitet (ikke compatResolveUserId — den stoler på x-user-id-
+    // headeren, som kan spoofes for å hente en annen brukers faktura-PDF).
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     const invoiceId = compatHeaderString(req.params.invoiceId);
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å hente faktura-PDF" });
@@ -24109,7 +24111,8 @@ app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
 
 app.get("/api/tripletex/vouchers/:voucherId/pdf", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    // Session-only identitet (ikke compatResolveUserId — spoofbar x-user-id).
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     const voucherId = compatHeaderString(req.params.voucherId);
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å hente bilag" });
@@ -24554,8 +24557,11 @@ app.get("/api/story-arc/auto-monitor/status", (req, res) => {
 });
 
 app.get("/api/story-arc/auto-monitor/status/:userId", (req, res) => {
-  const userId =
-    compatHeaderString(req.params.userId) || compatResolveUserId(req);
+  // Session-only: ignorer :userId i path (spoofbar) og bruk innlogget bruker —
+  // ellers kunne hvem som helst lese en annen brukers auto-monitor-status.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   res.json({
     success: true,
     userId,
@@ -24564,8 +24570,10 @@ app.get("/api/story-arc/auto-monitor/status/:userId", (req, res) => {
 });
 
 app.get("/api/story-arc/auto-monitor/history/:userId", (req, res) => {
-  const userId =
-    compatHeaderString(req.params.userId) || compatResolveUserId(req);
+  // Session-only: ignorer :userId i path (spoofbar) og bruk innlogget bruker.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const monitors = getCompatStoryArcMonitorsForUser(userId);
   const history = monitors
     .flatMap((monitor) =>
@@ -26142,6 +26150,28 @@ app.get("/api/professions/:id/dashboard-config", async (req, res) => {
 app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
   const { organizationId } = req.params;
   try {
+    // Krev innlogging + at kalleren faktisk tilhører organisasjonen — ellers
+    // kunne hvem som helst liste en annen orgs medlemmer + e-post (IDOR/PII).
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    let callerEmail: string | null = null;
+    try {
+      const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [session.userId]);
+      callerEmail = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch { /* e-post-fallback valgfri */ }
+    const membership = await pool.query(
+      `SELECT 1 FROM enterprise_team_members
+        WHERE organization_id = $1
+          AND status = 'active'
+          AND (user_id = $2 OR ($3::text IS NOT NULL AND LOWER(email) = $3))
+        LIMIT 1`,
+      [organizationId, session.userId, callerEmail],
+    );
+    if (membership.rowCount === 0) {
+      return res.status(403).json({ error: "forbidden" });
+    }
     const result = await pool.query(
       "SELECT id, email, role, status, invited_at, joined_at FROM enterprise_team_members WHERE organization_id = $1 ORDER BY role, email",
       [organizationId],
@@ -42922,6 +42952,10 @@ async function ensureAcademyCohortSettingsTable(): Promise<void> {
 // fra "DB nede" (503 retryable vs 200 []).
 app.get("/api/prototype-tester-requests", async (req, res) => {
   try {
+    // Staff-only: denne lista er applikanters PII (navn/e-post/firma/enhet).
+    // Manglet auth tidligere → hvem som helst kunne dumpe alle søknader.
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
     const tableCheck = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prototype_tester_requests')`,
     );
@@ -42976,6 +43010,10 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
 
 app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
   try {
+    // Staff-only: prosessering (godkjenn/avslå) er en admin-handling.
+    // Manglet auth → hvem som helst kunne endre status på vilkårlig søknad.
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
     const { id } = req.params;
     const { status, notes } = req.body;
     const tableCheck = await pool.query(
@@ -42987,8 +43025,8 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
         .json({ error: "not_found", message: "Prototype tester requests table not found", retryable: false });
     }
     const result = await pool.query(
-      `UPDATE prototype_tester_requests SET status = $1, admin_notes = $2, processed_at = NOW(), updated_at = NOW() WHERE id = $3 RETURNING *`,
-      [status, notes || null, id],
+      `UPDATE prototype_tester_requests SET status = $1, admin_notes = $2, processed_by = $3, processed_at = NOW(), updated_at = NOW() WHERE id = $4 RETURNING *`,
+      [status, notes || null, admin.email || admin.userId, id],
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "not_found", message: "Request not found", retryable: false });
@@ -43013,6 +43051,11 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
 // Business lifecycle profile by email
 app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
   try {
+    // Staff-only: slår opp en vilkårlig e-post og returnerer sammenslått PII
+    // (firmanavn/orgnr/adresse/telefon m.m.). Kun admin-invite-konsollen kaller
+    // dette. Manglet auth → åpen e-post→PII-oppslag for hvem som helst.
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
     const { email } = req.params;
     // Aggregate profile from invite_requests + vendors + creatorhub_users
     const invite = (await hasTable("invite_requests"))
@@ -46211,12 +46254,40 @@ app.post("/api/enterprise/team/:organizationId/invite", async (req, res) => {
   const { organizationId } = req.params;
   const { email, role } = req.body;
   try {
+    // Krev innlogging + at kalleren er admin/eier i DENNE orgen — ellers kunne
+    // hvem som helst invitere seg selv inn i en vilkårlig org (privilege esc).
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    let callerEmail: string | null = null;
+    try {
+      const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [session.userId]);
+      callerEmail = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch { /* e-post-fallback valgfri */ }
+    const membership = await pool.query(
+      `SELECT role FROM enterprise_team_members
+        WHERE organization_id = $1
+          AND status = 'active'
+          AND (user_id = $2 OR ($3::text IS NOT NULL AND LOWER(email) = $3))
+        LIMIT 1`,
+      [organizationId, session.userId, callerEmail],
+    );
+    const callerRole = String(membership.rows[0]?.role || "");
+    if (!["admin", "owner"].includes(callerRole)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    // Whitelist inviterte roller — ingen kan invitere en 'owner'/vilkårlig rolle.
+    const requestedRole = role || "member";
+    if (!["member", "admin"].includes(requestedRole)) {
+      return res.status(400).json({ error: "invalid_role" });
+    }
     const result = await pool.query(
       `INSERT INTO enterprise_team_members (organization_id, email, role, status, invited_at)
        VALUES ($1, $2, $3, 'invited', NOW())
        ON CONFLICT DO NOTHING
        RETURNING id, email, role, status`,
-      [organizationId, email, role || "member"],
+      [organizationId, email, requestedRole],
     );
     if (result.rowCount === 0) {
       return res.json({ success: true, message: "Member already exists" });
