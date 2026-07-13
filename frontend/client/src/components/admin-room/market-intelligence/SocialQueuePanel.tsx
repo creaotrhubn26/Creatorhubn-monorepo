@@ -201,6 +201,21 @@ export default function SocialQueuePanel() {
                 <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: "0.82rem" }}>
                   {p.body}
                 </Typography>
+                {p.status === "approved" && !p.external_url && (
+                  <Button size="small" variant="outlined" sx={{ mt: 1, mr: 1 }}
+                    onClick={async () => {
+                      const r = await fetch(`/api/integrations/social-queue/${p.id}/send-to-cockpit`, {
+                        method: "POST", credentials: "include", headers: authHeaders(),
+                      });
+                      if (!r.ok) {
+                        const b = await r.json().catch(() => null);
+                        setError(`Cockpit-broen: ${b?.error ?? r.status}`);
+                      }
+                      await load();
+                    }}>
+                    Send til Cockpit
+                  </Button>
+                )}
                 {p.status === "approved" && p.platform === "linkedin" && (
                   <Button size="small" variant="contained" sx={{ mt: 1, mr: 1 }}
                     onClick={() => void openVerifyBridge(p)}>
