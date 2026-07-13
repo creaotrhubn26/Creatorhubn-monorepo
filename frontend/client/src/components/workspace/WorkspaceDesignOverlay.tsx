@@ -178,6 +178,11 @@ export default function WorkspaceDesignOverlay({
           background: cs.backgroundColor,
           borderRadius: String(Math.round(parseFloat(cs.borderRadius)) || 0),
           padding: cs.padding,
+          display: cs.display,
+          flexDirection: cs.flexDirection,
+          gap: parseFloat(cs.gap) ? String(Math.round(parseFloat(cs.gap))) : '',
+          justifyContent: cs.justifyContent,
+          alignItems: cs.alignItems,
           // Tekst kun for løvnoder (ingen element-barn) → unngå å nuke barn-innhold.
           text: el.children.length === 0 ? (el.textContent || '') : ' ',
         });
@@ -893,6 +898,42 @@ export default function WorkspaceDesignOverlay({
                 <div style={section}>Spacing</div>
                 <label style={flabel}>Padding</label>
                 <input data-chd aria-label="Padding" style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
+
+                <div style={section}>Auto-layout</div>
+                <label style={{ ...flabel, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="checkbox" data-chd checked={insp.display === 'flex'} onChange={(e) => applyStyle('display', 'display', e.target.checked ? 'flex' : 'block')} />
+                  Aktiver auto-layout (flex)
+                </label>
+                {insp.display === 'flex' && (
+                  <>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}><label style={flabel}>Retning</label>
+                        <select data-chd aria-label="Retning" style={field} value={insp.flexDirection || 'row'} onChange={(e) => applyStyle('flexDirection', 'flex-direction', e.target.value)}>
+                          <option value="row">Rad →</option>
+                          <option value="column">Kolonne ↓</option>
+                        </select></div>
+                      <div style={{ flex: 1 }}><label style={flabel}>Mellomrom (px)</label>
+                        <input data-chd aria-label="Gap" type="number" style={field} value={insp.gap ?? ''} onChange={(e) => applyStyle('gap', 'gap', e.target.value, 'px')} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}><label style={flabel}>Fordeling</label>
+                        <select data-chd aria-label="Fordeling" style={field} value={insp.justifyContent || 'flex-start'} onChange={(e) => applyStyle('justifyContent', 'justify-content', e.target.value)}>
+                          <option value="flex-start">Start</option>
+                          <option value="center">Senter</option>
+                          <option value="flex-end">Slutt</option>
+                          <option value="space-between">Mellomrom</option>
+                          <option value="space-around">Rundt</option>
+                        </select></div>
+                      <div style={{ flex: 1 }}><label style={flabel}>Justering</label>
+                        <select data-chd aria-label="Justering" style={field} value={insp.alignItems || 'stretch'} onChange={(e) => applyStyle('alignItems', 'align-items', e.target.value)}>
+                          <option value="stretch">Strekk</option>
+                          <option value="flex-start">Start</option>
+                          <option value="center">Senter</option>
+                          <option value="flex-end">Slutt</option>
+                        </select></div>
+                    </div>
+                  </>
+                )}
 
                 <div style={section}>Animasjon</div>
                 <select data-chd aria-label="Animasjon" style={field}
