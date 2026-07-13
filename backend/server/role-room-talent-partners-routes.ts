@@ -760,6 +760,36 @@ The Role Room Talents
       const emailLower = invite.partner_email.toLowerCase();
       const scopesArr: string[] = Array.isArray(invite.scopes) ? invite.scopes : JSON.parse(invite.scopes);
 
+      // SIKKERHET (BOLA / privilege-escalation): invite-tokenet returneres OGSÅ
+      // til INVITEREREN (POST /me/partner-invites-svaret + acceptUrl, for
+      // mailto-fallback), så token-besittelse alene kan IKKE autorisere en
+      // agency-innmelding. Å koble den innloggede brukeren til et EKSISTERENDE
+      // byrå (som kan ha andre medlemmer + aktive consents fra mange talenter)
+      // krever bevis på at akseptøren faktisk kontrollerer den inviterte
+      // e-posten — ellers kunne enhver innlogget bruker opprette en invite til
+      // et kjent byrås contact_email, self-akseptere med tokenet fra sitt eget
+      // POST-svar, og arve byråets lese-tilgang til ALLE samtykkede talenter
+      // (cross-tenant PII-lekkasje: role-room-agency-search / talent-selftapes /
+      // media-proxy stoler ubetinget på users.agency_org_id som medlemskaps-
+      // bevis via fetchAgencyForUser). Nytt byrå (ingen contact_email-match) =
+      // akseptøren blir grunnlegger av et tomt byrå → trygt, ingen match kreves.
+      const existingAgencyForEmail = await pool.query<{ id: string }>(
+        `SELECT id FROM agency_orgs WHERE contact_email = $1 LIMIT 1`,
+        [emailLower],
+      );
+      if (existingAgencyForEmail.rowCount) {
+        const alreadyMember = await pool.query(
+          `SELECT 1 FROM users WHERE id = $1 AND agency_org_id = $2 LIMIT 1`,
+          [session.userId, existingAgencyForEmail.rows[0].id],
+        );
+        const sessionEmail = (session.email || "").trim().toLowerCase();
+        if (!alreadyMember.rowCount && sessionEmail !== emailLower) {
+          return res.status(403).json({
+            error: "Dette byrået finnes allerede. Logg inn med e-posten invitasjonen ble sendt til for å bli med i byrået.",
+          });
+        }
+      }
+
       // Accept = agency upsert + user link + per-scope consents + invite
       // status, all in one transaction. Previously these ran as independent
       // queries, so a mid-flow failure left inconsistent state (user linked
