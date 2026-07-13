@@ -8,6 +8,11 @@
  * hvis sidelayouten senere endres mye. Kun hvitlistede, trygge visuelle props (ikke vilkårlig CSS).
  */
 import { useEffect } from 'react';
+import DOMPurify from 'dompurify';
+
+// Streng DOMPurify-config for klonede HTML-komponenter (render-tidens sikkerhetsgrense).
+const HTML_PURIFY = { FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'link', 'meta', 'base'], FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'] };
+export function sanitizeHtmlComponent(html: string): string { return DOMPurify.sanitize(html || '', HTML_PURIFY); }
 
 export type ElementEdits = Record<string, Record<string, string>>;
 
@@ -200,7 +205,7 @@ export function buildInsertNode(spec: InsertSpec): HTMLElement | null {
  *  `components` + `workspace` støtter LIVE-lenkede komponent-referanser (type 'component'):
  *  master-spec'ene ekspanderes ved render, så endring av komponenten slår gjennom på alle instanser;
  *  per-instans `slots` styrer hvilken datakilde hvert infographic-slot kobles til. */
-function applyInserts(inserts: ElementInserts, components: DesignComponents, workspace: string): (() => void) | undefined {
+function applyInserts(inserts: ElementInserts, components: DesignComponents, htmlComponents: Record<string, string>, workspace: string): (() => void) | undefined {
   const entries = Object.entries(inserts || {}).filter(([sel]) => isSafeSelector(sel));
   if (!entries.length) return undefined;
   const insertNode = (anchor: Element, spec: InsertSpec, domId: string) => {
@@ -217,6 +222,17 @@ function applyInserts(inserts: ElementInserts, components: DesignComponents, wor
       if (!anchor || !anchor.parentNode) continue;
       for (const spec of specs) {
         if (!spec || !/^[A-Za-z0-9_-]{1,40}$/.test(spec.id || '')) continue;
+        // HTML-komponent (klonet seksjon) → container-div m/ DOMPurify-sanert innerHTML (render-grense).
+        if (spec.type === 'htmlcomponent' && spec.component) {
+          const html = htmlComponents[spec.component];
+          if (html == null || document.querySelector(`[data-chd-insert="${spec.id}"]`)) continue;
+          const div = document.createElement('div');
+          div.setAttribute('data-chd-insert', spec.id);
+          div.innerHTML = sanitizeHtmlComponent(html);
+          if (spec.pos === 'before') anchor.parentNode.insertBefore(div, anchor);
+          else anchor.parentNode.insertBefore(div, anchor.nextSibling);
+          continue;
+        }
         // Live-lenket komponent → ekspander master-spec'ene med per-instans slot-kilder.
         if (spec.type === 'component' && spec.component) {
           const comp = components[spec.component];
@@ -380,7 +396,7 @@ export function useElementEdits(workspace: string): void {
         }
         // Innsatte elementer → nye noder (m/ observer-reinjeksjon); komponent-refs ekspanderes live.
         if (vm.elementInserts && typeof vm.elementInserts === 'object') {
-          cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, workspace);
+          cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, (t.htmlComponents as Record<string, string>) || {}, workspace);
         }
         // Interaksjoner (klikk → scroll/naviger) — top-nivå (delt på tvers av varianter).
         if (t.elementInteractions && typeof t.elementInteractions === 'object') {
