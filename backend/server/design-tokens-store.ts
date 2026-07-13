@@ -131,6 +131,19 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.elementEdits = elementEdits;
   }
+  // Per-element TEKST-overstyring (Edit-modus): { [selektor]: tekst }. textContent (ikke innerHTML)
+  // → XSS-trygt av konstruksjon. Kun saniterte selektorer + lengdetak.
+  const textIn = (patch as any)?.elementText;
+  if (textIn && typeof textIn === 'object' && !Array.isArray(textIn)) {
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+    const elementText: Record<string, string> = {};
+    let n = 0;
+    for (const [sel, v] of Object.entries(textIn as Record<string, unknown>)) {
+      if (n >= 500) break;
+      if (SEL_RE.test(sel) && !sel.includes('..') && typeof v === 'string' && v.length <= 2000) { elementText[sel] = v; n++; }
+    }
+    clean.elementText = elementText;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,
