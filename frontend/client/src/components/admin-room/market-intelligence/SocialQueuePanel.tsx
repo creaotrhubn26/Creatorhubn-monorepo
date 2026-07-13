@@ -161,6 +161,21 @@ export default function SocialQueuePanel() {
                 <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: "0.82rem" }}>
                   {p.body}
                 </Typography>
+                {p.status === "approved" && p.platform === "linkedin" && (
+                  <Button size="small" variant="contained" sx={{ mt: 1, mr: 1 }}
+                    onClick={async () => {
+                      const r = await fetch(`/api/integrations/social-queue/${p.id}/publish`, {
+                        method: "POST", credentials: "include", headers: authHeaders(),
+                      });
+                      if (!r.ok) {
+                        const b = await r.json().catch(() => null);
+                        setError(`LinkedIn-publisering: ${b?.error ?? r.status}`);
+                      }
+                      await load();
+                    }}>
+                    Publiser via LinkedIn
+                  </Button>
+                )}
                 {p.status === "approved" && (
                   <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
                     <TextField size="small" placeholder="Lim inn post-URL etter publisering"
@@ -172,6 +187,11 @@ export default function SocialQueuePanel() {
                       Marker publisert
                     </Button>
                   </Stack>
+                )}
+                {p.status === "failed" && (
+                  <Alert severity="warning" sx={{ mt: 1, fontSize: "0.75rem" }}>
+                    {"Publisering feilet"} — godkjenn på nytt for å prøve igjen.
+                  </Alert>
                 )}
                 {p.status === "published" && p.external_url && (
                   <Typography variant="caption" sx={{ color: "#4ade80" }}>
