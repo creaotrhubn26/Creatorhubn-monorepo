@@ -39,6 +39,7 @@ import { assembleDocument, createApplication, draftAndSaveSection, getApplicatio
 import { getDetectorPrecision } from "./system-precision.js";
 import { addExperiment, listExperimentsWithEffect } from "./geo-experiments.js";
 import { getLaunchTimingAnalysis } from "./launch-timing.js";
+import { composeToQueue, listQueue, transitionPost, type PostStatus } from "./social-queue.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -620,6 +621,47 @@ export function registerOwnedChannelsRoutes({
       console.error("[launch-timing] failed", err);
       return res.status(500).json({ error: "timing_failed" });
     }
+  });
+
+  // Synlighets-sløyfen: innsiktsdrevne poster i godkjennings-kø.
+  app.post("/api/integrations/social-queue/compose", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.solution !== "string" || !["leadgrid", "theroleroom", "creatorhub"].includes(body.solution)) {
+      return res.status(400).json({ error: "solution_kreves" });
+    }
+    try {
+      const result = await composeToQueue(pool, orgId, body.solution as "leadgrid" | "theroleroom" | "creatorhub",
+        typeof body.angle === "string" ? body.angle : undefined);
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[social-queue] compose failed", err);
+      return res.status(500).json({ error: "compose_failed" });
+    }
+  });
+
+  app.get("/api/integrations/social-queue", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    return res.json({ posts: await listQueue(pool, orgId) });
+  });
+
+  app.patch("/api/integrations/social-queue/:id", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const to = String(body.status ?? "");
+    if (!["approved", "rejected", "published", "failed"].includes(to)) {
+      return res.status(400).json({ error: "gyldig_status_kreves" });
+    }
+    const result = await transitionPost(pool, orgId, req.params.id, to as PostStatus, {
+      body: typeof body.body === "string" ? body.body : undefined,
+      externalUrl: typeof body.externalUrl === "string" ? body.externalUrl : undefined,
+    });
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    return res.json({ updated: true });
   });
 
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.

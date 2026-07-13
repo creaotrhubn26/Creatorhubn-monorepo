@@ -1,0 +1,188 @@
+/**
+ * SocialQueuePanel.tsx — synlighets-sløyfen i MI
+ *
+ * Innsiktsdrevne poster i godkjennings-kø: composer lager utkast fra
+ * plattformens egne tall (tall-validert i backend), DU godkjenner,
+ * publiserer (manuelt kopier-og-lim i v1) og markerer publisert — som
+ * automatisk logger posten i GEO-eksperimentloggen. Sløyfen lukkes.
+ */
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
+  IconButton, MenuItem, Select, Stack, TextField, Tooltip, Typography,
+} from "@mui/material";
+import {
+  Campaign as QueueIcon,
+  Check as ApproveIcon,
+  Close as RejectIcon,
+  ContentCopy as CopyIcon,
+  Publish as PublishIcon,
+} from "@mui/icons-material";
+
+interface QueuedPost {
+  id: string;
+  solution: string;
+  platform: string;
+  body: string;
+  status: "draft" | "approved" | "published" | "failed" | "rejected";
+  external_url: string | null;
+  created_at: string;
+}
+
+const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+  draft: { label: "Utkast", color: "#60a5fa" },
+  approved: { label: "Godkjent", color: "#f59e0b" },
+  published: { label: "Publisert", color: "#4ade80" },
+  failed: { label: "Feilet", color: "#f87171" },
+  rejected: { label: "Avvist", color: "#94a3b8" },
+};
+
+function authHeaders(): Record<string, string> {
+  const token =
+    localStorage.getItem("creatorhub_auth_token") ?? localStorage.getItem("token") ?? "";
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export default function SocialQueuePanel() {
+  const [posts, setPosts] = useState<QueuedPost[]>([]);
+  const [solution, setSolution] = useState("creatorhub");
+  const [angle, setAngle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [publishUrl, setPublishUrl] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    const r = await fetch("/api/integrations/social-queue", { credentials: "include", headers: authHeaders() });
+    if (r.ok) setPosts((await r.json()).posts ?? []);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const compose = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/integrations/social-queue/compose", {
+        method: "POST", credentials: "include",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ solution, angle: angle.trim() || undefined }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => null);
+        setError(String(b?.error ?? r.status).startsWith("utkast_")
+          ? "Composeren brukte tall uten kilde og ble avvist — prøv igjen."
+          : `Kunne ikke komponere (${b?.error ?? r.status})`);
+        return;
+      }
+      await load();
+    } finally { setBusy(false); }
+  };
+
+  const transition = async (id: string, status: string, extra: Record<string, unknown> = {}) => {
+    const r = await fetch(`/api/integrations/social-queue/${id}`, {
+      method: "PATCH", credentials: "include",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ status, ...extra }),
+    });
+    if (!r.ok) {
+      const b = await r.json().catch(() => null);
+      setError(`Overgang avvist: ${b?.error ?? r.status}`);
+    }
+    await load();
+  };
+
+  const copyBody = async (post: QueuedPost) => {
+    await navigator.clipboard.writeText(post.body);
+    setCopied(post.id);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  return (
+    <Card>
+      <CardContent>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          <QueueIcon sx={{ color: "#f472b6" }} />
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            Synlighets-kø — innsikt som innhold
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            · tall-validert · du godkjenner alt · publisering logges som GEO-eksperiment
+          </Typography>
+        </Stack>
+
+        <Stack direction="row" spacing={1} sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+          <Select size="small" value={solution} onChange={(e) => setSolution(e.target.value)}>
+            <MenuItem value="creatorhub">CreatorHub</MenuItem>
+            <MenuItem value="theroleroom">The Role Room</MenuItem>
+            <MenuItem value="leadgrid">Leadgrid</MenuItem>
+          </Select>
+          <TextField size="small" placeholder="Vinkel (valgfritt, f.eks. «marginene i bransjen»)"
+            value={angle} onChange={(e) => setAngle(e.target.value)} sx={{ minWidth: 280 }} />
+          <Button variant="contained" onClick={() => void compose()} disabled={busy}
+            startIcon={busy ? <CircularProgress size={14} /> : undefined}>
+            Lag utkast (LinkedIn + IG)
+          </Button>
+        </Stack>
+        {error && <Alert severity="warning" sx={{ mb: 1 }}>{error}</Alert>}
+
+        <Stack spacing={1}>
+          {posts.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Ingen poster i køen — lag det første utkastet fra bransjetallene.
+            </Typography>
+          )}
+          {posts.map((p) => {
+            const st = STATUS_STYLE[p.status];
+            return (
+              <Box key={p.id} sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${st.color}33`, borderLeft: `3px solid ${st.color}` }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" label={st.label}
+                    sx={{ bgcolor: `${st.color}22`, color: st.color, fontWeight: 700, height: 20, fontSize: 10 }} />
+                  <Chip size="small" variant="outlined" label={p.platform} sx={{ height: 20, fontSize: 10 }} />
+                  <Typography variant="caption" color="text.secondary">{p.solution}</Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Tooltip title={copied === p.id ? "Kopiert ✓" : "Kopier tekst"}>
+                    <IconButton size="small" onClick={() => void copyBody(p)}><CopyIcon fontSize="small" /></IconButton>
+                  </Tooltip>
+                  {p.status === "draft" && (
+                    <>
+                      <Tooltip title="Godkjenn">
+                        <IconButton size="small" sx={{ color: "#4ade80" }}
+                          onClick={() => void transition(p.id, "approved")}><ApproveIcon fontSize="small" /></IconButton>
+                      </Tooltip>
+                      <Tooltip title="Avvis">
+                        <IconButton size="small" onClick={() => void transition(p.id, "rejected")}><RejectIcon fontSize="small" /></IconButton>
+                      </Tooltip>
+                    </>
+                  )}
+                </Stack>
+                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: "0.82rem" }}>
+                  {p.body}
+                </Typography>
+                {p.status === "approved" && (
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+                    <TextField size="small" placeholder="Lim inn post-URL etter publisering"
+                      value={publishUrl[p.id] ?? ""}
+                      onChange={(e) => setPublishUrl((u) => ({ ...u, [p.id]: e.target.value }))}
+                      sx={{ flex: 1 }} />
+                    <Button size="small" variant="contained" startIcon={<PublishIcon />}
+                      onClick={() => void transition(p.id, "published", { externalUrl: publishUrl[p.id] || undefined })}>
+                      Marker publisert
+                    </Button>
+                  </Stack>
+                )}
+                {p.status === "published" && p.external_url && (
+                  <Typography variant="caption" sx={{ color: "#4ade80" }}>
+                    ✓ Logget som GEO-eksperiment · <a href={p.external_url} target="_blank" rel="noreferrer" style={{ color: "#4ade80" }}>åpne posten</a>
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
