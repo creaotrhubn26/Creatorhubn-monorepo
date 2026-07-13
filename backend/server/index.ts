@@ -20801,28 +20801,15 @@ async function getAudioBufferFromUrl(audioUrl: string) {
     };
   }
 
-  let localPath = normalizedSource;
-  if (localPath.startsWith("file://")) {
-    localPath = fileURLToPath(localPath);
-  }
-  if (!path.isAbsolute(localPath)) {
-    localPath = path.resolve(process.cwd(), localPath);
-  }
-
-  const buffer = await fs.readFile(localPath);
-  const extension = path.extname(localPath).toLowerCase();
-  const mimeByExtension: Record<string, string> = {
-    ".wav": "audio/wav",
-    ".wave": "audio/wav",
-    ".mp3": "audio/mpeg",
-    ".m4a": "audio/mp4",
-    ".aac": "audio/aac",
-    ".flac": "audio/flac",
-    ".ogg": "audio/ogg",
-    ".webm": "audio/webm",
-  };
-  const mime = mimeByExtension[extension] || "audio/mpeg";
-  return { buffer, size: buffer.length, mime };
+  // No stored-file match and not an http(s) URL. Every caller (mix, restore,
+  // waveform, level-match) reaches here with a user-supplied audioUrl/
+  // sourceFile from the request body; legit audio is always referenced either
+  // as a stored file (/api/audio/file/<id>) or a remote http(s) URL. Reading a
+  // bare local filesystem path / file:// URL here would let a crafted input
+  // exfiltrate arbitrary server files (LFI: .env, secrets, /etc/passwd). Reject.
+  throw new Error(
+    "Ugyldig lydkilde: kun http(s)-URL eller lagret fil (/api/audio/file/…) er tillatt",
+  );
 }
 
 function seedFromString(value: string) {

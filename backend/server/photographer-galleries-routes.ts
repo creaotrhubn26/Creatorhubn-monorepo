@@ -649,8 +649,8 @@ export function setupPhotographerGalleriesRoutes(
                    to_jsonb($2::text),
                    true
                  )
-             WHERE id = $1`,
-            [linkedProjectId, galleryId],
+             WHERE id = $1 AND user_id = $3`,
+            [linkedProjectId, galleryId, session.userId],
           );
           projectCallbackOk = (updateResult.rowCount ?? 0) > 0;
         } catch (projectErr) {
@@ -1348,7 +1348,42 @@ export function setupPhotographerGalleriesRoutes(
   // GET /api/portal/lookup?code=XXXXXX — public-endepunkt for /portal-siden.
   // Validerer kode + returnerer access_token slik at frontend kan redirecte
   // til /client-gallery/:token. Ingen auth nødvendig.
+  //
+  // Kodene er korte (4–12 tegn) og dette er et uautentisert endepunkt, så en
+  // angriper kan ellers brute-force kode-rommet for å høste gyldige gallery
+  // access_tokens. Per-IP rate-limiter (in-memory, sliding window) kutter den
+  // vektoren uten å påvirke ekte klienter (som slår opp én kode).
+  const portalLookupHits = new Map<string, number[]>();
+  const PORTAL_LOOKUP_WINDOW_MS = 60_000;
+  const PORTAL_LOOKUP_MAX = 20;
+  const portalLookupRateLimited = (ip: string): boolean => {
+    const now = Date.now();
+    const prior = (portalLookupHits.get(ip) || []).filter(
+      (t) => now - t < PORTAL_LOOKUP_WINDOW_MS,
+    );
+    prior.push(now);
+    portalLookupHits.set(ip, prior);
+    // Opportunistisk opprydding så mappet ikke vokser ubegrenset.
+    if (portalLookupHits.size > 5000) {
+      for (const [key, hits] of portalLookupHits) {
+        if (hits.every((t) => now - t >= PORTAL_LOOKUP_WINDOW_MS)) {
+          portalLookupHits.delete(key);
+        }
+      }
+    }
+    return prior.length > PORTAL_LOOKUP_MAX;
+  };
+
   app.get("/api/portal/lookup", async (req, res) => {
+    const clientIp = String(
+      req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+    )
+      .split(',')[0]
+      .trim();
+    if (portalLookupRateLimited(clientIp)) {
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+
     const code = String(req.query?.code || '').trim().toUpperCase();
     if (!code || code.length < 4 || code.length > 12) {
       return res.status(400).json({ error: 'invalid_code_format' });

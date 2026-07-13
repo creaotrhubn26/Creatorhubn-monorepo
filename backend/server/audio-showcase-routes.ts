@@ -621,9 +621,17 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const p = await pool.query(
         `SELECT * FROM audio_review_projects WHERE id = $1::uuid LIMIT 1`, [id]);
       if (!p.rows.length) return res.status(404).json({ error: "not_found" });
+      // Kun eier får hele member-raden (inkl. invite_token = bærer-tilgang
+      // for delingslenker). Ikke-eier team-medlemmer (workspace-lesetilgang)
+      // får samme trygge kolonne-projeksjon som den delte visningen — ellers
+      // lekker vi andres invite_token og kan impersonere/forfalske signering.
+      const isOwner = String(p.rows[0].owner_user_id) === String(s.userId);
+      const membersQuery = isOwner
+        ? `SELECT * FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`
+        : `SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status, contributions FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`;
       const [v, members, tasks] = await Promise.all([
         pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [id]),
-        pool.query(`SELECT * FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`, [id]).catch(() => ({ rows: [] })),
+        pool.query(membersQuery, [id]).catch(() => ({ rows: [] })),
         pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC, created_at ASC`, [id]).catch(() => ({ rows: [] })),
       ]);
       // Koblet SongFlow/EaseVerse-track → tekst + track-status inn i studioet.
