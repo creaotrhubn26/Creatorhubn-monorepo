@@ -291,6 +291,27 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     documentationReference: "backend/server/reddit-engagement-service.ts",
   }),
 
+  // ── Førsteparts systemdata ─────────────────────────────────────────
+  entry({
+    integrationId: "leadgrid-crm",
+    provider: "Creatorhubn",
+    displayName: "Leadgrid CRM (egne salgsdata)",
+    category: "crm",
+    purpose: "Won/lost-utfall per uke fra egen pipeline — fasiten score-modellen kalibreres mot (fase 4)",
+    supportedDataTypes: ["deals_won", "deals_lost", "deals_won_amount"],
+    authenticationType: "none",
+    credentialReference: null,
+    apiBaseUrl: null,
+    apiVersion: null,
+    availabilityStatus: "active",
+    implementationStatus: "active",
+    accessLevel: "app_granted",
+    tenantScope: "per_org",
+    syncMode: "scheduled",
+    termsStatus: "ok",
+    documentationReference: "backend/server/integrations/leadgrid-sales-signal-sync.ts",
+  }),
+
   // ── Offentlige norske datakilder ───────────────────────────────────
   entry({
     integrationId: "brreg",
