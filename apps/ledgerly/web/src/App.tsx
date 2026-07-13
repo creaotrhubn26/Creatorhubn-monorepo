@@ -10,7 +10,16 @@ import {
   TaxScreen,
   VatScreen,
 } from './screens';
+import { AuditScreen, JournalScreen, LedgerScreen } from './screens-pro';
 import { Icons, ToastProvider } from './ui';
+
+export type ViewMode = 'simple' | 'advanced' | 'pro';
+
+const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+  simple: 'Enkel visning',
+  advanced: 'Avansert visning',
+  pro: 'Regnskapsførervisning',
+};
 
 type Screen =
   | { name: 'overview' }
@@ -20,7 +29,10 @@ type Screen =
   | { name: 'bank' }
   | { name: 'reports' }
   | { name: 'vat' }
-  | { name: 'tax' };
+  | { name: 'tax' }
+  | { name: 'ledger' }
+  | { name: 'journal' }
+  | { name: 'audit' };
 
 const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
   { key: 'overview', label: 'Oversikt', icon: 'overview' },
@@ -32,10 +44,27 @@ const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = 
   { key: 'reports', label: 'Rapporter', icon: 'chart' },
 ];
 
+/** Skjermer som kun vises i regnskapsførervisningen. */
+const PRO_NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
+  { key: 'ledger', label: 'Hovedbok', icon: 'chart' },
+  { key: 'journal', label: 'Bilagsjournal', icon: 'inbox' },
+  { key: 'audit', label: 'Revisjonslogg', icon: 'shield' },
+];
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [orgId, setOrg] = useState<string | null>(getOrgId());
   const [screen, setScreen] = useState<Screen>({ name: 'overview' });
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    (sessionStorage.getItem('ledgerly.viewMode') as ViewMode) ?? 'simple',
+  );
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    sessionStorage.setItem('ledgerly.viewMode', mode);
+    if (mode !== 'pro' && ['ledger', 'journal', 'audit'].includes(screen.name)) {
+      setScreen({ name: 'overview' });
+    }
+  };
 
   if (!loggedIn) return <LoginScreen onDone={() => setLoggedIn(true)} />;
   if (!orgId)
@@ -72,8 +101,39 @@ export default function App() {
                 {item.label}
               </button>
             ))}
+            {viewMode === 'pro' && (
+              <>
+                <div className="nav-section">Regnskapsfører</div>
+                {PRO_NAV.map((item) => (
+                  <button
+                    key={item.key}
+                    className={`navlink${screen.name === item.key ? ' active' : ''}`}
+                    aria-current={screen.name === item.key ? 'page' : undefined}
+                    onClick={() => setScreen({ name: item.key } as Screen)}
+                  >
+                    {Icons[item.icon]}
+                    {item.label}
+                  </button>
+                ))}
+              </>
+            )}
           </nav>
           <div className="spacer" />
+          <label htmlFor="viewmode" style={{ margin: '0 10px 4px' }}>
+            Visning
+          </label>
+          <select
+            id="viewmode"
+            value={viewMode}
+            onChange={(e) => changeViewMode(e.target.value as ViewMode)}
+            style={{ margin: '0 0 8px', width: 'auto', marginLeft: 10, marginRight: 10 }}
+          >
+            {(Object.keys(VIEW_MODE_LABELS) as ViewMode[]).map((m) => (
+              <option key={m} value={m}>
+                {VIEW_MODE_LABELS[m]}
+              </option>
+            ))}
+          </select>
           <div className="whoami">{getUserEmail() ?? 'Innlogget'}</div>
           <button
             className="navlink"
@@ -92,6 +152,7 @@ export default function App() {
             <DocumentDetailScreen
               orgId={orgId}
               documentId={screen.id}
+              viewMode={viewMode}
               onBack={() => setScreen({ name: 'documents' })}
             />
           )}
@@ -100,6 +161,9 @@ export default function App() {
           {screen.name === 'reports' && <ReportsScreen orgId={orgId} />}
           {screen.name === 'vat' && <VatScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}
+          {screen.name === 'ledger' && <LedgerScreen orgId={orgId} />}
+          {screen.name === 'journal' && <JournalScreen orgId={orgId} />}
+          {screen.name === 'audit' && <AuditScreen orgId={orgId} />}
         </main>
       </div>
     </ToastProvider>

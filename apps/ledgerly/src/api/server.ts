@@ -687,6 +687,90 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // ── Bilagsjournal og posteringslinjer (avansert/regnskapsførervisning) ──
+  app.get(
+    '/api/organizations/:orgId/journal-entries',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery.parse(req.query);
+        const params: unknown[] = [req.params.orgId];
+        let dateSql = '';
+        if (q.from) {
+          params.push(q.from);
+          dateSql += ` AND e.entry_date >= $${params.length}`;
+        }
+        if (q.to) {
+          params.push(q.to);
+          dateSql += ` AND e.entry_date <= $${params.length}`;
+        }
+        const entries = await deps.db.query(
+          `SELECT e.id, e.entry_number, e.entry_date::TEXT AS entry_date, e.description,
+                  e.status, e.source_document_id, e.reversal_of, e.posted_by, e.posted_by_role,
+                  e.posted_at
+           FROM journal_entries e
+           WHERE e.organization_id = $1${dateSql}
+           ORDER BY e.entry_number DESC
+           LIMIT 300`,
+          params,
+        );
+        const ids = entries.rows.map((r) => r.id);
+        const lines = ids.length
+          ? await deps.db.query(
+              `SELECT entry_id, line_number, account_number, vat_code,
+                      debit_minor, credit_minor, description, original_currency,
+                      original_amount_minor, exchange_rate
+               FROM journal_lines WHERE entry_id = ANY($1)
+               ORDER BY entry_id, line_number`,
+              [ids],
+            )
+          : { rows: [] };
+        const byEntry = new Map<string, unknown[]>();
+        for (const line of lines.rows) {
+          const list = byEntry.get(line.entry_id) ?? [];
+          list.push(line);
+          byEntry.set(line.entry_id, list);
+        }
+        res.json(
+          toJson(entries.rows.map((e) => ({ ...e, lines: byEntry.get(e.id) ?? [] }))),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/documents/:documentId/journal-entry',
+    requireAuth,
+    requireOrgPermission('documents.view'),
+    async (req, res, next) => {
+      try {
+        const entry = await deps.db.query(
+          `SELECT id, entry_number, entry_date::TEXT AS entry_date, description, status
+           FROM journal_entries
+           WHERE organization_id = $1 AND source_document_id = $2
+           ORDER BY entry_number ASC LIMIT 1`,
+          [req.params.orgId, req.params.documentId],
+        );
+        if (!entry.rowCount) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dokumentet er ikke bokført.' } });
+          return;
+        }
+        const lines = await deps.db.query(
+          `SELECT line_number, account_number, vat_code, debit_minor, credit_minor,
+                  description, original_currency, original_amount_minor, exchange_rate, exchange_rate_source
+           FROM journal_lines WHERE entry_id = $1 ORDER BY line_number`,
+          [entry.rows[0].id],
+        );
+        res.json(toJson({ ...entry.rows[0], lines: lines.rows }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   // ── Bank og avstemming ───────────────────────────────────────────────────
   app.post(
     '/api/organizations/:orgId/bank-accounts',
@@ -836,12 +920,18 @@ export function createApiServer(deps: ApiDeps): express.Express {
     requireOrgPermission('audit.view'),
     async (req, res, next) => {
       try {
+        const params: unknown[] = [req.params.orgId];
+        let entitySql = '';
+        if (typeof req.query.entityId === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.entityId)) {
+          params.push(req.query.entityId);
+          entitySql = ` AND entity_id = $${params.length}`;
+        }
         const rows = await deps.db.query(
           `SELECT id, actor_user_id, actor_role, action, entity_type, entity_id, reason,
                   previous_value, new_value, occurred_at
-           FROM audit_events WHERE organization_id = $1
+           FROM audit_events WHERE organization_id = $1${entitySql}
            ORDER BY occurred_at DESC LIMIT 500`,
-          [req.params.orgId],
+          params,
         );
         res.json(toJson(rows.rows));
       } catch (err) {

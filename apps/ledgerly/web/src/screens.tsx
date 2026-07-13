@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useRef } from 'react';
 import { api, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
-import { useLoad } from './App';
+import { useLoad, type ViewMode } from './App';
+import { PostingLines } from './screens-pro';
 import { CardSkeleton, Disclosure, EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
 
 /* ── Delte typer (speiler API-svarene) ─────────────────────────────────── */
@@ -204,11 +206,79 @@ export function DocumentsScreen({ orgId, onOpen }: { orgId: string; onOpen: (id:
       ),
     [orgId, filter],
   );
+  const toast = useToast();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const contentBase64 = btoa(
+        Array.from(new Uint8Array(buffer), (b) => String.fromCharCode(b)).join(''),
+      );
+      const res = await api<{ documentId: string; status: string }>(
+        'POST',
+        `/api/organizations/${orgId}/documents`,
+        {
+          filename: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          contentBase64,
+          // Bilder kommer typisk fra mobilkamera; PDF-er fra filvelger.
+          source: file.type.startsWith('image/') ? 'mobile' : 'upload',
+        },
+      );
+      toast(
+        res.status === 'duplicate'
+          ? 'Dokumentet er allerede registrert (duplikat)'
+          : res.status === 'quarantined'
+            ? 'Dokumentet ble satt i sikkerhetskarantene'
+            : 'Dokument mottatt og tolket',
+        res.status === 'quarantined' ? 'danger' : 'ok',
+      );
+      docs.reload();
+      if (res.status === 'extracted') onOpen(res.documentId);
+    } catch (err) {
+      toast((err as Error).message, 'danger');
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+
   return (
     <div>
       <div className="page-head">
         <h1>Bilagsinnboks</h1>
         <p className="subtitle">Alle mottatte dokumenter, uansett kilde.</p>
+      </div>
+      <div className="panel">
+        <div className="row">
+          <div>
+            <strong>Nytt bilag</strong>
+            <p className="subtitle">
+              Ta bilde av kvitteringen med mobilen eller velg en PDF — vi tolker den og foreslår
+              bokføring.
+            </p>
+          </div>
+          <div style={{ flex: '0 0 auto' }}>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/pdf,image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              aria-label="Last opp bilag"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadFile(file);
+              }}
+            />
+            <button className="primary" disabled={uploading} onClick={() => fileInput.current?.click()}>
+              {uploading ? 'Laster opp…' : 'Last opp bilag'}
+            </button>
+          </div>
+        </div>
       </div>
       <div className="actions" style={{ marginBottom: 14 }}>
         {INBOX_FILTERS.map((f) => (
@@ -272,10 +342,12 @@ export function DocumentsScreen({ orgId, onOpen }: { orgId: string; onOpen: (id:
 export function DocumentDetailScreen({
   orgId,
   documentId,
+  viewMode,
   onBack,
 }: {
   orgId: string;
   documentId: string;
+  viewMode: ViewMode;
   onBack: () => void;
 }) {
   interface Detail {
@@ -310,6 +382,19 @@ export function DocumentDetailScreen({
   const [busy, setBusy] = useState(false);
 
   const d = detail.data;
+  const isPosted = d?.document.status === 'posted';
+  const showTechnical = viewMode !== 'simple';
+  const entry = useLoad(
+    () =>
+      isPosted && showTechnical
+        ? api<{
+            entry_number: string;
+            entry_date: string;
+            lines: Parameters<typeof PostingLines>[0]['lines'];
+          }>('GET', `/api/organizations/${orgId}/documents/${documentId}/journal-entry`)
+        : Promise.resolve(null),
+    [orgId, documentId, isPosted, showTechnical],
+  );
   const suggestion = d?.suggestions.find((s) => s.status === 'proposed') ?? d?.suggestions[0];
   const needsRate = d?.extraction?.currency && d.extraction.currency !== 'NOK';
   const sugAccount = suggestion?.suggestion.suggestedAccountNumber;
@@ -538,6 +623,15 @@ export function DocumentDetailScreen({
       )}
       {d?.document.status === 'posted' && !posted && (
         <div className="success">Dette bilaget er bokført.</div>
+      )}
+      {showTechnical && entry.data && (
+        <div className="panel">
+          <h2>
+            Postering — bilag nr. {entry.data.entry_number}{' '}
+            <span className="badge neutral plain">{entry.data.entry_date}</span>
+          </h2>
+          <PostingLines lines={entry.data.lines} />
+        </div>
       )}
     </div>
   );

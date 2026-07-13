@@ -208,6 +208,47 @@ describe('Vertikal flyt over HTTP', () => {
     expect(res.body.calculatedAt).toBeDefined();
   });
 
+  it('bilagsjournalen returnerer posteringer med linjer (regnskapsførervisning)', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/journal-entries`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(2); // original + reversering
+    const entry = res.body.find((e: { entry_number: string }) => Number(e.entry_number) === 1);
+    expect(entry.lines.length).toBeGreaterThanOrEqual(3);
+    const debit = entry.lines.reduce((a: bigint, l: { debit_minor: string }) => a + BigInt(l.debit_minor), 0n);
+    const credit = entry.lines.reduce((a: bigint, l: { credit_minor: string }) => a + BigInt(l.credit_minor), 0n);
+    expect(debit).toBe(credit);
+    // Ansatt uten rapportrettighet får ikke journalen.
+    await request(app)
+      .get(`/api/organizations/${orgId}/journal-entries`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .expect(403);
+  });
+
+  it('posteringslinjer kan hentes per dokument (avansert visning)', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/documents/${documentId}/journal-entry`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(Number(res.body.entry_number)).toBe(1);
+    const accounts = res.body.lines.map((l: { account_number: string }) => l.account_number);
+    expect(accounts).toContain('6551');
+    expect(accounts).toContain('2710');
+    expect(accounts).toContain('2400');
+  });
+
+  it('revisjonsloggen kan filtreres per entitet (kontrollspor)', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/audit-events?entityId=${documentId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    for (const event of res.body) {
+      expect(event.entity_id).toBe(documentId);
+    }
+  });
+
   it('integrasjonsstatus er ærlig: Gmail er sandbox, ikke aktiv', async () => {
     const res = await request(app)
       .get('/api/integrations/status')

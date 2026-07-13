@@ -80,3 +80,24 @@ Implementert i `web/src/styles.css` + `web/src/ui.tsx`:
   på innlogging, `prefers-reduced-motion` respekteres.
 - **Verifisering**: hele flyten kjøres i browser av `scripts/ui-smoke.mjs` (lys modus);
   mørk modus er visuelt verifisert med egne skjermbilder.
+
+## Presentasjonsnivåer (implementert)
+
+Visningsvelgeren i sidemenyen (`#viewmode`, lagres per sesjon) bytter mellom:
+
+- **Enkel visning** (standard): handlinger og forklaringer på vanlig norsk, ingen
+  tekniske koder i forgrunnen.
+- **Avansert visning**: bilagsdetaljen viser i tillegg posteringslinjene for bokførte
+  bilag (linje, konto, MVA-kode, debet/kredit, valutainfo) via
+  `GET /documents/:id/journal-entry`.
+- **Regnskapsførervisning**: tre ekstra skjermer i `web/src/screens-pro.tsx` —
+  **Hovedbok** (per konto, med reversert-merking), **Bilagsjournal** (alle bilag i
+  nummerrekkefølge med ekspanderbare posteringslinjer) og **Revisjonslogg**
+  (hendelse, entitet, rolle, begrunnelse). RBAC gjelder fortsatt: rollen må ha
+  `reports.view`/`audit.view` — visningsvelgeren gir ingen nye rettigheter.
+
+## Mobil kvitteringsfangst
+
+Bilagsinnboksen har «Last opp bilag» med `<input type="file" accept="application/pdf,image/*"
+capture="environment">` — på mobil åpnes kameraet direkte. Bilder registreres med kilde
+`mobile`, PDF-er med `upload`, og går gjennom samme pipeline (karantene/duplikat/forslag).

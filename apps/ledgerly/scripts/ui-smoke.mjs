@@ -80,6 +80,50 @@ try {
   await page.waitForSelector('text=Ikke medregnet');
   await page.screenshot({ path: `${SHOTS}/07-skatt.png`, fullPage: true });
 
+  // 9. Avansert visning: posteringslinjer på bokført bilag
+  await page.selectOption('#viewmode', 'advanced');
+  await page.click('nav button:has-text("Bilagsinnboks")');
+  await page.click('button:has-text("Bokført")');
+  await page.click('tr:has-text("faktura-2024-1042.pdf") >> nth=0');
+  await page.waitForSelector('h2:has-text("Postering — bilag nr. 1")', { timeout: 6000 });
+  const line6551 = await page.locator('td:has-text("6551")').count();
+  if (line6551 < 1) await fail('Posteringslinjene mangler konto 6551 i avansert visning');
+  await page.screenshot({ path: `${SHOTS}/09-avansert-postering.png`, fullPage: true });
+
+  // 10. Regnskapsførervisning: hovedbok, bilagsjournal, revisjonslogg
+  await page.selectOption('#viewmode', 'pro');
+  await page.click('nav button:has-text("Hovedbok")');
+  await page.waitForSelector('h1:has-text("Hovedbok")');
+  await page.fill('#glacc', '2710');
+  await page.waitForSelector('td:has-text("2710")', { timeout: 5000 });
+  await page.screenshot({ path: `${SHOTS}/10-hovedbok.png`, fullPage: true });
+
+  await page.click('nav button:has-text("Bilagsjournal")');
+  await page.waitForSelector('h1:has-text("Bilagsjournal")');
+  await page.click('tr.clickable >> nth=0');
+  await page.waitForSelector('th:has-text("Linje")', { timeout: 5000 });
+  await page.screenshot({ path: `${SHOTS}/11-bilagsjournal.png`, fullPage: true });
+
+  await page.click('nav button:has-text("Revisjonslogg")');
+  await page.waitForSelector('text=journal_entry.posted', { timeout: 5000 });
+  await page.screenshot({ path: `${SHOTS}/12-revisjonslogg.png`, fullPage: true });
+
+  // 11. Mobil-/filopplasting fra bilagsinnboksen
+  await page.selectOption('#viewmode', 'simple');
+  await page.click('nav button:has-text("Bilagsinnboks")');
+  await page.waitForSelector('button:has-text("Last opp bilag")');
+  const pdfBytes = Buffer.from(
+    '%PDF-1.7\nElkjøp Norge AS\nKvittering\nUSB-kabel\nTotal: NOK 249,00\n%%EOF',
+    'utf8',
+  );
+  await page.setInputFiles('input[type="file"]', {
+    name: 'kvittering-elkjop.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdfBytes,
+  });
+  await page.waitForSelector('.toast', { timeout: 8000 });
+  await page.screenshot({ path: `${SHOTS}/13-opplasting.png`, fullPage: true });
+
   console.log('UI-SMOKE OK');
   await browser.close();
   process.exit(0);
