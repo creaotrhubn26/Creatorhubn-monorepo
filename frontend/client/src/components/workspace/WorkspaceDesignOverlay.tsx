@@ -13,6 +13,15 @@
 import React from 'react';
 import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, sanitizeHtmlComponent, formatSourceValue, type ElementEdits, type InsertSpec } from './elementEdits';
 
+// rgb()/rgba() → #rrggbb for native fargevelger (<input type=color> krever hex).
+const rgbToHex = (c: string): string => {
+  if (/^#[0-9a-f]{6}$/i.test(c || '')) return c;
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || '');
+  if (!m) return '#000000';
+  const h = (n: number) => Math.max(0, Math.min(255, +n)).toString(16).padStart(2, '0');
+  return `#${h(+m[1])}${h(+m[2])}${h(+m[3])}`;
+};
+
 type ElDesc = {
   tag: string; id?: string; cls?: string; text?: string;
   style: Record<string, string>; rect: { x: number; y: number; w: number; h: number };
@@ -189,6 +198,23 @@ export default function WorkspaceDesignOverlay({
 
   const inOverlay = (t: EventTarget | null) => t instanceof Element && !!t.closest('[data-chd]');
 
+  // Velg et element for redigering (fanger computed style → insp). Gjenbrukes av klikk OG
+  // forelder/barn-navigasjonen (klikk lander ofte på en nested node — pilene treffer riktig nivå).
+  const selectElement = (el: HTMLElement | null) => {
+    if (!el || el === document.body || el === document.documentElement || inOverlay(el)) return;
+    const cs = getComputedStyle(el);
+    setSel(el); setSelDesc(describe(el));
+    setInsp({
+      fontSize: String(Math.round(parseFloat(cs.fontSize)) || ''),
+      fontWeight: cs.fontWeight, color: cs.color, background: cs.backgroundColor,
+      borderRadius: String(Math.round(parseFloat(cs.borderRadius)) || 0),
+      padding: cs.padding, display: cs.display, flexDirection: cs.flexDirection,
+      gap: parseFloat(cs.gap) ? String(Math.round(parseFloat(cs.gap))) : '',
+      justifyContent: cs.justifyContent, alignItems: cs.alignItems, opacity: cs.opacity,
+      text: el.children.length === 0 ? (el.textContent || '') : ' ',
+    });
+  };
+
   React.useEffect(() => {
     if (mode !== 'annotate' && mode !== 'edit') { setHover(null); return; }
     const onMove = (e: MouseEvent) => {
@@ -214,23 +240,7 @@ export default function WorkspaceDesignOverlay({
         setLastPlaced({ id, x: 0, y: 0 });
         setSaveMsg(`Plassert «${p.label}» — «Lagre endringer» for å publisere.`);
       } else {
-        const el = t as HTMLElement, cs = getComputedStyle(el);
-        setSel(el); setSelDesc(describe(el));
-        setInsp({
-          fontSize: String(Math.round(parseFloat(cs.fontSize)) || ''),
-          fontWeight: cs.fontWeight,
-          color: cs.color,
-          background: cs.backgroundColor,
-          borderRadius: String(Math.round(parseFloat(cs.borderRadius)) || 0),
-          padding: cs.padding,
-          display: cs.display,
-          flexDirection: cs.flexDirection,
-          gap: parseFloat(cs.gap) ? String(Math.round(parseFloat(cs.gap))) : '',
-          justifyContent: cs.justifyContent,
-          alignItems: cs.alignItems,
-          // Tekst kun for løvnoder (ingen element-barn) → unngå å nuke barn-innhold.
-          text: el.children.length === 0 ? (el.textContent || '') : ' ',
-        });
+        selectElement(t as HTMLElement);
       }
     };
     document.addEventListener('mousemove', onMove, true);
@@ -1047,7 +1057,33 @@ export default function WorkspaceDesignOverlay({
             {!selDesc && <p style={{ color: INK2, fontSize: 13, margin: 0 }}>Klikk et element i shell-en for å redigere egenskapene. Endringene forhåndsvises live og pakkes til Claude Code.</p>}
             {selDesc && (
               <>
-                <code style={{ fontSize: 11.5, color: INK, background: '#fff', border: `1px solid ${LINE}`, borderRadius: 6, padding: '5px 7px', wordBreak: 'break-all' }}>{selOf(selDesc)}</code>
+                {/* Element-navigasjon: klikk lander ofte på en nested node → pilene treffer riktig nivå. */}
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button data-chd onClick={() => selectElement(sel?.parentElement || null)}
+                    disabled={!sel?.parentElement || sel.parentElement === document.body}
+                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg forelder-elementet">⬆ Forelder</button>
+                  <button data-chd onClick={() => selectElement((sel?.firstElementChild as HTMLElement) || null)}
+                    disabled={!sel?.firstElementChild}
+                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg første barn-element">⬇ Barn</button>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#7c3aed' }}>{sel ? `<${sel.tagName.toLowerCase()}>` : ''}</span>
+                </div>
+                {sel && (() => {
+                  const chain: HTMLElement[] = []; let n: HTMLElement | null = sel;
+                  while (n && n !== document.body && chain.length < 4) { chain.unshift(n); n = n.parentElement; }
+                  return chain.length > 1 ? (
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', fontSize: 10.5 }}>
+                      {chain.map((el, i) => (
+                        <React.Fragment key={i}>
+                          {i > 0 && <span style={{ color: INK2 }}>›</span>}
+                          <button data-chd onClick={() => selectElement(el)}
+                            style={{ border: 'none', background: el === sel ? '#ede9fe' : 'transparent', color: el === sel ? '#7c3aed' : INK2, borderRadius: 4, padding: '1px 5px', cursor: 'pointer', fontSize: 10.5 }}>
+                            {el.tagName.toLowerCase()}{el.id ? `#${el.id}` : ''}</button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+                <code style={{ fontSize: 10.5, color: INK2, background: '#fff', border: `1px solid ${LINE}`, borderRadius: 6, padding: '4px 7px', wordBreak: 'break-all' }}>{selOf(selDesc)}</code>
 
                 {suggestions.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1137,18 +1173,25 @@ export default function WorkspaceDesignOverlay({
                 </select>
                 <label style={flabel}>Tekstfarge</label>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.color, flexShrink: 0 }} />
+                  <input data-chd type="color" aria-label="Tekstfarge-velger" value={rgbToHex(insp.color ?? '')} onChange={(e) => applyStyle('color', 'color', e.target.value)}
+                    style={{ width: 30, height: 28, padding: 0, border: `1px solid ${LINE}`, borderRadius: 5, background: 'none', cursor: 'pointer', flexShrink: 0 }} />
                   <input data-chd aria-label="Tekstfarge" style={field} value={insp.color ?? ''} onChange={(e) => applyStyle('color', 'color', e.target.value)} />
                 </div>
 
                 <div style={section}>Utseende</div>
                 <label style={flabel}>Bakgrunn</label>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.background, flexShrink: 0 }} />
+                  <input data-chd type="color" aria-label="Bakgrunnsfarge-velger" value={rgbToHex(insp.background ?? '')} onChange={(e) => applyStyle('background', 'background-color', e.target.value)}
+                    style={{ width: 30, height: 28, padding: 0, border: `1px solid ${LINE}`, borderRadius: 5, background: 'none', cursor: 'pointer', flexShrink: 0 }} />
                   <input data-chd aria-label="Bakgrunnsfarge" style={field} value={insp.background ?? ''} onChange={(e) => applyStyle('background', 'background-color', e.target.value)} />
                 </div>
-                <label style={flabel}>Radius (px)</label>
-                <input data-chd aria-label="Radius i piksler" type="number" style={field} value={insp.borderRadius ?? ''} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} />
+                <label style={flabel}>Radius ({insp.borderRadius || 0}px)</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input data-chd type="range" aria-label="Radius-slider" min={0} max={40} value={parseFloat(insp.borderRadius || '0') || 0} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} style={{ flex: 1 }} />
+                  <input data-chd aria-label="Radius i piksler" type="number" style={{ ...field, width: 62, flexShrink: 0 }} value={insp.borderRadius ?? ''} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} />
+                </div>
+                <label style={flabel}>Gjennomsiktighet ({Math.round((parseFloat(insp.opacity ?? '1') || 1) * 100)}%)</label>
+                <input data-chd type="range" aria-label="Gjennomsiktighet-slider" min={0} max={1} step={0.05} value={parseFloat(insp.opacity ?? '1') || 1} onChange={(e) => applyStyle('opacity', 'opacity', e.target.value)} style={{ width: '100%' }} />
 
                 <div style={section}>Spacing</div>
                 <label style={flabel}>Padding</label>
