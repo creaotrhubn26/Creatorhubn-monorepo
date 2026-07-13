@@ -30,6 +30,8 @@
 
 import { useEffect, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
+import { useElementEdits } from '@/components/workspace/elementEdits';
+import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
@@ -173,6 +175,11 @@ function injectJsonLd(id: string, schema: Record<string, unknown>) {
 
 export default function LeadgridLanding() {
   useLandingBrand('leadgrid', { landingAccent: '--lgl-accent', landingBg: '--lgl-bg', landingText: '--lgl-text' });
+  // CreatorHub Design (per-element-lag): anvend lagrede edits + ?design=1 live-editor.
+  useElementEdits('leadgrid');
+  const [designMode, setDesignMode] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   const [expStartOpen, setExpStartOpen] = useState(false);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
@@ -290,6 +297,7 @@ export default function LeadgridLanding() {
       fontFamily: '-apple-system, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif',
       overflowX: 'hidden',
     }}>
+      {designMode && <WorkspaceDesignOverlay workspace="leadgrid" targetFile="frontend/client/src/pages/leadgrid-landing.tsx" onClose={() => setDesignMode(false)} />}
       <StickyHeader />
       <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
