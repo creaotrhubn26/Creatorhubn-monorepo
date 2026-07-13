@@ -56,14 +56,15 @@ export interface BenchmarkSyncResult {
 
 export async function syncCompanyFinancials(pool: Pool): Promise<BenchmarkSyncResult> {
   const errors: string[] = [];
-  // Uhentede segment-selskaper, størst først (AS m/ ansatte har oftest regnskap)
+  // Uhentede segment-selskaper, størst først (AS m/ ansatte har oftest
+  // regnskap). GROUP BY + max() unngår DISTINCT/ORDER BY-konflikten som
+  // felte første kjøring.
   const candidates = await pool.query<{ org_nr: string }>(
-    `SELECT DISTINCT pc.org_nr
+    `SELECT pc.org_nr
        FROM prospect_companies pc
       WHERE NOT EXISTS (SELECT 1 FROM company_financials_checked c WHERE c.org_nr = pc.org_nr)
-      ORDER BY pc.org_nr IN (
-        SELECT org_nr FROM prospect_companies WHERE employees > 0
-      ) DESC, pc.org_nr
+      GROUP BY pc.org_nr
+      ORDER BY max(COALESCE(pc.employees, 0)) DESC, pc.org_nr
       LIMIT ${MAX_COMPANIES_PER_RUN}`,
   );
 
