@@ -132,6 +132,10 @@ export default function WorkspaceDesignOverlay({
   const [insertEdits, setInsertEdits] = React.useState<Record<string, InsertSpec[]>>({});
   const [srcEdits, setSrcEdits] = React.useState<Record<string, string>>({}); // selektor → bytt-bilde-URL
   const [imgUrl, setImgUrl] = React.useState('');
+  const [hrefEdits, setHrefEdits] = React.useState<Record<string, string>>({}); // selektor → lenke-mål
+  const [bgEdits, setBgEdits] = React.useState<Record<string, string>>({}); // selektor → bakgrunnsbilde-URL
+  const [hrefUrl, setHrefUrl] = React.useState('');
+  const [bgUrl, setBgUrl] = React.useState('');
   // Insert-skjema
   const [insType, setInsType] = React.useState('heading');
   const [insText, setInsText] = React.useState('');
@@ -269,10 +273,46 @@ export default function WorkspaceDesignOverlay({
     if (url) { sel.setAttribute('src', url); setSrcEdits((s) => ({ ...s, [key]: url })); }
     else { setSrcEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
   };
-  // Synk bilde-URL-feltet med valgt element (forhåndsutfyll evt. eksisterende override).
+  // Endre målet på en eksisterende lenke (<a>): sett href live + lagre.
+  const applyHref = (url: string) => {
+    setHrefUrl(url);
+    if (!sel || sel.tagName !== 'A') return;
+    const key = uniqueSelector(sel);
+    if (url) { sel.setAttribute('href', url); setHrefEdits((s) => ({ ...s, [key]: url })); }
+    else { setHrefEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
+  };
+  // Sett/fjern bakgrunnsbilde på valgt element (URL validert server-side; url() bygges trygt i runtime).
+  const applyBg = (url: string) => {
+    setBgUrl(url);
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    if (url) { sel.style.background = `url("${url}") center / cover no-repeat`; setBgEdits((s) => ({ ...s, [key]: url })); }
+    else { sel.style.background = ''; setBgEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
+  };
+  // Skjul et element (display:none i base-edits) / vis igjen (fjern regelen).
+  const hideElement = () => {
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    sel.style.setProperty('display', 'none');
+    setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), display: 'none' } }));
+    setSaveMsg('Element skjult — se «Skjulte elementer» for å vise igjen.');
+  };
+  const showElement = (key: string) => {
+    setEdits((e) => { const props = { ...(e[key] || {}) }; delete props.display; const n = { ...e }; if (Object.keys(props).length) n[key] = props; else delete n[key]; return n; });
+    try { document.querySelectorAll(key).forEach((el) => (el as HTMLElement).style.removeProperty('display')); } catch { /* ugyldig selektor */ }
+  };
+  // Alle skjulte selektorer (avledet fra edits der display==='none') — for gjenopprettings-lista.
+  const hiddenKeys = Object.entries(edits).filter(([, p]) => (p as Record<string, string>)?.display === 'none').map(([k]) => k);
+
+  // Synk felt (bilde/lenke/bakgrunn) med valgt element (forhåndsutfyll evt. eksisterende override).
   React.useEffect(() => {
-    if (sel && sel.tagName === 'IMG') { try { setImgUrl(srcEdits[uniqueSelector(sel)] || ''); } catch { setImgUrl(''); } }
-    else setImgUrl('');
+    if (!sel) { setImgUrl(''); setHrefUrl(''); setBgUrl(''); return; }
+    try {
+      const key = uniqueSelector(sel);
+      setImgUrl(sel.tagName === 'IMG' ? (srcEdits[key] || '') : '');
+      setHrefUrl(sel.tagName === 'A' ? (hrefEdits[key] || '') : '');
+      setBgUrl(bgEdits[key] || '');
+    } catch { setImgUrl(''); setHrefUrl(''); setBgUrl(''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
 
@@ -490,6 +530,8 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
           if (d.tokens.elementSrc && typeof d.tokens.elementSrc === 'object') setSrcEdits(d.tokens.elementSrc as Record<string, string>);
+          if (d.tokens.elementHref && typeof d.tokens.elementHref === 'object') setHrefEdits(d.tokens.elementHref as Record<string, string>);
+          if (d.tokens.elementBg && typeof d.tokens.elementBg === 'object') setBgEdits(d.tokens.elementBg as Record<string, string>);
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
           if (d.tokens.elementInteractions && typeof d.tokens.elementInteractions === 'object') setIntxEdits(d.tokens.elementInteractions as Record<string, { action: string; target: string }>);
           if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
@@ -514,7 +556,7 @@ export default function WorkspaceDesignOverlay({
       setVariants(updated);
       return { designVariants: updated, variantConfig: vcfg };
     }
-    return { ...currentMaps(), elementInteractions: intxEdits, elementSrc: srcEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
+    return { ...currentMaps(), elementInteractions: intxEdits, elementSrc: srcEdits, elementHref: hrefEdits, elementBg: bgEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
   };
   const saveAsVariant = () => {
     const name = newVariantName.trim();
@@ -847,6 +889,17 @@ export default function WorkspaceDesignOverlay({
                 )}
               </div>
             )}
+            {hiddenKeys.length > 0 && (
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Skjulte elementer ({hiddenKeys.length})</div>
+                {hiddenKeys.map((k) => (
+                  <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ flex: 1, fontSize: 10.5, color: INK2, wordBreak: 'break-all' }}>{k.length > 46 ? k.slice(0, 46) + '…' : k}</span>
+                    <button data-chd onClick={() => showElement(k)} style={{ ...btn(false), padding: '2px 8px', fontSize: 11 }}>Vis igjen</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Plassér datakilde på siden</div>
               {placingSource ? (
@@ -1040,6 +1093,21 @@ export default function WorkspaceDesignOverlay({
                       </>
                     )}
 
+                    {sel && sel.tagName === 'A' && (
+                      <>
+                        <div style={section}>Lenke-mål</div>
+                        <input data-chd aria-label="Lenke-URL" placeholder="/side eller https://…" value={hrefUrl}
+                          onChange={(e) => applyHref(e.target.value)} style={field} />
+                      </>
+                    )}
+
+                    <div style={section}>Bakgrunnsbilde</div>
+                    <input data-chd aria-label="Bakgrunnsbilde-URL" placeholder="/hero.jpg eller https://… (tøm for å fjerne)" value={bgUrl}
+                      onChange={(e) => applyBg(e.target.value)} style={field} />
+
+                    <button data-chd onClick={hideElement} style={{ ...btn(false), padding: '5px 10px', fontSize: 11.5, alignSelf: 'flex-start' }}
+                      title="Skjul dette elementet (display:none). Vises igjen fra «Skjulte elementer»-lista.">🚫 Skjul dette elementet</button>
+
                     <div style={section}>Bind til datakilde</div>
                     <select data-chd aria-label="Bind tekst til datakilde" style={field}
                       value={sel ? (bindEdits[uniqueSelector(sel)] || '') : ''} onChange={(e) => applyBinding(e.target.value)}>
@@ -1063,6 +1131,10 @@ export default function WorkspaceDesignOverlay({
                   <div style={{ flex: 1 }}><label style={flabel}>Vekt</label>
                     <input data-chd aria-label="Font-vekt" style={field} value={insp.fontWeight ?? ''} onChange={(e) => applyStyle('fontWeight', 'font-weight', e.target.value)} /></div>
                 </div>
+                <label style={flabel}>Skrifttype</label>
+                <select data-chd aria-label="Skrifttype" style={field} value={insp.fontFamily ?? ''} onChange={(e) => applyStyle('fontFamily', 'font-family', e.target.value)}>
+                  {([['Standard (arv)', ''], ['System', 'system-ui, sans-serif'], ['Arial', 'Arial, sans-serif'], ['Helvetica', 'Helvetica, Arial, sans-serif'], ['Verdana', 'Verdana, sans-serif'], ['Trebuchet', 'Trebuchet MS, sans-serif'], ['Georgia', 'Georgia, serif'], ['Times', 'Times New Roman, serif'], ['Courier', 'Courier New, monospace'], ['Impact', 'Impact, sans-serif']] as const).map(([lbl, val]) => <option key={lbl} value={val}>{lbl}</option>)}
+                </select>
                 <label style={flabel}>Tekstfarge</label>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${LINE}`, background: insp.color, flexShrink: 0 }} />

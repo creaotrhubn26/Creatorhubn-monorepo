@@ -69,7 +69,7 @@ function sanitizeElementEdits(input: unknown): Record<string, Record<string, str
   const out: Record<string, Record<string, string>> = {};
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
   const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
-    'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
+    'border-width', 'border-style', 'font-size', 'font-weight', 'font-family', 'letter-spacing', 'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
     // Auto-layout (flex): container-oppsett.
     'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap',
     // Finjuster-nudge (translate flytter visuelt uten å reflow'e naboer). VAL_RE tillater translate(px,px).
@@ -100,6 +100,29 @@ function sanitizeElementText(input: unknown): Record<string, string> {
 // Bytt bildekilde på et EKSISTERENDE <img> (f.eks. logo): selektor → trygg URL (relativ eller https,
 // aldri javascript:/data-uri-scripts). Runtime setter img.src.
 function sanitizeElementSrc(input: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  let n = 0;
+  for (const [sel, url] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 200) break;
+    if (CHD_SEL_RE.test(sel) && !sel.includes('..') && chdSafeUrl(url)) { out[sel] = url; n++; }
+  }
+  return out;
+}
+// Endre målet på en eksisterende lenke/CTA: selektor → trygg URL. Runtime setter <a>.href.
+function sanitizeElementHref(input: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  let n = 0;
+  for (const [sel, url] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 200) break;
+    if (CHD_SEL_RE.test(sel) && !sel.includes('..') && chdSafeUrl(url)) { out[sel] = url; n++; }
+  }
+  return out;
+}
+// Bakgrunnsbilde: selektor → trygg URL. Runtime bygger `background-image: url("<url>")` (url-en er
+// validert av chdSafeUrl → aldri javascript:/breakout; generelle edits blokkerer url() nettopp derfor).
+function sanitizeElementBg(input: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
   let n = 0;
@@ -229,6 +252,10 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   if ((patch as any)?.elementText !== undefined) clean.elementText = sanitizeElementText((patch as any).elementText);
   // Per-element BILDEKILDE (bytt logo/bilde): { [selektor]: trygg URL }.
   if ((patch as any)?.elementSrc !== undefined) clean.elementSrc = sanitizeElementSrc((patch as any).elementSrc);
+  // Per-element LENKE-MÅL (endre hvor en eksisterende lenke peker): { [selektor]: trygg URL }.
+  if ((patch as any)?.elementHref !== undefined) clean.elementHref = sanitizeElementHref((patch as any).elementHref);
+  // Per-element BAKGRUNNSBILDE: { [selektor]: trygg URL }.
+  if ((patch as any)?.elementBg !== undefined) clean.elementBg = sanitizeElementBg((patch as any).elementBg);
   // Per-element ANIMASJON (Edit-modus): { [selektor]: preset-nøkkel }. Kun nøkler fra fast katalog.
   if ((patch as any)?.elementAnim !== undefined) clean.elementAnim = sanitizeElementAnim((patch as any).elementAnim);
   // Per-element INNSATTE elementer (Insert-modus): { [anker-selektor]: [{ id, type, pos, text?, href?, src? }] }.

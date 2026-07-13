@@ -29,7 +29,7 @@ export function detectDesignWorkspace(hostname?: string): string {
 // egenskaper — ikke position/display/etc. som lett bryter layout katastrofalt.
 export const EDITABLE_CSS_PROPS = new Set<string>([
   'color', 'background-color', 'background', 'border-color', 'border-radius',
-  'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing',
+  'border-width', 'border-style', 'font-size', 'font-weight', 'font-family', 'letter-spacing',
   'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
   // Auto-layout (flex).
   'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap',
@@ -170,6 +170,52 @@ function applyElementSrc(srcMap: ElementSrc): (() => void) | undefined {
     requestAnimationFrame(() => { scheduled = false; apply(); });
   });
   try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+export type ElementHref = Record<string, string>; // selektor → trygt lenke-mål
+export type ElementBg = Record<string, string>;   // selektor → trygg bakgrunnsbilde-URL
+
+/** Endre målet på eksisterende lenker (<a>): kun trygge URL-er. Observer-reapply (React kan re-rendre). */
+function applyElementHref(hrefMap: ElementHref): (() => void) | undefined {
+  const entries = Object.entries(hrefMap || {}).filter(([sel, url]) => isSafeSelector(sel) && isSafeUrl(url));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, url] of entries) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => {
+          if (el.tagName === 'A' && el.getAttribute('href') !== url) el.setAttribute('href', url);
+        });
+      } catch { /* ugyldig selektor */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; apply(); }); });
+  try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+/** Sett bakgrunnsbilde på elementer. URL-en er allerede validert (isSafeUrl) → bygg url("...") trygt
+ *  (aldri en rå bruker-kontrollert url()-streng). Observer-reapply mot React-overskriving. */
+function applyElementBg(bgMap: ElementBg): (() => void) | undefined {
+  const entries = Object.entries(bgMap || {}).filter(([sel, url]) => isSafeSelector(sel) && isSafeUrl(url));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, url] of entries) {
+      const val = `url("${url}") center / cover no-repeat`;
+      try {
+        document.querySelectorAll(sel).forEach((el) => {
+          const h = el as HTMLElement;
+          if (h.style.getPropertyValue('background-image').indexOf(url) === -1) h.style.background = val;
+        });
+      } catch { /* ugyldig selektor */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; apply(); }); });
+  try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] }); } catch { /* no body */ }
   return () => obs.disconnect();
 }
 
@@ -410,6 +456,8 @@ export function useElementEdits(workspace: string): void {
     let cleanupVariant: (() => void) | undefined;
     let cleanupIntx: (() => void) | undefined;
     let cleanupSrc: (() => void) | undefined;
+    let cleanupHref: (() => void) | undefined;
+    let cleanupBg: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -447,6 +495,14 @@ export function useElementEdits(workspace: string): void {
         if (t.elementSrc && typeof t.elementSrc === 'object') {
           cleanupSrc = applyElementSrc(t.elementSrc as ElementSrc);
         }
+        // Lenke-mål (endre hvor eksisterende lenker peker) — top-nivå.
+        if (t.elementHref && typeof t.elementHref === 'object') {
+          cleanupHref = applyElementHref(t.elementHref as ElementHref);
+        }
+        // Bakgrunnsbilder — top-nivå.
+        if (t.elementBg && typeof t.elementBg === 'object') {
+          cleanupBg = applyElementBg(t.elementBg as ElementBg);
+        }
         // Live datakilde-verdier (admin-metrics + publicSafe DB-connectors) driver BÅDE source-
         // innsettinger (tall plassert på siden) OG data-bindinger. Hentes én gang, fletter inn.
         const hasInserts = vm.elementInserts && typeof vm.elementInserts === 'object';
@@ -465,6 +521,6 @@ export function useElementEdits(workspace: string): void {
         }
       })
       .catch(() => {});
-    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); if (cleanupIntx) cleanupIntx(); if (cleanupSrc) cleanupSrc(); };
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); if (cleanupIntx) cleanupIntx(); if (cleanupSrc) cleanupSrc(); if (cleanupHref) cleanupHref(); if (cleanupBg) cleanupBg(); };
   }, [workspace]);
 }
