@@ -24,6 +24,7 @@ import { syncSalesTriggers } from "./sales-trigger-sync.js";
 import { syncSsbTerritorySignals } from "./ssb-territory-signal-sync.js";
 import { runKonkursWatch } from "./konkurs-watch.js";
 import { TENDER_REQUIREMENT_LEXICON } from "./sales-trigger-sync.js";
+import { runMediaWatch } from "./media-watch.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -106,6 +107,23 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[tender-requirements] failed", err);
       return res.status(500).json({ error: "aggregate_failed" });
+    }
+  });
+
+  // RSS-bransjevakt: norske medie-feeds → strategy_media-triggere.
+  app.post("/api/integrations/sync/media-watch", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await runMediaWatch(pool);
+      if (result.errors.length > 0) console.warn("[media-watch]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[media-watch] failed", err);
+      return res.status(500).json({ error: "watch_failed" });
     }
   });
 
