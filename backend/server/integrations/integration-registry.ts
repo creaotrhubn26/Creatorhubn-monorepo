@@ -84,8 +84,11 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     authenticationType: "oauth2_app",
     credentialReference: null,
     enabled: false,
-    availabilityStatus: "awaitingApproval", // søknad sendt 2026-07-10
-    implementationStatus: "discovered",
+    availabilityStatus: "rejected", // søknad sendt 2026-07-10, AVSLÅTT 2026-07-13
+    // («does not meet our access guidelines» — kan re-søkes senere med
+    // modnere prosjektbeskrivelse). Fallback-kjeden dekker behovet:
+    // keyword-planner (ekte volum) + manual-trend-import (bruker-eksportert CSV).
+    implementationStatus: "rejected",
     accessLevel: "app_granted",
     tenantScope: "shared",
     syncMode: "scheduled",
