@@ -28,6 +28,7 @@ import { runMediaWatch } from "./media-watch.js";
 import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
+import { supplierProfileSchema } from "./supplier-profile.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -225,6 +226,47 @@ export function registerOwnedChannelsRoutes({
       console.error("[tender-strategy] failed", err);
       return res.status(500).json({ error: "brief_failed" });
     }
+  });
+
+  // Leverandørprofil: hvilke anbudskrav kan org-en dokumentere?
+  app.get("/api/integrations/supplier-profile", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const r = await pool.query(
+      `SELECT capabilities, notes, updated_at::text FROM supplier_profile WHERE organization_id = $1::uuid`,
+      [orgId],
+    );
+    return res.json({ profile: r.rows[0] ?? null });
+  });
+
+  app.put("/api/integrations/supplier-profile", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const parsed = supplierProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "ugyldig_profil",
+        details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+      });
+    }
+    await pool.query(
+      `INSERT INTO supplier_profile (organization_id, capabilities, notes, updated_at)
+       VALUES ($1::uuid, $2::jsonb, $3, now())
+       ON CONFLICT (organization_id) DO UPDATE SET
+         capabilities = EXCLUDED.capabilities, notes = EXCLUDED.notes, updated_at = now()`,
+      [orgId, JSON.stringify(parsed.data.capabilities), parsed.data.notes ?? null],
+    );
+    return res.json({ saved: true });
   });
 
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.

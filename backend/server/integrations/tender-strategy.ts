@@ -22,6 +22,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Pool } from "pg";
 import { recordAiUsage } from "./ai-usage.js";
 import { TENDER_REQUIREMENT_LEXICON } from "./sales-trigger-sync.js";
+import { computeDeliveryFit, requirementLabel } from "./supplier-profile.js";
+import { SEGMENT_DEFINITIONS } from "./prospect-segment-sync.js";
 
 const BRIEF_MODEL = "claude-sonnet-5";
 
@@ -55,8 +57,15 @@ interface TenderRow {
   } | null;
 }
 
+export interface TenderContext {
+  /** Leverandørprofilens capabilities; null = profil ikke utfylt. */
+  capabilities?: Record<string, boolean> | null;
+  /** Antall registrerte aktører i bransjen (fra segmentene); null = ukjent. */
+  industryPlayers?: { count: number; segment: string } | null;
+}
+
 /** Ren buntbygging (enhetstestet): kun felter som FINNES blir fakta. */
-export function buildTenderFacts(row: TenderRow): TenderFact[] {
+export function buildTenderFacts(row: TenderRow, ctx: TenderContext = {}): TenderFact[] {
   const labels = Object.fromEntries(TENDER_REQUIREMENT_LEXICON.map((x) => [x.key, x.label]));
   const facts: Array<[string, string | null | undefined]> = [
     ["Tittel", row.title],
@@ -74,6 +83,23 @@ export function buildTenderFacts(row: TenderRow): TenderFact[] {
     ["Beskrivelse (utdrag)", row.raw?.description],
     ["Kunngjørings-URL", row.url],
   ];
+  const fit = row.raw?.requirements?.length
+    ? computeDeliveryFit(row.raw.requirements, ctx.capabilities ?? null)
+    : null;
+  if (fit && (fit.have.length + fit.missing.length + fit.unknown.length) > 0) {
+    const parts = [
+      fit.have.length ? `HAR: ${fit.have.map(requirementLabel).join(", ")}` : null,
+      fit.missing.length ? `MANGLER: ${fit.missing.map(requirementLabel).join(", ")}` : null,
+      fit.unknown.length ? `UBESVART i profilen: ${fit.unknown.map(requirementLabel).join(", ")}` : null,
+    ].filter(Boolean);
+    facts.push(["Egen leveranseprofil vs krav", parts.join(" · ")]);
+  }
+  if (ctx.industryPlayers) {
+    facts.push([
+      "Registrerte aktører i bransjen (nasjonalt, Enhetsregisteret)",
+      `${ctx.industryPlayers.count} (${ctx.industryPlayers.segment})`,
+    ]);
+  }
   return facts
     .filter((f): f is [string, string] => typeof f[1] === "string" && f[1].length > 0)
     .map(([label, value], i) => ({ n: i + 1, label, value }));
@@ -127,7 +153,25 @@ export async function generateTenderStrategyBrief(
   const cached = row.raw?.strategyBrief as StrategyBrief | undefined;
   if (cached?.text && !opts.force) return { brief: cached };
 
-  const facts = buildTenderFacts(row);
+  const [profileRes, segRes] = await Promise.all([
+    pool.query<{ capabilities: Record<string, boolean> }>(
+      `SELECT capabilities FROM supplier_profile WHERE organization_id = $1::uuid`,
+      [organizationId],
+    ),
+    (async () => {
+      const def = SEGMENT_DEFINITIONS.find((d) => d.setName === row.matched_topic);
+      if (!def) return null;
+      const r = await pool.query<{ total_found: number }>(
+        `SELECT total_found FROM prospect_segments WHERE segment_key = $1 AND total_found > 0`,
+        [def.segmentKey],
+      );
+      return r.rows[0] ? { count: r.rows[0].total_found, segment: def.displayName } : null;
+    })(),
+  ]);
+  const facts = buildTenderFacts(row, {
+    capabilities: profileRes.rows[0]?.capabilities ?? null,
+    industryPlayers: segRes,
+  });
   if (facts.length < 3) {
     return { error: "for_tynt_grunnlag_for_brief", status: 422 };
   }

@@ -32,6 +32,23 @@ describe("buildTenderFacts", () => {
   });
 });
 
+describe("buildTenderFacts med kontekst", () => {
+  it("profil-fit og konkurransetrykk blir fakta når de finnes", () => {
+    const facts = buildTenderFacts(row, {
+      capabilities: { miljo: true },
+      industryPlayers: { count: 8961, segment: "Fotografer (74.200)" },
+    });
+    const fit = facts.find((f) => f.label.startsWith("Egen leveranseprofil"))!;
+    expect(fit.value).toContain("HAR: Miljøkrav");
+    expect(facts.find((f) => f.label.startsWith("Registrerte aktører"))!.value).toContain("8961");
+  });
+
+  it("uten kontekst: ingen fit-fakta (aldri gjettet profil)", () => {
+    const facts = buildTenderFacts(row);
+    expect(facts.find((f) => f.label.startsWith("Egen leveranseprofil"))!.value).toContain("UBESVART");
+  });
+});
+
 describe("validateBriefCitations", () => {
   const facts = buildTenderFacts(row);
 
