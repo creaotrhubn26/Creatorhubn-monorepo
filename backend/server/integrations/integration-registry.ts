@@ -393,6 +393,27 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     documentationReference: "backend/server/integrations/sales-trigger-sync.ts",
   }),
 
+  entry({
+    integrationId: "patentstyret",
+    provider: "Patentstyret",
+    displayName: "Patentstyret OpenData (varemerker/patenter/design)",
+    category: "public_data",
+    purpose: "IP-profil på leads (innovasjons-indikator) + fersk varemerke-aktivitet som kjøpssignal",
+    supportedDataTypes: ["trademarks", "patents", "designs", "ip_filings"],
+    authenticationType: "none",
+    credentialReference: null,
+    apiBaseUrl: "https://search.patentstyret.no/api",
+    apiVersion: null,
+    availabilityStatus: "active",
+    implementationStatus: "active",
+    accessLevel: "public",
+    tenantScope: "per_org",
+    syncMode: "scheduled",
+    termsStatus: "ok",
+    geographicCoverage: "NO",
+    documentationReference: "backend/server/lead-ip-service.ts",
+  }),
+
   // ── Offentlige norske datakilder ───────────────────────────────────
   entry({
     integrationId: "brreg",

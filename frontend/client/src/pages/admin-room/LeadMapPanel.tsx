@@ -648,6 +648,13 @@ export default function LeadMapPanel() {
       equityRatio: number | null;
       operatingMargin: number | null;
     } | null;
+    ip?: {
+      matchedBy: 'orgnr' | 'name';
+      trademarks: number;
+      patents: number;
+      designs: number;
+      recentTrademarks: Array<{ text: string; status: string | null; statusDate: string | null; caseUrl: string | null }>;
+    } | null;
   };
   const [enrichmentByLeadId, setEnrichmentByLeadId] = useState<Record<string, Enrichment | null>>({});
   const [enrichingLeadId, setEnrichingLeadId] = useState<string | null>(null);
@@ -3567,6 +3574,32 @@ export default function LeadMapPanel() {
                       <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, mt: 1 }}>
                         Ingen årsregnskap i Regnskapsregisteret (ENK leverer ikke, eller første regnskap er ikke levert ennå).
                       </Typography>
+                    )}
+                    {enrichment.ip && (
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
+                          Immaterielle rettigheter — Patentstyret{enrichment.ip.matchedBy === 'name' ? ' (navnesøk — kan inneholde navnebrødre)' : ''}
+                        </Typography>
+                        <Stack direction="row" spacing={2}>
+                          {([['Varemerker', enrichment.ip.trademarks], ['Patenter', enrichment.ip.patents], ['Design', enrichment.ip.designs]] as Array<[string, number]>).map(([label, value]) => (
+                            value > 0 && (
+                              <Box key={label}>
+                                <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  {label}
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.96rem', fontWeight: 800, color: palette.textPrimary }}>
+                                  {value}
+                                </Typography>
+                              </Box>
+                            )
+                          ))}
+                        </Stack>
+                        {enrichment.ip.recentTrademarks.length > 0 && (
+                          <Typography sx={{ fontSize: '0.7rem', color: palette.textSecondary, mt: 0.6 }}>
+                            Siste: {enrichment.ip.recentTrademarks.slice(0, 2).map((t) => `«${t.text}» (${t.status ?? '?'}${t.statusDate ? ', ' + t.statusDate : ''})`).join(' · ')}
+                          </Typography>
+                        )}
+                      </Box>
                     )}
                     {enrichment.contacts && enrichment.contacts.length > 0 && (
                       <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>

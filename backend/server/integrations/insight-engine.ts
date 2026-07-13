@@ -337,7 +337,7 @@ const salesTriggerDetector: InsightDetector = {
     const r = await pool.query<{
       source: string;
       event_id: string;
-      kind: "tender" | "strategy_media" | "hire";
+      kind: "tender" | "strategy_media" | "hire" | "ip_filing";
       title: string;
       url: string | null;
       published_at: string | null;
@@ -359,6 +359,8 @@ const salesTriggerDetector: InsightDetector = {
       title:
         row.kind === "tender"
           ? `Anbud (${row.matched_topic}): ${row.title.slice(0, 120)}`
+          : row.kind === "ip_filing"
+          ? `Varemerke-aktivitet: ${row.title.slice(0, 120)}`
           : `Strategisignal — ${row.matched_topic}: ${row.title.slice(0, 120)}`,
       explanation:
         row.kind === "tender"
@@ -369,6 +371,8 @@ const salesTriggerDetector: InsightDetector = {
               row.raw?.deadline ? `FRIST ${row.raw.deadline}` : null,
               "Vurder om dere kan levere, alene eller som underleverandør.",
             ].filter(Boolean).join(" · ")
+          : row.kind === "ip_filing"
+          ? `Fersk sak hos Patentstyret (${row.published_at ?? "nylig"}) — kan varsle lansering, rebrand eller nytt konsept hos ${row.matched_topic}. Godt tidspunkt for kontakt.`
           : `Medieomtale ${row.published_at ?? "siste uke"} som kan signalisere ny strategi/satsing hos ${row.matched_topic}. Les kilden før utspill.`,
       evidence: [
         { ref: row.url ?? `${row.source}|${row.event_id}`, label: `kilde (${row.source})`, value: row.url ?? row.event_id },
