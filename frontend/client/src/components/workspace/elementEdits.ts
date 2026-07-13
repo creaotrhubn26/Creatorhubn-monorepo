@@ -33,6 +33,8 @@ export const EDITABLE_CSS_PROPS = new Set<string>([
   'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
   // Auto-layout (flex).
   'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap',
+  // Finjuster-nudge (translate flytter visuelt uten reflow).
+  'transform',
 ]);
 
 // Verdi-sanitering: samme trygge tegnsett som backend (hex/rgba/px/nøkkelord). Ikke url()/expression.
@@ -162,7 +164,7 @@ export function buildNotifCss(tokens: Record<string, unknown>): string {
 }
 
 // ── Innsatte elementer (Insert-modus): nye noder fra strukturert data, forankret til et element ──
-export type InsertSpec = { id: string; type: string; pos: 'before' | 'after'; text?: string; href?: string; src?: string; component?: string; slots?: Record<string, string> };
+export type InsertSpec = { id: string; type: string; pos: 'before' | 'after'; text?: string; href?: string; src?: string; component?: string; slots?: Record<string, string>; source?: string; label?: string };
 export type ElementInserts = Record<string, InsertSpec[]>; // anker-selektor → spesifikasjoner
 export type DesignComponents = Record<string, InsertSpec[]>; // navn → komponent-spesifikasjoner
 
@@ -205,7 +207,16 @@ export function buildInsertNode(spec: InsertSpec): HTMLElement | null {
  *  `components` + `workspace` støtter LIVE-lenkede komponent-referanser (type 'component'):
  *  master-spec'ene ekspanderes ved render, så endring av komponenten slår gjennom på alle instanser;
  *  per-instans `slots` styrer hvilken datakilde hvert infographic-slot kobles til. */
-function applyInserts(inserts: ElementInserts, components: DesignComponents, htmlComponents: Record<string, string>, workspace: string): (() => void) | undefined {
+/** Formatér en live datakilde-verdi til vis-tekst: «1 247 CV-er bygget» (nb-NO tusenskille). */
+export function formatSourceValue(value: unknown, label?: string): string {
+  let v: string;
+  if (value == null || value === '') v = '—';
+  else if (typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)))) v = Number(value).toLocaleString('nb-NO');
+  else v = String(value);
+  return label ? `${v} ${label}` : v;
+}
+
+function applyInserts(inserts: ElementInserts, components: DesignComponents, htmlComponents: Record<string, string>, workspace: string, values: Record<string, { value?: unknown }> = {}): (() => void) | undefined {
   const entries = Object.entries(inserts || {}).filter(([sel]) => isSafeSelector(sel));
   if (!entries.length) return undefined;
   const insertNode = (anchor: Element, spec: InsertSpec, domId: string) => {
@@ -248,7 +259,12 @@ function applyInserts(inserts: ElementInserts, components: DesignComponents, htm
           continue;
         }
         if (!INSERT_TYPES.has(spec.type)) continue;
-        insertNode(anchor, spec, spec.id);
+        // Live datakilde: tekst/overskrift med `source` → tekst = connector/metric-verdi (formatert).
+        if (spec.source && (spec.type === 'text' || spec.type === 'heading')) {
+          insertNode(anchor, { ...spec, text: formatSourceValue(values[spec.source]?.value, spec.label) }, spec.id);
+        } else {
+          insertNode(anchor, spec, spec.id);
+        }
       }
     }
   };
@@ -395,23 +411,25 @@ export function useElementEdits(workspace: string): void {
         if (vm.elementText && typeof vm.elementText === 'object') {
           cleanupText = applyTextEdits(vm.elementText as ElementText);
         }
-        // Innsatte elementer → nye noder (m/ observer-reinjeksjon); komponent-refs ekspanderes live.
-        if (vm.elementInserts && typeof vm.elementInserts === 'object') {
-          cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, (t.htmlComponents as Record<string, string>) || {}, workspace);
-        }
         // Interaksjoner (klikk → scroll/naviger) — top-nivå (delt på tvers av varianter).
         if (t.elementInteractions && typeof t.elementInteractions === 'object') {
           cleanupIntx = applyInteractions(t.elementInteractions as ElementInteractions);
         }
-        // Data-bindinger → elementtekst = metric-verdi el. LIVE connector-verdi (fra DB), koblet.
-        if (vm.elementBindings && typeof vm.elementBindings === 'object') {
-          const bindings = vm.elementBindings as ElementBindings;
+        // Live datakilde-verdier (admin-metrics + publicSafe DB-connectors) driver BÅDE source-
+        // innsettinger (tall plassert på siden) OG data-bindinger. Hentes én gang, fletter inn.
+        const hasInserts = vm.elementInserts && typeof vm.elementInserts === 'object';
+        const hasBindings = vm.elementBindings && typeof vm.elementBindings === 'object';
+        if (hasInserts || hasBindings) {
           const baseMetrics = (t.metrics as Record<string, { value?: unknown }>) || {};
-          // Flett inn live connector-verdier (publicSafe) så bindinger mot DB-kilder resolver.
+          const runWithValues = (values: Record<string, { value?: unknown }>) => {
+            if (!live) return;
+            if (hasInserts) cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, (t.htmlComponents as Record<string, string>) || {}, workspace, values);
+            if (hasBindings) cleanupBind = applyBindings(vm.elementBindings as ElementBindings, values);
+          };
           fetch(`/api/design/connector-values?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })
             .then((r) => (r.ok ? r.json() : null))
-            .then((cv) => { if (live) cleanupBind = applyBindings(bindings, { ...baseMetrics, ...((cv && cv.values) || {}) }); })
-            .catch(() => { if (live) cleanupBind = applyBindings(bindings, baseMetrics); });
+            .then((cv) => runWithValues({ ...baseMetrics, ...((cv && cv.values) || {}) }))
+            .catch(() => runWithValues(baseMetrics));
         }
       })
       .catch(() => {});

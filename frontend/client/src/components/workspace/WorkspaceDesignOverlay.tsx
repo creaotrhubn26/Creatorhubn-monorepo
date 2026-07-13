@@ -11,7 +11,7 @@
  * Selvstendig: inline styles, ingen MUI (unngår å arve dark-temaet).
  */
 import React from 'react';
-import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, sanitizeHtmlComponent, type ElementEdits, type InsertSpec } from './elementEdits';
+import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, sanitizeHtmlComponent, formatSourceValue, type ElementEdits, type InsertSpec } from './elementEdits';
 
 type ElDesc = {
   tag: string; id?: string; cls?: string; text?: string;
@@ -136,6 +136,12 @@ export default function WorkspaceDesignOverlay({
   const [insUrl, setInsUrl] = React.useState('');
   const [insSource, setInsSource] = React.useState(''); // dynamisk infographic-kilde (metric-nøkkel)
   const [sources, setSources] = React.useState<Array<{ key: string; value: unknown; label?: unknown; live?: boolean; ok?: boolean }>>([]);
+  // «Plassér datakilde»: velg en kilde → klikk på siden → tallet settes inn der. Ref så den delegerte
+  // klikk-lytteren (bundet på [mode]) alltid ser gjeldende valg uten å re-subscribe.
+  const [placingSource, setPlacingSource] = React.useState<{ key: string; label: string; value: unknown } | null>(null);
+  const placingRef = React.useRef<{ key: string; label: string; value: unknown } | null>(null);
+  placingRef.current = placingSource;
+  const [lastPlaced, setLastPlaced] = React.useState<{ id: string; x: number; y: number } | null>(null);
   const [insPos, setInsPos] = React.useState<'before' | 'after'>('after');
   const [components, setComponents] = React.useState<Record<string, InsertSpec[]>>({}); // gjenbrukbare komponenter
   const [compName, setCompName] = React.useState('');
@@ -190,6 +196,17 @@ export default function WorkspaceDesignOverlay({
       e.preventDefault(); e.stopPropagation(); // ellers: fang klikket (blokker shell-nav)
       if (mode === 'annotate') {
         setNotes((n) => [...n, { id: nextId.current++, d: describe(t), intent: '' }]);
+      } else if (placingRef.current) {
+        // «Plassér datakilde»-modus: klikket peker ut ankeret → sett inn et live-tall rett etter det.
+        const p = placingRef.current, anchor = t as HTMLElement, anchorKey = uniqueSelector(anchor);
+        const id = `ins-${nextId.current++}`;
+        const spec: InsertSpec = { id, type: 'text', pos: 'after', source: p.key, label: p.label };
+        const node = buildInsertNode({ ...spec, text: formatSourceValue(p.value, p.label) });
+        if (node && anchor.parentNode) anchor.parentNode.insertBefore(node, anchor.nextSibling);
+        setInsertEdits((m) => ({ ...m, [anchorKey]: [...(m[anchorKey] || []), spec] }));
+        setPlacingSource(null);
+        setLastPlaced({ id, x: 0, y: 0 });
+        setSaveMsg(`Plassert «${p.label}» — «Lagre endringer» for å publisere.`);
       } else {
         const el = t as HTMLElement, cs = getComputedStyle(el);
         setSel(el); setSelDesc(describe(el));
@@ -240,6 +257,19 @@ export default function WorkspaceDesignOverlay({
     // Ruter til aktiv breakpoint: base (alle), nettbrett (≤900) el. mobil (≤600).
     const setter = device === 'tablet' ? setEditsTablet : device === 'mobile' ? setEditsMobile : setEdits;
     setter((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
+  };
+
+  // Finjuster et nyplassert tall: transform:translate flytter det VISUELT uten å reflow'e naboer.
+  // Lagres på den stabile [data-chd-insert="id"]-selektoren (overlever last).
+  const nudgePlaced = (dx: number, dy: number) => {
+    setLastPlaced((lp) => {
+      if (!lp) return lp;
+      const x = lp.x + dx, y = lp.y + dy, selc = `[data-chd-insert="${lp.id}"]`, value = `translate(${x}px, ${y}px)`;
+      const node = document.querySelector(selc) as HTMLElement | null;
+      if (node) node.style.transform = value;
+      setEdits((e) => ({ ...e, [selc]: { ...(e[selc] || {}), transform: value } }));
+      return { ...lp, x, y };
+    });
   };
 
   // Edit: gjør elementet klikkbart (scroll til seksjon / naviger). Registreres; virker ved last.
@@ -799,6 +829,37 @@ export default function WorkspaceDesignOverlay({
                 )}
               </div>
             )}
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Plassér datakilde på siden</div>
+              {placingSource ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 8px' }}>
+                  <span style={{ flex: 1, fontSize: 11.5, color: '#9a3412' }}>👆 Klikk der du vil ha «{placingSource.label}» på siden</span>
+                  <button data-chd onClick={() => setPlacingSource(null)} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Avbryt</button>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 11, color: INK2, margin: 0 }}>Velg et tall og klikk hvor det skal vises. Samme kilde kan plasseres flere steder — endrer du kilden, følger alle plasseringer med.</p>
+                  {sources.length === 0 && <div style={{ fontSize: 11, color: INK2 }}>Ingen datakilder for dette workspacet ennå.</div>}
+                  {sources.map((s) => (
+                    <div key={s.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ flex: 1, fontSize: 11.5, color: INK }}>{s.live ? '📊' : '✏️'} {String(s.label || s.key)}</span>
+                      <span style={{ fontSize: 11, color: INK2, fontVariantNumeric: 'tabular-nums' }}>{formatSourceValue(s.value)}</span>
+                      <button data-chd onClick={() => setPlacingSource({ key: s.key, label: String(s.label || s.key), value: s.value })} style={{ ...cta, padding: '3px 9px', fontSize: 11 }}>Plassér</button>
+                    </div>
+                  ))}
+                </>
+              )}
+              {lastPlaced && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, borderTop: `1px solid ${LINE}`, paddingTop: 6 }}>
+                  <span style={{ fontSize: 11, color: INK2, marginRight: 2 }}>Finjuster plassering:</span>
+                  {([['←', -4, 0], ['→', 4, 0], ['↑', 0, -4], ['↓', 0, 4]] as const).map(([lbl, dx, dy]) => (
+                    <button key={lbl} data-chd onClick={() => nudgePlaced(dx, dy)} style={{ ...btn(false), padding: '2px 8px', fontSize: 12 }}>{lbl}</button>
+                  ))}
+                  <span style={{ flex: 1 }} />
+                  <button data-chd onClick={() => setLastPlaced(null)} style={{ ...btn(false), padding: '2px 8px', fontSize: 11 }}>Ferdig</button>
+                </div>
+              )}
+            </div>
             {(editKeys.length > 0 || Object.keys(variants).length > 0 || editingVariant) && (
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Varianter / A-B</div>
