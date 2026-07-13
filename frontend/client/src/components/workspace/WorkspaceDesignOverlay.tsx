@@ -11,6 +11,7 @@
  * Selvstendig: inline styles, ingen MUI (unngår å arve dark-temaet).
  */
 import React from 'react';
+import { uniqueSelector, type ElementEdits } from './elementEdits';
 
 type ElDesc = {
   tag: string; id?: string; cls?: string; text?: string;
@@ -117,8 +118,33 @@ export default function WorkspaceDesignOverlay({
     if (!sel || !selDesc) return;
     const value = rawValue === '' ? '' : rawValue + unit;
     sel.style.setProperty(cssProp, value);
-    const key = selOf(selDesc);
+    const key = uniqueSelector(sel); // unik strukturell sti → kan re-applikeres ved last
     setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
+  };
+
+  // Last eksisterende lagrede per-element-edits ved mount → nye edits akkumuleres oppå (så
+  // «Lagre» sender hele kartet; JSONB-merge er grunn og erstatter hele elementEdits-nøkkelen).
+  React.useEffect(() => {
+    let live = true;
+    fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (live && d && d.raw === true && d.tokens && d.tokens.elementEdits) setEdits(d.tokens.elementEdits as ElementEdits);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [workspace]);
+
+  // Persister per-element-edits til workspacet (gjelder alle brukere ved neste last).
+  const saveEdits = async () => {
+    setSaveMsg('Lagrer endringer…');
+    try {
+      const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
+        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ elementEdits: edits }),
+      });
+      setSaveMsg(r.ok ? `Lagret ${Object.keys(edits).length} element ✓` : 'Avvist (krever admin)');
+    } catch { setSaveMsg('Nettverksfeil'); }
   };
 
   const buildBundle = () => setBundle(JSON.stringify({
@@ -274,8 +300,14 @@ export default function WorkspaceDesignOverlay({
                 <label style={flabel}>Padding</label>
                 <input data-chd aria-label="Padding" style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
 
-                <p style={{ fontSize: 11.5, color: INK2, margin: '6px 0 0' }}>
-                  Endringer er live-forhåndsvisning på elementet. «Send til Claude Code» pakker dem ({Object.keys(edits).length} element{Object.keys(edits).length === 1 ? '' : 'er'}) inn i bundelen for å bygges inn permanent.
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                  <button data-chd style={cta} onClick={saveEdits}>Lagre endringer ({Object.keys(edits).length})</button>
+                  {saveMsg && <span style={{ fontSize: 12, color: INK2 }}>{saveMsg}</span>}
+                </div>
+                <p style={{ fontSize: 11.5, color: INK2, margin: '8px 0 0' }}>
+                  «Lagre endringer» persisterer per-element-stilene til workspacet — de gjelder alle
+                  brukere ved neste last. Best-effort: en endring kan drive hvis sidelayouten endres
+                  mye senere. «Send til Claude Code» pakker dem i stedet til en bundle for permanent kode.
                 </p>
               </>
             )}

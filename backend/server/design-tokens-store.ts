@@ -108,6 +108,29 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.chrome = chrome;
   }
+  // CreatorHub Design (per-element-lag): stil-overstyringer pr. element fra Edit-modus.
+  // Form: { [selektor]: { [css-prop]: verdi } }. Kun hvitlistede trygge props + saniterte
+  // selektorer/verdier (ingen url()/expression/vilkårlig CSS). Tak på antall selektorer.
+  const editsIn = (patch as any)?.elementEdits;
+  if (editsIn && typeof editsIn === 'object' && !Array.isArray(editsIn)) {
+    const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
+      'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align',
+      'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration']);
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+    const VAL_RE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
+    const elementEdits: Record<string, Record<string, string>> = {};
+    let selCount = 0;
+    for (const [sel, propsRaw] of Object.entries(editsIn as Record<string, unknown>)) {
+      if (selCount >= 500) break;
+      if (!SEL_RE.test(sel) || sel.includes('..') || !propsRaw || typeof propsRaw !== 'object') continue;
+      const props: Record<string, string> = {};
+      for (const [p, v] of Object.entries(propsRaw as Record<string, unknown>)) {
+        if (EDIT_PROPS.has(p) && typeof v === 'string' && VAL_RE.test(v) && !/url\(/i.test(v)) props[p] = v;
+      }
+      if (Object.keys(props).length) { elementEdits[sel] = props; selCount++; }
+    }
+    clean.elementEdits = elementEdits;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,

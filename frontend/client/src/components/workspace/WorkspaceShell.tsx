@@ -51,6 +51,7 @@ import Add from '@mui/icons-material/Add';
 import WorkOutline from '@mui/icons-material/WorkOutline';
 import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
+import { useElementEdits } from './elementEdits';
 import { useWsLocale, makeT } from './wsLocale';
 
 // Shell-chrome no/en (utenlandske partner-vendors får engelsk via WsLocaleProvider).
@@ -210,6 +211,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const baseT = makeT(SHELL_T, useWsLocale());
   const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
+  useElementEdits('creatorhub'); // CreatorHub Design (per-element-lag): anvend lagrede stil-edits
   // t() med copy-overstyring (Nivå 2b): tokens.copy[key] vinner, ellers locale-dict.
   const t = (k: string) => { const o = copyOv[k]; return typeof o === 'string' && o ? o : baseT(k); };
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
