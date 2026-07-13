@@ -56,6 +56,7 @@ import { safeReturnPath } from "./web-origin-allowlist.js";
 import { notifyProducerOfClientPlatformConnection } from "./role-room-producer-notifications.js";
 import { resolveClientPortalSession } from "./role-room-client-portal.js";
 import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
+import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
 import {
   startTikTokOauth,
   completeTikTokOauthCallback,
@@ -277,6 +278,12 @@ export function setupRoleRoomSocialRoutes(
         error: `Plattform "${platformInput}" støttes ikke for tilgangsforespørsel.`,
       });
     }
+    // Eierskaps-gate: produsent må eie/være medlem av prosjektet. Uten dette kan
+    // enhver admin-sesjon oppgi en vilkårlig projectId og lekke en annen
+    // produsents merkevare-kontekst (companyName/industry) fra role_room_feed_plans.
+    if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+      return res.status(403).json({ success: false, error: "Ingen tilgang til prosjektet." });
+    }
     const recipientName =
       typeof req.body?.recipientName === 'string' ? req.body.recipientName.trim() : '';
     const recipientEmail =
@@ -445,6 +452,12 @@ export function setupRoleRoomSocialRoutes(
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
     if (!projectId) {
       return res.status(400).json({ success: false, error: "projectId mangler." });
+    }
+    // Eierskaps-gate: generateYouTubeChannelPlan forkaster userId-argumentet og
+    // leser prosjektets merkevare-kontekst kun på project_id — uten denne sjekken
+    // kan enhver admin-sesjon lese en annen produsents prosjekt via UUID.
+    if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+      return res.status(403).json({ success: false, error: "Ingen tilgang til prosjektet." });
     }
     try {
       const plan = await generateYouTubeChannelPlan(pool, projectId, session.userId);
