@@ -6,7 +6,7 @@ Status rapporteres ærlig av API-et: `GET /api/integrations/status`
 | Integrasjon | Status | Hva som finnes i koden |
 |---|---|---|
 | **Gmail** | **Sandbox — ikke aktiv** | Port-grensesnitt (`src/ingestion/gmail/port.ts`), sandbox-adapter med fixtures (`src/ingestion/gmail/sandbox.ts`), sanitering (`sanitize.ts`), full importflyt med filter, duplikat, karantene og token-tilstander. Ingen produksjonsadapter. |
-| **Bank** | **Ikke implementert** | Kun databaseskjema (`bank_accounts`, `bank_transactions`, `reconciliation_matches` i `migrations/0001_foundation.sql`) og rettigheten `bank.reconcile`. Ingen import- eller avstemmingslogikk. |
+| **Bank** | **Manuell CSV-import — ingen banktilkobling** | Idempotent transaksjonsimport (`src/bank/import.ts`), deterministisk matching (KID/beløp+dato/beløp+navn) med forklaring og godkjenningsflyt som bokfører betalingen (`src/bank/matching.ts`). Ingen PSD2/open-banking-adapter. |
 | **EHF (e-faktura)** | **Ikke implementert** | XML-MIME-typer står i opplastings-allowlisten (`src/documents/service.ts`), men ingen EHF-parsing, ingen aksesspunkt-tilkobling. |
 | **Altinn / Skatteetaten (innsending)** | **Ikke implementert** | MVA-rapporten bygges per SAF-T-kode (`src/vat/engine.ts`) men er alltid `status: 'draft'`; rettigheten `vat.submit` finnes. Ingen innsendingsklient. |
 | **OCR** | **Deterministisk tekstparser — ikke ekte OCR** | `DeterministicTextExtractor` (`src/pipeline/extract.ts`) parser tekstbærende innhold med regex. Fungerer på sandbox-fixtures og tekst-PDF-er; leser ikke skannede bilder. Port-grensesnittet `DocumentExtractor` er klart for en ekte motor. |

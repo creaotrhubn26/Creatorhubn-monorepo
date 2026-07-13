@@ -7,6 +7,8 @@ export interface ProductConfig {
   environment: 'development' | 'test' | 'production';
   databaseUrl: string;
   port: number;
+  /** Katalog for lokalt objektlager (dokumentinnhold). */
+  storageDir: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig {
@@ -23,5 +25,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     environment,
     databaseUrl,
     port: Number(env.PORT ?? 4310),
+    storageDir: env.LEDGERLY_STORAGE_DIR ?? './data/documents',
   };
 }

@@ -5,19 +5,26 @@ skjult for brukeren i API-et (integrasjonsstatus, estimat-forbehold osv. sier fr
 
 ## Plattform
 
-- **Ingen frontend.** Kun HTTP-API (`src/api/server.ts`). Presentasjonsnivåene i
-  `docs/ux-principles.md` er designmål.
+- **Enkelt web-UI.** SPA-en i `web/` dekker den vertikale flyten (oversikt,
+  bilagsinnboks, bilagsdetalj med forklaring og godkjenning, Gmail-import,
+  bank/avstemming, MVA, skatt, rapporter) og er røyktestet i browser
+  (`scripts/ui-smoke.mjs`). De tre presentasjonsnivåene i `docs/ux-principles.md`
+  (enkel/avansert/regnskapsfører) er fortsatt designmål — UI-et har ett nivå.
 - **Dev-auth.** HMAC-token fra dev-login (`src/api/auth.ts`) er ikke produksjonsauth:
   ingen passord, ingen MFA, ingen token-tilbakekalling før TTL (12 t). Produksjon
   krever OIDC/BankID. RBAC og tenant-isolasjon er derimot reelle.
-- **Ingen objektlagring.** Dokumentinnhold lagres **ikke** — kun sha256, metadata og
-  en lokal `storage_key` (`src/documents/service.ts`). Oppbevaringsplikten for bilag
-  (jf. `docs/data-retention.md`) kan derfor ikke oppfylles ennå, og det finnes ingen
-  kryptering av dokumentlager.
+- **Objektlagring: lokal disk, ukryptert.** Dokumentinnhold lagres nå via
+  `ObjectStorage`-porten (`src/storage/`) med sha256-integritetskontroll ved uthenting
+  og audit-logg per tilgang. MVP-adapteren er lokal disk uten kryptering og redundans —
+  produksjon krever S3-kompatibelt lager i EU/EØS med kryptering.
 
 ## Funksjonelt
 
-- **Ingen bank** — kun databaseskjema, ingen import/avstemming.
+- **Bank: manuell CSV-import, ikke PSD2.** Import (`src/bank/import.ts`), deterministisk
+  matching med forklaring (`src/bank/matching.ts`) og godkjenningsflyt er implementert,
+  men det finnes ingen bank-/open-banking-tilkobling — transaksjoner må limes inn som CSV.
+  Kun utbetalinger matches (innbetalinger krever fakturamodulen). Splitting av én betaling
+  på flere bilag støttes ikke ennå.
 - **Ingen utgående faktura** og **ingen purring**.
 - **Ingen lønn** — konto 5000 finnes, men ingen a-melding/skattetrekk.
 - **Ingen EHF** — XML aksepteres som filtype, men parses ikke.

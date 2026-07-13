@@ -10,6 +10,7 @@ import type { Db } from '../db/pool.js';
 import { withTransaction } from '../db/pool.js';
 import { newId } from '../shared/ids.js';
 import { NotFoundError } from '../shared/errors.js';
+import type { ObjectStorage } from '../storage/port.js';
 import type { DocumentSource, DocumentStatus, ExtractedData, ValidationIssue } from './types.js';
 
 export function sha256Hex(content: Buffer | string): string {
@@ -48,6 +49,7 @@ const ALLOWED_MIME = new Set([
 export async function registerDocument(
   db: Db,
   input: RegisterDocumentInput,
+  storage?: ObjectStorage,
 ): Promise<RegisteredDocument> {
   const hash = sha256Hex(input.content);
   return withTransaction(db, async (client) => {
@@ -90,6 +92,14 @@ export async function registerDocument(
         : 'received'
       : 'quarantined';
 
+    // Dokumentinnholdet lagres i objektlageret FØR databaseraden committes —
+    // feiler lagringen, rulles hele mottaket tilbake. Bilag skal aldri kunne
+    // finnes i regnskapet uten at innholdet er oppbevart (bokføringsloven).
+    const storageKey = input.storageKey ?? `org/${input.organizationId}/doc/${id}`;
+    if (storage) {
+      await storage.put(storageKey, input.content, input.mimeType);
+    }
+
     await client.query(
       `INSERT INTO source_documents
          (id, organization_id, source, gmail_message_id, gmail_attachment_id,
@@ -105,7 +115,7 @@ export async function registerDocument(
         input.mimeType,
         input.content.length,
         hash,
-        input.storageKey ?? `local/${input.organizationId}/${id}`,
+        storageKey,
         status,
         duplicateOf ?? null,
         input.actor.userId,

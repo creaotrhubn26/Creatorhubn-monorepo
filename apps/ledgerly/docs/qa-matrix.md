@@ -1,6 +1,6 @@
 # QA-matrise
 
-**71 tester i 7 filer, alle grønne per siste kjøring.**
+**83 tester i 8 filer, alle grønne per siste kjøring (også under TZ=Europe/Oslo). I tillegg kjøres en browserbasert UI-røyktest (`scripts/ui-smoke.mjs`, Playwright/Chromium) som dekker login → org → Gmail-import → forklaring → godkjenning → rapporter/MVA.**
 
 ## Kjøring
 
@@ -31,7 +31,9 @@ Testene deles i to klasser:
 | API (pg-integrasjon) | `test/api.pg.test.ts` | 12 | Auth avvises uten/med manipulert token; **tenant-isolasjon** (utenforstående får 404, ikke 403); **RBAC** (ansatt kan laste opp, ikke bokføre/låse); ugyldig org-ID → 400; vertikal flyt over HTTP (opplasting → forslag m/forklaring → bokføring → rapporter); **Scenario 9**: feil i låst periode rettes med kontrollert korrigering; skatteestimat med forbehold; ærlig integrasjonsstatus (Gmail = sandbox); kodebibliotek på vanlig norsk; **karantene** av ikke-tillatte filtyper. |
 | Sanitering + forslag | `test/sanitize-suggest.test.ts` | 11 | Injeksjonsmønstre flagges (engelsk + norsk), vanlig fakturatekst slipper gjennom, kontrolltegn/RTL fjernes, ubetrodd tekst pakkes som data; forslagsmotor: kamerautstyr → 6551/kode 1, utenlandsk SaaS → 6810/kode 86, ikke MVA-registrert → kode 0 m/regelreferanse, over aktiveringsgrensen → asset/uncertain m/alternativ, **versjonert grense** (2023 = 15 000), ukjent → 7790 med lav confidence og menneskelig kontroll. |
 
-**Sum: 71 tester.**
+| `test/bank.pg.test.ts` | 9 | Objektlagring (innhold + hash, ukjent nøkkel), CSV-parsing (desimalkomma, negative beløp), idempotent import, KID-treff med forklaring, godkjenning som lukker reskontro, ingen falske treff, avvisning med begrunnelse og audit. |
+
+**Sum: 83 tester.**
 
 ## Kjente hull i testdekningen
 

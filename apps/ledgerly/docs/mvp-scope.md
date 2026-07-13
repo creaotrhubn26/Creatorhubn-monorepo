@@ -1,7 +1,7 @@
 # MVP-omfang
 
 MVP-en er én komplett **vertikal flyt** fra dokument til rapport, implementert som backend
-(API + PostgreSQL) uten frontend. Alt under er implementert og testet (71 tester, se
+(API + PostgreSQL + web-UI i `web/`). Alt under er implementert og testet (83 tester + UI-røyktest, se
 `docs/qa-matrix.md`).
 
 ## Flyten (implementert)
@@ -43,10 +43,11 @@ med 10 roller (`src/access/permissions.ts`), tenant-isolasjon i alle endepunkter
 - **SAF-T-XML-eksport** — kontoplan og MVA-koder følger SAF-T-standarden, men
   eksportfilen genereres ikke.
 - **Altinn/Skatteetaten-innsending** — MVA-rapporten er alltid `status: 'draft'`.
-- **Frontend-UI** — kun HTTP-API.
+- **Frontend: ett presentasjonsnivå** — SPA-en i `web/` dekker den vertikale flyten; avansert visning og regnskapsførervisning gjenstår.
 - **Produksjonsautentisering** — dev-login med HMAC-token (`src/api/auth.ts`);
   OIDC/BankID og MFA er dokumentert krav, ikke implementert.
-- **Objektlagring** — dokumentinnhold lagres ikke; kun hash, metadata og en lokal
+- **Objektlagring (lokal)** — dokumentinnhold lagres via ObjectStorage-porten på lokal
+  disk med integritetskontroll; S3/EU-lager gjenstår. Tidligere begrensning: kun hash og en lokal
   `storage_key`.
 
 Se `docs/known-limitations.md` for full liste og `docs/integration-status.md` for

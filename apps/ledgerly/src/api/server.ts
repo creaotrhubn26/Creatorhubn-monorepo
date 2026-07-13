@@ -27,7 +27,13 @@ import {
   type PipelineDeps,
 } from '../pipeline/pipeline.js';
 import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
+import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
+import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import type { RuleRegister } from '../rules/register.js';
+import type { ObjectStorage } from '../storage/port.js';
+import { recordAuditEvent } from '../audit/audit.js';
+import { withTransaction } from '../db/pool.js';
+import { sha256Hex } from '../documents/service.js';
 import { DomainError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
@@ -52,6 +58,10 @@ export interface ApiDeps {
   rules: RuleRegister;
   /** Sandbox til ekte OAuth-nøkler er på plass; status rapporteres ærlig. */
   gmailAdapterFactory?: () => SandboxGmailAdapter;
+  /** Objektlager for dokumentinnhold. */
+  storage?: ObjectStorage | undefined;
+  /** Katalog med bygget web-UI (vite dist). Serveres statisk når satt. */
+  webDistDir?: string | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -65,6 +75,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
     rules: deps.rules,
     extractor: new DeterministicTextExtractor(),
     suggestionEngine: new DeterministicSuggestionEngine(),
+    storage: deps.storage,
   };
 
   // ── Autentisering ─────────────────────────────────────────────────────────
@@ -314,6 +325,60 @@ export function createApiServer(deps: ApiDeps): express.Express {
             explanation,
           }),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Dokumentinnhold: kun for medlemmer med dokumenttilgang, med integritets-
+  // kontroll (sha256) og audit-hendelse for hvert uthenting (bilag = sensitivt).
+  app.get(
+    '/api/organizations/:orgId/documents/:documentId/content',
+    requireAuth,
+    requireOrgPermission('documents.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.storage) {
+          res.status(404).json({
+            error: { code: 'NOT_FOUND', message: 'Objektlager er ikke konfigurert.' },
+          });
+          return;
+        }
+        const doc = await deps.db.query(
+          `SELECT storage_key, sha256, filename, mime_type FROM source_documents
+           WHERE id = $1 AND organization_id = $2`,
+          [req.params.documentId, req.params.orgId],
+        );
+        if (!doc.rowCount) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ikke funnet.' } });
+          return;
+        }
+        const stored = await deps.storage.get(doc.rows[0].storage_key);
+        if (!stored) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Innholdet finnes ikke i lageret.' } });
+          return;
+        }
+        if (sha256Hex(stored.content) !== doc.rows[0].sha256) {
+          // Integritetsbrudd skal aldri serveres stille.
+          res.status(409).json({
+            error: { code: 'INTEGRITY_VIOLATION', message: 'Innholdet stemmer ikke med registrert hash. Kontakt administrator.' },
+          });
+          return;
+        }
+        await withTransaction(deps.db, (client) =>
+          recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'document.content_accessed',
+            entityType: 'source_document',
+            entityId: req.params.documentId!,
+          }),
+        );
+        res
+          .set('Content-Type', doc.rows[0].mime_type)
+          .set('Content-Disposition', `inline; filename="${encodeURIComponent(doc.rows[0].filename)}"`)
+          .send(stored.content);
       } catch (err) {
         next(err);
       }
@@ -622,6 +687,148 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // ── Bank og avstemming ───────────────────────────────────────────────────
+  app.post(
+    '/api/organizations/:orgId/bank-accounts',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            name: z.string().min(1).max(200),
+            ibanOrAccount: z.string().min(8).max(40),
+            ledgerAccountNumber: z.string().regex(/^\d{4}$/).optional(),
+          })
+          .parse(req.body);
+        const id = await createBankAccount(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          name: body.name,
+          ibanOrAccount: body.ibanOrAccount,
+          ...(body.ledgerAccountNumber ? { ledgerAccountNumber: body.ledgerAccountNumber } : {}),
+        });
+        res.status(201).json({ id });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/bank-accounts/:bankAccountId/import',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({ csv: z.string().min(1).max(2_000_000) })
+          .parse(req.body);
+        const transactions = parseBankCsv(body.csv);
+        const result = await importBankTransactions(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          bankAccountId: req.params.bankAccountId!,
+          transactions,
+        });
+        // Kjør deterministisk matching rett etter import.
+        const suggestions = await suggestMatches(deps.db, {
+          organizationId: req.params.orgId!,
+          bankAccountId: req.params.bankAccountId!,
+        });
+        res.status(201).json(toJson({ ...result, suggestions }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/bank/transactions',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req, res, next) => {
+      try {
+        const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+        const args: unknown[] = [req.params.orgId];
+        let where = 'organization_id = $1';
+        if (status) {
+          args.push(status);
+          where += ` AND status = $2`;
+        }
+        const rows = await deps.db.query(
+          `SELECT id, bank_account_id, external_id, booked_date::TEXT AS booked_date,
+                  amount_minor, currency, description, counterparty, kid, status
+           FROM bank_transactions WHERE ${where}
+           ORDER BY booked_date DESC LIMIT 500`,
+          args,
+        );
+        res.json(toJson(rows.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/bank/matches',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req, res, next) => {
+      try {
+        const rows = await deps.db.query(
+          `SELECT m.id, m.bank_transaction_id, m.journal_entry_id, m.source_document_id,
+                  m.match_type, m.matched_amount_minor, m.explanation, m.status, m.created_at
+           FROM reconciliation_matches m
+           WHERE m.organization_id = $1
+           ORDER BY m.created_at DESC LIMIT 200`,
+          [req.params.orgId],
+        );
+        res.json(toJson(rows.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/bank/matches/:matchId/approve',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const entry = await approveMatch(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          matchId: req.params.matchId!,
+        });
+        res.status(201).json(toJson(entry));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/bank/matches/:matchId/reject',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ reason: z.string().min(3).max(500) }).parse(req.body);
+        await rejectMatch(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          matchId: req.params.matchId!,
+          reason: body.reason,
+        });
+        res.status(204).end();
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   // ── Revisjonslogg ────────────────────────────────────────────────────────
   app.get(
     '/api/organizations/:orgId/audit-events',
@@ -642,6 +849,15 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // ── Web-UI (bygget SPA) ──────────────────────────────────────────────────
+  if (deps.webDistDir) {
+    app.use(express.static(deps.webDistDir, { index: 'index.html' }));
+    // SPA-fallback for alle ikke-API-GET-er.
+    app.get(/^\/(?!api\/).*/, (_req, res) => {
+      res.sendFile('index.html', { root: deps.webDistDir! });
+    });
+  }
 
   // ── Feilhåndtering ved systemgrensen ─────────────────────────────────────
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

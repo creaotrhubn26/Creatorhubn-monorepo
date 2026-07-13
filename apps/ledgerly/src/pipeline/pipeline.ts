@@ -19,6 +19,7 @@ import {
 import type { ExtractedData } from '../documents/types.js';
 import { validateExtraction } from '../documents/validate.js';
 import { GmailAuthError, type GmailPort, type GmailSearchFilter } from '../ingestion/gmail/port.js';
+import type { ObjectStorage } from '../storage/port.js';
 import { sanitizeUntrustedText } from '../ingestion/gmail/sanitize.js';
 import { postJournalEntry, type PostedJournalEntry } from '../ledger/engine.js';
 import type { RuleRegister } from '../rules/register.js';
@@ -39,6 +40,8 @@ export interface PipelineDeps {
   rules: RuleRegister;
   extractor: DocumentExtractor;
   suggestionEngine: SuggestionEngine;
+  /** Objektlager for dokumentinnhold. Uten lager beholdes kun hash + metadata. */
+  storage?: ObjectStorage | undefined;
 }
 
 export interface IngestResultItem {
@@ -147,7 +150,7 @@ export async function processIncomingDocument(
   if (params.gmailMessageId !== undefined) registerInput.gmailMessageId = params.gmailMessageId;
   if (params.gmailAttachmentId !== undefined)
     registerInput.gmailAttachmentId = params.gmailAttachmentId;
-  const doc = await registerDocument(deps.db, registerInput);
+  const doc = await registerDocument(deps.db, registerInput, deps.storage);
   if (doc.status === 'duplicate' || doc.status === 'quarantined') {
     return { documentId: doc.id, filename: params.filename, status: doc.status };
   }
