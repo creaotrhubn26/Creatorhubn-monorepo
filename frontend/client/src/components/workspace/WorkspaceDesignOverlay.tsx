@@ -131,7 +131,7 @@ export default function WorkspaceDesignOverlay({
   const [insText, setInsText] = React.useState('');
   const [insUrl, setInsUrl] = React.useState('');
   const [insSource, setInsSource] = React.useState(''); // dynamisk infographic-kilde (metric-nøkkel)
-  const [sources, setSources] = React.useState<Array<{ key: string; value: unknown; label: unknown }>>([]);
+  const [sources, setSources] = React.useState<Array<{ key: string; value: unknown; label?: unknown; live?: boolean; ok?: boolean }>>([]);
   const [insPos, setInsPos] = React.useState<'before' | 'after'>('after');
   const [components, setComponents] = React.useState<Record<string, InsertSpec[]>>({}); // gjenbrukbare komponenter
   const [compName, setCompName] = React.useState('');
@@ -629,12 +629,12 @@ export default function WorkspaceDesignOverlay({
                     <select data-chd aria-label="Bind tekst til datakilde" style={field}
                       value={sel ? (bindEdits[uniqueSelector(sel)] || '') : ''} onChange={(e) => applyBinding(e.target.value)}>
                       <option value="">— Ingen (fritekst) —</option>
-                      {sources.map((s) => <option key={s.key} value={s.key}>{s.key}{s.label ? ` · ${String(s.label)}` : ''}</option>)}
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? '📊 ' : '✏️ '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
                     </select>
                     {sel && bindEdits[uniqueSelector(sel)] && (() => {
                       const bound = sources.find((s) => s.key === bindEdits[uniqueSelector(sel)]);
                       return bound
-                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Bundet — data kommer gjennom: <b>{String(bound.value ?? '—')}</b></div>
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Bundet — data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b></div>
                         : <div style={{ fontSize: 11, color: '#b45309' }}>⚠ Kilden er ikke definert lenger.</div>;
                     })()}
                     {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen datakilder ennå — definer metrics i Design-tokens.</div>}
@@ -708,12 +708,12 @@ export default function WorkspaceDesignOverlay({
                     <label style={flabel}>Koble til datakilde</label>
                     <select data-chd aria-label="Koble til datakilde" style={field} value={insSource} onChange={(e) => setInsSource(e.target.value)}>
                       <option value="">— Statisk verdi (ingen kobling) —</option>
-                      {sources.map((s) => <option key={s.key} value={s.key}>{s.key}{s.label ? ` · ${String(s.label)}` : ''}</option>)}
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? '📊 ' : '✏️ '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
                     </select>
                     {insSource && (() => {
                       const bound = sources.find((s) => s.key === insSource);
                       return bound
-                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Data kommer gjennom: <b>{String(bound.value ?? '—')}</b>{bound.label ? ` — ${String(bound.label)}` : ''}</div>
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b>{bound.label ? ` — ${String(bound.label)}` : ''}</div>
                         : <div style={{ fontSize: 11, color: '#b45309' }}>⚠ «{insSource}» er ikke definert. Legg den til i Design-tokens → metrics.</div>;
                     })()}
                     {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen kilder ennå — definer marketing-metrics i CreatorHub Design → Design-tokens, så dukker de opp her.</div>}
