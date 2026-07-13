@@ -24371,9 +24371,16 @@ app.post("/api/story-arc/projects", (req, res) => {
 });
 
 app.get("/api/story-arc/projects/:projectId", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only identitet (ikke compatResolveUserId — x-user-id spoofbar) OG
+  // fjern «guest»-bypass-en (`userId !== "guest"`) som lot en kaller uten
+  // identitet lese ETHVERT prosjekt by id (IDOR).
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const project = compatStoryArcProjectsStore.get(req.params.projectId);
-  if (!project || (project.userId !== userId && userId !== "guest")) {
+  if (!project || project.userId !== userId) {
     return res
       .status(404)
       .json({ success: false, error: "Story arc project not found" });
@@ -24385,7 +24392,13 @@ app.get("/api/story-arc/projects/:projectId", (req, res) => {
 });
 
 app.get("/api/story-arc/by-project/:projectId", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only identitet — nøkkelen inkluderer userId, så x-user-id-spoof lot
+  // en kaller slå opp en annen brukers prosjekt-mapping.
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const externalProjectId = req.params.projectId;
   const mappedId = compatStoryArcProjectByExternalStore.get(
     compatStoryArcExternalKey(userId, externalProjectId),
@@ -24413,7 +24426,13 @@ app.get("/api/story-arc/by-project/:projectId", (req, res) => {
 });
 
 app.post("/api/story-arc/by-project/:projectId/ensure", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only identitet — ensure skriver til kallerens navnerom; x-user-id-
+  // spoof lot en kaller opprette/kartlegge under en annen brukers identitet.
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const externalProjectId = req.params.projectId;
   const preferredName =
     compatHeaderString(req.query?.name) ||
@@ -24440,7 +24459,17 @@ app.post("/api/story-arc/by-project/:projectId/ensure", (req, res) => {
 });
 
 app.get("/api/story-arc/:storyArcId/editor-state", (req, res) => {
+  // Var HELT ugated (gjett en storyArcId → les tidslinje-state). Krev innlogging
+  // + eierskap via prosjekt-eier; ikke-eier/ukjent → null (ikke-avslørende).
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
   const storyArcId = req.params.storyArcId;
+  const project = compatStoryArcProjectsStore.get(storyArcId);
+  if (!project || project.userId !== session.userId) {
+    return res.json({ success: true, storyArcId, editorState: null });
+  }
   const editorState = compatStoryArcEditorStateStore.get(storyArcId);
   res.json({
     success: true,
@@ -24450,12 +24479,21 @@ app.get("/api/story-arc/:storyArcId/editor-state", (req, res) => {
 });
 
 app.put("/api/story-arc/:storyArcId/editor-state", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Var ugated write-IDOR (overskriv ethvert story-arc editor-state by id).
+  // Session-only + eierskaps-sjekk: eies av en annen bruker → 403.
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const storyArcId = req.params.storyArcId;
   const body = isRecord(req.body) ? req.body : {};
   const editorState = isRecord(body.editorState) ? body.editorState : {};
 
   let project = compatStoryArcProjectsStore.get(storyArcId);
+  if (project && project.userId !== userId) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
   if (!project) {
     project = createCompatStoryArcProject({
       id: storyArcId,

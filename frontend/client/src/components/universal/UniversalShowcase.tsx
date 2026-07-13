@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys, type EvendiBooking, type EvendiAnalyticsSummary } from '@/lib/evendi-api';
 import { useAuth } from '@/hooks/useAuth';
 import type { 
@@ -1861,7 +1861,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
       
       // Try Story Arc projects
-      const storyArcRes = await fetch(`/api/story-arc/projects/${item.projectId}`, { credentials: 'include' });
+      const storyArcRes = await fetch(`/api/story-arc/projects/${item.projectId}`, { credentials: 'include', headers: await getAuthHeader() });
       if (storyArcRes.ok) {
         const data = await storyArcRes.json();
         if (data.success && data.project) {

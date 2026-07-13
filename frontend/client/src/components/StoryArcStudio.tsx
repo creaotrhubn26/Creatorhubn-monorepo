@@ -116,7 +116,7 @@ import CinematographyCompositionOverlay, {
   type CinematographySpiralOrientation,
 } from './timeline/CinematographyCompositionOverlay';
 import { LUTEngine } from '../services/lut-engine';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { startCreatorHubGoogleSso } from '@/lib/creatorhubGoogleAuth';
 import { frameTimer } from '../services/frame-accurate-timer';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -2683,10 +2683,12 @@ export default function StoryArcStudio({
         if (!id && externalProjectId) {
           // Ensure mapping + Drive folder ready up-front
           const ensureUrl = `/api/story-arc/by-project/${encodeURIComponent(String(externalProjectId))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`;
-          let res = await fetch(ensureUrl, { method: 'POST', credentials: 'include' });
+          // Bearer-headere (backend krever nå session — endepunktene er IDOR-gated)
+          const authHeaders = await getAuthHeader();
+          let res = await fetch(ensureUrl, { method: 'POST', credentials: 'include', headers: authHeaders });
           if (!res.ok) {
             // fallback to mapping-only GET
-            res = await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(externalProjectId))}`, { credentials: 'include' });
+            res = await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(externalProjectId))}`, { credentials: 'include', headers: authHeaders });
           }
           const json = await res.json().catch(() => ({}));
           if (aborted) return;
@@ -2706,7 +2708,7 @@ export default function StoryArcStudio({
         }
         if (!id) return;
         // Load editor state
-        const res2 = await fetch(`/api/story-arc/${id}/editor-state`, { credentials: 'include' });
+        const res2 = await fetch(`/api/story-arc/${id}/editor-state`, { credentials: 'include', headers: await getAuthHeader() });
         if (!res2.ok) return;
         const json2 = await res2.json();
         if (aborted || !json2?.success || !json2?.editorState) return;
@@ -2785,7 +2787,7 @@ export default function StoryArcStudio({
       try {
         const res = await fetch(`/api/story-arc/${id}/editor-state`, {
           method: 'PUT',
-          headers: { 'Content-Type' : 'application/json' },
+          headers: { 'Content-Type' : 'application/json', ...(await getAuthHeader()) },
           credentials: 'include',
           body: JSON.stringify({ editorState: state }),
         });
@@ -2800,7 +2802,7 @@ export default function StoryArcStudio({
         const pid = projectContext?.projectId;
         if (pid && driveUploadsEnabled) {
           try {
-            await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(pid))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`, { method: 'POST', credentials: 'include' });
+            await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(pid))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`, { method: 'POST', credentials: 'include', headers: await getAuthHeader() });
           } catch (ensureError) {
             console.warn('Drive mapping ensure failed:', ensureError);
           }
@@ -6488,7 +6490,7 @@ export default function StoryArcStudio({
       setSaveError(null);
       const res = await fetch(`/api/story-arc/${id}/editor-state`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
         credentials: 'include',
         body: JSON.stringify({ editorState: buildEditorState() }),
       });
