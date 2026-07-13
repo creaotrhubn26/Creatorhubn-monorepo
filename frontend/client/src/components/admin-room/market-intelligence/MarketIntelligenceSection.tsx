@@ -26,6 +26,7 @@ import InsightsFeedPanel from "./InsightsFeedPanel";
 import OpportunityScorePanel from "./OpportunityScorePanel";
 import TenderIntelPanel from "./TenderIntelPanel";
 import GrantWorkspacePanel from "./GrantWorkspacePanel";
+import SocialQueuePanel from "./SocialQueuePanel";
 import ProspectsPanel from "./ProspectsPanel";
 import GeoVisibilityPanel from "./GeoVisibilityPanel";
 import AiTrafficPanel from "./AiTrafficPanel";
@@ -110,6 +111,8 @@ export default function MarketIntelligenceSection({
           <TenderIntelPanel />
 
           <GrantWorkspacePanel />
+
+          <SocialQueuePanel />
 
           <ProspectsPanel />
 
