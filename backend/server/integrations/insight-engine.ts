@@ -342,8 +342,9 @@ const salesTriggerDetector: InsightDetector = {
       url: string | null;
       published_at: string | null;
       matched_topic: string;
+      raw: { deadline?: string | null; valueNok?: number | null; buyerName?: string | null } | null;
     }>(
-      `SELECT source, event_id, kind, title, url, published_at, matched_topic
+      `SELECT source, event_id, kind, title, url, published_at, matched_topic, raw
          FROM trigger_events
         WHERE organization_id = $1::uuid
           AND created_at > now() - interval '14 days'
@@ -361,7 +362,13 @@ const salesTriggerDetector: InsightDetector = {
           : `Strategisignal — ${row.matched_topic}: ${row.title.slice(0, 120)}`,
       explanation:
         row.kind === "tender"
-          ? `Offentlig kunngjøring publisert ${row.published_at ?? "nylig"} — salgsvindu med frist. Vurder om dere kan levere, alene eller som underleverandør.`
+          ? [
+              `Offentlig kunngjøring publisert ${row.published_at ?? "nylig"}`,
+              row.raw?.buyerName ? `oppdragsgiver ${row.raw.buyerName}` : null,
+              row.raw?.valueNok ? `estimert verdi ${Math.round(row.raw.valueNok / 1000)}k NOK` : null,
+              row.raw?.deadline ? `FRIST ${row.raw.deadline}` : null,
+              "Vurder om dere kan levere, alene eller som underleverandør.",
+            ].filter(Boolean).join(" · ")
           : `Medieomtale ${row.published_at ?? "siste uke"} som kan signalisere ny strategi/satsing hos ${row.matched_topic}. Les kilden før utspill.`,
       evidence: [
         { ref: row.url ?? `${row.source}|${row.event_id}`, label: `kilde (${row.source})`, value: row.url ?? row.event_id },
