@@ -15,6 +15,7 @@ import type { Pool } from "pg";
 import { composeSocialDrafts } from "./content-composer.js";
 import type { SolutionKey } from "./grant-application.js";
 import { addExperiment } from "./geo-experiments.js";
+import { dispatchPublish } from "../social-publisher.js";
 
 export type PostStatus = "draft" | "approved" | "published" | "failed" | "rejected";
 
@@ -80,6 +81,52 @@ export async function listQueue(pool: Pool, organizationId: string): Promise<Que
     [organizationId],
   );
   return r.rows;
+}
+
+/**
+ * Ett-klikks publisering via den EKSISTERENDE dispatcheren (LinkedIn
+ * ugcPosts m.fl.) — aldri publisering bygget to ganger. Kun approved
+ * poster; resultatet skrives tilbake som published/failed med ærlig
+ * feilmelding (inkl. «koble LinkedIn på nytt» fra publisheren selv).
+ */
+export async function publishViaDispatcher(
+  pool: Pool,
+  organizationId: string,
+  postId: string,
+  userId: string,
+): Promise<{ ok: true; permalink: string | null } | { error: string; status: number }> {
+  const current = await pool.query<{ status: PostStatus; platform: string; body: string }>(
+    `SELECT status, platform, body FROM social_intel_posts
+      WHERE id = $1::uuid AND organization_id = $2::uuid`,
+    [postId, organizationId],
+  );
+  if (current.rows.length === 0) return { error: "post_ikke_funnet", status: 404 };
+  const post = current.rows[0];
+  if (post.status !== "approved") return { error: "kun_godkjente_poster_kan_publiseres", status: 409 };
+  if (post.platform !== "linkedin") {
+    return { error: "dispatcher_publisering_stotter_forelopig_kun_linkedin", status: 400 };
+  }
+
+  const result = await dispatchPublish("linkedin", {
+    connectionId: userId, // LinkedIn: connectionId = userId (én kobling per bruker)
+    userId,
+    projectId: "market-intelligence",
+    mediaKind: "text",
+    caption: post.body,
+  });
+
+  if (!result.ok) {
+    await transitionPost(pool, organizationId, postId, "failed", {
+      error: result.error ?? result.reason ?? "ukjent publiseringsfeil",
+    });
+    return { error: result.error ?? "publisering_feilet", status: 502 };
+  }
+
+  const permalink = result.permalink ?? null;
+  await transitionPost(pool, organizationId, postId, "published", {
+    externalUrl: permalink ?? undefined,
+  });
+  return { ok: true, permalink };
 }
 
 export async function transitionPost(

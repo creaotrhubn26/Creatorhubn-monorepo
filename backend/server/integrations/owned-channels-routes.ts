@@ -39,7 +39,7 @@ import { assembleDocument, createApplication, draftAndSaveSection, getApplicatio
 import { getDetectorPrecision } from "./system-precision.js";
 import { addExperiment, listExperimentsWithEffect } from "./geo-experiments.js";
 import { getLaunchTimingAnalysis } from "./launch-timing.js";
-import { composeToQueue, listQueue, transitionPost, type PostStatus } from "./social-queue.js";
+import { composeToQueue, listQueue, publishViaDispatcher, transitionPost, type PostStatus } from "./social-queue.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -646,6 +646,24 @@ export function registerOwnedChannelsRoutes({
     const orgId = await requireGrantAdmin(req, res);
     if (!orgId) return;
     return res.json({ posts: await listQueue(pool, orgId) });
+  });
+
+  app.post("/api/integrations/social-queue/:id/publish", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    try {
+      const result = await publishViaDispatcher(pool, orgId, req.params.id, session.userId);
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[social-queue] publish failed", err);
+      return res.status(500).json({ error: "publish_failed" });
+    }
   });
 
   app.patch("/api/integrations/social-queue/:id", async (req: Request, res: Response) => {
