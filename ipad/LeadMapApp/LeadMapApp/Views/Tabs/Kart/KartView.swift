@@ -18,6 +18,7 @@
 
 import SwiftUI
 import MapKit
+import AVFoundation
 
 // MARK: - Brand-konstanter
 private enum KrBrand {
@@ -32,8 +33,8 @@ private enum KrBrand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 // MARK: - Pin shapes
@@ -71,7 +72,10 @@ fileprivate struct KartGlowHalo: View {
 // MARK: - Mockup-data
 
 struct MapLeadMock: Identifiable, Hashable {
-    let id = UUID()
+    /// Stabil id: ekte leads bruker LeadModel.id (adapteren), mock-leads
+    /// får UUID. `let id = UUID()` ga ny identitet per adapt-kall →
+    /// ForEach-churn + selection som aldri matchet.
+    var id: String = UUID().uuidString
     let name: String
     let address: String
     let kmAway: Double
@@ -227,7 +231,12 @@ struct TerritoryPolygon: Identifiable {
 }
 
 enum OverlayData {
-    static let aiLeads: [AILeadSuggestion] = [
+    /// Mock AI-forslag — KUN i demo-modus. Ellers tegnes ingenting selv om
+    /// overlayet er slått på (ærlig tomt kart i stedet for falske pins).
+    static var aiLeads: [AILeadSuggestion] {
+        DemoModeManager.isActiveNonisolated ? _aiLeads : []
+    }
+    private static let _aiLeads: [AILeadSuggestion] = [
         AILeadSuggestion(name: "Tech Norge AS", lat: 59.913, lon: 10.745,
                          reason: "Lignende kunde vant for 14 dager siden", score: 88),
         AILeadSuggestion(name: "Helsenor AS", lat: 59.921, lon: 10.770,
@@ -236,15 +245,22 @@ enum OverlayData {
                          reason: "Konkurrent har gått fra dem", score: 92),
     ]
 
-    // Mockede besøk i dag (sorterte etter tid)
-    static let travelHistory: [CLLocationCoordinate2D] = [
+    // Mockede besøk i dag (sorterte etter tid) — KUN i demo-modus.
+    static var travelHistory: [CLLocationCoordinate2D] {
+        DemoModeManager.isActiveNonisolated ? _travelHistory : []
+    }
+    private static let _travelHistory: [CLLocationCoordinate2D] = [
         CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522),  // start: Storgata
         CLLocationCoordinate2D(latitude: 59.9252, longitude: 10.7641),  // Sofienberg
         CLLocationCoordinate2D(latitude: 59.9123, longitude: 10.7741),  // Tøyen
         CLLocationCoordinate2D(latitude: 59.9094, longitude: 10.7560),  // Bjørvika
     ]
 
-    static let territories: [TerritoryPolygon] = [
+    /// Mock-territorier — KUN i demo-modus.
+    static var territories: [TerritoryPolygon] {
+        DemoModeManager.isActiveNonisolated ? _territories : []
+    }
+    private static let _territories: [TerritoryPolygon] = [
         // Min territory: Sentrum + Frogner (lilla)
         TerritoryPolygon(
             name: "Mitt", owner: "Lars",
@@ -309,6 +325,10 @@ enum KartPreviewData {
 
     /// LeadModel → MapLeadMock adapter. Mapper status til PinStatus og
     /// bygger opp fallback-strenger for address/lastActivity.
+    ///
+    /// @MainActor fordi vi leser user-location for å beregne avstand.
+    /// Kalles kun fra main-actor-kontekster (`leads` + `kartLeads`).
+    @MainActor
     static func adapt(_ lm: LeadModel) -> MapLeadMock {
         let pin: MapLeadMock.PinStatus
         switch lm.status {
@@ -324,10 +344,18 @@ enum KartPreviewData {
             return parts.isEmpty ? "Ukjent adresse" : parts.joined(separator: ", ")
         }()
         let last: String? = lm.nextAction ?? (lm.lastVisitAt.map { _ in "Sist besøkt" })
+        // Avstand fra brukerens posisjon. Bruker ekte user-location når
+        // tilgjengelig, ellers Oslo-sentrum-fallback (samme konvensjon som
+        // `centerOnMe()`), så lista aldri viser villedende «0.0 km» for alle.
+        let me = KartLocationManager.shared.currentCoordinate
+            ?? CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
+        let leadCoord = CLLocationCoordinate2D(latitude: lm.latitude, longitude: lm.longitude)
+        let km = LocationService.shared.distanceMeters(from: me, to: leadCoord) / 1000
         return MapLeadMock(
+            id: lm.id,  // stabil identitet på tvers av re-adapt
             name: lm.name,
             address: addr,
-            kmAway: 0,  // TODO: beregn fra user-location i egen pass
+            kmAway: km,
             status: pin,
             lastActivity: last,
             lat: lm.latitude,
@@ -352,7 +380,11 @@ enum KartPreviewData {
         DemoModeManager.isActiveNonisolated ? _clusters : []
     }
 
-    static let activities: [ActivityItemMock] = [
+    /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
+    static var activities: [ActivityItemMock] {
+        DemoModeManager.isActiveNonisolated ? _activities : []
+    }
+    private static let _activities: [ActivityItemMock] = [
         ActivityItemMock(icon: "calendar",          label: "Møte",           timestamp: "i dag 10:00"),
         ActivityItemMock(icon: "envelope.open",     label: "E-post åpnet",   timestamp: "i går 14:22"),
         ActivityItemMock(icon: "doc.text",          label: "Tilbud sendt",   timestamp: "20. mai 09:15"),
@@ -360,7 +392,11 @@ enum KartPreviewData {
         ActivityItemMock(icon: "person.badge.plus", label: "Lead opprettet", timestamp: "18. mai 16:45"),
     ]
 
-    static let notes: [NoteItemMock] = [
+    /// Mock-notater — KUN i demo-modus.
+    static var notes: [NoteItemMock] {
+        DemoModeManager.isActiveNonisolated ? _notes : []
+    }
+    private static let _notes: [NoteItemMock] = [
         NoteItemMock(
             author: "Lars Kristensen",
             authorInitials: "LK",
@@ -387,7 +423,11 @@ enum KartPreviewData {
         ),
     ]
 
-    static let files: [FileItemMock] = [
+    /// Mock-filer — KUN i demo-modus.
+    static var files: [FileItemMock] {
+        DemoModeManager.isActiveNonisolated ? _files : []
+    }
+    private static let _files: [FileItemMock] = [
         FileItemMock(name: "Tilbud_NordicElektro_v3.pdf",   kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
         FileItemMock(name: "Befaringsbilder_StorgataAS.zip", kind: .image,      size: "8.4 MB", uploadedAt: "20. mai"),
         FileItemMock(name: "Kontorbygg_arealskisse.pdf",     kind: .pdf,        size: "640 KB", uploadedAt: "19. mai"),
@@ -436,19 +476,194 @@ struct KartView: View {
     @State private var selectedStatuses: Set<MapLeadMock.PinStatus> = []
     // Pakke 10.1: AppState for å hente prod-leads til rike popovere.
     @Environment(AppState.self) private var appState
+    // Deep-link til operatør-app (Voi/Ryde/…) for elsparkesykkel-forslag.
+    @Environment(\.openURL) private var openURL
 
-    // Header-popovers (samme stil som Oversikt)
-    @State private var datePickerOpen: Bool = false
-    @State private var areaPickerOpen: Bool = false  // forskjellig fra filter-bar
-    @State private var analyseOpen: Bool = false
-    @State private var nextActionsOpen: Bool = false
-    @State private var notificationsOpen: Bool = false
-    @State private var profileOpen: Bool = false
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfil: Bool = false
-    @State private var showEcosystem: Bool = false
-    @State private var showTeamAccess: Bool = false
-    @State private var showSuperAdmin: Bool = false
+    /// Kart-fanens leads: demo → mock (KartPreviewData), ekte →
+    /// appState.leads adaptert til pin-modellen. QA-runde 3 (desktop,
+    /// 2026-07-05): mock-gatingen tømte kartet i ekte modus fordi den
+    /// ekte grenen aldri ble koblet — 22 leads i API, 0 pins på kartet.
+    private var kartLeads: [MapLeadMock] {
+        if DemoModeManager.isActiveNonisolated {
+            return KartPreviewData.leads
+        }
+        return appState.leads
+            .filter { $0.latitude != 0 || $0.longitude != 0 }
+            .map(KartPreviewData.adapt)
+    }
+
+    /// Ekte modus: detail-panelet viser først noe når brukeren faktisk
+    /// har valgt en pin/rad (selectedLead init-es med mock-placeholder
+    /// som ellers ville lekke). Demo beholder pre-valgt lead.
+    @State private var hasSelectedLead: Bool = false
+    /// Auto-senter kun én gang per fane-liv.
+    @State private var didAutoCenter: Bool = false
+    // MARK: - Live navigasjons-modus
+    /// Heading-up 3D turn-by-turn mot valgt lead. Utløses av «Naviger»-knappen
+    /// på lead-kortet eller Navigasjon-toggle i Kartlag-arket.
+    @State private var navModeActive: Bool = false
+    @State private var navDestination: MapLeadMock? = nil
+    /// Lilla stiplet gå-rute (ekte MKDirections) fra Meg til pin-en.
+    @State private var navRoute: [CLLocationCoordinate2D]? = nil
+    @State private var navDistanceText: String = ""
+    @State private var navETAText: String = ""
+    @State private var navETAMinutes: Int = 0
+    /// Lav-pass-filtrert heading så kartet roterer jevnt (ikke rykkete).
+    @State private var navHeadingSmoothed: Double? = nil
+    /// Grunn til forsinkelse fra DATEX (f.eks. «en ulykke på E6») — fylles når
+    /// trafikk-API-et er koblet på; brukes i «meld forsinkelse»-meldingen.
+    @State private var navDelayReason: String? = nil
+    /// Posisjonen ruta sist ble beregnet fra — re-ruter når du har beveget deg.
+    @State private var navRerouteAnchor: CLLocationCoordinate2D? = nil
+    /// Hvor langt på ruta vi er (segment-indeks) — map-matching-lite: snapping
+    /// søker kun framover herfra, så figuren aldri hopper bakover/til parallell-gate.
+    @State private var navProgressIndex: Int = 0
+    // MARK: POI langs ruten (lading/bensin — ekte MKLocalSearch, portert fra Møter)
+    /// Alle POI langs ruta (begge typer hentes; synlighet gates av `navPOIActiveKinds`).
+    @State private var navRoutePOIs: [NavRoutePOI] = []
+    /// Hvilke POI-typer som vises på kartet. Tom = skjult (som Møter-mocken).
+    @State private var navPOIActiveKinds: Set<NavPOIKind> = []
+    /// Valgt POI (detalj-kort). POI-en brukeren avviste fra nærhets-varsler.
+    @State private var navSelectedPOI: NavRoutePOI? = nil
+    @State private var navDismissedPOIAlerts: Set<UUID> = []
+    /// Kjøregodtgjørelse-sheet (statens sats). Portert fra Møter-mocken.
+    @State private var navShowMileage: Bool = false
+    /// «Min bil»-ark (drivstoff/type + regnr-oppslag).
+    @State private var navShowVehicle: Bool = false
+    /// Ekte bom langs ruta (NVDB) — antall + sum takst per vei (liten bil).
+    @State private var navTollPerTrip: Double? = nil
+    @State private var navTollCount: Int = 0
+    // Leadgrid Go — kjørebok: registrer tur-start så en fullført nav auto-logges.
+    @State private var navStartedAt: Date? = nil
+    @State private var navStartCoord: CLLocationCoordinate2D? = nil
+    @State private var navStartPlace: String = ""
+    @State private var navShowKjorebok: Bool = false
+    // MARK: turn-by-turn (sving-for-sving + stemme + ankomst)
+    @State private var navSteps: [NavStep] = []
+    @State private var navStepIndex: Int = 0
+    @State private var navSpokePrepare: Bool = false
+    @State private var navArrived: Bool = false
+    @State private var navOffRouteCount: Int = 0
+    /// Fartsgrense (NVDB) + hvor den sist ble hentet.
+    @State private var navSpeedLimit: Int? = nil
+    @State private var navSpeedAnchor: CLLocationCoordinate2D? = nil
+    /// Stemme-guiding av/på (nb-NO).
+    @State private var navVoiceOn: Bool = true
+
+    struct NavStep: Hashable {
+        let text: String                     // «Sving høyre inn i Storgata»
+        let coord: CLLocationCoordinate2D    // manøver-punktet (start av steget)
+        let icon: String                     // SF Symbol for manøveren
+        static func == (a: NavStep, b: NavStep) -> Bool { a.text == b.text && a.coord.latitude == b.coord.latitude }
+        func hash(into h: inout Hasher) { h.combine(text); h.combine(coord.latitude) }
+    }
+    #if DEBUG
+    /// Live kamera-kalibrering (kun DEBUG): dra gliderne til det føles riktig,
+    /// les av verdiene, så bakes de inn som defaults. Reverteres med #59.
+    @State private var navCalibOpen: Bool = false
+    @State private var navCalibPitch: Double = 55
+    @State private var navCalibDist: Double = 300
+    @State private var navCalibAhead: Double = 0.0008
+    #endif
+    /// Entur kollektiv-tilgjengelighet for valgt lead (lead-kortet).
+    @State private var reachability: EnturService.Reachability? = nil
+    @State private var reachabilityLoadedFor: String = ""
+    /// Bilparkering nær valgt lead (Statens vegvesen p-register).
+    @State private var parking: ParkingService.NearbyResult? = nil
+    /// Entur «raskere alternativ» under navigering.
+    @State private var navAlternatives: [EnturService.Alternative] = []
+    @State private var navAltAnchor: CLLocationCoordinate2D? = nil
+    @State private var navAltDismissed: Bool = false
+    /// Transportform (styrer rute-type + ETA). `auto` lar Core Motion + fart
+    /// avgjøre om du går/sykler/kjører.
+    @State private var navTransport: NavTransport = .walking
+    @State private var navTransportAuto: Bool = true
+    /// Ekte ETA (min) per reisemåte for sammenligning i transport-menyen.
+    /// Bil/Gå fra MKDirections; Sykkel avledet fra gå-distanse. Koll. fra Entur.
+    @State private var navTransportETAs: [NavTransport: Int] = [:]
+    /// Kamera-preset. Auto-velges av reisemåten, men kan overstyres med knappene.
+    @State private var navPreset: NavCamPreset = .drive
+    /// True når brukeren manuelt har valgt preset (da slutter auto-valg å styre).
+    @State private var navPresetManual: Bool = false
+    /// Husket preset-preferanse på tvers av økter ("" = auto etter reisemåte).
+    @AppStorage("leadgrid.nav.presetPref") private var navPresetPref: String = ""
+    /// Figuren på kartet skifter med reisemåte: gå-person / sparkesykkel / bil / buss.
+    @State private var navVehicle: NavVehicle = .walk
+
+    enum NavVehicle {
+        case walk, scooter, car, bus
+        var symbol: String {
+            switch self { case .walk: "figure.walk"; case .scooter: "scooter"; case .car: "car.fill"; case .bus: "bus.fill" }
+        }
+    }
+
+    enum NavTransport: String, CaseIterable, Hashable {
+        case walking = "Gå", cycling = "Sykkel", driving = "Bil"
+        var mkType: MKDirectionsTransportType { self == .driving ? .automobile : .walking }
+        var icon: String {
+            switch self { case .walking: "figure.walk"; case .cycling: "bicycle"; case .driving: "car.fill" }
+        }
+        var etaVerb: String {
+            switch self { case .walking: "å gå"; case .cycling: "på sykkel"; case .driving: "kjøring" }
+        }
+        /// Antatt fart (m/s) for ETA-fallback når MKDirections ikke svarer.
+        var fallbackSpeed: Double {
+            switch self { case .walking: 1.35; case .cycling: 5.0; case .driving: 11.0 }
+        }
+    }
+
+    /// Kamera-presets for navigasjon. Hver gir pitch/avstand/sikt-fram (justert
+    /// litt etter reisemåte). `overview` fyller hele ruta i bildet.
+    enum NavCamPreset: String, CaseIterable, Hashable {
+        case firstPerson = "POV", drive = "Kjøre", overview = "Oversikt", topDown = "2D", north = "Nord"
+        var icon: String {
+            switch self {
+            case .firstPerson: "eye.fill"
+            case .drive: "location.north.line.fill"
+            case .overview: "scope"
+            case .topDown: "square.grid.2x2"
+            case .north: "safari.fill"
+            }
+        }
+        /// Nord-opp: kartet roterer IKKE (heading låst til nord).
+        var northUp: Bool { self == .north }
+        /// (pitch°, avstand m, sikt-fram °-lat). routeM = gjenstående rute (til fit).
+        func params(_ transport: NavTransport, routeM: Double) -> (pitch: Double, dist: Double, ahead: Double) {
+            switch self {
+            case .firstPerson:
+                return (74, 70, 0.0006)
+            case .drive:
+                let d: Double = transport == .driving ? 320 : (transport == .cycling ? 240 : 190)
+                return (60, d, 0.0009)
+            case .overview:
+                return (42, min(2600, max(900, routeM * 2.6)), 0.0004)
+            case .topDown:
+                return (0, min(2200, max(700, routeM * 2.2)), 0.0002)
+            case .north:
+                return (0, min(2600, max(900, routeM * 2.6)), 0.0)
+            }
+        }
+        /// Auto-valgt preset for en reisemåte.
+        static func auto(for t: NavTransport) -> NavCamPreset {
+            switch t { case .walking: .firstPerson; case .cycling: .drive; case .driving: .drive }
+        }
+    }
+
+    #if DEBUG
+    /// QA-kino (kun for reklamefilm-opptak, env QA_CINEMATIC=nordic). Skjuler
+    /// detalj-panelet inntil «tap»-beaten så kortet kan poppe inn på cue.
+    /// Reverteres før commit (oppgave #59).
+    @State private var cinematicHideCard: Bool = false
+    #endif
+    private var showDetailPanel: Bool {
+        guard !kartLeads.isEmpty else { return false }
+        #if DEBUG
+        if cinematicHideCard { return false }
+        #endif
+        return DemoModeManager.isActiveNonisolated || hasSelectedLead
+    }
+
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
 
     // Routes + lead-detail extras
     @State private var routePlannerOpen: Bool = false
@@ -586,6 +801,78 @@ struct KartView: View {
         case files = "Filer"
     }
 
+    /// Visuelle overlay-lag på kartet (ekstrahert for å avlaste type-sjekkeren).
+    @MapContentBuilder
+    private var mapVisualLayersContent: some MapContent {
+        if activeOverlays.contains(.heatmap) {
+            ForEach(KartPreviewData.clusters) { c in
+                MapCircle(center: CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon),
+                          radius: Double(c.count) * 80)
+                    .foregroundStyle(.radialGradient(
+                        colors: [Color.red.opacity(0.55), Color.orange.opacity(0.3), Color.yellow.opacity(0)],
+                        center: .center, startRadius: 0, endRadius: Double(c.count) * 80))
+                    .stroke(Color.red.opacity(0.4), lineWidth: 1)
+            }
+        }
+        if activeOverlays.contains(.territories) {
+            ForEach(OverlayData.territories) { t in
+                MapPolygon(coordinates: t.coordinates)
+                    .foregroundStyle(t.color.opacity(0.15))
+                    .stroke(t.color.opacity(0.6), lineWidth: 2)
+            }
+        }
+        if activeOverlays.contains(.travelHistory), !OverlayData.travelHistory.isEmpty {
+            MapPolyline(coordinates: OverlayData.travelHistory)
+                .stroke(KrBrand.orange, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+            ForEach(Array(OverlayData.travelHistory.enumerated()), id: \.offset) { (idx, coord) in
+                Annotation("", coordinate: coord) {
+                    ZStack {
+                        Circle().fill(KrBrand.orange)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                            .frame(width: 22, height: 22)
+                        Text("\(idx + 1)")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+        }
+        if activeOverlays.contains(.aiLeads) {
+            ForEach(OverlayData.aiLeads) { s in
+                Annotation("", coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)) {
+                    AISuggestionPin(score: s.score)
+                }
+            }
+        }
+    }
+
+    /// Solid «casing»-rute på kartet (ekstrahert for å hjelpe type-sjekkeren).
+    @MapContentBuilder
+    private var navRouteMapContent: some MapContent {
+        if let route = navRoute, route.count > 1 {
+            MapPolyline(coordinates: route)
+                .stroke(Color(red: 0.30, green: 0.14, blue: 0.55),
+                        style: StrokeStyle(lineWidth: 13, lineCap: .round, lineJoin: .round))
+            MapPolyline(coordinates: route)
+                .stroke(LinearGradient(colors: [KrBrand.purpleLight, KrBrand.purple],
+                                       startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+        }
+        // POI langs ruta (lading/bensin) — kun de typene brukeren har slått på.
+        ForEach(navRoutePOIs.filter { navPOIActiveKinds.contains($0.kind) }) { poi in
+            Annotation("", coordinate: poi.coordinate) {
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                        navSelectedPOI = navSelectedPOI?.id == poi.id ? nil : poi
+                    }
+                } label: {
+                    NavPOIPin(poi: poi, isSelected: navSelectedPOI?.id == poi.id)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             KrBrand.bg.ignoresSafeArea()
@@ -597,10 +884,73 @@ struct KartView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .task {
-            // Auto-zoom på valgt lead ved app-start så pin er sentrert.
-            // Daniel-feedback 2026-06-29: tap på lead-rad → zoom inn.
-            selectAndZoom(selectedLead)
+        .task(id: kartLeads.first?.id) {
+            // Auto-senter ved oppstart. Demo: zoom på pre-valgt mock-lead
+            // (Daniel-feedback 2026-06-29). Ekte: senter over egne leads
+            // når de lander fra API (task-id re-trigger), UTEN å velge —
+            // detail-panelet skal ikke late som brukeren har valgt noe.
+            guard !didAutoCenter else { return }
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_CINEMATIC"] == "nordic" {
+                didAutoCenter = true
+                runNordicCinematic()
+                return
+            }
+            #endif
+            if DemoModeManager.isActiveNonisolated {
+                didAutoCenter = true
+                selectAndZoom(selectedLead)
+                hasSelectedLead = false  // demo-panelet vises uansett; ikke lås ekte modus
+            } else if let first = kartLeads.first {
+                didAutoCenter = true
+                withAnimation(.easeInOut(duration: 0.55)) {
+                    camera = .region(MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: first.lat, longitude: first.lon),
+                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.13)
+                    ))
+                }
+            }
+        }
+        // Entur: hent kollektiv-tilgjengelighet for valgt lead (lead-kortet).
+        .task(id: selectedLead.id) {
+            let lead = selectedLead
+            guard showDetailPanel, reachabilityLoadedFor != lead.id else { return }
+            reachability = nil; parking = nil
+            async let rA = EnturService.shared.reachability(lat: lead.lat, lon: lead.lon, using: appState.api)
+            async let pA = ParkingService.shared.nearby(lat: lead.lat, lon: lead.lon, using: appState.api)
+            let (r, p) = await (rA, pA)
+            if selectedLead.id == lead.id {
+                reachability = r
+                parking = p
+                reachabilityLoadedFor = lead.id
+            }
+        }
+        // Møter «Naviger»/«Rute til møte» → ekte nav-motor. AppState.requestNavigation
+        // setter et deep-link (overlever tab-switch); her bygger vi lead-en og
+        // starter ekte turn-by-turn (start=true) eller senterer for forhåndsvisning.
+        .task(id: appState.deepLinkNavRequestedAt) {
+            guard let at = appState.deepLinkNavRequestedAt,
+                  Date().timeIntervalSince(at) < 60,
+                  let lat = appState.deepLinkNavLat,
+                  let lon = appState.deepLinkNavLon else { return }
+            let lead = MapLeadMock(
+                name: appState.deepLinkNavName ?? "Møte",
+                address: appState.deepLinkNavAddress ?? "",
+                kmAway: 0,
+                status: .meeting,
+                lastActivity: nil,
+                lat: lat, lon: lon
+            )
+            let start = appState.deepLinkNavStart
+            appState.clearNavigationDeepLink()
+            didAutoCenter = true   // ikke la oppstart-auto-senter overstyre
+            if start {
+                startNavigation(to: lead)
+            } else {
+                selectedLead = lead
+                hasSelectedLead = true
+                selectAndZoom(lead)
+            }
         }
         // Mac Catalyst Cmd+N → åpne AddLeadSheet. NotificationCenter-broadcast
         // fra GlobalKeyboardShortcuts. No-op på iOS/iPadOS.
@@ -611,12 +961,39 @@ struct KartView: View {
         .onReceive(NotificationCenter.default.publisher(for: .leadgridFocusSearch)) { _ in
             searchFieldFocused = true
         }
+        // Live navigasjon: følg posisjonen kontinuerlig (heading-up + re-rute).
+        .onChange(of: KartLocationManager.shared.currentCoordinate?.latitude) { _, _ in
+            navLocationTick()
+        }
+        .onChange(of: KartLocationManager.shared.currentCoordinate?.longitude) { _, _ in
+            navLocationTick()
+        }
         .sheet(isPresented: $addLeadOpen) {
             AddLeadSheet { newLead in
                 addLeadOpen = false
                 // I prod ville vi sende dette til APIClient.createLead
             }
         }
+        // Kjøregodtgjørelse (statens sats) — ekte km fra nav-ruta.
+        .sheet(isPresented: $navShowMileage) {
+            NavMileageSheet(
+                leadName: navDestination?.name ?? "Reise",
+                address: navDestination?.address ?? "",
+                distanceKm: max(1, Int(navRouteKm.rounded())),
+                profile: appState.vehicleProfile,
+                realTollPerTrip: navTollPerTrip,
+                realTollCount: navTollCount,
+                onLog: { amount in
+                    showToast("Kjøregodtgjørelse logget: \(Int(amount)) kr")
+                    // TODO (#73): persister til kostnad→besøk-attribusjon.
+                })
+        }
+        // «Min bil»-profil (drivstoff/type + regnr-oppslag).
+        .sheet(isPresented: $navShowVehicle) {
+            VehicleProfileSheet(profile: Bindable(appState).vehicleProfile, api: appState.api)
+        }
+        // Leadgrid Go — kjørebok (auto-loggede turer + formåls-bekreftelse).
+        .sheet(isPresented: $navShowKjorebok) { KjorebokView() }
         .sheet(isPresented: $openLeadFullSheet) {
             LeadDetailFullSheet(lead: selectedLead)
         }
@@ -636,12 +1013,44 @@ struct KartView: View {
             UploadFileSheet(companyName: selectedLead.name, companyColor: selectedLead.status.color)
         }
         .sheet(isPresented: $showStatusChange) {
+            // Workflow-QA 2026-07-05: onSave var toast-fasade — nå ekte
+            // API-kall i ekte modus (id-en er LeadModel.id). Demo: toast.
             LeadStatusChangeSheet(
                 companyName: selectedLead.name,
-                companyColor: selectedLead.status.color
-            ) { newStatus, note in
-                showToast("Status endret til \(newStatus.label)")
-            }
+                companyColor: selectedLead.status.color,
+                onSave: { newStatus, note in
+                    let leadId = selectedLead.id
+                    if DemoModeManager.isActiveNonisolated {
+                        showToast("Status endret til \(newStatus.label)")
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue)
+                                showToast("Status endret til \(newStatus.label)")
+                                await appState.refreshLeads()
+                            } catch {
+                                showToast("Kunne ikke endre status")
+                            }
+                        }
+                    }
+                },
+                onSaveTemperature: { temp in
+                    let leadId = selectedLead.id
+                    if DemoModeManager.isActiveNonisolated {
+                        showToast("Temperatur endret")
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateTemperature(leadId: leadId, temperature: temp)
+                                showToast("Temperatur endret")
+                                await appState.refreshLeads()
+                            } catch {
+                                showToast("Kunne ikke endre temperatur")
+                            }
+                        }
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showAssignSeller) {
             LeadAssignSellerSheet(
@@ -673,7 +1082,18 @@ struct KartView: View {
             Text("Lead-en flyttes til arkiv. Du kan hente den tilbake fra Filter → Vis arkiverte.")
         }
         .sheet(isPresented: $mapStyleSheetOpen) {
-            LayersSheet(selectedStyle: $mapStyle, activeOverlays: $activeOverlays)
+            LayersSheet(
+                selectedStyle: $mapStyle,
+                activeOverlays: $activeOverlays,
+                navActive: navModeActive,
+                canNavigate: !kartLeads.isEmpty,
+                destinationName: selectedLead.name,
+                onStartNav: {
+                    mapStyleSheetOpen = false
+                    withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: selectedLead) }
+                },
+                onStopNav: { withAnimation(.easeOut(duration: 0.25)) { stopNavigation() } }
+            )
         }
         // MeMapPin tap-actions (2026-07-02) — inline HUD-overlay på kartet
         .overlay {
@@ -709,7 +1129,7 @@ struct KartView: View {
             NavigationStack {
                 VStack(spacing: 16) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 40))
+                        .font(.appScaled(size: 40))
                         .foregroundStyle(.green)
                     Text("Lead opprettet")
                         .font(.headline)
@@ -775,22 +1195,32 @@ struct KartView: View {
         // Header + søk er FAST øverst. Resten scrolles internt slik at
         // detailPanel (kan bli lang i Notater-tab) ikke dytter ut header.
         VStack(spacing: 0) {
-            unifiedHeader
+            kartHeader
                 .padding(.horizontal, 20).padding(.top, 14)
             searchAndFilters
                 .padding(.horizontal, 20).padding(.top, 12)
                 .padding(.bottom, 12)
 
             ScrollView {
-                HStack(alignment: .top, spacing: 14) {
+                // iPhone: side-kolonnen (300pt) får ikke plass ved siden av
+                // kartet på compact width — stable kolonnene vertikalt i
+                // stedet, med leads-i-området under detail-panelet.
+                let columns = DeviceIdiom.isPhone
+                    ? AnyLayout(VStackLayout(spacing: 14))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+                columns {
                     VStack(spacing: 12) {
                         mapCard
-                            .frame(minHeight: 380, maxHeight: 460)
+                            // Kartet skal dominere Kart-fanen. På iPad/Mac
+                            // (romslig vindu) gir vi det vesentlig mer høyde;
+                            // iPhone holder en kompakt høyde så resten får plass.
+                            .frame(minHeight: DeviceIdiom.isPhone ? 360 : 520,
+                                   maxHeight: DeviceIdiom.isPhone ? 460 : 680)
                         legendCard
-                        if KartPreviewData.leads.isEmpty {
-                            emptyDetailPanel
-                        } else {
+                        if showDetailPanel {
                             detailPanel
+                        } else {
+                            emptyDetailPanel
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -799,7 +1229,7 @@ struct KartView: View {
                         leadsInAreaCard
                         Spacer(minLength: 0)
                     }
-                    .frame(width: 300)
+                    .kartColumnWidth(300)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -807,260 +1237,70 @@ struct KartView: View {
         }
     }
 
-    // MARK: Unified header — matcher OversiktView sin TopBar
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
 
-    private var unifiedHeader: some View {
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Kart")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Se dine leads, kunder og aktiviteter på kartet.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(KrBrand.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar",
-                              text: isNarrow ? "Tir 14" : "Tir. 14. mai",
-                              isOpen: $datePickerOpen)
-                        .popover(isPresented: $datePickerOpen, arrowEdge: .top) {
-                            datePickerPopover.presentationCompactAdaptation(.popover)
-                        }
-                    if !isNarrow {
-                        topPicker(icon: "location.fill",
-                                  text: "Alle områder",
-                                  isOpen: $areaPickerOpen)
-                            .popover(isPresented: $areaPickerOpen, arrowEdge: .top) {
-                                AreaFilterPopover(selected: $selectedArea, radiusKm: $selectedRadiusKm)
-                                    .presentationCompactAdaptation(.popover)
-                            }
-                    }
-                    // Pakke 10.1 (Daniel-feedback 2026-07-01): bytt fra
-                    // simplePopover til Oversikt-fanens rike popovere for
-                    // konsistent look på tvers av faner.
-                    topIconButton(icon: "chart.line.uptrend.xyaxis",
-                                  badge: nil, isOpen: $analyseOpen)
-                        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                            AnalysePopover(leads: appState.leads)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(
-                                leads: appState.leads,
-                                upcomingFollowups: 0,
-                                momentum: nil
-                            )
-                            .frame(width: 380, height: 520)
-                            .presentationCompactAdaptation(.popover)
-                        }
-                    profileAvatar(isNarrow: isNarrow)
-                        .popover(isPresented: $profileOpen, arrowEdge: .top) {
-                            ProfilePopover(
-                                name: "Lars Kristensen",
-                                email: appState.userEmail,
-                                onOpenMyProfile: { profileOpen = false }
-                            )
-                            .frame(width: 320, height: 480)
-                            .presentationCompactAdaptation(.popover)
-                        }
-                }
-            }
-        }
-        .frame(height: 64)
+    /// Demo-aware datakilde for header-badges/popovers (samme gating som
+    /// resten av fanen).
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
     }
 
-    /// Forenklet popover-stub — ekte popovers ligger i prod (OversiktView).
-    private func simplePopover(title: String, subtitle: String, rows: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(KrBrand.textSecondary)
-            }
-            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
-            Divider().overlay(KrBrand.stroke)
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 8) {
-                        Circle().fill(KrBrand.purpleLight).frame(width: 4, height: 4)
-                        Text(row)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 9)
-                    .background(KrBrand.card)
-                }
-            }
-        }
-        .frame(width: 280)
-        .background(KrBrand.card)
-        .preferredColorScheme(.dark)
-    }
-
-    private func topPicker(icon: String, text: String, isOpen: Binding<Bool>) -> some View {
-        Button { isOpen.wrappedValue.toggle() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(KrBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(KrBrand.textTertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private var datePickerPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Velg periode")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
-            VStack(spacing: 6) {
-                ForEach(["I dag", "Denne uken", "Denne måneden", "Q2 2026", "I år", "Egendefinert"], id: \.self) { p in
-                    Button { datePickerOpen = false; showToast("Periode satt: \(p)") } label: {
-                        HStack {
-                            Text(p)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white)
-                            Spacer()
-                            if p == "I dag" {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(KrBrand.purpleLight)
-                            }
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .frame(width: 260)
-        .background(KrBrand.card)
-        .preferredColorScheme(.dark)
-    }
-
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>) -> some View {
-        Button { isOpen.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(KrBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(KrBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(KrBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(KrBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private func profileAvatar(isNarrow: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: KrBrand.purpleLight,
-            background: KrBrand.card,
-            borderColor: KrBrand.stroke,
-            secondaryText: KrBrand.textSecondary,
-            tertiaryText: KrBrand.textTertiary,
-            isCompact: isNarrow,
-            showMinProfil: $showMinProfil,
-            showEcosystem: $showEcosystem,
-            showTeamAccess: $showTeamAccess,
-            showSuperAdmin: $showSuperAdmin
-        )
-    }
-
-    // Ubrukt legacy — bytter over til SharedProfileAvatar. Behold for
-    // referanse inntil deprecation-pass er ferdig.
-    private func legacyProfileAvatar(isNarrow: Bool) -> some View {
-        Button { profileOpen.toggle() } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle().fill(KrBrand.purple.opacity(0.3))
-                    Text(appState.initials)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(KrBrand.purpleLight)
-                }
-                .frame(width: 34, height: 34)
-                if !isNarrow {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(appState.displayName)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Text("Salgssjef")
-                            .font(.system(size: 10))
-                            .foregroundStyle(KrBrand.textSecondary)
-                    }
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(KrBrand.textTertiary)
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+    private var kartHeader: some View {
+        LeadgridTabHeader(
+            subtitle: "Se dine leads, kunder og aktiviteter på kartet.",
+            leads: headerLeads)
     }
 
     // MARK: Søk + filtre
 
+    @ViewBuilder
     private var searchAndFilters: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(KrBrand.textSecondary)
-                TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
-                    .foregroundColor(KrBrand.textTertiary))
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .font(.system(size: 12))
-                    .focused($searchFieldFocused)
+        // iPhone (QA-runde 2, Daniels funn): én-rads layouten delte 390pt
+        // på søkefelt + 6 chips → hver chip ble en vertikal bokstav-søyle.
+        // Samme mønster som Leads-fanen: søkefelt på egen rad, chips og
+        // knapper i horisontal scroller med naturlig bredde.
+        if DeviceIdiom.isPhone {
+            VStack(spacing: 8) {
+                kartSearchField
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        kartFilterAndActionChips
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.horizontal, 20)
+                }
+                .padding(.horizontal, -20)
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
-            .frame(maxWidth: .infinity)
+        } else {
+            HStack(spacing: 8) {
+                kartSearchField
+                kartFilterAndActionChips
+            }
+        }
+    }
 
+    private var kartSearchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.appScaled(size: 12))
+                .foregroundStyle(KrBrand.textSecondary)
+            TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
+                .foregroundColor(KrBrand.textTertiary))
+                .textFieldStyle(.plain)
+                .foregroundStyle(.white)
+                .font(.appScaled(size: 12))
+                .focused($searchFieldFocused)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var kartFilterAndActionChips: some View {
             filterChip(label: areaButtonLabel, badge: nil, active: selectedArea != .all,
                        isOpen: $areaFilterOpen)
                 .popover(isPresented: $areaFilterOpen, arrowEdge: .top) {
@@ -1086,9 +1326,9 @@ struct KartView: View {
             Button { routePlannerOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "map.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Text("Ruteplanlegger")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.purpleLight)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1103,9 +1343,9 @@ struct KartView: View {
             Button { addLeadOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Text("Legg til lead")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1118,7 +1358,6 @@ struct KartView: View {
                 )
             }
             .buttonStyle(.plain)
-        }
     }
 
     private var areaButtonLabel: String {
@@ -1137,21 +1376,21 @@ struct KartView: View {
             HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(active ? KrBrand.purpleLight : KrBrand.textSecondary)
                 }
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 if let b = badge, b > 0 {
                     Text("\(b)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(KrBrand.purple, in: Capsule())
                 }
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
@@ -1178,14 +1417,22 @@ struct KartView: View {
                 // "Meg her"-annotasjon: profil-avatar på user-location.
                 // Vises kun når CLLocationManager har fått en fix.
                 // Tap åpner MePinActionsSheet (2026-07-02).
-                if let coord = KartLocationManager.shared.currentCoordinate {
-                    // Skjerm-fast MeMapPin — beholder samme visuell størrelse
-                    // uansett zoom-nivå. Tap zoomer inn + åpner inline HUD.
+                if let rawCoord = KartLocationManager.shared.currentCoordinate {
+                    // I nav-modus snappes figuren til nærmeste punkt på ruta så den
+                    // alltid ligger på veien (ikke gjennom bygg / GPS-drift).
+                    let coord = navModeActive ? snapToRoute(rawCoord) : rawCoord
+                    // I nav-modus: 3D gå-avatar (person på puck m/ retnings-stråle
+                    // + skygge + gå-bob) som beveger seg. Ellers skjerm-fast MeMapPin.
                     Annotation("Meg", coordinate: coord) {
-                        MeMapPin(initials: appState.initials, email: appState.userEmail)
-                            .onTapGesture {
-                                zoomToMeAndOpenHUD(coord: coord)
-                            }
+                        if navModeActive {
+                            NavAvatarPuck(initials: appState.initials,
+                                          email: appState.userEmail,
+                                          vehicle: navVehicle,
+                                          moving: KartLocationManager.shared.isMoving)
+                        } else {
+                            MeMapPin(initials: appState.initials, email: appState.userEmail)
+                                .onTapGesture { zoomToMeAndOpenHUD(coord: coord) }
+                        }
                     }
                 }
                 ForEach(KartPreviewData.clusters) { c in
@@ -1193,7 +1440,7 @@ struct KartView: View {
                         ClusterPin(count: c.count, color: c.color)
                     }
                 }
-                ForEach(KartPreviewData.leads) { lead in
+                ForEach(kartLeads) { lead in
                     Annotation("", coordinate: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon)) {
                         Button {
                             if measureMode {
@@ -1222,57 +1469,18 @@ struct KartView: View {
                         .stroke(KrBrand.green, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [8, 6]))
                 }
 
-                // OVERLAY: Heatmap — varme sirkler rundt lead-konsentrasjon
-                if activeOverlays.contains(.heatmap) {
-                    ForEach(KartPreviewData.clusters) { c in
-                        MapCircle(center: CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon),
-                                  radius: Double(c.count) * 80)
-                            .foregroundStyle(.radialGradient(
-                                colors: [Color.red.opacity(0.55), Color.orange.opacity(0.3), Color.yellow.opacity(0)],
-                                center: .center, startRadius: 0, endRadius: Double(c.count) * 80
-                            ))
-                            .stroke(Color.red.opacity(0.4), lineWidth: 1)
-                    }
-                }
+                // Navigasjon: solid «casing»-rute (ekte nav-vei-design).
+                navRouteMapContent
 
-                // OVERLAY: Territorier — fargede polygoner
-                if activeOverlays.contains(.territories) {
-                    ForEach(OverlayData.territories) { t in
-                        MapPolygon(coordinates: t.coordinates)
-                            .foregroundStyle(t.color.opacity(0.15))
-                            .stroke(t.color.opacity(0.6), lineWidth: 2)
-                    }
-                }
-
-                // OVERLAY: Reise-historikk — rød rute m/ tall-merker
-                if activeOverlays.contains(.travelHistory) {
-                    MapPolyline(coordinates: OverlayData.travelHistory)
-                        .stroke(KrBrand.orange,
-                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    ForEach(Array(OverlayData.travelHistory.enumerated()), id: \.offset) { (idx, coord) in
-                        Annotation("", coordinate: coord) {
-                            ZStack {
-                                Circle().fill(KrBrand.orange)
-                                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                                    .frame(width: 22, height: 22)
-                                Text("\(idx + 1)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                    }
-                }
-
-                // OVERLAY: AI-foreslåtte leads — pulse-pins
-                if activeOverlays.contains(.aiLeads) {
-                    ForEach(OverlayData.aiLeads) { s in
-                        Annotation("", coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)) {
-                            AISuggestionPin(score: s.score)
-                        }
-                    }
-                }
+                // Visuelle lag (heatmap/territorier/reise-historikk/AI-leads).
+                mapVisualLayersContent
             }
-            .mapStyle(mapStyle.mapKitStyle)
+            // Navigasjon: standard emphasis (IKKE muted) så GATENE er tydelige —
+            // muted gjorde veiene nesten usynlige i det mørke temaet. Flatt kart
+            // så figuren/ruta ligger på bakkeplanet. Pitch gir road-ahead-view.
+            .mapStyle(navModeActive
+                ? .standard(elevation: .flat, emphasis: .automatic, pointsOfInterest: .excludingAll)
+                : mapStyle.mapKitStyle)
             // Skjul Apple Maps default-kontroller (zoom-pille + kompass +
             // "Maps Legal" overlay) — vi har vår egen FAB-stack bunn-høyre.
             .mapControls { }
@@ -1331,6 +1539,62 @@ struct KartView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .allowsHitTesting(true)
             }
+
+            // Navigasjons-banner øverst når live-nav er aktiv
+            if navModeActive {
+                VStack(spacing: 8) {
+                    navManeuverBanner
+                    navBanner
+                    navPOIStrip
+                    if !navAltDismissed, let alt = navAlternatives.first,
+                       (alt.savedMin ?? 1) >= 1 {
+                        navAlternativeBanner(alt)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .allowsHitTesting(true)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // POI-detalj-kort + nærhets-varsler nederst i nav.
+            if navModeActive {
+                VStack(spacing: 8) {
+                    ForEach(navProximityAlerts) { poi in
+                        navProximityAlertRow(poi)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    if let poi = navSelectedPOI {
+                        NavPOIDetailCard(
+                            poi: poi,
+                            onClose: { withAnimation { navSelectedPOI = nil } },
+                            onOpenInMaps: { openPOIInMaps(poi) })
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: 480)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .allowsHitTesting(true)
+            }
+
+            // Fartsgrense-skilt (NVDB) — øverst til venstre i nav.
+            if navModeActive, let sl = navSpeedLimit {
+                navSpeedSign(sl)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
+            }
+
+            #if DEBUG
+            // Kamera-kalibrering (kun DEBUG) — nede-til-venstre.
+            if navModeActive {
+                navCalibControls
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .allowsHitTesting(true)
+            }
+            #endif
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
@@ -1341,7 +1605,7 @@ struct KartView: View {
 
     private func mapFAB(icon: String) -> some View {
         Image(systemName: icon)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.appScaled(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
     }
@@ -1414,10 +1678,10 @@ struct KartView: View {
     private func toastBanner(_ msg: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(KrBrand.green)
             Text(msg)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
@@ -1442,6 +1706,27 @@ struct KartView: View {
         if let url = URL(string: "mailto:\(email)?subject=\(subj)") {
             UIApplication.shared.open(url) { ok in
                 if !ok { Task { @MainActor in showToast("Ingen e-post-app konfigurert") } }
+            }
+        }
+    }
+
+    /// Ett-klikks «meld forsinkelse»: komponerer en ferdig e-post til møte-
+    /// kontakten om at du er forsinket, med ny beregnet ankomst og (når DATEX
+    /// er koblet på) grunnen — f.eks. «en ulykke på veien». Åpner e-post-
+    /// komponisten så brukeren bekrefter og sender selv.
+    private func sendDelayNotice(to email: String, etaMin: Int?, reason: String?) {
+        let subject = "Forsinket til møtet"
+        var body = "Hei,\n\nJeg er dessverre litt forsinket til møtet vårt"
+        if let r = reason, !r.isEmpty { body += " på grunn av \(r)" }
+        body += "."
+        if let eta = etaMin, eta > 0 { body += " Beregnet ankomst om ca. \(eta) minutter." }
+        body += "\n\nBeklager ulempen — sees straks.\n\nMvh"
+        let subj = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let bod = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "mailto:\(email)?subject=\(subj)&body=\(bod)") {
+            UIApplication.shared.open(url) { ok in
+                if ok { Task { @MainActor in showToast("Forsinkelses-melding klar til sending") } }
+                else { Task { @MainActor in showToast("Ingen e-post-app konfigurert") } }
             }
         }
     }
@@ -1499,7 +1784,7 @@ struct KartView: View {
                 .frame(width: 56, height: 56)
                 .background(
                     Text(isA ? "A" : "B")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(KrBrand.green, in: Capsule())
@@ -1514,27 +1799,27 @@ struct KartView: View {
             ZStack {
                 Circle().fill(KrBrand.green.opacity(0.25))
                 Image(systemName: "ruler.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(KrBrand.green)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Mål-verktøy")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 if let a = measurePointA, let b = measurePointB {
                     let km = distanceKm(a, b)
                     let drive = Int(km * 2)
                     Text(String(format: "%.2f km · %d min kjøring", km, drive))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(KrBrand.green)
                 } else if measurePointA != nil {
                     Text("Tap pin B")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 } else {
                     Text("Tap pin A")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
             }
@@ -1544,7 +1829,7 @@ struct KartView: View {
                 measurePointB = nil
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .buttonStyle(.plain)
@@ -1553,6 +1838,485 @@ struct KartView: View {
         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.green.opacity(0.4), lineWidth: 1))
         .frame(maxWidth: 240)
+    }
+
+    /// Norsk fartsgrense-skilt (rød ring, hvit bakgrunn, svart tall).
+    private func navSpeedSign(_ limit: Int) -> some View {
+        ZStack {
+            Circle().fill(.white).frame(width: 54, height: 54)
+            Circle().strokeBorder(Color.red, lineWidth: 7).frame(width: 54, height: 54)
+            Text("\(limit)").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+        }
+        .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+    }
+
+    /// Manøver-banner øverst: neste sving/instruksjon + avstand til den.
+    @ViewBuilder
+    private var navManeuverBanner: some View {
+        if !navArrived, !navSteps.isEmpty, navStepIndex < navSteps.count {
+            let step = navSteps[navStepIndex]
+            let d = KartLocationManager.shared.currentCoordinate.map { metersBetween($0, step.coord) }
+            HStack(spacing: 12) {
+                Image(systemName: step.icon)
+                    .font(.appScaled(size: 24, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(LinearGradient(colors: [KrBrand.purpleLight, KrBrand.purple],
+                                               startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    if let d {
+                        Text(d < 1000 ? "\(Int(d / 5) * 5) m" : String(format: "%.1f km", d / 1000))
+                            .font(.appScaled(size: 15, weight: .heavy)).foregroundStyle(KrBrand.purpleLight)
+                    }
+                    Text(step.text)
+                        .font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+                }
+                Spacer(minLength: 4)
+                // Stemme av/på
+                Button { navVoiceOn.toggle() } label: {
+                    Image(systemName: navVoiceOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(KrBrand.card, in: Circle())
+                        .overlay(Circle().stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .background(KrBrand.card.opacity(0.92), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
+            .frame(maxWidth: 480)
+            .shadow(color: KrBrand.purple.opacity(0.35), radius: 12, x: 0, y: 4)
+        }
+    }
+
+    /// Navigasjons-banner (destinasjon + avstand/ETA + transport + POV/oversikt
+    /// + Avslutt) i live turn-by-turn.
+    private var navBanner: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(KrBrand.purpleLight.opacity(0.22))
+                Image(systemName: navTransport.icon)
+                    .font(.appScaled(size: 14, weight: .bold))
+                    .foregroundStyle(KrBrand.purpleLight)
+            }
+            .frame(width: 38, height: 38)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(navDestination?.name ?? "Navigerer")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if !navDistanceText.isEmpty {
+                        Text(navDistanceText)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.purpleLight)
+                    }
+                    if !navETAText.isEmpty {
+                        Text("·").foregroundStyle(KrBrand.textTertiary)
+                        Text(navETAText)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.textSecondary)
+                    }
+                }
+            }
+            Spacer(minLength: 2)
+            // Transportform med ekte ETA-sammenligning per reisemåte.
+            Menu {
+                Button { navTransportAuto = true; navTransport = resolveAutoTransport()
+                    withAnimation { navVehicle = vehicleFor(navTransport) }
+                    if let d = navDestination {
+                        let me = KartLocationManager.shared.currentCoordinate ?? CLLocationCoordinate2D(latitude: d.lat, longitude: d.lon)
+                        recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: d.lat, longitude: d.lon))
+                    }
+                } label: { Label("Auto (etter bevegelse)", systemImage: "wand.and.stars") }
+                Divider()
+                ForEach(NavTransport.allCases, id: \.self) { t in
+                    Button { setNavTransport(t) } label: {
+                        if let m = navTransportETAs[t] {
+                            Label("\(t.rawValue) · \(m) min", systemImage: t.icon)
+                        } else {
+                            Label(t.rawValue, systemImage: t.icon)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: navTransport.icon)
+                        .font(.appScaled(size: 11, weight: .bold))
+                    Text(navTransportAuto ? "Auto" : navTransport.rawValue)
+                        .font(.appScaled(size: 10, weight: .bold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 8, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(KrBrand.card, in: Capsule())
+                .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .accessibilityLabel("Reisemåte og ETA")
+            // Kamera-modus-velger (POV / Kjøre / Oversikt / 2D / Nord).
+            Menu {
+                ForEach(NavCamPreset.allCases, id: \.self) { preset in
+                    Button { setNavPreset(preset) } label: {
+                        Label(preset.rawValue, systemImage: preset.icon)
+                    }
+                }
+                Divider()
+                Button { navPresetPref = ""; navPresetManual = false; navPreset = .auto(for: navTransport); updateNavCamera(animated: true) } label: {
+                    Label("Auto (etter reisemåte)", systemImage: "wand.and.stars")
+                }
+            } label: {
+                Image(systemName: navPreset.icon)
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(KrBrand.card, in: Circle())
+                    .overlay(Circle().stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .accessibilityLabel("Kamera-modus")
+            Button { withAnimation(.easeOut(duration: 0.25)) { stopNavigation() } } label: {
+                Text("Avslutt")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(KrBrand.green.opacity(0.20), in: Capsule())
+                    .overlay(Capsule().stroke(KrBrand.green.opacity(0.4), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13))
+        .background(KrBrand.card.opacity(0.85), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(KrBrand.purpleLight.opacity(0.45), lineWidth: 1))
+        .frame(maxWidth: 470)
+        .shadow(color: KrBrand.purple.opacity(0.35), radius: 12, x: 0, y: 4)
+    }
+
+    // MARK: POI langs ruten — toggle-strip + kjøregodtgjørelse + nærhets-varsler
+
+    /// Kompakt rad: vis/skjul POI (lading/bensin) + kjøregodtgjørelse-knapp.
+    private var navPOIStrip: some View {
+        let anyOn = !navPOIActiveKinds.isEmpty
+        let allOn = navPOIActiveKinds == Set(NavPOIKind.allCases)
+        return HStack(spacing: 8) {
+            Menu {
+                Button { navShowVehicle = true } label: {
+                    Label("Min bil: \(appState.vehicleProfile.isConfigured ? appState.vehicleProfile.fuel.label : "Velg")",
+                          systemImage: appState.vehicleProfile.fuel.icon)
+                }
+                Button { navShowKjorebok = true } label: {
+                    Label(TripStore.shared.unconfirmedCount > 0
+                          ? "Kjørebok (\(TripStore.shared.unconfirmedCount) ubekreftet)" : "Kjørebok",
+                          systemImage: "book.closed.fill")
+                }
+                Divider()
+                Button {
+                    withAnimation { navPOIActiveKinds = Set(NavPOIKind.allCases); navDismissedPOIAlerts.removeAll() }
+                } label: { Label("Vis alle POI", systemImage: "eye.fill") }
+                Divider()
+                ForEach(NavPOIKind.allCases, id: \.self) { kind in
+                    let on = navPOIActiveKinds.contains(kind)
+                    Button {
+                        withAnimation { if on { navPOIActiveKinds.remove(kind) } else { navPOIActiveKinds.insert(kind) } }
+                    } label: {
+                        Label(on ? "Skjul \(kind.rawValue.lowercased())" : "Vis \(kind.rawValue.lowercased())",
+                              systemImage: kind.icon)
+                    }
+                }
+                Divider()
+                Button { withAnimation { navPOIActiveKinds.removeAll() } } label: {
+                    Label("Skjul alle POI", systemImage: "eye.slash.fill")
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: anyOn ? "eye.fill" : "eye.slash.fill")
+                        .font(.appScaled(size: 11, weight: .bold))
+                    Text(anyOn ? (allOn ? "POI vises" : "POI delvis") : "POI langs ruten")
+                        .font(.appScaled(size: 11, weight: .bold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 8, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            if !anyOn && !navProximityAlerts.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "bell.badge.fill").font(.appScaled(size: 10, weight: .bold))
+                    Text("\(navProximityAlerts.count) i nærheten").font(.appScaled(size: 10, weight: .bold))
+                }
+                .foregroundStyle(KrBrand.yellow)
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(KrBrand.yellow.opacity(0.15), in: Capsule())
+                .overlay(Capsule().stroke(KrBrand.yellow.opacity(0.4), lineWidth: 1))
+            }
+            Spacer(minLength: 2)
+            Button { navShowMileage = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "norwegiankronesign.circle.fill").font(.appScaled(size: 11, weight: .bold))
+                    Text("Kjøregodtgjørelse").font(.appScaled(size: 11, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(LinearGradient(colors: [KrBrand.purple, KrBrand.purpleLight],
+                                           startPoint: .leading, endPoint: .trailing), in: Capsule())
+                .shadow(color: KrBrand.purple.opacity(0.4), radius: 6, y: 2)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// «Meg»-posisjon for nærhets-beregning (live GPS, ellers rute-start).
+    private var navMeCoordinate: CLLocationCoordinate2D? {
+        KartLocationManager.shared.currentCoordinate ?? navRoute?.first
+    }
+
+    /// Rute-lengde i km (sum av segment-avstander) — ekte, til kjøregodtgjørelse.
+    private var navRouteKm: Double {
+        guard let r = navRoute, r.count > 1 else { return 0 }
+        var m = 0.0
+        for i in 0..<(r.count - 1) { m += NavRoutePOIService.haversine(r[i], r[i + 1]) }
+        return m / 1000
+    }
+
+    /// Nærmeste POI per type (innen 6 km), kun når typen er SKJULT og ikke avvist.
+    private var navProximityAlerts: [NavRoutePOI] {
+        guard let me = navMeCoordinate, !navRoutePOIs.isEmpty else { return [] }
+        let radiusM = 6_000.0
+        var result: [NavRoutePOI] = []
+        for kind in NavPOIKind.allCases where !navPOIActiveKinds.contains(kind) {
+            let nearest = navRoutePOIs
+                .filter { $0.kind == kind && !navDismissedPOIAlerts.contains($0.id) }
+                .map { ($0, NavRoutePOIService.haversine(me, $0.coordinate)) }
+                .filter { $0.1 <= radiusM }
+                .min { $0.1 < $1.1 }
+            if let n = nearest { result.append(n.0) }
+        }
+        return result
+    }
+
+    private func navProximityAlertRow(_ p: NavRoutePOI) -> some View {
+        let km = (navMeCoordinate.map { NavRoutePOIService.haversine($0, p.coordinate) } ?? 0) / 1000
+        let minsAway = max(1, Int(km / 0.55))
+        return HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(p.brandColor)
+                Image(systemName: p.kind.icon).font(.appScaled(size: 13, weight: .black)).foregroundStyle(.white)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(p.kind.rawValue) \(minsAway) min unna")
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                Text("\(p.name) · +\(p.detourMin) min avstikker")
+                    .font(.appScaled(size: 10)).foregroundStyle(KrBrand.textSecondary).lineLimit(1)
+            }
+            Spacer()
+            Button {
+                withAnimation { navPOIActiveKinds.insert(p.kind); navSelectedPOI = p }
+            } label: {
+                Text("Vis").font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(p.brandColor, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Button {
+                withAnimation { _ = navDismissedPOIAlerts.insert(p.id) }
+            } label: {
+                Image(systemName: "xmark").font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(KrBrand.textSecondary).padding(7)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(p.brandColor.opacity(0.45), lineWidth: 1)))
+        .shadow(color: .black.opacity(0.4), radius: 10, y: 3)
+    }
+
+    /// Åpne en POI i Apple Maps (kjørerute).
+    private func openPOIInMaps(_ p: NavRoutePOI) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: p.coordinate))
+        item.name = p.name
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+    }
+
+    #if DEBUG
+    /// Live kamera-kalibrering (DEBUG). Dra gliderne → kameraet oppdateres med
+    /// en gang. Les av tallene nederst og gi dem til meg, så bakes de inn.
+    @ViewBuilder
+    private var navCalibControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if navCalibOpen {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Kamera-kalibrering")
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                    calibRow("Pitch", value: $navCalibPitch, range: 20...90, fmt: "%.0f°")
+                    calibRow("Avstand", value: $navCalibDist, range: 40...600, fmt: "%.0f m")
+                    calibRow("Sikt fram", value: $navCalibAhead, range: 0...0.002, fmt: "%.4f")
+                    Text(String(format: "pitch %.0f · dist %.0f · ahead %.4f",
+                                navCalibPitch, navCalibDist, navCalibAhead))
+                        .font(.appScaled(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(KrBrand.purpleLight)
+                        .textSelection(.enabled)
+                }
+                .padding(12)
+                .frame(width: 260)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .background(KrBrand.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            Button { withAnimation { navCalibOpen.toggle() } } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(navCalibOpen ? KrBrand.purple.opacity(0.5) : KrBrand.card, in: Circle())
+                    .overlay(Circle().stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func calibRow(_ label: String, value: Binding<Double>, range: ClosedRange<Double>, fmt: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label).font(.appScaled(size: 10, weight: .semibold)).foregroundStyle(KrBrand.textSecondary)
+                Spacer()
+                Text(String(format: fmt, value.wrappedValue))
+                    .font(.appScaled(size: 10, weight: .bold)).foregroundStyle(.white)
+            }
+            Slider(value: value, in: range) { editing in
+                if !editing { updateNavCamera(animated: true) }
+            }
+            .tint(KrBrand.purpleLight)
+            .onChange(of: value.wrappedValue) { _, _ in updateNavCamera(animated: false) }
+        }
+    }
+    #endif
+
+    /// «Raskere alternativ»-forslag under gange: kollektiv eller elsparkesykkel
+    /// som slår gå-ETA-en. Sparkesykkel deep-linker til operatørens app; Leadgrid
+    /// planlegger turen, operatøren håndterer opplåsing/betaling/tur-status.
+    @ViewBuilder
+    private func navAlternativeBanner(_ alt: EnturService.Alternative) -> some View {
+        let icon: String = alt.kind == "scooter" ? "scooter" : (alt.kind == "car" ? "car.fill" : "bus.fill")
+        let accent: Color = alt.kind == "scooter" ? KrBrand.orange : (alt.kind == "car" ? KrBrand.blue : KrBrand.purpleLight)
+        let actionLabel: String = alt.kind == "scooter" ? "Start" : (alt.kind == "car" ? "Kjør" : "Vis buss")
+        HStack(spacing: 11) {
+            ZStack {
+                Circle().fill(accent.opacity(0.22))
+                Image(systemName: icon)
+                    .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(accent)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Anbefaling: \(alt.headline)")
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                HStack(spacing: 5) {
+                    if let saved = alt.savedMin, saved >= 1 {
+                        Text("\(saved) min raskere")
+                            .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(accent)
+                    }
+                    Text("· \(alt.etaMin) min · \(alt.detail)")
+                        .font(.appScaled(size: 10)).foregroundStyle(KrBrand.textSecondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 2)
+            Button {
+                switch alt.kind {
+                case "scooter":
+                    withAnimation { navVehicle = .scooter }
+                    if let urlStr = alt.rentalUrl, let url = URL(string: urlStr) { openURL(url) }
+                case "car":
+                    navTransportAuto = false
+                    navTransport = .driving
+                    withAnimation { navVehicle = .car }
+                    if let dest = navDestination {
+                        let me = KartLocationManager.shared.currentCoordinate
+                            ?? CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+                        recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon))
+                    }
+                default: // transit
+                    withAnimation { navVehicle = .bus }
+                }
+                withAnimation { navAltDismissed = true }
+            } label: {
+                Text(actionLabel)
+                    .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(accent.opacity(0.9), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Button { withAnimation(.easeOut(duration: 0.2)) { navAltDismissed = true } } label: {
+                Image(systemName: "xmark")
+                    .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(KrBrand.textTertiary)
+                    .frame(width: 26, height: 26)
+                    .background(KrBrand.cardHi, in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13))
+        .background(KrBrand.card.opacity(0.85), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(accent.opacity(0.5), lineWidth: 1))
+        .frame(maxWidth: 470)
+        .shadow(color: accent.opacity(0.3), radius: 10, x: 0, y: 4)
+    }
+
+    /// Bla transportform: Auto → Gå → Sykkel → Bil → Auto. Manuelt valg låser
+    /// auto-deteksjon; re-beregner rute + ETA umiddelbart.
+    private func cycleNavTransport() {
+        if navTransportAuto {
+            navTransportAuto = false; navTransport = .walking
+        } else {
+            switch navTransport {
+            case .walking: navTransport = .cycling
+            case .cycling: navTransport = .driving
+            case .driving: navTransportAuto = true; navTransport = resolveAutoTransport()
+            }
+        }
+        withAnimation(.easeInOut(duration: 0.4)) { navVehicle = vehicleFor(navTransport) }
+        if let dest = navDestination {
+            let me = KartLocationManager.shared.currentCoordinate
+                ?? CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+            recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon))
+        }
+    }
+
+    /// Bytt til en spesifikk reisemåte (fra ETA-sammenligningsmenyen).
+    private func setNavTransport(_ t: NavTransport) {
+        navTransportAuto = false
+        navTransport = t
+        withAnimation(.easeInOut(duration: 0.4)) { navVehicle = vehicleFor(t) }
+        if let dest = navDestination {
+            let me = KartLocationManager.shared.currentCoordinate
+                ?? CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+            recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon))
+        }
+    }
+
+    /// Beregn ekte ETA per reisemåte (MKDirections for bil/gå; sykkel avledet fra
+    /// gå-distanse ÷ 16 km/t; kollektiv fra Entur-alternativ hvis tilgjengelig).
+    private func computeTransportETAs(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) {
+        func eta(_ type: MKDirectionsTransportType) async -> (min: Int, meters: Double)? {
+            let req = MKDirections.Request()
+            req.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+            req.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
+            req.transportType = type
+            guard let r = try? await MKDirections(request: req).calculateETA() else { return nil }
+            return (max(1, Int(r.expectedTravelTime / 60)), r.distance)
+        }
+        Task { @MainActor in
+            var out: [NavTransport: Int] = [:]
+            if let d = await eta(.automobile) { out[.driving] = d.min }
+            if let w = await eta(.walking) {
+                out[.walking] = w.min
+                // Sykkel ~16 km/t på gå-rutens distanse (MKDirections har ikke sykkel).
+                out[.cycling] = max(1, Int((w.meters / 1000) / 16.0 * 60))
+            }
+            // Kollektiv dekkes av Entur-alternativ-banneren (egen flate).
+            guard navModeActive else { return }
+            navTransportETAs = out
+        }
     }
 
     /// Haversine-distance i km mellom to koord.
@@ -1587,51 +2351,84 @@ struct KartView: View {
 
     // MARK: Legend — FIX #2: separat card UNDER kartet
 
+    @ViewBuilder
     private var legendCard: some View {
-        HStack(spacing: 14) {
-            ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle().fill(st.color.opacity(0.22))
-                        Image(systemName: st.icon)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(st.color)
-                    }
-                    .frame(width: 22, height: 22)
-                    Text(st.label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
+        // iPhone (QA-runde 2): seks legend-elementer delte 390pt → labels
+        // ble vertikale bokstav-søyler. Horisontal scroller m/ naturlig
+        // bredde på phone; iPad/Mac beholder full-bredde-fordelingen.
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    legendItems
                 }
-                if st != .followup { Spacer(minLength: 4) }
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 14).padding(.vertical, 10)
             }
+            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
+        } else {
+            HStack(spacing: 14) {
+                legendItemsWithSpacers
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var legendItems: some View {
+        ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
+            legendItem(st)
+        }
+    }
+
+    @ViewBuilder
+    private var legendItemsWithSpacers: some View {
+        ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
+            legendItem(st)
+            if st != .followup { Spacer(minLength: 4) }
+        }
+    }
+
+    private func legendItem(_ st: MapLeadMock.PinStatus) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle().fill(st.color.opacity(0.22))
+                Image(systemName: st.icon)
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(st.color)
+            }
+            .frame(width: 22, height: 22)
+            Text(st.label)
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
     }
 
     // MARK: Leads i området-card
 
     private var leadsInAreaCard: some View {
         // Skiller «tom pga demo AV / ingen data» fra «tom pga aktivt filter».
-        let hasAnyLeads = !KartPreviewData.leads.isEmpty
+        let hasAnyLeads = !kartLeads.isEmpty
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Leads i området")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 if hasAnyLeads {
-                    Text("(\(KartPreviewData.leads.count))")
-                        .font(.system(size: 12))
+                    Text("(\(kartLeads.count))")
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
                 Spacer()
                 HStack(spacing: 3) {
                     Text("Nær meg")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.textSecondary)
             }
@@ -1640,15 +2437,15 @@ struct KartView: View {
                 if filteredLeads.isEmpty {
                     VStack(spacing: 6) {
                         Image(systemName: hasAnyLeads ? "magnifyingglass" : "mappin.slash")
-                            .font(.system(size: 18))
+                            .font(.appScaled(size: 18))
                             .foregroundStyle(KrBrand.textTertiary)
                         Text(hasAnyLeads ? "Ingen treff" : "Ingen leads enda")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(KrBrand.textSecondary)
                         Text(hasAnyLeads
                              ? "Prøv å justere søk eller filtre"
                              : "Bruk «+ Legg til lead» eller skru på demo-modus")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(KrBrand.textTertiary)
                             .multilineTextAlignment(.center)
                     }
@@ -1664,9 +2461,9 @@ struct KartView: View {
             Button { showToast("Åpner full leads-liste") } label: {
                 HStack(spacing: 5) {
                     Text("Se alle leads i området")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.purpleLight)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -1687,33 +2484,33 @@ struct KartView: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(lead.status.color.opacity(0.18))
                     Image(systemName: "building.2.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(lead.status.color)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Text(lead.name)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         statusBadge(lead.status)
                     }
                     Text(lead.address)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(KrBrand.textSecondary)
                         .lineLimit(1)
                     HStack {
                         if let act = lead.lastActivity {
                             Text("Sist aktivitet: \(act)")
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                                 .foregroundStyle(KrBrand.textTertiary)
                                 .lineLimit(1)
                         }
                         Spacer()
                         Text(String(format: "%.1f km", lead.kmAway))
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(KrBrand.textSecondary)
                     }
                 }
@@ -1734,7 +2531,7 @@ struct KartView: View {
 
     private func statusBadge(_ st: MapLeadMock.PinStatus) -> some View {
         Text(st.label)
-            .font(.system(size: 8, weight: .bold))
+            .font(.appScaled(size: 8, weight: .bold))
             .foregroundStyle(st.color)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(st.color.opacity(0.18), in: Capsule())
@@ -1743,7 +2540,7 @@ struct KartView: View {
     /// Filtrerte leads basert på søk + status + bransje. Sidebar +
     /// kart-pins respekterer disse.
     private var filteredLeads: [MapLeadMock] {
-        KartPreviewData.leads.filter { lead in
+        kartLeads.filter { lead in
             let s = search.trimmingCharacters(in: .whitespaces).lowercased()
             let matchesSearch = s.isEmpty
                 || lead.name.lowercased().contains(s)
@@ -1758,6 +2555,7 @@ struct KartView: View {
     /// animation. Spans ~0.012° gir ca. gate-nivå zoom.
     private func selectAndZoom(_ lead: MapLeadMock) {
         selectedLead = lead
+        hasSelectedLead = true
         withAnimation(.easeInOut(duration: 0.55)) {
             camera = .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon),
@@ -1766,40 +2564,602 @@ struct KartView: View {
         }
     }
 
+    // MARK: - Live navigasjons-modus
+
+    /// Kompass-retning a→b i grader (nord=0, øst=90). Roterer kartet heading-up.
+    private func bearing(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let lat1 = a.latitude * .pi / 180, lat2 = b.latitude * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        return atan2(y, x) * 180 / .pi
+    }
+
+    /// Delt tale-synthesizer for stemme-guiding.
+    private static let speechSynth = AVSpeechSynthesizer()
+
+    /// Snakk en instruksjon (norsk stemme). No-op når stemme er av.
+    private func speak(_ text: String) {
+        guard navVoiceOn else { return }
+        let u = AVSpeechUtterance(string: text)
+        u.voice = AVSpeechSynthesisVoice(language: "nb-NO") ?? AVSpeechSynthesisVoice(language: "no")
+        u.rate = AVSpeechUtteranceDefaultSpeechRate
+        Self.speechSynth.speak(u)
+    }
+
+    /// SF Symbol for en manøver ut fra instruksjons-teksten.
+    private func maneuverIcon(_ instr: String) -> String {
+        let s = instr.lowercased()
+        if s.contains("høyre") || s.contains("right") { return "arrow.turn.up.right" }
+        if s.contains("venstre") || s.contains("left") { return "arrow.turn.up.left" }
+        if s.contains("rundkjøring") || s.contains("roundabout") { return "arrow.triangle.2.circlepath" }
+        if s.contains("ankom") || s.contains("arrive") || s.contains("destinasjon") { return "mappin.and.ellipse" }
+        return "arrow.up"
+    }
+
+    /// Meters mellom to koordinater (Haversine).
+    private func metersBetween(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+    }
+
+    /// Start live turn-by-turn mot en lead: heading-up 3D som følger posisjonen,
+    /// lilla stiplet MKDirections-rute, nav-banner. Utløst av «Naviger»-knappen
+    /// eller Kartlag-toggle.
+    private func startNavigation(to lead: MapLeadMock) {
+        navDestination = lead
+        selectedLead = lead
+        hasSelectedLead = true
+        navModeActive = true
+        // Husket preferanse vinner over auto-valg (hvis satt).
+        if let pref = NavCamPreset(rawValue: navPresetPref) {
+            navPreset = pref
+            navPresetManual = true
+        } else {
+            navPreset = .auto(for: navTransport)
+            navPresetManual = false
+        }
+        navVehicle = vehicleFor(navTransport)
+        navHeadingSmoothed = nil
+        navProgressIndex = 0
+        navSteps = []
+        navStepIndex = 0
+        navSpokePrepare = false
+        navArrived = false
+        navSpeedLimit = nil
+        navSpeedAnchor = nil
+        navAlternatives = []
+        navAltAnchor = nil
+        navAltDismissed = false
+        navRoutePOIs = []
+        // «Min bil» styrer hvilke POI som vises fra start (el→lading, fossil→bensin).
+        navPOIActiveKinds = appState.vehicleProfile.defaultPOIKinds
+        navSelectedPOI = nil
+        navDismissedPOIAlerts = []
+        navTransportETAs = [:]
+        measureMode = false   // gjensidig utelukkende med mål-verktøyet
+        KartLocationManager.shared.requestIfNeeded()
+        KartLocationManager.shared.setNavigationMode(true)   // høyeste GPS-nøyaktighet
+        KartLocationManager.shared.startTransportDetection()
+        let me = KartLocationManager.shared.currentCoordinate
+            ?? CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon)
+        navRerouteAnchor = me
+        // Leadgrid Go: registrer tur-start så en fullført kjøretur auto-logges.
+        navStartedAt = Date()
+        navStartCoord = me
+        navStartPlace = "Din posisjon"
+        reverseGeocodeStartPlace(me)
+        recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon))
+        updateNavCamera(animated: true)
+    }
+
+    /// Slå opp et lesbart start-stedsnavn (til kjøreboka). Best-effort.
+    private func reverseGeocodeStartPlace(_ coord: CLLocationCoordinate2D) {
+        CLGeocoder().reverseGeocodeLocation(
+            CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        ) { placemarks, _ in
+            guard let p = placemarks?.first else { return }
+            let name = [p.thoroughfare, p.locality].compactMap { $0 }.joined(separator: ", ")
+            if !name.isEmpty { DispatchQueue.main.async { self.navStartPlace = name } }
+        }
+    }
+
+    /// Leadgrid Go: opprett en kjørebok-oppføring fra en fullført nav-tur.
+    /// Kalles ved ankomst. Formål = «ikke bekreftet» (fører attesterer i kjøreboka).
+    private func logCompletedTrip() {
+        guard navTransport == .driving, let start = navStartedAt, let dest = navDestination else { return }
+        let km = navRouteKm
+        guard km >= 0.3 else { return }   // hopp over bagatell-turer
+        let profile = appState.vehicleProfile
+        let trip = Trip(
+            startDate: start,
+            endDate: Date(),
+            startPlace: navStartPlace.isEmpty ? "Din posisjon" : navStartPlace,
+            endPlace: dest.name,
+            startLat: navStartCoord?.latitude ?? dest.lat,
+            startLon: navStartCoord?.longitude ?? dest.lon,
+            endLat: dest.lat,
+            endLon: dest.lon,
+            distanceKm: (km * 10).rounded() / 10,
+            vehicleName: profile.displayName,
+            vehiclePlate: profile.plate,
+            mileageAmount: (km * profile.mileageRate * 100).rounded() / 100,
+            tollAmount: navTollPerTrip,
+            source: "auto"
+        )
+        if TripStore.shared.add(trip) {
+            showToast("Kjøretur logget i kjøreboka — bekreft formål")
+            Task { await TripService.shared.push(trip, using: appState.api) }   // durabel backup
+        }
+    }
+
+    /// Avslutt navigasjon og gjenopprett oversikts-kamera på lead-en.
+    private func stopNavigation() {
+        navModeActive = false
+        navRoute = nil
+        navRoutePOIs = []
+        navPOIActiveKinds = []
+        navSelectedPOI = nil
+        navTollPerTrip = nil
+        navTollCount = 0
+        KartLocationManager.shared.setNavigationMode(false)
+        KartLocationManager.shared.stopTransportDetection()
+        let dest = navDestination
+        navDestination = nil
+        withAnimation(.easeInOut(duration: 0.6)) {
+            if let d = dest {
+                camera = .region(MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: d.lat, longitude: d.lon),
+                    span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.018)))
+            }
+        }
+    }
+
+    /// Beregn gå-rute (MKDirections) + avstand/ETA. Faller tilbake til rett linje
+    /// hvis ruteberegning feiler (offline/sim).
+    private func recomputeNavRoute(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) {
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        req.transportType = navTransport.mkType
+        let verb = navTransport.etaVerb
+        MKDirections(request: req).calculate { resp, _ in
+            var coords: [CLLocationCoordinate2D] = [from, to]
+            var meters = self.metersBetween(from, to)
+            var seconds = meters / self.navTransport.fallbackSpeed
+            var steps: [NavStep] = []
+            if let route = resp?.routes.first {
+                let poly = route.polyline
+                var pts = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: poly.pointCount)
+                poly.getCoordinates(&pts, range: NSRange(location: 0, length: poly.pointCount))
+                if pts.count > 1 { coords = pts }
+                meters = route.distance
+                seconds = route.expectedTravelTime
+                // Manøvrer (sving-for-sving) fra rute-stegene.
+                for step in route.steps {
+                    let instr = step.instructions.trimmingCharacters(in: .whitespaces)
+                    guard !instr.isEmpty else { continue }
+                    let sp = step.polyline
+                    var spc = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: sp.pointCount)
+                    sp.getCoordinates(&spc, range: NSRange(location: 0, length: sp.pointCount))
+                    let c = spc.first ?? to
+                    steps.append(NavStep(text: instr, coord: c, icon: self.maneuverIcon(instr)))
+                }
+            }
+            DispatchQueue.main.async {
+                guard self.navModeActive else { return }
+                let km = meters / 1000
+                self.navDistanceText = km < 1 ? "\(Int(meters)) m" : String(format: "%.1f km", km)
+                self.navETAMinutes = max(1, Int(seconds / 60))
+                self.navETAText = "\(self.navETAMinutes) min"
+                self.navProgressIndex = 0   // ny rute → nullstill progresjon
+                self.navSteps = steps
+                self.navStepIndex = steps.count > 1 ? 1 : 0   // hopp over «start»-steget
+                self.navSpokePrepare = false
+                withAnimation(.easeInOut(duration: 0.5)) { self.navRoute = coords }
+                self.fetchNavRoutePOIs(route: coords)
+                self.fetchNavTolls(route: coords)
+                self.computeTransportETAs(from: from, to: to)
+            }
+        }
+    }
+
+    /// Hent ekte lade-/bensin-POI langs ruta (MKLocalSearch). Begge typer hentes
+    /// alltid (så nærhets-varsler virker selv når overlayet er skjult); synlighet
+    /// på kartet gates av `navPOIActiveKinds`.
+    private func fetchNavRoutePOIs(route: [CLLocationCoordinate2D]) {
+        guard route.count > 1 else { return }
+        Task { @MainActor in
+            let pois = await NavRoutePOIService.shared.fetchAlongRoute(
+                route, kinds: Set(NavPOIKind.allCases))
+            guard navModeActive else { return }
+            navRoutePOIs = pois
+        }
+    }
+
+    /// Hent ekte bomstasjoner (NVDB) langs ruta og summer takst per vei. Kun
+    /// relevant ved bil. Filtrerer til stasjoner <400 m fra ruta.
+    private func fetchNavTolls(route: [CLLocationCoordinate2D]) {
+        guard route.count > 1, navTransport == .driving else {
+            navTollPerTrip = nil; navTollCount = 0; return
+        }
+        let lats = route.map(\.latitude), lons = route.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return }
+        let bbox = "\(minLon),\(minLat),\(maxLon),\(maxLat)"
+        Task { @MainActor in
+            let stations = await NvdbService.shared.tolls(bbox: bbox, using: appState.api)
+            guard navModeActive, navTransport == .driving else { return }
+            let onRoute = stations.filter {
+                NavRoutePOIService.nearestDistanceToRoute(
+                    CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon), route: route) <= 400
+            }
+            let sum = onRoute.compactMap { $0.rateSmall }.reduce(0, +)
+            navTollCount = onRoute.count
+            navTollPerTrip = onRoute.isEmpty ? nil : sum
+        }
+    }
+
+    /// Turn-by-turn: annonser neste manøver (forbered + «nå») og oppdag ankomst.
+    private func navTurnTick(_ me: CLLocationCoordinate2D) {
+        guard let dest = navDestination else { return }
+        let destC = CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+        let toDest = metersBetween(me, destC)
+        // Ankomst
+        if !navArrived, navStepIndex >= max(0, navSteps.count - 1), toDest < 25 {
+            navArrived = true
+            logCompletedTrip()   // Leadgrid Go: auto-loggfør kjøreturen
+            speak("Du er fremme ved \(dest.name)")
+            showToast("Du er fremme ved \(dest.name)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                if navArrived { withAnimation(.easeOut(duration: 0.3)) { stopNavigation() } }
+            }
+            return
+        }
+        guard navStepIndex < navSteps.count else { return }
+        let step = navSteps[navStepIndex]
+        let d = metersBetween(me, step.coord)
+        // «Forbered» ~130 m før manøveren
+        if !navSpokePrepare, d < 130, d > 40 {
+            navSpokePrepare = true
+            speak("Om \(Int(d / 10) * 10) meter, \(step.text)")
+        }
+        // Manøver-punktet nådd → snakk + gå til neste steg
+        if d < 22 {
+            speak(step.text)
+            if navStepIndex < navSteps.count - 1 { navStepIndex += 1 }
+            navSpokePrepare = false
+        }
+    }
+
+    /// Sentrer/roter kamera heading-up på brukeren. Kursen kommer fra
+    /// CLLocation.course når man beveger seg, ellers peil mot destinasjonen.
+    /// POV = førsteperson gate-nivå (bratt pitch, tett på). Oversikt = zoomet ut
+    /// så hele ruta vises.
+    private func updateNavCamera(animated: Bool) {
+        guard navModeActive, let dest = navDestination else { return }
+        let destC = CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+        // Snap kamera-referansen til veien også (jevn, på-vei-følging).
+        let me = snapToRoute(KartLocationManager.shared.currentCoordinate ?? destC)
+        // Kartet skal orientere seg i KJØRERETNINGEN: peil langs ruta mot et punkt
+        // et stykke foran deg (ikke bare rett mot pin-en), så kartet roterer som i
+        // ekte turn-by-turn. Lav-pass-filtrer så rotasjonen blir jevn, ikke rykkete.
+        // Nord-opp-preset låser heading til nord (kartet roterer ikke).
+        let heading: Double
+        if navPreset.northUp {
+            heading = 0
+            navHeadingSmoothed = 0
+        } else {
+            let rawHeading = navRouteHeading(from: me, dest: destC)
+            if let prev = navHeadingSmoothed {
+                heading = prev + angleDelta(prev, rawHeading) * 0.30
+            } else {
+                heading = rawHeading
+            }
+            navHeadingSmoothed = heading
+        }
+        // Parametre fra valgt preset (+ reisemåte + gjenstående rute). I DEBUG
+        // overstyrer kalibrerings-gliderne når panelet er åpent (finjustering).
+        var p = navPreset.params(navTransport, routeM: metersBetween(me, destC))
+        #if DEBUG
+        if navCalibOpen { p = (navCalibPitch, navCalibDist, navCalibAhead) }
+        #endif
+        let dist = p.dist, pitch = p.pitch, ahead = p.ahead
+        let rad = heading * .pi / 180
+        let center = CLLocationCoordinate2D(
+            latitude: me.latitude + ahead * cos(rad),
+            longitude: me.longitude + ahead * sin(rad) / max(0.2, cos(me.latitude * .pi / 180)))
+        let cam = MapCamera(centerCoordinate: center, distance: dist, heading: heading, pitch: pitch)
+        // Lineær under følging = jevn, kontinuerlig bevegelse (ikke pulsende).
+        withAnimation(animated ? .easeInOut(duration: 0.9) : .linear(duration: 0.55)) {
+            camera = .camera(cam)
+        }
+    }
+
+    /// Bytt mellom POV (førsteperson) og Oversikt (zoomet ut). «Zoom ut»-knappen.
+    /// Sett kamera-preset manuelt (overstyrer auto-valg) + husk det.
+    private func setNavPreset(_ preset: NavCamPreset) {
+        navPresetManual = true
+        navPreset = preset
+        navPresetPref = preset.rawValue   // husk til neste økt
+        updateNavCamera(animated: true)
+    }
+
+    private func toggleNavView() {
+        navPresetManual = true
+        navPreset = (navPreset == .overview) ? .auto(for: navTransport) : .overview
+        updateNavCamera(animated: true)
+    }
+
+    /// Bil-ETA (min) via MKDirections. Nil hvis ingen kjørerute.
+    private func drivingEtaMinutes(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async -> Int? {
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        req.transportType = .automobile
+        return await withCheckedContinuation { cont in
+            MKDirections(request: req).calculate { resp, _ in
+                let s = resp?.routes.first?.expectedTravelTime
+                cont.resume(returning: s.map { max(1, Int($0 / 60)) })
+            }
+        }
+    }
+
+    /// Nærmeste punkt på segmentet a–b (planar approx, lon skalert med cos(lat)).
+    private func nearestPointOnSegment(_ p: CLLocationCoordinate2D, _ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        let scale = cos(a.latitude * .pi / 180)
+        let px = p.longitude * scale, py = p.latitude
+        let ax = a.longitude * scale, ay = a.latitude
+        let bx = b.longitude * scale, by = b.latitude
+        let dx = bx - ax, dy = by - ay
+        let len2 = dx * dx + dy * dy
+        var t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+        t = max(0, min(1, t))
+        return CLLocationCoordinate2D(latitude: ay + t * dy, longitude: (ax + t * dx) / (scale == 0 ? 1 : scale))
+    }
+
+    /// «Snap-til-vei»: projiser posisjonen ned på nærmeste rute-segment, så
+    /// figuren/kameraet alltid ligger på veien (fikser GPS-drift + sim-kutting).
+    /// Snapper kun når nær nok (<60 m) — ellers beholdes rå posisjon (av-rute).
+    private func snapToRoute(_ me: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        guard navModeActive, let route = navRoute, route.count > 1 else { return me }
+        // Søk kun i et vindu FRAMOVER fra der vi er (map-matching-lite): unngår at
+        // et nærliggende parallelt/kryssende segment «drar» posisjonen feil vei.
+        let lo = max(0, min(navProgressIndex, route.count - 2))
+        let hi = min(route.count - 2, lo + 30)
+        var best = me
+        var bestD = Double.greatestFiniteMagnitude
+        for i in lo...hi {
+            let cand = nearestPointOnSegment(me, route[i], route[i + 1])
+            let d = metersBetween(me, cand)
+            if d < bestD { bestD = d; best = cand }
+        }
+        return bestD < 60 ? best : me
+    }
+
+    /// Korteste vinkel-differanse from→to i grader (−180…180), håndterer wrap.
+    private func angleDelta(_ from: Double, _ to: Double) -> Double {
+        var d = (to - from).truncatingRemainder(dividingBy: 360)
+        if d > 180 { d -= 360 }
+        if d < -180 { d += 360 }
+        return d
+    }
+
+    /// Kjøreretning: bearing langs ruta fra din posisjon til et punkt ~et par
+    /// segmenter foran deg. Gir stabil heading-up som følger veien (ikke luftlinje).
+    private func navRouteHeading(from me: CLLocationCoordinate2D, dest: CLLocationCoordinate2D) -> Double {
+        guard let route = navRoute, route.count > 1 else {
+            return KartLocationManager.shared.heading ?? bearing(me, dest)
+        }
+        // nærmeste rute-punkt
+        var bestI = 0
+        var bestD = Double.greatestFiniteMagnitude
+        for (i, p) in route.enumerated() {
+            let d = metersBetween(me, p)
+            if d < bestD { bestD = d; bestI = i }
+        }
+        // et punkt et stykke foran (hopp fram til vi er >25 m unna)
+        var target = route[route.count - 1]
+        var i = bestI
+        while i < route.count {
+            if metersBetween(me, route[i]) > 25 { target = route[i]; break }
+            i += 1
+        }
+        if metersBetween(me, target) < 8 { return bearing(me, dest) }
+        return bearing(me, target)
+    }
+
+    /// Kartfigur for en reisemåte (gå-person / sparkesykkel / bil).
+    private func vehicleFor(_ t: NavTransport) -> NavVehicle {
+        switch t { case .walking: .walk; case .cycling: .scooter; case .driving: .car }
+    }
+
+    /// Auto-transport fra Core Motion (primært) eller fart (fallback).
+    private func resolveAutoTransport() -> NavTransport {
+        if let m = KartLocationManager.shared.motionTransport {
+            switch m { case .automotive: return .driving; case .cycling: return .cycling; case .walking: return .walking }
+        }
+        if let s = KartLocationManager.shared.speedMps {
+            if s > 7 { return .driving }
+            if s > 3 { return .cycling }
+        }
+        return .walking
+    }
+
+    /// Kalt ved hver posisjonsoppdatering mens nav er aktiv (live-følging).
+    private func navLocationTick() {
+        guard navModeActive, let dest = navDestination,
+              let me = KartLocationManager.shared.currentCoordinate else { return }
+        let destC = CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+        // Map-matching-lite: flytt progresjonen framover + oppdater ETA lokalt fra
+        // gjenstående rute (ingen reroute nødvendig når du er på ruta).
+        var onRouteDist = Double.greatestFiniteMagnitude
+        if let route = navRoute, route.count > 1 {
+            let lo = max(0, min(navProgressIndex, route.count - 2))
+            let hi = min(route.count - 2, lo + 30)
+            var bestI = lo
+            var bestD = Double.greatestFiniteMagnitude
+            for i in lo...hi {
+                let d = metersBetween(me, nearestPointOnSegment(me, route[i], route[i + 1]))
+                if d < bestD { bestD = d; bestI = i }
+            }
+            onRouteDist = bestD
+            if bestI > navProgressIndex { navProgressIndex = bestI }
+            // gjenstående lengde langs ruta
+            let snapped = snapToRoute(me)
+            var remaining = 0.0
+            let nextI = min(navProgressIndex + 1, route.count - 1)
+            remaining += metersBetween(snapped, route[nextI])
+            var i = nextI
+            while i < route.count - 1 { remaining += metersBetween(route[i], route[i + 1]); i += 1 }
+            let secs = remaining / max(0.5, navTransport.fallbackSpeed)
+            navDistanceText = remaining < 1000 ? "\(Int(remaining)) m" : String(format: "%.1f km", remaining / 1000)
+            navETAMinutes = max(1, Int(secs / 60))
+            navETAText = "\(navETAMinutes) min"
+        }
+        // Auto-deteksjon: bytt transportform når Core Motion/fart endrer seg.
+        if navTransportAuto {
+            let detected = resolveAutoTransport()
+            if detected != navTransport {
+                navTransport = detected
+                withAnimation(.easeInOut(duration: 0.4)) { navVehicle = vehicleFor(detected) }
+                // Auto kamera-preset følger reisemåten (med mindre du overstyrte).
+                if !navPresetManual { navPreset = .auto(for: detected) }
+                recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon))
+            }
+        }
+        updateNavCamera(animated: false)
+        // Reroute-hysterese: bare re-rut når du er tydelig AV-rute (>50 m) i to
+        // påfølgende tikk — ellers holder vi ruta + manøvrene stabile.
+        if onRouteDist > 50 {
+            navOffRouteCount += 1
+            if navOffRouteCount >= 2 {
+                navOffRouteCount = 0
+                navRerouteAnchor = me
+                recomputeNavRoute(from: me, to: destC)
+            }
+        } else {
+            navOffRouteCount = 0
+        }
+        // Turn-by-turn: annonser manøvrer + oppdag ankomst.
+        navTurnTick(me)
+        // Fartsgrense (NVDB) — hent på nytt hver ~80 m.
+        if navSpeedAnchor == nil || metersBetween(navSpeedAnchor!, me) > 80 {
+            navSpeedAnchor = me
+            Task {
+                let s = await NvdbService.shared.speedLimit(lat: me.latitude, lon: me.longitude, using: appState.api)
+                if navModeActive { navSpeedLimit = s }
+            }
+        }
+        // «Raskere alternativ»: sjekk kollektiv/sparkesykkel når du GÅR (ikke
+        // allerede på hjul), maks hvert ~70 m, til du evt. avviser forslaget.
+        if navTransport == .walking, !navAltDismissed, navETAMinutes > 4 {
+            if navAltAnchor == nil || metersBetween(navAltAnchor!, me) > 70 {
+                navAltAnchor = me
+                let destC = CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+                let walk = navETAMinutes
+                let parkWalk = parking?.areas.first?.walkMin ?? 3
+                Task {
+                    // Kollektiv + sparkesykkel fra Entur, bil-ETA lokalt (MKDirections).
+                    async let backend = EnturService.shared.alternatives(
+                        from: me, to: destC, walkMin: walk, using: appState.api)
+                    async let carEtaOpt = drivingEtaMinutes(from: me, to: destC)
+                    var merged = await backend
+                    if let carEta = await carEtaOpt {
+                        // hele bil-turen: kjøring + finne-parkering + gange fra p-plass
+                        let carTotal = carEta + 4 + parkWalk
+                        let saved = walk - carTotal
+                        if saved >= 1 {
+                            merged.append(EnturService.Alternative(
+                                kind: "car", etaMin: carTotal, savedMin: saved,
+                                headline: "Kjør bil dit", detail: "inkl. parkering + gange",
+                                distanceM: nil, rentalUrl: nil))
+                        }
+                    }
+                    merged.sort { ($0.savedMin ?? 0) > ($1.savedMin ?? 0) }
+                    if navModeActive { withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { navAlternatives = merged } }
+                }
+            }
+        }
+    }
+
+    #if DEBUG
+    /// QA-kino for reklamefilm-opptaket: velg bedrift → fly inn → kort popper →
+    /// «Naviger» (ekte startNavigation → heading-up 3D + lilla rute). Posisjonen
+    /// drives eksternt via `simctl location`. Kun DEBUG + env QA_CINEMATIC=nordic.
+    /// Reverteres før commit (#59).
+    private func runNordicCinematic() {
+        let nordic = KartPreviewData.leads.first(where: { $0.name.contains("Nordic Elektro") })
+            ?? KartPreviewData.firstOrPlaceholder
+        let nordicC = CLLocationCoordinate2D(latitude: nordic.lat, longitude: nordic.lon)
+        let start = CLLocationCoordinate2D(latitude: 59.9112, longitude: 10.7494)
+
+        // Beat 0 — velg bedriften på kartet: 3D fly-inn, nord-opp, kort skjult.
+        cinematicHideCard = true
+        hasSelectedLead = false
+        selectedLead = nordic
+        camera = .camera(MapCamera(centerCoordinate: start, distance: 1150, heading: 0, pitch: 56))
+        withAnimation(.easeInOut(duration: 4.2)) {
+            camera = .camera(MapCamera(centerCoordinate: nordicC, distance: 470, heading: 0, pitch: 60))
+        }
+
+        // Beat 1 (t≈3.4s) — kortet POPPER INN idet vi lander på bedriften.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.72)) {
+                cinematicHideCard = false
+                hasSelectedLead = true
+            }
+        }
+
+        // Beat 2 (t≈6.2s) — «NAVIGER» trykkes → ekte live-nav (roterer + rute).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.2) {
+            startNavigation(to: nordic)
+        }
+    }
+    #endif
+
     // MARK: Aktivitetshistorikk-card
 
     private var activitiesCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Aktivitetshistorikk")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {} label: {
                     Text("Se alle")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(KrBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
-            VStack(spacing: 6) {
-                ForEach(KartPreviewData.activities) { a in
-                    HStack(spacing: 9) {
-                        ZStack {
-                            Circle().fill(KrBrand.purple.opacity(0.18))
-                            Image(systemName: a.icon)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(KrBrand.purpleLight)
+            if KartPreviewData.activities.isEmpty {
+                Text("Ingen aktiviteter registrert enda")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(KartPreviewData.activities) { a in
+                        HStack(spacing: 9) {
+                            ZStack {
+                                Circle().fill(KrBrand.purple.opacity(0.18))
+                                Image(systemName: a.icon)
+                                    .font(.appScaled(size: 10, weight: .semibold))
+                                    .foregroundStyle(KrBrand.purpleLight)
+                            }
+                            .frame(width: 26, height: 26)
+                            Text(a.label)
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Text(a.timestamp)
+                                .font(.appScaled(size: 10))
+                                .foregroundStyle(KrBrand.textSecondary)
+                                .lineLimit(1)
                         }
-                        .frame(width: 26, height: 26)
-                        Text(a.label)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text(a.timestamp)
-                            .font(.system(size: 10))
-                            .foregroundStyle(KrBrand.textSecondary)
-                            .lineLimit(1)
                     }
                 }
             }
@@ -1819,17 +3179,17 @@ struct KartView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(KrBrand.cardHi)
                 Image(systemName: "building.2")
-                    .font(.system(size: 22, weight: .regular))
+                    .font(.appScaled(size: 22, weight: .regular))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .frame(width: 56, height: 56)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Ingen lead valgt")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("Tap på en pin, bruk «+ Legg til lead», eller skru på demo-modus for å se eksempeldata.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(KrBrand.textSecondary)
                     .lineLimit(2)
             }
@@ -1838,7 +3198,7 @@ struct KartView: View {
                 showToast("Åpner «Legg til lead»")
             } label: {
                 Text("+ Legg til lead")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(KrBrand.purple, in: Capsule())
@@ -1853,7 +3213,12 @@ struct KartView: View {
     // MARK: Detail-panel — FIX #6/7: tabs uten kollaps + spacing
 
     private var detailPanel: some View {
-        HStack(alignment: .top, spacing: 0) {
+        // iPhone: venstre kolonne (fast 310pt) + høyre kolonne får ikke plass
+        // side-ved-side på compact width — stable dem vertikalt i stedet.
+        let stack = DeviceIdiom.isPhone
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 0))
+        return stack {
             // Venstre kolonne (fast bredde): lead-info + actions
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 11) {
@@ -1861,14 +3226,14 @@ struct KartView: View {
                         RoundedRectangle(cornerRadius: 9)
                             .fill(selectedLead.status.color.opacity(0.18))
                         Image(systemName: "building.2.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(selectedLead.status.color)
                     }
                     .frame(width: 44, height: 44)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(selectedLead.name)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.appScaled(size: 15, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             statusBadge(selectedLead.status)
@@ -1877,21 +3242,21 @@ struct KartView: View {
                                 showToast(favorited ? "Lagt til i favoritter" : "Fjernet fra favoritter")
                             } label: {
                                 Image(systemName: favorited ? "star.fill" : "star")
-                                    .font(.system(size: 12))
+                                    .font(.appScaled(size: 12))
                                     .foregroundStyle(favorited ? KrBrand.yellow : KrBrand.textTertiary)
                             }
                             .buttonStyle(.plain)
                         }
                         Text(selectedLead.address)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(KrBrand.textSecondary)
                             .lineLimit(1)
                         Button { navigateOpen = true } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "location.north.line.fill")
-                                    .font(.system(size: 9, weight: .semibold))
+                                    .font(.appScaled(size: 9, weight: .semibold))
                                 Text(String(format: "%.1f km unna · Naviger", selectedLead.kmAway))
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.appScaled(size: 10, weight: .semibold))
                             }
                             .foregroundStyle(KrBrand.purpleLight)
                         }
@@ -1903,7 +3268,7 @@ struct KartView: View {
                 HStack(spacing: 8) {
                     Button { openLeadFullSheet = true } label: {
                         Text("Åpne lead")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 9)
@@ -1919,10 +3284,12 @@ struct KartView: View {
                     Button { scheduleMeetingOpen = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "calendar")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                             Text("Planlegg møte")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
+                                .lineLimit(1)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 9)
                         .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
@@ -1930,17 +3297,19 @@ struct KartView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Button { navigateOpen = true } label: {
+                    Button { withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: selectedLead) } } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "location.north.line.fill")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                             Text("Naviger")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
+                                .lineLimit(1)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 9)
-                        .background(KrBrand.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.green.opacity(0.4), lineWidth: 1))
+                        .background(KrBrand.purple.opacity(0.22), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     Menu {
@@ -1952,6 +3321,13 @@ struct KartView: View {
                         }
                         Button { sendEmail("post@nordicelektro.no", subject: "Oppfølging — \(selectedLead.name)") } label: {
                             Label("Send e-post", systemImage: "envelope.fill")
+                        }
+                        Button {
+                            sendDelayNotice(to: "post@nordicelektro.no",
+                                            etaMin: navModeActive ? navETAMinutes : nil,
+                                            reason: navDelayReason)
+                        } label: {
+                            Label("Meld forsinkelse til møtet", systemImage: "clock.badge.exclamationmark.fill")
                         }
                         Divider()
                         Button { showStatusChange = true } label: {
@@ -1966,7 +3342,7 @@ struct KartView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
                             .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
@@ -1975,20 +3351,35 @@ struct KartView: View {
                 }
 
                 // Metadata-grid 2x2 (mer kompakt) — 4-kolonne på Mac
-                LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 4, spacing: 12),
+                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12),
                           alignment: .leading, spacing: 8) {
                     metaItem(label: "Bransje",  value: "Elektro")
                     metaItem(label: "Ansatt",   value: "25-50")
                     metaItem(label: "Omsetning", value: "10-20 mill.")
                     metaItem(label: "Sist aktivitet", value: selectedLead.lastActivity ?? "—")
                 }
-            }
-            .frame(width: 310)
 
-            // Vertikal divider
-            Rectangle().fill(KrBrand.stroke)
-                .frame(width: 1)
-                .padding(.horizontal, 14)
+                // Entur: kollektiv-tilgjengelighet (vises når backend svarer)
+                if let r = reachability, r.score != nil {
+                    reachabilitySection(r)
+                }
+                // Bilparkering nær kunden (Statens vegvesen)
+                if let p = parking, let area = p.areas.first {
+                    parkingSection(area, apps: p.apps)
+                }
+            }
+            .kartColumnWidth(310)
+
+            // Divider — vertikal ved side-ved-side, horisontal ved stabling
+            if DeviceIdiom.isPhone {
+                Rectangle().fill(KrBrand.stroke)
+                    .frame(height: 1)
+                    .padding(.vertical, 14)
+            } else {
+                Rectangle().fill(KrBrand.stroke)
+                    .frame(width: 1)
+                    .padding(.horizontal, 14)
+            }
 
             // Høyre kolonne: tabs + innhold — FIX #6: kompakt tab-rad
             VStack(alignment: .leading, spacing: 10) {
@@ -2016,6 +3407,122 @@ struct KartView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(KrBrand.stroke, lineWidth: 1))
     }
 
+    // MARK: - Entur kollektiv-tilgjengelighet (lead-kortet)
+
+    @ViewBuilder
+    private func reachabilitySection(_ r: EnturService.Reachability) -> some View {
+        let c = EnturService.labelColor(r.label)
+        let col = Color(red: c.r, green: c.g, blue: c.b)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "tram.fill")
+                    .font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(col)
+                Text("Kollektivtilgjengelighet")
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                if let s = r.score {
+                    Text("\(r.label) · \(s)")
+                        .font(.appScaled(size: 10, weight: .bold)).foregroundStyle(col)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(col.opacity(0.18), in: Capsule())
+                }
+            }
+            if let stop = r.nearestStop {
+                HStack(spacing: 6) {
+                    Image(systemName: "figure.walk")
+                        .font(.appScaled(size: 10)).foregroundStyle(KrBrand.textSecondary)
+                    Text("\(stop.name) · \(stop.walkMin) min å gå")
+                        .font(.appScaled(size: 11)).foregroundStyle(KrBrand.textSecondary).lineLimit(1)
+                }
+            }
+            if !r.departures.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(r.departures.prefix(3)) { d in
+                        HStack(spacing: 3) {
+                            Image(systemName: EnturService.modeIcon(d.mode))
+                                .font(.appScaled(size: 9, weight: .semibold))
+                            Text("\(d.line) \(d.inMin)m")
+                                .font(.appScaled(size: 10, weight: .semibold))
+                            if d.realtime { Circle().fill(KrBrand.green).frame(width: 5, height: 5) }
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 4)
+                        .background(KrBrand.cardHi, in: Capsule())
+                    }
+                }
+            }
+            if r.micromobility.scooters + r.micromobility.bikes > 0 {
+                HStack(spacing: 5) {
+                    Image(systemName: "scooter")
+                        .font(.appScaled(size: 10)).foregroundStyle(KrBrand.purpleLight)
+                    Text(microText(r.micromobility))
+                        .font(.appScaled(size: 10)).foregroundStyle(KrBrand.textSecondary)
+                }
+            }
+        }
+        .padding(10)
+        .background(KrBrand.cardHi.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(col.opacity(0.3), lineWidth: 1))
+    }
+
+    // MARK: - Bilparkering (lead-kortet)
+
+    @ViewBuilder
+    private func parkingSection(_ area: ParkingService.Area, apps: [ParkingService.ParkingApp]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "parkingsign.circle.fill")
+                    .font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(KrBrand.blue)
+                Text("Parkering nær kunden")
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                Text("\(area.walkMin) min å gå")
+                    .font(.appScaled(size: 10, weight: .bold)).foregroundStyle(KrBrand.blue)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(KrBrand.blue.opacity(0.18), in: Capsule())
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(area.navn).font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(.white).lineLimit(1)
+                Text("\(area.operator) · \(area.distanceM) m")
+                    .font(.appScaled(size: 10)).foregroundStyle(KrBrand.textSecondary).lineLimit(1)
+            }
+            if !apps.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(apps.prefix(2)) { app in
+                        Button {
+                            if let url = URL(string: app.url) { openURL(url) }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.up.forward.app.fill").font(.appScaled(size: 9, weight: .semibold))
+                                Text("Åpne \(app.name)").font(.appScaled(size: 10, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9).padding(.vertical, 6)
+                            .background(KrBrand.cardHi, in: Capsule())
+                            .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Text("Pris står på skiltet — betaling i appen")
+                    .font(.appScaled(size: 9)).foregroundStyle(KrBrand.textTertiary)
+            }
+        }
+        .padding(10)
+        .background(KrBrand.cardHi.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(KrBrand.blue.opacity(0.3), lineWidth: 1))
+    }
+
+    private func microText(_ m: EnturService.Reachability.Micromobility) -> String {
+        var parts: [String] = []
+        if m.scooters > 0 { parts.append("\(m.scooters) elsparkesykler") }
+        if m.bikes > 0 { parts.append("\(m.bikes) bysykler") }
+        var s = parts.joined(separator: ", ")
+        if let n = m.nearestM { s += " · nærmeste \(n) m" }
+        return s
+    }
+
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
@@ -2029,10 +3536,10 @@ struct KartView: View {
     private func metaItem(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(KrBrand.textSecondary)
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
         }
@@ -2043,7 +3550,7 @@ struct KartView: View {
         return Button { selectedTab = tab } label: {
             VStack(spacing: 4) {
                 Text(tab.rawValue)
-                    .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+                    .font(.appScaled(size: 12, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(isSelected ? KrBrand.purpleLight : KrBrand.textSecondary)
                     .fixedSize()
                 Rectangle()
@@ -2060,23 +3567,23 @@ struct KartView: View {
     private var tabInformasjon: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("KONTAKTPERSON")
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
                 .foregroundStyle(KrBrand.textTertiary)
 
             HStack(spacing: 10) {
                 ZStack {
                     Circle().fill(KrBrand.purple.opacity(0.25))
                     Text("AJ")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(KrBrand.purpleLight)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Anders Johansen")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Daglig leder")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
                 Spacer()
@@ -2088,10 +3595,10 @@ struct KartView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("NOTAT")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(KrBrand.textTertiary)
                 Text("Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -2099,9 +3606,9 @@ struct KartView: View {
             Button { openLeadFullSheet = true } label: {
                 HStack(spacing: 4) {
                     Text("Se mer informasjon")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.purpleLight)
             }
@@ -2111,21 +3618,24 @@ struct KartView: View {
 
     private var tabAktiviteter: some View {
         VStack(spacing: 6) {
+            if KartPreviewData.activities.isEmpty {
+                detailTabEmptyState("Ingen aktiviteter registrert enda")
+            }
             ForEach(KartPreviewData.activities) { a in
                 HStack(spacing: 9) {
                     ZStack {
                         Circle().fill(KrBrand.purple.opacity(0.18))
                         Image(systemName: a.icon)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(KrBrand.purpleLight)
                     }
                     .frame(width: 26, height: 26)
                     Text(a.label)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Text(a.timestamp)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
             }
@@ -2139,16 +3649,16 @@ struct KartView: View {
                     ZStack {
                         Circle().fill(KrBrand.purple.opacity(0.25))
                         Text("LK")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(KrBrand.purpleLight)
                     }
                     .frame(width: 28, height: 28)
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(KrBrand.textTertiary)
                         Text("Skriv et notat…")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(KrBrand.textTertiary)
                         Spacer()
                     }
@@ -2159,10 +3669,23 @@ struct KartView: View {
             }
             .buttonStyle(.plain)
 
+            if KartPreviewData.notes.isEmpty {
+                detailTabEmptyState("Ingen notater enda")
+            }
             ForEach(KartPreviewData.notes) { n in
                 noteRow(n)
             }
         }
+    }
+
+    /// Ærlig tom-tilstand for detalj-tabs (ikke-demo uten ekte data).
+    private func detailTabEmptyState(_ text: String) -> some View {
+        Text(text)
+            .font(.appScaled(size: 11, weight: .semibold))
+            .foregroundStyle(KrBrand.textSecondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func noteRow(_ n: NoteItemMock) -> some View {
@@ -2171,25 +3694,25 @@ struct KartView: View {
                 ZStack {
                     Circle().fill(n.authorColor.opacity(0.25))
                     Text(n.authorInitials)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(n.authorColor)
                 }
                 .frame(width: 22, height: 22)
                 Text(n.author)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                 if n.pinned {
                     Image(systemName: "pin.fill")
-                        .font(.system(size: 8))
+                        .font(.appScaled(size: 8))
                         .foregroundStyle(KrBrand.yellow)
                 }
                 Spacer()
                 Text(n.timestamp)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             Text(n.body)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -2208,7 +3731,7 @@ struct KartView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(KartPreviewData.files.count) filer")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(KrBrand.textSecondary)
                 Spacer()
                 // Pakke 10.1 (Daniel-feedback 2026-07-01): gjenbruk Leads-
@@ -2217,15 +3740,18 @@ struct KartView: View {
                 Button { showUploadFile = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("Last opp")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(KrBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
 
+            if KartPreviewData.files.isEmpty {
+                detailTabEmptyState("Ingen filer lastet opp enda")
+            }
             ForEach(KartPreviewData.files) { f in
                 fileRow(f)
             }
@@ -2246,30 +3772,30 @@ struct KartView: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(f.kind.color.opacity(0.22))
                     Image(systemName: f.kind.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(f.kind.color)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(f.name)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Text(f.size)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(KrBrand.textSecondary)
                         Text("·")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(KrBrand.textTertiary)
                         Text(f.uploadedAt)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(KrBrand.textTertiary)
                     }
                 }
                 Spacer()
                 Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(KrBrand.purpleLight)
             }
             .padding(9)
@@ -2284,7 +3810,7 @@ struct KartView: View {
             ZStack {
                 Circle().fill(KrBrand.purple.opacity(0.18))
                 Image(systemName: name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(KrBrand.purpleLight)
             }
             .frame(width: 32, height: 32)
@@ -2316,6 +3842,7 @@ fileprivate struct ClusterPin: View {
                 .frame(width: 44, height: 44)
                 .shadow(color: color.opacity(0.6), radius: 8, x: 0, y: 2)
             Text("\(count)")
+                // Kart-grafikk — fast størrelse (AX sprenger sirkelen)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
@@ -2386,7 +3913,7 @@ fileprivate struct DroppedPin: View {
                 .overlay(Circle().stroke(Color.white, lineWidth: 2))
                 .frame(width: 26, height: 26)
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
         }
         .onAppear { pulse = true }
@@ -2410,7 +3937,7 @@ struct MapStyleSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 4, spacing: 12), spacing: 12) {
+                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12), spacing: 12) {
                     ForEach(KartView.MapStyleChoice.allCases, id: \.self) { style in
                         styleCard(style)
                     }
@@ -2447,19 +3974,19 @@ struct MapStyleSheet: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                     Image(systemName: style.icon)
-                        .font(.system(size: 34, weight: .semibold))
+                        .font(.appScaled(size: 34, weight: .semibold))
                         .foregroundStyle(SBrand.purpleLight)
                 }
                 .frame(height: 110)
                 Text(style.rawValue)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 if isSelected {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                         Text("Aktiv")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                     }
                     .foregroundStyle(SBrand.purpleLight)
                 }
@@ -2473,6 +4000,246 @@ struct MapStyleSheet: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - NavAvatarPuck (gå/kjøretøy-avatar i navigasjons-modus)
+
+/// «Meg» i nav: en tett bakke-skygge + gå-figur eller kjøretøy (bil/buss/
+/// sparkesykkel) som ligger PÅ veien (ingen stråle/sveving). Kombinert med
+/// heading-up-kameraet leser det som at man beveger seg langs ruta.
+fileprivate struct NavAvatarPuck: View {
+    var initials: String
+    var email: String?
+    var vehicle: KartView.NavVehicle
+    var moving: Bool
+
+    private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
+    private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
+
+    /// Samme portrett-oppslag som MeMapPin: `portrait-<email-local>`-asset.
+    private var portraitAsset: String? {
+        guard let email, let local = email.split(separator: "@").first else { return nil }
+        let candidate = "portrait-\(local.lowercased())"
+        return UIImage(named: candidate) != nil ? candidate : nil
+    }
+
+    var body: some View {
+        ZStack {
+            // Tett bakke-skygge RETT UNDER — grunner figuren på veien (ingen
+            // stråle/sveve-effekt som får den til å se «flyvende» ut).
+            Ellipse()
+                .fill(Color.black.opacity(0.32))
+                .frame(width: 40, height: 13)
+                .blur(radius: 3)
+                .offset(y: 24)
+
+            // Figuren skifter med reisemåte: gå-person (leddelt, går) eller
+            // kjøretøy-puck (bil/buss/sparkesykkel) m/ profil-hode.
+            if vehicle == .walk {
+                WalkingAvatar(portraitAsset: portraitAsset, initials: initials)
+            } else {
+                WheeledVehicleAvatar(kind: vehicle, portraitAsset: portraitAsset, initials: initials)
+            }
+        }
+        .frame(width: 92, height: 110)
+    }
+}
+
+/// Leddelt gå-figur som faktisk går: bein og armer svinger i motfase via en
+/// kontinuerlig gå-syklus (TimelineView), med bob og profilbilde som hode.
+fileprivate struct WalkingAvatar: View {
+    var portraitAsset: String?
+    var initials: String
+
+    private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
+    private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
+    private let limb = Color(red: 0.42, green: 0.22, blue: 0.72)
+
+    var body: some View {
+        TimelineView(.animation) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            let s = sin(t * 7.2)              // gå-fase
+            let legAngle = s * 24.0           // bein svinger ±24°
+            let armAngle = -s * 18.0          // armer i motfase
+            let bob = abs(s) * 2.4            // vertikal bob per steg
+
+            ZStack {
+                // BEIN (bak torso)
+                legShape(angle: legAngle).offset(x: -5, y: 20)
+                legShape(angle: -legAngle).offset(x: 5, y: 20)
+
+                // TORSO
+                Capsule()
+                    .fill(LinearGradient(colors: [purpleLight, purple], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 24, height: 34)
+                    .overlay(Capsule().stroke(.white.opacity(0.85), lineWidth: 2))
+                    .offset(y: -2)
+                    .shadow(color: purple.opacity(0.6), radius: 6, y: 3)
+
+                // ARMER (foran torso, svinger motsatt)
+                armShape(angle: armAngle).offset(x: -12, y: -8)
+                armShape(angle: -armAngle).offset(x: 12, y: -8)
+
+                // HODE = profilbilde
+                Group {
+                    if let asset = portraitAsset {
+                        SmartPortrait(assetName: asset)
+                            .frame(width: 34, height: 34)
+                            .clipShape(Circle())
+                    } else {
+                        Text(initials)
+                            .font(.appScaled(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(LinearGradient(colors: [purpleLight, purple],
+                                                       startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+                    }
+                }
+                .overlay(Circle().stroke(.white, lineWidth: 2.5))
+                .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
+                .offset(y: -32)
+            }
+            .offset(y: -bob)
+        }
+        .frame(width: 60, height: 92)
+    }
+
+    private func legShape(angle: Double) -> some View {
+        Capsule().fill(limb)
+            .frame(width: 9, height: 30)
+            .rotationEffect(.degrees(angle), anchor: .top)
+    }
+
+    private func armShape(angle: Double) -> some View {
+        Capsule().fill(purple)
+            .frame(width: 7, height: 24)
+            .rotationEffect(.degrees(angle), anchor: .top)
+    }
+}
+
+/// Ett hjul med eiker som roterer — brukes av kjøretøy-figurene.
+fileprivate struct SpinningWheel: View {
+    var r: CGFloat
+    var angle: Double
+    var body: some View {
+        ZStack {
+            Circle().fill(Color(white: 0.10)).frame(width: r * 2, height: r * 2)
+            Circle().strokeBorder(Color(white: 0.45), lineWidth: 2).frame(width: r * 2, height: r * 2)
+            ForEach(0..<4, id: \.self) { i in
+                Rectangle().fill(Color(white: 0.62))
+                    .frame(width: 1.6, height: r * 1.5)
+                    .rotationEffect(.degrees(Double(i) * 45))
+            }
+            Circle().fill(Color(white: 0.7)).frame(width: r * 0.5, height: r * 0.5)
+        }
+        .rotationEffect(.degrees(angle))
+    }
+}
+
+/// Ekte 3D-aktig kjøretøy-figur (bil / buss / sparkesykkel) sett fra siden, med
+/// HJUL SOM ROTERER mens du kjører + karosseri-bob + retnings-stråle. Analogt til
+/// WalkingAvatar, men på hjul. Profil-badge viser hvem som kjører.
+fileprivate struct WheeledVehicleAvatar: View {
+    var kind: KartView.NavVehicle   // scooter | car | bus
+    var portraitAsset: String?
+    var initials: String
+
+    private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
+    private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
+    private let glass = Color(red: 0.62, green: 0.80, blue: 0.98)
+
+    var body: some View {
+        TimelineView(.animation) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            let spin = (t * 520).truncatingRemainder(dividingBy: 360)  // hjul-rotasjon
+            ZStack {
+                // Tett skygge RETT UNDER hjulene — grunner kjøretøyet på veien
+                // (ingen stråle/sveving = ser ut som det kjører, ikke flyr).
+                Ellipse().fill(Color.black.opacity(0.30))
+                    .frame(width: 46, height: 12).blur(radius: 3).offset(y: 24)
+
+                Group {
+                    switch kind {
+                    case .car: carBody(spin: spin)
+                    case .bus: busBody(spin: spin)
+                    default:   scooterBody(spin: spin)
+                    }
+                }
+
+                // Profil-badge (hvem kjører)
+                Group {
+                    if let asset = portraitAsset {
+                        SmartPortrait(assetName: asset).frame(width: 24, height: 24).clipShape(Circle())
+                    } else {
+                        Text(initials).font(.appScaled(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white).frame(width: 24, height: 24).background(purple, in: Circle())
+                    }
+                }
+                .overlay(Circle().stroke(.white, lineWidth: 2))
+                .offset(x: 24, y: -22)
+            }
+            .frame(width: 96, height: 96)
+        }
+    }
+
+    // MARK: kjøretøy-karosserier (sett ovenfra, FRONT PEKER OPP = kjøreretning,
+    // siden kartet er heading-up. Frontlys + frontrute øverst markerer fronten.)
+
+    private func carBody(spin: Double) -> some View {
+        ZStack {
+            // hjul på sidene (foran + bak) — stikker litt ut, snurrer
+            SpinningWheel(r: 7, angle: spin).offset(x: -17, y: -12)
+            SpinningWheel(r: 7, angle: spin).offset(x: 17, y: -12)
+            SpinningWheel(r: 7, angle: spin).offset(x: -17, y: 13)
+            SpinningWheel(r: 7, angle: spin).offset(x: 17, y: 13)
+            // karosseri (langt = peker opp)
+            RoundedRectangle(cornerRadius: 11)
+                .fill(LinearGradient(colors: [purpleLight, purple], startPoint: .top, endPoint: .bottom))
+                .frame(width: 32, height: 50)
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.85), lineWidth: 1.5))
+            // frontrute (øverst) + bakrute
+            RoundedRectangle(cornerRadius: 4).fill(glass).frame(width: 22, height: 11).offset(y: -12)
+            RoundedRectangle(cornerRadius: 3).fill(glass.opacity(0.7)).frame(width: 20, height: 8).offset(y: 13)
+            // frontlys (fronten = opp)
+            HStack(spacing: 16) {
+                Circle().fill(.white).frame(width: 4, height: 4)
+                Circle().fill(.white).frame(width: 4, height: 4)
+            }.offset(y: -22)
+        }
+        .shadow(color: purple.opacity(0.6), radius: 7, y: 4)
+    }
+
+    private func busBody(spin: Double) -> some View {
+        ZStack {
+            SpinningWheel(r: 7, angle: spin).offset(x: -16, y: -16)
+            SpinningWheel(r: 7, angle: spin).offset(x: 16, y: -16)
+            SpinningWheel(r: 7, angle: spin).offset(x: -16, y: 16)
+            SpinningWheel(r: 7, angle: spin).offset(x: 16, y: 16)
+            RoundedRectangle(cornerRadius: 9)
+                .fill(LinearGradient(colors: [purpleLight, purple], startPoint: .top, endPoint: .bottom))
+                .frame(width: 30, height: 58)
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.85), lineWidth: 1.5))
+            // frontrute øverst
+            RoundedRectangle(cornerRadius: 4).fill(glass).frame(width: 22, height: 10).offset(y: -20)
+            // vindus-rekker langs sidene
+            VStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 2).fill(glass.opacity(0.75)).frame(width: 20, height: 7) }
+            }.offset(y: 4)
+        }
+        .shadow(color: purple.opacity(0.6), radius: 7, y: 4)
+    }
+
+    private func scooterBody(spin: Double) -> some View {
+        ZStack {
+            // dekk (vertikalt), front-hjul opp / bak-hjul ned
+            Capsule().fill(purpleLight).frame(width: 5, height: 30)
+            SpinningWheel(r: 7, angle: spin).offset(y: -18)
+            SpinningWheel(r: 7, angle: spin).offset(y: 16)
+            // styre (T øverst = front)
+            Capsule().fill(purple).frame(width: 20, height: 4).offset(y: -20)
+        }
+        .shadow(color: purple.opacity(0.6), radius: 6, y: 3)
     }
 }
 
@@ -2511,11 +4278,11 @@ fileprivate struct AISuggestionPin: View {
                 .frame(width: 34, height: 34)
                 .shadow(color: Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.7), radius: 8, x: 0, y: 2)
             Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             // Score-badge
             Text("\(score)")
-                .font(.system(size: 8, weight: .bold))
+                .font(.appScaled(size: 8, weight: .bold))
                 .foregroundStyle(Color(red: 0.66, green: 0.32, blue: 0.99))
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(Color.white, in: Capsule())
@@ -2531,6 +4298,11 @@ fileprivate struct AISuggestionPin: View {
 struct LayersSheet: View {
     @Binding var selectedStyle: KartView.MapStyleChoice
     @Binding var activeOverlays: Set<KartView.MapOverlay>
+    var navActive: Bool = false
+    var canNavigate: Bool = false
+    var destinationName: String = ""
+    var onStartNav: () -> Void = {}
+    var onStopNav: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
 
     private enum LBrand {
@@ -2540,13 +4312,14 @@ struct LayersSheet: View {
         static let stroke = Color.white.opacity(0.06)
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
-        static let textSecondary = Color.white.opacity(0.55)
+        static let textSecondary = Color.white.opacity(0.62)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    navSection
                     styleSection
                     overlaysSection
                     Color.clear.frame(height: 16)
@@ -2565,7 +4338,7 @@ struct LayersSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 28, height: 28)
                             .background(LBrand.cardHi, in: Circle())
@@ -2576,7 +4349,7 @@ struct LayersSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Text("Kartlag")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 15, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -2584,9 +4357,9 @@ struct LayersSheet: View {
                         Button { activeOverlays.removeAll() } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.appScaled(size: 10, weight: .bold))
                                 Text("Nullstill (\(activeOverlays.count))")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
                                     .fixedSize(horizontal: true, vertical: false)
                             }
                             .foregroundStyle(.white)
@@ -2607,18 +4380,73 @@ struct LayersSheet: View {
         .macCatalystSheetSize(minWidth: 820, minHeight: 640)
     }
 
+    private var navSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "location.north.line.fill")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(LBrand.purpleLight)
+                Text("Navigasjon")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                if navActive {
+                    Text("Aktiv")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(LBrand.purpleLight)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(LBrand.purple.opacity(0.22), in: Capsule())
+                }
+            }
+            Button { navActive ? onStopNav() : onStartNav() } label: {
+                HStack(spacing: 11) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(LBrand.purple.opacity(navActive ? 0.32 : 0.16))
+                        Image(systemName: navActive ? "xmark" : "location.north.line.fill")
+                            .font(.appScaled(size: 15, weight: .bold))
+                            .foregroundStyle(LBrand.purpleLight)
+                    }
+                    .frame(width: 40, height: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(navActive ? "Avslutt navigasjon" : "Start 3D-navigasjon")
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text(navActive
+                             ? "Følger \(destinationName)"
+                             : (canNavigate ? "Heading-up rute til \(destinationName)" : "Velg en lead på kartet først"))
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(LBrand.textSecondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+                .padding(11)
+                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(navActive ? LBrand.purpleLight : LBrand.stroke, lineWidth: navActive ? 1.5 : 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canNavigate && !navActive)
+            .opacity((!canNavigate && !navActive) ? 0.55 : 1)
+        }
+    }
+
     private var styleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "map.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LBrand.purpleLight)
                 Text("Kartstil")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
-            LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 4, spacing: 10), spacing: 10) {
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 10), spacing: 10) {
                 ForEach(KartView.MapStyleChoice.allCases, id: \.self) { style in
                     styleCard(style)
                 }
@@ -2637,12 +4465,12 @@ struct LayersSheet: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                     Image(systemName: style.icon)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.appScaled(size: 22, weight: .semibold))
                         .foregroundStyle(LBrand.purpleLight)
                 }
                 .frame(height: 64)
                 Text(style.rawValue)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .padding(8)
@@ -2660,14 +4488,14 @@ struct LayersSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "square.stack.3d.up.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LBrand.purpleLight)
                 Text("Visuelle lag")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(activeOverlays.count) aktiv\(activeOverlays.count == 1 ? "" : "e")")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             VStack(spacing: 8) {
@@ -2688,16 +4516,16 @@ struct LayersSheet: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(o.color.opacity(isOn ? 0.30 : 0.15))
                     Image(systemName: o.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(o.color)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(o.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(o.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .multilineTextAlignment(.leading)
                 }
@@ -2722,5 +4550,31 @@ struct LayersSheet: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - iPhone-tilpasning (compact width)
+
+private extension View {
+    /// Fast kolonnebredde på iPad/Mac; full bredde på iPhone der
+    /// to-kolonne-layoutene stables vertikalt i stedet.
+    @ViewBuilder
+    func kartColumnWidth(_ width: CGFloat) -> some View {
+        if DeviceIdiom.isPhone {
+            self.frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            self.frame(width: width)
+        }
+    }
+
+    /// På iPhone lar vi popoveren adapteres til sheet (detents settes av
+    /// `adaptivePopoverFrame`); på iPad/Mac beholdes popover-formen.
+    @ViewBuilder
+    func kartPopoverAdaptation() -> some View {
+        if DeviceIdiom.isPhone {
+            self
+        } else {
+            self.presentationCompactAdaptation(.popover)
+        }
     }
 }

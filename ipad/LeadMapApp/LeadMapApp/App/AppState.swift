@@ -56,6 +56,12 @@ final class AppState {
     /// rotasjon ikke mister kontekst. Default = .oversikt (matcher mocken).
     var selectedSidebarItem: SidebarItem = .oversikt
 
+    /// «Min bil»-profil (drivstoff/type) — skreddersyr POI-default, kjøre-
+    /// godtgjørelse-sats og anbefalinger i nav. Persistert i UserDefaults.
+    var vehicleProfile: VehicleProfile = VehicleProfileStore.load() {
+        didSet { VehicleProfileStore.save(vehicleProfile) }
+    }
+
     // ── Pondus deep-link (App Intents / Watch → Leadbook > Pondus) ─────
     /// Set av `AppStateBridge.navigateToPondus(...)` når en Siri Shortcut,
     /// Spotlight-treff eller Watch-aktivering vil åpne Pondus-fanen. Består
@@ -93,6 +99,43 @@ final class AppState {
         self.deepLinkPondusTemplateId = nil
         self.deepLinkPondusTemplateName = nil
         self.deepLinkPondusRequestedAt = nil
+    }
+
+    // ── Nav deep-link (Møter «Naviger» → Kart ekte turn-by-turn-motor) ──
+    /// Set av Møter-fanen når brukeren trykker «Naviger» på et møte. KartView
+    /// plukker opp dette (`.task(id: deepLinkNavRequestedAt)`), bygger en
+    /// `MapLeadMock` av destinasjonen og starter ekte navigasjon (POV/Kjøre,
+    /// MKDirections, stemme). Erstatter den frosne mock-`NavigationFullScreenView`.
+    /// Speiler Pondus-mønsteret så det overlever tab-switch/cold-start.
+    var deepLinkNavLat: Double?
+    var deepLinkNavLon: Double?
+    var deepLinkNavName: String?
+    var deepLinkNavAddress: String?
+    /// `true` = start turn-by-turn med én gang. `false` = bare senter/velg
+    /// lead-en på kartet (rute-forhåndsvisning uten å gå inn i nav-modus).
+    var deepLinkNavStart: Bool = true
+    var deepLinkNavRequestedAt: Date?
+
+    /// Be Kart-fanen navigere til en koordinat. `start=true` går rett inn i
+    /// turn-by-turn; `start=false` senterer og velger lead-en (forhåndsvisning).
+    func requestNavigation(lat: Double, lon: Double, name: String, address: String, start: Bool = true) {
+        self.deepLinkNavLat = lat
+        self.deepLinkNavLon = lon
+        self.deepLinkNavName = name
+        self.deepLinkNavAddress = address
+        self.deepLinkNavStart = start
+        self.deepLinkNavRequestedAt = Date()
+        self.selectedSidebarItem = .kart
+    }
+
+    /// Klarer nav-deep-linken etter at KartView har konsumert den. `selectedSidebarItem`
+    /// nulles ikke — brukeren skal bli på Kart-fanen.
+    func clearNavigationDeepLink() {
+        self.deepLinkNavLat = nil
+        self.deepLinkNavLon = nil
+        self.deepLinkNavName = nil
+        self.deepLinkNavAddress = nil
+        self.deepLinkNavRequestedAt = nil
     }
 
     // Klienter (lazy-init når token er satt)
@@ -226,6 +269,9 @@ final class AppState {
     @discardableResult
     func handleAPIError(_ error: Error) -> Bool {
         if let apiError = error as? APIError, apiError.requiresReauth {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1" { return true }
+            #endif
             self.sessionExpired = true
             return true
         }
@@ -241,9 +287,17 @@ final class AppState {
             } else {
                 UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_org")
             }
-            Task {
-                await loadOrgContext()
-                await refreshWorkload()
+            // Org-bytte MÅ oppdatere ALT org-avhengig, ikke bare org-
+            // kontekst — ellers viste Leads/Oversikt/Kart forrige org sine
+            // data til noe annet trigget refreshAll (QA 2026-07-06). Og
+            // entitlements/gating må re-hentes for den nye aktive org-en
+            // (før: kun ved bootstrap → gating frosset til primær-org).
+            if oldValue != activeOrganizationId {
+                Task {
+                    await loadOrgContext()
+                    await loadMyEntitlements()
+                    await refreshAll()
+                }
             }
         }
     }
@@ -251,6 +305,12 @@ final class AppState {
     var permissions: Set<String> = []
     var roleInOrg: String?
     var locationConsentGranted: Bool = false
+
+    // ── Varsel-tap (Notification-QA 2026-07-06) ─────────────────
+    /// Settes når brukeren tapper et push-varsel. Den delte header-en
+    /// (montert på hver fane) observerer og åpner varsel-inboksen. Nil-es
+    /// etter konsum. Buffres for cold-start-tap via AppStateBridge.
+    var pendingNotificationTap: [String: String]?
 
     // ── Super-admin (fase 18) ──────────────────────────────────
     /// User-level role fra /api/auth/user (uavhengig av active org).
@@ -454,13 +514,24 @@ final class AppState {
             self.authToken = token
             self.userEmail = AuthClient.loadEmail()
             self.api = APIClient(token: token)
+            // Rolle + identitet FØRST — de gater UI (SuperAdmin-inngangen,
+            // avatar-navn) og er ett billig kall. Lå sist i kjeden før →
+            // super_admin så «Gjest/Salgssjef» til hele refreshen var
+            // ferdig (kald backend = titalls sekunder).
+            await loadUserRole()
+            // Entitlements fail-open og gater-viewene re-rendrer på @Published-
+            // endringen → kjør samtidig med refreshAll i stedet for å blokkere
+            // first paint på et kaldt backend (QA 2026-07-06).
+            async let entitlementsLoad: Void = loadMyEntitlements()
             await refreshAll()
+            await entitlementsLoad
             if let id = activeProjectId {
                 await loadProjectSummary(id: id)
             }
             await loadOrganizations()
             await loadOrgContext()
-            await loadUserRole()
+            // (loadUserRole lå her en gang til — fjernet; rollen er alt
+            //  hentet øverst, dobbeltkallet var bortkastet.)
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
             await refreshAnnotations()
@@ -504,9 +575,27 @@ final class AppState {
             let resp = try await api.fetchAuthUser()
             if let user = resp.user {
                 self.userRole = user.role
+                // QA-hook/pairing lagrer ikke e-post i keychain — uten
+                // denne sto avataren som «Gjest» selv med gyldig sesjon.
+                if self.userEmail == nil || self.userEmail?.isEmpty == true {
+                    self.userEmail = user.email
+                }
             }
         } catch {
             print("[AppState] loadUserRole failed: \(error)")
+        }
+    }
+
+    /// Egen orgs feature-entitlements (mig 0370) → EntitlementStore, slik
+    /// at .gated()-flatene speiler hva SuperAdmin har gitt organisasjonen.
+    /// Feiler stille: ingen data = alt åpent (bakoverkompatibelt).
+    func loadMyEntitlements() async {
+        guard let api else { return }
+        do {
+            let envelope = try await api.fetchMyEntitlements(organizationId: activeOrganizationId)
+            EntitlementStore.shared.applyServer(envelope)
+        } catch {
+            print("[AppState] loadMyEntitlements failed: \(error)")
         }
     }
 
