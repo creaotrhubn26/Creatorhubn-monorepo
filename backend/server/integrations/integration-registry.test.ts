@@ -33,18 +33,18 @@ describe("integration-registry (kodedrevet konfig)", () => {
     }
   });
 
-  it("reflects the verified reality: reddit/cohere missingCredentials, trends awaitingApproval", () => {
+  it("reflects the verified reality: reddit/cohere missingCredentials, trends rejected", () => {
     const registry = getIntegrationRegistry();
     expect(registry.get("reddit")?.availabilityStatus).toBe("missingCredentials");
     expect(registry.get("cohere")?.availabilityStatus).toBe("missingCredentials");
-    expect(registry.get("google-trends-alpha")?.availabilityStatus).toBe("awaitingApproval");
+    expect(registry.get("google-trends-alpha")?.availabilityStatus).toBe("rejected");
     expect(registry.get("ssb")?.availabilityStatus).toBe("active");
   });
 
   it("no unbuilt/unavailable integration is servable (No Fake Integrations)", () => {
     const registry = getIntegrationRegistry();
     // keyword-planner: implementert men 'configured' til første prod-oppslag;
-    // trends-alpha: awaitingApproval; reddit/cohere: missingCredentials
+    // trends-alpha: rejected; reddit/cohere: missingCredentials
     for (const id of ["google-trends-alpha", "google-ads-keyword-planner", "reddit", "cohere"]) {
       const e = registry.get(id);
       expect(e, id).toBeDefined();
@@ -54,7 +54,7 @@ describe("integration-registry (kodedrevet konfig)", () => {
 
   it("trends fallback chain resolves to manual-trend-import (bygget 2026-07-11)", () => {
     const registry = getIntegrationRegistry();
-    // alpha (awaitingApproval) → keyword-planner (configured) → manual-import (active)
+    // alpha (rejected) → keyword-planner (configured) → manual-import (active)
     const resolved = resolveServableIntegration(registry, "google-trends-alpha");
     expect(resolved?.integrationId).toBe("manual-trend-import");
   });
