@@ -19,7 +19,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
-import { assertAnyEntitled, LEADGRID_GO_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { assertAnyEntitled, checkAnyEntitlement, LEADGRID_GO_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { sendEmail, isEmailConfigured } from "./casting-reminder-sender.js";
 
 // Roller som administrerer Leadgrid Go-dashbordet (ser hele teamet). Org
@@ -481,6 +481,73 @@ export function registerLeadgridTripsRoutes(deps: {
     } catch (err) {
       console.warn("[leadgrid-trips] report failed:", (err as Error).message);
       return res.status(500).json({ error: "trips_report_failed" });
+    }
+  });
+
+  // ── POST /trips/report/cron — månedlig batch (alle sjåfører) ──────
+  // CRON-target: sender forrige måneds kjørebok til hver bruker som har turer.
+  // Auth: x-cron-trigger-token (GitHub Actions cron). Ingen session.
+  app.post("/api/leadgrid/trips/report/cron", async (req, res) => {
+    const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
+    const expected = (process.env.CRON_TRIGGER_TOKEN || "").trim();
+    if (!expected || presented !== expected) {
+      return res.status(401).json({ error: "invalid_cron_token" });
+    }
+    if (!isEmailConfigured()) {
+      return res.status(503).json({ error: "email_not_configured" });
+    }
+    try {
+      await ensureSchema(pool);
+      // Standard: forrige måned (cron kjører tidlig i ny måned). ?month overstyrer.
+      const monthQ = String(req.query.month || "");
+      const now = new Date();
+      let yy = now.getUTCFullYear();
+      let mm = now.getUTCMonth(); // 0-indeksert = forrige måned (1-indeksert-1)
+      if (mm === 0) { mm = 12; yy -= 1; } // januar → desember i fjor
+      if (/^\d{4}-\d{2}$/.test(monthQ)) {
+        const [qy, qm] = monthQ.split("-").map(Number);
+        yy = qy; mm = qm;
+      }
+      const start = new Date(Date.UTC(yy, mm - 1, 1));
+      const end = new Date(Date.UTC(yy, mm, 1));
+      const monthLabel = start.toLocaleDateString("nb-NO", { month: "long", year: "numeric", timeZone: "UTC" });
+
+      // Brukere med turer i måneden.
+      const users = await pool.query<{ user_id: string }>(
+        `SELECT DISTINCT user_id FROM leadgrid_trips
+          WHERE start_date >= $1 AND start_date < $2`,
+        [start.toISOString(), end.toISOString()],
+      );
+
+      let sent = 0, skipped = 0, failed = 0;
+      for (const { user_id } of users.rows) {
+        // Respekter add-on-gating (fail-open).
+        const ent = await checkAnyEntitlement(pool, user_id, LEADGRID_GO_FEATURE_KEYS);
+        if (!ent.allowed) { skipped++; continue; }
+        const u = await pool.query<{ email: string | null }>(
+          `SELECT email FROM users WHERE id = $1`, [user_id],
+        );
+        const email = u.rows[0]?.email;
+        if (!email) { skipped++; continue; }
+        const r = await pool.query(
+          `SELECT * FROM leadgrid_trips
+            WHERE user_id = $1 AND start_date >= $2 AND start_date < $3
+            ORDER BY start_date ASC`,
+          [user_id, start.toISOString(), end.toISOString()],
+        );
+        const result = await sendEmail({
+          to: email,
+          subject: `Leadgrid Go — kjørebok ${monthLabel}`,
+          html: buildReportHtml(monthLabel, r.rows),
+          fromName: "Leadgrid Go",
+        });
+        if (result.success) sent++; else failed++;
+        await new Promise((res2) => setTimeout(res2, 250)); // throttle SMTP
+      }
+      return res.json({ month: monthLabel, users: users.rows.length, sent, skipped, failed });
+    } catch (err) {
+      console.warn("[leadgrid-trips] cron report failed:", (err as Error).message);
+      return res.status(500).json({ error: "cron_report_failed" });
     }
   });
 }

@@ -1,0 +1,43 @@
+name: Leadgrid Go monthly kjørebok report
+
+# Kjører 06:00 UTC den 1. hver måned og sender forrige måneds elektroniske
+# kjørebok (Leadgrid Go) på e-post til hver sjåfør som har turer. Endepunktet
+# respekterer add-on-gating (kun orgs med Leadgrid Go). Gjenbruker samme
+# cron-token som de andre Leadgrid-cron-jobbene.
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-go-monthly-report
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Trigger Leadgrid Go monthly report
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/trips/report/cron")
+          BODY=$(echo "$RESP" | head -n -1)
+          CODE=$(echo "$RESP" | tail -n 1)
+          echo "HTTP $CODE"
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Leadgrid Go monthly report feilet (HTTP $CODE)"
+            exit 1
+          fi
