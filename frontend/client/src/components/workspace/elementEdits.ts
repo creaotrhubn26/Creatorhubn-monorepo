@@ -137,6 +137,23 @@ function applyTextEdits(textEdits: ElementText): (() => void) | undefined {
   return () => obs.disconnect();
 }
 
+// Notifikasjons-utseende (toasts/snackbars/alerts): flate string-tokens → global .MuiAlert-regel.
+// Nesten alle transiente meldinger i appen rendrer MUI Alert, så dette restyler save/change-meldinger
+// app-vidt. Kun EKSPLISITT satte verdier gir deklarasjoner → ingen override → MUI-standard (identisk).
+const NOTIF_MAP: Array<[string, string]> = [
+  ['notifBg', 'background-color'], ['notifText', 'color'], ['notifRadius', 'border-radius'],
+  ['notifShadow', 'box-shadow'], ['notifBorder', 'border'], ['notifFont', 'font-family'],
+];
+export function buildNotifCss(tokens: Record<string, unknown>): string {
+  const decls: string[] = [];
+  for (const [key, prop] of NOTIF_MAP) {
+    const v = tokens[key];
+    // Verdi-charsettet (backend string-token) blokkerer ;{}:@ → ingen breakout; nekt url() (ekstern last).
+    if (typeof v === 'string' && v && !/url\(/i.test(v)) decls.push(`${prop}: ${v} !important;`);
+  }
+  return decls.length ? `.MuiAlert-root { ${decls.join(' ')} }` : '';
+}
+
 const STYLE_ID = 'chd-element-edits';
 
 /**
@@ -155,7 +172,8 @@ export function useElementEdits(workspace: string): void {
         // Stil-edits + animasjoner → ett <style>-tag.
         const editCss = t.elementEdits ? buildEditsCss(t.elementEdits as ElementEdits) : '';
         const animCss = t.elementAnim ? buildAnimCss(t.elementAnim as ElementAnim) : '';
-        const css = [editCss, animCss].filter(Boolean).join('\n');
+        const notifCss = buildNotifCss(t);
+        const css = [editCss, animCss, notifCss].filter(Boolean).join('\n');
         if (css) {
           let tag = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
           if (!tag) { tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
