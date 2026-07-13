@@ -47,3 +47,9 @@ Før produksjon: verifiser hver regel mot kilden, oppdater `lastVerified`/`verif
 med et reelt navn/rolle, og legg inn nye versjoner etter oppskriften i
 `docs/rule-engine.md`. Testene i `test/rules.test.ts` krever at alle regler har
 offisiell kilde og kontrolldato.
+
+## Teknisk skjemakilde (SAF-T)
+
+| Kilde | URL | Hentet | Brukes til |
+|---|---|---|---|
+| Skatteetatens SAF-T Financial XSD v1.10 | https://github.com/Skatteetaten/saf-t | 2026-07-13 | Skjemavalidering av eksporten i `test/saft.pg.test.ts` (vendored i `vendor/saft/`) |

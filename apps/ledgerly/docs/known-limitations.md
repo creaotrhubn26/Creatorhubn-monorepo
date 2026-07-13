@@ -30,7 +30,10 @@ skjult for brukeren i API-et (integrasjonsstatus, estimat-forbehold osv. sier fr
   Tilbud/ordre og repeterende faktura er ikke bygget.
 - **Ingen lønn** — konto 5000 finnes, men ingen a-melding/skattetrekk.
 - **Ingen EHF** — XML aksepteres som filtype, men parses ikke.
-- **Ingen SAF-T-XML-eksport** — koder/kontoplan følger standarden, filen genereres ikke.
+- **SAF-T-eksport dekker hovedbok + masterdata.** Filen valideres mot Skatteetatens
+  offisielle XSD (v1.10, vendored i `vendor/saft/`), men SourceDocuments-nodene
+  (fakturadokumenter på dokumentnivå) og AnalysisTypeTable (dimensjoner) er ikke
+  med ennå. Ikke testet mot Skatteetatens innsendingsvalidator i Altinn.
 - **Ingen Altinn-innsending** — MVA-rapporten er alltid `draft`.
 
 ## Faglige forenklinger

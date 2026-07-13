@@ -30,6 +30,7 @@ import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
+import { buildSafTXml } from '../saft/export.js';
 import { newId } from '../shared/ids.js';
 import type { RuleRegister } from '../rules/register.js';
 import type { ObjectStorage } from '../storage/port.js';
@@ -633,6 +634,48 @@ export function createApiServer(deps: ApiDeps): express.Express {
             }),
           ),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── SAF-T-eksport ────────────────────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/saf-t',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const q = z
+          .object({
+            from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          })
+          .parse(req.query);
+        const xml = await buildSafTXml(deps.db, {
+          organizationId: req.params.orgId!,
+          fromDate: q.from,
+          toDate: q.to,
+        });
+        // Eksport av regnskapsdata er en sensitiv hendelse — logges alltid.
+        await withTransaction(deps.db, (client) =>
+          recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'saf-t.exported',
+            entityType: 'organization',
+            entityId: req.params.orgId!,
+            newValue: { from: q.from, to: q.to, bytes: Buffer.byteLength(xml) },
+          }),
+        );
+        res
+          .set('Content-Type', 'application/xml; charset=utf-8')
+          .set(
+            'Content-Disposition',
+            `attachment; filename="saf-t_${q.from}_${q.to}.xml"`,
+          )
+          .send(xml);
       } catch (err) {
         next(err);
       }

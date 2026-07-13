@@ -989,6 +989,34 @@ export function BankScreen({ orgId }: { orgId: string }) {
 /* ── Rapporter ─────────────────────────────────────────────────────────── */
 
 export function ReportsScreen({ orgId }: { orgId: string }) {
+  const defaults = thisYear();
+  const [saftFrom, setSaftFrom] = useState(defaults.from);
+  const [saftTo, setSaftTo] = useState(defaults.to);
+  const [saftBusy, setSaftBusy] = useState(false);
+  const toast = useToast();
+
+  const downloadSafT = async () => {
+    setSaftBusy(true);
+    try {
+      const res = await fetch(
+        `/api/organizations/${orgId}/saf-t?from=${saftFrom}&to=${saftTo}`,
+        { headers: { authorization: `Bearer ${sessionStorage.getItem('ledgerly.token')}` } },
+      );
+      if (!res.ok) throw new Error(`Eksporten feilet (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `saf-t_${saftFrom}_${saftTo}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('SAF-T-fil lastet ned', 'ok');
+    } catch (err) {
+      toast((err as Error).message, 'danger');
+    } finally {
+      setSaftBusy(false);
+    }
+  };
   interface Pnl {
     revenueMinor: string;
     expenseMinor: string;
@@ -1033,6 +1061,29 @@ export function ReportsScreen({ orgId }: { orgId: string }) {
           </div>
         </div>
       )}
+      <div className="panel">
+        <h2>SAF-T-eksport</h2>
+        <p className="subtitle">
+          Standardformatet Skatteetaten ber om ved bokettersyn. Filen valideres mot offisielt
+          skjema, og hver eksport logges i revisjonsloggen.
+        </p>
+        <div className="row" style={{ maxWidth: 560 }}>
+          <div>
+            <label htmlFor="sfrom">Fra</label>
+            <input id="sfrom" value={saftFrom} onChange={(e) => setSaftFrom(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="sto">Til</label>
+            <input id="sto" value={saftTo} onChange={(e) => setSaftTo(e.target.value)} />
+          </div>
+          <div>
+            <button className="secondary" disabled={saftBusy} onClick={downloadSafT}>
+              {saftBusy ? 'Genererer…' : 'Last ned SAF-T (XML)'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <h2>Saldobalanse</h2>
       {tb.error && <div className="error">{tb.error}</div>}
       {tb.loading ? (
