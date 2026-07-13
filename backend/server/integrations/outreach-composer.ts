@@ -178,35 +178,72 @@ export interface ComposerResult {
   suggestedDraft: string;
 }
 
+export interface InstitutionContext {
+  /** Mottaker-institusjonen (NFI, Innovasjon Norge, Kulturdirektoratet, ...) */
+  recipientName: string;
+  /** Fakta avsenderen selv står inne for — nummereres som dossier. */
+  facts: Array<{ label: string; value: string }>;
+}
+
+/** Institusjons-dossier: caller-fakta + kilde-merking (enhetstestet). */
+export function buildInstitutionFacts(ctx: InstitutionContext): DossierFact[] {
+  const base: Array<[string, string, string]> = [
+    ["crm", "Mottaker", ctx.recipientName],
+    ...ctx.facts
+      .filter((f) => typeof f.label === "string" && typeof f.value === "string" && f.value.trim())
+      .slice(0, 15)
+      .map((f): [string, string, string] => ["avsender", f.label.slice(0, 80), f.value.slice(0, 200)]),
+  ];
+  return base.map(([source, label, value], i) => ({ n: i + 1, source, label, value }));
+}
+
 export async function composeOutreach(
   pool: Pool,
   organizationId: string,
-  args: { leadId: string; intent: string; draft?: string },
+  args: {
+    leadId?: string;
+    intent: string;
+    draft?: string;
+    /** Institusjons-modus: henvendelse til NFI/IN/etater — fakta fra avsender i stedet for CRM-dossier. */
+    institution?: InstitutionContext;
+  },
 ): Promise<{ result: ComposerResult } | { error: string; status: number }> {
-  const leadRes = await pool.query<LeadRow>(
-    `SELECT id::text, name, pipeline_stage, deal_amount::text, enrichment_data
-       FROM crm_customers
-      WHERE id = $1 AND organization_id = $2::uuid AND archived_at IS NULL`,
-    [args.leadId, organizationId],
-  );
-  if (leadRes.rows.length === 0) return { error: "lead_ikke_funnet", status: 404 };
-  const lead = leadRes.rows[0];
+  let facts: DossierFact[];
 
-  const triggers = await pool.query<{ kind: string; title: string; published_at: string | null }>(
-    `SELECT kind, title, published_at::text FROM trigger_events
-      WHERE organization_id = $1::uuid AND matched_topic = $2
-      ORDER BY created_at DESC LIMIT 3`,
-    [organizationId, lead.name],
-  );
+  if (args.institution) {
+    facts = buildInstitutionFacts(args.institution);
+    if (facts.length < 3) return { error: "institusjons_fakta_kreves", status: 400 };
+  } else if (args.leadId) {
+    const leadRes = await pool.query<LeadRow>(
+      `SELECT id::text, name, pipeline_stage, deal_amount::text, enrichment_data
+         FROM crm_customers
+        WHERE id = $1 AND organization_id = $2::uuid AND archived_at IS NULL`,
+      [args.leadId, organizationId],
+    );
+    if (leadRes.rows.length === 0) return { error: "lead_ikke_funnet", status: 404 };
+    const lead = leadRes.rows[0];
 
-  const facts = buildDossierFacts(lead, triggers.rows);
+    const triggers = await pool.query<{ kind: string; title: string; published_at: string | null }>(
+      `SELECT kind, title, published_at::text FROM trigger_events
+        WHERE organization_id = $1::uuid AND matched_topic = $2
+        ORDER BY created_at DESC LIMIT 3`,
+      [organizationId, lead.name],
+    );
+    facts = buildDossierFacts(lead, triggers.rows);
+  } else {
+    return { error: "leadId_eller_institution_kreves", status: 400 };
+  }
   const analysis = args.draft?.trim() ? analyzeOutreachText(args.draft) : null;
+  const isInstitution = Boolean(args.institution);
 
   const anthropic = getAnthropic();
   if (!anthropic) return { error: "anthropic_ikke_konfigurert", status: 503 };
 
   const userContent = [
     `MÅL: ${args.intent}`,
+    ...(isInstitution
+      ? ["MODUS: Formell henvendelse til offentlig institusjon — saklig, konkret, ingen salgsspråk. Be om én tydelig ting."]
+      : []),
     "",
     "DOSSIER:",
     ...facts.map((f) => `[${f.n}] (${f.source}) ${f.label}: ${f.value}`),
