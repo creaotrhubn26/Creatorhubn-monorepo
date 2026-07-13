@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect } from 'react';
+import { getAuthHeader } from '@/lib/queryClient';
 
 interface CommunicationStatus {
   isConnected: boolean;
@@ -69,11 +70,13 @@ export function CommunicationStatusProvider({ children }: CommunicationStatusPro
         // Ignore localStorage parse issues and fall back to global status check.
       }
       
-      // Test Google Chat API connectivity
+      // Test Google Chat API connectivity. The backend now derives the tenant
+      // from the session (Bearer), ignoring the spoofable ?userId query param.
       const response = await fetch(googleChatStatusUrl, {
         method: 'GET',
         headers: {
           'Content-Type' : 'application/json',
+          ...(await getAuthHeader()),
       }
     });
       

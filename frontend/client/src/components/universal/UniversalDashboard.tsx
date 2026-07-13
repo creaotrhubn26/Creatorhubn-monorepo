@@ -12,7 +12,7 @@ const PrintOrdersModal = React.lazy(() => import('@/components/photographer/Prin
 const PhotographerEquipment = React.lazy(() => import('@/pages/photographer-equipment'));
 const PhotographerSettings = React.lazy(() => import('@/pages/photographer-settings'));
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { apiRequest, queryClient, getAuthHeader } from '@/lib/queryClient';
 import {
   getEvendiBookings,
   getEvendiAnalyticsSummary,
@@ -2528,7 +2528,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const { data: storyArcProjectsData, isLoading: _loadingStoryArc } = useQuery({
     queryKey: ['story-arc-projects', userId],
     queryFn: async () => {
-      const res = await fetch('/api/story-arc/projects', { credentials: 'include' });
+      const res = await fetch('/api/story-arc/projects', { credentials: 'include', headers: await getAuthHeader() });
       if (res.ok) {
         const data = await res.json();
         return data.success ? data.projects.slice(0, 5) : [];

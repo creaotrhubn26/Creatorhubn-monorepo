@@ -22703,9 +22703,11 @@ app.get("/api/communication/google-chat/status", async (req, res) => {
     const forceRefresh = ["1", "true", "yes"].includes(
       String(req.query.force ?? "").toLowerCase(),
     );
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const queryUserId = readString(req.query.userId);
-    const userId = queryUserId || headerUserId;
+    // Session-only: the spoofable x-user-id/query.userId selected which tenant's
+    // Google Chat connection row (space_id, sync status) to read. Bind to session.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId = session.userId;
     const liveCheck = await getGoogleChatLiveHealthCheck({
       forceRefresh,
       pool,
@@ -23459,8 +23461,17 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       compatResolveUserEmail(req);
     const requestId =
       compatHeaderString(body.requestId ?? body.request_id) || null;
+    // Conservative session-wins hardening: this route is public/pre-auth (guest,
+    // invite and free-plan onboarding happen before a session exists), so we keep
+    // the body.userId fallback for the anonymous case. But when a real session IS
+    // present it must take precedence over any client-supplied body.userId — an
+    // authenticated caller could otherwise pass body.userId=<victim> to scope the
+    // checkout (and any recorded completion) onto another tenant's account.
+    const sessionUserId = getActiveSessionFromRequest(req)?.userId || null;
     const userId = resolveCompatPaymentUserScope(
-      compatHeaderString(body.userId ?? body.user_id) || compatResolveUserId(req),
+      sessionUserId ||
+        compatHeaderString(body.userId ?? body.user_id) ||
+        compatResolveUserId(req),
       requestId,
       email,
     );
@@ -24164,9 +24175,15 @@ app.post("/api/google-pay/refund", async (req, res) => {
       return res.status(404).json({ error: "Payment not found for refund" });
     }
 
-    const requesterUserId = compatResolveUserId(req);
+    // Session-only ownership identity: compatResolveUserId/Email fall back to
+    // the spoofable x-user-id/x-user-email headers when no session is present,
+    // which would let an anonymous caller who knows a victim's id/email + a
+    // transactionId file a refund on the victim's payment. Bind to the session.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const requesterUserId = session.userId;
     const requesterEmail = normalizeMailConfigValue(
-      compatResolveUserEmail(req),
+      session.email,
     ).toLowerCase();
     const paymentEmail = normalizeMailConfigValue(paymentRecord.email).toLowerCase();
     const ownsPayment =
@@ -24308,7 +24325,10 @@ app.post("/api/story-arc/init", (req, res) => {
 });
 
 app.get("/api/story-arc/onboarding/status", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: x-user-id fallback leaked another tenant's onboarding state.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const onboardingState = compatStoryArcOnboardingStore.get(userId);
   res.json({
     success: true,
@@ -24318,7 +24338,11 @@ app.get("/api/story-arc/onboarding/status", (req, res) => {
 });
 
 app.post("/api/story-arc/onboarding/complete", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: x-user-id fallback let a caller write onboarding state for a
+  // victim userId.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const now = new Date().toISOString();
   compatStoryArcOnboardingStore.set(userId, {
     completed: true,
@@ -24332,7 +24356,12 @@ app.post("/api/story-arc/onboarding/complete", (req, res) => {
 });
 
 app.get("/api/story-arc/projects", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: without a session compatResolveUserId returns "guest", and
+  // getStoryArcProjectsForUser("guest") dumps EVERY tenant's projects. An
+  // attacker could also pass x-user-id=<victim> to read their project list.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const projects = getStoryArcProjectsForUser(userId).map(
     normalizeStoryArcProjectForResponse,
   );
@@ -24340,7 +24369,11 @@ app.get("/api/story-arc/projects", (req, res) => {
 });
 
 app.post("/api/story-arc/projects", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: x-user-id fallback let a caller create projects owned by a
+  // victim userId.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const body = isRecord(req.body) ? req.body : {};
   const storyArcName =
     compatHeaderString(body.storyArcName) ||
@@ -24527,8 +24560,12 @@ app.post("/api/story-arc/:storyArcId/google-drive/upload-audio", (req, res) => {
 });
 
 function applyStoryArcAutoMonitorSettings(req: any, res: any) {
+  // Session-only: body.userId previously overrode even a valid session, so any
+  // caller could write auto-monitor settings under an arbitrary victim userId.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const folderName = compatStoryArcNormalizeFolderName(
     body.folderName ?? body.monitorFolderName,
   );
@@ -24591,7 +24628,10 @@ function applyStoryArcAutoMonitorSettings(req: any, res: any) {
 }
 
 app.get("/api/story-arc/auto-monitor/status", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: spoofable x-user-id fallback leaked another tenant's monitors.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   res.json({
     success: true,
     userId,
@@ -24639,8 +24679,12 @@ app.get("/api/story-arc/auto-monitor/history/:userId", (req, res) => {
 });
 
 app.post("/api/story-arc/auto-monitor/enable", (req, res) => {
+  // Session-only: body.userId previously overrode the session, allowing a caller
+  // to enable/overwrite a monitor on a victim's account.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const folderName = compatStoryArcNormalizeFolderName(
     body.monitorFolderName ?? body.folderName,
   );
@@ -24682,8 +24726,12 @@ app.post("/api/story-arc/auto-monitor/enable", (req, res) => {
 });
 
 app.post("/api/story-arc/auto-monitor/disable", (req, res) => {
+  // Session-only: body.userId previously overrode the session, allowing a caller
+  // to disable a victim's monitor.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const folderName = compatStoryArcNormalizeFolderName(
     body.folderName ?? body.monitorFolderName,
   );
@@ -24718,8 +24766,12 @@ app.put(
 app.put("/api/story-arc/auto-monitor/config", applyStoryArcAutoMonitorSettings);
 
 app.post("/api/story-arc/auto-monitor/check", (req, res) => {
+  // Session-only: body.userId previously overrode the session, allowing a caller
+  // to enumerate a victim's monitors and create projects under their account.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const targetFolder = compatHeaderString(
     body.folderName ?? body.monitorFolderName,
   );
@@ -46441,8 +46493,13 @@ app.post(
   async (req, res) => {
     try {
       const { projectId, shotId } = req.params;
-      const userId = compatResolveUserId(req);
-      if (!userId || !isUuid(userId)) {
+      // Session-only ownership identity. Previously compatResolveUserId let a
+      // caller pass x-user-id/body/query userId to link assets into another
+      // tenant's project. (Also fixes a latent ReferenceError: isUuid is not
+      // defined in this module — session.userId is already a valid uuid.)
+      const session = getActiveSessionFromRequest(req);
+      const userId = session?.userId;
+      if (!userId) {
         return res.status(401).json({ error: "unauthorized" });
       }
       const capturedAssetId =
@@ -74425,9 +74482,11 @@ async function requestMeetingWritingAssist(params: {
 app.get("/api/notebooklm/workspace/status", async (req, res) => {
   try {
     await ensureMeetingNotesCompatibilitySchema();
-    const userId =
-      readString(req.query.userId) ||
-      compatResolveUserId(req);
+    // Session-only: the query.userId fallback let a caller read another tenant's
+    // NotebookLM workspace status by passing ?userId=<victim>.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId = session.userId;
     const status = await getNotebookLmWorkspaceStatus(pool, {
       userId,
       meetingId: readString(req.query.meetingId),
@@ -74451,9 +74510,11 @@ app.get("/api/notebooklm/workspace/status", async (req, res) => {
 app.post("/api/notebooklm/workspace/sync", async (req, res) => {
   try {
     await ensureMeetingNotesCompatibilitySchema();
-    const userId =
-      readString(req.body?.userId) ||
-      compatResolveUserId(req);
+    // Session-only: the body.userId fallback let a caller sync/overwrite another
+    // tenant's NotebookLM workspace by passing userId=<victim>.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId = session.userId;
     await syncNotebookLmWorkspaceForScope(pool, {
       userId,
       meetingId: readString(req.body?.meetingId),

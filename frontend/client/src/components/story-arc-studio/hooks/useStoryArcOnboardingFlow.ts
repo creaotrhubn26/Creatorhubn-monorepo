@@ -169,7 +169,7 @@ export function useStoryArcOnboardingFlow({
       const response = await fetch('/api/story-arc/projects', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
         body: JSON.stringify({
           storyArcName: projectName,
           templateType: 'wedding',

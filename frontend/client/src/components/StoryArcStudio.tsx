@@ -1849,7 +1849,7 @@ export default function StoryArcStudio({
   const fetchRecentProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const response = await fetch('/api/story-arc/projects', { credentials: 'include' });
+      const response = await fetch('/api/story-arc/projects', { credentials: 'include', headers: await getAuthHeader() });
       if (response.ok) {
         const data = await response.json();
         if (data.success && Array.isArray(data.projects)) {
@@ -1871,7 +1871,7 @@ export default function StoryArcStudio({
       const response = await fetch('/api/story-arc/onboarding/complete', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type' : 'application/json' },
+        headers: { 'Content-Type' : 'application/json', ...(await getAuthHeader()) },
         body: JSON.stringify({ completed: true }),
       });
       
@@ -3273,7 +3273,7 @@ export default function StoryArcStudio({
 
         // Check database for onboarding completion
         try {
-          const res = await fetch('/api/story-arc/onboarding/status', { credentials: 'include' });
+          const res = await fetch('/api/story-arc/onboarding/status', { credentials: 'include', headers: await getAuthHeader() });
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.completed === true) {
