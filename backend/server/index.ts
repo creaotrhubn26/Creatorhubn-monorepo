@@ -30274,42 +30274,29 @@ type RoleRoomCommercialResolvedAccount = {
   nextPaymentAttemptAt: string | null;
 };
 
-function readRoleRoomCommercialRequestIdentity(
+async function readRoleRoomCommercialRequestIdentity(
   req: express.Request,
-): RoleRoomCommercialRequestIdentity {
-  const session = getActiveSessionFromRequest(req);
-  const readHeaderValue = (headerName: string) => {
-    const raw = req.headers[headerName.toLowerCase()];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    return typeof value === "string" && value.trim().length > 0
-      ? value.trim()
-      : null;
-  };
-
+): Promise<RoleRoomCommercialRequestIdentity> {
+  // SECURITY (IDOR/broken-auth-fiks): identiteten som binder en kaller til en
+  // fakturakonto utledes KUN fra den autentiserte sesjonen (Bearer →
+  // activeSessions / persistert sesjon). Tidligere falt vi tilbake på klient-
+  // satte headere (x-role-room-user-id / x-user-id / x-role-room-email / -role /
+  // -login-as / -requested-role) som en angriper fritt kan spoofe. Å sende
+  // `x-role-room-email: <offer-teamleder>` lot enhver uinnlogget kaller lese en
+  // annen kundes fakturakonto (Stripe-kunde/-abonnement, org.nr, teammedlemmer)
+  // via GET /billing/account, og — fordi teamleder-sjekken sammenligner mot
+  // nettopp denne e-posten — åpne offerets Stripe-portal via POST /billing/manage
+  // og tvinge nye betalingsforsøk via /billing/retry-payment. Innlogging alene er
+  // nå påkrevd; ingen header kan overstyre eller forfalske identiteten.
+  const session = await resolveActiveSessionFromRequest(req);
   const sessionEmail = normalizeMailConfigValue(session?.email).toLowerCase();
 
   return {
-    userId:
-      normalizeMailConfigValue(session?.userId) ||
-      readHeaderValue("x-role-room-user-id") ||
-      readHeaderValue("x-user-id") ||
-      null,
-    email:
-      sessionEmail ||
-      normalizeMailConfigValue(readHeaderValue("x-role-room-email")).toLowerCase() ||
-      null,
-    role:
-      normalizeMailConfigValue(session?.role) ||
-      readHeaderValue("x-role-room-role") ||
-      null,
-    loginAs:
-      normalizeMailConfigValue(session?.loginAs) ||
-      readHeaderValue("x-role-room-login-as") ||
-      null,
-    requestedRole:
-      normalizeMailConfigValue(session?.requestedRole) ||
-      readHeaderValue("x-role-room-requested-role") ||
-      null,
+    userId: normalizeMailConfigValue(session?.userId) || null,
+    email: sessionEmail || null,
+    role: normalizeMailConfigValue(session?.role) || null,
+    loginAs: normalizeMailConfigValue(session?.loginAs) || null,
+    requestedRole: normalizeMailConfigValue(session?.requestedRole) || null,
   };
 }
 
@@ -30464,7 +30451,7 @@ const resolveStripeCustomerForCastingProject: ProjectCustomerResolver = async (
 async function resolveRoleRoomCommercialAccountForRequest(
   req: express.Request,
 ): Promise<RoleRoomCommercialResolvedAccount | null> {
-  const identity = readRoleRoomCommercialRequestIdentity(req);
+  const identity = await readRoleRoomCommercialRequestIdentity(req);
   if (!identity.userId && !identity.email) {
     return null;
   }
