@@ -23426,10 +23426,15 @@ async function buildGoogleWorkspaceStorageSnapshot(
 // GET /api/google-workspace/storage/:userId — aggregate storage consumption
 app.get("/api/google-workspace/storage/:userId", async (req, res) => {
   try {
-    const userId =
-      readString(req.params.userId) ||
-      readString(req.headers["x-user-id"]) ||
-      "guest";
+    // Session-only identitet: ignorer :userId i path OG x-user-id-headeren (begge
+    // spoofbare) — snapshotet inkluderer brukerens Google Drive-tilkobling
+    // (konto-e-post) + lagringsbruk, så et vilkårlig id lekket en annen brukers
+    // PII (IDOR). Alle ekte kallere sender Bearer for innlogget bruker.
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    const userId = session.userId;
     const snapshot = await buildGoogleWorkspaceStorageSnapshot(
       userId,
       derivePreferredGoogleWorkspaceOauthApps(req),
@@ -25852,8 +25857,13 @@ app.get("/api/communication/google-chat/status", async (req, res) => {
 // Google Workspace storage summary
 app.get("/api/google-workspace/storage/:userId", async (req, res) => {
   try {
-    const requestedUserId = readString(req.params.userId) || "guest";
-    const snapshot = await buildGoogleWorkspaceStorageSnapshot(requestedUserId);
+    // (Skygget av registreringen lenger opp, men herdet for defense-in-depth:)
+    // session-only identitet, ikke det spoofbare :userId-path-parameteret.
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    const snapshot = await buildGoogleWorkspaceStorageSnapshot(session.userId);
     res.json(snapshot);
   } catch (error) {
     console.error("Legacy Google Workspace storage summary failed:", error);
@@ -72134,10 +72144,19 @@ setupShowcaseGooglePhotosRoutes({
 // Vendor update (showcase actions)
 app.post("/api/vendor/update", async (req, res) => {
   try {
+    // Krev innlogging — endepunktet var HELT åpent (anonym kunne overskrive en
+    // vilkårlig vendor via body.vendorId). NB: dette er en DELT showcase-flate
+    // (Northtone/demo) der enhver innlogget bruker kurerer featured-produkter på
+    // et FAST merke — derfor bevisst INGEN eierskaps-gate (ville brutt showcase-
+    // flyten). Residual: delt skrive-tilgang bør flyttes til egen
+    // vendor_showcase_features-tabell (produktbeslutning).
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const vendorId = readString(req.body?.vendorId);
     const vendorName = readString(req.body?.vendorName) || vendorId;
     const vendorType = readString(req.body?.vendorType) || "vendor";
-    const userId = readString(req.body?.userId) || vendorId;
+    // Eier av en NYOPPRETTET vendor = kalleren (ikke spoofbar body.userId).
+    const userId = session.userId;
     const featuredProductId = readString(req.body?.featuredProductId);
     const featuredOrderId = readString(req.body?.featuredOrderId);
 
