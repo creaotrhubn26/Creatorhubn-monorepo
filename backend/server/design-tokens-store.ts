@@ -314,6 +314,26 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.designComponents = designComponents;
   }
+  // HTML-KOMPONENTER: { [navn]: html } — en klonet seksjon fra siden (høy-fidelity). Den EKTE
+  // saneringen skjer med DOMPurify i klienten BÅDE ved lagring og ved render (defense-in-depth);
+  // her et grovt server-belte (strip script/iframe/on*=/javascript:) + lengde/antall-tak.
+  const htmlIn = (patch as any)?.htmlComponents;
+  if (htmlIn && typeof htmlIn === 'object' && !Array.isArray(htmlIn)) {
+    const NAME_RE = /^[A-Za-z0-9 _-]{1,60}$/;
+    const htmlComponents: Record<string, string> = {};
+    let n = 0;
+    for (const [name, html] of Object.entries(htmlIn as Record<string, unknown>)) {
+      if (n >= 50) break;
+      if (!NAME_RE.test(name) || typeof html !== 'string' || html.length > 40000) continue;
+      htmlComponents[name] = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+        .replace(/\son\w+\s*=/gi, ' data-x=')
+        .replace(/javascript:/gi, '');
+      n++;
+    }
+    clean.htmlComponents = htmlComponents;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,

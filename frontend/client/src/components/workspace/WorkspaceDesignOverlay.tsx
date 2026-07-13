@@ -11,7 +11,7 @@
  * Selvstendig: inline styles, ingen MUI (unngår å arve dark-temaet).
  */
 import React from 'react';
-import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, type ElementEdits, type InsertSpec } from './elementEdits';
+import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, sanitizeHtmlComponent, type ElementEdits, type InsertSpec } from './elementEdits';
 
 type ElDesc = {
   tag: string; id?: string; cls?: string; text?: string;
@@ -140,6 +140,9 @@ export default function WorkspaceDesignOverlay({
   const [components, setComponents] = React.useState<Record<string, InsertSpec[]>>({}); // gjenbrukbare komponenter
   const [compName, setCompName] = React.useState('');
   const [pickComp, setPickComp] = React.useState('');
+  const [htmlComps, setHtmlComps] = React.useState<Record<string, string>>({}); // klonede HTML-komponenter
+  const [htmlCompName, setHtmlCompName] = React.useState('');
+  const [pickHtmlComp, setPickHtmlComp] = React.useState('');
   const [slotBindings, setSlotBindings] = React.useState<Record<string, string>>({}); // data-slot → kilde (ved gjenbruk)
   // Varianter / A-B
   type VariantData = { elementEdits?: Edits; elementText?: Record<string, string>; elementAnim?: Record<string, string>; elementInserts?: Record<string, InsertSpec[]>; elementBindings?: Record<string, string> };
@@ -361,8 +364,31 @@ export default function WorkspaceDesignOverlay({
     setComponents((c) => ({ ...c, [name]: specs }));
     setCompName('');
   };
+  // Klon det VALGTE elementet (outerHTML) som en gjenbrukbar HTML-komponent (DOMPurify-sanert).
+  const saveHtmlComponent = () => {
+    if (!sel) return;
+    const name = htmlCompName.trim();
+    if (!name) return;
+    setHtmlComps((c) => ({ ...c, [name]: sanitizeHtmlComponent(sel.outerHTML) }));
+    setHtmlCompName('');
+    setSaveMsg(`HTML-komponent «${name}» opprettet — trykk «Lagre endringer».`);
+  };
   const addInsert = () => {
     if (!sel || !sel.parentNode) return;
+    // HTML-komponent: bygg container-div m/ DOMPurify-sanert innerHTML ved ankeret.
+    if (insType === 'htmlcomponent') {
+      const html = htmlComps[pickHtmlComp];
+      if (!html) return;
+      const id = `ins-${nextId.current++}`;
+      const div = document.createElement('div');
+      div.setAttribute('data-chd-insert', id);
+      div.innerHTML = sanitizeHtmlComponent(html);
+      if (insPos === 'before') sel.parentNode.insertBefore(div, sel); else sel.parentNode.insertBefore(div, sel.nextSibling);
+      const spec: InsertSpec = { id, type: 'htmlcomponent', pos: insPos, component: pickHtmlComp };
+      const key = uniqueSelector(sel);
+      setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), spec] }));
+      return;
+    }
     // Komponent: ekspander bibliotekets spec-liste til KOPIER (ferske id-er) ved ankeret.
     if (insType === 'component') {
       const specs = components[pickComp];
@@ -418,6 +444,7 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
           if (d.tokens.elementInteractions && typeof d.tokens.elementInteractions === 'object') setIntxEdits(d.tokens.elementInteractions as Record<string, { action: string; target: string }>);
           if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
+          if (d.tokens.htmlComponents && typeof d.tokens.htmlComponents === 'object') setHtmlComps(d.tokens.htmlComponents as Record<string, string>);
           if (d.tokens.designVariants && typeof d.tokens.designVariants === 'object') setVariants(d.tokens.designVariants as Record<string, VariantData>);
           const vc = d.tokens.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
           if (vc) { setVariantMode((['off', 'active', 'ab'].includes(vc.mode || '') ? vc.mode : 'off') as 'off' | 'active' | 'ab'); setVariantActive(vc.active || ''); setVariantAb(Array.isArray(vc.ab) ? vc.ab : []); setVariantGoal(vc.goal || ''); }
@@ -438,7 +465,7 @@ export default function WorkspaceDesignOverlay({
       setVariants(updated);
       return { designVariants: updated, variantConfig: vcfg };
     }
-    return { ...currentMaps(), elementEditsTablet: editsTablet, elementEditsMobile: editsMobile, elementInteractions: intxEdits, designComponents: components, designVariants: variants, variantConfig: vcfg };
+    return { ...currentMaps(), elementEditsTablet: editsTablet, elementEditsMobile: editsMobile, elementInteractions: intxEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
   };
   const saveAsVariant = () => {
     const name = newVariantName.trim();
@@ -1028,11 +1055,18 @@ export default function WorkspaceDesignOverlay({
                   <option value="infographic">Infographic</option>
                   <option value="divider">Skille</option>
                   <option value="component">Komponent (fra bibliotek)</option>
+                  <option value="htmlcomponent">HTML-komponent (klonet seksjon)</option>
                 </select>
                 {insType === 'component' && (
                   <select data-chd aria-label="Velg komponent" style={field} value={pickComp} onChange={(e) => setPickComp(e.target.value)}>
                     <option value="">— Velg komponent —</option>
                     {Object.keys(components).map((n) => <option key={n} value={n}>{n} ({components[n].length} elementer)</option>)}
+                  </select>
+                )}
+                {insType === 'htmlcomponent' && (
+                  <select data-chd aria-label="Velg HTML-komponent" style={field} value={pickHtmlComp} onChange={(e) => setPickHtmlComp(e.target.value)}>
+                    <option value="">— Velg HTML-komponent —</option>
+                    {Object.keys(htmlComps).map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 )}
                 {insType === 'component' && pickComp && (components[pickComp] || []).some((s) => s.type === 'infographic') && (() => {
@@ -1066,7 +1100,7 @@ export default function WorkspaceDesignOverlay({
                     </div>
                   );
                 })()}
-                {insType !== 'divider' && insType !== 'component' && (
+                {insType !== 'divider' && insType !== 'component' && insType !== 'htmlcomponent' && (
                   <input data-chd style={field}
                     placeholder={insType === 'infographic' ? 'Verdi (f.eks. 75%)' : insType === 'image' ? 'Alt-tekst' : 'Tekst'}
                     value={insText} onChange={(e) => setInsText(e.target.value)} />
@@ -1105,6 +1139,12 @@ export default function WorkspaceDesignOverlay({
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input data-chd style={{ ...field, flex: 1 }} placeholder="Komponent-navn" value={compName} onChange={(e) => setCompName(e.target.value)} />
                     <button data-chd style={btn(false)} onClick={saveComponent} title="Lagre dette ankerets innsettinger som gjenbrukbar komponent">Lagre som komponent</button>
+                  </div>
+                )}
+                {sel && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input data-chd style={{ ...field, flex: 1 }} placeholder="Klon-navn" value={htmlCompName} onChange={(e) => setHtmlCompName(e.target.value)} />
+                    <button data-chd style={btn(false)} onClick={saveHtmlComponent} title="Klon det valgte elementet (med all styling) som gjenbrukbar HTML-komponent">Klon som HTML-komponent</button>
                   </div>
                 )}
 
