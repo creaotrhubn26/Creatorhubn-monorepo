@@ -23,6 +23,8 @@ export const LIVE_CONNECTORS: LiveConnector[] = [
   { key: 'casting_projects', label: 'Castingprosjekter', type: 'number', workspaces: ['theroleroom', 'creatorhub'], publicSafe: true, sql: 'SELECT COUNT(*)::int AS v FROM casting_projects' },
   { key: 'academy_enrollments', label: 'Academy-påmeldinger', type: 'number', workspaces: ['creatorhub', 'theroleroom'], publicSafe: true, sql: 'SELECT COUNT(*)::int AS v FROM academy_enrollments' },
   { key: 'agency_leads', label: 'Leads generert', type: 'number', workspaces: ['leadgrid'], publicSafe: true, sql: 'SELECT COUNT(*)::int AS v FROM agency_leads' },
+  { key: 'resumes_built', label: 'CV-er bygget', type: 'number', workspaces: ['creatorhub'], publicSafe: true, sql: 'SELECT COUNT(*)::int AS v FROM resumes' },
+  { key: 'casting_roles', label: 'Roller lyst ut', type: 'number', workspaces: ['theroleroom', 'creatorhub'], publicSafe: true, sql: 'SELECT COUNT(*)::int AS v FROM casting_roles' },
 ];
 
 /** Resolver én connector til sin gjeldende verdi fra DB. `requirePublicSafe` for offentlig render. */

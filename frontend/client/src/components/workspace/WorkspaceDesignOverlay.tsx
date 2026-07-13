@@ -761,6 +761,16 @@ export default function WorkspaceDesignOverlay({
               ))}
             </div>
             {device !== 'all' && <div style={{ fontSize: 10.5, color: '#b45309' }}>Redigerer {device === 'tablet' ? '≤900px' : '≤600px'} — stil-endringer lagres bak en media query (gjelder kun denne skjermbredden).</div>}
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: INK2 }}>Forhåndsvis:</span>
+              {([{ k: 'mobile', label: '📲 Mobil', w: 390, h: 844 }, { k: 'tablet', label: '📱 Nettbrett', w: 834, h: 1112 }] as const).map((p) => (
+                <button key={p.k} data-chd onClick={() => { try { window.open(window.location.href, `chd_preview_${p.k}`, `width=${p.w},height=${p.h}`); } catch { /* popup blokkert */ } }}
+                  style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}
+                  title={`Åpne siden i et ${p.w}×${p.h}-vindu — media queries og responsive endringer vises som på ekte enhet (viser lagret tilstand)`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
             {(editKeys.length > 0 || origMode) && (
               <button data-chd onClick={toggleOriginal}
                 style={{ ...(origMode ? cta : btn(false)), padding: '6px 10px', fontSize: 12 }}
