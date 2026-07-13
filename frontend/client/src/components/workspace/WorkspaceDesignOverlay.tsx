@@ -125,6 +125,7 @@ export default function WorkspaceDesignOverlay({
   const [textEdits, setTextEdits] = React.useState<Record<string, string>>({});
   const [animEdits, setAnimEdits] = React.useState<Record<string, string>>({});
   const [bindEdits, setBindEdits] = React.useState<Record<string, string>>({}); // selektor → datakilde-nøkkel
+  const [intxEdits, setIntxEdits] = React.useState<Record<string, { action: string; target: string }>>({}); // interaksjoner
   const [insertEdits, setInsertEdits] = React.useState<Record<string, InsertSpec[]>>({});
   // Insert-skjema
   const [insType, setInsType] = React.useState('heading');
@@ -210,6 +211,14 @@ export default function WorkspaceDesignOverlay({
     sel.style.setProperty(cssProp, value);
     const key = uniqueSelector(sel); // unik strukturell sti → kan re-applikeres ved last
     setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
+  };
+
+  // Edit: gjør elementet klikkbart (scroll til seksjon / naviger). Registreres; virker ved last.
+  const applyInteraction = (action: string, target: string) => {
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    if (!action) { setIntxEdits((m) => { const n = { ...m }; delete n[key]; return n; }); return; }
+    setIntxEdits((m) => ({ ...m, [key]: { action, target: target || '' } }));
   };
 
   // Edit: bind elementets tekst til en datakilde (metric) — live via textContent + registrer.
@@ -380,6 +389,7 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
+          if (d.tokens.elementInteractions && typeof d.tokens.elementInteractions === 'object') setIntxEdits(d.tokens.elementInteractions as Record<string, { action: string; target: string }>);
           if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
           if (d.tokens.designVariants && typeof d.tokens.designVariants === 'object') setVariants(d.tokens.designVariants as Record<string, VariantData>);
           const vc = d.tokens.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
@@ -401,7 +411,7 @@ export default function WorkspaceDesignOverlay({
       setVariants(updated);
       return { designVariants: updated, variantConfig: vcfg };
     }
-    return { ...currentMaps(), designComponents: components, designVariants: variants, variantConfig: vcfg };
+    return { ...currentMaps(), elementInteractions: intxEdits, designComponents: components, designVariants: variants, variantConfig: vcfg };
   };
   const saveAsVariant = () => {
     const name = newVariantName.trim();
@@ -453,14 +463,18 @@ export default function WorkspaceDesignOverlay({
     setAnimEdits((a) => { const n = { ...a }; delete n[key]; return n; });
     setInsertEdits((i) => { const n = { ...i }; delete n[key]; return n; });
     setBindEdits((b) => { const n = { ...b }; delete n[key]; return n; });
+    setIntxEdits((x) => { const n = { ...x }; delete n[key]; return n; });
     // Fjern også de innsatte nodene fra DOM umiddelbart (inkl. komponent-instansens barn-noder).
     (insertEdits[key] || []).forEach((s) => document.querySelectorAll(`[data-chd-insert="${s.id}"], [data-chd-insert^="${s.id}__"]`).forEach((n) => n.remove()));
   };
-  const resetAllEdits = () => { setEdits({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); };
-  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits)]));
+  const resetAllEdits = () => { setEdits({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); setIntxEdits({}); };
+  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits), ...Object.keys(intxEdits)]));
   // Design-forslag for valgt element (recomputes ved nytt valg + etter en fiks endrer insp).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const suggestions = React.useMemo(() => (sel ? analyzeElement(sel) : []), [sel, insp]);
+  // Elementer med id på siden (scroll-mål for interaksjoner).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pageIds = React.useMemo(() => Array.from(document.querySelectorAll('[id]')).map((e) => (e as HTMLElement).id).filter((id) => /^[A-Za-z][\w-]*$/.test(id)).slice(0, 200), [sel]);
 
   // Data-helse-skann: samle ALLE data-koblinger på siden (tekst-bindinger + infographic-kilder +
   // komponent-slots) og sjekk hver mot kilde-registeret → ok / mangler (kilde borte) / tom (ingen verdi).
@@ -784,6 +798,7 @@ export default function WorkspaceDesignOverlay({
                   if (animEdits[k]) parts.push(String(animEdits[k]));
                   if (insertEdits[k]?.length) parts.push(`+${insertEdits[k].length} innsatt`);
                   if (bindEdits[k]) parts.push(`⇄ ${bindEdits[k]}`);
+                  if (intxEdits[k]) parts.push(`▷ ${intxEdits[k].action}`);
                   return (
                     <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <code style={{ flex: 1, fontSize: 10, color: INK2, wordBreak: 'break-all', lineHeight: 1.3 }}>{k}</code>
@@ -886,6 +901,30 @@ export default function WorkspaceDesignOverlay({
                   <option value="">Ingen</option>
                   {Object.entries(ANIM_PRESETS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
                 </select>
+
+                <div style={section}>Interaksjon (klikk)</div>
+                {(() => {
+                  const cur = sel ? intxEdits[uniqueSelector(sel)] : undefined;
+                  const action = cur?.action || '';
+                  return (
+                    <>
+                      <select data-chd aria-label="Interaksjon" style={field} value={action} onChange={(e) => applyInteraction(e.target.value, '')}>
+                        <option value="">Ingen</option>
+                        <option value="scroll">Scroll til seksjon</option>
+                        <option value="link">Naviger til lenke</option>
+                      </select>
+                      {action === 'scroll' && (
+                        <select data-chd aria-label="Mål-seksjon" style={field} value={cur?.target || ''} onChange={(e) => applyInteraction('scroll', e.target.value)}>
+                          <option value="">— Velg mål-seksjon (id) —</option>
+                          {pageIds.map((id) => <option key={id} value={`#${id}`}>#{id}</option>)}
+                        </select>
+                      )}
+                      {action === 'link' && (
+                        <input data-chd style={field} placeholder="Lenke (/… eller https://…)" value={cur?.target || ''} onChange={(e) => applyInteraction('link', e.target.value)} />
+                      )}
+                    </>
+                  );
+                })()}
 
                 <div style={section}>Sett inn nytt element (ved dette ankeret)</div>
                 <select data-chd aria-label="Element-type" style={field} value={insType} onChange={(e) => setInsType(e.target.value)}>
