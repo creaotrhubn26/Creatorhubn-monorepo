@@ -124,6 +124,46 @@ try {
   await page.waitForSelector('.toast', { timeout: 8000 });
   await page.screenshot({ path: `${SHOTS}/13-opplasting.png`, fullPage: true });
 
+  // 12. Salg og faktura: opprett kunde + faktura, utsted, motta betaling via bank
+  await page.click('nav button:has-text("Salg og faktura")');
+  await page.waitForSelector('h1:has-text("Salg og faktura")');
+  await page.click('button:has-text("Ny faktura")');
+  await page.fill('#newcust', 'Testkunde AS');
+  await page.click('button:has-text("Opprett"):near(#newcust)');
+  await page.waitForFunction(() => document.querySelector('#cust')?.value !== '');
+  await page.fill('#desc0', 'Konsulenttimer');
+  await page.fill('#qty0', '1');
+  await page.fill('#price0', '1000,00');
+  await page.fill('#idate', '2025-11-21');
+  await page.click('button:has-text("Utsted og bokfør")');
+  await page.waitForSelector('td:has-text("Testkunde AS")', { timeout: 8000 });
+  const statusBadge = await page.locator('tr:has-text("Testkunde AS") .badge').first().textContent();
+  if (!statusBadge?.includes('Utstedt')) await fail(`Fakturastatus: ${statusBadge}`);
+  const kidCell = await page.locator('tr:has-text("Testkunde AS") td >> nth=4').textContent();
+  if (!/^\d{8,}$/.test(kidCell?.trim() ?? '')) await fail(`Ugyldig KID i lista: ${kidCell}`);
+  await page.screenshot({ path: `${SHOTS}/14-faktura.png`, fullPage: true });
+
+  // 13. Innbetaling med KID matches og markerer fakturaen betalt
+  await page.click('nav button:has-text("Bank og avstemming")');
+  await page.waitForSelector('h1:has-text("Bank og avstemming")');
+  const hasAccountForm = await page.locator('#ba').count();
+  if (hasAccountForm) {
+    await page.fill('#ba', '15032512345');
+    await page.click('button:has-text("Opprett")');
+    await page.waitForSelector('textarea', { timeout: 5000 });
+  }
+  await page.fill(
+    'textarea',
+    `Dato;Beskrivelse;Beløp;Motpart;KID;Referanse\n2025-11-25;Innbetaling;1250,00;TESTKUNDE AS;${kidCell?.trim()};inn-ui-1`,
+  );
+  await page.click('button:has-text("Importer og finn treff")');
+  await page.waitForSelector('td:has-text("KID")', { timeout: 8000 });
+  await page.click('td button:has-text("Godkjenn")');
+  await page.waitForSelector('.toast:has-text("bokført")', { timeout: 8000 });
+  await page.click('nav button:has-text("Salg og faktura")');
+  await page.waitForSelector('tr:has-text("Testkunde AS") .badge:has-text("Betalt")', { timeout: 8000 });
+  await page.screenshot({ path: `${SHOTS}/15-faktura-betalt.png`, fullPage: true });
+
   console.log('UI-SMOKE OK');
   await browser.close();
   process.exit(0);

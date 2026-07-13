@@ -35,6 +35,8 @@ export const PERMISSIONS = [
   'bank.reconcile',
   'integrations.manage',
   'audit.view',
+  'invoices.view',
+  'invoices.manage', // opprette/utstede/kreditere utgående faktura
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -43,26 +45,28 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   owner: [
     'org.manage', 'members.manage', 'documents.upload', 'documents.view', 'documents.approve',
     'journal.post', 'journal.reverse', 'period.lock', 'reports.view', 'vat.view', 'vat.submit',
-    'bank.reconcile', 'integrations.manage', 'audit.view',
+    'bank.reconcile', 'integrations.manage', 'audit.view', 'invoices.view', 'invoices.manage',
   ],
   admin: [
     'org.manage', 'members.manage', 'documents.upload', 'documents.view', 'documents.approve',
     'journal.post', 'journal.reverse', 'period.lock', 'reports.view', 'vat.view',
-    'bank.reconcile', 'integrations.manage', 'audit.view',
+    'bank.reconcile', 'integrations.manage', 'audit.view', 'invoices.view', 'invoices.manage',
   ],
   general_manager: [
     'documents.upload', 'documents.view', 'documents.approve', 'reports.view', 'vat.view',
-    'vat.submit', 'audit.view',
+    'vat.submit', 'audit.view', 'invoices.view', 'invoices.manage',
   ],
   accounting_manager: [
     'documents.upload', 'documents.view', 'documents.approve', 'journal.post', 'journal.reverse',
     'period.lock', 'reports.view', 'vat.view', 'vat.submit', 'bank.reconcile', 'audit.view',
+    'invoices.view', 'invoices.manage',
   ],
   accountant: [
     'documents.upload', 'documents.view', 'documents.approve', 'journal.post', 'journal.reverse',
     'period.lock', 'reports.view', 'vat.view', 'vat.submit', 'bank.reconcile', 'audit.view',
+    'invoices.view', 'invoices.manage',
   ],
-  auditor_readonly: ['documents.view', 'reports.view', 'vat.view', 'audit.view'],
+  auditor_readonly: ['documents.view', 'reports.view', 'vat.view', 'audit.view', 'invoices.view'],
   attestant: ['documents.view', 'documents.approve'],
   approver: ['documents.view', 'documents.approve'],
   employee: ['documents.upload', 'documents.view'],

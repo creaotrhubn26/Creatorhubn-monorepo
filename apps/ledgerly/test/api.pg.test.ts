@@ -249,6 +249,18 @@ describe('Vertikal flyt over HTTP', () => {
     }
   });
 
+  it('RBAC: ansatt kan verken se eller opprette fakturaer', async () => {
+    await request(app)
+      .get(`/api/organizations/${orgId}/invoices`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .expect(403);
+    await request(app)
+      .post(`/api/organizations/${orgId}/customers`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({ name: 'Snik AS' })
+      .expect(403);
+  });
+
   it('integrasjonsstatus er ærlig: Gmail er sandbox, ikke aktiv', async () => {
     const res = await request(app)
       .get('/api/integrations/status')

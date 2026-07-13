@@ -25,7 +25,9 @@ skjult for brukeren i API-et (integrasjonsstatus, estimat-forbehold osv. sier fr
   men det finnes ingen bank-/open-banking-tilkobling — transaksjoner må limes inn som CSV.
   Kun utbetalinger matches (innbetalinger krever fakturamodulen). Splitting av én betaling
   på flere bilag støttes ikke ennå.
-- **Ingen utgående faktura** og **ingen purring**.
+- **Faktura: kjernefunksjoner på plass, men ingen PDF, e-postutsending, EHF, purring
+  eller delbetaling** (delbetaling registreres, men matching krever eksakt restbeløp).
+  Tilbud/ordre og repeterende faktura er ikke bygget.
 - **Ingen lønn** — konto 5000 finnes, men ingen a-melding/skattetrekk.
 - **Ingen EHF** — XML aksepteres som filtype, men parses ikke.
 - **Ingen SAF-T-XML-eksport** — koder/kontoplan følger standarden, filen genereres ikke.

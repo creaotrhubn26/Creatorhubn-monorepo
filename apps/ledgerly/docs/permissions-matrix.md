@@ -26,6 +26,8 @@ Roller: **own** = owner, **adm** = admin, **gm** = general_manager,
 | vat.submit | x | | x | x | x | | | | | |
 | bank.reconcile | x | x | | x | x | | | | | |
 | integrations.manage | x | x | | | | | | | | |
+| invoices.view | x | x | x | x | x | x | | | | |
+| invoices.manage | x | x | x | x | x | | | | | |
 | audit.view | x | x | x | x | x | x | | | | |
 
 ## Merknader

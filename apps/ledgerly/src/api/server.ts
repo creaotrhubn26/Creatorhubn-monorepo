@@ -29,6 +29,8 @@ import {
 import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
+import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
+import { newId } from '../shared/ids.js';
 import type { RuleRegister } from '../rules/register.js';
 import type { ObjectStorage } from '../storage/port.js';
 import { recordAuditEvent } from '../audit/audit.js';
@@ -681,6 +683,170 @@ export function createApiServer(deps: ApiDeps): express.Express {
           reason: body.reason,
         });
         res.status(201).json(toJson(entry));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Salg og faktura ──────────────────────────────────────────────────────
+  app.post(
+    '/api/organizations/:orgId/customers',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            name: z.string().min(1).max(200),
+            email: z.string().email().optional(),
+            orgNumber: z.string().regex(/^\d{9}$/).optional(),
+          })
+          .parse(req.body);
+        const id = newId();
+        await withTransaction(deps.db, async (client) => {
+          await client.query(
+            `INSERT INTO customers (id, organization_id, name, email, org_number, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [id, req.params.orgId, body.name, body.email ?? null, body.orgNumber ?? null, req.auth!.userId],
+          );
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'customer.created',
+            entityType: 'customer',
+            entityId: id,
+            newValue: { name: body.name },
+          });
+        });
+        res.status(201).json({ id });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/customers',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req, res, next) => {
+      try {
+        const rows = await deps.db.query(
+          `SELECT id, name, email, org_number FROM customers
+           WHERE organization_id = $1 AND status = 'active' ORDER BY name LIMIT 500`,
+          [req.params.orgId],
+        );
+        res.json(toJson(rows.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  const invoiceLineSchema = z.object({
+    description: z.string().min(1).max(500),
+    /** Antall i tusendeler: 1 stk = 1000. */
+    quantityThousandths: z.coerce.bigint().positive(),
+    /** Enhetspris i øre, eks. mva. */
+    unitPriceMinor: z.coerce.bigint().nonnegative(),
+    vatCode: z.string().min(1),
+    revenueAccount: z.string().regex(/^\d{4}$/).optional(),
+  });
+
+  app.post(
+    '/api/organizations/:orgId/invoices',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            customerId: z.string().uuid(),
+            lines: z.array(invoiceLineSchema).min(1).max(100),
+            invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body);
+        const draft = await createInvoiceDraft(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          customerId: body.customerId,
+          lines: body.lines.map((l) => ({
+            description: l.description,
+            quantityThousandths: l.quantityThousandths,
+            unitPriceMinor: l.unitPriceMinor,
+            vatCode: l.vatCode,
+            ...(l.revenueAccount ? { revenueAccount: l.revenueAccount } : {}),
+          })),
+          ...(body.invoiceDate ? { invoiceDate: body.invoiceDate } : {}),
+          ...(body.dueDate ? { dueDate: body.dueDate } : {}),
+        });
+        res.status(201).json(toJson(draft));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/invoices',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req, res, next) => {
+      try {
+        const rows = await deps.db.query(
+          `SELECT i.id, i.invoice_number, i.kind, i.status, i.invoice_date::TEXT AS invoice_date,
+                  i.due_date::TEXT AS due_date, i.kid, i.net_minor, i.vat_minor, i.gross_minor,
+                  i.paid_minor, c.name AS customer_name
+           FROM invoices i JOIN customers c ON c.id = i.customer_id
+           WHERE i.organization_id = $1
+           ORDER BY i.created_at DESC LIMIT 300`,
+          [req.params.orgId],
+        );
+        res.json(toJson(rows.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/invoices/:invoiceId/issue',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({ invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+          .parse(req.body ?? {});
+        const result = await issueInvoice(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          invoiceId: req.params.invoiceId!,
+          ...(body.invoiceDate ? { invoiceDate: body.invoiceDate } : {}),
+        });
+        res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/invoices/:invoiceId/credit',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ reason: z.string().min(3).max(500) }).parse(req.body);
+        const result = await createCreditNote(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          invoiceId: req.params.invoiceId!,
+          reason: body.reason,
+        });
+        res.status(201).json(toJson(result));
       } catch (err) {
         next(err);
       }

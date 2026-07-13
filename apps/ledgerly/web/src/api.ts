@@ -117,6 +117,14 @@ export function loadCodeLibrary(orgId: string): Promise<CodeLibrary> {
   return codeLibraryPromise;
 }
 
+/** Parser kronebeløp ("1 200,50" / "1200.50") til øre-streng — uten flyttall. */
+export function parseKrToMinor(value: string): string {
+  const normalized = value.trim().replace(/\s/g, '').replace(',', '.');
+  const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(normalized);
+  if (!m) throw new Error(`Ugyldig beløp: «${value}»`);
+  return `${m[1]}${(m[2] ?? '').padEnd(2, '0')}`;
+}
+
 export const STATUS_LABELS: Record<string, string> = {
   received: 'Mottatt',
   scanning: 'Skannes',
