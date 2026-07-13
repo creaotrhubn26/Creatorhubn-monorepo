@@ -95,7 +95,7 @@ export function registerInsightsRoutes({ app, pool, activeSessions, isAdminEmail
       }
       const r = await pool.query(
         `SELECT id::text, detector, severity, confidence, title, explanation,
-                evidence, topic, status, detected_at::text, diagnosis
+                evidence, topic, status, detected_at::text, diagnosis, dedupe_key
            FROM insights
           WHERE ${conditions.join(" AND ")}
           ORDER BY detected_at DESC LIMIT 50`,
