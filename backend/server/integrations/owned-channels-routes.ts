@@ -36,6 +36,8 @@ import { syncSsbMomentumSignals } from "./ssb-momentum-signal-sync.js";
 import { getTerritoryAnalysis } from "./territory-analysis.js";
 import { buildSolutionEvidence, draftGrantSection, IN_SECTIONS, type SolutionKey } from "./grant-application.js";
 import { assembleDocument, createApplication, draftAndSaveSection, getApplication, updateSection, type SectionStatus } from "./grant-workspace.js";
+import { getDetectorPrecision } from "./system-precision.js";
+import { addExperiment, listExperimentsWithEffect } from "./geo-experiments.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -296,9 +298,11 @@ export function registerOwnedChannelsRoutes({
     const r = await pool.query(
       `UPDATE trigger_events
           SET raw = COALESCE(raw, '{}'::jsonb) || jsonb_build_object(
-                'bidStatus', $4::text, 'bidStatusAt', now()::text)
+                'bidStatus', $4::text, 'bidStatusAt', now()::text,
+                'bidReason', $5::text)
         WHERE organization_id = $1::uuid AND source = $2 AND event_id = $3 AND kind = 'tender'`,
-      [orgId, body.source, body.eventId, body.bidStatus],
+      [orgId, body.source, body.eventId, body.bidStatus,
+       typeof body.reason === "string" ? body.reason.slice(0, 500) : null],
     );
     if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: "anbud_ikke_funnet" });
     return res.json({ updated: true });
@@ -570,6 +574,36 @@ export function registerOwnedChannelsRoutes({
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="soknad.md"');
     return res.send(doc);
+  });
+
+  // Selv-måling: presisjon per detektor (idé 1+6).
+  app.get("/api/integrations/system-precision", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    return res.json({ precision: await getDetectorPrecision(pool, orgId) });
+  });
+
+  // GEO-eksperimentloggen (idé 3).
+  app.post("/api/integrations/geo-experiments", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.experimentDate !== "string" || typeof body.description !== "string") {
+      return res.status(400).json({ error: "experimentDate_og_description_kreves" });
+    }
+    const created = await addExperiment(pool, orgId, {
+      experimentDate: body.experimentDate,
+      description: body.description,
+      topic: typeof body.topic === "string" ? body.topic : undefined,
+      url: typeof body.url === "string" ? body.url : undefined,
+    });
+    return res.json(created);
+  });
+
+  app.get("/api/integrations/geo-experiments", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    return res.json({ experiments: await listExperimentsWithEffect(pool, orgId) });
   });
 
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.

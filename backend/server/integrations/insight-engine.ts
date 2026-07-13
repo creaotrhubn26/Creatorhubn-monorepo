@@ -429,6 +429,46 @@ const salesTriggerDetector: InsightDetector = {
   },
 };
 
+/** Re-utlysningsradar (idé 2): tildelte rammeavtaler → forvent ny
+ *  utlysning ~2 år frem. ESTIMAT — antakelsen står i teksten. */
+const retenderRadarDetector: InsightDetector = {
+  detectorKey: "retender-radar",
+  async run(pool, organizationId) {
+    const r = await pool.query<{
+      source: string; event_id: string; title: string; url: string | null;
+      published_at: string | null; matched_topic: string;
+      buyer: string | null;
+    }>(
+      `SELECT source, event_id, title, url, published_at::text, matched_topic,
+              raw->>'buyerName' AS buyer
+         FROM trigger_events
+        WHERE organization_id = $1::uuid AND kind = 'award'
+          AND title ILIKE '%rammeavtale%' AND published_at IS NOT NULL
+        ORDER BY published_at DESC LIMIT 15`,
+      [organizationId],
+    );
+    return r.rows.map((row): InsightCandidate => {
+      const awarded = new Date(`${row.published_at}T00:00:00Z`);
+      const expected = new Date(awarded);
+      expected.setUTCFullYear(expected.getUTCFullYear() + 2);
+      const expectedStr = expected.toISOString().slice(0, 7);
+      return {
+        detector: this.detectorKey,
+        dedupeKey: `retender|${row.source}|${row.event_id}`,
+        severity: "info",
+        confidence: 0.4, // ESTIMAT: typisk 2+2-årsstruktur antatt, ikke lest fra kontrakt
+        title: `Re-utlysningsvindu ~${expectedStr}: ${row.title.slice(0, 100)}`,
+        explanation: `Rammeavtale tildelt ${row.published_at}${row.buyer ? ` (${row.buyer})` : ""}. ESTIMAT basert på typisk 2-års grunnperiode — faktisk varighet står i konkurransegrunnlaget. Posisjonering bør starte ~6 mnd før vinduet.`,
+        evidence: [
+          { ref: row.url ?? row.event_id, label: "tildelingen", value: row.url ?? row.event_id },
+          { ref: "retender|antakelse", label: "antakelse", value: "2 års grunnperiode (bransjenorm, ikke verifisert)" },
+        ],
+        topic: row.matched_topic,
+      };
+    });
+  },
+};
+
 /** Fristvakt: anbud med frist ≤7 dager frem → påminnelse (én per anbud). */
 const tenderDeadlineDetector: InsightDetector = {
   detectorKey: "tender-deadline",
@@ -467,6 +507,7 @@ export const INSIGHT_DETECTORS: InsightDetector[] = [
   newCompetitorDetector,
   salesTriggerDetector,
   tenderDeadlineDetector,
+  retenderRadarDetector,
 ];
 
 // ─────────────────────────────────────────────────────────────────────

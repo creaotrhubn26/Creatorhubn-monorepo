@@ -16,6 +16,7 @@ import {
 } from "./insight-engine.js";
 import { runInsightDiagnostics } from "./insight-diagnostics.js";
 import { runMorningBriefs } from "./butler-morning-brief.js";
+import { runSelfTuningDetector } from "./system-precision.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -64,6 +65,10 @@ export function registerInsightsRoutes({ app, pool, activeSessions, isAdminEmail
       let diagnosed = 0;
       for (const orgId of orgs) {
         results.push(await runInsightDetectors(pool, orgId));
+        // Selv-måling: foreslå stramming når en detektor beviselig støyer
+        try { await runSelfTuningDetector(pool, orgId); } catch (err) {
+          console.warn("[self-tuning] feilet:", String(err).slice(0, 100));
+        }
         // Fase 2: diagnostiser nye innsikter (best effort — velter aldri kjøringen)
         try {
           const d = await runInsightDiagnostics(pool, orgId);
