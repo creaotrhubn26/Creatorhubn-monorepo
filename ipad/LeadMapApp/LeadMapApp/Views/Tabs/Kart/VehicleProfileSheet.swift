@@ -41,6 +41,11 @@ struct VehicleProfileSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .onAppear { plateInput = profile.plate ?? "" }
+        .onDisappear {
+            // Synk «Min bil» server-side så admin-dashbordet ser (firma)bilen.
+            let p = profile
+            Task { await VehicleService.shared.syncProfile(p, using: api) }
+        }
     }
 
     // MARK: regnr-oppslag (Vegvesen)

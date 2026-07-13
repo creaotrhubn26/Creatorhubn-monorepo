@@ -38,6 +38,14 @@ final class VehicleService {
         }
     }
 
+    private struct Ack: Decodable { let ok: Bool? }
+
+    /// Synk «Min bil» server-side (så admin-dashbordet ser registrert firmabil).
+    func syncProfile(_ profile: VehicleProfile, using api: APIClient?) async {
+        guard let api else { return }
+        let _: Ack? = try? await api._post("/api/leadgrid/vehicle/profile", body: profile)
+    }
+
     /// Slå opp kjøretøy på regnr. Nil ved feil / ikke konfigurert.
     func lookup(plate: String, using api: APIClient?) async -> Result? {
         guard let api else { return nil }

@@ -78,6 +78,8 @@ struct GoDriverSummary: Decodable, Identifiable, Hashable {
     let unconfirmed: Int
     let vehicleName: String?
     let vehiclePlate: String?
+    let isCompanyCar: Bool?
+    let vehicleFuel: String?
     let lastTrip: String?
     var id: String { userId }
 }

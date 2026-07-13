@@ -119,6 +119,11 @@ struct LeadgridGoDashboardView: View {
                 HStack(spacing: 6) {
                     Text(roleLabel(d.role)).font(.appScaled(size: 9, weight: .semibold)).foregroundStyle(NavPOIBrand.textSecondary)
                     if let v = d.vehicleName { Text("· \(v)").font(.appScaled(size: 9)).foregroundStyle(NavPOIBrand.textSecondary).lineLimit(1) }
+                    if d.isCompanyCar == true {
+                        Text("Firmabil").font(.appScaled(size: 8, weight: .bold)).foregroundStyle(NavPOIBrand.green)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(NavPOIBrand.green.opacity(0.15), in: Capsule())
+                    }
                 }
             }
             Spacer()
