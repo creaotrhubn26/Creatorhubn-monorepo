@@ -20,6 +20,7 @@ import type { Pool } from "pg";
 import { getAiUsageSummary, recordAiUsage } from "./ai-usage.js";
 import { computeGeoOpportunityScores } from "../market-intelligence/geo-opportunity-score.js";
 import { buildDossierFacts } from "./outreach-composer.js";
+import { getIndustryBenchmark } from "./industry-benchmark.js";
 
 const CHAT_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 5;
@@ -78,6 +79,15 @@ export const BUTLER_TOOLS: Anthropic.Tool[] = [
     name: "get_market_requirements",
     description: "Hent «hva krever markedet»-aggregatet (krav-forekomster i anbud siste 180 dager).",
     input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "get_industry_benchmark",
+    description: "Bransje-benchmark fra Regnskapsregisteret: median omsetning/margin og topp-utøvere per segment (fotografer/film-tv/danseundervisning). Dekning oppgis alltid.",
+    input_schema: {
+      type: "object" as const,
+      properties: { segment: { type: "string", enum: ["fotografer", "film-tv", "danseundervisning"] } },
+      required: ["segment"],
+    },
   },
   {
     name: "get_ai_usage",
@@ -178,6 +188,8 @@ export async function executeButlerTool(
       );
       return r.rows;
     }
+    case "get_industry_benchmark":
+      return await getIndustryBenchmark(pool, String(input.segment ?? ""));
     case "get_ai_usage":
       return await getAiUsageSummary(pool, organizationId, 30);
     default:
