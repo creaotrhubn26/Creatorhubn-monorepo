@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   extractTenderRequirements,
   isFreshTrigger,
+  TENDER_SOURCING,
   mapDoffinHits,
   mapGdeltArticles,
   mapTedNotices,
@@ -144,6 +145,20 @@ describe("TRIGGER_KEYWORDS (justeringsflate)", () => {
   it("alle vertikaler har minst ett nøkkelord", () => {
     for (const [name, kws] of Object.entries(TRIGGER_KEYWORDS)) {
       expect(kws.length, name).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("TENDER_SOURCING (kvalitetsrunden: CPV-først)", () => {
+  it("hver sourcet vertikal har CPV eller bevist tekstsøk — aldri begge tomme", () => {
+    for (const [name, src] of Object.entries(TENDER_SOURCING)) {
+      expect(src.cpv.length + src.doffinText.length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it("CPV-koder er 8-sifrede", () => {
+    for (const src of Object.values(TENDER_SOURCING)) {
+      for (const cpv of src.cpv) expect(cpv).toMatch(/^\d{8}$/);
     }
   });
 });
