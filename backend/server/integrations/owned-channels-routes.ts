@@ -38,6 +38,7 @@ import { buildSolutionEvidence, draftGrantSection, IN_SECTIONS, type SolutionKey
 import { assembleDocument, createApplication, draftAndSaveSection, getApplication, updateSection, type SectionStatus } from "./grant-workspace.js";
 import { getDetectorPrecision } from "./system-precision.js";
 import { addExperiment, listExperimentsWithEffect } from "./geo-experiments.js";
+import { getLaunchTimingAnalysis } from "./launch-timing.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -604,6 +605,21 @@ export function registerOwnedChannelsRoutes({
     const orgId = await requireGrantAdmin(req, res);
     if (!orgId) return;
     return res.json({ experiments: await listExperimentsWithEffect(pool, orgId) });
+  });
+
+  // Lanseringsvindu-motoren: sesong/trend/tomrom/kundetilsig per løsning.
+  app.get("/api/integrations/launch-timing", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const solution = String(req.query.solution ?? "theroleroom");
+    try {
+      const analysis = await getLaunchTimingAnalysis(pool, orgId, solution);
+      if ("error" in analysis) return res.status(400).json(analysis);
+      return res.json({ analysis });
+    } catch (err) {
+      console.error("[launch-timing] failed", err);
+      return res.status(500).json({ error: "timing_failed" });
+    }
   });
 
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.
