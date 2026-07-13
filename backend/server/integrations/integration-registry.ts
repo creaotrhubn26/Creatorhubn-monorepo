@@ -319,7 +319,7 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     displayName: "Brønnøysundregistrene (åpne data)",
     category: "public_data",
     purpose: "Bedriftsprofil/org-data for lead-beriking og company-scoring",
-    supportedDataTypes: ["company_profile", "employees", "industry_codes"],
+    supportedDataTypes: ["company_profile", "employees", "industry_codes", "registered_companies", "new_companies_30d"],
     authenticationType: "none",
     credentialReference: null,
     apiBaseUrl: "https://data.brreg.no",
