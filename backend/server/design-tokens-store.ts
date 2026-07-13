@@ -144,6 +144,19 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.elementText = elementText;
   }
+  // Per-element ANIMASJON (Edit-modus): { [selektor]: preset-nøkkel }. Kun nøkler fra fast katalog.
+  const animIn = (patch as any)?.elementAnim;
+  if (animIn && typeof animIn === 'object' && !Array.isArray(animIn)) {
+    const PRESETS = new Set(['fade-in', 'slide-up', 'slide-down', 'zoom-in', 'pulse', 'bounce', 'float']);
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+    const elementAnim: Record<string, string> = {};
+    let n = 0;
+    for (const [sel, v] of Object.entries(animIn as Record<string, unknown>)) {
+      if (n >= 500) break;
+      if (SEL_RE.test(sel) && !sel.includes('..') && typeof v === 'string' && PRESETS.has(v)) { elementAnim[sel] = v; n++; }
+    }
+    clean.elementAnim = elementAnim;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,

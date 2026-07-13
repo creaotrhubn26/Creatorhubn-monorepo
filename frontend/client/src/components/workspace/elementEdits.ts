@@ -76,6 +76,39 @@ export function buildEditsCss(edits: ElementEdits): string {
 }
 
 export type ElementText = Record<string, string>;
+export type ElementAnim = Record<string, string>; // selektor → preset-nøkkel
+
+// Animasjons-presets (fast katalog). `anim` = CSS animation-shorthand som peker på keyframes under.
+export const ANIM_PRESETS: Record<string, { label: string; anim: string }> = {
+  'fade-in': { label: 'Fade inn', anim: 'chd-fade-in .6s ease both' },
+  'slide-up': { label: 'Skyv opp', anim: 'chd-slide-up .6s cubic-bezier(.2,.7,.2,1) both' },
+  'slide-down': { label: 'Skyv ned', anim: 'chd-slide-down .6s cubic-bezier(.2,.7,.2,1) both' },
+  'zoom-in': { label: 'Zoom inn', anim: 'chd-zoom-in .5s ease both' },
+  'pulse': { label: 'Puls (loop)', anim: 'chd-pulse 2s ease-in-out infinite' },
+  'bounce': { label: 'Sprett (loop)', anim: 'chd-bounce 1.6s ease-in-out infinite' },
+  'float': { label: 'Sveve (loop)', anim: 'chd-float 3s ease-in-out infinite' },
+};
+
+// Keyframes-katalog — injiseres én gang når minst én animasjon er i bruk.
+export const ANIM_KEYFRAMES = [
+  '@keyframes chd-fade-in { from { opacity: 0 } to { opacity: 1 } }',
+  '@keyframes chd-slide-up { from { opacity: 0; transform: translateY(18px) } to { opacity: 1; transform: none } }',
+  '@keyframes chd-slide-down { from { opacity: 0; transform: translateY(-18px) } to { opacity: 1; transform: none } }',
+  '@keyframes chd-zoom-in { from { opacity: 0; transform: scale(.92) } to { opacity: 1; transform: none } }',
+  '@keyframes chd-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.05) } }',
+  '@keyframes chd-bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-9px) } }',
+  '@keyframes chd-float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }',
+].join('\n');
+
+/** Bygg animasjons-CSS: keyframes (én gang) + `selektor { animation: ... }` for hver gyldige preset. */
+export function buildAnimCss(anim: ElementAnim): string {
+  const rules: string[] = [];
+  for (const [sel, key] of Object.entries(anim || {})) {
+    if (!isSafeSelector(sel) || !ANIM_PRESETS[key]) continue;
+    rules.push(`${sel} { animation: ${ANIM_PRESETS[key].anim}; }`);
+  }
+  return rules.length ? `${ANIM_KEYFRAMES}\n${rules.join('\n')}` : '';
+}
 
 /** Anvend tekst-overstyringer via textContent (XSS-trygt). React kan re-rendre og overskrive, så
  *  vi re-applikerer ved DOM-endringer (rAF-debounced, kun når teksten faktisk avviker). Best-effort. */
@@ -115,8 +148,10 @@ export function useElementEdits(workspace: string): void {
       .then((d) => {
         if (!live || !d || d.raw !== true || !d.tokens) return;
         const t = d.tokens as Record<string, unknown>;
-        // Stil-edits → <style>-tag.
-        const css = t.elementEdits ? buildEditsCss(t.elementEdits as ElementEdits) : '';
+        // Stil-edits + animasjoner → ett <style>-tag.
+        const editCss = t.elementEdits ? buildEditsCss(t.elementEdits as ElementEdits) : '';
+        const animCss = t.elementAnim ? buildAnimCss(t.elementAnim as ElementAnim) : '';
+        const css = [editCss, animCss].filter(Boolean).join('\n');
         if (css) {
           let tag = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
           if (!tag) { tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
