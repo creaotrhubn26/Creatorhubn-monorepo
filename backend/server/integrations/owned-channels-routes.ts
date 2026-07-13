@@ -31,6 +31,7 @@ import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
 import { butlerChat, type ChatMessage } from "./butler-chat.js";
+import { getIndustryBenchmark, syncCompanyFinancials } from "./industry-benchmark.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -350,6 +351,41 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[butler-chat] failed", err);
       return res.status(500).json({ error: "chat_failed" });
+    }
+  });
+
+  // Bransje-benchmark: nattlig regnskaps-innhenting over segmentene.
+  app.post("/api/integrations/sync/company-financials", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await syncCompanyFinancials(pool);
+      if (result.errors.length > 0) console.warn("[benchmark-sync]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[benchmark-sync] failed", err);
+      return res.status(500).json({ error: "sync_failed" });
+    }
+  });
+
+  app.get("/api/integrations/industry-benchmark", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const segment = typeof req.query.segment === "string" ? req.query.segment : null;
+    if (!segment) return res.status(400).json({ error: "segment_kreves" });
+    try {
+      const benchmark = await getIndustryBenchmark(pool, segment);
+      if (!benchmark) return res.status(404).json({ error: "ukjent_segment" });
+      return res.json({ benchmark });
+    } catch (err) {
+      console.error("[benchmark] failed", err);
+      return res.status(500).json({ error: "benchmark_failed" });
     }
   });
 

@@ -482,6 +482,27 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
   }),
 
   entry({
+    integrationId: "newsweb-oslobors",
+    provider: "Euronext / Oslo Børs",
+    displayName: "NewsWeb (børsmeldinger, kvartals-/årsrapporter)",
+    category: "public_data",
+    purpose: "Kvartals-/årsrapporter fra børsnoterte — undersøkt 2026-07-13: lukket SPA m/ obfuskert kode, ingen ren API-tilgang; krever avtale/vilkårsavklaring",
+    supportedDataTypes: ["exchange_announcements", "quarterly_reports"],
+    authenticationType: "none",
+    credentialReference: null,
+    apiBaseUrl: "https://newsweb.oslobors.no",
+    apiVersion: null,
+    availabilityStatus: "active",
+    implementationStatus: "discovered",
+    accessLevel: "public",
+    tenantScope: "shared",
+    syncMode: "on_demand",
+    termsStatus: "requiresReview",
+    geographicCoverage: "NO",
+    documentationReference: "backend/server/integrations/industry-benchmark.ts (SMB-alternativet)",
+  }),
+
+  entry({
     integrationId: "ssb",
     provider: "Statistisk sentralbyrå",
     displayName: "SSB åpne API",
