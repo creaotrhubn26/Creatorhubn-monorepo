@@ -17400,10 +17400,13 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
 // Bare videre-kaller seed-all-handleren.
 app.post("/api/demo/troll/initialize-all", async (req, res) => {
   try {
+    // NOTE: x-user-id header intentionally NOT trusted — attacker-controlled.
+    // Aligned with /seed-all so an anonymous caller cannot attribute the seeded
+    // demo project's created_by to an attacker-chosen id.
     const resolvedUserId = compatResolveUserId(req);
     const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
       ? resolvedUserId
-      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
+      : "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
@@ -23547,56 +23550,17 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
     }
 
     if (plan.price <= 0) {
-      // Free/prototype plans self-complete a subscription server-side (no Stripe
-      // redirect). recordCompatPaymentCompletion OVERWRITES the target user's
-      // subscription status, payment history and access window — so we must never
-      // fabricate one for a client-supplied body.userId. Require a real session;
-      // `userId` is session-derived here (sessionUserId wins over body.userId
-      // above), so an anonymous caller cannot downgrade/overwrite a victim's plan.
-      if (!sessionUserId) {
-        return res.status(401).json({
-          error: "Logg inn for å aktivere gratisplanen.",
-          requiresAuth: true,
-        });
-      }
-      const createdAt = new Date().toISOString();
-      const record: CompatPaymentStatusRecord = {
-        id: `pay_${crypto.randomUUID()}`,
-        transactionId: `free_${crypto.randomUUID()}`,
-        userId,
-        email,
-        requestId,
-        planId: plan.id,
-        planName: plan.displayName,
-        amountMinor: 0,
-        amountMajor: 0,
-        currency: plan.currency,
-        paymentMethod: "stripe",
-        status: "completed",
-        createdAt,
-        completedAt: createdAt,
-        provider: "compat",
-        metadata: {
-          profession,
-          requestId,
-          flow: "creatorhub_free_plan",
-        },
-        receiptSentAt: null,
-        membershipCard: null,
-      };
-
-      await recordCompatPaymentCompletion(record);
-
-      return res.status(200).json({
-        success: true,
-        alreadyPaid: true,
-        freePlan: true,
-        planId: plan.id,
-        planName: plan.displayName,
-        amount: record.amountMinor,
-        currency: record.currency,
-        transactionId: record.transactionId,
-        paymentCompleted: true,
+      // Business rule: there is NO free/self-serve account. Free/prototype plans
+      // must never self-complete a subscription through the public checkout
+      // endpoint — that path previously fabricated a completed, access-granting
+      // record with amount 0. Legitimate prototype testers are provisioned only
+      // through the admin/auto-bridge NDA invite flow
+      // (prototype-tester-invites-routes → provisionTesterAccount), which does
+      // NOT touch this endpoint. Reject any price<=0 checkout outright.
+      return res.status(400).json({
+        error:
+          "Gratis selvbetjent aktivering er ikke tilgjengelig. Velg en betalt plan for å fortsette.",
+        code: "free_plan_not_available",
       });
     }
 
