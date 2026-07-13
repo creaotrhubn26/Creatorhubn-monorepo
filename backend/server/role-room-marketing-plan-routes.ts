@@ -130,6 +130,24 @@ export function setupRoleRoomMarketingPlanRoutes(
     }
   };
 
+  // Sikkerhet (IDOR/BOLA): eier ELLER aktivt prosjekt-medlem. Brukes av de
+  // PROSJEKT-nøklede endepunktene (generate, scorecard) som må autorisere FØR
+  // de leser/skriver prosjekt-data, og der det ennå ikke finnes en plan-rad å
+  // utlede eierskap fra (userIsProjectMember dekker kun medlemskap, ikke eier).
+  const userCanAccessProject = async (projectId: string, userId: string): Promise<boolean> => {
+    if (!projectId || !userId) return false;
+    try {
+      const owner = await pool.query(
+        `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2 LIMIT 1`,
+        [projectId, userId],
+      );
+      if (owner.rows[0]) return true;
+      return await userIsProjectMember(projectId, userId);
+    } catch {
+      return false;
+    }
+  };
+
   // Hent (project_id, owner_user_id) for en plan i én spørring. Brukes av de
   // plan-id-nøklede endepunktene for eierskaps-/medlemskaps-sjekk.
   const fetchPlanMeta = async (
@@ -173,6 +191,14 @@ export function setupRoleRoomMarketingPlanRoutes(
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
     if (!projectId) {
       return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    // Sikkerhet (BOLA): projectId kommer fra body. Uten denne gaten kunne enhver
+    // produsent-sesjon oppgi et fremmed prosjekt-UUID og (a) lese offerets forrige
+    // aktive plan + KPI-snapshots inn i previousPlanKpiContext og (b) persistere en
+    // ny plan festet til offerets prosjekt (som via /activate kan skygge offerets
+    // aktive-plan-slot). Krev eier/medlem FØR vi leser eller skriver prosjekt-data.
+    if (!(await userCanAccessProject(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
     }
     if (!body.bootstrap || typeof body.bootstrap !== "object") {
       return res.status(400).json({ success: false, error: "bootstrap er påkrevd." });
@@ -1340,6 +1366,14 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    // Sikkerhet (IDOR): scorecard er prosjekt-scoped og leser research-versjonens
+    // marketingSetup (forretningsmodell, geo, kanaler, CTA, ad-tech) FØR en plan
+    // finnes. Den gamle gaten (plan.ownerUserId !== session.userId) hoppet over når
+    // plan === null → et offer med research men uten aktiv plan lekket. Krev eier/
+    // medlem opp front slik at read-en aldri skjer for en fremmed.
+    if (!(await userCanAccessProject(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
+    }
 
     const sinceDays = Number(req.query.sinceDays) > 0 ? Number(req.query.sinceDays) : 30;
     try {
@@ -1368,10 +1402,10 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         .map((c) => ({ name: c.name, priority: c.priority ?? null }));
 
       // Actual performance from the active plan's KPI snapshots (if any).
+      // Prosjekt-tilgang er allerede verifisert opp front (userCanAccessProject);
+      // planen er scoped til samme projectId, så ingen ekstra eier-sjekk her (den
+      // gamle 403-grenen 403'et dessuten legitime medlemmer som ikke eide planen).
       const plan = await fetchActiveMarketingPlan(pool, projectId);
-      if (plan && plan.ownerUserId && plan.ownerUserId !== session.userId) {
-        return res.status(403).json({ success: false, error: "Du eier ikke prosjektets plan." });
-      }
 
       let platformAggregates: ReturnType<typeof aggregateByPlatform> = [];
       let pillarAggregates: ReturnType<typeof aggregateByPillar> = [];
