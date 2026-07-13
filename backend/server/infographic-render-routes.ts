@@ -310,6 +310,34 @@ export function registerInfographicRenderRoutes(
     res.json({ ok: true });
   });
 
+  // GET design-datakilder: list definerte marketing-metrics for et workspace (for «koble til»-picker
+  // i editoren). Verifisering er iboende: hver kilde returneres MED sin gjeldende verdi/etikett, så
+  // klienten ser at dataen faktisk kommer gjennom før den binder en infographic til den.
+  app.get('/api/admin/design/sources', async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    const ws = String(req.query.ws ?? '');
+    try {
+      const toks = await getTokens(pool, ws) as Record<string, unknown>;
+      const metrics = (toks.metrics && typeof toks.metrics === 'object') ? toks.metrics as Record<string, { value?: unknown; label?: unknown }> : {};
+      const sources = Object.entries(metrics).map(([key, m]) => ({ key, value: m?.value ?? null, label: m?.label ?? null }));
+      res.json({ sources });
+    } catch { res.json({ sources: [] }); }
+  });
+
+  // GET verifiser ÉN kilde: slår opp metric-en → { ok, value, label } el. { ok:false, reason }.
+  app.get('/api/admin/design/verify-source', async (req: Request, res: Response) => {
+    if (!requireAdminSession(req, res)) return;
+    const ws = String(req.query.ws ?? ''); const source = String(req.query.source ?? '');
+    if (!/^[A-Za-z0-9_-]{1,60}$/.test(source)) { res.json({ ok: false, reason: 'Ugyldig kilde-nøkkel.' }); return; }
+    try {
+      const toks = await getTokens(pool, ws) as Record<string, unknown>;
+      const metrics = toks.metrics as Record<string, { value?: unknown; label?: unknown }> | undefined;
+      const m = metrics && metrics[source];
+      if (m && (m.value != null || m.label != null)) res.json({ ok: true, value: m.value ?? null, label: m.label ?? null });
+      else res.json({ ok: false, reason: `Fant ingen definert kilde «${source}» — legg den til i Design-tokens → metrics.` });
+    } catch { res.json({ ok: false, reason: 'Kunne ikke hente kilder.' }); }
+  });
+
   // POST design-forslag (AI): element-kontekst → Claude → strukturerte, forhåndsvisbare forslag.
   app.post('/api/admin/design/suggest',
     aiRateLimit({ windowMs: 60_000, max: 20, label: 'design-suggest' }),
