@@ -15,6 +15,7 @@ import {
   runInsightDetectors,
 } from "./insight-engine.js";
 import { runInsightDiagnostics } from "./insight-diagnostics.js";
+import { runMorningBriefs } from "./butler-morning-brief.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -75,7 +76,15 @@ export function registerInsightsRoutes({ app, pool, activeSessions, isAdminEmail
       const inserted = results.reduce((s, r) => s + r.inserted, 0);
       const errors = results.flatMap((r) => r.errors);
       if (errors.length > 0) console.warn("[insights] detektor-feil:", errors.join(" | "));
-      return res.json({ organizations: orgs.length, inserted, diagnosed, errors });
+      // JARVIS J1: morgenbriefen skrives når nattens innsikter er klare
+      let briefs = null;
+      try {
+        briefs = await runMorningBriefs(pool);
+        if (briefs.errors.length > 0) console.warn("[morning-brief]", briefs.errors.join(" | "));
+      } catch (err) {
+        console.warn("[morning-brief] feilet:", String(err).slice(0, 120));
+      }
+      return res.json({ organizations: orgs.length, inserted, diagnosed, briefs, errors });
     } catch (err) {
       console.error("[insights] run failed", err);
       return res.status(500).json({ error: "run_failed" });
@@ -106,6 +115,19 @@ export function registerInsightsRoutes({ app, pool, activeSessions, isAdminEmail
       console.error("[insights] list failed", err);
       return res.status(500).json({ error: "list_failed" });
     }
+  });
+
+  app.get("/api/integrations/morning-brief", async (req, res) => {
+    const auth = await requireAdminWithOrg(req, res);
+    if (!auth) return;
+    const r = await pool.query(
+      `SELECT brief_date::text, content, facts, kind, generated_at::text
+         FROM morning_briefs
+        WHERE organization_id = $1::uuid
+        ORDER BY brief_date DESC LIMIT 1`,
+      [auth.orgId],
+    );
+    return res.json({ brief: r.rows[0] ?? null });
   });
 
   app.patch("/api/integrations/insights/:id", async (req, res) => {
