@@ -329,11 +329,54 @@ const newCompetitorDetector: InsightDetector = {
   },
 };
 
+/** Salgstriggere: nye trigger_events (14 dager) → innsikter. Faktiske
+ *  hendelser med kilde-URL → høy konfidens; anbud er viktigst (frist!). */
+const salesTriggerDetector: InsightDetector = {
+  detectorKey: "sales-trigger",
+  async run(pool, organizationId) {
+    const r = await pool.query<{
+      source: string;
+      event_id: string;
+      kind: "tender" | "strategy_media" | "hire";
+      title: string;
+      url: string | null;
+      published_at: string | null;
+      matched_topic: string;
+    }>(
+      `SELECT source, event_id, kind, title, url, published_at, matched_topic
+         FROM trigger_events
+        WHERE organization_id = $1::uuid
+          AND created_at > now() - interval '14 days'
+        ORDER BY created_at DESC LIMIT 40`,
+      [organizationId],
+    );
+    return r.rows.map((row): InsightCandidate => ({
+      detector: this.detectorKey,
+      dedupeKey: `trigger|${row.source}|${row.event_id}`,
+      severity: row.kind === "tender" ? "important" : "notable",
+      confidence: 0.9, // faktisk hendelse med kilde — ikke statistisk estimat
+      title:
+        row.kind === "tender"
+          ? `Anbud (${row.matched_topic}): ${row.title.slice(0, 120)}`
+          : `Strategisignal — ${row.matched_topic}: ${row.title.slice(0, 120)}`,
+      explanation:
+        row.kind === "tender"
+          ? `Offentlig kunngjøring publisert ${row.published_at ?? "nylig"} — salgsvindu med frist. Vurder om dere kan levere, alene eller som underleverandør.`
+          : `Medieomtale ${row.published_at ?? "siste uke"} som kan signalisere ny strategi/satsing hos ${row.matched_topic}. Les kilden før utspill.`,
+      evidence: [
+        { ref: row.url ?? `${row.source}|${row.event_id}`, label: `kilde (${row.source})`, value: row.url ?? row.event_id },
+      ],
+      topic: row.matched_topic,
+    }));
+  },
+};
+
 export const INSIGHT_DETECTORS: InsightDetector[] = [
   geoSovChangeDetector,
   aiReferralChangeDetector,
   gscPositionDropDetector,
   newCompetitorDetector,
+  salesTriggerDetector,
 ];
 
 // ─────────────────────────────────────────────────────────────────────

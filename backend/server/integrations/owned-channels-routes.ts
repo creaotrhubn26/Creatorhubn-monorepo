@@ -20,6 +20,7 @@ import {
 } from "./owned-channels-signal-sync.js";
 import { syncLeadgridSalesSignals } from "./leadgrid-sales-signal-sync.js";
 import { syncBrregMarketSignals } from "./brreg-market-signal-sync.js";
+import { syncSalesTriggers } from "./sales-trigger-sync.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -48,6 +49,23 @@ function getSession(
 export function registerOwnedChannelsRoutes({
   app, pool, activeSessions, isAdminEmail,
 }: Deps): void {
+  // Salgstriggere: anbud (TED) + strategisignaler (GDELT) → trigger_events.
+  app.post("/api/integrations/sync/sales-triggers", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await syncSalesTriggers(pool);
+      if (result.errors.length > 0) console.warn("[sales-triggers]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[sales-triggers] failed", err);
+      return res.status(500).json({ error: "sync_failed" });
+    }
+  });
+
   // Offentlige registerdata (BRREG): markedsstørrelse + nyregistreringer
   // per vertikal → normalized_signals. Åpne data, NLOD.
   app.post("/api/integrations/sync/brreg-market", async (req, res) => {
