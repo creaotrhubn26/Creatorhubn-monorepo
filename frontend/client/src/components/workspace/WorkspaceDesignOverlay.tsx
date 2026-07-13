@@ -13,6 +13,33 @@
 import React from 'react';
 import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, sanitizeHtmlComponent, formatSourceValue, type ElementEdits, type InsertSpec } from './elementEdits';
 
+import DevicesOutlinedIcon from '@mui/icons-material/DevicesOutlined';
+import TabletMacOutlinedIcon from '@mui/icons-material/TabletMacOutlined';
+import PhoneIphoneOutlinedIcon from '@mui/icons-material/PhoneIphoneOutlined';
+import UndoOutlinedIcon from '@mui/icons-material/UndoOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
+import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined';
+import TouchAppOutlinedIcon from '@mui/icons-material/TouchAppOutlined';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import NorthOutlinedIcon from '@mui/icons-material/NorthOutlined';
+import SouthOutlinedIcon from '@mui/icons-material/SouthOutlined';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import CloseIcon from '@mui/icons-material/Close';
+
+// Kompakt inline-ikon: konsistent størrelse, sentrert med teksten. «Ic» holder JSX ren.
+const ICO = { fontSize: 15, verticalAlign: 'text-bottom' } as const;
+
 // rgb()/rgba() → #rrggbb for native fargevelger (<input type=color> krever hex).
 const rgbToHex = (c: string): string => {
   if (/^#[0-9a-f]{6}$/i.test(c || '')) return c;
@@ -187,11 +214,11 @@ export default function WorkspaceDesignOverlay({
   };
   const createVersion = async () => {
     setVersionMsg('Lagrer versjon…');
-    try { const r = await fetch('/api/admin/design/history/snapshot', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, label: versionLabel }) }); if (r.ok) { setVersionLabel(''); setVersionMsg('Versjon lagret ✓'); fetchVersions(); } else setVersionMsg('Avvist (krever admin)'); } catch { setVersionMsg('Nettverksfeil'); }
+    try { const r = await fetch('/api/admin/design/history/snapshot', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, label: versionLabel }) }); if (r.ok) { setVersionLabel(''); setVersionMsg('Versjon lagret'); fetchVersions(); } else setVersionMsg('Avvist (krever admin)'); } catch { setVersionMsg('Nettverksfeil'); }
   };
   const restoreVersion = async (id: string) => {
     setVersionMsg('Gjenoppretter…');
-    try { const r = await fetch('/api/admin/design/history/restore', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, id }) }); if (r.ok) { setVersionMsg('Gjenopprettet ✓ — laster på nytt.'); setReloadKey((k) => k + 1); fetchVersions(); } else setVersionMsg('Gjenoppretting feilet'); } catch { setVersionMsg('Nettverksfeil'); }
+    try { const r = await fetch('/api/admin/design/history/restore', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, id }) }); if (r.ok) { setVersionMsg('Gjenopprettet — laster på nytt.'); setReloadKey((k) => k + 1); fetchVersions(); } else setVersionMsg('Gjenoppretting feilet'); } catch { setVersionMsg('Nettverksfeil'); }
   };
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
@@ -259,7 +286,7 @@ export default function WorkspaceDesignOverlay({
       const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
         method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accent }),
       });
-      setSaveMsg(r.ok ? 'Lagret til workspace ✓' : 'Avvist (krever admin)');
+      setSaveMsg(r.ok ? 'Lagret til workspace' : 'Avvist (krever admin)');
     } catch { setSaveMsg('Nettverksfeil'); }
   };
 
@@ -606,7 +633,7 @@ export default function WorkspaceDesignOverlay({
         body: JSON.stringify(buildSaveBody()),
       });
       const n = new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size;
-      setSaveMsg(r.ok ? `Lagret ${n} element ✓` : 'Avvist (krever admin)');
+      setSaveMsg(r.ok ? `Lagret ${n} element` : 'Avvist (krever admin)');
     } catch { setSaveMsg('Nettverksfeil'); }
   };
 
@@ -805,7 +832,7 @@ export default function WorkspaceDesignOverlay({
         <button data-chd style={btn(mode === 'tweaks')} aria-pressed={mode === 'tweaks'} title="Tweaks (T)" onClick={() => setMode('tweaks')}>Tweaks</button>
         <button data-chd style={btn(mode === 'edit')} aria-pressed={mode === 'edit'} title="Edit (E)" onClick={() => setMode('edit')}>Edit</button>
         <button data-chd style={cta} title="Send til Claude Code (⌘/Ctrl+↵)" onClick={buildBundle}>Send til Claude Code</button>
-        <button data-chd style={{ ...btn(false), border: 0 }} onClick={onClose} aria-label="Lukk CreatorHub Design (Esc)" title="Lukk (Esc)">✕</button>
+        <button data-chd style={{ ...btn(false), border: 0 }} onClick={onClose} aria-label="Lukk CreatorHub Design (Esc)" title="Lukk (Esc)"><CloseIcon sx={ICO} /></button>
       </div>
 
       {/* Høyrepanel */}
@@ -825,7 +852,7 @@ export default function WorkspaceDesignOverlay({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   <span style={{ width: 18, height: 18, borderRadius: 9, background: ACC, color: '#fff', fontWeight: 800, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
                   <code style={{ fontSize: 11.5, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selOf(n.d)}</code>
-                  <button data-chd onClick={() => removeNote(n.id)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: INK2, cursor: 'pointer', fontSize: 14 }}>✕</button>
+                  <button data-chd onClick={() => removeNote(n.id)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: INK2, cursor: 'pointer', fontSize: 14 }}><CloseIcon sx={ICO} /></button>
                 </div>
                 {n.d.text && <div style={{ fontSize: 11.5, color: INK2, marginBottom: 6 }}>«{n.d.text}»</div>}
                 <textarea data-chd value={n.intent} onChange={(e) => setIntent(n.id, e.target.value)}
@@ -857,14 +884,14 @@ export default function WorkspaceDesignOverlay({
               {(['all', 'tablet', 'mobile'] as const).map((d) => (
                 <button key={d} data-chd onClick={() => setDevice(d)}
                   style={{ ...(device === d ? cta : btn(false)), padding: '3px 8px', fontSize: 11 }}>
-                  {d === 'all' ? '🖥 Alle' : d === 'tablet' ? '📱 Nettbrett' : '📲 Mobil'}
+                  {d === 'all' ? <><DevicesOutlinedIcon sx={ICO} /> Alle</> : d === 'tablet' ? <><TabletMacOutlinedIcon sx={ICO} /> Nettbrett</> : <><PhoneIphoneOutlinedIcon sx={ICO} /> Mobil</>}
                 </button>
               ))}
             </div>
             {device !== 'all' && <div style={{ fontSize: 10.5, color: '#b45309' }}>Redigerer {device === 'tablet' ? '≤900px' : '≤600px'} — stil-endringer lagres bak en media query (gjelder kun denne skjermbredden).</div>}
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <span style={{ fontSize: 11, color: INK2 }}>Forhåndsvis:</span>
-              {([{ k: 'mobile', label: '📲 Mobil', w: 390, h: 844 }, { k: 'tablet', label: '📱 Nettbrett', w: 834, h: 1112 }] as const).map((p) => (
+              {([{ k: 'mobile', label: 'Mobil', w: 390, h: 844 }, { k: 'tablet', label: 'Nettbrett', w: 834, h: 1112 }] as const).map((p) => (
                 <button key={p.k} data-chd onClick={() => { try { window.open(window.location.href, `chd_preview_${p.k}`, `width=${p.w},height=${p.h}`); } catch { /* popup blokkert */ } }}
                   style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}
                   title={`Åpne siden i et ${p.w}×${p.h}-vindu — media queries og responsive endringer vises som på ekte enhet (viser lagret tilstand)`}>
@@ -876,7 +903,7 @@ export default function WorkspaceDesignOverlay({
               <button data-chd onClick={toggleOriginal}
                 style={{ ...(origMode ? cta : btn(false)), padding: '6px 10px', fontSize: 12 }}
                 title="Sammenlign siden med og uten dine ulagrede endringer">
-                {origMode ? '↩ Vis mine endringer' : '👁 Vis original (før/etter)'}
+                {origMode ? <><UndoOutlinedIcon sx={ICO} /> Vis mine endringer</> : <><VisibilityOutlinedIcon sx={ICO} /> Vis original</>}
               </button>
             )}
             {dataHealth.length > 0 && (
@@ -884,13 +911,13 @@ export default function WorkspaceDesignOverlay({
                 <button data-chd onClick={() => setHealthOpen((v) => !v)}
                   style={{ ...btn(false), padding: '6px 10px', fontSize: 12, ...(dataHealth.length > healthOk ? { borderColor: '#b45309', color: '#b45309' } : {}) }}
                   title="Verifiser alle data-koblinger på siden">
-                  🩺 Data-helse: {healthOk}/{dataHealth.length} ✓{dataHealth.length > healthOk ? ` · ${dataHealth.length - healthOk} ⚠` : ''}
+                  <MonitorHeartOutlinedIcon sx={ICO} /> Data-helse: {healthOk}/{dataHealth.length}{dataHealth.length > healthOk ? ` · ${dataHealth.length - healthOk} avvik` : ' OK'}
                 </button>
                 {healthOpen && (
                   <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {dataHealth.map((h, i) => (
                       <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 11 }}>
-                        <span style={{ color: h.status === 'ok' ? '#15803d' : '#b45309', flexShrink: 0 }}>{h.status === 'ok' ? '✓' : '⚠'}</span>
+                        <span style={{ color: h.status === 'ok' ? '#15803d' : '#b45309', flexShrink: 0 }}>{h.status === 'ok' ? <CheckCircleOutlineIcon sx={{ fontSize: 13, color: '#15803d' }} /> : <WarningAmberOutlinedIcon sx={{ fontSize: 13, color: '#b45309' }} />}</span>
                         <span style={{ flex: 1, color: INK, wordBreak: 'break-all' }}>{h.label}</span>
                         <span style={{ color: INK2, flexShrink: 0, textAlign: 'right' }}>{h.status === 'ok' ? `${h.key}${h.live ? ' (live)' : ''}: ${String(h.value)}` : h.status === 'missing' ? `«${h.key}» mangler` : `«${h.key}» tom`}</span>
                       </div>
@@ -914,7 +941,7 @@ export default function WorkspaceDesignOverlay({
               <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Plassér datakilde på siden</div>
               {placingSource ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 8px' }}>
-                  <span style={{ flex: 1, fontSize: 11.5, color: '#9a3412' }}>👆 Klikk der du vil ha «{placingSource.label}» på siden</span>
+                  <span style={{ flex: 1, fontSize: 11.5, color: '#9a3412' }}><TouchAppOutlinedIcon sx={ICO} /> Klikk der du vil ha «{placingSource.label}» på siden</span>
                   <button data-chd onClick={() => setPlacingSource(null)} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Avbryt</button>
                 </div>
               ) : (
@@ -923,7 +950,7 @@ export default function WorkspaceDesignOverlay({
                   {sources.length === 0 && <div style={{ fontSize: 11, color: INK2 }}>Ingen datakilder for dette workspacet ennå.</div>}
                   {sources.map((s) => (
                     <div key={s.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <span style={{ flex: 1, fontSize: 11.5, color: INK }}>{s.live ? '📊' : '✏️'} {String(s.label || s.key)}</span>
+                      <span style={{ flex: 1, fontSize: 11.5, color: INK }}>{s.live ? <InsightsOutlinedIcon sx={ICO} /> : <EditOutlinedIcon sx={ICO} />} {String(s.label || s.key)}</span>
                       <span style={{ fontSize: 11, color: INK2, fontVariantNumeric: 'tabular-nums' }}>{formatSourceValue(s.value)}</span>
                       <button data-chd onClick={() => setPlacingSource({ key: s.key, label: String(s.label || s.key), value: s.value })} style={{ ...cta, padding: '3px 9px', fontSize: 11 }}>Plassér</button>
                     </div>
@@ -933,8 +960,8 @@ export default function WorkspaceDesignOverlay({
               {lastPlaced && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, borderTop: `1px solid ${LINE}`, paddingTop: 6 }}>
                   <span style={{ fontSize: 11, color: INK2, marginRight: 2 }}>Finjuster plassering:</span>
-                  {([['←', -4, 0], ['→', 4, 0], ['↑', 0, -4], ['↓', 0, 4]] as const).map(([lbl, dx, dy]) => (
-                    <button key={lbl} data-chd onClick={() => nudgePlaced(dx, dy)} style={{ ...btn(false), padding: '2px 8px', fontSize: 12 }}>{lbl}</button>
+                  {([[-4, 0, ArrowBackIcon], [4, 0, ArrowForwardIcon], [0, -4, ArrowUpwardIcon], [0, 4, ArrowDownwardIcon]] as const).map(([dx, dy, Icon], i) => (
+                    <button key={i} data-chd onClick={() => nudgePlaced(dx, dy)} aria-label={`Nudge ${['venstre', 'høyre', 'opp', 'ned'][i]}`} style={{ ...btn(false), padding: '3px 8px' }}><Icon sx={{ fontSize: 15, display: 'block' }} /></button>
                   ))}
                   <span style={{ flex: 1 }} />
                   <button data-chd onClick={() => setLastPlaced(null)} style={{ ...btn(false), padding: '2px 8px', fontSize: 11 }}>Ferdig</button>
@@ -946,7 +973,7 @@ export default function WorkspaceDesignOverlay({
                 <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Varianter / A-B</div>
                 {editingVariant ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11.5, color: '#7c3aed', flex: 1 }}>✎ Redigerer «{editingVariant}» — «Lagre endringer» oppdaterer denne varianten. Skjerm-veksleren øverst lagrer egne nettbrett/mobil-endringer i varianten.</span>
+                    <span style={{ fontSize: 11.5, color: '#7c3aed', flex: 1 }}><EditOutlinedIcon sx={ICO} /> Redigerer «{editingVariant}» — «Lagre endringer» oppdaterer denne varianten. Skjerm-veksleren øverst lagrer egne nettbrett/mobil-endringer i varianten.</span>
                     <button data-chd onClick={exitVariant} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Ferdig</button>
                   </div>
                 ) : (
@@ -959,7 +986,7 @@ export default function WorkspaceDesignOverlay({
                       <div key={n} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <span style={{ flex: 1, fontSize: 11, color: INK, wordBreak: 'break-word' }}>{n}{abStats[n] != null ? ` · ${abStats[n]} visn.` : ''}</span>
                         <button data-chd onClick={() => editVariant(n)} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Rediger</button>
-                        <button data-chd onClick={() => deleteVariant(n)} aria-label={`Slett ${n}`} style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2, flexShrink: 0 }}>✕</button>
+                        <button data-chd onClick={() => deleteVariant(n)} aria-label={`Slett ${n}`} style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2, flexShrink: 0 }}><CloseIcon sx={ICO} /></button>
                       </div>
                     ))}
                     {Object.keys(variants).length > 0 && (
@@ -992,12 +1019,12 @@ export default function WorkspaceDesignOverlay({
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
                               <span style={{ fontSize: 10.5, color: INK2, flex: 1, wordBreak: 'break-all' }}>Konverterings-mål: {variantGoal ? <code>{variantGoal.length > 30 ? variantGoal.slice(0, 30) + '…' : variantGoal}</code> : '(ikke satt)'}</span>
                               {sel && <button data-chd onClick={() => setVariantGoal(uniqueSelector(sel))} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Sett valgt</button>}
-                              {variantGoal && <button data-chd onClick={() => setVariantGoal('')} aria-label="Fjern mål" style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2 }}>✕</button>}
+                              {variantGoal && <button data-chd onClick={() => setVariantGoal('')} aria-label="Fjern mål" style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2 }}><CloseIcon sx={ICO} /></button>}
                             </div>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                               <button data-chd onClick={fetchAbStats} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Hent A/B-stats</button>
                               {(Object.keys(abStats).length > 0 || Object.keys(abConv).length > 0) && (
-                                <span style={{ fontSize: 10, color: abPersistent ? '#15803d' : '#b45309' }}>{abPersistent ? '● lagret (overlever restart)' : '○ kun denne økten (før migrasjon)'}</span>
+                                <span style={{ fontSize: 10, color: abPersistent ? '#15803d' : '#b45309' }}>{abPersistent ? <><FiberManualRecordIcon sx={{ fontSize: 9, verticalAlign: 'middle' }} /> lagret (overlever restart)</> : <><RadioButtonUncheckedIcon sx={{ fontSize: 9, verticalAlign: 'middle' }} /> kun denne økten (før migrasjon)</>}</span>
                               )}
                             </div>
                           </div>
@@ -1039,14 +1066,14 @@ export default function WorkspaceDesignOverlay({
                   if (textEdits[k] != null) parts.push('tekst');
                   if (animEdits[k]) parts.push(String(animEdits[k]));
                   if (insertEdits[k]?.length) parts.push(`+${insertEdits[k].length} innsatt`);
-                  if (bindEdits[k]) parts.push(`⇄ ${bindEdits[k]}`);
-                  if (intxEdits[k]) parts.push(`▷ ${intxEdits[k].action}`);
+                  if (bindEdits[k]) parts.push(`bind: ${bindEdits[k]}`);
+                  if (intxEdits[k]) parts.push(`klikk: ${intxEdits[k].action}`);
                   return (
                     <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <code style={{ flex: 1, fontSize: 10, color: INK2, wordBreak: 'break-all', lineHeight: 1.3 }}>{k}</code>
                       <span style={{ fontSize: 10.5, color: INK2, flexShrink: 0 }}>{parts.join(' · ')}</span>
                       <button data-chd onClick={() => deleteEdit(k)} aria-label={`Slett endringer for ${k}`}
-                        style={{ flexShrink: 0, border: `1px solid ${LINE}`, background: '#fff', borderRadius: 6, cursor: 'pointer', width: 22, height: 22, lineHeight: 1, color: INK2 }}>✕</button>
+                        style={{ flexShrink: 0, border: `1px solid ${LINE}`, background: '#fff', borderRadius: 6, cursor: 'pointer', width: 22, height: 22, lineHeight: 1, color: INK2 }}><CloseIcon sx={ICO} /></button>
                     </div>
                   );
                 })}
@@ -1061,10 +1088,10 @@ export default function WorkspaceDesignOverlay({
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button data-chd onClick={() => selectElement(sel?.parentElement || null)}
                     disabled={!sel?.parentElement || sel.parentElement === document.body}
-                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg forelder-elementet">⬆ Forelder</button>
+                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg forelder-elementet"><NorthOutlinedIcon sx={ICO} /> Forelder</button>
                   <button data-chd onClick={() => selectElement((sel?.firstElementChild as HTMLElement) || null)}
                     disabled={!sel?.firstElementChild}
-                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg første barn-element">⬇ Barn</button>
+                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg første barn-element"><SouthOutlinedIcon sx={ICO} /> Barn</button>
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#7c3aed' }}>{sel ? `<${sel.tagName.toLowerCase()}>` : ''}</span>
                 </div>
                 {sel && (() => {
@@ -1142,19 +1169,19 @@ export default function WorkspaceDesignOverlay({
                       onChange={(e) => applyBg(e.target.value)} style={field} />
 
                     <button data-chd onClick={hideElement} style={{ ...btn(false), padding: '5px 10px', fontSize: 11.5, alignSelf: 'flex-start' }}
-                      title="Skjul dette elementet (display:none). Vises igjen fra «Skjulte elementer»-lista.">🚫 Skjul dette elementet</button>
+                      title="Skjul dette elementet (display:none). Vises igjen fra «Skjulte elementer»-lista."><VisibilityOffOutlinedIcon sx={ICO} /> Skjul dette elementet</button>
 
                     <div style={section}>Bind til datakilde</div>
                     <select data-chd aria-label="Bind tekst til datakilde" style={field}
                       value={sel ? (bindEdits[uniqueSelector(sel)] || '') : ''} onChange={(e) => applyBinding(e.target.value)}>
                       <option value="">— Ingen (fritekst) —</option>
-                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? '📊 ' : '✏️ '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? 'live · ' : 'manuell · '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
                     </select>
                     {sel && bindEdits[uniqueSelector(sel)] && (() => {
                       const bound = sources.find((s) => s.key === bindEdits[uniqueSelector(sel)]);
                       return bound
-                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Bundet — data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b></div>
-                        : <div style={{ fontSize: 11, color: '#b45309' }}>⚠ Kilden er ikke definert lenger.</div>;
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}><CheckCircleOutlineIcon sx={ICO} /> Bundet — data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b></div>
+                        : <div style={{ fontSize: 11, color: '#b45309' }}><WarningAmberOutlinedIcon sx={ICO} /> Kilden er ikke definert lenger.</div>;
                     })()}
                     {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen datakilder ennå — definer metrics i Design-tokens.</div>}
                   </>
@@ -1294,9 +1321,9 @@ export default function WorkspaceDesignOverlay({
                   return (
                     <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 800, fontSize: 12, color: INK }}>Koble data-slots ({connected}/{slots.length} ✓)</span>
+                        <span style={{ fontWeight: 800, fontSize: 12, color: INK }}>Koble data-slots ({connected}/{slots.length} koblet)</span>
                         <button data-chd onClick={aiMapSlots} disabled={aiMapLoading} title="La AI foreslå kilde for alle slots"
-                          style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>{aiMapLoading ? 'Tenker…' : '✨ AI-foreslå'}</button>
+                          style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>{aiMapLoading ? 'Tenker…' : <><AutoAwesomeOutlinedIcon sx={ICO} /> AI-foreslå</>}</button>
                       </div>
                       {slots.map((slot) => {
                         const chosen = slotBindings[slot.id] || '';
@@ -1307,11 +1334,11 @@ export default function WorkspaceDesignOverlay({
                             <select data-chd aria-label={`Kilde for ${slot.text || 'slot'}`} style={field} value={chosen}
                               onChange={(e) => setSlotBindings((b) => ({ ...b, [slot.id]: e.target.value }))}>
                               <option value="">— Velg kilde —</option>
-                              {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? '📊 ' : '✏️ '}{s.key}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                              {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? 'live · ' : 'manuell · '}{s.key}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
                             </select>
                             {chosen && (bound
-                              ? <div style={{ fontSize: 10.5, color: '#15803d' }}>✓ Verifisert{bound.live ? ' (live fra DB)' : ''}: {String(bound.value ?? '—')}</div>
-                              : <div style={{ fontSize: 10.5, color: '#b45309' }}>⚠ ikke verifisert — kilden finnes ikke</div>)}
+                              ? <div style={{ fontSize: 10.5, color: '#15803d' }}><CheckCircleOutlineIcon sx={ICO} /> Verifisert{bound.live ? ' (live fra DB)' : ''}: {String(bound.value ?? '—')}</div>
+                              : <div style={{ fontSize: 10.5, color: '#b45309' }}><WarningAmberOutlinedIcon sx={ICO} /> ikke verifisert — kilden finnes ikke</div>)}
                           </div>
                         );
                       })}
@@ -1336,13 +1363,13 @@ export default function WorkspaceDesignOverlay({
                     <label style={flabel}>Koble til datakilde</label>
                     <select data-chd aria-label="Koble til datakilde" style={field} value={insSource} onChange={(e) => setInsSource(e.target.value)}>
                       <option value="">— Statisk verdi (ingen kobling) —</option>
-                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? '📊 ' : '✏️ '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? 'live · ' : 'manuell · '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
                     </select>
                     {insSource && (() => {
                       const bound = sources.find((s) => s.key === insSource);
                       return bound
-                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b>{bound.label ? ` — ${String(bound.label)}` : ''}</div>
-                        : <div style={{ fontSize: 11, color: '#b45309' }}>⚠ «{insSource}» er ikke definert. Legg den til i Design-tokens → metrics.</div>;
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}><CheckCircleOutlineIcon sx={ICO} /> Data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b>{bound.label ? ` — ${String(bound.label)}` : ''}</div>
+                        : <div style={{ fontSize: 11, color: '#b45309' }}><WarningAmberOutlinedIcon sx={ICO} /> «{insSource}» er ikke definert. Legg den til i Design-tokens → metrics.</div>;
                     })()}
                     {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen kilder ennå — definer marketing-metrics i CreatorHub Design → Design-tokens, så dukker de opp her.</div>}
                   </>
