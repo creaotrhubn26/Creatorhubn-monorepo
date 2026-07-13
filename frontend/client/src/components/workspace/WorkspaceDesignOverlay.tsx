@@ -133,6 +133,9 @@ export default function WorkspaceDesignOverlay({
   const [insSource, setInsSource] = React.useState(''); // dynamisk infographic-kilde (metric-nøkkel)
   const [sources, setSources] = React.useState<Array<{ key: string; value: unknown; label: unknown }>>([]);
   const [insPos, setInsPos] = React.useState<'before' | 'after'>('after');
+  const [components, setComponents] = React.useState<Record<string, InsertSpec[]>>({}); // gjenbrukbare komponenter
+  const [compName, setCompName] = React.useState('');
+  const [pickComp, setPickComp] = React.useState('');
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
 
@@ -259,8 +262,30 @@ export default function WorkspaceDesignOverlay({
     const d = b64url({ value: insText || '75%', label: insUrl || 'Merkevare' });
     return `/api/infographics/render.png?tpl=auto&d=${d}&accent=${encodeURIComponent(accent)}`;
   };
+  // Lagre anker-innsettingene som en navngitt, gjenbrukbar komponent.
+  const saveComponent = () => {
+    if (!sel) return;
+    const name = compName.trim();
+    const specs = insertEdits[uniqueSelector(sel)] || [];
+    if (!name || !specs.length) return;
+    setComponents((c) => ({ ...c, [name]: specs }));
+    setCompName('');
+  };
   const addInsert = () => {
     if (!sel || !sel.parentNode) return;
+    // Komponent: ekspander bibliotekets spec-liste til KOPIER (ferske id-er) ved ankeret.
+    if (insType === 'component') {
+      const specs = components[pickComp];
+      if (!specs || !specs.length) return;
+      const key = uniqueSelector(sel);
+      const copies = specs.map((s) => ({ ...s, id: `ins-${nextId.current++}` }));
+      copies.forEach((spec) => {
+        const node = buildInsertNode(spec);
+        if (node && sel!.parentNode) { if (insPos === 'before') sel!.parentNode.insertBefore(node, sel); else sel!.parentNode.insertBefore(node, sel!.nextSibling); }
+      });
+      setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), ...copies] }));
+      return;
+    }
     const id = `ins-${nextId.current++}`;
     const spec: InsertSpec = {
       id, type: insType, pos: insPos,
@@ -291,6 +316,7 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
+          if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
         }
       })
       .catch(() => {});
@@ -303,7 +329,7 @@ export default function WorkspaceDesignOverlay({
     try {
       const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
         method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits }),
+        body: JSON.stringify({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits, designComponents: components }),
       });
       const n = new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size;
       setSaveMsg(r.ok ? `Lagret ${n} element ✓` : 'Avvist (krever admin)');
@@ -657,8 +683,15 @@ export default function WorkspaceDesignOverlay({
                   <option value="image">Bilde</option>
                   <option value="infographic">Infographic</option>
                   <option value="divider">Skille</option>
+                  <option value="component">Komponent (fra bibliotek)</option>
                 </select>
-                {insType !== 'divider' && (
+                {insType === 'component' && (
+                  <select data-chd aria-label="Velg komponent" style={field} value={pickComp} onChange={(e) => setPickComp(e.target.value)}>
+                    <option value="">— Velg komponent —</option>
+                    {Object.keys(components).map((n) => <option key={n} value={n}>{n} ({components[n].length} elementer)</option>)}
+                  </select>
+                )}
+                {insType !== 'divider' && insType !== 'component' && (
                   <input data-chd style={field}
                     placeholder={insType === 'infographic' ? 'Verdi (f.eks. 75%)' : insType === 'image' ? 'Alt-tekst' : 'Tekst'}
                     value={insText} onChange={(e) => setInsText(e.target.value)} />
@@ -693,6 +726,12 @@ export default function WorkspaceDesignOverlay({
                   </select>
                   <button data-chd style={cta} onClick={addInsert}>Legg til</button>
                 </div>
+                {sel && (insertEdits[uniqueSelector(sel)]?.length ?? 0) > 0 && insType !== 'component' && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input data-chd style={{ ...field, flex: 1 }} placeholder="Komponent-navn" value={compName} onChange={(e) => setCompName(e.target.value)} />
+                    <button data-chd style={btn(false)} onClick={saveComponent} title="Lagre dette ankerets innsettinger som gjenbrukbar komponent">Lagre som komponent</button>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
                   <button data-chd style={cta} onClick={saveEdits}>Lagre endringer ({new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size})</button>

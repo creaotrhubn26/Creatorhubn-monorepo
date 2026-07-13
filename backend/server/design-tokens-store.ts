@@ -216,6 +216,34 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.elementBindings = elementBindings;
   }
+  // Gjenbrukbare KOMPONENTER: { [navn]: InsertSpec[] } — en navngitt blokk (samme trygge spec-typer
+  // som elementInserts) som kan settes inn hvor som helst. Løv-typer (ingen nesting av komponenter).
+  const compIn = (patch as any)?.designComponents;
+  if (compIn && typeof compIn === 'object' && !Array.isArray(compIn)) {
+    const TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic']);
+    const NAME_RE = /^[A-Za-z0-9 _-]{1,60}$/;
+    const safeUrl = (u: unknown): u is string => typeof u === 'string' && u.length <= 600
+      && (/^\//.test(u) || /^https:\/\//i.test(u)) && !/[<>"'\\]/.test(u) && !/javascript:/i.test(u);
+    const designComponents: Record<string, unknown[]> = {};
+    let nc = 0;
+    for (const [name, specs] of Object.entries(compIn as Record<string, unknown>)) {
+      if (nc >= 100) break;
+      if (!NAME_RE.test(name) || !Array.isArray(specs)) continue;
+      const arr: Record<string, string>[] = [];
+      for (const s of (specs as unknown[]).slice(0, 20)) {
+        const so = s as Record<string, unknown>;
+        if (!so || typeof so !== 'object' || !TYPES.has(so.type as string)) continue;
+        if (typeof so.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(so.id)) continue;
+        const spec: Record<string, string> = { id: so.id, type: so.type as string, pos: so.pos === 'before' ? 'before' : 'after' };
+        if (typeof so.text === 'string' && so.text.length <= 500) spec.text = so.text;
+        if (safeUrl(so.href)) spec.href = so.href;
+        if (safeUrl(so.src)) spec.src = so.src;
+        arr.push(spec);
+      }
+      if (arr.length) { designComponents[name] = arr; nc++; }
+    }
+    clean.designComponents = designComponents;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,
