@@ -60,6 +60,18 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_leadgrid_trips_user_start ON leadgrid_trips (user_id, start_date DESC)`,
   );
+  // «Min bil»-profil server-side (mig 0373) — så admin ser registrert (firma)bil.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_vehicles (
+      user_id TEXT PRIMARY KEY,
+      plate TEXT,
+      display_name TEXT,
+      fuel TEXT NOT NULL DEFAULT 'unknown',
+      kind TEXT NOT NULL DEFAULT 'car',
+      is_company_car BOOLEAN NOT NULL DEFAULT false,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
   schemaReady = true;
 }
 
@@ -321,11 +333,14 @@ export function registerLeadgridTripsRoutes(deps: {
       // Teammedlemmer + visningsnavn.
       const mem = await pool.query(
         `SELECT om.user_id, om.role,
-                COALESCE(up.display_name, u.email, om.user_id) AS name
+                COALESCE(up.display_name, u.email, om.user_id) AS name,
+                v.display_name AS veh_name, v.plate AS veh_plate,
+                v.is_company_car AS is_company_car, v.fuel AS veh_fuel
            FROM organization_members om
            LEFT JOIN user_profiles up
              ON up.user_id = om.user_id AND up.organization_id = om.organization_id
            LEFT JOIN users u ON u.id = om.user_id
+           LEFT JOIN leadgrid_vehicles v ON v.user_id = om.user_id
           WHERE om.organization_id = $1`,
         [orgId],
       );
@@ -369,8 +384,11 @@ export function registerLeadgridTripsRoutes(deps: {
             amount: Number(a?.amount ?? 0),
             tolls: Number(a?.tolls ?? 0),
             unconfirmed: a?.unconfirmed ?? 0,
-            vehicle_name: a?.vehicle_name ?? null,
-            vehicle_plate: a?.vehicle_plate ?? null,
+            // Registrert (firma)bil vinner over utledet fra turer.
+            vehicle_name: m.veh_name ?? a?.vehicle_name ?? null,
+            vehicle_plate: m.veh_plate ?? a?.vehicle_plate ?? null,
+            is_company_car: m.is_company_car ?? false,
+            vehicle_fuel: m.veh_fuel ?? null,
             last_trip: a?.last_trip ? isoNoMillis(a.last_trip) : null,
           };
         })
@@ -548,6 +566,34 @@ export function registerLeadgridTripsRoutes(deps: {
     } catch (err) {
       console.warn("[leadgrid-trips] cron report failed:", (err as Error).message);
       return res.status(500).json({ error: "cron_report_failed" });
+    }
+  });
+
+  // ── POST /vehicle/profile — synk sjåførens «Min bil» server-side ──
+  app.post("/api/leadgrid/vehicle/profile", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body || {};
+      await pool.query(
+        `INSERT INTO leadgrid_vehicles (user_id, plate, display_name, fuel, kind, is_company_car, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now())
+         ON CONFLICT (user_id) DO UPDATE SET
+           plate = EXCLUDED.plate, display_name = EXCLUDED.display_name,
+           fuel = EXCLUDED.fuel, kind = EXCLUDED.kind,
+           is_company_car = EXCLUDED.is_company_car, updated_at = now()`,
+        [
+          session.userId,
+          b.plate ?? null, b.displayName ?? b.display_name ?? null,
+          String(b.fuel ?? "unknown"), String(b.kind ?? "car"),
+          b.isCompanyCar ?? b.is_company_car ?? false,
+        ],
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      console.warn("[leadgrid-trips] vehicle profile failed:", (err as Error).message);
+      return res.status(500).json({ error: "vehicle_profile_failed" });
     }
   });
 }
