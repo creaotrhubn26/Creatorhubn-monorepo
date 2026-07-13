@@ -25,6 +25,7 @@ import { syncSsbTerritorySignals } from "./ssb-territory-signal-sync.js";
 import { runKonkursWatch } from "./konkurs-watch.js";
 import { TENDER_REQUIREMENT_LEXICON } from "./sales-trigger-sync.js";
 import { runMediaWatch } from "./media-watch.js";
+import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -124,6 +125,61 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[media-watch] failed", err);
       return res.status(500).json({ error: "watch_failed" });
+    }
+  });
+
+  // Vertikal-segmenter: bygg/refresh prospekteringslister (ukentlig guard).
+  app.post("/api/integrations/sync/prospect-segments", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await syncProspectSegments(pool);
+      if (result.errors.length > 0) console.warn("[prospect-segments]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[prospect-segments] failed", err);
+      return res.status(500).json({ error: "sync_failed" });
+    }
+  });
+
+  // Prospekteringslister for Leadgrid (admin): segment + valgfri kommune.
+  app.get("/api/integrations/prospects", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    try {
+      const segments = await pool.query(
+        `SELECT segment_key, display_name, total_found, truncated, refreshed_at::text
+           FROM prospect_segments ORDER BY segment_key`,
+      );
+      const segment = typeof req.query.segment === "string" ? req.query.segment : null;
+      if (!segment) return res.json({ segments: segments.rows, companies: [] });
+
+      const municipality = typeof req.query.municipality === "string" ? req.query.municipality : null;
+      const limitRaw = Number(req.query.limit);
+      const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 100;
+      const params: unknown[] = [segment];
+      let where = "segment_key = $1";
+      if (municipality) {
+        params.push(municipality);
+        where += ` AND municipality ILIKE $${params.length}`;
+      }
+      params.push(limit);
+      const companies = await pool.query(
+        `SELECT org_nr, name, municipality, employees, registered_at::text, website
+           FROM prospect_companies WHERE ${where}
+          ORDER BY employees DESC NULLS LAST, name LIMIT $${params.length}`,
+        params,
+      );
+      return res.json({ segments: segments.rows, companies: companies.rows });
+    } catch (err) {
+      console.error("[prospects] list failed", err);
+      return res.status(500).json({ error: "list_failed" });
     }
   });
 
