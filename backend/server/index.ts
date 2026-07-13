@@ -22654,10 +22654,16 @@ function buildSalesLeadSelectQuery(shape: SalesLeadsStorageShape): string {
 // GET /api/audio-enhancement/jobs — list audio enhancement jobs with optional filters
 app.get("/api/audio-enhancement/jobs", async (req, res) => {
   try {
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const queryUserId = readString(req.query.userId);
+    // Session-only: the spoofable x-user-id/query.userId previously selected which
+    // tenant's audio-enhancement jobs (file paths, error messages) to read — and an
+    // empty userId dropped the WHERE clause entirely, dumping 300 jobs across ALL
+    // tenants. Bind to the authenticated session; anonymous callers get nothing.
+    const session = getActiveSessionFromRequest(req);
+    const userId = session?.userId || null;
+    if (!userId) {
+      return res.json({ success: true, jobs: [] });
+    }
     const projectId = readString(req.query.projectId);
-    const userId = queryUserId || headerUserId;
 
     const params: string[] = [];
     const filters: string[] = [];
@@ -67421,7 +67427,9 @@ setInterval(() => {
 
 app.get("/api/clients", async (req, res) => {
   try {
-    const userId = req.query.userId as string;
+    // Session-only: the spoofable ?userId previously scoped the client/couple list
+    // (client emails + project names = PII) to an arbitrary tenant. Bind to session.
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     if (!userId) return res.json([]);
     // Get real clients from projects
     const result = await pool.query(
@@ -70179,12 +70187,14 @@ const handleCreateGoogleMeet = async (
   res: express.Response,
 ) => {
   try {
-    const preferredUserId =
-      readString(req.headers["x-user-id"]) ??
-      readString(req.body?.userId) ??
-      null;
+    // Session-only: preferredUserId selects WHOSE stored Google Workspace OAuth is
+    // used to mint the Meet/calendar event. The spoofable x-user-id/body.userId let a
+    // caller borrow a victim's connected Google account (and an empty value dropped the
+    // user_id filter in resolveRoleRoomGoogleCredentialSource entirely, borrowing an
+    // arbitrary tenant's account). Bind to the authenticated session.
+    const preferredUserId = getActiveSessionFromRequest(req)?.userId ?? null;
     if (!preferredUserId) {
-      return res.status(400).json({
+      return res.status(401).json({
         error:
           "Du må være logget inn med en koblet Google Workspace-bruker for å starte Google Meet.",
       });
@@ -74939,9 +74949,9 @@ app.use("/api/lightroom-routes", lightroomRouter);
 // user id is supplied; empty arrays for anonymous sessions.
 app.get("/import/leads", async (req, res) => {
   try {
-    const queryUserId = readString(req.query.userId);
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const userId = queryUserId || headerUserId;
+    // Session-only: the spoofable ?userId / x-user-id previously scoped the sales-lead
+    // list (name, email, phone, budget = PII) to an arbitrary tenant. Bind to session.
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     if (!userId || userId === "guest") {
       return res.json({ leads: [] });
     }
