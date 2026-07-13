@@ -71,7 +71,9 @@ function sanitizeElementEdits(input: unknown): Record<string, Record<string, str
   const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
     'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
     // Auto-layout (flex): container-oppsett.
-    'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap']);
+    'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap',
+    // Finjuster-nudge (translate flytter visuelt uten å reflow'e naboer). VAL_RE tillater translate(px,px).
+    'transform']);
   const VAL_RE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
   let n = 0;
   for (const [sel, propsRaw] of Object.entries(input as Record<string, unknown>)) {
@@ -133,6 +135,9 @@ function sanitizeElementInserts(input: unknown): Record<string, unknown[]> {
       if (typeof so.text === 'string' && so.text.length <= 500) spec.text = so.text;
       if (chdSafeUrl(so.href)) spec.href = so.href;
       if (chdSafeUrl(so.src)) spec.src = so.src;
+      // Live datakilde for tekst/overskrift-innsettinger: runtime setter teksten = connector/metric-verdi.
+      if (typeof so.source === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(so.source)) spec.source = so.source;
+      if (typeof so.label === 'string' && so.label.length <= 80) spec.label = so.label;
       if (so.type === 'component') {
         if (typeof so.component !== 'string' || !/^[A-Za-z0-9 _-]{1,60}$/.test(so.component)) continue;
         spec.component = so.component;
