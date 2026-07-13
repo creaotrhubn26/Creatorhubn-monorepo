@@ -17148,6 +17148,27 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
       projectName?: string;
       projectDescription?: string;
     };
+    // Destructive-seed IDOR guard: seedTrollDemo DELETEs all sub-tables and
+    // UPSERTs casting_projects keyed on options.projectId. Without this, any
+    // caller could pass an arbitrary victim projectId and wipe/overwrite their
+    // project. A caller-supplied id that resolves to an EXISTING project may
+    // only be re-seeded by its true (session-authenticated) owner. Fresh/unknown
+    // ids — what the real client always sends (troll-<timestamp>) — pass freely.
+    if (body.projectId) {
+      const existing = await pool.query(
+        "SELECT created_by FROM casting_projects WHERE id = $1",
+        [body.projectId],
+      );
+      const existingOwner = existing.rows[0]?.created_by ?? null;
+      if (existingOwner) {
+        const sessionUserId = getActiveSessionFromRequest(req)?.userId || null;
+        if (!sessionUserId || sessionUserId !== existingOwner) {
+          return res.status(403).json({
+            error: "Du kan ikke seede demo-data inn i et prosjekt du ikke eier.",
+          });
+        }
+      }
+    }
     const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
     const report = await seedTrollDemo(pool, ownerUserId, {
       projectId: body.projectId,
@@ -17388,6 +17409,25 @@ app.post("/api/demo/troll/initialize-all", async (req, res) => {
       projectName?: string;
       projectDescription?: string;
     };
+    // Destructive-seed IDOR guard (see /seed-all). An existing casting project
+    // may only be re-seeded by its true session-authenticated owner; the check
+    // uses getActiveSessionFromRequest (non-spoofable) rather than ownerUserId,
+    // which here falls back to the attacker-controlled x-user-id header.
+    if (body.projectId) {
+      const existing = await pool.query(
+        "SELECT created_by FROM casting_projects WHERE id = $1",
+        [body.projectId],
+      );
+      const existingOwner = existing.rows[0]?.created_by ?? null;
+      if (existingOwner) {
+        const sessionUserId = getActiveSessionFromRequest(req)?.userId || null;
+        if (!sessionUserId || sessionUserId !== existingOwner) {
+          return res.status(403).json({
+            error: "Du kan ikke seede demo-data inn i et prosjekt du ikke eier.",
+          });
+        }
+      }
+    }
     const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
     const report = await seedTrollDemo(pool, ownerUserId, {
       projectId: body.projectId,
@@ -19048,11 +19088,11 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
     const receiptSentAt =
       paymentRecord?.receiptSentAt || entry.receiptSentAt || null;
     const receiptUrl = documentIdentifier
-      ? `/api/payments/receipt/${encodeURIComponent(documentIdentifier)}`
+      ? `/api/payments/receipt/${encodeURIComponent(documentIdentifier)}${buildCompatPaymentDocQuery(documentIdentifier)}`
       : null;
     const invoiceUrl =
       documentIdentifier && entry.isInFiken
-        ? `/api/payments/invoice/${encodeURIComponent(documentIdentifier)}`
+        ? `/api/payments/invoice/${encodeURIComponent(documentIdentifier)}${buildCompatPaymentDocQuery(documentIdentifier)}`
         : null;
 
     if (!latestRequest) {
@@ -23507,6 +23547,18 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
     }
 
     if (plan.price <= 0) {
+      // Free/prototype plans self-complete a subscription server-side (no Stripe
+      // redirect). recordCompatPaymentCompletion OVERWRITES the target user's
+      // subscription status, payment history and access window — so we must never
+      // fabricate one for a client-supplied body.userId. Require a real session;
+      // `userId` is session-derived here (sessionUserId wins over body.userId
+      // above), so an anonymous caller cannot downgrade/overwrite a victim's plan.
+      if (!sessionUserId) {
+        return res.status(401).json({
+          error: "Logg inn for å aktivere gratisplanen.",
+          requiresAuth: true,
+        });
+      }
       const createdAt = new Date().toISOString();
       const record: CompatPaymentStatusRecord = {
         id: `pay_${crypto.randomUUID()}`,
@@ -23753,28 +23805,87 @@ app.get("/api/platform/billing/session-status", async (req, res) => {
 
 
 
+// Short-lived HMAC token authorizing a single payment document (receipt /
+// invoice) via a URL query param. These documents are opened by <a href> anchor
+// navigation, which sends cookies only (no Authorization header), so the
+// header-only getActiveSessionFromRequest can't see a session. The token is
+// minted ONLY while building an authenticated user's own payment history
+// (buildCompatPaymentHistory + /api/payments/history are session-scoped), so a
+// valid token proves the server issued it for that user's own document.
+const COMPAT_PAYMENT_DOC_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
+function compatPaymentDocSigningSecret(): string {
+  return (
+    process.env.AUTH_SECRET ||
+    process.env.SESSION_SECRET ||
+    process.env.CREATORHUB_STRIPE_WEBHOOK_SECRET ||
+    "compat-payment-doc-signing-fallback"
+  );
+}
+
+function signCompatPaymentDocToken(documentId: string, expMs: number): string {
+  return crypto
+    .createHmac("sha256", compatPaymentDocSigningSecret())
+    .update(`${documentId}:${expMs}`)
+    .digest("hex");
+}
+
+function buildCompatPaymentDocQuery(documentId: string): string {
+  const exp = Date.now() + COMPAT_PAYMENT_DOC_TOKEN_TTL_MS;
+  const sig = signCompatPaymentDocToken(documentId, exp);
+  return `?exp=${exp}&sig=${sig}`;
+}
+
+function verifyCompatPaymentDocToken(
+  documentId: string,
+  req: express.Request,
+): boolean {
+  const exp = Number(readString(req.query.exp));
+  const sig = readString(req.query.sig);
+  if (!documentId || !sig || !Number.isFinite(exp) || exp < Date.now()) {
+    return false;
+  }
+  const expected = signCompatPaymentDocToken(documentId, exp);
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 function canAccessCompatPaymentDocument(
   req: express.Request,
   record: CompatPaymentStatusRecord,
 ) {
+  // 1. Real (non-spoofable) session: admin, or the document's own owner.
   const session = getActiveSessionFromRequest(req);
   if (session) {
     const normalizedRole = String(session.role || "").trim().toLowerCase();
     if (ADMIN_SESSION_ROLES.has(normalizedRole)) {
       return true;
     }
+    const sessionEmail =
+      normalizeMailConfigValue(session.email).toLowerCase() || null;
+    const recordEmail =
+      normalizeMailConfigValue(record.email).toLowerCase() || null;
+    if (
+      (session.userId && record.userId && session.userId === record.userId) ||
+      (sessionEmail && recordEmail && sessionEmail === recordEmail)
+    ) {
+      return true;
+    }
   }
 
-  const requestUserId = compatResolveUserId(req);
-  const requestEmail =
-    normalizeMailConfigValue(compatResolveUserEmail(req)).toLowerCase() || null;
-  const recordEmail =
-    normalizeMailConfigValue(record.email).toLowerCase() || null;
-
-  return Boolean(
-    (requestUserId && record.userId && requestUserId === record.userId) ||
-      (requestEmail && recordEmail && requestEmail === recordEmail),
-  );
+  // 2. Signed document link for anchor navigation (cookies only, no Bearer).
+  //    The previous check trusted compatResolveUserId/compatResolveUserEmail,
+  //    which fall back to the spoofable x-user-id / x-user-email headers — a
+  //    caller who knew a victim's id OR email could read their receipt/invoice.
+  //    Replaced with an HMAC token only the server can mint for the owner's
+  //    own documents.
+  const documentId = readString(req.params.paymentId);
+  return documentId ? verifyCompatPaymentDocToken(documentId, req) : false;
 }
 
 function formatCompatPaymentDocumentAmount(amountMajor: number, currency: string) {
