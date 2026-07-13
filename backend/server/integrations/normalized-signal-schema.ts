@@ -23,6 +23,9 @@ export const SIGNAL_SOURCE_TYPES = [
   "user_imported",
   "manual_upload",
   "public_data",
+  // Egne systemdata (Leadgrid CRM won/lost, salgsdata) — førsteparts,
+  // ikke eksternt API og ikke import. Bevisst utvidelse 2026-07-13.
+  "first_party",
 ] as const;
 export type SignalSourceType = (typeof SIGNAL_SOURCE_TYPES)[number];
 
