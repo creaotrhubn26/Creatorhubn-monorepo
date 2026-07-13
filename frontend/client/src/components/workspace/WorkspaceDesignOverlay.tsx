@@ -405,6 +405,26 @@ export default function WorkspaceDesignOverlay({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const suggestions = React.useMemo(() => (sel ? analyzeElement(sel) : []), [sel, insp]);
 
+  // Data-helse-skann: samle ALLE data-koblinger på siden (tekst-bindinger + infographic-kilder +
+  // komponent-slots) og sjekk hver mot kilde-registeret → ok / mangler (kilde borte) / tom (ingen verdi).
+  const [healthOpen, setHealthOpen] = React.useState(false);
+  const dataHealth = React.useMemo(() => {
+    const items: Array<{ label: string; key: string }> = [];
+    for (const [selc, key] of Object.entries(bindEdits)) items.push({ label: `Tekst · ${selc.length > 34 ? selc.slice(0, 34) + '…' : selc}`, key });
+    for (const specs of Object.values(insertEdits)) {
+      for (const s of specs) {
+        if (s.type === 'infographic' && s.src) { const m = s.src.match(/[?&]source=([A-Za-z0-9_-]+)/); if (m) items.push({ label: `Infographic · ${s.text || s.id}`, key: m[1] }); }
+        if (s.type === 'component' && s.slots) for (const [cid, key] of Object.entries(s.slots)) items.push({ label: `Komponent-slot · ${cid}`, key: key as string });
+      }
+    }
+    return items.map((it) => {
+      const src = sources.find((s) => s.key === it.key);
+      const status: 'ok' | 'missing' | 'empty' = !src ? 'missing' : (src.value == null ? 'empty' : 'ok');
+      return { ...it, status, value: src?.value ?? null, live: !!src?.live };
+    });
+  }, [bindEdits, insertEdits, sources]);
+  const healthOk = dataHealth.filter((h) => h.status === 'ok').length;
+
   // AI-forslag + forhåndsvisning: én forhåndsvisning om gangen (apply live UTEN å registrere;
   // «Bruk» commiter via applyStyle, «Angre» gjenoppretter den forrige inline-verdien).
   const [aiSug, setAiSug] = React.useState<Array<{ text: string; apply?: { prop: string; value: string } }>>([]);
@@ -610,6 +630,26 @@ export default function WorkspaceDesignOverlay({
                 title="Sammenlign siden med og uten dine ulagrede endringer">
                 {origMode ? '↩ Vis mine endringer' : '👁 Vis original (før/etter)'}
               </button>
+            )}
+            {dataHealth.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <button data-chd onClick={() => setHealthOpen((v) => !v)}
+                  style={{ ...btn(false), padding: '6px 10px', fontSize: 12, ...(dataHealth.length > healthOk ? { borderColor: '#b45309', color: '#b45309' } : {}) }}
+                  title="Verifiser alle data-koblinger på siden">
+                  🩺 Data-helse: {healthOk}/{dataHealth.length} ✓{dataHealth.length > healthOk ? ` · ${dataHealth.length - healthOk} ⚠` : ''}
+                </button>
+                {healthOpen && (
+                  <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {dataHealth.map((h, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 11 }}>
+                        <span style={{ color: h.status === 'ok' ? '#15803d' : '#b45309', flexShrink: 0 }}>{h.status === 'ok' ? '✓' : '⚠'}</span>
+                        <span style={{ flex: 1, color: INK, wordBreak: 'break-all' }}>{h.label}</span>
+                        <span style={{ color: INK2, flexShrink: 0, textAlign: 'right' }}>{h.status === 'ok' ? `${h.key}${h.live ? ' (live)' : ''}: ${String(h.value)}` : h.status === 'missing' ? `«${h.key}» mangler` : `«${h.key}» tom`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             {editKeys.length > 0 && (
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
