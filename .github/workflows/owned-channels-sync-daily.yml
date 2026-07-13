@@ -119,3 +119,18 @@ jobs:
             echo "::error::Konkursvakten feilet (HTTP $CODE)"
             exit 1
           fi
+      - name: POST /api/integrations/sync/media-watch
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/media-watch")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Bransjevakten feilet (HTTP $CODE)"
+            exit 1
+          fi

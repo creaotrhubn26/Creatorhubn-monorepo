@@ -458,6 +458,27 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
   }),
 
   entry({
+    integrationId: "rss-bransjevakt",
+    provider: "NRK / Kampanje (RSS)",
+    displayName: "RSS-bransjevakt (norske medier)",
+    category: "public_data",
+    purpose: "Bransje- og lead-omtale i norske medier → strategy_media-triggere. E24 BEVISST utelatt (feed-vilkår: kun personal use/indexing)",
+    supportedDataTypes: ["strategy_media_mentions"],
+    authenticationType: "none",
+    credentialReference: null,
+    apiBaseUrl: null,
+    apiVersion: null,
+    availabilityStatus: "active",
+    implementationStatus: "active",
+    accessLevel: "public",
+    tenantScope: "per_org",
+    syncMode: "scheduled",
+    termsStatus: "ok",
+    geographicCoverage: "NO",
+    documentationReference: "backend/server/integrations/media-watch.ts",
+  }),
+
+  entry({
     integrationId: "ssb",
     provider: "Statistisk sentralbyrå",
     displayName: "SSB åpne API",
