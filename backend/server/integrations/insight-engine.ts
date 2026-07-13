@@ -334,15 +334,27 @@ const newCompetitorDetector: InsightDetector = {
 const salesTriggerDetector: InsightDetector = {
   detectorKey: "sales-trigger",
   async run(pool, organizationId) {
+    // Konkurrentlister (GEO-settene) for tildelings-kryssing
+    const comp = await pool.query<{ brand: string }>(
+      `SELECT DISTINCT jsonb_array_elements_text(competitor_brands) AS brand
+         FROM geo_prompt_sets WHERE organization_id = $1::uuid AND status = 'approved'`,
+      [organizationId],
+    );
+    const competitors = new Set(comp.rows.map((c) => c.brand.toLowerCase()));
+
     const r = await pool.query<{
       source: string;
       event_id: string;
-      kind: "tender" | "strategy_media" | "hire" | "ip_filing" | "risk";
+      kind: "tender" | "strategy_media" | "hire" | "ip_filing" | "risk" | "award";
       title: string;
       url: string | null;
       published_at: string | null;
       matched_topic: string;
-      raw: { deadline?: string | null; valueNok?: number | null; buyerName?: string | null; requirements?: string[] } | null;
+      raw: {
+        deadline?: string | null; valueNok?: number | null; buyerName?: string | null;
+        requirements?: string[]; isRfi?: boolean;
+        winnerName?: string | null; receivedTenders?: number | null;
+      } | null;
     }>(
       `SELECT source, event_id, kind, title, url, published_at, matched_topic, raw
          FROM trigger_events
@@ -351,21 +363,48 @@ const salesTriggerDetector: InsightDetector = {
         ORDER BY created_at DESC LIMIT 40`,
       [organizationId],
     );
-    return r.rows.map((row): InsightCandidate => ({
+    return r.rows.map((row): InsightCandidate => {
+      const winnerIsCompetitor =
+        row.kind === "award" && !!row.raw?.winnerName && competitors.has(row.raw.winnerName.toLowerCase());
+      return {
       detector: this.detectorKey,
       dedupeKey: `trigger|${row.source}|${row.event_id}`,
-      severity: row.kind === "risk" ? "critical" : row.kind === "tender" ? "important" : "notable",
+      severity:
+        row.kind === "risk" ? "critical"
+        : winnerIsCompetitor ? "important"
+        : row.kind === "award" ? "notable"
+        : row.kind === "tender" && row.raw?.isRfi ? "important"
+        : row.kind === "tender" ? "important"
+        : "notable",
       confidence: 0.9, // faktisk hendelse med kilde — ikke statistisk estimat
       title:
         row.kind === "risk"
           ? `RISIKO: ${row.title.slice(0, 120)}`
+          : row.kind === "award"
+          ? winnerIsCompetitor
+            ? `KONKURRENT VANT: ${row.raw?.winnerName} — ${row.title.slice(0, 100)}`
+            : `Tildeling (${row.matched_topic}): ${row.title.slice(0, 110)}`
+          : row.kind === "tender" && row.raw?.isRfi
+          ? `Markedsdialog/RFI (${row.matched_topic}): ${row.title.slice(0, 110)}`
           : row.kind === "tender"
           ? `Anbud (${row.matched_topic}): ${row.title.slice(0, 120)}`
           : row.kind === "ip_filing"
           ? `Varemerke-aktivitet: ${row.title.slice(0, 120)}`
           : `Strategisignal — ${row.matched_topic}: ${row.title.slice(0, 120)}`,
       explanation:
-        row.kind === "tender"
+        row.kind === "award"
+          ? [
+              `Tildeling kunngjort ${row.published_at ?? "nylig"}`,
+              row.raw?.winnerName ? `vinner: ${row.raw.winnerName}` : null,
+              row.raw?.receivedTenders != null ? `${row.raw.receivedTenders} tilbud innkommet` : null,
+              row.raw?.valueNok ? `verdi ${Math.round(row.raw.valueNok / 1000)}k NOK` : null,
+              winnerIsCompetitor
+                ? "En kjent konkurrent vant — analyser hva de leverte."
+                : "Prisreferanse og konkurransetrykk for fremtidige bud.",
+            ].filter(Boolean).join(" · ")
+          : row.kind === "tender" && row.raw?.isRfi
+          ? `Markedsundersøkelse/planlegging publisert ${row.published_at ?? "nylig"} — kravene formes NÅ. Delta i dialogen og påvirk konkurransegrunnlaget før utlysning.`
+          : row.kind === "tender"
           ? [
               `Offentlig kunngjøring publisert ${row.published_at ?? "nylig"}`,
               row.raw?.buyerName ? `oppdragsgiver ${row.raw.buyerName}` : null,
@@ -385,6 +424,38 @@ const salesTriggerDetector: InsightDetector = {
           : []),
       ],
       topic: row.matched_topic,
+      };
+    });
+  },
+};
+
+/** Fristvakt: anbud med frist ≤7 dager frem → påminnelse (én per anbud). */
+const tenderDeadlineDetector: InsightDetector = {
+  detectorKey: "tender-deadline",
+  async run(pool, organizationId) {
+    const r = await pool.query<{
+      source: string;
+      event_id: string;
+      title: string;
+      url: string | null;
+      deadline: string;
+    }>(
+      `SELECT source, event_id, title, url, raw->>'deadline' AS deadline
+         FROM trigger_events
+        WHERE organization_id = $1::uuid AND kind = 'tender'
+          AND (raw->>'deadline')::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+        ORDER BY (raw->>'deadline')::date LIMIT 20`,
+      [organizationId],
+    );
+    return r.rows.map((row): InsightCandidate => ({
+      detector: this.detectorKey,
+      dedupeKey: `deadline|${row.source}|${row.event_id}`,
+      severity: "important",
+      confidence: 1,
+      title: `FRIST ${row.deadline}: ${row.title.slice(0, 110)}`,
+      explanation: "Anbudsfristen er innen 7 dager. Skal dere by, må tilbudet ferdigstilles nå — lag tilbudsstrategi-brief hvis ikke gjort.",
+      evidence: [{ ref: row.url ?? `${row.source}|${row.event_id}`, label: "kunngjøring", value: row.url ?? row.event_id }],
+      topic: "anbudsfrister",
     }));
   },
 };
@@ -395,6 +466,7 @@ export const INSIGHT_DETECTORS: InsightDetector[] = [
   gscPositionDropDetector,
   newCompetitorDetector,
   salesTriggerDetector,
+  tenderDeadlineDetector,
 ];
 
 // ─────────────────────────────────────────────────────────────────────

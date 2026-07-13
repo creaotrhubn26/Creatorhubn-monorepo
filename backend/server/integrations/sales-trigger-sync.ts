@@ -26,7 +26,7 @@ import { fetchIprProfile } from "../lead-ip-service.js";
 export interface TriggerEvent {
   source: "ted" | "gdelt" | "doffin" | "patentstyret";
   eventId: string;
-  kind: "tender" | "strategy_media" | "ip_filing";
+  kind: "tender" | "strategy_media" | "ip_filing" | "award";
   title: string;
   url: string | null;
   publishedAt: string | null; // YYYY-MM-DD
@@ -200,6 +200,9 @@ interface DoffinHit {
   estimatedValue?: { currencyCode?: string; amount?: number };
   buyer?: Array<{ name?: string }>;
   cpvCodes?: string[];
+  allTypes?: string[];
+  receivedTenders?: number | null;
+  lots?: Array<{ winner?: Array<{ name?: string; organizationId?: string }> }>;
 }
 
 /** Mapping verifisert mot faktisk API-respons 2026-07-13 (nøkkel aktiv). */
@@ -208,11 +211,19 @@ export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] 
   for (const h of hits) {
     const title = h.heading ?? h.title;
     if (!h.id || !title) continue;
-    if (h.status && h.status !== "ACTIVE") continue; // utgåtte anbud er ikke salgsvindu
+    const types = h.allTypes ?? [];
+    if (types.some((t) => t.startsWith("CANCELLED"))) continue;
+
+    const isAward = types.includes("RESULT") || types.includes("ANNOUNCEMENT_OF_CONCLUSION_OF_CONTRACT");
+    // RFI/markedsdialog: kravene formes NÅ — tidligere og mer verdt enn anbudet
+    const isRfi = types.includes("PLANNING") || types.includes("ADVISORY_NOTICE");
+    if (!isAward && h.status && h.status !== "ACTIVE") continue; // utgåtte anbud er ikke salgsvindu
+
+    const winner = h.lots?.flatMap((l) => l.winner ?? [])[0];
     out.push({
       source: "doffin",
       eventId: String(h.id),
-      kind: "tender",
+      kind: isAward ? "award" : "tender",
       title: title.trim(),
       url: `https://www.doffin.no/notices/${h.id}`,
       publishedAt: h.publicationDate?.slice(0, 10) ?? null,
@@ -224,6 +235,14 @@ export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] 
         cpvCodes: (h.cpvCodes ?? []).slice(0, 10),
         description: h.description?.slice(0, 1200) ?? null,
         requirements: extractTenderRequirements(`${title} ${h.description ?? ""}`),
+        ...(isRfi ? { isRfi: true } : {}),
+        ...(isAward
+          ? {
+              winnerName: winner?.name ?? null,
+              winnerOrgNr: winner?.organizationId ?? null,
+              receivedTenders: h.receivedTenders ?? null,
+            }
+          : {}),
       },
     });
   }

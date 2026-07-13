@@ -25,7 +25,8 @@ describe("sales-trigger-detektoren håndterer 'risk'", () => {
       title: "Kunde AS er KONKURS", url: "https://virksomhet.brreg.no/nb/oppslag/enheter/999888777",
       published_at: "2026-07-13", matched_topic: "Kunde AS", raw: { orgNr: "999888777", status: "bankrupt" },
     }];
-    const pool = { query: vi.fn(async () => ({ rows, rowCount: 1 })) } as unknown as import("pg").Pool;
+    let call = 0;
+    const pool = { query: vi.fn(async () => (++call === 1 ? { rows: [], rowCount: 0 } : { rows, rowCount: 1 })) } as unknown as import("pg").Pool;
     const [insight] = await detector.run(pool, "org-1");
     expect(insight.severity).toBe("critical");
     expect(insight.title).toBe("RISIKO: Kunde AS er KONKURS");

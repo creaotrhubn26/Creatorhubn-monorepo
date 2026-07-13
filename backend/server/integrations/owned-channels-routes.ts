@@ -269,6 +269,34 @@ export function registerOwnedChannelsRoutes({
     return res.json({ saved: true });
   });
 
+  // Bud-sporing per anbud (fase 4-fasit): interested|bid|won|lost.
+  app.patch("/api/integrations/tenders/bid-status", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const valid = new Set(["interested", "bid", "won", "lost"]);
+    if (
+      typeof body.source !== "string" || typeof body.eventId !== "string" ||
+      typeof body.bidStatus !== "string" || !valid.has(body.bidStatus)
+    ) {
+      return res.status(400).json({ error: "source_eventId_og_gyldig_bidStatus_kreves" });
+    }
+    const r = await pool.query(
+      `UPDATE trigger_events
+          SET raw = COALESCE(raw, '{}'::jsonb) || jsonb_build_object(
+                'bidStatus', $4::text, 'bidStatusAt', now()::text)
+        WHERE organization_id = $1::uuid AND source = $2 AND event_id = $3 AND kind = 'tender'`,
+      [orgId, body.source, body.eventId, body.bidStatus],
+    );
+    if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: "anbud_ikke_funnet" });
+    return res.json({ updated: true });
+  });
+
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.
   app.post("/api/integrations/sync/konkurs-watch", async (req, res) => {
     const token = req.headers["x-cron-token"];
