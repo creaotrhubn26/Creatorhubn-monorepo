@@ -21,6 +21,7 @@ import { getAiUsageSummary, recordAiUsage } from "./ai-usage.js";
 import { computeGeoOpportunityScores } from "../market-intelligence/geo-opportunity-score.js";
 import { buildDossierFacts } from "./outreach-composer.js";
 import { getIndustryBenchmark } from "./industry-benchmark.js";
+import { getTerritoryAnalysis } from "./territory-analysis.js";
 
 const CHAT_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 5;
@@ -88,6 +89,11 @@ export const BUTLER_TOOLS: Anthropic.Tool[] = [
       properties: { segment: { type: "string", enum: ["fotografer", "film-tv", "danseundervisning"] } },
       required: ["segment"],
     },
+  },
+  {
+    name: "get_territory_analysis",
+    description: "Metnings-/hullanalyse for dansevertikalen: barn 6-15 per kommune (SSB) mot antall danseskoler — hvor er markedet mettet, hvor er hullene.",
+    input_schema: { type: "object" as const, properties: {} },
   },
   {
     name: "get_ai_usage",
@@ -190,6 +196,11 @@ export async function executeButlerTool(
     }
     case "get_industry_benchmark":
       return await getIndustryBenchmark(pool, String(input.segment ?? ""));
+    case "get_territory_analysis": {
+      const a = await getTerritoryAnalysis(pool, "danseundervisning");
+      if ("error" in a) return a;
+      return { ...a, rows: a.rows.slice(0, 20) };
+    }
     case "get_ai_usage":
       return await getAiUsageSummary(pool, organizationId, 30);
     default:

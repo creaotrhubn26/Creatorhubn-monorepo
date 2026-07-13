@@ -32,6 +32,8 @@ import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
 import { butlerChat, type ChatMessage } from "./butler-chat.js";
 import { getIndustryBenchmark, syncCompanyFinancials } from "./industry-benchmark.js";
+import { syncSsbMomentumSignals } from "./ssb-momentum-signal-sync.js";
+import { getTerritoryAnalysis } from "./territory-analysis.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -386,6 +388,41 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[benchmark] failed", err);
       return res.status(500).json({ error: "benchmark_failed" });
+    }
+  });
+
+  // SSB markeds-momentum: månedlig omsetningsindeks per vertikal-næring.
+  app.post("/api/integrations/sync/ssb-momentum", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await syncSsbMomentumSignals(pool);
+      if (result.errors.length > 0) console.warn("[ssb-momentum]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[ssb-momentum] failed", err);
+      return res.status(500).json({ error: "sync_failed" });
+    }
+  });
+
+  // Territorie-analyse: demografi × prospektsegment (on-demand).
+  app.get("/api/integrations/territory-analysis", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const segment = typeof req.query.segment === "string" ? req.query.segment : "danseundervisning";
+    try {
+      const analysis = await getTerritoryAnalysis(pool, segment);
+      if ("error" in analysis) return res.status(502).json(analysis);
+      return res.json({ analysis });
+    } catch (err) {
+      console.error("[territory-analysis] failed", err);
+      return res.status(500).json({ error: "analysis_failed" });
     }
   });
 
