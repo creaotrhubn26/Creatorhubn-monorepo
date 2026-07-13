@@ -227,7 +227,8 @@ export function setupRoleRoomInvitesTicketsRoutes(
   const VALID_TICKET_STATUSES = new Set(["open", "in_progress", "resolved", "closed"]);
 
   app.post("/api/role-room/tickets", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       if (!(await ensureRoleRoomTicketsTable())) {
         return res.status(503).json({ error: "Tickets table unavailable" });
@@ -251,8 +252,12 @@ export function setupRoleRoomInvitesTicketsRoutes(
         return res.status(400).json({ error: "Description must be 10-5000 chars" });
       }
 
-      const user = body.user ?? {};
       const context = body.context ?? {};
+      // Rapportør-identiteten utledes fra den autentiserte sesjonen — ALDRI fra
+      // request-body. Ellers kan en innlogget bruker sende inn en sak tilskrevet
+      // en vilkårlig user_id/e-post (ramme en annen bruker / utgi seg for en
+      // intern adresse i admin-køen, og forgifte enhver senere «svar til
+      // rapportør»-flyt som stoler på user_id).
       const result = await pool.query(
         `INSERT INTO role_room_tickets
           (category, priority, title, description, user_id, user_email, user_name, context)
@@ -263,9 +268,9 @@ export function setupRoleRoomInvitesTicketsRoutes(
           priority,
           title,
           description,
-          typeof user.id === "string" ? user.id : null,
-          typeof user.email === "string" ? user.email : null,
-          typeof user.name === "string" ? user.name : null,
+          session.userId,
+          session.email || null,
+          session.name || null,
           JSON.stringify(context),
         ],
       );
