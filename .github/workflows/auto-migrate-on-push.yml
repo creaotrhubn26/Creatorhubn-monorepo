@@ -1,22 +1,23 @@
 name: Auto-migrate Neon-DB ved migrations-endring
 
-# Trigger ./migrate.sh på prod-backend hver gang en ny migration-fil
-# pushes til main. Backend-endpointet er token-gated via MIGRATE_TRIGGER_TOKEN
-# (GitHub secret) — krever ikke admin-login.
+# Trigger ./migrate.sh på prod-backend via /api/admin-room/migrations/run
+# (token-gated med MIGRATE_TRIGGER_TOKEN).
 #
-# Workflowen er idempotent — hvis ingen nye migrasjoner finnes (alle er allerede
-# applied), skipper migrate.sh dem og returnerer exit 0.
+# ⚠️ PUSH-TRIGGEREN ER FJERNET: den fyrte på SAMME push som Render-autoDeployen,
+# så curl-en traff backenden midt i deploy-rolloveren → konsistent HTTP 502
+# (endepunktet svarer 202 umiddelbart, men en løsrevet migrate.sh drepes uansett
+# av SIGTERM når instansen rives ned). preDeployCommand ble forsøkt (feilet exit
+# 128 på denne ikke-blueprint-styrte tjenesten) og forkastet.
+#
+# GJELDENDE PROSESS: migrasjoner appliseres MANUELT mot en stabil instans —
+# `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <fil>` + INSERT i `_migrations_applied`
+# (samme semantikk som migrate.sh). workflow_dispatch beholdes som valgfri
+# nødluke for å trigge migrate mot en instans som IKKE er midt i en deploy.
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/migrations/**.sql'
   workflow_dispatch:
-    # Manuell trigger fra `gh workflow run` eller GitHub-UI.
-    # Brukes når du må re-kjøre migrate uten å pushe (f.eks. hvis en
-    # tidligere auto-run feilet stille — se [[auto-migrate-fire-and-forget]]).
+    # Manuell trigger fra `gh workflow run` eller GitHub-UI. Kjør KUN når
+    # tjenesten ikke akkurat deployer (ellers 502 mot deploy-rolloveren).
 
 permissions:
   contents: read
