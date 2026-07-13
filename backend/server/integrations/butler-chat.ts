@@ -23,6 +23,7 @@ import { buildDossierFacts } from "./outreach-composer.js";
 import { getIndustryBenchmark } from "./industry-benchmark.js";
 import { getTerritoryAnalysis } from "./territory-analysis.js";
 import { buildSolutionEvidence } from "./grant-application.js";
+import { computeProgress } from "./grant-workspace.js";
 
 const CHAT_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 5;
@@ -104,6 +105,11 @@ export const BUTLER_TOOLS: Anthropic.Tool[] = [
       properties: { solution: { type: "string", enum: ["leadgrid", "theroleroom", "creatorhub"] } },
       required: ["solution"],
     },
+  },
+  {
+    name: "get_grant_progress",
+    description: "Status på IN-søknadene i arbeidsboken: seksjoner ferdige, åpne [FYLL INN]-punkter per søknad — grunnlag for rådgivning om hva som gjenstår.",
+    input_schema: { type: "object" as const, properties: {} },
   },
   {
     name: "get_ai_usage",
@@ -206,6 +212,24 @@ export async function executeButlerTool(
     }
     case "get_industry_benchmark":
       return await getIndustryBenchmark(pool, String(input.segment ?? ""));
+    case "get_grant_progress": {
+      const apps = await pool.query<{ id: string; title: string; program: string; solution: string }>(
+        `SELECT id::text, title, program, solution FROM grant_applications
+          WHERE organization_id = $1::uuid AND status = 'active' ORDER BY updated_at DESC LIMIT 5`,
+        [organizationId],
+      );
+      const out = [];
+      for (const a of apps.rows) {
+        const sec = await pool.query<{ status: string; fill_ins: string[] }>(
+          `SELECT status, fill_ins FROM grant_application_sections WHERE application_id = $1::uuid`,
+          [a.id],
+        );
+        const progress = computeProgress(sec.rows.map((s2) => ({ status: s2.status, fillIns: s2.fill_ins })));
+        const openFillIns = sec.rows.filter((s2) => s2.status !== "done").flatMap((s2) => s2.fill_ins).slice(0, 10);
+        out.push({ ...a, progress, openFillIns });
+      }
+      return out.length > 0 ? out : { note: "ingen aktive søknader i arbeidsboken" };
+    }
     case "get_solution_evidence": {
       const sol = String(input.solution ?? "");
       if (!["leadgrid", "theroleroom", "creatorhub"].includes(sol)) return { error: "ukjent løsning" };
