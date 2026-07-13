@@ -29,6 +29,7 @@ import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
+import { composeOutreach } from "./outreach-composer.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -295,6 +296,33 @@ export function registerOwnedChannelsRoutes({
     );
     if ((r.rowCount ?? 0) === 0) return res.status(404).json({ error: "anbud_ikke_funnet" });
     return res.json({ updated: true });
+  });
+
+  // Outreach-composer m/ butler (on-demand — koster tokens).
+  app.post("/api/integrations/outreach/compose", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.leadId !== "string" || typeof body.intent !== "string" || body.intent.trim().length < 3) {
+      return res.status(400).json({ error: "leadId_og_intent_kreves" });
+    }
+    try {
+      const result = await composeOutreach(pool, orgId, {
+        leadId: body.leadId,
+        intent: body.intent.trim().slice(0, 300),
+        draft: typeof body.draft === "string" ? body.draft : undefined,
+      });
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[outreach-composer] failed", err);
+      return res.status(500).json({ error: "compose_failed" });
+    }
   });
 
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.
