@@ -62,6 +62,22 @@ interface BrregRolesResponse {
   }>;
 }
 
+/** Nøkkeltall fra Regnskapsregisteret (åpent API) — samme tall proff.no viser. */
+export interface CompanyFinancials {
+  year: number;
+  currency: string;
+  revenue: number | null; // sum driftsinntekter
+  operatingResult: number | null;
+  resultBeforeTax: number | null;
+  netResult: number | null; // årsresultat
+  equity: number | null;
+  totalAssets: number | null; // sum egenkapital og gjeld
+  /** Avledet: egenkapital/totalkapital (soliditet), 0–1. */
+  equityRatio: number | null;
+  /** Avledet: driftsresultat/driftsinntekter (lønnsomhet), kan være negativ. */
+  operatingMargin: number | null;
+}
+
 export interface EnrichmentResult {
   found: boolean;
   orgNr?: string;
@@ -88,6 +104,8 @@ export interface EnrichmentResult {
     role: string;
     name: string;
   }>;
+  /** null = hentet men ikke funnet (f.eks. ENK leverer ikke årsregnskap). */
+  financials?: CompanyFinancials | null;
 }
 
 async function fetchWithTimeout(url: string): Promise<Response> {
@@ -143,6 +161,77 @@ async function getCompanyRoles(orgNr: string): Promise<EnrichmentResult["contact
   }
 }
 
+interface RegnskapEntry {
+  regnskapsperiode?: { tilDato?: string };
+  valuta?: string;
+  resultatregnskapResultat?: {
+    aarsresultat?: number;
+    ordinaertResultatFoerSkattekostnad?: number;
+    driftsresultat?: {
+      driftsresultat?: number;
+      driftsinntekter?: { sumDriftsinntekter?: number };
+    };
+  };
+  egenkapitalGjeld?: {
+    sumEgenkapitalGjeld?: number;
+    egenkapital?: { sumEgenkapital?: number };
+  };
+}
+
+/** Ren mapping (enhetstestet) — Regnskapsregisterets struktur → nøkkeltall. */
+export function mapRegnskapEntry(entry: RegnskapEntry): CompanyFinancials | null {
+  const til = entry.regnskapsperiode?.tilDato;
+  const year = til ? Number(til.slice(0, 4)) : NaN;
+  if (!Number.isFinite(year)) return null;
+  const rr = entry.resultatregnskapResultat;
+  const revenue = rr?.driftsresultat?.driftsinntekter?.sumDriftsinntekter ?? null;
+  const operatingResult = rr?.driftsresultat?.driftsresultat ?? null;
+  const equity = entry.egenkapitalGjeld?.egenkapital?.sumEgenkapital ?? null;
+  const totalAssets = entry.egenkapitalGjeld?.sumEgenkapitalGjeld ?? null;
+  return {
+    year,
+    currency: entry.valuta ?? "NOK",
+    revenue,
+    operatingResult,
+    resultBeforeTax: rr?.ordinaertResultatFoerSkattekostnad ?? null,
+    netResult: rr?.aarsresultat ?? null,
+    equity,
+    totalAssets,
+    // Avledede nøkkeltall beregnes KUN når begge ledd finnes — aldri 0-default
+    equityRatio:
+      equity !== null && totalAssets !== null && totalAssets > 0
+        ? Math.round((equity / totalAssets) * 1000) / 1000
+        : null,
+    operatingMargin:
+      operatingResult !== null && revenue !== null && revenue > 0
+        ? Math.round((operatingResult / revenue) * 1000) / 1000
+        : null,
+  };
+}
+
+/**
+ * Siste innleverte årsregnskap fra Regnskapsregisteret. null er et ÆRLIG
+ * svar: ENK leverer ikke årsregnskap, nystartede har ikke levert ennå.
+ */
+async function getCompanyFinancials(orgNr: string): Promise<CompanyFinancials | null> {
+  try {
+    const r = await fetchWithTimeout(
+      `https://data.brreg.no/regnskapsregisteret/regnskap/${orgNr}`,
+    );
+    if (!r.ok) return null;
+    const body = (await r.json()) as RegnskapEntry[];
+    if (!Array.isArray(body) || body.length === 0) return null;
+    // API-et returnerer nyeste først; velg entry med høyest år for sikkerhets skyld
+    const mapped = body
+      .map(mapRegnskapEntry)
+      .filter((x): x is CompanyFinancials => x !== null)
+      .sort((a, b) => b.year - a.year);
+    return mapped[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function enrichLeadWithBrreg(
   pool: Pool,
   args: {
@@ -188,10 +277,11 @@ export async function enrichLeadWithBrreg(
     }
   }
 
-  // 3. Detaljer + roller parallelt
-  const [company, contacts] = await Promise.all([
+  // 3. Detaljer + roller + regnskap parallelt
+  const [company, contacts, financials] = await Promise.all([
     getCompanyByOrgNr(orgNr),
     getCompanyRoles(orgNr),
+    getCompanyFinancials(orgNr),
   ]);
   if (!company) {
     throw new Error("brreg_detail_fetch_failed");
@@ -226,6 +316,7 @@ export async function enrichLeadWithBrreg(
         : "active",
     },
     contacts,
+    financials,
   };
 
   // 4. Persistere
