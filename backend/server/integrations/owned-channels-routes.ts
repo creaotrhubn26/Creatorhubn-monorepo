@@ -21,6 +21,7 @@ import {
 import { syncLeadgridSalesSignals } from "./leadgrid-sales-signal-sync.js";
 import { syncBrregMarketSignals } from "./brreg-market-signal-sync.js";
 import { syncSalesTriggers } from "./sales-trigger-sync.js";
+import { syncSsbTerritorySignals } from "./ssb-territory-signal-sync.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -49,6 +50,23 @@ function getSession(
 export function registerOwnedChannelsRoutes({
   app, pool, activeSessions, isAdminEmail,
 }: Deps): void {
+  // SSB territorietall: bedrifter per fylke x næring → normalized_signals.
+  app.post("/api/integrations/sync/ssb-territory", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await syncSsbTerritorySignals(pool);
+      if (result.errors.length > 0) console.warn("[ssb-territory]", result.errors.join(" | "));
+      return res.json(result);
+    } catch (err) {
+      console.error("[ssb-territory] failed", err);
+      return res.status(500).json({ error: "sync_failed" });
+    }
+  });
+
   // Salgstriggere: anbud (TED) + strategisignaler (GDELT) → trigger_events.
   app.post("/api/integrations/sync/sales-triggers", async (req, res) => {
     const token = req.headers["x-cron-token"];
