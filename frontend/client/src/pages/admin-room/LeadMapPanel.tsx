@@ -29,6 +29,7 @@ import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LeadMapMemberPins from './LeadMapMemberPins';
+import OutreachComposerDialog from '@/components/leadgrid/OutreachComposerDialog';
 import { usePermissions } from './usePermissions';
 import LeadMapViewAsBanner from './LeadMapViewAsBanner';
 import { formatDistance, estimateDriveMinutes } from './lead-map-distance';
@@ -659,6 +660,7 @@ export default function LeadMapPanel() {
     } | null;
   };
   const [enrichmentByLeadId, setEnrichmentByLeadId] = useState<Record<string, Enrichment | null>>({});
+  const [outreachFor, setOutreachFor] = useState<{ id: string; name: string } | null>(null);
   const [enrichingLeadId, setEnrichingLeadId] = useState<string | null>(null);
 
   // Counter-campaign (Lead Map → Marketing Cockpit-bro)
@@ -3412,6 +3414,11 @@ export default function LeadMapPanel() {
                         >
                           {isLoading ? 'Henter …' : 'Hent fra BRREG'}
                         </Button>
+                        <Button size="small" variant="text"
+                          onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
+                          sx={{ color: '#c084fc', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}>
+                          Skriv outreach
+                        </Button>
                       </Stack>
                     </Box>
                   );
@@ -3436,6 +3443,11 @@ export default function LeadMapPanel() {
                           sx={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}
                         >
                           Sjekk på nytt
+                        </Button>
+                        <Button size="small" variant="text"
+                          onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
+                          sx={{ color: '#c084fc', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}>
+                          Outreach
                         </Button>
                       </Stack>
                     </Box>
@@ -3475,6 +3487,11 @@ export default function LeadMapPanel() {
                           }}
                         />
                       </Stack>
+                      <Button size="small" variant="text"
+                        onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
+                        sx={{ color: '#c084fc', fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}>
+                        ✒ Skriv outreach
+                      </Button>
                       <Tooltip title="Oppdater fra BRREG">
                         <IconButton
                           size="small"
@@ -5861,6 +5878,14 @@ export default function LeadMapPanel() {
           )}
         </Box>
       </CardContent>
+      {outreachFor && (
+        <OutreachComposerDialog
+          open
+          onClose={() => setOutreachFor(null)}
+          leadId={outreachFor.id}
+          leadName={outreachFor.name}
+        />
+      )}
     </Card>
   );
 }
