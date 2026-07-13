@@ -186,6 +186,23 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.elementInserts = elementInserts;
   }
+  // Marketing-metrics (dynamiske infographic-kilder): { [nøkkel]: { value, label } }. Infographics
+  // med ?source=<nøkkel> flettes med disse server-side → «koblet opp» (én kilde, mange visninger).
+  const metricsIn = (patch as any)?.metrics;
+  if (metricsIn && typeof metricsIn === 'object' && !Array.isArray(metricsIn)) {
+    const metrics: Record<string, { value?: string | number; label?: string }> = {};
+    let n = 0;
+    for (const [k, v] of Object.entries(metricsIn as Record<string, unknown>)) {
+      if (n >= 200) break;
+      if (!/^[A-Za-z0-9_-]{1,60}$/.test(k) || !v || typeof v !== 'object') continue;
+      const vo = v as Record<string, unknown>; const m: { value?: string | number; label?: string } = {};
+      if (typeof vo.value === 'string' && vo.value.length <= 120) m.value = vo.value;
+      else if (typeof vo.value === 'number' && Number.isFinite(vo.value)) m.value = vo.value;
+      if (typeof vo.label === 'string' && vo.label.length <= 200) m.label = vo.label;
+      if (Object.keys(m).length) { metrics[k] = m; n++; }
+    }
+    clean.metrics = metrics;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,

@@ -12,6 +12,7 @@ import WorkspaceNavEditor from './WorkspaceNavEditor';
 import WorkspaceCopyEditor from './WorkspaceCopyEditor';
 import WorkspaceChromeEditor from './WorkspaceChromeEditor';
 import WorkspaceTokenAudit from './WorkspaceTokenAudit';
+import WorkspaceMetricsEditor from './WorkspaceMetricsEditor';
 import { useAuth } from '@/hooks/useAuth';
 
 const WORKSPACES = [
@@ -180,6 +181,8 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
           <WorkspaceCopyEditor workspace="theroleroom" />
         </>
       )}
+      <Divider />
+      <WorkspaceMetricsEditor workspace={ws} />
       <Divider />
       <WorkspaceTokenAudit workspace={ws} refreshKey={previewKey} undoAllowed={isSuperAdmin}
         onReverted={() => { load(ws); setPreviewKey((k) => k + 1); setMsg({ type: 'success', text: 'Siste endring angret.' }); }} />
