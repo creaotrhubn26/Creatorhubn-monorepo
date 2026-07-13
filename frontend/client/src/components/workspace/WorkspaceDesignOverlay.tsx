@@ -145,7 +145,7 @@ export default function WorkspaceDesignOverlay({
   const [pickHtmlComp, setPickHtmlComp] = React.useState('');
   const [slotBindings, setSlotBindings] = React.useState<Record<string, string>>({}); // data-slot → kilde (ved gjenbruk)
   // Varianter / A-B
-  type VariantData = { elementEdits?: Edits; elementText?: Record<string, string>; elementAnim?: Record<string, string>; elementInserts?: Record<string, InsertSpec[]>; elementBindings?: Record<string, string> };
+  type VariantData = { elementEdits?: Edits; elementEditsTablet?: Edits; elementEditsMobile?: Edits; elementText?: Record<string, string>; elementAnim?: Record<string, string>; elementInserts?: Record<string, InsertSpec[]>; elementBindings?: Record<string, string> };
   const [variants, setVariants] = React.useState<Record<string, VariantData>>({});
   const [variantMode, setVariantMode] = React.useState<'off' | 'active' | 'ab'>('off');
   const [variantActive, setVariantActive] = React.useState('');
@@ -456,7 +456,7 @@ export default function WorkspaceDesignOverlay({
   }, [workspace, reloadKey]);
 
   // ── Varianter / A-B ──────────────────────────────────────────────────────────────────────────
-  const currentMaps = (): VariantData => ({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits });
+  const currentMaps = (): VariantData => ({ elementEdits: edits, elementEditsTablet: editsTablet, elementEditsMobile: editsMobile, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits });
   const buildSaveBody = (): Record<string, unknown> => {
     const vcfg = { mode: variantMode, active: variantActive, ab: variantAb, goal: variantGoal };
     if (editingVariant) {
@@ -465,7 +465,7 @@ export default function WorkspaceDesignOverlay({
       setVariants(updated);
       return { designVariants: updated, variantConfig: vcfg };
     }
-    return { ...currentMaps(), elementEditsTablet: editsTablet, elementEditsMobile: editsMobile, elementInteractions: intxEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
+    return { ...currentMaps(), elementInteractions: intxEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
   };
   const saveAsVariant = () => {
     const name = newVariantName.trim();
@@ -477,7 +477,7 @@ export default function WorkspaceDesignOverlay({
   const editVariant = (name: string) => {
     const v = variants[name];
     if (!v) return;
-    setEdits((v.elementEdits as Edits) || {}); setTextEdits(v.elementText || {}); setAnimEdits(v.elementAnim || {}); setInsertEdits(v.elementInserts || {}); setBindEdits(v.elementBindings || {});
+    setEdits((v.elementEdits as Edits) || {}); setEditsTablet((v.elementEditsTablet as Edits) || {}); setEditsMobile((v.elementEditsMobile as Edits) || {}); setTextEdits(v.elementText || {}); setAnimEdits(v.elementAnim || {}); setInsertEdits(v.elementInserts || {}); setBindEdits(v.elementBindings || {});
     setEditingVariant(name);
     // Live-preview av variantens stil/animasjon (tekst/inserts vises fullt etter lagring+last).
     const css = [buildEditsCss((v.elementEdits as ElementEdits) || {}), buildAnimCss((v.elementAnim as Record<string, string>) || {})].filter(Boolean).join('\n');
@@ -793,7 +793,7 @@ export default function WorkspaceDesignOverlay({
                 <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Varianter / A-B</div>
                 {editingVariant ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11.5, color: '#7c3aed', flex: 1 }}>✎ Redigerer «{editingVariant}» — «Lagre endringer» oppdaterer denne varianten.</span>
+                    <span style={{ fontSize: 11.5, color: '#7c3aed', flex: 1 }}>✎ Redigerer «{editingVariant}» — «Lagre endringer» oppdaterer denne varianten. Skjerm-veksleren øverst lagrer egne nettbrett/mobil-endringer i varianten.</span>
                     <button data-chd onClick={exitVariant} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Ferdig</button>
                   </div>
                 ) : (
