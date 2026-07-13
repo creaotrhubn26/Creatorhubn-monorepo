@@ -154,6 +154,75 @@ export function buildNotifCss(tokens: Record<string, unknown>): string {
   return decls.length ? `.MuiAlert-root { ${decls.join(' ')} }` : '';
 }
 
+// ── Innsatte elementer (Insert-modus): nye noder fra strukturert data, forankret til et element ──
+export type InsertSpec = { id: string; type: string; pos: 'before' | 'after'; text?: string; href?: string; src?: string };
+export type ElementInserts = Record<string, InsertSpec[]>; // anker-selektor → spesifikasjoner
+
+const INSERT_TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic']);
+// URL trygg: relativ (/…) eller https:// — aldri javascript:/data:; ingen anførsel/vinkelparentes.
+export function isSafeUrl(u: unknown): u is string {
+  return typeof u === 'string' && u.length <= 600 && (/^\//.test(u) || /^https:\/\//i.test(u)) && !/[<>"'\\]/.test(u) && !/javascript:/i.test(u);
+}
+
+/** Bygg en TRYGG DOM-node fra en insert-spec (createElement + textContent + saniterte attributter —
+ *  ALDRI innerHTML → ingen XSS). Ukjent type → null. */
+export function buildInsertNode(spec: InsertSpec): HTMLElement | null {
+  let node: HTMLElement;
+  switch (spec.type) {
+    case 'heading': node = document.createElement('h2'); node.textContent = spec.text || ''; break;
+    case 'text': node = document.createElement('p'); node.textContent = spec.text || ''; break;
+    case 'button': {
+      const a = document.createElement('a'); a.textContent = spec.text || 'Knapp';
+      if (isSafeUrl(spec.href)) a.setAttribute('href', spec.href);
+      a.setAttribute('role', 'button');
+      a.style.cssText = 'display:inline-block;padding:10px 18px;border-radius:8px;background:#ff8c00;color:#fff;text-decoration:none;font-weight:700';
+      node = a; break;
+    }
+    case 'divider': node = document.createElement('hr'); node.style.cssText = 'border:none;border-top:1px solid rgba(128,128,128,.3);margin:16px 0'; break;
+    case 'image':
+    case 'infographic': {
+      const img = document.createElement('img');
+      if (isSafeUrl(spec.src)) img.setAttribute('src', spec.src);
+      img.setAttribute('alt', spec.text || '');
+      img.style.cssText = 'max-width:100%;height:auto;display:block';
+      node = img; break;
+    }
+    default: return null;
+  }
+  node.setAttribute('data-chd-insert', spec.id);
+  return node;
+}
+
+/** Sett inn nye elementer forankret til selektorer; re-injiser når React fjerner dem (observer). */
+function applyInserts(inserts: ElementInserts): (() => void) | undefined {
+  const entries = Object.entries(inserts || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, specs] of entries) {
+      let anchor: Element | null = null;
+      try { anchor = document.querySelector(sel); } catch { continue; }
+      if (!anchor || !anchor.parentNode) continue;
+      for (const spec of specs) {
+        if (!spec || !INSERT_TYPES.has(spec.type) || !/^[A-Za-z0-9_-]{1,40}$/.test(spec.id || '')) continue;
+        if (document.querySelector(`[data-chd-insert="${spec.id}"]`)) continue; // allerede satt inn
+        const node = buildInsertNode(spec);
+        if (!node) continue;
+        if (spec.pos === 'before') anchor.parentNode.insertBefore(node, anchor);
+        else anchor.parentNode.insertBefore(node, anchor.nextSibling);
+      }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; apply(); });
+  });
+  try { obs.observe(document.body, { childList: true, subtree: true }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
 const STYLE_ID = 'chd-element-edits';
 
 /**
@@ -164,6 +233,7 @@ export function useElementEdits(workspace: string): void {
   useEffect(() => {
     let live = true;
     let cleanupText: (() => void) | undefined;
+    let cleanupInserts: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -183,8 +253,12 @@ export function useElementEdits(workspace: string): void {
         if (t.elementText && typeof t.elementText === 'object') {
           cleanupText = applyTextEdits(t.elementText as ElementText);
         }
+        // Innsatte elementer → nye noder (m/ observer-reinjeksjon).
+        if (t.elementInserts && typeof t.elementInserts === 'object') {
+          cleanupInserts = applyInserts(t.elementInserts as ElementInserts);
+        }
       })
       .catch(() => {});
-    return () => { live = false; if (cleanupText) cleanupText(); };
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); };
   }, [workspace]);
 }

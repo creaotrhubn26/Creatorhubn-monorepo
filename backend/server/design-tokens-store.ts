@@ -157,6 +157,35 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.elementAnim = elementAnim;
   }
+  // Per-element INNSATTE elementer (Insert-modus): { [anker-selektor]: [{ id, type, pos, text?, href?, src? }] }.
+  // Runtime bygger DOM fra denne strukturerte dataen (createElement + textContent) → aldri rå HTML.
+  // Kun hvitlistede typer + saniterte URL-er (relativ/https, ingen javascript:/<>"').
+  const insertsIn = (patch as any)?.elementInserts;
+  if (insertsIn && typeof insertsIn === 'object' && !Array.isArray(insertsIn)) {
+    const TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic']);
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
+    const safeUrl = (u: unknown): u is string => typeof u === 'string' && u.length <= 600
+      && (/^\//.test(u) || /^https:\/\//i.test(u)) && !/[<>"'\\]/.test(u) && !/javascript:/i.test(u);
+    const elementInserts: Record<string, unknown[]> = {};
+    let ac = 0;
+    for (const [anchor, specs] of Object.entries(insertsIn as Record<string, unknown>)) {
+      if (ac >= 200) break;
+      if (!SEL_RE.test(anchor) || anchor.includes('..') || !Array.isArray(specs)) continue;
+      const arr: Record<string, string>[] = [];
+      for (const s of (specs as unknown[]).slice(0, 20)) {
+        const so = s as Record<string, unknown>;
+        if (!so || typeof so !== 'object' || !TYPES.has(so.type as string)) continue;
+        if (typeof so.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(so.id)) continue;
+        const spec: Record<string, string> = { id: so.id, type: so.type as string, pos: so.pos === 'before' ? 'before' : 'after' };
+        if (typeof so.text === 'string' && so.text.length <= 500) spec.text = so.text;
+        if (safeUrl(so.href)) spec.href = so.href;
+        if (safeUrl(so.src)) spec.src = so.src;
+        arr.push(spec);
+      }
+      if (arr.length) { elementInserts[anchor] = arr; ac++; }
+    }
+    clean.elementInserts = elementInserts;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,
