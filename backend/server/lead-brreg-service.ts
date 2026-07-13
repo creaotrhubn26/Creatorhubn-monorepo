@@ -22,6 +22,7 @@
  */
 
 import type { Pool } from "pg";
+import { fetchIprProfile, type IprProfile } from "./lead-ip-service.js";
 
 const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
 const FETCH_TIMEOUT_MS = 10_000;
@@ -106,6 +107,8 @@ export interface EnrichmentResult {
   }>;
   /** null = hentet men ikke funnet (f.eks. ENK leverer ikke årsregnskap). */
   financials?: CompanyFinancials | null;
+  /** Patentstyret: varemerker/patenter/design. null = ingen registrerte rettigheter. */
+  ip?: IprProfile | null;
 }
 
 async function fetchWithTimeout(url: string): Promise<Response> {
@@ -277,11 +280,12 @@ export async function enrichLeadWithBrreg(
     }
   }
 
-  // 3. Detaljer + roller + regnskap parallelt
-  const [company, contacts, financials] = await Promise.all([
+  // 3. Detaljer + roller + regnskap + IP parallelt
+  const [company, contacts, financials, ip] = await Promise.all([
     getCompanyByOrgNr(orgNr),
     getCompanyRoles(orgNr),
     getCompanyFinancials(orgNr),
+    fetchIprProfile(orgNr, lead.name),
   ]);
   if (!company) {
     throw new Error("brreg_detail_fetch_failed");
@@ -317,6 +321,7 @@ export async function enrichLeadWithBrreg(
     },
     contacts,
     financials,
+    ip,
   };
 
   // 4. Persistere

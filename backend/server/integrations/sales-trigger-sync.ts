@@ -21,11 +21,12 @@
 
 import type { Pool } from "pg";
 import { callExternalApi } from "../external-api.js";
+import { fetchIprProfile } from "../lead-ip-service.js";
 
 export interface TriggerEvent {
-  source: "ted" | "gdelt" | "doffin";
+  source: "ted" | "gdelt" | "doffin" | "patentstyret";
   eventId: string;
-  kind: "tender" | "strategy_media";
+  kind: "tender" | "strategy_media" | "ip_filing";
   title: string;
   url: string | null;
   publishedAt: string | null; // YYYY-MM-DD
@@ -274,9 +275,10 @@ export async function syncSalesTriggers(pool: Pool): Promise<TriggerSyncResult> 
     }
   }
 
-  // Lead-nivå: strategisignaler for aktive pipeline-selskaper (topp 10 per org)
-  const leads = await pool.query<{ organization_id: string; name: string }>(
-    `SELECT DISTINCT ON (c.organization_id, c.name) c.organization_id::text, c.name
+  // Lead-nivå: strategisignaler + fersk varemerke-aktivitet for aktive
+  // pipeline-selskaper (topp 10 per org)
+  const leads = await pool.query<{ organization_id: string; name: string; enrichment_org_nr: string | null }>(
+    `SELECT DISTINCT ON (c.organization_id, c.name) c.organization_id::text, c.name, c.enrichment_org_nr
        FROM crm_customers c
       WHERE c.organization_id IS NOT NULL AND c.archived_at IS NULL
         AND c.pipeline_stage NOT IN ('won','lost')
@@ -284,10 +286,25 @@ export async function syncSalesTriggers(pool: Pool): Promise<TriggerSyncResult> 
       ORDER BY c.organization_id, c.name, c.updated_at DESC
       LIMIT 10`,
   );
+  const ipFreshCutoff = new Date(now.getTime() - 90 * 86_400_000).toISOString().slice(0, 10);
   for (const lead of leads.rows) {
     try {
       const media = await fetchGdeltMentions(`"${lead.name}" ${GDELT_STRATEGY_TERMS}`, lead.name);
       for (const e of media) await insertEvent(lead.organization_id, e);
+      const ip = await fetchIprProfile(lead.enrichment_org_nr, lead.name);
+      for (const tm of ip?.recentTrademarks ?? []) {
+        if (!tm.statusDate || tm.statusDate < ipFreshCutoff || !tm.applicationNumber) continue;
+        await insertEvent(lead.organization_id, {
+          source: "patentstyret",
+          eventId: tm.applicationNumber,
+          kind: "ip_filing",
+          title: `${lead.name}: varemerke «${tm.text}» (${tm.status ?? "ny status"})`,
+          url: tm.caseUrl,
+          publishedAt: tm.statusDate,
+          matchedTopic: lead.name,
+          raw: { matchedBy: ip?.matchedBy ?? null },
+        });
+      }
     } catch (err) {
       errors.push(`lead ${lead.name}: ${String(err).slice(0, 100)}`);
     }
