@@ -31608,7 +31608,12 @@ function isDemoBypassed(req: express.Request): boolean {
     (typeof req.headers["x-demo-token"] === "string"
       ? (req.headers["x-demo-token"] as string).trim()
       : "");
-  return provided === expected;
+  // Konstant-tid sammenligning av bypass-hemmeligheten — matcher timingSafeEqual-
+  // mønsteret i WhatsApp webhook verify-token og cron-token-gatene. Lengde-sjekk
+  // først fordi timingSafeEqual krever like lange buffere (og for å unngå at et
+  // tomt/kort forsøk kaster). Uten dette lekker `===` prefiks/lengde via timing.
+  if (provided.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 }
 
 function requireAdminOrDemoBypass(
