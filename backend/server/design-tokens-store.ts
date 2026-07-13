@@ -230,6 +230,21 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   // Data-BINDINGER: { [selektor]: kilde-nøkkel } — elementets tekst kobles til en metric-verdi.
   // Runtime setter textContent = metrics[<kilde>].value → live, koblet tall/stat på hvilket som helst element.
   if ((patch as any)?.elementBindings !== undefined) clean.elementBindings = sanitizeElementBindings((patch as any).elementBindings);
+  // INTERAKSJONER: { [selektor]: { action: 'scroll'|'link', target } } — gjør et element klikkbart
+  // (scroll til en seksjon / naviger til en trygg lenke). Runtime kobler en delegert klikk-lytter.
+  const intxIn = (patch as any)?.elementInteractions;
+  if (intxIn && typeof intxIn === 'object' && !Array.isArray(intxIn)) {
+    const elementInteractions: Record<string, { action: string; target: string }> = {};
+    let n = 0;
+    for (const [sel, raw] of Object.entries(intxIn as Record<string, unknown>)) {
+      if (n >= 300) break;
+      if (!CHD_SEL_RE.test(sel) || sel.includes('..') || !raw || typeof raw !== 'object') continue;
+      const o = raw as Record<string, unknown>;
+      if (o.action === 'scroll' && typeof o.target === 'string' && CHD_SEL_RE.test(o.target) && !o.target.includes('..')) { elementInteractions[sel] = { action: 'scroll', target: o.target }; n++; }
+      else if (o.action === 'link' && chdSafeUrl(o.target)) { elementInteractions[sel] = { action: 'link', target: o.target }; n++; }
+    }
+    clean.elementInteractions = elementInteractions;
+  }
   // Navngitte VARIANTER: { [navn]: { elementEdits?, elementText?, elementAnim?, elementInserts?,
   //   elementBindings? } } — hver en komplett, alternativ design-tilstand. GJENBRUKER de samme
   //   saniterings-funksjonene → identisk sikkerhet som topp-nivå. Maks 30 varianter.

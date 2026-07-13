@@ -266,6 +266,32 @@ function applyBindings(bindings: ElementBindings, metrics: Record<string, { valu
   return () => obs.disconnect();
 }
 
+export type ElementInteractions = Record<string, { action: string; target: string }>;
+
+/** Interaksjoner: gjør elementer klikkbare (scroll til seksjon / naviger). Én delegert lytter. */
+function applyInteractions(intx: ElementInteractions): (() => void) | undefined {
+  const entries = Object.entries(intx || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const onClick = (e: Event) => {
+    const tgt = e.target as Element | null;
+    if (!tgt || !tgt.closest) return;
+    for (const [sel, cfg] of entries) {
+      try {
+        if (!tgt.closest(sel)) continue;
+        if (cfg.action === 'scroll' && isSafeSelector(cfg.target)) {
+          const dest = document.querySelector(cfg.target);
+          if (dest) { e.preventDefault(); dest.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        } else if (cfg.action === 'link' && cfg.target) {
+          e.preventDefault(); window.location.href = cfg.target;
+        }
+        break;
+      } catch { /* ugyldig selektor — hopp over */ }
+    }
+  };
+  document.addEventListener('click', onClick, true);
+  return () => document.removeEventListener('click', onClick, true);
+}
+
 const STYLE_ID = 'chd-element-edits';
 
 /**
@@ -321,6 +347,7 @@ export function useElementEdits(workspace: string): void {
     let cleanupInserts: (() => void) | undefined;
     let cleanupBind: (() => void) | undefined;
     let cleanupVariant: (() => void) | undefined;
+    let cleanupIntx: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -347,6 +374,10 @@ export function useElementEdits(workspace: string): void {
         if (vm.elementInserts && typeof vm.elementInserts === 'object') {
           cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, workspace);
         }
+        // Interaksjoner (klikk → scroll/naviger) — top-nivå (delt på tvers av varianter).
+        if (t.elementInteractions && typeof t.elementInteractions === 'object') {
+          cleanupIntx = applyInteractions(t.elementInteractions as ElementInteractions);
+        }
         // Data-bindinger → elementtekst = metric-verdi el. LIVE connector-verdi (fra DB), koblet.
         if (vm.elementBindings && typeof vm.elementBindings === 'object') {
           const bindings = vm.elementBindings as ElementBindings;
@@ -359,6 +390,6 @@ export function useElementEdits(workspace: string): void {
         }
       })
       .catch(() => {});
-    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); };
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); if (cleanupIntx) cleanupIntx(); };
   }, [workspace]);
 }
