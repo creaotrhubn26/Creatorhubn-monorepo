@@ -155,6 +155,7 @@ export default function WorkspaceDesignOverlay({
   const [newVariantName, setNewVariantName] = React.useState('');
   const [editingVariant, setEditingVariant] = React.useState<string | null>(null);
   const [abStats, setAbStats] = React.useState<Record<string, number>>({});
+  const [abPersistent, setAbPersistent] = React.useState(false);
   const [reloadKey, setReloadKey] = React.useState(0);
   // Versjonshistorikk
   const [versions, setVersions] = React.useState<Array<{ id: string; at: number; label: string }>>([]);
@@ -493,7 +494,7 @@ export default function WorkspaceDesignOverlay({
     if (editingVariant === name) exitVariant();
   };
   const fetchAbStats = async () => {
-    try { const r = await fetch(`/api/admin/design/ab-stats?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && d.exposures) setAbStats(d.exposures); if (d && d.conversions) setAbConv(d.conversions); } catch { /* ignorer */ }
+    try { const r = await fetch(`/api/admin/design/ab-stats?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && d.exposures) setAbStats(d.exposures); if (d && d.conversions) setAbConv(d.conversions); setAbPersistent(!!(d && d.persistent)); } catch { /* ignorer */ }
   };
 
   // Persister per-element-edits til workspacet (gjelder alle brukere ved neste last).
@@ -841,7 +842,12 @@ export default function WorkspaceDesignOverlay({
                               {sel && <button data-chd onClick={() => setVariantGoal(uniqueSelector(sel))} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Sett valgt</button>}
                               {variantGoal && <button data-chd onClick={() => setVariantGoal('')} aria-label="Fjern mål" style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2 }}>✕</button>}
                             </div>
-                            <button data-chd onClick={fetchAbStats} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5, alignSelf: 'flex-start' }}>Hent A/B-stats</button>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <button data-chd onClick={fetchAbStats} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Hent A/B-stats</button>
+                              {(Object.keys(abStats).length > 0 || Object.keys(abConv).length > 0) && (
+                                <span style={{ fontSize: 10, color: abPersistent ? '#15803d' : '#b45309' }}>{abPersistent ? '● lagret (overlever restart)' : '○ kun denne økten (før migrasjon)'}</span>
+                              )}
+                            </div>
                           </div>
                         )}
                         <div style={{ fontSize: 10.5, color: INK2 }}>«Lagre endringer» persisterer varianter + visning.</div>

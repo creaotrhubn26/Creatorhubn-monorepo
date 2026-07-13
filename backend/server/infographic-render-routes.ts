@@ -285,31 +285,52 @@ export function registerInfographicRenderRoutes(
       { id: 'casting-activity', path: '(planlagt)', desc: 'Casting-aktivitet (roller/auditions)', status: 'planned' },
     ],
   };
-  // A/B eksponerings-telling (in-memory, best-effort — nullstilles ved restart; for grunnleggende
-  // synlighet av hvilken variant besøkende ser. Ekte konverterings-analyse er en egen sak).
+  // A/B eksponerings-telling. Persisteres i `design_ab_stats` (overlever restart). In-memory speil
+  // beholdes som umiddelbar fallback FØR migrasjonen er kjørt / hvis DB-skriv feiler.
   const abExposures = new Map<string, number>();
   const abConversions = new Map<string, number>();
-  const abBump = (map: Map<string, number>, req: Request, res: Response) => {
+  const AB_VARIANT_RE = /^[A-Za-z0-9 _-]{1,60}$/;
+  const abBump = (kind: 'exposure' | 'conversion', req: Request, res: Response) => {
     const b = (req.body ?? {}) as { ws?: unknown; variant?: unknown };
     const ws = String(b.ws ?? '').slice(0, 40);
     const variant = String(b.variant ?? '').slice(0, 60);
-    if (ws && /^[A-Za-z0-9 _-]{1,60}$/.test(variant) && map.size < 5000) {
-      const k = `${ws}|${variant}`;
-      map.set(k, (map.get(k) ?? 0) + 1);
+    if (ws && AB_VARIANT_RE.test(variant)) {
+      const map = kind === 'exposure' ? abExposures : abConversions;
+      if (map.size < 5000) { const k = `${ws}|${variant}`; map.set(k, (map.get(k) ?? 0) + 1); }
+      // Persistér (best-effort). `col` er en fast literal (ikke bruker-input) → ingen injection.
+      const col = kind === 'exposure' ? 'exposures' : 'conversions';
+      pool.query(
+        `INSERT INTO design_ab_stats (workspace, variant, ${col}, updated_at) VALUES ($1, $2, 1, now())
+         ON CONFLICT (workspace, variant) DO UPDATE SET ${col} = design_ab_stats.${col} + 1, updated_at = now()`,
+        [ws, variant],
+      ).catch(() => { /* tabell mangler før migrasjon → in-memory dekker */ });
     }
     res.status(204).end();
   };
-  app.post('/api/design/ab-exposure', (req: Request, res: Response) => abBump(abExposures, req, res));
-  app.post('/api/design/ab-conversion', (req: Request, res: Response) => abBump(abConversions, req, res));
-  app.get('/api/admin/design/ab-stats', (req: Request, res: Response) => {
+  app.post('/api/design/ab-exposure', (req: Request, res: Response) => abBump('exposure', req, res));
+  app.post('/api/design/ab-conversion', (req: Request, res: Response) => abBump('conversion', req, res));
+  app.get('/api/admin/design/ab-stats', async (req: Request, res: Response) => {
     if (!requireAdminSession(req, res)) return;
     const ws = String(req.query.ws ?? '');
+    // Foretrekk persisterte tall; fall tilbake til in-memory hvis tabellen ikke finnes ennå.
+    try {
+      const r = await pool.query<{ variant: string; exposures: string; conversions: string }>(
+        `SELECT variant, exposures, conversions FROM design_ab_stats WHERE workspace = $1`, [ws],
+      );
+      if (r.rows.length) {
+        const exposures: Record<string, number> = {};
+        const conversions: Record<string, number> = {};
+        for (const row of r.rows) { exposures[row.variant] = Number(row.exposures); conversions[row.variant] = Number(row.conversions); }
+        res.json({ exposures, conversions, persistent: true });
+        return;
+      }
+    } catch { /* tabell ikke migrert → in-memory under */ }
     const pick = (map: Map<string, number>): Record<string, number> => {
       const out: Record<string, number> = {};
       for (const [k, v] of map) { const idx = k.indexOf('|'); if (k.slice(0, idx) === ws) out[k.slice(idx + 1)] = v; }
       return out;
     };
-    res.json({ exposures: pick(abExposures), conversions: pick(abConversions) });
+    res.json({ exposures: pick(abExposures), conversions: pick(abConversions), persistent: false });
   });
 
   app.get('/api/design/connectors', (req: Request, res: Response) => {
