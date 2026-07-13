@@ -848,6 +848,8 @@ import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
+import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
+import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -66193,6 +66195,14 @@ registerLeadgridEnturRoutes({ app, requireUserSession });
 // Bilparkering (Statens vegvesen Parkeringsregister, NLOD): nærmeste
 // p-områder for en lead + «Åpne parkering»-app-lenker.
 registerLeadgridParkingRoutes({ app, requireUserSession });
+
+// NVDB v4 (Nasjonal vegdatabank, NLOD): fartsgrense (skilt i nav) + bom-
+// stasjoner (ekte takst i kjøregodtgjørelse). Krever X-Client (env NVDB_CLIENT).
+registerLeadgridNvdbRoutes({ app, requireUserSession });
+
+// Statens vegvesen Kjøretøyoppslag (Autosys): «Min bil» via regnr → tekniske
+// data (drivstoff/merke). Krever VEGVESEN_KJORETOY_APIKEY.
+registerLeadgridVehicleRoutes({ app, requireUserSession });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
