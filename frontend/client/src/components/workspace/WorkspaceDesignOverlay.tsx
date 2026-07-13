@@ -304,19 +304,20 @@ export default function WorkspaceDesignOverlay({
       const specs = components[pickComp];
       if (!specs || !specs.length) return;
       const key = uniqueSelector(sel);
-      // Rebuild hvert infographic-slot med den VALGTE kilden (ikke arv gammel binding blindt).
-      const copies = specs.map((s) => {
-        const copy = { ...s, id: `ins-${nextId.current++}` };
-        if (s.type === 'infographic' && slotBindings[s.id]) {
-          copy.src = `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(slotBindings[s.id])}&ws=${encodeURIComponent(workspace)}&accent=${encodeURIComponent(accent)}`;
+      const instanceId = `ins-${nextId.current++}`;
+      // Live-preview: ekspander master-spec'ene nå (infographic-slots får VALGT kilde).
+      specs.forEach((child) => {
+        const c = { ...child };
+        if (child.type === 'infographic' && slotBindings[child.id]) {
+          c.src = `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(slotBindings[child.id])}&ws=${encodeURIComponent(workspace)}&accent=${encodeURIComponent(accent)}`;
         }
-        return copy;
-      });
-      copies.forEach((spec) => {
-        const node = buildInsertNode(spec);
+        const node = buildInsertNode({ ...c, id: `${instanceId}__${child.id}` });
         if (node && sel!.parentNode) { if (insPos === 'before') sel!.parentNode.insertBefore(node, sel); else sel!.parentNode.insertBefore(node, sel!.nextSibling); }
       });
-      setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), ...copies] }));
+      // Lagre en LIVE-lenket REFERANSE (ikke kopi): { component, slots }. Endrer du komponenten →
+      // alle instanser oppdateres ved neste last. Slots = per-instans datakobling.
+      const refSpec: InsertSpec = { id: instanceId, type: 'component', pos: insPos, component: pickComp, slots: { ...slotBindings } };
+      setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), refSpec] }));
       return;
     }
     const id = `ins-${nextId.current++}`;
@@ -377,8 +378,8 @@ export default function WorkspaceDesignOverlay({
     setAnimEdits((a) => { const n = { ...a }; delete n[key]; return n; });
     setInsertEdits((i) => { const n = { ...i }; delete n[key]; return n; });
     setBindEdits((b) => { const n = { ...b }; delete n[key]; return n; });
-    // Fjern også de innsatte nodene fra DOM umiddelbart.
-    (insertEdits[key] || []).forEach((s) => document.querySelector(`[data-chd-insert="${s.id}"]`)?.remove());
+    // Fjern også de innsatte nodene fra DOM umiddelbart (inkl. komponent-instansens barn-noder).
+    (insertEdits[key] || []).forEach((s) => document.querySelectorAll(`[data-chd-insert="${s.id}"], [data-chd-insert^="${s.id}__"]`).forEach((n) => n.remove()));
   };
   const resetAllEdits = () => { setEdits({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); };
   const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits)]));
