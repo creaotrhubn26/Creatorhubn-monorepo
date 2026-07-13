@@ -74,6 +74,20 @@ struct KjorebokView: View {
         Task { await TripService.shared.setPurpose(p, id: t.id, using: appState.api) }
     }
 
+    private func exportPDF() {
+        let s = store.businessSummary(inMonth: month)
+        let v = appState.vehicleProfile
+        guard let url = KjorebokPDF.generate(
+            monthLabel: monthLabel,
+            trips: store.trips(inMonth: month),
+            driverName: appState.displayName,
+            vehicleName: v.displayName,
+            vehiclePlate: v.plate,
+            summary: s
+        ) else { return }
+        shareItem = ShareItem(url: url)
+    }
+
     private func exportCSV() {
         exporting = true
         Task {
@@ -237,17 +251,20 @@ struct KjorebokView: View {
 
     private var exportBar: some View {
         VStack(spacing: 8) {
-            Button { exportCSV() } label: {
+            Menu {
+                Button { exportPDF() } label: { Label("PDF (brandet kjørebok)", systemImage: "doc.richtext.fill") }
+                Button { exportCSV() } label: { Label("CSV (regneark)", systemImage: "tablecells") }
+            } label: {
                 HStack(spacing: 6) {
                     if exporting { ProgressView().tint(.white) }
                     else { Image(systemName: "square.and.arrow.up").font(.appScaled(size: 13, weight: .bold)) }
-                    Text("Eksporter kjørebok (CSV)").font(.appScaled(size: 13, weight: .bold))
+                    Text("Eksporter kjørebok").font(.appScaled(size: 13, weight: .bold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .bold))
                 }
                 .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 13)
                 .background(LinearGradient(colors: [NavPOIBrand.purple, NavPOIBrand.purpleLight],
                                            startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 12))
             }
-            .buttonStyle(.plain)
             .disabled(exporting || store.trips.isEmpty)
 
             Button { sendReport() } label: {
