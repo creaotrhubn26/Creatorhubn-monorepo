@@ -102,6 +102,13 @@ struct VehicleProfileSheet: View {
                     }
                 }
             }
+            if let eu = euControl {
+                HStack(spacing: 6) {
+                    Image(systemName: eu.soon ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
+                        .font(.appScaled(size: 11)).foregroundStyle(eu.color)
+                    Text("EU-kontroll: \(eu.text)").font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(eu.color)
+                }
+            }
             Text("Vi henter kun tekniske data (drivstoff, type). Aldri eier-informasjon.")
                 .font(.appScaled(size: 10)).foregroundStyle(NavPOIBrand.textTertiary)
         }
@@ -128,6 +135,23 @@ struct VehicleProfileSheet: View {
         profile.kind = result.kind
         profile.plate = plate
         profile.displayName = result.displayName
+        profile.euControlDue = result.euControlDue
+    }
+
+    /// EU-kontroll-frist formatert + farge (rød hvis forfalt/snart).
+    private var euControl: (text: String, color: Color, soon: Bool)? {
+        guard let iso = profile.euControlDue, !iso.isEmpty else { return nil }
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withFullDate]
+        let date = f.date(from: iso) ?? {
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; return df.date(from: String(iso.prefix(10)))
+        }()
+        guard let d = date else { return nil }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: d).day ?? 0
+        let df = DateFormatter(); df.locale = Locale(identifier: "nb_NO"); df.dateFormat = "d. MMM yyyy"
+        let soon = days <= 60
+        let color: Color = days < 0 ? NavPOIBrand.red : (soon ? NavPOIBrand.orange : NavPOIBrand.green)
+        let suffix = days < 0 ? " (forfalt)" : (soon ? " (om \(days) d)" : "")
+        return (df.string(from: d) + suffix, color, soon || days < 0)
     }
 
     // MARK: manuelle velgere

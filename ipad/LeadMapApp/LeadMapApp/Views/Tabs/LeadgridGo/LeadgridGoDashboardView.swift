@@ -16,6 +16,7 @@ struct LeadgridGoDashboardView: View {
     @State private var loadingTeam = false
     @State private var showVehicle = false
     @State private var showKjorebok = false
+    @State private var showBooking = false
     @State private var store = TripStore.shared
     @State private var detector = TripDetector.shared
 
@@ -52,6 +53,7 @@ struct LeadgridGoDashboardView: View {
             VehicleProfileSheet(profile: Bindable(appState).vehicleProfile, api: appState.api)
         }
         .sheet(isPresented: $showKjorebok) { KjorebokView() }
+        .sheet(isPresented: $showBooking) { LeadgridGoBookingView() }
         .task { await loadTeam() }
     }
 
@@ -124,6 +126,12 @@ struct LeadgridGoDashboardView: View {
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(NavPOIBrand.green.opacity(0.15), in: Capsule())
                     }
+                    if let eu = euWarning(d.euControlDue) {
+                        Label(eu, systemImage: "exclamationmark.triangle.fill")
+                            .font(.appScaled(size: 8, weight: .bold)).foregroundStyle(NavPOIBrand.orange)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(NavPOIBrand.orange.opacity(0.15), in: Capsule())
+                    }
                 }
             }
             Spacer()
@@ -187,6 +195,18 @@ struct LeadgridGoDashboardView: View {
                 .background(NavPOIBrand.cardHi, in: RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
+            // Kjøretøy-booking (del firmabil)
+            Button { showBooking = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar.badge.plus").font(.appScaled(size: 13, weight: .bold))
+                    Text("Book firmabil").font(.appScaled(size: 13, weight: .bold))
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.appScaled(size: 11, weight: .bold)).foregroundStyle(NavPOIBrand.textSecondary)
+                }
+                .foregroundStyle(.white).padding(.vertical, 12).padding(.horizontal, 14)
+                .background(NavPOIBrand.cardHi, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
             // Åpne full kjørebok
             Button { showKjorebok = true } label: {
                 HStack(spacing: 6) {
@@ -214,6 +234,16 @@ struct LeadgridGoDashboardView: View {
         if parts.count >= 2 { return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased() }
         return String(name.prefix(2)).uppercased()
     }
+    /// «EU-kontroll» hvis frist er ≤60 dager eller forfalt (ellers nil).
+    private func euWarning(_ iso: String?) -> String? {
+        guard let iso, !iso.isEmpty else { return nil }
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        guard let d = df.date(from: String(iso.prefix(10))) else { return nil }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: d).day ?? 999
+        guard days <= 60 else { return nil }
+        return days < 0 ? "EU-kontroll forfalt" : "EU-kontroll \(days)d"
+    }
+
     private func roleLabel(_ r: String) -> String {
         switch r {
         case "admin": return "Admin"

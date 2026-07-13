@@ -55,6 +55,8 @@ struct VehicleProfile: Codable, Hashable {
     /// Firmabil (arbeidsgivers) vs privat bil brukt i jobb. Påvirker kjørebok-
     /// klassifisering og hvem som eier kostnaden. Default false (privat).
     var isCompanyCar: Bool = false
+    /// EU-kontroll (PKK) neste frist fra Vegvesen (ISO-dato). Til vedlikeholds-varsel.
+    var euControlDue: String? = nil
 
     enum Kind: String, Codable, CaseIterable, Hashable {
         case car = "Personbil", motorcycle = "Motorsykkel", moped = "Moped"

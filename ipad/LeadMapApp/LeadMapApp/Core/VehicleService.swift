@@ -19,6 +19,8 @@ final class VehicleService {
         let make: String?           // "Tesla"
         let model: String?          // "Model Y"
         let bodyKind: String?       // "personbil" | "motorsykkel" | "moped"
+        let euControlDue: String?   // EU-kontroll (PKK) neste frist, ISO-dato
+        let firstRegistered: String?
 
         /// Avledet drivstoff-enum for «Min bil».
         var fuel: VehicleFuel { VehicleFuel.fromNvdbCode(fuelCode) }

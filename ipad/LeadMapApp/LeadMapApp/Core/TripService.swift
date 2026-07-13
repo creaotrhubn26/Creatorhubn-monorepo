@@ -64,6 +64,66 @@ final class TripService {
         guard let api else { return nil }
         return try? await api._get("/api/leadgrid/trips/team")
     }
+
+    // MARK: kjøretøy-booking (delte firmabiler)
+
+    private struct FleetResponse: Decodable { let vehicles: [GoFleetVehicle] }
+    private struct BookingsResponse: Decodable { let bookings: [GoBooking] }
+    private struct BookAck: Decodable { let ok: Bool?; let error: String? }
+
+    func fleet(using api: APIClient?) async -> [GoFleetVehicle] {
+        guard let api else { return [] }
+        let r: FleetResponse? = try? await api._get("/api/leadgrid/vehicle/fleet")
+        return r?.vehicles ?? []
+    }
+    func bookings(using api: APIClient?) async -> [GoBooking] {
+        guard let api else { return [] }
+        let r: BookingsResponse? = try? await api._get("/api/leadgrid/vehicle/bookings")
+        return r?.bookings ?? []
+    }
+    /// Reserver. Returnerer nil ved suksess, ellers en feilkode («time_conflict» osv.).
+    func createBooking(label: String, plate: String?, startAt: Date, endAt: Date,
+                       purpose: String, bookedByName: String, using api: APIClient?) async -> String? {
+        guard let api else { return "no_api" }
+        struct Body: Encodable {
+            let vehicleLabel: String; let vehiclePlate: String?
+            let startAt: String; let endAt: String; let purpose: String; let bookedByName: String
+        }
+        let iso = ISO8601DateFormatter()
+        let body = Body(vehicleLabel: label, vehiclePlate: plate,
+                        startAt: iso.string(from: startAt), endAt: iso.string(from: endAt),
+                        purpose: purpose, bookedByName: bookedByName)
+        do {
+            let r: BookAck = try await api._post("/api/leadgrid/vehicle/bookings", body: body)
+            return r.ok == true ? nil : (r.error ?? "failed")
+        } catch { return "time_conflict" }   // 409 → konflikt (vanligste feil)
+    }
+    func cancelBooking(id: String, using api: APIClient?) async {
+        guard let api else { return }
+        try? await api._delete("/api/leadgrid/vehicle/bookings/\(id)")
+    }
+}
+
+struct GoFleetVehicle: Decodable, Identifiable, Hashable {
+    let plate: String?
+    let displayName: String?
+    let fuel: String?
+    let driverName: String?
+    let euControlDue: String?
+    var id: String { plate ?? displayName ?? driverName ?? UUID().uuidString }
+    var label: String { displayName ?? plate ?? "Firmabil" }
+}
+
+struct GoBooking: Decodable, Identifiable, Hashable {
+    let id: String
+    let vehicleLabel: String
+    let vehiclePlate: String?
+    let bookedBy: String
+    let bookedByName: String?
+    let startAt: String
+    let endAt: String
+    let purpose: String?
+    let isMine: Bool?
 }
 
 struct GoDriverSummary: Decodable, Identifiable, Hashable {
@@ -80,6 +140,7 @@ struct GoDriverSummary: Decodable, Identifiable, Hashable {
     let vehiclePlate: String?
     let isCompanyCar: Bool?
     let vehicleFuel: String?
+    let euControlDue: String?
     let lastTrip: String?
     var id: String { userId }
 }
