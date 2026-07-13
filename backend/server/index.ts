@@ -850,6 +850,7 @@ import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
+import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -66203,6 +66204,10 @@ registerLeadgridNvdbRoutes({ app, requireUserSession });
 // Statens vegvesen Kjøretøyoppslag (Autosys): «Min bil» via regnr → tekniske
 // data (drivstoff/merke). Krever VEGVESEN_KJORETOY_APIKEY.
 registerLeadgridVehicleRoutes({ app, requireUserSession });
+
+// Leadgrid Go — elektronisk kjørebok (auto trip-logg + Skatteetaten-CSV).
+// Personlig (user_id-scopet, IDOR-trygt). Tabell leadgrid_trips (mig 0372).
+registerLeadgridTripsRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
