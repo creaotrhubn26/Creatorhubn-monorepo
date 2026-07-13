@@ -122,6 +122,9 @@ export default function WorkspaceDesignOverlay({
   const [selDesc, setSelDesc] = React.useState<ElDesc | null>(null);
   const [insp, setInsp] = React.useState<Record<string, string>>({});
   const [edits, setEdits] = React.useState<Edits>({});
+  const [editsTablet, setEditsTablet] = React.useState<Edits>({}); // stil for ≤900px
+  const [editsMobile, setEditsMobile] = React.useState<Edits>({}); // stil for ≤600px
+  const [device, setDevice] = React.useState<'all' | 'tablet' | 'mobile'>('all'); // aktiv breakpoint for redigering
   const [textEdits, setTextEdits] = React.useState<Record<string, string>>({});
   const [animEdits, setAnimEdits] = React.useState<Record<string, string>>({});
   const [bindEdits, setBindEdits] = React.useState<Record<string, string>>({}); // selektor → datakilde-nøkkel
@@ -215,7 +218,9 @@ export default function WorkspaceDesignOverlay({
     const value = rawValue === '' ? '' : rawValue + unit;
     sel.style.setProperty(cssProp, value);
     const key = uniqueSelector(sel); // unik strukturell sti → kan re-applikeres ved last
-    setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
+    // Ruter til aktiv breakpoint: base (alle), nettbrett (≤900) el. mobil (≤600).
+    const setter = device === 'tablet' ? setEditsTablet : device === 'mobile' ? setEditsMobile : setEdits;
+    setter((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
   };
 
   // Edit: gjør elementet klikkbart (scroll til seksjon / naviger). Registreres; virker ved last.
@@ -390,6 +395,8 @@ export default function WorkspaceDesignOverlay({
       .then((d) => {
         if (live && d && d.raw === true && d.tokens) {
           if (d.tokens.elementEdits) setEdits(d.tokens.elementEdits as ElementEdits);
+          if (d.tokens.elementEditsTablet) setEditsTablet(d.tokens.elementEditsTablet as ElementEdits);
+          if (d.tokens.elementEditsMobile) setEditsMobile(d.tokens.elementEditsMobile as ElementEdits);
           if (d.tokens.elementText && typeof d.tokens.elementText === 'object') setTextEdits(d.tokens.elementText as Record<string, string>);
           if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
@@ -416,7 +423,7 @@ export default function WorkspaceDesignOverlay({
       setVariants(updated);
       return { designVariants: updated, variantConfig: vcfg };
     }
-    return { ...currentMaps(), elementInteractions: intxEdits, designComponents: components, designVariants: variants, variantConfig: vcfg };
+    return { ...currentMaps(), elementEditsTablet: editsTablet, elementEditsMobile: editsMobile, elementInteractions: intxEdits, designComponents: components, designVariants: variants, variantConfig: vcfg };
   };
   const saveAsVariant = () => {
     const name = newVariantName.trim();
@@ -464,6 +471,8 @@ export default function WorkspaceDesignOverlay({
   // Endrer state → «Lagre endringer» persisterer (full effekt ved neste last).
   const deleteEdit = (key: string) => {
     setEdits((e) => { const n = { ...e }; delete n[key]; return n; });
+    setEditsTablet((e) => { const n = { ...e }; delete n[key]; return n; });
+    setEditsMobile((e) => { const n = { ...e }; delete n[key]; return n; });
     setTextEdits((t) => { const n = { ...t }; delete n[key]; return n; });
     setAnimEdits((a) => { const n = { ...a }; delete n[key]; return n; });
     setInsertEdits((i) => { const n = { ...i }; delete n[key]; return n; });
@@ -472,8 +481,8 @@ export default function WorkspaceDesignOverlay({
     // Fjern også de innsatte nodene fra DOM umiddelbart (inkl. komponent-instansens barn-noder).
     (insertEdits[key] || []).forEach((s) => document.querySelectorAll(`[data-chd-insert="${s.id}"], [data-chd-insert^="${s.id}__"]`).forEach((n) => n.remove()));
   };
-  const resetAllEdits = () => { setEdits({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); setIntxEdits({}); };
-  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits), ...Object.keys(intxEdits)]));
+  const resetAllEdits = () => { setEdits({}); setEditsTablet({}); setEditsMobile({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); setIntxEdits({}); };
+  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(editsTablet), ...Object.keys(editsMobile), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits), ...Object.keys(intxEdits)]));
   // Design-forslag for valgt element (recomputes ved nytt valg + etter en fiks endrer insp).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const suggestions = React.useMemo(() => (sel ? analyzeElement(sel) : []), [sel, insp]);
@@ -554,7 +563,7 @@ export default function WorkspaceDesignOverlay({
         els.forEach((n) => { const h = n as HTMLElement; for (const p of propsFor(sel)) { const cur = h.style.getPropertyValue(p); if (cur) { h.style.removeProperty(p); restores.push(() => h.style.setProperty(p, cur)); } } });
       }
     };
-    stripInline(Object.keys(edits), (sel) => Object.keys(edits[sel] || {}));
+    for (const m of [edits, editsTablet, editsMobile]) stripInline(Object.keys(m), (sel) => Object.keys(m[sel] || {}));
     stripInline(Object.keys(animEdits), () => ['animation']);
     document.querySelectorAll('[data-chd-insert]').forEach((n) => { const h = n as HTMLElement; const prev = h.style.display; h.style.display = 'none'; restores.push(() => { h.style.display = prev; }); });
     restoreRef.current = () => { restores.reverse().forEach((r) => r()); };
@@ -700,6 +709,16 @@ export default function WorkspaceDesignOverlay({
 
         {mode === 'edit' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: INK2 }}>Skjerm:</span>
+              {(['all', 'tablet', 'mobile'] as const).map((d) => (
+                <button key={d} data-chd onClick={() => setDevice(d)}
+                  style={{ ...(device === d ? cta : btn(false)), padding: '3px 8px', fontSize: 11 }}>
+                  {d === 'all' ? '🖥 Alle' : d === 'tablet' ? '📱 Nettbrett' : '📲 Mobil'}
+                </button>
+              ))}
+            </div>
+            {device !== 'all' && <div style={{ fontSize: 10.5, color: '#b45309' }}>Redigerer {device === 'tablet' ? '≤900px' : '≤600px'} — stil-endringer lagres bak en media query (gjelder kun denne skjermbredden).</div>}
             {(editKeys.length > 0 || origMode) && (
               <button data-chd onClick={toggleOriginal}
                 style={{ ...(origMode ? cta : btn(false)), padding: '6px 10px', fontSize: 12 }}
