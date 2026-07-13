@@ -1,0 +1,242 @@
+/**
+ * API-tester mot ekte Postgres: autentisering, RBAC, tenant-isolasjon,
+ * vertikal flyt over HTTP, periodelås og korrigering (scenario 9).
+ */
+import request from 'supertest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApiServer } from '../src/api/server.js';
+import type { Db } from '../src/db/pool.js';
+import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
+import { setupTestDb, truncateAll } from './helpers.js';
+
+let db: Db;
+let app: ReturnType<typeof createApiServer>;
+let ownerToken: string;
+let employeeToken: string;
+let outsiderToken: string;
+let orgId: string;
+
+async function login(email: string, displayName: string): Promise<string> {
+  const res = await request(app)
+    .post('/api/auth/dev-login')
+    .send({ email, displayName })
+    .expect(200);
+  return res.body.token;
+}
+
+beforeAll(async () => {
+  db = await setupTestDb();
+  await truncateAll();
+  app = createApiServer({ db, rules: buildNorwegianRuleRegister() });
+  ownerToken = await login('eier@example.com', 'Eier');
+  employeeToken = await login('ansatt@example.com', 'Ansatt');
+  outsiderToken = await login('utenfor@example.com', 'Utenforstående');
+
+  const org = await request(app)
+    .post('/api/organizations')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({ name: 'API Test AS', orgForm: 'AS', vatStatus: 'registered' })
+    .expect(201);
+  orgId = org.body.id;
+
+  // Legg til ansatt med begrenset rolle.
+  const employee = await db.query(`SELECT id FROM users WHERE email = 'ansatt@example.com'`);
+  await db.query(
+    `INSERT INTO memberships (id, organization_id, user_id, role, created_by)
+     VALUES (gen_random_uuid(), $1, $2, 'employee', $2)`,
+    [orgId, employee.rows[0].id],
+  );
+});
+
+afterAll(async () => {
+  await db.end();
+});
+
+describe('Autentisering og autorisasjon', () => {
+  it('avviser kall uten token', async () => {
+    await request(app).get(`/api/organizations/${orgId}/documents`).expect(401);
+  });
+
+  it('avviser manipulert token', async () => {
+    await request(app)
+      .get(`/api/organizations/${orgId}/documents`)
+      .set('Authorization', `Bearer ${ownerToken}x`)
+      .expect(401);
+  });
+
+  it('tenant-isolasjon: utenforstående får 404, ikke 403 (ingen eksistenslekkasje)', async () => {
+    await request(app)
+      .get(`/api/organizations/${orgId}/reports/trial-balance`)
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .expect(404);
+  });
+
+  it('RBAC: ansatt kan laste opp, men ikke bokføre eller låse periode', async () => {
+    await request(app)
+      .post(`/api/organizations/${orgId}/documents`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        filename: 'kvittering.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: Buffer.from('%PDF-1.7\nKvittering\nTotal: NOK 100,00\n%%EOF').toString('base64'),
+      })
+      .expect(201);
+    await request(app)
+      .post(`/api/organizations/${orgId}/periods/2025/11/lock`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({ reason: 'test' })
+      .expect(403);
+  });
+
+  it('ugyldig organisasjons-ID avvises med 400 (ikke SQL-feil)', async () => {
+    await request(app)
+      .get(`/api/organizations/'; DROP TABLE users;--/documents`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(400);
+  });
+});
+
+describe('Vertikal flyt over HTTP', () => {
+  let documentId: string;
+  let suggestionId: string;
+  let entryId: string;
+
+  it('laster opp faktura og får forslag med forklaring', async () => {
+    const pdf = [
+      '%PDF-1.7',
+      'Kamerahuset AS',
+      'Org.nr: 923609016',
+      'Faktura: A-777',
+      'Fakturadato: 2025-11-20',
+      'Sony objektiv',
+      'Netto: 8 000,00',
+      'MVA 25%: 2 000,00',
+      'Å betale: NOK 10 000,00',
+      '%%EOF',
+    ].join('\n');
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/documents`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        filename: 'faktura-a777.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: Buffer.from(pdf).toString('base64'),
+      })
+      .expect(201);
+    expect(res.body.status).toBe('extracted');
+    documentId = res.body.documentId;
+    suggestionId = res.body.suggestionId;
+
+    const detail = await request(app)
+      .get(`/api/organizations/${orgId}/documents/${documentId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    // «Hvorfor foreslår dere dette?» med kilder.
+    expect(detail.body.explanation.evidence.length).toBeGreaterThan(0);
+    expect(detail.body.explanation.rules.length).toBeGreaterThan(0);
+    expect(detail.body.explanation.rules[0].sources[0].url).toMatch(/^https:/);
+    expect(detail.body.suggestions[0].suggestion.requiresHumanReview).toBe(true);
+  });
+
+  it('godkjenner og bokfører; rapportene oppdateres', async () => {
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/documents/${documentId}/approve`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ suggestionId })
+      .expect(201);
+    entryId = res.body.id;
+    expect(res.body.entryNumber).toBe(1);
+
+    const tb = await request(app)
+      .get(`/api/organizations/${orgId}/reports/trial-balance`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const total = tb.body.reduce(
+      (acc: [bigint, bigint], row: { debitMinor: string; creditMinor: string }) => [
+        acc[0] + BigInt(row.debitMinor),
+        acc[1] + BigInt(row.creditMinor),
+      ],
+      [0n, 0n],
+    );
+    expect(total[0]).toBe(total[1]);
+
+    const vat = await request(app)
+      .get(`/api/organizations/${orgId}/vat/report?from=2025-11-01&to=2025-11-30`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(vat.body.deductibleInputVatMinor).toBe('200000');
+  });
+
+  it('Scenario 9: feil i låst periode rettes med kontrollert korrigering', async () => {
+    await request(app)
+      .post(`/api/organizations/${orgId}/periods/2025/11/lock`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ reason: 'Månedsavslutning november' })
+      .expect(204);
+
+    // Direkte reversering inn i den låste perioden avvises…
+    await request(app)
+      .post(`/api/organizations/${orgId}/journal-entries/${entryId}/reverse`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ reversalDate: '2025-11-25', reason: 'Feil beløp' })
+      .expect(409);
+
+    // …men korrigering i åpen periode fungerer, med komplett historikk.
+    const reversal = await request(app)
+      .post(`/api/organizations/${orgId}/journal-entries/${entryId}/reverse`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ reversalDate: '2025-12-01', reason: 'Feil beløp — korrigeres i desember' })
+      .expect(201);
+    expect(reversal.body.status).toBe('posted');
+
+    const audit = await request(app)
+      .get(`/api/organizations/${orgId}/audit-events`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const actions = audit.body.map((e: { action: string }) => e.action);
+    expect(actions).toContain('accounting_period.locked');
+    expect(actions).toContain('journal_entry.reversed');
+  });
+
+  it('skatteestimat over HTTP viser komponenter og forbehold', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/tax/estimate?from=2025-01-01&to=2025-12-31`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(res.body.components[0].ruleId).toBe('no.tax.corporate-rate');
+    expect(res.body.notIncluded.length).toBeGreaterThan(0);
+    expect(res.body.calculatedAt).toBeDefined();
+  });
+
+  it('integrasjonsstatus er ærlig: Gmail er sandbox, ikke aktiv', async () => {
+    const res = await request(app)
+      .get('/api/integrations/status')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(res.body.gmail.mode).toBe('sandbox');
+    expect(res.body.gmail.active).toBe(false);
+  });
+
+  it('kodebiblioteket forklarer kontoer på vanlig norsk', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/code-library/accounts/6540`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(res.body.friendlyName).toBe('Utstyr og mindre inventar');
+    expect(res.body.infoPage.whenNotToUse).toContain('30 000');
+    expect(res.body.infoPage.commonMistakes.length).toBeGreaterThan(0);
+  });
+
+  it('avviser filtyper utenfor tillatt liste (karantene)', async () => {
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/documents`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        filename: 'malware.exe',
+        mimeType: 'application/x-msdownload',
+        contentBase64: Buffer.from('MZ...').toString('base64'),
+      })
+      .expect(201);
+    expect(res.body.status).toBe('quarantined');
+  });
+});

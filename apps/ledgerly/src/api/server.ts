@@ -1,0 +1,683 @@
+/**
+ * HTTP-API for den vertikale flyten. Autorisasjon håndheves på hvert endepunkt:
+ * autentisert bruker → aktivt medlemskap i organisasjonen → rettighet for handlingen.
+ * Feil oversettes til HTTP-statuser ved systemgrensen; interne detaljer lekkes ikke.
+ */
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { z } from 'zod';
+import { hasPermission, type Permission } from '../access/permissions.js';
+import { getAccountDef, STANDARD_ACCOUNTS } from '../coa/accounts.js';
+import { getVatCode, VAT_CODES } from '../coa/vat-codes.js';
+import type { Db } from '../db/pool.js';
+import { SandboxGmailAdapter } from '../ingestion/gmail/sandbox.js';
+import { lockPeriod, reverseJournalEntry } from '../ledger/engine.js';
+import {
+  balanceSheet,
+  generalLedger,
+  incomeStatement,
+  subledger,
+  trialBalance,
+} from '../ledger/reports.js';
+import { createOrganization, ensureUser, getMembershipRole } from '../orgs/service.js';
+import { DeterministicTextExtractor } from '../pipeline/extract.js';
+import {
+  approveAndPost,
+  ingestFromGmail,
+  processIncomingDocument,
+  type PipelineDeps,
+} from '../pipeline/pipeline.js';
+import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
+import type { RuleRegister } from '../rules/register.js';
+import { DomainError } from '../shared/errors.js';
+import { buildTaxEstimate } from '../tax/estimate.js';
+import { buildVatReport, listVatCodes } from '../vat/engine.js';
+import { issueToken, resolveAuthSecret, verifyToken, type AuthTokenPayload } from './auth.js';
+
+/** JSON-serialisering: bigint (øre) blir strenger — aldri flyttall over grensen. */
+function toJson(value: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? v.toString() : v)),
+  );
+}
+
+interface AuthedRequest extends Request {
+  auth?: AuthTokenPayload;
+  orgRole?: string;
+}
+
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+
+export interface ApiDeps {
+  db: Db;
+  rules: RuleRegister;
+  /** Sandbox til ekte OAuth-nøkler er på plass; status rapporteres ærlig. */
+  gmailAdapterFactory?: () => SandboxGmailAdapter;
+}
+
+export function createApiServer(deps: ApiDeps): express.Express {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '20mb' }));
+  const secret = resolveAuthSecret();
+
+  const pipelineDeps: PipelineDeps = {
+    db: deps.db,
+    rules: deps.rules,
+    extractor: new DeterministicTextExtractor(),
+    suggestionEngine: new DeterministicSuggestionEngine(),
+  };
+
+  // ── Autentisering ─────────────────────────────────────────────────────────
+  const requireAuth = (req: AuthedRequest, res: Response, next: NextFunction): void => {
+    const header = req.header('authorization');
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+    const payload = token ? verifyToken(token, secret) : null;
+    if (!payload) {
+      res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Gyldig token kreves.' } });
+      return;
+    }
+    req.auth = payload;
+    next();
+  };
+
+  /** Autorisasjon per organisasjon: medlemskap + rettighet. Hindrer IDOR på tvers av tenants. */
+  const requireOrgPermission =
+    (permission: Permission) =>
+    async (req: AuthedRequest, res: Response, next: NextFunction): Promise<void> => {
+      try {
+        const orgId = req.params.orgId;
+        if (!orgId || !/^[0-9a-f-]{36}$/i.test(orgId)) {
+          res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Ugyldig organisasjons-ID.' } });
+          return;
+        }
+        const role = await getMembershipRole(deps.db, orgId, req.auth!.userId);
+        if (!role || !hasPermission(role, permission)) {
+          // 404 ved manglende medlemskap: avslører ikke om organisasjonen finnes.
+          res.status(role ? 403 : 404).json({
+            error: {
+              code: role ? 'FORBIDDEN' : 'NOT_FOUND',
+              message: role ? 'Du mangler rettighet til denne handlingen.' : 'Ikke funnet.',
+            },
+          });
+          return;
+        }
+        req.orgRole = role;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    };
+
+  // ── Auth (dev) ────────────────────────────────────────────────────────────
+  app.post('/api/auth/dev-login', async (req, res, next) => {
+    try {
+      if ((process.env.NODE_ENV ?? 'development') === 'production') {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ikke funnet.' } });
+        return;
+      }
+      const body = z
+        .object({ email: z.string().email(), displayName: z.string().min(1).max(200) })
+        .parse(req.body);
+      const userId = await ensureUser(deps.db, body.email, body.displayName);
+      const token = issueToken({ userId, email: body.email, issuedAt: Date.now() }, secret);
+      res.json({ token, userId });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ── Organisasjoner ───────────────────────────────────────────────────────
+  app.post('/api/organizations', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z
+        .object({
+          name: z.string().min(1).max(200),
+          orgNumber: z.string().regex(/^\d{9}$/).optional(),
+          orgForm: z.enum(['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF']),
+          vatStatus: z.enum(['registered', 'not_registered', 'pending']),
+        })
+        .parse(req.body);
+      const org = await createOrganization(deps.db, {
+        name: body.name,
+        orgForm: body.orgForm,
+        vatStatus: body.vatStatus,
+        createdByUserId: req.auth!.userId,
+        ...(body.orgNumber ? { orgNumber: body.orgNumber } : {}),
+      });
+      res.status(201).json(toJson(org));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ── Kodebibliotek ────────────────────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/code-library/accounts',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    (_req, res) => {
+      res.json(toJson(STANDARD_ACCOUNTS));
+    },
+  );
+  app.get(
+    '/api/organizations/:orgId/code-library/vat-codes',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    (_req, res) => {
+      res.json(toJson(listVatCodes()));
+    },
+  );
+  app.get(
+    '/api/organizations/:orgId/code-library/accounts/:number',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    (req, res) => {
+      const def = getAccountDef(req.params.number!);
+      if (!def) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ukjent konto.' } });
+        return;
+      }
+      // Informasjonsside for koden (kodemotoren, pkt. 7 i spesifikasjonen).
+      res.json(
+        toJson({
+          ...def,
+          infoPage: {
+            whatItMeans: def.plainExplanation,
+            whenToUse: def.whenToUse,
+            whenNotToUse: def.whenNotToUse ?? null,
+            examples: def.examples,
+            commonVatTreatment: def.commonVatCodes.map((c) => getVatCode(c)?.name ?? c),
+            taxDeductible: def.taxDeductible ?? 'n/a',
+            mayRequireCapitalization: def.capitalizationCandidate ?? false,
+            commonMistakes: def.commonMistakes ?? [],
+          },
+        }),
+      );
+    },
+  );
+
+  // ── Dokumenter (opplasting/mobil) ────────────────────────────────────────
+  app.post(
+    '/api/organizations/:orgId/documents',
+    requireAuth,
+    requireOrgPermission('documents.upload'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            filename: z.string().min(1).max(300),
+            mimeType: z.string().min(3).max(100),
+            contentBase64: z.string().min(1),
+            source: z.enum(['upload', 'mobile']).default('upload'),
+          })
+          .parse(req.body);
+        const content = Buffer.from(body.contentBase64, 'base64');
+        if (content.length === 0 || content.length > MAX_UPLOAD_BYTES) {
+          res.status(400).json({
+            error: { code: 'VALIDATION_ERROR', message: 'Filen er tom eller for stor (maks 15 MB).' },
+          });
+          return;
+        }
+        const vatStatus = await orgVatStatus(deps.db, req.params.orgId!);
+        const result = await processIncomingDocument(pipelineDeps, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          source: body.source,
+          filename: body.filename,
+          mimeType: body.mimeType,
+          content,
+          vatStatus,
+        });
+        res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/documents',
+    requireAuth,
+    requireOrgPermission('documents.view'),
+    async (req, res, next) => {
+      try {
+        const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+        const params: unknown[] = [req.params.orgId];
+        let where = 'organization_id = $1';
+        if (status) {
+          params.push(status);
+          where += ` AND status = $2`;
+        }
+        const result = await deps.db.query(
+          `SELECT id, source, filename, mime_type, sha256, status, duplicate_of, created_at
+           FROM source_documents WHERE ${where} ORDER BY created_at DESC LIMIT 200`,
+          params,
+        );
+        res.json(toJson(result.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/documents/:documentId',
+    requireAuth,
+    requireOrgPermission('documents.view'),
+    async (req, res, next) => {
+      try {
+        const doc = await deps.db.query(
+          `SELECT * FROM source_documents WHERE id = $1 AND organization_id = $2`,
+          [req.params.documentId, req.params.orgId],
+        );
+        if (!doc.rowCount) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ikke funnet.' } });
+          return;
+        }
+        const extraction = await deps.db.query(
+          `SELECT * FROM extracted_document_data WHERE document_id = $1 ORDER BY extraction_version DESC LIMIT 1`,
+          [req.params.documentId],
+        );
+        const suggestions = await deps.db.query(
+          `SELECT id, suggestion, engine, status, created_at FROM posting_suggestions
+           WHERE document_id = $1 ORDER BY created_at DESC`,
+          [req.params.documentId],
+        );
+        // «Hvorfor foreslår dere dette?» — forklaring med kilder fra regelregisteret.
+        const latest = suggestions.rows[0];
+        const explanation = latest
+          ? {
+              evidence: latest.suggestion.evidence,
+              assumptions: latest.suggestion.assumptions,
+              missingInformation: latest.suggestion.missingInformation,
+              alternatives: latest.suggestion.alternatives,
+              confidence: latest.suggestion.confidence,
+              rules: (latest.suggestion.ruleReferences as string[]).map((ruleId) => {
+                const rule = deps.rules.getRule(ruleId);
+                return {
+                  ruleId,
+                  shortName: rule.shortName,
+                  plainExplanation: rule.plainExplanation,
+                  sources: rule.sourceIds.map((sid) => {
+                    const s = deps.rules.getSource(sid);
+                    return { title: s.title, url: s.url, lastVerified: s.lastVerified };
+                  }),
+                };
+              }),
+            }
+          : null;
+        res.json(
+          toJson({
+            document: doc.rows[0],
+            extraction: extraction.rows[0] ?? null,
+            suggestions: suggestions.rows,
+            explanation,
+          }),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/documents/:documentId/approve',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            suggestionId: z.string().uuid(),
+            overrides: z
+              .object({
+                accountNumber: z.string().regex(/^\d{4}$/).optional(),
+                vatCode: z.string().optional(),
+                businessUsePercentage: z.number().int().min(0).max(100).optional(),
+              })
+              .optional(),
+            exchangeRate: z
+              .object({ rateDecimal: z.string().regex(/^\d+([.,]\d+)?$/), source: z.string().min(1) })
+              .optional(),
+            postingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body);
+        const entry = await approveAndPost(pipelineDeps, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          actorRoleVerified: true,
+          documentId: req.params.documentId!,
+          suggestionId: body.suggestionId,
+          ...(body.overrides ? { overrides: body.overrides } : {}),
+          ...(body.exchangeRate ? { exchangeRate: body.exchangeRate } : {}),
+          ...(body.postingDate ? { postingDate: body.postingDate } : {}),
+        });
+        res.status(201).json(toJson(entry));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Gmail-import (sandbox) ───────────────────────────────────────────────
+  app.post(
+    '/api/organizations/:orgId/gmail/import',
+    requireAuth,
+    requireOrgPermission('integrations.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            labels: z.array(z.string().min(1)).max(20),
+            senders: z.array(z.string()).optional(),
+            afterDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            beforeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body);
+        const gmail = (deps.gmailAdapterFactory ?? (() => new SandboxGmailAdapter()))();
+        const vatStatus = await orgVatStatus(deps.db, req.params.orgId!);
+        const summary = await ingestFromGmail(pipelineDeps, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          gmail,
+          filter: {
+            labels: body.labels,
+            keywords: ['invoice', 'receipt', 'kvittering', 'faktura', 'kreditnota', 'credit note'],
+            ...(body.senders ? { senders: body.senders } : {}),
+            ...(body.afterDate ? { afterDate: body.afterDate } : {}),
+            ...(body.beforeDate ? { beforeDate: body.beforeDate } : {}),
+          },
+          vatStatus,
+        });
+        res.json(toJson({ ...summary, integrationMode: 'sandbox' }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get('/api/integrations/status', requireAuth, (_req, res) => {
+    res.json({
+      gmail: {
+        mode: 'sandbox',
+        active: false,
+        note: 'Gmail kjører mot sandbox-adapter. Ekte OAuth-tilkobling krever Google Cloud-prosjekt og klienthemmeligheter (se docs/integration-status.md).',
+      },
+      bank: { mode: 'not_implemented', active: false },
+      ehf: { mode: 'not_implemented', active: false },
+      altinn: { mode: 'not_implemented', active: false },
+    });
+  });
+
+  // ── Rapporter ────────────────────────────────────────────────────────────
+  const reportQuery = z.object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  });
+
+  app.get(
+    '/api/organizations/:orgId/reports/trial-balance',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery.parse(req.query);
+        const rows = await trialBalance(deps.db, {
+          organizationId: req.params.orgId!,
+          ...(q.from ? { fromDate: q.from } : {}),
+          ...(q.to ? { toDate: q.to } : {}),
+        });
+        res.json(toJson(rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/reports/income-statement',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery.parse(req.query);
+        res.json(
+          toJson(
+            await incomeStatement(deps.db, {
+              organizationId: req.params.orgId!,
+              ...(q.from ? { fromDate: q.from } : {}),
+              ...(q.to ? { toDate: q.to } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/reports/balance-sheet',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery.parse(req.query);
+        res.json(
+          toJson(
+            await balanceSheet(deps.db, {
+              organizationId: req.params.orgId!,
+              ...(q.to ? { toDate: q.to } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/reports/general-ledger',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery
+          .extend({ account: z.string().regex(/^\d{4}$/).optional() })
+          .parse(req.query);
+        res.json(
+          toJson(
+            await generalLedger(deps.db, {
+              organizationId: req.params.orgId!,
+              ...(q.account ? { accountNumber: q.account } : {}),
+              ...(q.from ? { fromDate: q.from } : {}),
+              ...(q.to ? { toDate: q.to } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/reports/subledger/:kind',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const kind = z.enum(['vendors', 'customers']).parse(req.params.kind);
+        res.json(toJson(await subledger(deps.db, req.params.orgId!, kind)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── MVA og skatt ─────────────────────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/vat/report',
+    requireAuth,
+    requireOrgPermission('vat.view'),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          })
+          .parse(req.query);
+        res.json(toJson(await buildVatReport(deps.db, req.params.orgId!, q.from, q.to)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/tax/estimate',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({
+            from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          })
+          .parse(req.query);
+        const org = await deps.db.query(
+          `SELECT org_form FROM organizations WHERE id = $1`,
+          [req.params.orgId],
+        );
+        if (!org.rowCount) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ikke funnet.' } });
+          return;
+        }
+        res.json(
+          toJson(
+            await buildTaxEstimate(deps.db, deps.rules, {
+              organizationId: req.params.orgId!,
+              orgForm: org.rows[0].org_form,
+              fromDate: q.from,
+              toDate: q.to,
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Periodelås og korrigering ────────────────────────────────────────────
+  app.post(
+    '/api/organizations/:orgId/periods/:year/:month/lock',
+    requireAuth,
+    requireOrgPermission('period.lock'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
+        const month = z.coerce.number().int().min(1).max(12).parse(req.params.month);
+        const body = z.object({ reason: z.string().min(3).max(500) }).parse(req.body);
+        await lockPeriod(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          year,
+          month,
+          reason: body.reason,
+        });
+        res.status(204).end();
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/journal-entries/:entryId/reverse',
+    requireAuth,
+    requireOrgPermission('journal.reverse'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            reversalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            reason: z.string().min(3).max(500),
+          })
+          .parse(req.body);
+        const entry = await reverseJournalEntry(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          entryId: req.params.entryId!,
+          reversalDate: body.reversalDate,
+          reason: body.reason,
+        });
+        res.status(201).json(toJson(entry));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Revisjonslogg ────────────────────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/audit-events',
+    requireAuth,
+    requireOrgPermission('audit.view'),
+    async (req, res, next) => {
+      try {
+        const rows = await deps.db.query(
+          `SELECT id, actor_user_id, actor_role, action, entity_type, entity_id, reason,
+                  previous_value, new_value, occurred_at
+           FROM audit_events WHERE organization_id = $1
+           ORDER BY occurred_at DESC LIMIT 500`,
+          [req.params.orgId],
+        );
+        res.json(toJson(rows.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Feilhåndtering ved systemgrensen ─────────────────────────────────────
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Ugyldig forespørsel.', details: err.issues },
+      });
+      return;
+    }
+    if (err instanceof DomainError) {
+      const statusByCode: Record<string, number> = {
+        VALIDATION_ERROR: 400,
+        NOT_FOUND: 404,
+        FORBIDDEN: 403,
+        CONFLICT: 409,
+        PERIOD_LOCKED: 409,
+        UNBALANCED_ENTRY: 422,
+        DUPLICATE: 409,
+      };
+      res.status(statusByCode[err.code] ?? 400).json({
+        error: { code: err.code, message: err.message },
+      });
+      return;
+    }
+    // Ukjent feil: logg internt (uten sensitivt innhold), generisk svar ut.
+    console.error('Uventet feil:', err instanceof Error ? err.message : err);
+    res.status(500).json({ error: { code: 'INTERNAL', message: 'Intern feil.' } });
+  });
+
+  return app;
+}
+
+async function orgVatStatus(
+  db: Db,
+  orgId: string,
+): Promise<'registered' | 'not_registered' | 'pending'> {
+  const res = await db.query(`SELECT vat_status FROM organizations WHERE id = $1`, [orgId]);
+  return res.rowCount ? res.rows[0].vat_status : 'not_registered';
+}
