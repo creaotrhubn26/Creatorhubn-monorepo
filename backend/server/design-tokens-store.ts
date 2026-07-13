@@ -203,6 +203,19 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.metrics = metrics;
   }
+  // Data-BINDINGER: { [selektor]: kilde-nøkkel } — elementets tekst kobles til en metric-verdi.
+  // Runtime setter textContent = metrics[<kilde>].value → live, koblet tall/stat på hvilket som helst element.
+  const bindIn = (patch as any)?.elementBindings;
+  if (bindIn && typeof bindIn === 'object' && !Array.isArray(bindIn)) {
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
+    const elementBindings: Record<string, string> = {};
+    let n = 0;
+    for (const [sel, key] of Object.entries(bindIn as Record<string, unknown>)) {
+      if (n >= 500) break;
+      if (SEL_RE.test(sel) && !sel.includes('..') && typeof key === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(key)) { elementBindings[sel] = key; n++; }
+    }
+    clean.elementBindings = elementBindings;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,

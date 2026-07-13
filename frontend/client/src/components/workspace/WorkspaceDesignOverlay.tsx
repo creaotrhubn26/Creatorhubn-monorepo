@@ -124,6 +124,7 @@ export default function WorkspaceDesignOverlay({
   const [edits, setEdits] = React.useState<Edits>({});
   const [textEdits, setTextEdits] = React.useState<Record<string, string>>({});
   const [animEdits, setAnimEdits] = React.useState<Record<string, string>>({});
+  const [bindEdits, setBindEdits] = React.useState<Record<string, string>>({}); // selektor → datakilde-nøkkel
   const [insertEdits, setInsertEdits] = React.useState<Record<string, InsertSpec[]>>({});
   // Insert-skjema
   const [insType, setInsType] = React.useState('heading');
@@ -195,6 +196,19 @@ export default function WorkspaceDesignOverlay({
     setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
   };
 
+  // Edit: bind elementets tekst til en datakilde (metric) — live via textContent + registrer.
+  const applyBinding = (sourceKey: string) => {
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    if (sourceKey) {
+      const src = sources.find((s) => s.key === sourceKey);
+      if (src && src.value != null) sel.textContent = String(src.value);
+      setBindEdits((b) => ({ ...b, [key]: sourceKey }));
+    } else {
+      setBindEdits((b) => { const n = { ...b }; delete n[key]; return n; });
+    }
+  };
+
   // Edit: overstyr elementets TEKST (kun løvnoder). Live via textContent + registrer for lagring.
   const applyText = (value: string) => {
     setInsp((s) => ({ ...s, text: value }));
@@ -223,17 +237,17 @@ export default function WorkspaceDesignOverlay({
     const s = document.createElement('style'); s.id = ID; s.textContent = ANIM_KEYFRAMES; document.head.appendChild(s);
   }, []);
 
-  // «Koble til»-picker: hent registeret av datakilder (marketing-metrics) når infographic velges.
-  // Hver kilde kommer MED sin gjeldende verdi → editoren viser at dataen faktisk kommer gjennom.
+  // «Koble til»-picker: hent registeret av datakilder (marketing-metrics) i Edit-modus. Hver kilde
+  // kommer MED sin gjeldende verdi → editoren viser at dataen faktisk kommer gjennom (infographic + binding).
   React.useEffect(() => {
-    if (insType !== 'infographic') return;
+    if (mode !== 'edit') return;
     let live = true;
     fetch(`/api/admin/design/sources?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (live && d && Array.isArray(d.sources)) setSources(d.sources); })
       .catch(() => {});
     return () => { live = false; };
-  }, [insType, workspace]);
+  }, [mode, workspace]);
 
   // Insert: legg et nytt element (overskrift/tekst/knapp/bilde/infographic/skille) ved ankeret.
   const b64url = (obj: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -276,6 +290,7 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementText && typeof d.tokens.elementText === 'object') setTextEdits(d.tokens.elementText as Record<string, string>);
           if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
+          if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
         }
       })
       .catch(() => {});
@@ -288,7 +303,7 @@ export default function WorkspaceDesignOverlay({
     try {
       const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
         method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits }),
+        body: JSON.stringify({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits }),
       });
       const n = new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size;
       setSaveMsg(r.ok ? `Lagret ${n} element ✓` : 'Avvist (krever admin)');
@@ -302,11 +317,12 @@ export default function WorkspaceDesignOverlay({
     setTextEdits((t) => { const n = { ...t }; delete n[key]; return n; });
     setAnimEdits((a) => { const n = { ...a }; delete n[key]; return n; });
     setInsertEdits((i) => { const n = { ...i }; delete n[key]; return n; });
+    setBindEdits((b) => { const n = { ...b }; delete n[key]; return n; });
     // Fjern også de innsatte nodene fra DOM umiddelbart.
     (insertEdits[key] || []).forEach((s) => document.querySelector(`[data-chd-insert="${s.id}"]`)?.remove());
   };
-  const resetAllEdits = () => { setEdits({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); };
-  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits)]));
+  const resetAllEdits = () => { setEdits({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); };
+  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits)]));
   // Design-forslag for valgt element (recomputes ved nytt valg + etter en fiks endrer insp).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const suggestions = React.useMemo(() => (sel ? analyzeElement(sel) : []), [sel, insp]);
@@ -529,6 +545,7 @@ export default function WorkspaceDesignOverlay({
                   if (textEdits[k] != null) parts.push('tekst');
                   if (animEdits[k]) parts.push(String(animEdits[k]));
                   if (insertEdits[k]?.length) parts.push(`+${insertEdits[k].length} innsatt`);
+                  if (bindEdits[k]) parts.push(`⇄ ${bindEdits[k]}`);
                   return (
                     <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <code style={{ flex: 1, fontSize: 10, color: INK2, wordBreak: 'break-all', lineHeight: 1.3 }}>{k}</code>
@@ -581,6 +598,20 @@ export default function WorkspaceDesignOverlay({
                     <div style={section}>Tekst</div>
                     <textarea data-chd aria-label="Element-tekst" value={insp.text ?? ''} onChange={(e) => applyText(e.target.value)}
                       style={{ ...field, minHeight: 52, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
+
+                    <div style={section}>Bind til datakilde</div>
+                    <select data-chd aria-label="Bind tekst til datakilde" style={field}
+                      value={sel ? (bindEdits[uniqueSelector(sel)] || '') : ''} onChange={(e) => applyBinding(e.target.value)}>
+                      <option value="">— Ingen (fritekst) —</option>
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.key}{s.label ? ` · ${String(s.label)}` : ''}</option>)}
+                    </select>
+                    {sel && bindEdits[uniqueSelector(sel)] && (() => {
+                      const bound = sources.find((s) => s.key === bindEdits[uniqueSelector(sel)]);
+                      return bound
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Bundet — data kommer gjennom: <b>{String(bound.value ?? '—')}</b></div>
+                        : <div style={{ fontSize: 11, color: '#b45309' }}>⚠ Kilden er ikke definert lenger.</div>;
+                    })()}
+                    {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen datakilder ennå — definer metrics i Design-tokens.</div>}
                   </>
                 )}
 

@@ -223,6 +223,27 @@ function applyInserts(inserts: ElementInserts): (() => void) | undefined {
   return () => obs.disconnect();
 }
 
+export type ElementBindings = Record<string, string>; // selektor → metric-kilde-nøkkel
+
+/** Data-bind: sett elementets tekst = metrics[<kilde>].value (live, koblet). Observer-reapply. */
+function applyBindings(bindings: ElementBindings, metrics: Record<string, { value?: unknown }>): (() => void) | undefined {
+  const entries = Object.entries(bindings || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, key] of entries) {
+      const m = metrics && metrics[key];
+      if (!m || m.value == null) continue;
+      const val = String(m.value);
+      try { document.querySelectorAll(sel).forEach((el) => { if (el.textContent !== val) el.textContent = val; }); } catch { /* ugyldig selektor */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; apply(); }); });
+  try { obs.observe(document.body, { childList: true, subtree: true, characterData: true }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
 const STYLE_ID = 'chd-element-edits';
 
 /**
@@ -234,6 +255,7 @@ export function useElementEdits(workspace: string): void {
     let live = true;
     let cleanupText: (() => void) | undefined;
     let cleanupInserts: (() => void) | undefined;
+    let cleanupBind: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -257,8 +279,12 @@ export function useElementEdits(workspace: string): void {
         if (t.elementInserts && typeof t.elementInserts === 'object') {
           cleanupInserts = applyInserts(t.elementInserts as ElementInserts);
         }
+        // Data-bindinger → elementtekst = metric-verdi (live, koblet).
+        if (t.elementBindings && typeof t.elementBindings === 'object') {
+          cleanupBind = applyBindings(t.elementBindings as ElementBindings, (t.metrics as Record<string, { value?: unknown }>) || {});
+        }
       })
       .catch(() => {});
-    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); };
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); };
   }, [workspace]);
 }
