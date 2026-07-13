@@ -15,7 +15,7 @@ av statsautorisert regnskapsfører og advokat før produksjonslansering (se nede
 | Sikring mot urettmessig endring/sletting | ✅ | Append-only-triggere i DB (migrasjon 0001/0002/0004), rettes kun med reversering/kreditnota |
 | Systemgenererte posteringer etterprøvbare | ✅ | Posteringslinjer + `posting_suggestions` med engine/beslutter/tidspunkt + revisjonslogg |
 | Systemdokumentasjon av funksjon og kontroller | 🟡 | `docs/accounting-engine.md` m.fl. finnes; formell «systembeskrivelse etter bokføringsforskriften § 3-2» er ikke skrevet |
-| Sikring mot TAP (backup/restore) | ❌ | Ingen backup-/gjenopprettingsrutine er implementert eller testet — driftskrav før produksjon |
+| Sikring mot TAP (backup/restore) | ✅ | `npm run backup` — pg_dump + dokumentarkiv med sha256-manifest og **automatisk gjenopprettingstest** i kladdedatabase (balanse, radantall, bilag-sha256), testet i `test/backup.pg.test.ts`; se `docs/backup-restore.md`. Drift (planlagt kjøring, offsite-kopi, kryptering i ro) gjenstår |
 
 ## 2. Oppbevaring og eksport
 
@@ -25,7 +25,7 @@ av statsautorisert regnskapsfører og advokat før produksjonslansering (se nede
 | Eksport av regnskapsdata | ✅ | SAF-T-eksport + rapporter; hver eksport auditlogges |
 | 5 år / 3,5 år oppbevaringsfrister | 🟡 | Designet for det (`docs/data-retention.md`, ingen slettefunksjon finnes) — men ingen automatisert fristhåndtering |
 | Tilgang etter avsluttet abonnement / leverandøravvikling | ❌ | Exit-rutine er ikke designet — må inn i avtaleverk og drift |
-| Backup/restore-testing | ❌ | Se pkt. 1 |
+| Backup/restore-testing | ✅ | Automatisert gjenopprettingstest er del av backuprutinen (se pkt. 1 og `docs/backup-restore.md`) |
 
 ## 3. SAF-T
 
@@ -114,6 +114,8 @@ Fremtidig banktilkobling skal gå via lisensiert open banking-leverandør.
    posteringsmønstre og testscenarioer.
 2. **Advokat**: databehandleravtale, vilkår, DPIA, regnskapsførerlov-grensen,
    e-postinnsynsreglene.
-3. **Drift**: backup/restore med gjenopprettingstest, kryptert EU/EØS-lagring,
-   exit-/avviklingsrutine for oppbevaringspliktig materiale.
+3. **Drift**: planlagt kjøring av backuprutinen med alarm + offsite-kopi
+   (rutinen med gjenopprettingstest finnes: `docs/backup-restore.md`),
+   kryptert EU/EØS-lagring, exit-/avviklingsrutine for oppbevaringspliktig
+   materiale.
 4. **Sikkerhet**: penetrasjonstest og produksjonsautentisering (BankID/OIDC + MFA).
