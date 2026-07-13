@@ -203,6 +203,10 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   // Form: { [selektor]: { [css-prop]: verdi } }. Kun hvitlistede trygge props + saniterte
   // selektorer/verdier (ingen url()/expression/vilkårlig CSS). Tak på antall selektorer.
   if ((patch as any)?.elementEdits !== undefined) clean.elementEdits = sanitizeElementEdits((patch as any).elementEdits);
+  // Responsiv: egne stil-overstyringer pr. breakpoint (nettbrett ≤900px, mobil ≤600px) — samme
+  // saniterer, runtime pakker dem i @media. Base (elementEdits) gjelder alle skjermer.
+  if ((patch as any)?.elementEditsTablet !== undefined) clean.elementEditsTablet = sanitizeElementEdits((patch as any).elementEditsTablet);
+  if ((patch as any)?.elementEditsMobile !== undefined) clean.elementEditsMobile = sanitizeElementEdits((patch as any).elementEditsMobile);
   // Per-element TEKST-overstyring (Edit-modus): { [selektor]: tekst }. textContent (ikke innerHTML)
   // → XSS-trygt av konstruksjon. Kun saniterte selektorer + lengdetak.
   if ((patch as any)?.elementText !== undefined) clean.elementText = sanitizeElementText((patch as any).elementText);

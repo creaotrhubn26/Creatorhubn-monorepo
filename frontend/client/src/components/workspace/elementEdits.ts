@@ -362,7 +362,13 @@ export function useElementEdits(workspace: string): void {
         const editCss = vm.elementEdits ? buildEditsCss(vm.elementEdits as ElementEdits) : '';
         const animCss = vm.elementAnim ? buildAnimCss(vm.elementAnim as ElementAnim) : '';
         const notifCss = buildNotifCss(t);
-        const css = [editCss, animCss, notifCss].filter(Boolean).join('\n');
+        // Responsiv (top-nivå): breakpoint-overstyringer pakket i @media.
+        const tabletCss = t.elementEditsTablet ? buildEditsCss(t.elementEditsTablet as ElementEdits) : '';
+        const mobileCss = t.elementEditsMobile ? buildEditsCss(t.elementEditsMobile as ElementEdits) : '';
+        const css = [editCss, animCss, notifCss,
+          tabletCss ? `@media (max-width:900px){\n${tabletCss}\n}` : '',
+          mobileCss ? `@media (max-width:600px){\n${mobileCss}\n}` : '',
+        ].filter(Boolean).join('\n');
         if (css) {
           let tag = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
           if (!tag) { tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
