@@ -20,6 +20,7 @@ import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
+import MorningBriefCard from "./MorningBriefCard";
 import InsightsFeedPanel from "./InsightsFeedPanel";
 import OpportunityScorePanel from "./OpportunityScorePanel";
 import TenderIntelPanel from "./TenderIntelPanel";
@@ -95,6 +96,8 @@ export default function MarketIntelligenceSection({
               <ScheduledReportsPanel />
             </Suspense>
           )}
+
+          <MorningBriefCard />
 
           <InsightsFeedPanel />
 
