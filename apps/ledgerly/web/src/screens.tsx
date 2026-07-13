@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRef } from 'react';
 import { api, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
 import { useLoad, type ViewMode } from './App';
+import { DimensionSelect } from './screens-dimensions';
 import { PostingLines } from './screens-pro';
 import { CardSkeleton, Disclosure, EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
 
@@ -376,6 +377,8 @@ export function DocumentDetailScreen({
   const [account, setAccount] = useState('');
   const [vatCode, setVatCode] = useState('');
   const [businessUse, setBusinessUse] = useState('100');
+  const [project, setProject] = useState('');
+  const [department, setDepartment] = useState('');
   const [rate, setRate] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [posted, setPosted] = useState<{ entryNumber: number } | null>(null);
@@ -409,6 +412,8 @@ export function DocumentDetailScreen({
       if (account) overrides['accountNumber'] = account;
       if (vatCode) overrides['vatCode'] = vatCode;
       if (businessUse !== '100') overrides['businessUsePercentage'] = Number(businessUse);
+      if (project) overrides['project'] = project;
+      if (department) overrides['department'] = department;
       const body: Record<string, unknown> = { suggestionId: suggestion.id };
       if (Object.keys(overrides).length) body['overrides'] = overrides;
       if (needsRate) body['exchangeRate'] = { rateDecimal: rate, source: 'manuell (bruker)' };
@@ -609,6 +614,8 @@ export function DocumentDetailScreen({
                 <input id="rate" placeholder="f.eks. 11.50" value={rate} onChange={(e) => setRate(e.target.value)} />
               </div>
             )}
+            <DimensionSelect orgId={orgId} kind="project" value={project} onChange={setProject} id="dim-project" />
+            <DimensionSelect orgId={orgId} kind="department" value={department} onChange={setDepartment} id="dim-department" />
           </div>
           {error && <div className="error">{error}</div>}
           <div className="actions">

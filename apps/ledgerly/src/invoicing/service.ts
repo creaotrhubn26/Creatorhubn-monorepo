@@ -15,6 +15,7 @@ import type { Db, DbClient } from '../db/pool.js';
 import { withTransaction } from '../db/pool.js';
 import { postJournalEntry } from '../ledger/engine.js';
 import type { RuleRegister } from '../rules/register.js';
+import { assertDimensionExists } from '../dimensions/service.js';
 import { ConflictError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { newId } from '../shared/ids.js';
 import { multiplyRational, money } from '../shared/money.js';
@@ -52,6 +53,8 @@ export interface InvoiceLineInput {
   vatCode: string;
   revenueAccount?: string;
   productId?: string;
+  /** Prosjektkode — valideres mot dimensjonsregisteret. */
+  project?: string;
 }
 
 export interface CreateInvoiceInput {
@@ -70,6 +73,7 @@ interface ComputedLine {
   vatCode: string;
   revenueAccount: string;
   productId: string | null;
+  project: string | null;
   netMinor: bigint;
   vatMinor: bigint;
 }
@@ -112,6 +116,7 @@ function computeLines(
       vatCode: line.vatCode,
       revenueAccount: account,
       productId: line.productId ?? null,
+      project: line.project ? line.project.toUpperCase() : null,
       netMinor: lineNet,
       vatMinor: lineVat,
     });
@@ -163,8 +168,8 @@ async function insertInvoice(
     await client.query(
       `INSERT INTO invoice_lines
          (id, invoice_id, organization_id, line_number, product_id, description,
-          quantity_thousandths, unit_price_minor, vat_code, revenue_account, net_minor, vat_minor)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          quantity_thousandths, unit_price_minor, vat_code, revenue_account, net_minor, vat_minor, project)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         newId(),
         id,
@@ -178,6 +183,7 @@ async function insertInvoice(
         line.revenueAccount,
         line.netMinor.toString(),
         line.vatMinor.toString(),
+        line.project,
       ],
     );
   }
@@ -192,6 +198,11 @@ export async function createInvoiceDraft(
 ): Promise<{ id: string; netMinor: bigint; vatMinor: bigint; grossMinor: bigint }> {
   const isoDate = input.invoiceDate ?? new Date().toISOString().slice(0, 10);
   const computed = computeLines(rules, input.lines, isoDate);
+  for (const line of computed.computed) {
+    if (line.project) {
+      await assertDimensionExists(db, input.organizationId, 'project', line.project);
+    }
+  }
   return withTransaction(db, async (client) => {
     const insertParams: Parameters<typeof insertInvoice>[1] = {
       organizationId: input.organizationId,
@@ -317,12 +328,16 @@ export async function issueInvoice(
 
   // Fase 2: bokfør (idempotensnøkkelen sikrer nøyaktig én postering selv ved
   // gjenopptak/kappløp), og lagre koblingen faktura -> bilag.
-  const revenueByKey = new Map<string, { account: string; vatCode: string; netMinor: bigint }>();
+  const revenueByKey = new Map<
+    string,
+    { account: string; vatCode: string; project: string | null; netMinor: bigint }
+  >();
   const vatByCode = new Map<string, bigint>();
   for (const line of issued.lineRows) {
-    const key = `${line.revenue_account}:${line.vat_code}`;
+    const key = `${line.revenue_account}:${line.vat_code}:${line.project ?? ''}`;
     const agg =
-      revenueByKey.get(key) ?? { account: line.revenue_account, vatCode: line.vat_code, netMinor: 0n };
+      revenueByKey.get(key) ??
+      { account: line.revenue_account, vatCode: line.vat_code, project: line.project ?? null, netMinor: 0n };
     agg.netMinor += BigInt(line.net_minor);
     revenueByKey.set(key, agg);
     vatByCode.set(line.vat_code, (vatByCode.get(line.vat_code) ?? 0n) + BigInt(line.vat_minor));
@@ -343,6 +358,7 @@ export async function issueInvoice(
         accountNumber: r.account,
         creditMinor: r.netMinor,
         vatCode: r.vatCode,
+        ...(r.project ? { project: r.project } : {}),
       })),
       ...[...vatByCode.entries()]
         .filter(([, amount]) => amount > 0n)
@@ -430,8 +446,8 @@ export async function createCreditNote(
       await client.query(
         `INSERT INTO invoice_lines
            (id, invoice_id, organization_id, line_number, product_id, description,
-            quantity_thousandths, unit_price_minor, vat_code, revenue_account, net_minor, vat_minor)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            quantity_thousandths, unit_price_minor, vat_code, revenue_account, net_minor, vat_minor, project)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           newId(),
           creditId,
@@ -445,6 +461,7 @@ export async function createCreditNote(
           line.revenue_account,
           line.net_minor,
           line.vat_minor,
+          line.project,
         ],
       );
     }
@@ -475,11 +492,16 @@ export async function createCreditNote(
   });
 
   // Bokfør kreditnotaen (motsatt av fakturaen), idempotent.
-  const revenueByKey = new Map<string, { account: string; vatCode: string; netMinor: bigint }>();
+  const revenueByKey = new Map<
+    string,
+    { account: string; vatCode: string; project: string | null; netMinor: bigint }
+  >();
   const vatByCode = new Map<string, bigint>();
   for (const line of prepared.lineRows) {
-    const key = `${line.revenue_account}:${line.vat_code}`;
-    const agg = revenueByKey.get(key) ?? { account: line.revenue_account, vatCode: line.vat_code, netMinor: 0n };
+    const key = `${line.revenue_account}:${line.vat_code}:${line.project ?? ''}`;
+    const agg =
+      revenueByKey.get(key) ??
+      { account: line.revenue_account, vatCode: line.vat_code, project: line.project ?? null, netMinor: 0n };
     agg.netMinor += BigInt(line.net_minor);
     revenueByKey.set(key, agg);
     vatByCode.set(line.vat_code, (vatByCode.get(line.vat_code) ?? 0n) + BigInt(line.vat_minor));
@@ -495,6 +517,7 @@ export async function createCreditNote(
         accountNumber: r.account,
         debitMinor: r.netMinor,
         vatCode: r.vatCode,
+        ...(r.project ? { project: r.project } : {}),
       })),
       ...[...vatByCode.entries()]
         .filter(([, amount]) => amount > 0n)

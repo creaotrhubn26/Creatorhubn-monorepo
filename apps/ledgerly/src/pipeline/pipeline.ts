@@ -18,6 +18,7 @@ import {
 } from '../documents/service.js';
 import type { ExtractedData } from '../documents/types.js';
 import { validateExtraction } from '../documents/validate.js';
+import { assertDimensionExists } from '../dimensions/service.js';
 import { GmailAuthError, type GmailPort, type GmailSearchFilter } from '../ingestion/gmail/port.js';
 import type { ObjectStorage } from '../storage/port.js';
 import { sanitizeUntrustedText } from '../ingestion/gmail/sanitize.js';
@@ -306,6 +307,9 @@ export interface ApproveAndPostInput {
     accountNumber?: string | undefined;
     vatCode?: string | undefined;
     businessUsePercentage?: number | undefined;
+    /** Kostnadsbærere — valideres mot dimensjonsregisteret. */
+    project?: string | undefined;
+    department?: string | undefined;
   };
   /** Kreves for dokumenter i utenlandsk valuta. */
   exchangeRate?: { rateDecimal: string; source: string };
@@ -358,6 +362,18 @@ export async function approveAndPost(
   const businessUse = BigInt(
     input.overrides?.businessUsePercentage ?? suggestion.businessUsePercentage,
   );
+  // Dimensjoner valideres mot registeret og settes på kostnadslinjene.
+  const dims: { project?: string; department?: string } = {};
+  if (input.overrides?.project) {
+    const code = input.overrides.project.toUpperCase();
+    await assertDimensionExists(deps.db, input.organizationId, 'project', code);
+    dims.project = code;
+  }
+  if (input.overrides?.department) {
+    const code = input.overrides.department.toUpperCase();
+    await assertDimensionExists(deps.db, input.organizationId, 'department', code);
+    dims.department = code;
+  }
   if (businessUse < 0n || businessUse > 100n) {
     throw new ValidationError('Næringsandel må være mellom 0 og 100 prosent.');
   }
@@ -408,6 +424,7 @@ export async function approveAndPost(
       vatCode: vatCodeStr,
       ...(doc.vendor_name ? { description: doc.vendor_name } : {}),
       ...(fxInfo ?? {}),
+      ...dims,
     });
     if (vatCode.deductible) {
       lines.push({ accountNumber: '2710', debitMinor: calc.vatMinor, vatCode: vatCodeStr, description: 'Inngående mva, omvendt avgiftsplikt' });
@@ -420,7 +437,7 @@ export async function approveAndPost(
   } else if (vatCode.direction === 'input' && vatCode.deductible) {
     // Innenlands kjøp med fradrag: splitt brutto i netto + mva per sats fra regelregisteret.
     const parts = splitGrossByVatCode(deps.rules, vatCodeStr, businessGross, invoiceDate);
-    lines.push({ accountNumber, debitMinor: parts.netMinor, vatCode: vatCodeStr, description: doc.vendor_name ?? undefined, ...(fxInfo ?? {}) });
+    lines.push({ accountNumber, debitMinor: parts.netMinor, vatCode: vatCodeStr, description: doc.vendor_name ?? undefined, ...(fxInfo ?? {}), ...dims });
     if (parts.vatMinor > 0n) {
       lines.push({ accountNumber: '2710', debitMinor: parts.vatMinor, vatCode: vatCodeStr, description: `Inngående mva ${parts.ratePct} %` });
     }
@@ -429,7 +446,7 @@ export async function approveAndPost(
   } else {
     // Uten fradrag/mva-behandling: hele beløpet er kostnad (næringsdelen).
     if (businessGross > 0n) {
-      lines.push({ accountNumber, debitMinor: businessGross, vatCode: vatCodeStr, description: doc.vendor_name ?? undefined, ...(fxInfo ?? {}) });
+      lines.push({ accountNumber, debitMinor: businessGross, vatCode: vatCodeStr, description: doc.vendor_name ?? undefined, ...(fxInfo ?? {}), ...dims });
     }
     if (privateGross > 0n) lines.push({ accountNumber: '2060', debitMinor: privateGross, description: 'Privat andel' });
     lines.push({ accountNumber: '2400', creditMinor: grossNok, vendorId, description: doc.invoice_number ? `Faktura ${doc.invoice_number}` : undefined });

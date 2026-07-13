@@ -30,6 +30,7 @@ import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
+import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
 import { newId } from '../shared/ids.js';
 import type { RuleRegister } from '../rules/register.js';
@@ -406,6 +407,8 @@ export function createApiServer(deps: ApiDeps): express.Express {
                 accountNumber: z.string().regex(/^\d{4}$/).optional(),
                 vatCode: z.string().optional(),
                 businessUsePercentage: z.number().int().min(0).max(100).optional(),
+                project: z.string().min(1).max(30).optional(),
+                department: z.string().min(1).max(30).optional(),
               })
               .optional(),
             exchangeRate: z
@@ -647,6 +650,77 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // ── Kostnadsbærere: prosjekter og avdelinger ─────────────────────────────
+  const dimensionKind = z.enum(['project', 'department']);
+
+  app.post(
+    '/api/organizations/:orgId/dimensions/:kind',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const kind = dimensionKind.parse(req.params.kind);
+        const body = z
+          .object({
+            code: z.string().min(1).max(30),
+            name: z.string().min(1).max(200),
+            description: z.string().max(1000).optional(),
+          })
+          .parse(req.body);
+        const created = await createDimension(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          kind,
+          code: body.code,
+          name: body.name,
+          ...(body.description ? { description: body.description } : {}),
+        });
+        res.status(201).json(created);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/dimensions/:kind',
+    requireAuth,
+    requireOrgPermission('documents.view'),
+    async (req, res, next) => {
+      try {
+        const kind = dimensionKind.parse(req.params.kind);
+        res.json(toJson(await listDimensions(deps.db, req.params.orgId!, kind)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/reports/dimension-result',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery
+          .extend({ kind: dimensionKind.default('project') })
+          .parse(req.query);
+        res.json(
+          toJson(
+            await dimensionResultReport(deps.db, {
+              organizationId: req.params.orgId!,
+              kind: q.kind,
+              ...(q.from ? { fromDate: q.from } : {}),
+              ...(q.to ? { toDate: q.to } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   // ── SAF-T-eksport ────────────────────────────────────────────────────────
   app.get(
     '/api/organizations/:orgId/saf-t',
@@ -802,6 +876,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
     unitPriceMinor: z.coerce.bigint().nonnegative(),
     vatCode: z.string().min(1),
     revenueAccount: z.string().regex(/^\d{4}$/).optional(),
+    project: z.string().min(1).max(30).optional(),
   });
 
   app.post(
@@ -828,6 +903,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
             unitPriceMinor: l.unitPriceMinor,
             vatCode: l.vatCode,
             ...(l.revenueAccount ? { revenueAccount: l.revenueAccount } : {}),
+            ...(l.project ? { project: l.project } : {}),
           })),
           ...(body.invoiceDate ? { invoiceDate: body.invoiceDate } : {}),
           ...(body.dueDate ? { dueDate: body.dueDate } : {}),

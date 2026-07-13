@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { api, kr, parseKrToMinor } from './api';
 import { useLoad } from './App';
+import { DimensionSelect } from './screens-dimensions';
 import { EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
 
 interface Customer {
@@ -72,6 +73,7 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [project, setProject] = useState('');
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -111,6 +113,7 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
             ),
             unitPriceMinor: parseKrToMinor(l.unitPriceKr),
             vatCode: l.vatCode,
+            ...(project ? { project } : {}),
           })),
       };
       const draft = await api<{ id: string; grossMinor: string }>(
@@ -238,6 +241,7 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
               <label htmlFor="ddate">Forfallsdato</label>
               <input id="ddate" placeholder="ÅÅÅÅ-MM-DD" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
+            <DimensionSelect orgId={orgId} kind="project" value={project} onChange={setProject} id="inv-project" />
           </div>
 
           <h2>Linjer</h2>

@@ -10,6 +10,7 @@ import {
   TaxScreen,
   VatScreen,
 } from './screens';
+import { DimensionsScreen } from './screens-dimensions';
 import { InvoicingScreen } from './screens-invoicing';
 import { AuditScreen, JournalScreen, LedgerScreen } from './screens-pro';
 import { Icons, ToastProvider } from './ui';
@@ -34,13 +35,15 @@ type Screen =
   | { name: 'ledger' }
   | { name: 'journal' }
   | { name: 'audit' }
-  | { name: 'invoicing' };
+  | { name: 'invoicing' }
+  | { name: 'dimensions' };
 
 const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
   { key: 'overview', label: 'Oversikt', icon: 'overview' },
   { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
   { key: 'gmail', label: 'Gmail-import', icon: 'mail' },
   { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
+  { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
   { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
   { key: 'vat', label: 'MVA', icon: 'percent' },
   { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
@@ -162,6 +165,7 @@ export default function App() {
           {screen.name === 'gmail' && <GmailScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'bank' && <BankScreen orgId={orgId} />}
           {screen.name === 'invoicing' && <InvoicingScreen orgId={orgId} />}
+          {screen.name === 'dimensions' && <DimensionsScreen orgId={orgId} />}
           {screen.name === 'reports' && <ReportsScreen orgId={orgId} />}
           {screen.name === 'vat' && <VatScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}

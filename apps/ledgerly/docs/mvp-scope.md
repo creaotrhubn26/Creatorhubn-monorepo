@@ -43,8 +43,9 @@ med 10 roller (`src/access/permissions.ts`), tenant-isolasjon i alle endepunkter
 - **SAF-T-XML-eksport** — kontoplan og MVA-koder følger SAF-T-standarden, men
   eksportfilen genereres ikke.
 - **Altinn/Skatteetaten-innsending** — MVA-rapporten er alltid `status: 'draft'`.
+- **Prosjekt og avdelinger (kostnadsbærere)** — register med stabile koder, validering ved bokføring/faktura, dimensjon på kostnads- og inntektslinjer, lønnsomhetsrapport per prosjekt/avdeling og egen UI-skjerm.
 - **Faktura (fase 6, kjerne)** — kunder, fakturabygger, kontrollert nummerserie, KID (MOD10), automatisk bokføring ved utstedelse, kreditnota og KID-basert innbetalingsmatching er implementert. PDF/EHF/e-post/purring gjenstår.
-- **Frontend: ett presentasjonsnivå** — SPA-en i `web/` dekker den vertikale flyten; avansert visning og regnskapsførervisning gjenstår.
+- **Frontend** — SPA-en i `web/` dekker den vertikale flyten med tre presentasjonsnivåer (enkel/avansert/regnskapsfører).
 - **Produksjonsautentisering** — dev-login med HMAC-token (`src/api/auth.ts`);
   OIDC/BankID og MFA er dokumentert krav, ikke implementert.
 - **Objektlagring (lokal)** — dokumentinnhold lagres via ObjectStorage-porten på lokal
