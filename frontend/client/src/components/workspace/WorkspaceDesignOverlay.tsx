@@ -335,6 +335,32 @@ export default function WorkspaceDesignOverlay({
     } catch { setAiMsg('Nettverksfeil'); }
     finally { setAiLoading(false); }
   };
+  // Før/etter-sammenligning: «Vis original» skrur MIDLERTIDIG av alle ulagrede/lagrede visuelle
+  // endringer (runtime-<style> + in-session inline-stil + animasjon + innsatte noder) via et snapshot,
+  // så du ser siden slik den var — klikk igjen for å få endringene tilbake. Ingenting lagres/mistes.
+  const [origMode, setOrigMode] = React.useState(false);
+  const restoreRef = React.useRef<null | (() => void)>(null);
+  const toggleOriginal = () => {
+    if (restoreRef.current) { restoreRef.current(); restoreRef.current = null; setOrigMode(false); return; }
+    const restores: Array<() => void> = [];
+    const tag = document.getElementById('chd-element-edits');
+    if (tag) { const prev = tag.textContent; tag.textContent = ''; restores.push(() => { tag.textContent = prev; }); }
+    const stripInline = (keys: string[], propsFor: (sel: string) => string[]) => {
+      for (const sel of keys) {
+        let els: NodeListOf<Element>; try { els = document.querySelectorAll(sel); } catch { continue; }
+        els.forEach((n) => { const h = n as HTMLElement; for (const p of propsFor(sel)) { const cur = h.style.getPropertyValue(p); if (cur) { h.style.removeProperty(p); restores.push(() => h.style.setProperty(p, cur)); } } });
+      }
+    };
+    stripInline(Object.keys(edits), (sel) => Object.keys(edits[sel] || {}));
+    stripInline(Object.keys(animEdits), () => ['animation']);
+    document.querySelectorAll('[data-chd-insert]').forEach((n) => { const h = n as HTMLElement; const prev = h.style.display; h.style.display = 'none'; restores.push(() => { h.style.display = prev; }); });
+    restoreRef.current = () => { restores.reverse().forEach((r) => r()); };
+    setOrigMode(true);
+  };
+  // Rydd opp: gjenopprett hvis man forlater edit-modus eller lukker mens original vises.
+  React.useEffect(() => { if (mode !== 'edit' && restoreRef.current) { restoreRef.current(); restoreRef.current = null; setOrigMode(false); } }, [mode]);
+  React.useEffect(() => () => { if (restoreRef.current) restoreRef.current(); }, []);
+
   // Forhåndsvis/Bruk/Angre-knapper for et forslag med en konkret (prop, value)-endring.
   const renderSugActions = (key: string, prop?: string, value?: string) => {
     if (!prop || !value) return null;
@@ -471,6 +497,13 @@ export default function WorkspaceDesignOverlay({
 
         {mode === 'edit' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(editKeys.length > 0 || origMode) && (
+              <button data-chd onClick={toggleOriginal}
+                style={{ ...(origMode ? cta : btn(false)), padding: '6px 10px', fontSize: 12 }}
+                title="Sammenlign siden med og uten dine ulagrede endringer">
+                {origMode ? '↩ Vis mine endringer' : '👁 Vis original (før/etter)'}
+              </button>
+            )}
             {editKeys.length > 0 && (
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
