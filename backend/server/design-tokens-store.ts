@@ -260,7 +260,10 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     const mode = ['off', 'active', 'ab'].includes((vcIn as any).mode) ? (vcIn as any).mode : 'off';
     const active = typeof (vcIn as any).active === 'string' && NAME_RE.test((vcIn as any).active) ? (vcIn as any).active : '';
     const ab = Array.isArray((vcIn as any).ab) ? ((vcIn as any).ab as unknown[]).filter((x) => typeof x === 'string' && NAME_RE.test(x)).slice(0, 10) : [];
-    clean.variantConfig = { mode, active, ab };
+    // Konverterings-mål: en trygg selektor (klikk → konvertering for A/B-attribusjon).
+    const goalRaw = (vcIn as any).goal;
+    const goal = typeof goalRaw === 'string' && CHD_SEL_RE.test(goalRaw) && !goalRaw.includes('..') ? goalRaw : '';
+    clean.variantConfig = { mode, active, ab, goal };
   }
   // Gjenbrukbare KOMPONENTER: { [navn]: InsertSpec[] } — en navngitt blokk (samme trygge spec-typer
   // som elementInserts) som kan settes inn hvor som helst. Løv-typer (ingen nesting av komponenter).

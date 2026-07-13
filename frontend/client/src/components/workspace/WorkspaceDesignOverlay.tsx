@@ -143,6 +143,8 @@ export default function WorkspaceDesignOverlay({
   const [variantMode, setVariantMode] = React.useState<'off' | 'active' | 'ab'>('off');
   const [variantActive, setVariantActive] = React.useState('');
   const [variantAb, setVariantAb] = React.useState<string[]>([]);
+  const [variantGoal, setVariantGoal] = React.useState(''); // konverterings-mål (selektor)
+  const [abConv, setAbConv] = React.useState<Record<string, number>>({});
   const [newVariantName, setNewVariantName] = React.useState('');
   const [editingVariant, setEditingVariant] = React.useState<string | null>(null);
   const [abStats, setAbStats] = React.useState<Record<string, number>>({});
@@ -380,8 +382,8 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
           if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
           if (d.tokens.designVariants && typeof d.tokens.designVariants === 'object') setVariants(d.tokens.designVariants as Record<string, VariantData>);
-          const vc = d.tokens.variantConfig as { mode?: string; active?: string; ab?: string[] } | undefined;
-          if (vc) { setVariantMode((['off', 'active', 'ab'].includes(vc.mode || '') ? vc.mode : 'off') as 'off' | 'active' | 'ab'); setVariantActive(vc.active || ''); setVariantAb(Array.isArray(vc.ab) ? vc.ab : []); }
+          const vc = d.tokens.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
+          if (vc) { setVariantMode((['off', 'active', 'ab'].includes(vc.mode || '') ? vc.mode : 'off') as 'off' | 'active' | 'ab'); setVariantActive(vc.active || ''); setVariantAb(Array.isArray(vc.ab) ? vc.ab : []); setVariantGoal(vc.goal || ''); }
         }
       })
       .catch(() => {});
@@ -392,7 +394,7 @@ export default function WorkspaceDesignOverlay({
   // ── Varianter / A-B ──────────────────────────────────────────────────────────────────────────
   const currentMaps = (): VariantData => ({ elementEdits: edits, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits });
   const buildSaveBody = (): Record<string, unknown> => {
-    const vcfg = { mode: variantMode, active: variantActive, ab: variantAb };
+    const vcfg = { mode: variantMode, active: variantActive, ab: variantAb, goal: variantGoal };
     if (editingVariant) {
       // Redigerer en variant → skriv maps'ene tilbake til DEN varianten (rør ikke base).
       const updated = { ...variants, [editingVariant]: currentMaps() };
@@ -427,7 +429,7 @@ export default function WorkspaceDesignOverlay({
     if (editingVariant === name) exitVariant();
   };
   const fetchAbStats = async () => {
-    try { const r = await fetch(`/api/admin/design/ab-stats?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && d.exposures) setAbStats(d.exposures); } catch { /* ignorer */ }
+    try { const r = await fetch(`/api/admin/design/ab-stats?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && d.exposures) setAbStats(d.exposures); if (d && d.conversions) setAbConv(d.conversions); } catch { /* ignorer */ }
   };
 
   // Persister per-element-edits til workspacet (gjelder alle brukere ved neste last).
@@ -742,12 +744,23 @@ export default function WorkspaceDesignOverlay({
                           </select>
                         )}
                         {variantMode === 'ab' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {Object.keys(variants).map((n) => (
-                              <label key={n} style={{ fontSize: 11, color: INK, display: 'flex', gap: 5, alignItems: 'center' }}>
-                                <input type="checkbox" data-chd checked={variantAb.includes(n)} onChange={(e) => setVariantAb((ab) => e.target.checked ? [...ab, n] : ab.filter((x) => x !== n))} /> {n}{abStats[n] != null ? ` · ${abStats[n]} visn.` : ''}
-                              </label>
-                            ))}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {Object.keys(variants).map((n) => {
+                              const exp = abStats[n] ?? 0, conv = abConv[n] ?? 0;
+                              const rate = exp > 0 ? Math.round((conv / exp) * 1000) / 10 : null;
+                              return (
+                                <label key={n} style={{ fontSize: 11, color: INK, display: 'flex', gap: 5, alignItems: 'center' }}>
+                                  <input type="checkbox" data-chd checked={variantAb.includes(n)} onChange={(e) => setVariantAb((ab) => e.target.checked ? [...ab, n] : ab.filter((x) => x !== n))} />
+                                  <span style={{ flex: 1 }}>{n}</span>
+                                  {(exp > 0 || conv > 0) && <span style={{ color: INK2 }}>{exp} visn · {conv} konv{rate != null ? ` · ${rate}%` : ''}</span>}
+                                </label>
+                              );
+                            })}
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                              <span style={{ fontSize: 10.5, color: INK2, flex: 1, wordBreak: 'break-all' }}>Konverterings-mål: {variantGoal ? <code>{variantGoal.length > 30 ? variantGoal.slice(0, 30) + '…' : variantGoal}</code> : '(ikke satt)'}</span>
+                              {sel && <button data-chd onClick={() => setVariantGoal(uniqueSelector(sel))} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Sett valgt</button>}
+                              {variantGoal && <button data-chd onClick={() => setVariantGoal('')} aria-label="Fjern mål" style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2 }}>✕</button>}
+                            </div>
                             <button data-chd onClick={fetchAbStats} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5, alignSelf: 'flex-start' }}>Hent A/B-stats</button>
                           </div>
                         )}
