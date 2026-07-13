@@ -26,6 +26,7 @@ import { buildSolutionEvidence } from "./grant-application.js";
 import { computeProgress } from "./grant-workspace.js";
 import { getDetectorPrecision } from "./system-precision.js";
 import { listExperimentsWithEffect } from "./geo-experiments.js";
+import { getLaunchTimingAnalysis } from "./launch-timing.js";
 
 const CHAT_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 5;
@@ -129,6 +130,15 @@ export const BUTLER_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object" as const, properties: {} },
   },
   {
+    name: "get_launch_timing",
+    description: "Lanseringsvindu-analyse: sesongindeks (10 års SSB-data), markedstrend, GEO-tomrom og nyregistrerings-tilsig — beste måneder å lansere i for theroleroom eller creatorhub.",
+    input_schema: {
+      type: "object" as const,
+      properties: { solution: { type: "string", enum: ["theroleroom", "creatorhub"] } },
+      required: ["solution"],
+    },
+  },
+  {
     name: "get_ai_usage",
     description: "Hent AI-forbruket (tokens/kall per leverandør og operasjon siste 30 dager).",
     input_schema: { type: "object" as const, properties: {} },
@@ -229,6 +239,11 @@ export async function executeButlerTool(
     }
     case "get_industry_benchmark":
       return await getIndustryBenchmark(pool, String(input.segment ?? ""));
+    case "get_launch_timing": {
+      const a = await getLaunchTimingAnalysis(pool, organizationId, String(input.solution ?? "theroleroom"));
+      if ("error" in a) return a;
+      return { ...a, rankedMonths: a.rankedMonths.slice(0, 6) };
+    }
     case "get_detector_precision":
       return await getDetectorPrecision(pool, organizationId);
     case "get_experiments":
