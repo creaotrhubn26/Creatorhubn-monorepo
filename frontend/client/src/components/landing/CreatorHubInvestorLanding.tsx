@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React, { Suspense, useEffect, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
+import { useElementEdits } from '@/components/workspace/elementEdits';
+import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import {
   AccountTree,
   ArrowForward,
@@ -539,6 +541,11 @@ export default function CreatorHubInvestorLanding({
   mode,
 }: CreatorHubInvestorLandingProps) {
   useLandingBrand('creatorhub', { landingAccent: '--chl-accent', landingBg: '--chl-bg', landingText: '--chl-text' });
+  // CreatorHub Design (per-element-lag): anvend lagrede edits + ?design=1 live-editor.
+  useElementEdits('creatorhub');
+  const [designMode, setDesignMode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [prototypeTesterFormOpen, setPrototypeTesterFormOpen] = useState(false);
@@ -745,6 +752,7 @@ export default function CreatorHubInvestorLanding({
 
   return (
     <Box sx={{ bgcolor: 'var(--chl-bg, #05060a)', color: '#f6f2ea' }}>
+      {designMode && <WorkspaceDesignOverlay workspace="creatorhub" targetFile="frontend/client/src/components/landing/CreatorHubInvestorLanding.tsx" onClose={() => setDesignMode(false)} />}
       <GlobalStyles
         styles={{
           html: { scrollBehavior: 'smooth' },

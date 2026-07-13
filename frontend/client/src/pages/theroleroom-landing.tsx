@@ -32,6 +32,8 @@ import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import { useEffect, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
+import { useElementEdits } from '@/components/workspace/elementEdits';
+import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import LoginDialog from '@/components/role-room/components/LoginDialog';
 import BookDemoModal from '@/components/role-room/BookDemoModal';
 import {
@@ -224,6 +226,11 @@ interface TheRoleRoomLandingProps {
 
 export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps = {}) {
   useLandingBrand('theroleroom', { landingAccent: '--rrl-accent', landingBg: '--rrl-bg', landingText: '--rrl-text' });
+  // CreatorHub Design (per-element-lag): anvend lagrede edits + ?design=1 live-editor.
+  useElementEdits('theroleroom');
+  const [designMode, setDesignMode] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -371,6 +378,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
 
   return (
     <Box sx={{ bgcolor: palette.bgRoot, color: palette.textPrimary, minHeight: '100vh' }}>
+      {designMode && <WorkspaceDesignOverlay workspace="theroleroom" targetFile="frontend/client/src/pages/theroleroom-landing.tsx" onClose={() => setDesignMode(false)} />}
       <TopNav
         onLogin={() => openLogin('landing')}
         onTalentsLogin={() => openLogin('landing', 'talents')}
