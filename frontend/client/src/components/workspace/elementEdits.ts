@@ -272,6 +272,34 @@ const STYLE_ID = 'chd-element-edits';
  * useElementEdits — hent lagrede per-element-edits for workspacet (RÅ, raw:true) og injiser dem
  * som ett <style>-tag. Kjøres i shellene så edits gjelder alle brukere. Ingen edits → tomt → identisk.
  */
+// Stabil besøkende-id (localStorage) for konsistent A/B-bøtting.
+function chdVisitorId(): string {
+  try {
+    let id = localStorage.getItem('chd_vid');
+    if (!id) { id = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('chd_vid', id); }
+    return id;
+  } catch { return 'anon'; }
+}
+function chdHash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
+type VariantMaps = { elementEdits?: unknown; elementText?: unknown; elementAnim?: unknown; elementInserts?: unknown; elementBindings?: unknown };
+/** Velg effektive element-maps: aktiv variant, A/B-bøttet variant (stabil pr. besøkende), ellers base. */
+function resolveVariantMaps(t: Record<string, unknown>, workspace: string): VariantMaps {
+  const base: VariantMaps = { elementEdits: t.elementEdits, elementText: t.elementText, elementAnim: t.elementAnim, elementInserts: t.elementInserts, elementBindings: t.elementBindings };
+  const variants = t.designVariants as Record<string, VariantMaps> | undefined;
+  const vc = t.variantConfig as { mode?: string; active?: string; ab?: string[] } | undefined;
+  if (!variants || !vc || vc.mode === 'off') return base;
+  let chosen: string | null = null;
+  if (vc.mode === 'active' && vc.active && variants[vc.active]) chosen = vc.active;
+  else if (vc.mode === 'ab' && Array.isArray(vc.ab)) {
+    const valid = vc.ab.filter((n) => variants[n]);
+    if (valid.length) {
+      chosen = valid[chdHash(chdVisitorId()) % valid.length];
+      try { fetch('/api/design/ab-exposure', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, variant: chosen }) }).catch(() => {}); } catch { /* ignorer */ }
+    }
+  }
+  return chosen && variants[chosen] ? variants[chosen] : base;
+}
+
 export function useElementEdits(workspace: string): void {
   useEffect(() => {
     let live = true;
@@ -283,9 +311,11 @@ export function useElementEdits(workspace: string): void {
       .then((d) => {
         if (!live || !d || d.raw !== true || !d.tokens) return;
         const t = d.tokens as Record<string, unknown>;
+        // Variant-resolusjon: aktiv variant / A/B-bøttet variant / base bestemmer element-maps.
+        const vm = resolveVariantMaps(t, workspace);
         // Stil-edits + animasjoner → ett <style>-tag.
-        const editCss = t.elementEdits ? buildEditsCss(t.elementEdits as ElementEdits) : '';
-        const animCss = t.elementAnim ? buildAnimCss(t.elementAnim as ElementAnim) : '';
+        const editCss = vm.elementEdits ? buildEditsCss(vm.elementEdits as ElementEdits) : '';
+        const animCss = vm.elementAnim ? buildAnimCss(vm.elementAnim as ElementAnim) : '';
         const notifCss = buildNotifCss(t);
         const css = [editCss, animCss, notifCss].filter(Boolean).join('\n');
         if (css) {
@@ -294,16 +324,16 @@ export function useElementEdits(workspace: string): void {
           tag.textContent = css;
         }
         // Tekst-edits → textContent (m/ observer-reapply).
-        if (t.elementText && typeof t.elementText === 'object') {
-          cleanupText = applyTextEdits(t.elementText as ElementText);
+        if (vm.elementText && typeof vm.elementText === 'object') {
+          cleanupText = applyTextEdits(vm.elementText as ElementText);
         }
         // Innsatte elementer → nye noder (m/ observer-reinjeksjon); komponent-refs ekspanderes live.
-        if (t.elementInserts && typeof t.elementInserts === 'object') {
-          cleanupInserts = applyInserts(t.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, workspace);
+        if (vm.elementInserts && typeof vm.elementInserts === 'object') {
+          cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, workspace);
         }
         // Data-bindinger → elementtekst = metric-verdi el. LIVE connector-verdi (fra DB), koblet.
-        if (t.elementBindings && typeof t.elementBindings === 'object') {
-          const bindings = t.elementBindings as ElementBindings;
+        if (vm.elementBindings && typeof vm.elementBindings === 'object') {
+          const bindings = vm.elementBindings as ElementBindings;
           const baseMetrics = (t.metrics as Record<string, { value?: unknown }>) || {};
           // Flett inn live connector-verdier (publicSafe) så bindinger mot DB-kilder resolver.
           fetch(`/api/design/connector-values?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })

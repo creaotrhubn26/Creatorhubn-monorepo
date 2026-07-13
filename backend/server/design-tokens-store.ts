@@ -60,6 +60,95 @@ export async function getRawTokens(pool: Pool, workspace?: string | null): Promi
   try { return (await readRow(pool, ws)) ?? {}; } catch { return {}; }
 }
 
+// ── Gjenbrukbare per-element-saniterere (brukes av BÅDE topp-nivå OG varianter — én kilde til
+//    sannhet for sikkerhet). Hver returnerer et rent objekt (aldri rå input). ────────────────────
+const CHD_SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
+const chdSafeUrl = (u: unknown): u is string => typeof u === 'string' && u.length <= 600
+  && (/^\//.test(u) || /^https:\/\//i.test(u)) && !/[<>"'\\]/.test(u) && !/javascript:/i.test(u);
+function sanitizeElementEdits(input: unknown): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
+    'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration']);
+  const VAL_RE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
+  let n = 0;
+  for (const [sel, propsRaw] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 500) break;
+    if (!CHD_SEL_RE.test(sel) || sel.includes('..') || !propsRaw || typeof propsRaw !== 'object') continue;
+    const props: Record<string, string> = {};
+    for (const [p, v] of Object.entries(propsRaw as Record<string, unknown>)) {
+      if (EDIT_PROPS.has(p) && typeof v === 'string' && VAL_RE.test(v) && !/url\(/i.test(v)) props[p] = v;
+    }
+    if (Object.keys(props).length) { out[sel] = props; n++; }
+  }
+  return out;
+}
+function sanitizeElementText(input: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  let n = 0;
+  for (const [sel, v] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 500) break;
+    if (CHD_SEL_RE.test(sel) && !sel.includes('..') && typeof v === 'string' && v.length <= 2000) { out[sel] = v; n++; }
+  }
+  return out;
+}
+function sanitizeElementAnim(input: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  const PRESETS = new Set(['fade-in', 'slide-up', 'slide-down', 'zoom-in', 'pulse', 'bounce', 'float']);
+  let n = 0;
+  for (const [sel, v] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 500) break;
+    if (CHD_SEL_RE.test(sel) && !sel.includes('..') && typeof v === 'string' && PRESETS.has(v)) { out[sel] = v; n++; }
+  }
+  return out;
+}
+function sanitizeElementBindings(input: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  let n = 0;
+  for (const [sel, key] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 500) break;
+    if (CHD_SEL_RE.test(sel) && !sel.includes('..') && typeof key === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(key)) { out[sel] = key; n++; }
+  }
+  return out;
+}
+function sanitizeElementInserts(input: unknown): Record<string, unknown[]> {
+  const out: Record<string, unknown[]> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  const TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic', 'component']);
+  let ac = 0;
+  for (const [anchor, specs] of Object.entries(input as Record<string, unknown>)) {
+    if (ac >= 200) break;
+    if (!CHD_SEL_RE.test(anchor) || anchor.includes('..') || !Array.isArray(specs)) continue;
+    const arr: Record<string, unknown>[] = [];
+    for (const s of (specs as unknown[]).slice(0, 20)) {
+      const so = s as Record<string, unknown>;
+      if (!so || typeof so !== 'object' || !TYPES.has(so.type as string)) continue;
+      if (typeof so.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(so.id)) continue;
+      const spec: Record<string, unknown> = { id: so.id, type: so.type as string, pos: so.pos === 'before' ? 'before' : 'after' };
+      if (typeof so.text === 'string' && so.text.length <= 500) spec.text = so.text;
+      if (chdSafeUrl(so.href)) spec.href = so.href;
+      if (chdSafeUrl(so.src)) spec.src = so.src;
+      if (so.type === 'component') {
+        if (typeof so.component !== 'string' || !/^[A-Za-z0-9 _-]{1,60}$/.test(so.component)) continue;
+        spec.component = so.component;
+        if (so.slots && typeof so.slots === 'object' && !Array.isArray(so.slots)) {
+          const slots: Record<string, string> = {};
+          for (const [cid, srck] of Object.entries(so.slots as Record<string, unknown>)) {
+            if (/^[A-Za-z0-9_-]{1,40}$/.test(cid) && typeof srck === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(srck)) slots[cid] = srck;
+          }
+          spec.slots = slots;
+        }
+      }
+      arr.push(spec);
+    }
+    if (arr.length) { out[anchor] = arr; ac++; }
+  }
+  return out;
+}
+
 /** Sett/oppdater tokens for et workspace (admin). Slår sammen med eksisterende (patch). */
 export async function setTokens(pool: Pool, workspace: string, patch: Record<string, unknown>): Promise<{ error: string } | { ok: true }> {
   const ws = workspace === 'global' ? 'global' : normalizeWorkspace(workspace);
@@ -111,93 +200,16 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   // CreatorHub Design (per-element-lag): stil-overstyringer pr. element fra Edit-modus.
   // Form: { [selektor]: { [css-prop]: verdi } }. Kun hvitlistede trygge props + saniterte
   // selektorer/verdier (ingen url()/expression/vilkårlig CSS). Tak på antall selektorer.
-  const editsIn = (patch as any)?.elementEdits;
-  if (editsIn && typeof editsIn === 'object' && !Array.isArray(editsIn)) {
-    const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
-      'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align',
-      'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration']);
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
-    const VAL_RE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
-    const elementEdits: Record<string, Record<string, string>> = {};
-    let selCount = 0;
-    for (const [sel, propsRaw] of Object.entries(editsIn as Record<string, unknown>)) {
-      if (selCount >= 500) break;
-      if (!SEL_RE.test(sel) || sel.includes('..') || !propsRaw || typeof propsRaw !== 'object') continue;
-      const props: Record<string, string> = {};
-      for (const [p, v] of Object.entries(propsRaw as Record<string, unknown>)) {
-        if (EDIT_PROPS.has(p) && typeof v === 'string' && VAL_RE.test(v) && !/url\(/i.test(v)) props[p] = v;
-      }
-      if (Object.keys(props).length) { elementEdits[sel] = props; selCount++; }
-    }
-    clean.elementEdits = elementEdits;
-  }
+  if ((patch as any)?.elementEdits !== undefined) clean.elementEdits = sanitizeElementEdits((patch as any).elementEdits);
   // Per-element TEKST-overstyring (Edit-modus): { [selektor]: tekst }. textContent (ikke innerHTML)
   // → XSS-trygt av konstruksjon. Kun saniterte selektorer + lengdetak.
-  const textIn = (patch as any)?.elementText;
-  if (textIn && typeof textIn === 'object' && !Array.isArray(textIn)) {
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
-    const elementText: Record<string, string> = {};
-    let n = 0;
-    for (const [sel, v] of Object.entries(textIn as Record<string, unknown>)) {
-      if (n >= 500) break;
-      if (SEL_RE.test(sel) && !sel.includes('..') && typeof v === 'string' && v.length <= 2000) { elementText[sel] = v; n++; }
-    }
-    clean.elementText = elementText;
-  }
+  if ((patch as any)?.elementText !== undefined) clean.elementText = sanitizeElementText((patch as any).elementText);
   // Per-element ANIMASJON (Edit-modus): { [selektor]: preset-nøkkel }. Kun nøkler fra fast katalog.
-  const animIn = (patch as any)?.elementAnim;
-  if (animIn && typeof animIn === 'object' && !Array.isArray(animIn)) {
-    const PRESETS = new Set(['fade-in', 'slide-up', 'slide-down', 'zoom-in', 'pulse', 'bounce', 'float']);
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
-    const elementAnim: Record<string, string> = {};
-    let n = 0;
-    for (const [sel, v] of Object.entries(animIn as Record<string, unknown>)) {
-      if (n >= 500) break;
-      if (SEL_RE.test(sel) && !sel.includes('..') && typeof v === 'string' && PRESETS.has(v)) { elementAnim[sel] = v; n++; }
-    }
-    clean.elementAnim = elementAnim;
-  }
+  if ((patch as any)?.elementAnim !== undefined) clean.elementAnim = sanitizeElementAnim((patch as any).elementAnim);
   // Per-element INNSATTE elementer (Insert-modus): { [anker-selektor]: [{ id, type, pos, text?, href?, src? }] }.
   // Runtime bygger DOM fra denne strukturerte dataen (createElement + textContent) → aldri rå HTML.
   // Kun hvitlistede typer + saniterte URL-er (relativ/https, ingen javascript:/<>"').
-  const insertsIn = (patch as any)?.elementInserts;
-  if (insertsIn && typeof insertsIn === 'object' && !Array.isArray(insertsIn)) {
-    // 'component' = LIVE-lenket referanse til en gjenbrukbar komponent (ekspanderes ved render).
-    const TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic', 'component']);
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
-    const safeUrl = (u: unknown): u is string => typeof u === 'string' && u.length <= 600
-      && (/^\//.test(u) || /^https:\/\//i.test(u)) && !/[<>"'\\]/.test(u) && !/javascript:/i.test(u);
-    const elementInserts: Record<string, unknown[]> = {};
-    let ac = 0;
-    for (const [anchor, specs] of Object.entries(insertsIn as Record<string, unknown>)) {
-      if (ac >= 200) break;
-      if (!SEL_RE.test(anchor) || anchor.includes('..') || !Array.isArray(specs)) continue;
-      const arr: Record<string, unknown>[] = [];
-      for (const s of (specs as unknown[]).slice(0, 20)) {
-        const so = s as Record<string, unknown>;
-        if (!so || typeof so !== 'object' || !TYPES.has(so.type as string)) continue;
-        if (typeof so.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(so.id)) continue;
-        const spec: Record<string, unknown> = { id: so.id, type: so.type as string, pos: so.pos === 'before' ? 'before' : 'after' };
-        if (typeof so.text === 'string' && so.text.length <= 500) spec.text = so.text;
-        if (safeUrl(so.href)) spec.href = so.href;
-        if (safeUrl(so.src)) spec.src = so.src;
-        if (so.type === 'component') {
-          if (typeof so.component !== 'string' || !/^[A-Za-z0-9 _-]{1,60}$/.test(so.component)) continue;
-          spec.component = so.component;
-          if (so.slots && typeof so.slots === 'object' && !Array.isArray(so.slots)) {
-            const slots: Record<string, string> = {};
-            for (const [cid, srck] of Object.entries(so.slots as Record<string, unknown>)) {
-              if (/^[A-Za-z0-9_-]{1,40}$/.test(cid) && typeof srck === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(srck)) slots[cid] = srck;
-            }
-            spec.slots = slots;
-          }
-        }
-        arr.push(spec);
-      }
-      if (arr.length) { elementInserts[anchor] = arr; ac++; }
-    }
-    clean.elementInserts = elementInserts;
-  }
+  if ((patch as any)?.elementInserts !== undefined) clean.elementInserts = sanitizeElementInserts((patch as any).elementInserts);
   // Marketing-metrics (dynamiske infographic-kilder): { [nøkkel]: { value, label } }. Infographics
   // med ?source=<nøkkel> flettes med disse server-side → «koblet opp» (én kilde, mange visninger).
   const metricsIn = (patch as any)?.metrics;
@@ -217,16 +229,38 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   }
   // Data-BINDINGER: { [selektor]: kilde-nøkkel } — elementets tekst kobles til en metric-verdi.
   // Runtime setter textContent = metrics[<kilde>].value → live, koblet tall/stat på hvilket som helst element.
-  const bindIn = (patch as any)?.elementBindings;
-  if (bindIn && typeof bindIn === 'object' && !Array.isArray(bindIn)) {
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
-    const elementBindings: Record<string, string> = {};
-    let n = 0;
-    for (const [sel, key] of Object.entries(bindIn as Record<string, unknown>)) {
-      if (n >= 500) break;
-      if (SEL_RE.test(sel) && !sel.includes('..') && typeof key === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(key)) { elementBindings[sel] = key; n++; }
+  if ((patch as any)?.elementBindings !== undefined) clean.elementBindings = sanitizeElementBindings((patch as any).elementBindings);
+  // Navngitte VARIANTER: { [navn]: { elementEdits?, elementText?, elementAnim?, elementInserts?,
+  //   elementBindings? } } — hver en komplett, alternativ design-tilstand. GJENBRUKER de samme
+  //   saniterings-funksjonene → identisk sikkerhet som topp-nivå. Maks 30 varianter.
+  const variantsIn = (patch as any)?.designVariants;
+  if (variantsIn && typeof variantsIn === 'object' && !Array.isArray(variantsIn)) {
+    const NAME_RE = /^[A-Za-z0-9 _-]{1,60}$/;
+    const designVariants: Record<string, Record<string, unknown>> = {};
+    let nv = 0;
+    for (const [name, vraw] of Object.entries(variantsIn as Record<string, unknown>)) {
+      if (nv >= 30) break;
+      if (!NAME_RE.test(name) || !vraw || typeof vraw !== 'object') continue;
+      const v = vraw as Record<string, unknown>;
+      designVariants[name] = {
+        elementEdits: sanitizeElementEdits(v.elementEdits),
+        elementText: sanitizeElementText(v.elementText),
+        elementAnim: sanitizeElementAnim(v.elementAnim),
+        elementInserts: sanitizeElementInserts(v.elementInserts),
+        elementBindings: sanitizeElementBindings(v.elementBindings),
+      };
+      nv++;
     }
-    clean.elementBindings = elementBindings;
+    clean.designVariants = designVariants;
+  }
+  // Variant-konfig: hvilken variant er aktiv, eller A/B-test over flere. { mode, active, ab[] }.
+  const vcIn = (patch as any)?.variantConfig;
+  if (vcIn && typeof vcIn === 'object' && !Array.isArray(vcIn)) {
+    const NAME_RE = /^[A-Za-z0-9 _-]{1,60}$/;
+    const mode = ['off', 'active', 'ab'].includes((vcIn as any).mode) ? (vcIn as any).mode : 'off';
+    const active = typeof (vcIn as any).active === 'string' && NAME_RE.test((vcIn as any).active) ? (vcIn as any).active : '';
+    const ab = Array.isArray((vcIn as any).ab) ? ((vcIn as any).ab as unknown[]).filter((x) => typeof x === 'string' && NAME_RE.test(x)).slice(0, 10) : [];
+    clean.variantConfig = { mode, active, ab };
   }
   // Gjenbrukbare KOMPONENTER: { [navn]: InsertSpec[] } — en navngitt blokk (samme trygge spec-typer
   // som elementInserts) som kan settes inn hvor som helst. Løv-typer (ingen nesting av komponenter).
