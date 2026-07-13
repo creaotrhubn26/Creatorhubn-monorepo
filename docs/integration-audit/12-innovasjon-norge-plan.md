@@ -58,7 +58,12 @@ maskineri vi selger:
 2. **Uke 2–3**: Forretningsplan (kan i stor grad genereres fra
    ARKITEKTUR-OVERSIKT + denne planens punkt 3) + budsjett med
    milepæler; markedsavklarings-søknad inn.
-3. **Ved tilsagn**: gjennomfør markedsavklaring (strukturerte
+3. **Milepæl i søknaden — kunde-vendt innsiktsmotor**: arkitekturen er
+   multi-tenant fra grunnen (organizationId på hver rad); milepælen er å
+   snu motoren utover så hver Leadgrid-kunde får egen innsikts-feed og
+   egne vakter. Pilotkunder på dette ER kundetestingen Oppstartstilskudd
+   2 krever — skriv den inn som prosjektets hovedmilepæl.
+4. **Ved tilsagn**: gjennomfør markedsavklaring (strukturerte
    kundeintervjuer i to vertikaler — feeden gir kandidatlistene),
    dokumentér, søk fase 2.
 

@@ -24,6 +24,8 @@ import { getIndustryBenchmark } from "./industry-benchmark.js";
 import { getTerritoryAnalysis } from "./territory-analysis.js";
 import { buildSolutionEvidence } from "./grant-application.js";
 import { computeProgress } from "./grant-workspace.js";
+import { getDetectorPrecision } from "./system-precision.js";
+import { listExperimentsWithEffect } from "./geo-experiments.js";
 
 const CHAT_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 5;
@@ -109,6 +111,21 @@ export const BUTLER_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_grant_progress",
     description: "Status på IN-søknadene i arbeidsboken: seksjoner ferdige, åpne [FYLL INN]-punkter per søknad — grunnlag for rådgivning om hva som gjenstår.",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "get_detector_precision",
+    description: "Systemets egen treffsikkerhet: presisjon per detektor (andel avviste innsikter) — grunnlag for terskel-råd.",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "get_decision_log",
+    description: "Beslutningsloggen: bud-beslutninger (interessert/budt/vant/tapte) med begrunnelser — institusjonelt minne for rådgivning.",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "get_experiments",
+    description: "GEO-eksperimentloggen: hva ble endret når (innhold/llms.txt) og målt effekt på AI-synlighet per tema.",
     input_schema: { type: "object" as const, properties: {} },
   },
   {
@@ -212,6 +229,21 @@ export async function executeButlerTool(
     }
     case "get_industry_benchmark":
       return await getIndustryBenchmark(pool, String(input.segment ?? ""));
+    case "get_detector_precision":
+      return await getDetectorPrecision(pool, organizationId);
+    case "get_experiments":
+      return await listExperimentsWithEffect(pool, organizationId);
+    case "get_decision_log": {
+      const r = await pool.query(
+        `SELECT title, matched_topic, raw->>'bidStatus' AS bid_status,
+                raw->>'bidReason' AS reason, raw->>'bidStatusAt' AS decided_at
+           FROM trigger_events
+          WHERE organization_id = $1::uuid AND raw->>'bidStatus' IS NOT NULL
+          ORDER BY raw->>'bidStatusAt' DESC LIMIT 20`,
+        [organizationId],
+      );
+      return r.rows.length > 0 ? r.rows : { note: "ingen bud-beslutninger logget ennå" };
+    }
     case "get_grant_progress": {
       const apps = await pool.query<{ id: string; title: string; program: string; solution: string }>(
         `SELECT id::text, title, program, solution FROM grant_applications
