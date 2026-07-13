@@ -35,6 +35,7 @@ import { getIndustryBenchmark, syncCompanyFinancials } from "./industry-benchmar
 import { syncSsbMomentumSignals } from "./ssb-momentum-signal-sync.js";
 import { getTerritoryAnalysis } from "./territory-analysis.js";
 import { buildSolutionEvidence, draftGrantSection, IN_SECTIONS, type SolutionKey } from "./grant-application.js";
+import { assembleDocument, createApplication, draftAndSaveSection, getApplication, updateSection, type SectionStatus } from "./grant-workspace.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -481,6 +482,94 @@ export function registerOwnedChannelsRoutes({
       console.error("[grant-draft] failed", err);
       return res.status(500).json({ error: "draft_failed" });
     }
+  });
+
+  // Søknads-arbeidsboken (JARVIS søknads-modus, strukturert).
+  const requireGrantAdmin = async (req: Request, res: Response): Promise<string | null> => {
+    const session = getSession(req, activeSessions);
+    if (!session) { res.status(401).json({ error: "ikke_innlogget" }); return null; }
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      res.status(403).json({ error: "krever_admin" });
+      return null;
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) { res.status(409).json({ error: "ingen_organisasjon" }); return null; }
+    return orgId;
+  };
+
+  app.post("/api/integrations/grant-workspace", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (
+      typeof body.solution !== "string" ||
+      !["leadgrid", "theroleroom", "creatorhub"].includes(body.solution) ||
+      typeof body.program !== "string" || typeof body.title !== "string"
+    ) {
+      return res.status(400).json({ error: "solution_program_og_title_kreves" });
+    }
+    const created = await createApplication(pool, orgId, {
+      solution: body.solution as SolutionKey,
+      program: body.program,
+      title: body.title,
+    });
+    return res.json(created);
+  });
+
+  app.get("/api/integrations/grant-workspace", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const r = await pool.query(
+      `SELECT id::text, solution, program, title, status, updated_at::text
+         FROM grant_applications WHERE organization_id = $1::uuid
+        ORDER BY updated_at DESC LIMIT 20`,
+      [orgId],
+    );
+    return res.json({ applications: r.rows });
+  });
+
+  app.get("/api/integrations/grant-workspace/:id", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const app_ = await getApplication(pool, orgId, req.params.id);
+    if (!app_) return res.status(404).json({ error: "soknad_ikke_funnet" });
+    return res.json({ application: app_ });
+  });
+
+  app.patch("/api/integrations/grant-workspace/:id/sections/:key", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const ok = await updateSection(pool, orgId, req.params.id, req.params.key, {
+      draftText: typeof body.draftText === "string" ? body.draftText : undefined,
+      userNotes: typeof body.userNotes === "string" ? body.userNotes : undefined,
+      status: typeof body.status === "string" ? (body.status as SectionStatus) : undefined,
+    });
+    if (!ok) return res.status(404).json({ error: "soknad_eller_seksjon_ikke_funnet" });
+    return res.json({ updated: true });
+  });
+
+  app.post("/api/integrations/grant-workspace/:id/sections/:key/draft", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    try {
+      const result = await draftAndSaveSection(pool, orgId, req.params.id, req.params.key);
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[grant-workspace] draft failed", err);
+      return res.status(500).json({ error: "draft_failed" });
+    }
+  });
+
+  app.get("/api/integrations/grant-workspace/:id/export", async (req: Request, res: Response) => {
+    const orgId = await requireGrantAdmin(req, res);
+    if (!orgId) return;
+    const doc = await assembleDocument(pool, orgId, req.params.id);
+    if (doc === null) return res.status(404).json({ error: "soknad_ikke_funnet" });
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="soknad.md"');
+    return res.send(doc);
   });
 
   // Konkursvakten: registerstatus for alle CRM-selskaper m/ orgnr.

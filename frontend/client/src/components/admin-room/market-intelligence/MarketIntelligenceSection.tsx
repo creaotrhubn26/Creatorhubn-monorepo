@@ -25,6 +25,7 @@ import ButlerChatPanel from "./ButlerChatPanel";
 import InsightsFeedPanel from "./InsightsFeedPanel";
 import OpportunityScorePanel from "./OpportunityScorePanel";
 import TenderIntelPanel from "./TenderIntelPanel";
+import GrantWorkspacePanel from "./GrantWorkspacePanel";
 import ProspectsPanel from "./ProspectsPanel";
 import GeoVisibilityPanel from "./GeoVisibilityPanel";
 import AiTrafficPanel from "./AiTrafficPanel";
@@ -107,6 +108,8 @@ export default function MarketIntelligenceSection({
           <OpportunityScorePanel />
 
           <TenderIntelPanel />
+
+          <GrantWorkspacePanel />
 
           <ProspectsPanel />
 
