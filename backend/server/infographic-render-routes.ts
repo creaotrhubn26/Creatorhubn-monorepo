@@ -288,22 +288,28 @@ export function registerInfographicRenderRoutes(
   // A/B eksponerings-telling (in-memory, best-effort — nullstilles ved restart; for grunnleggende
   // synlighet av hvilken variant besøkende ser. Ekte konverterings-analyse er en egen sak).
   const abExposures = new Map<string, number>();
-  app.post('/api/design/ab-exposure', (req: Request, res: Response) => {
+  const abConversions = new Map<string, number>();
+  const abBump = (map: Map<string, number>, req: Request, res: Response) => {
     const b = (req.body ?? {}) as { ws?: unknown; variant?: unknown };
     const ws = String(b.ws ?? '').slice(0, 40);
     const variant = String(b.variant ?? '').slice(0, 60);
-    if (ws && /^[A-Za-z0-9 _-]{1,60}$/.test(variant) && abExposures.size < 5000) {
+    if (ws && /^[A-Za-z0-9 _-]{1,60}$/.test(variant) && map.size < 5000) {
       const k = `${ws}|${variant}`;
-      abExposures.set(k, (abExposures.get(k) ?? 0) + 1);
+      map.set(k, (map.get(k) ?? 0) + 1);
     }
     res.status(204).end();
-  });
+  };
+  app.post('/api/design/ab-exposure', (req: Request, res: Response) => abBump(abExposures, req, res));
+  app.post('/api/design/ab-conversion', (req: Request, res: Response) => abBump(abConversions, req, res));
   app.get('/api/admin/design/ab-stats', (req: Request, res: Response) => {
     if (!requireAdminSession(req, res)) return;
     const ws = String(req.query.ws ?? '');
-    const exposures: Record<string, number> = {};
-    for (const [k, v] of abExposures) { const idx = k.indexOf('|'); if (k.slice(0, idx) === ws) exposures[k.slice(idx + 1)] = v; }
-    res.json({ exposures });
+    const pick = (map: Map<string, number>): Record<string, number> => {
+      const out: Record<string, number> = {};
+      for (const [k, v] of map) { const idx = k.indexOf('|'); if (k.slice(0, idx) === ws) out[k.slice(idx + 1)] = v; }
+      return out;
+    };
+    res.json({ exposures: pick(abExposures), conversions: pick(abConversions) });
   });
 
   app.get('/api/design/connectors', (req: Request, res: Response) => {

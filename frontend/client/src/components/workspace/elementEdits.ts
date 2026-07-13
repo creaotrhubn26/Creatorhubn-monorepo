@@ -282,22 +282,36 @@ function chdVisitorId(): string {
 }
 function chdHash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
 type VariantMaps = { elementEdits?: unknown; elementText?: unknown; elementAnim?: unknown; elementInserts?: unknown; elementBindings?: unknown };
-/** Velg effektive element-maps: aktiv variant, A/B-bøttet variant (stabil pr. besøkende), ellers base. */
-function resolveVariantMaps(t: Record<string, unknown>, workspace: string): VariantMaps {
+/** Velg effektive element-maps: aktiv variant, A/B-bøttet variant (stabil pr. besøkende), ellers base.
+ *  Ved A/B kobles også en konverterings-lytter på målet (fyrer én gang pr. last) → cleanup returneres. */
+function resolveVariantMaps(t: Record<string, unknown>, workspace: string): { maps: VariantMaps; cleanup?: () => void } {
   const base: VariantMaps = { elementEdits: t.elementEdits, elementText: t.elementText, elementAnim: t.elementAnim, elementInserts: t.elementInserts, elementBindings: t.elementBindings };
   const variants = t.designVariants as Record<string, VariantMaps> | undefined;
-  const vc = t.variantConfig as { mode?: string; active?: string; ab?: string[] } | undefined;
-  if (!variants || !vc || vc.mode === 'off') return base;
+  const vc = t.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
+  if (!variants || !vc || vc.mode === 'off') return { maps: base };
   let chosen: string | null = null;
+  let cleanup: (() => void) | undefined;
   if (vc.mode === 'active' && vc.active && variants[vc.active]) chosen = vc.active;
   else if (vc.mode === 'ab' && Array.isArray(vc.ab)) {
     const valid = vc.ab.filter((n) => variants[n]);
     if (valid.length) {
       chosen = valid[chdHash(chdVisitorId()) % valid.length];
-      try { fetch('/api/design/ab-exposure', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, variant: chosen }) }).catch(() => {}); } catch { /* ignorer */ }
+      const variant = chosen;
+      try { fetch('/api/design/ab-exposure', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, variant }) }).catch(() => {}); } catch { /* ignorer */ }
+      const goal = typeof vc.goal === 'string' ? vc.goal : '';
+      if (goal) {
+        let fired = false;
+        const onClick = (e: Event) => {
+          if (fired) return;
+          const tgt = e.target as Element | null;
+          try { if (tgt && tgt.closest && tgt.closest(goal)) { fired = true; fetch('/api/design/ab-conversion', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, variant }) }).catch(() => {}); } } catch { /* ugyldig selektor */ }
+        };
+        document.addEventListener('click', onClick, true);
+        cleanup = () => document.removeEventListener('click', onClick, true);
+      }
     }
   }
-  return chosen && variants[chosen] ? variants[chosen] : base;
+  return { maps: chosen && variants[chosen] ? variants[chosen] : base, cleanup };
 }
 
 export function useElementEdits(workspace: string): void {
@@ -306,13 +320,15 @@ export function useElementEdits(workspace: string): void {
     let cleanupText: (() => void) | undefined;
     let cleanupInserts: (() => void) | undefined;
     let cleanupBind: (() => void) | undefined;
+    let cleanupVariant: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!live || !d || d.raw !== true || !d.tokens) return;
         const t = d.tokens as Record<string, unknown>;
         // Variant-resolusjon: aktiv variant / A/B-bøttet variant / base bestemmer element-maps.
-        const vm = resolveVariantMaps(t, workspace);
+        const rv = resolveVariantMaps(t, workspace);
+        const vm = rv.maps; cleanupVariant = rv.cleanup;
         // Stil-edits + animasjoner → ett <style>-tag.
         const editCss = vm.elementEdits ? buildEditsCss(vm.elementEdits as ElementEdits) : '';
         const animCss = vm.elementAnim ? buildAnimCss(vm.elementAnim as ElementAnim) : '';
@@ -343,6 +359,6 @@ export function useElementEdits(workspace: string): void {
         }
       })
       .catch(() => {});
-    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); };
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); };
   }, [workspace]);
 }
