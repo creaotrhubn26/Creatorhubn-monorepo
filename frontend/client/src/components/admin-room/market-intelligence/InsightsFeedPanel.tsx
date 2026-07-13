@@ -9,7 +9,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Box, Button, Card, CardContent, Chip, Collapse, IconButton,
+  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse,
+  Dialog, DialogActions, DialogContent, DialogTitle, IconButton,
   Stack, Tooltip, Typography,
 } from "@mui/material";
 import {
@@ -31,6 +32,7 @@ interface Insight {
   topic: string | null;
   status: string;
   detected_at: string;
+  dedupe_key?: string;
   diagnosis?: {
     status: "generated" | "insufficient_evidence";
     narrative?: string;
@@ -52,11 +54,70 @@ const SEVERITY_STYLE: Record<string, { bg: string; fg: string; label: string }> 
   info: { bg: "#94a3b822", fg: "#94a3b8", label: "Info" },
 };
 
+/** trigger|<source>|<eventId> eller deadline|<source>|<eventId> → anbudsreferanse. */
+function tenderRefFromDedupeKey(key?: string): { source: string; eventId: string } | null {
+  if (!key) return null;
+  const m = /^(?:trigger|deadline)\|([^|]+)\|(.+)$/.exec(key);
+  if (!m) return null;
+  if (!["doffin", "ted"].includes(m[1])) return null;
+  return { source: m[1], eventId: m[2] };
+}
+
+interface Brief {
+  text: string;
+  facts: Array<{ n: number; label: string; value: string }>;
+  generatedAt: string;
+}
+
 export default function InsightsFeedPanel() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [briefFor, setBriefFor] = useState<{ title: string; ref: { source: string; eventId: string } } | null>(null);
+  const [brief, setBrief] = useState<Brief | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+  const [bidSaved, setBidSaved] = useState<string | null>(null);
+
+  const openBrief = async (title: string, ref: { source: string; eventId: string }) => {
+    setBriefFor({ title, ref });
+    setBrief(null);
+    setBriefError(null);
+    setBidSaved(null);
+    setBriefLoading(true);
+    try {
+      const r = await fetch("/api/integrations/tenders/strategy-brief", {
+        method: "POST",
+        credentials: "include",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ source: ref.source, eventId: ref.eventId }),
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok) {
+        setBriefError(body?.error === "for_tynt_grunnlag_for_brief"
+          ? "For tynt datagrunnlag for en ærlig brief — les kunngjøringen direkte."
+          : `Kunne ikke lage brief (${body?.error ?? r.status})`);
+        return;
+      }
+      setBrief(body.brief as Brief);
+    } catch (e) {
+      setBriefError(String(e));
+    } finally {
+      setBriefLoading(false);
+    }
+  };
+
+  const setBidStatus = async (status: string) => {
+    if (!briefFor) return;
+    const r = await fetch("/api/integrations/tenders/bid-status", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ source: briefFor.ref.source, eventId: briefFor.ref.eventId, bidStatus: status }),
+    });
+    setBidSaved(r.ok ? status : "feil");
+  };
 
   const fetchInsights = useCallback(async () => {
     setLoading(true);
@@ -190,6 +251,14 @@ export default function InsightsFeedPanel() {
                       sx={{ transform: isOpen ? "rotate(180deg)" : "none" }}>
                       <ExpandIcon fontSize="small" />
                     </IconButton>
+                    {tenderRefFromDedupeKey(ins.dedupe_key) && (
+                      <Tooltip title="Tilbudsstrategi-brief (AI, siterings-validert)">
+                        <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1, fontSize: 11 }}
+                          onClick={() => void openBrief(ins.title, tenderRefFromDedupeKey(ins.dedupe_key)!)}>
+                          Strategi
+                        </Button>
+                      </Tooltip>
+                    )}
                     <Tooltip title="Avvis">
                       <IconButton size="small" onClick={() => void dismiss(ins.id)}>
                         <DismissIcon fontSize="small" />
@@ -202,6 +271,54 @@ export default function InsightsFeedPanel() {
           </Stack>
         </PanelStateContainer>
       </CardContent>
+
+      <Dialog open={briefFor !== null} onClose={() => setBriefFor(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontSize: "1rem" }}>Tilbudsstrategi — {briefFor?.title.slice(0, 70)}</DialogTitle>
+        <DialogContent>
+          {briefLoading && (
+            <Stack alignItems="center" sx={{ py: 3 }}>
+              <CircularProgress size={28} />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                Bygger faktabunt og skriver brief…
+              </Typography>
+            </Stack>
+          )}
+          {briefError && <Alert severity="warning">{briefError}</Alert>}
+          {brief && (
+            <>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
+                {brief.text}
+              </Typography>
+              <Box sx={{ mt: 1.5, p: 1, bgcolor: "rgba(148,163,184,0.06)", borderRadius: 1 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>
+                  Faktagrunnlaget ([n]-referansene)
+                </Typography>
+                {brief.facts.map((f) => (
+                  <Typography key={f.n} variant="caption" sx={{ display: "block", fontFamily: "monospace" }}>
+                    [{f.n}] {f.label}: {f.value.slice(0, 120)}
+                  </Typography>
+                ))}
+              </Box>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
+                <Typography variant="caption" color="text.secondary">Bud-status:</Typography>
+                {["interested", "bid", "won", "lost"].map((st) => (
+                  <Button key={st} size="small" variant={bidSaved === st ? "contained" : "outlined"}
+                    sx={{ fontSize: 10, px: 1, minWidth: 0 }}
+                    onClick={() => void setBidStatus(st)}>
+                    {{ interested: "Interessert", bid: "Budt", won: "Vant", lost: "Tapte" }[st]}
+                  </Button>
+                ))}
+                {bidSaved && bidSaved !== "feil" && (
+                  <Typography variant="caption" sx={{ color: "#4ade80" }}>lagret ✓</Typography>
+                )}
+              </Stack>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBriefFor(null)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }
