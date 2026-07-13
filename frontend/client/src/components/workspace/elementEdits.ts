@@ -146,6 +146,33 @@ function applyTextEdits(textEdits: ElementText): (() => void) | undefined {
   return () => obs.disconnect();
 }
 
+export type ElementSrc = Record<string, string>; // selektor → trygg bilde-URL
+
+/** Bytt bildekilde på eksisterende <img> (f.eks. logo). Kun trygge URL-er (relativ/https). React kan
+ *  re-rendre og sette tilbake original src → re-applikeres ved DOM/attributt-endringer (rAF-debounced). */
+function applyElementSrc(srcMap: ElementSrc): (() => void) | undefined {
+  const entries = Object.entries(srcMap || {}).filter(([sel, url]) => isSafeSelector(sel) && isSafeUrl(url));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, url] of entries) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => {
+          if (el.tagName === 'IMG' && el.getAttribute('src') !== url) el.setAttribute('src', url);
+        });
+      } catch { /* ugyldig selektor — hopp over */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; apply(); });
+  });
+  try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
 // Notifikasjons-utseende (toasts/snackbars/alerts): flate string-tokens → global .MuiAlert-regel.
 // Nesten alle transiente meldinger i appen rendrer MUI Alert, så dette restyler save/change-meldinger
 // app-vidt. Kun EKSPLISITT satte verdier gir deklarasjoner → ingen override → MUI-standard (identisk).
@@ -382,6 +409,7 @@ export function useElementEdits(workspace: string): void {
     let cleanupBind: (() => void) | undefined;
     let cleanupVariant: (() => void) | undefined;
     let cleanupIntx: (() => void) | undefined;
+    let cleanupSrc: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -415,6 +443,10 @@ export function useElementEdits(workspace: string): void {
         if (t.elementInteractions && typeof t.elementInteractions === 'object') {
           cleanupIntx = applyInteractions(t.elementInteractions as ElementInteractions);
         }
+        // Bildekilde-overstyringer (bytt logo/bilde) — top-nivå.
+        if (t.elementSrc && typeof t.elementSrc === 'object') {
+          cleanupSrc = applyElementSrc(t.elementSrc as ElementSrc);
+        }
         // Live datakilde-verdier (admin-metrics + publicSafe DB-connectors) driver BÅDE source-
         // innsettinger (tall plassert på siden) OG data-bindinger. Hentes én gang, fletter inn.
         const hasInserts = vm.elementInserts && typeof vm.elementInserts === 'object';
@@ -433,6 +465,6 @@ export function useElementEdits(workspace: string): void {
         }
       })
       .catch(() => {});
-    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); if (cleanupIntx) cleanupIntx(); };
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); if (cleanupIntx) cleanupIntx(); if (cleanupSrc) cleanupSrc(); };
   }, [workspace]);
 }
