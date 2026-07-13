@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeOutreachText,
   buildDossierFacts,
+  buildInstitutionFacts,
   validateButlerNotes,
 } from "./outreach-composer.js";
 
@@ -34,6 +35,22 @@ describe("buildDossierFacts", () => {
   it("tomt lead gir minimalt dossier (navn + pipeline), aldri oppdiktede felter", () => {
     const facts = buildDossierFacts({ ...lead, enrichment_data: null }, []);
     expect(facts.map((f) => f.label)).toEqual(["Selskap", "Deres relasjon (pipeline)"]);
+  });
+});
+
+describe("buildInstitutionFacts (institusjons-modus)", () => {
+  it("nummererer mottaker + avsender-fakta, filtrerer tomme", () => {
+    const facts = buildInstitutionFacts({
+      recipientName: "Innovasjon Norge",
+      facts: [
+        { label: "Selskap", value: "Creatorhubn AS" },
+        { label: "Tom", value: "  " },
+        { label: "Produkt", value: "Markedsintelligens-plattform" },
+      ],
+    });
+    expect(facts).toHaveLength(3);
+    expect(facts[0]).toMatchObject({ n: 1, label: "Mottaker", value: "Innovasjon Norge" });
+    expect(facts[2].source).toBe("avsender");
   });
 });
 

@@ -312,14 +312,22 @@ export function registerOwnedChannelsRoutes({
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    if (typeof body.leadId !== "string" || typeof body.intent !== "string" || body.intent.trim().length < 3) {
-      return res.status(400).json({ error: "leadId_og_intent_kreves" });
+    if (typeof body.intent !== "string" || body.intent.trim().length < 3) {
+      return res.status(400).json({ error: "intent_kreves" });
     }
+    const institution = body.institution as { recipientName?: unknown; facts?: unknown } | undefined;
     try {
       const result = await composeOutreach(pool, orgId, {
-        leadId: body.leadId,
+        leadId: typeof body.leadId === "string" ? body.leadId : undefined,
         intent: body.intent.trim().slice(0, 300),
         draft: typeof body.draft === "string" ? body.draft : undefined,
+        institution:
+          institution && typeof institution.recipientName === "string" && Array.isArray(institution.facts)
+            ? {
+                recipientName: institution.recipientName.slice(0, 120),
+                facts: institution.facts as Array<{ label: string; value: string }>,
+              }
+            : undefined,
       });
       if ("error" in result) return res.status(result.status).json({ error: result.error });
       return res.json(result);
