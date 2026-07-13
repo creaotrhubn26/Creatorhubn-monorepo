@@ -116,7 +116,7 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     const EDIT_PROPS = new Set(['color', 'background-color', 'background', 'border-color', 'border-radius',
       'border-width', 'border-style', 'font-size', 'font-weight', 'letter-spacing', 'text-align',
       'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration']);
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
     const VAL_RE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
     const elementEdits: Record<string, Record<string, string>> = {};
     let selCount = 0;
@@ -135,7 +135,7 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   // → XSS-trygt av konstruksjon. Kun saniterte selektorer + lengdetak.
   const textIn = (patch as any)?.elementText;
   if (textIn && typeof textIn === 'object' && !Array.isArray(textIn)) {
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
     const elementText: Record<string, string> = {};
     let n = 0;
     for (const [sel, v] of Object.entries(textIn as Record<string, unknown>)) {
@@ -148,7 +148,7 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   const animIn = (patch as any)?.elementAnim;
   if (animIn && typeof animIn === 'object' && !Array.isArray(animIn)) {
     const PRESETS = new Set(['fade-in', 'slide-up', 'slide-down', 'zoom-in', 'pulse', 'bounce', 'float']);
-    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+    const SEL_RE = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
     const elementAnim: Record<string, string> = {};
     let n = 0;
     for (const [sel, v] of Object.entries(animIn as Record<string, unknown>)) {
