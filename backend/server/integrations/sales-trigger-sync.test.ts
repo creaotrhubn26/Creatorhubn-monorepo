@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  isFreshTrigger,
   mapDoffinHits,
   mapGdeltArticles,
   mapTedNotices,
@@ -81,6 +82,17 @@ describe("sales-trigger-detektoren", () => {
     expect(out[0].dedupeKey).toBe("trigger|ted|327903-2016");
     expect(out[0].evidence[0].value).toContain("ted.europa.eu");
     expect(out[1].severity).toBe("notable");
+  });
+});
+
+describe("isFreshTrigger (gamle anbud er ikke salgsvindu)", () => {
+  const now = new Date("2026-07-13T00:00:00Z");
+  const base = { source: "ted" as const, eventId: "x", kind: "tender" as const, title: "t", url: null, matchedTopic: "v" };
+
+  it("beholder ferske, forkaster eldre enn 60 dager, beholder ukjent dato", () => {
+    expect(isFreshTrigger({ ...base, publishedAt: "2026-07-03" }, now)).toBe(true);
+    expect(isFreshTrigger({ ...base, publishedAt: "2016-09-21" }, now)).toBe(false);
+    expect(isFreshTrigger({ ...base, publishedAt: null }, now)).toBe(true);
   });
 });
 

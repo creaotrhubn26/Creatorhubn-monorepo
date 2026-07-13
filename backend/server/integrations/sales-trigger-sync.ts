@@ -32,6 +32,15 @@ export interface TriggerEvent {
   matchedTopic: string;
 }
 
+/** Anbud eldre enn dette er ikke et salgsvindu — filtreres før lagring. */
+export const MAX_TRIGGER_AGE_DAYS = 60;
+
+export function isFreshTrigger(e: TriggerEvent, now: Date): boolean {
+  if (!e.publishedAt) return true; // ukjent dato → behold (detektoren viser det)
+  const age = (now.getTime() - new Date(`${e.publishedAt}T00:00:00Z`).getTime()) / 86_400_000;
+  return age <= MAX_TRIGGER_AGE_DAYS;
+}
+
 /** Vertikal → søkeord. Nøkkel = geo_prompt_sets.name (samme kobling som ellers). */
 export const TRIGGER_KEYWORDS: Record<string, string[]> = {
   "CreatorHub — fotografer og videografer": ["foto", "video", "film"],
@@ -125,14 +134,18 @@ async function fetchTedTenders(keyword: string, topic: string): Promise<TriggerE
       label: "ted-tenders",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        query: `place-of-performance IN (NOR) AND notice-title ~ ("${keyword}")`,
+        // SORT BY må stå i spørrestrengen — eget sort-felt avvises av API-et
+        // (verifisert 2026-07-13; feilen var stille og ga 0 hendelser)
+        query: `place-of-performance IN (NOR) AND notice-title ~ ("${keyword}") SORT BY publication-date DESC`,
         fields: ["publication-number", "notice-title", "publication-date"],
-        sort: [{ field: "publication-date", order: "DESC" }],
         limit: 10,
       }),
     },
   );
-  if (!result.ok) return [];
+  if (!result.ok) {
+    console.warn("[sales-triggers] TED-kall feilet for", topic);
+    return [];
+  }
   return mapTedNotices(result.data.notices ?? [], topic);
 }
 
@@ -222,7 +235,9 @@ export async function syncSalesTriggers(pool: Pool): Promise<TriggerSyncResult> 
 
   let inserted = 0;
   let verticalsChecked = 0;
+  const now = new Date();
   const insertEvent = async (orgId: string, e: TriggerEvent) => {
+    if (!isFreshTrigger(e, now)) return;
     const r = await pool.query(
       `INSERT INTO trigger_events
          (organization_id, source, event_id, kind, title, url, published_at, matched_topic)
