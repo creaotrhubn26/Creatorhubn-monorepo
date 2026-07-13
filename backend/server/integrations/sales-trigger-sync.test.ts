@@ -76,13 +76,42 @@ describe("sales-trigger-detektoren", () => {
         published_at: "2026-07-10", matched_topic: "Lead AS",
       },
     ];
-    const pool = { query: vi.fn(async () => ({ rows, rowCount: rows.length })) } as unknown as import("pg").Pool;
+    let call = 0;
+    const pool = { query: vi.fn(async () => (++call === 1 ? { rows: [], rowCount: 0 } : { rows, rowCount: rows.length })) } as unknown as import("pg").Pool;
     const out = await detector.run(pool, "org-1");
     expect(out).toHaveLength(2);
     expect(out[0].severity).toBe("important");
     expect(out[0].dedupeKey).toBe("trigger|ted|327903-2016");
     expect(out[0].evidence[0].value).toContain("ted.europa.eu");
     expect(out[1].severity).toBe("notable");
+  });
+});
+
+describe("award- og RFI-klassifisering", () => {
+  it("RESULT → kind award m/ vinner og antall tilbud", () => {
+    const out = mapDoffinHits(
+      [{
+        id: "2026-9", heading: "Rammeavtale video", publicationDate: "2026-07-06",
+        allTypes: ["RESULT"], receivedTenders: 12,
+        lots: [{ winner: [{ name: "Racecar AS", organizationId: "980530582" }] }],
+      }],
+      "CreatorHub — fotografer og videografer",
+    );
+    expect(out[0].kind).toBe("award");
+    expect(out[0].raw).toMatchObject({ winnerName: "Racecar AS", winnerOrgNr: "980530582", receivedTenders: 12 });
+  });
+
+  it("PLANNING → tender m/ isRfi; CANCELLED hoppes over", () => {
+    const out = mapDoffinHits(
+      [
+        { id: "1", heading: "Markedsundersøkelse foto", allTypes: ["PLANNING"], status: "ACTIVE" },
+        { id: "2", heading: "Avlyst", allTypes: ["CANCELLED_OR_MISSING_CONCLUSION_OF_CONTRACT"] },
+      ],
+      "v",
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].raw).toMatchObject({ isRfi: true });
+    expect(out[0].kind).toBe("tender");
   });
 });
 
