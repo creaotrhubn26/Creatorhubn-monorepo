@@ -19,6 +19,8 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import { assertAnyEntitled, LEADGRID_GO_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { sendEmail, isEmailConfigured } from "./casting-reminder-sender.js";
 
 // Roller som administrerer Leadgrid Go-dashbordet (ser hele teamet). Org
 // tildeler disse via team-styring; i tillegg respekteres en eksplisitt
@@ -102,12 +104,73 @@ const csvCell = (v: unknown) => {
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
+const htmlEsc = (v: unknown) =>
+  String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+
+/** Bygg månedsrapport-e-post (HTML) fra turene. */
+function buildReportHtml(monthLabel: string, rows: any[]): string {
+  const business = rows.filter((r) => r.purpose === "business");
+  const km = business.reduce((s, r) => s + Number(r.distance_km || 0), 0);
+  const amount = business.reduce((s, r) => s + Number(r.mileage_amount || 0), 0);
+  const tolls = rows.reduce((s, r) => s + Number(r.toll_amount || 0), 0);
+  const unconfirmed = rows.filter((r) => r.purpose === "unconfirmed").length;
+  const tripRows = rows
+    .map((r) => {
+      const d = new Date(r.start_date);
+      const dato = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee">${dato}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee">${htmlEsc(r.start_place)} → ${htmlEsc(r.end_place)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee">${purposeLabel(r.purpose)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${Number(r.distance_km || 0).toFixed(1)} km</td>
+      </tr>`;
+    })
+    .join("");
+  return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;color:#111">
+    <h2 style="color:#6a3fbf">Leadgrid Go — kjørebok ${htmlEsc(monthLabel)}</h2>
+    <table style="width:100%;border-collapse:collapse;margin:14px 0">
+      <tr>
+        <td style="padding:10px;background:#f5f2fc;border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:800">${Math.round(km)} km</div>
+          <div style="font-size:11px;color:#666">Yrkeskjøring</div></td>
+        <td style="width:8px"></td>
+        <td style="padding:10px;background:#eefaf3;border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:800">${Math.round(amount)} kr</div>
+          <div style="font-size:11px;color:#666">Kjøregodtgjørelse</div></td>
+        <td style="width:8px"></td>
+        <td style="padding:10px;background:#fdf2e8;border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:800">${Math.round(tolls)} kr</div>
+          <div style="font-size:11px;color:#666">Bom</div></td>
+      </tr>
+    </table>
+    ${unconfirmed > 0 ? `<p style="color:#d97706;font-weight:600">⚠ ${unconfirmed} tur${unconfirmed === 1 ? "" : "er"} mangler formål — bekreft i appen før rapportering.</p>` : ""}
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:#666">
+        <th style="padding:6px 10px">Dato</th><th style="padding:6px 10px">Rute</th>
+        <th style="padding:6px 10px">Formål</th><th style="padding:6px 10px;text-align:right">Km</th>
+      </tr></thead>
+      <tbody>${tripRows || `<tr><td colspan="4" style="padding:14px;color:#999">Ingen turer denne måneden.</td></tr>`}</tbody>
+    </table>
+    <p style="font-size:11px;color:#999;margin-top:16px">Kjøreboka følger Skatteetatens dokumentasjonskrav. Full CSV kan eksporteres i Leadgrid-appen.</p>
+  </div>`;
+}
+
 export function registerLeadgridTripsRoutes(deps: {
   app: Express;
   pool: Pool;
   requireUserSession: (req: Request, res: Response) => { userId: string } | null;
 }) {
   const { app, pool, requireUserSession } = deps;
+
+  // Session + entitlement-gate (Leadgrid Go = tilleggstjeneste). Fail-open:
+  // orgs uten entitlement-rader forblir åpne (jf. checkAnyEntitlement).
+  async function gate(req: Request, res: Response): Promise<{ userId: string } | null> {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    const ok = await assertAnyEntitled(pool, session.userId, LEADGRID_GO_FEATURE_KEYS, res);
+    if (!ok) return null;
+    return session;
+  }
 
   // Upsert én tur (delt av POST /trips og /trips/sync).
   async function upsertTrip(userId: string, t: any): Promise<void> {
@@ -141,7 +204,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── GET /trips ──────────────────────────────────────────────────
   app.get("/api/leadgrid/trips", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     try {
       await ensureSchema(pool);
@@ -164,7 +227,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── POST /trips (upsert én) ─────────────────────────────────────
   app.post("/api/leadgrid/trips", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     try {
       await ensureSchema(pool);
@@ -178,7 +241,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── POST /trips/sync (bulk) ─────────────────────────────────────
   app.post("/api/leadgrid/trips/sync", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     try {
       await ensureSchema(pool);
@@ -197,7 +260,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── PATCH /trips/:id (formål/notat) ─────────────────────────────
   app.patch("/api/leadgrid/trips/:id", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     const id = req.params.id;
     if (!UUID_RE.test(id)) return res.status(400).json({ error: "invalid_id" });
@@ -225,7 +288,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── DELETE /trips/:id ───────────────────────────────────────────
   app.delete("/api/leadgrid/trips/:id", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     const id = req.params.id;
     if (!UUID_RE.test(id)) return res.status(400).json({ error: "invalid_id" });
@@ -243,7 +306,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── GET /trips/team — admin-oversikt over hele teamet (org-scopet) ─
   app.get("/api/leadgrid/trips/team", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     try {
       await ensureSchema(pool);
@@ -330,7 +393,7 @@ export function registerLeadgridTripsRoutes(deps: {
 
   // ── GET /trips/export.csv (Skatteetaten-format) ─────────────────
   app.get("/api/leadgrid/trips/export.csv", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await gate(req, res);
     if (!session) return;
     try {
       await ensureSchema(pool);
@@ -368,6 +431,56 @@ export function registerLeadgridTripsRoutes(deps: {
     } catch (err) {
       console.warn("[leadgrid-trips] export failed:", (err as Error).message);
       return res.status(500).json({ error: "trips_export_failed" });
+    }
+  });
+
+  // ── POST /trips/report — send månedsrapport til callerens innboks ─
+  // Cron-klar: samme motor kan kalles fra en månedlig jobb per bruker.
+  app.post("/api/leadgrid/trips/report", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    if (!isEmailConfigured()) {
+      return res.status(503).json({ error: "email_not_configured" });
+    }
+    try {
+      await ensureSchema(pool);
+      // Måned: ?month=YYYY-MM, ellers inneværende.
+      const monthQ = String(req.query.month || "");
+      const now = new Date();
+      const [yy, mm] = /^\d{4}-\d{2}$/.test(monthQ)
+        ? monthQ.split("-").map(Number)
+        : [now.getUTCFullYear(), now.getUTCMonth() + 1];
+      const start = new Date(Date.UTC(yy, mm - 1, 1));
+      const end = new Date(Date.UTC(yy, mm, 1));
+      const monthLabel = start.toLocaleDateString("nb-NO", { month: "long", year: "numeric", timeZone: "UTC" });
+
+      const u = await pool.query<{ email: string | null }>(
+        `SELECT email FROM users WHERE id = $1`,
+        [session.userId],
+      );
+      const email = u.rows[0]?.email;
+      if (!email) return res.status(400).json({ error: "no_email_on_user" });
+
+      const r = await pool.query(
+        `SELECT * FROM leadgrid_trips
+          WHERE user_id = $1 AND start_date >= $2 AND start_date < $3
+          ORDER BY start_date ASC`,
+        [session.userId, start.toISOString(), end.toISOString()],
+      );
+      const html = buildReportHtml(monthLabel, r.rows);
+      const result = await sendEmail({
+        to: email,
+        subject: `Leadgrid Go — kjørebok ${monthLabel}`,
+        html,
+        fromName: "Leadgrid Go",
+      });
+      if (!result.success) {
+        return res.status(502).json({ error: "send_failed", detail: result.error });
+      }
+      return res.json({ sent: true, to: email, trips: r.rows.length });
+    } catch (err) {
+      console.warn("[leadgrid-trips] report failed:", (err as Error).message);
+      return res.status(500).json({ error: "trips_report_failed" });
     }
   });
 }

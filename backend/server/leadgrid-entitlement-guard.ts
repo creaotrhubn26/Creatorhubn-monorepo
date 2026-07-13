@@ -131,3 +131,11 @@ export const LEADBOOK_FEATURE_KEYS = [
   "leadbookEksempler",
   "leadbookInnsikt",
 ];
+
+/** Leadgrid Go-gruppen (tilleggstjeneste) — kjørebok + auto-registrering +
+ *  team-dashbord. Gate GRUPPEN: åpent hvis MINST én key ikke er «locked». */
+export const LEADGRID_GO_FEATURE_KEYS = [
+  "leadgridGoKjorebok",
+  "leadgridGoAuto",
+  "leadgridGoDashboard",
+];
