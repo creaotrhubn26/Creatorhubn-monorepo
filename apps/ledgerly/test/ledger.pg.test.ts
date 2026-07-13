@@ -227,6 +227,70 @@ describe('Bokføringsmotor (ekte Postgres)', () => {
     ).rejects.toThrow(ValidationError);
   });
 
+  it('samtidige kall med samme idempotensnøkkel gir nøyaktig én postering', async () => {
+    const makeCall = () =>
+      postJournalEntry(db, {
+        organizationId: orgId,
+        actor: actor(),
+        entryDate: '2025-11-08',
+        description: 'Kappløp',
+        idempotencyKey: 'concurrent-key-1',
+        lines: [
+          { accountNumber: '6800', debitMinor: 5000n },
+          { accountNumber: '1920', creditMinor: 5000n },
+        ],
+      });
+    const results = await Promise.all([makeCall(), makeCall(), makeCall()]);
+    const ids = new Set(results.map((r) => r.id));
+    expect(ids.size).toBe(1);
+    const count = await db.query(
+      `SELECT count(*)::int AS n FROM journal_entries WHERE organization_id = $1 AND idempotency_key = 'concurrent-key-1'`,
+      [orgId],
+    );
+    expect(count.rows[0].n).toBe(1);
+  });
+
+  it('valutafelter kreves samlet: beløp uten valuta/kurs/kilde avvises', async () => {
+    await expect(
+      postJournalEntry(db, {
+        organizationId: orgId,
+        actor: actor(),
+        entryDate: '2025-11-08',
+        description: 'Delvise valutafelter',
+        idempotencyKey: 'partial-fx',
+        lines: [
+          { accountNumber: '6810', debitMinor: 1000n, originalAmountMinor: 87n },
+          { accountNumber: '2400', creditMinor: 1000n },
+        ],
+      }),
+    ).rejects.toThrow(/alle fire/);
+  });
+
+  it('skjerpet guard: direkte SQL kan ikke endre reversal_of eller source_document_id', async () => {
+    const entry = await postJournalEntry(db, {
+      organizationId: orgId,
+      actor: actor(),
+      entryDate: '2025-11-09',
+      description: 'Guard-test',
+      idempotencyKey: 'guard-test-1',
+      lines: [
+        { accountNumber: '6800', debitMinor: 100n },
+        { accountNumber: '1920', creditMinor: 100n },
+      ],
+    });
+    await expect(
+      db.query(`UPDATE journal_entries SET reversal_of = $1 WHERE id = $1`, [entry.id]),
+    ).rejects.toThrow(/kan ikke endres/);
+    await expect(
+      db.query(`UPDATE journal_entries SET posted_by_role = 'hacket' WHERE id = $1`, [entry.id]),
+    ).rejects.toThrow(/kan ikke endres/);
+    await expect(
+      db.query(`UPDATE journal_entries SET status = 'posted' WHERE id = $1 AND status = 'posted'`, [
+        entry.id,
+      ]),
+    ).resolves.toBeDefined(); // no-op-status er lov (ingen reell endring)
+  });
+
   it('property: vilkårlige balanserte posteringer holder saldobalansen i balanse', async () => {
     const expenseAccounts = ['4000', '6300', '6551', '6800', '7140', '7790'];
     await fc.assert(

@@ -12,6 +12,16 @@ import type { OrganizationForm } from '../rules/types.js';
 import { money, multiplyRational } from '../shared/money.js';
 import { buildVatReport } from '../vat/engine.js';
 
+/** Formaterer en rasjonal sats (n/100 eller n/1000) for visning — alltid fra registeret. */
+function displayRatePct(numerator: bigint, denominator: bigint): string {
+  if (denominator === 100n) return numerator.toString();
+  if (denominator === 1000n) {
+    const frac = numerator % 10n;
+    return frac === 0n ? (numerator / 10n).toString() : `${numerator / 10n}.${frac}`;
+  }
+  return `${numerator}/${denominator}`;
+}
+
 export interface TaxEstimateScenario {
   label: 'low' | 'expected' | 'high';
   taxableResultMinor: bigint;
@@ -92,7 +102,7 @@ export async function buildTaxEstimate(
       name: 'Selskapsskatt (alminnelig inntekt)',
       ruleId,
       ruleVersion: version.version,
-      ratePct: '22',
+      ratePct: displayRatePct(rate.numerator, rate.denominator),
       amountMinor: tax.minorUnits,
     });
   } else {
@@ -104,7 +114,7 @@ export async function buildTaxEstimate(
       name: 'Skatt på alminnelig inntekt',
       ruleId: incomeRuleId,
       ruleVersion: incomeVersion.version,
-      ratePct: '22',
+      ratePct: displayRatePct(incomeRate.numerator, incomeRate.denominator),
       amountMinor: incomeTax.minorUnits,
     });
     const ssRuleId = 'no.tax.social-security-self-employed';
@@ -115,7 +125,7 @@ export async function buildTaxEstimate(
       name: 'Trygdeavgift (næringsinntekt)',
       ruleId: ssRuleId,
       ruleVersion: ssVersion.version,
-      ratePct: ssRate.denominator === 1000n ? `${ssRate.numerator / 10n}.${ssRate.numerator % 10n}` : String(ssRate.numerator),
+      ratePct: displayRatePct(ssRate.numerator, ssRate.denominator),
       amountMinor: ssTax.minorUnits,
     });
     notIncluded.push('Trinnskatt (krever samlet personinntekt)', 'Personfradrag og minstefradrag');

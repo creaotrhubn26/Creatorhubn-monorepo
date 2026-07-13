@@ -85,12 +85,17 @@ function validateLines(lines: JournalLineInput[]): void {
     if (line.vatCode !== undefined && !getVatCode(line.vatCode)) {
       throw new ValidationError(`Linje ${i + 1}: ukjent mva-kode ${line.vatCode}.`);
     }
-    if (
-      (line.originalCurrency !== undefined) !==
-      (line.originalAmountMinor !== undefined && line.exchangeRate !== undefined)
-    ) {
+    // Valutafelter: alle fire eller ingen. Beløp uten valuta/kurs/kilde avvises.
+    const fxFields = [
+      line.originalCurrency,
+      line.originalAmountMinor,
+      line.exchangeRate,
+      line.exchangeRateSource,
+    ];
+    const fxSet = fxFields.filter((f) => f !== undefined).length;
+    if (fxSet !== 0 && fxSet !== fxFields.length) {
       throw new ValidationError(
-        `Linje ${i + 1}: originalvaluta krever både beløp, valutakurs og kilde.`,
+        `Linje ${i + 1}: originalvaluta krever valuta, beløp, valutakurs og kurskilde — alle fire.`,
       );
     }
     debitSum += debit;
@@ -163,10 +168,42 @@ export async function postJournalEntry(
   if (!input.idempotencyKey.trim()) {
     throw new ValidationError('idempotencyKey er påkrevd for all bokføring.');
   }
+  try {
+    return await postJournalEntryTx(db, input);
+  } catch (err) {
+    // Samtidig idempotens: taper et kappløp om samme nøkkel → returner vinnerens
+    // postering i stedet for å feile (unique violation på idempotency_key).
+    const pgErr = err as { code?: string; constraint?: string };
+    if (pgErr.code === '23505' && pgErr.constraint?.includes('idempotency')) {
+      const existing = await db.query(
+        `SELECT id, entry_number, entry_date::TEXT AS entry_date, status FROM journal_entries
+         WHERE organization_id = $1 AND idempotency_key = $2`,
+        [input.organizationId, input.idempotencyKey],
+      );
+      if (existing.rowCount) {
+        const row = existing.rows[0];
+        return {
+          id: row.id,
+          entryNumber: Number(row.entry_number),
+          organizationId: input.organizationId,
+          entryDate: row.entry_date,
+          status: row.status,
+          alreadyExisted: true,
+        };
+      }
+    }
+    throw err;
+  }
+}
+
+async function postJournalEntryTx(
+  db: Db,
+  input: PostJournalEntryInput,
+): Promise<PostedJournalEntry> {
   return withTransaction(db, async (client) => {
     // Idempotens: returner eksisterende postering for samme nøkkel.
     const existing = await client.query(
-      `SELECT id, entry_number, entry_date, status FROM journal_entries
+      `SELECT id, entry_number, entry_date::TEXT AS entry_date, status FROM journal_entries
        WHERE organization_id = $1 AND idempotency_key = $2`,
       [input.organizationId, input.idempotencyKey],
     );
@@ -176,7 +213,7 @@ export async function postJournalEntry(
         id: row.id,
         entryNumber: Number(row.entry_number),
         organizationId: input.organizationId,
-        entryDate: row.entry_date.toISOString?.().slice(0, 10) ?? String(row.entry_date),
+        entryDate: row.entry_date,
         status: row.status,
         alreadyExisted: true,
       };

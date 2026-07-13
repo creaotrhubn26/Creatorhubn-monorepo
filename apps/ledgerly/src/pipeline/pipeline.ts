@@ -299,7 +299,7 @@ export async function approveAndPost(
   }
   const docRes = await deps.db.query(
     `SELECT d.status, e.document_type, e.vendor_name, e.vendor_org_number, e.invoice_number,
-            e.invoice_date, e.currency, e.net_minor, e.vat_minor, e.gross_minor
+            e.invoice_date::TEXT AS invoice_date, e.currency, e.net_minor, e.vat_minor, e.gross_minor
      FROM source_documents d
      JOIN extracted_document_data e ON e.document_id = d.id
      WHERE d.id = $1 AND d.organization_id = $2
@@ -340,11 +340,10 @@ export async function approveAndPost(
   if (grossOriginal === null) {
     throw new ValidationError('Dokumentet mangler totalbeløp og kan ikke bokføres.');
   }
+  // invoice_date hentes som ::TEXT fra databasen — aldri som JS Date, som ville
+  // gitt tidssoneavhengig dato (UTC-konvertering kan flytte bilaget en dag/periode).
   const invoiceDate: string =
-    input.postingDate ??
-    (doc.invoice_date instanceof Date
-      ? doc.invoice_date.toISOString().slice(0, 10)
-      : (doc.invoice_date ?? new Date().toISOString().slice(0, 10)));
+    input.postingDate ?? doc.invoice_date ?? new Date().toISOString().slice(0, 10);
 
   // Valuta: alt bokføres i NOK med lagret originalvaluta, kurs og kilde.
   let grossNok = grossOriginal;
