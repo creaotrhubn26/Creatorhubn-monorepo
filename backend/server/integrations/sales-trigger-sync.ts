@@ -30,6 +30,8 @@ export interface TriggerEvent {
   url: string | null;
   publishedAt: string | null; // YYYY-MM-DD
   matchedTopic: string;
+  /** Anbudsdetaljer (Doffin): frist, verdi, oppdragsgiver — vises i innsikten. */
+  raw?: Record<string, unknown>;
 }
 
 /** Anbud eldre enn dette er ikke et salgsvindu — filtreres før lagring. */
@@ -168,14 +170,19 @@ interface DoffinHit {
   heading?: string;
   title?: string;
   publicationDate?: string;
+  deadline?: string;
+  status?: string;
+  estimatedValue?: { currencyCode?: string; amount?: number };
+  buyer?: Array<{ name?: string }>;
 }
 
-/** Defensiv mapping — Doffin-strukturen finjusteres når nøkkelen er på plass. */
+/** Mapping verifisert mot faktisk API-respons 2026-07-13 (nøkkel aktiv). */
 export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] {
   const out: TriggerEvent[] = [];
   for (const h of hits) {
     const title = h.heading ?? h.title;
     if (!h.id || !title) continue;
+    if (h.status && h.status !== "ACTIVE") continue; // utgåtte anbud er ikke salgsvindu
     out.push({
       source: "doffin",
       eventId: String(h.id),
@@ -184,6 +191,11 @@ export function mapDoffinHits(hits: DoffinHit[], topic: string): TriggerEvent[] 
       url: `https://www.doffin.no/notices/${h.id}`,
       publishedAt: h.publicationDate?.slice(0, 10) ?? null,
       matchedTopic: topic,
+      raw: {
+        deadline: h.deadline?.slice(0, 10) ?? null,
+        valueNok: h.estimatedValue?.currencyCode === "NOK" ? h.estimatedValue.amount ?? null : null,
+        buyerName: h.buyer?.[0]?.name ?? null,
+      },
     });
   }
   return out;
@@ -240,10 +252,10 @@ export async function syncSalesTriggers(pool: Pool): Promise<TriggerSyncResult> 
     if (!isFreshTrigger(e, now)) return;
     const r = await pool.query(
       `INSERT INTO trigger_events
-         (organization_id, source, event_id, kind, title, url, published_at, matched_topic)
-       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
+         (organization_id, source, event_id, kind, title, url, published_at, matched_topic, raw)
+       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
        ON CONFLICT (organization_id, source, event_id) DO NOTHING`,
-      [orgId, e.source, e.eventId, e.kind, e.title.slice(0, 500), e.url, e.publishedAt, e.matchedTopic],
+      [orgId, e.source, e.eventId, e.kind, e.title.slice(0, 500), e.url, e.publishedAt, e.matchedTopic, JSON.stringify(e.raw ?? {})],
     );
     inserted += r.rowCount ?? 0;
   };
