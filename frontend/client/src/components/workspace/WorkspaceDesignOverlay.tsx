@@ -153,6 +153,21 @@ export default function WorkspaceDesignOverlay({
   const [editingVariant, setEditingVariant] = React.useState<string | null>(null);
   const [abStats, setAbStats] = React.useState<Record<string, number>>({});
   const [reloadKey, setReloadKey] = React.useState(0);
+  // Versjonshistorikk
+  const [versions, setVersions] = React.useState<Array<{ id: string; at: number; label: string }>>([]);
+  const [versionLabel, setVersionLabel] = React.useState('');
+  const [versionMsg, setVersionMsg] = React.useState('');
+  const fetchVersions = async () => {
+    try { const r = await fetch(`/api/admin/design/history?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && Array.isArray(d.snapshots)) setVersions(d.snapshots); } catch { /* ignorer */ }
+  };
+  const createVersion = async () => {
+    setVersionMsg('Lagrer versjon…');
+    try { const r = await fetch('/api/admin/design/history/snapshot', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, label: versionLabel }) }); if (r.ok) { setVersionLabel(''); setVersionMsg('Versjon lagret ✓'); fetchVersions(); } else setVersionMsg('Avvist (krever admin)'); } catch { setVersionMsg('Nettverksfeil'); }
+  };
+  const restoreVersion = async (id: string) => {
+    setVersionMsg('Gjenoppretter…');
+    try { const r = await fetch('/api/admin/design/history/restore', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, id }) }); if (r.ok) { setVersionMsg('Gjenopprettet ✓ — laster på nytt.'); setReloadKey((k) => k + 1); fetchVersions(); } else setVersionMsg('Gjenoppretting feilet'); } catch { setVersionMsg('Nettverksfeil'); }
+  };
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
 
@@ -809,6 +824,24 @@ export default function WorkspaceDesignOverlay({
                 )}
               </div>
             )}
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontWeight: 800, fontSize: 12, color: INK }}>Versjonshistorikk</span>
+                <button data-chd onClick={fetchVersions} style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>Vis versjoner</button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input data-chd style={{ ...field, flex: 1 }} placeholder="Versjons-navn (valgfritt)" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} />
+                <button data-chd onClick={createVersion} style={{ ...cta, padding: '3px 9px', fontSize: 11, whiteSpace: 'nowrap' }}>Lag versjon</button>
+              </div>
+              {versionMsg && <span style={{ fontSize: 11, color: INK2 }}>{versionMsg}</span>}
+              {versions.map((v) => (
+                <div key={v.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                  <span style={{ flex: 1, color: INK, wordBreak: 'break-word' }}>{v.label || '(uten navn)'}<span style={{ color: INK2 }}> · {new Date(v.at).toLocaleString('no-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></span>
+                  <button data-chd onClick={() => restoreVersion(v.id)} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Gjenopprett</button>
+                </div>
+              ))}
+              <span style={{ fontSize: 10.5, color: INK2 }}>Gjenoppretting tar automatisk en «før»-versjon først, så den er reversibel.</span>
+            </div>
             {editKeys.length > 0 && (
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>

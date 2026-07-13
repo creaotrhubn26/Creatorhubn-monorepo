@@ -366,3 +366,39 @@ export async function replaceTokens(pool: Pool, workspace: string, full: Record<
   invalidateTokensCache();
   return { ok: true };
 }
+
+// ── Versjonshistorikk ────────────────────────────────────────────────────────────────────────
+// Navngitte gjenopprettingspunkter for hele design-tilstanden. Lagres i en EGEN rad («<ws>::history»)
+// så de ikke bloat-er den vanlige token-raden (og aldri leses av getTokens). Bounded til 15.
+const HIST_MAX = 15;
+type DesignSnapshot = { id: string; at: number; label: string; tokens: Record<string, unknown> };
+function histWs(workspace: string): string | null { return workspace === 'global' ? 'global' : normalizeWorkspace(workspace); }
+async function readHistory(pool: Pool, wsId: string): Promise<DesignSnapshot[]> {
+  try {
+    const r = await pool.query<{ tokens: { snapshots?: DesignSnapshot[] } }>('SELECT tokens FROM workspace_design_tokens WHERE workspace_id = $1', [`${wsId}::history`]);
+    const s = r.rows[0]?.tokens?.snapshots;
+    return Array.isArray(s) ? s : [];
+  } catch { return []; }
+}
+export async function saveDesignSnapshot(pool: Pool, workspace: string, label: string): Promise<{ error: string } | { ok: true; id: string }> {
+  const ws = histWs(workspace); if (!ws) return { error: 'Ugyldig workspace.' };
+  const tokens = await getRawTokens(pool, ws).catch(() => ({}));
+  const snap: DesignSnapshot = { id: `v${Date.now()}${Math.floor(Math.random() * 1000)}`, at: Date.now(), label: String(label || '').slice(0, 80), tokens };
+  const next = [snap, ...(await readHistory(pool, ws))].slice(0, HIST_MAX);
+  try {
+    await pool.query(`INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
+       ON CONFLICT (workspace_id) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = NOW()`, [`${ws}::history`, JSON.stringify({ snapshots: next })]);
+  } catch { return { error: 'Kunne ikke lagre versjon.' }; }
+  return { ok: true, id: snap.id };
+}
+export async function listDesignSnapshots(pool: Pool, workspace: string): Promise<Array<{ id: string; at: number; label: string }>> {
+  const ws = histWs(workspace); if (!ws) return [];
+  return (await readHistory(pool, ws)).map((s) => ({ id: s.id, at: s.at, label: s.label }));
+}
+export async function restoreDesignSnapshot(pool: Pool, workspace: string, id: string): Promise<{ error: string } | { ok: true }> {
+  const ws = histWs(workspace); if (!ws) return { error: 'Ugyldig workspace.' };
+  const snap = (await readHistory(pool, ws)).find((s) => s.id === id);
+  if (!snap) return { error: 'Fant ikke versjonen.' };
+  await saveDesignSnapshot(pool, ws, 'Auto: før gjenoppretting').catch(() => undefined); // gjenoppretting reversibel
+  return replaceTokens(pool, ws, snap.tokens);
+}
