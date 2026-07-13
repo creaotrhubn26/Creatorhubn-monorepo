@@ -279,9 +279,15 @@ export function useElementEdits(workspace: string): void {
         if (t.elementInserts && typeof t.elementInserts === 'object') {
           cleanupInserts = applyInserts(t.elementInserts as ElementInserts);
         }
-        // Data-bindinger → elementtekst = metric-verdi (live, koblet).
+        // Data-bindinger → elementtekst = metric-verdi el. LIVE connector-verdi (fra DB), koblet.
         if (t.elementBindings && typeof t.elementBindings === 'object') {
-          cleanupBind = applyBindings(t.elementBindings as ElementBindings, (t.metrics as Record<string, { value?: unknown }>) || {});
+          const bindings = t.elementBindings as ElementBindings;
+          const baseMetrics = (t.metrics as Record<string, { value?: unknown }>) || {};
+          // Flett inn live connector-verdier (publicSafe) så bindinger mot DB-kilder resolver.
+          fetch(`/api/design/connector-values?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((cv) => { if (live) cleanupBind = applyBindings(bindings, { ...baseMetrics, ...((cv && cv.values) || {}) }); })
+            .catch(() => { if (live) cleanupBind = applyBindings(bindings, baseMetrics); });
         }
       })
       .catch(() => {});

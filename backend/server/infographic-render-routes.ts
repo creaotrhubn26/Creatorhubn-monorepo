@@ -24,6 +24,7 @@ import {
 } from './infographic-templates-store.js';
 import { getTokens, getRawTokens, setTokens, resetTokens, replaceTokens } from './design-tokens-store.js';
 import { generateDesignSuggestions } from './design-suggest.js';
+import { resolveConnector, listLiveConnectors } from './design-connectors.js';
 
 type Sessions = Map<string, { userId?: string }>;
 type AdminGuard = (req: Request, res: Response) => { email: string } | null;
@@ -106,8 +107,12 @@ export function registerInfographicRenderRoutes(
           if (m && typeof m === 'object') {
             if (m.value != null) data.value = m.value;
             if (m.label != null) data.label = m.label;
+          } else {
+            // Ingen admin-metric → prøv en LIVE connector (kun publicSafe, resolvert fra DB).
+            const live = await resolveConnector(pool, sourceKey, { requirePublicSafe: true });
+            if (live != null) data.value = live;
           }
-        } catch { /* metrics utilgjengelig → behold data som er */ }
+        } catch { /* kilde utilgjengelig → behold data som er */ }
       }
       // Aksent: query > data > workspace-merkevare (design-token). Gjør render on-brand per produkt.
       let accent = accentQ;
@@ -286,6 +291,19 @@ export function registerInfographicRenderRoutes(
     res.json({ workspace: ws, connectors: DESIGN_CONNECTORS[ws] || [] });
   });
 
+  // OFFENTLIG: gjeldende verdier for publicSafe live-connectors (for tekst-bindinger på landinger).
+  // Kun trygge aggregater; cachet så DB ikke treffes ved hver last.
+  app.get('/api/design/connector-values', async (req: Request, res: Response) => {
+    const ws = String(req.query.ws || '');
+    try {
+      const live = await listLiveConnectors(pool, ws);
+      const values: Record<string, { value: unknown }> = {};
+      for (const c of live) values[c.key] = { value: c.value };
+      res.setHeader('Cache-Control', 'public, max-age=120');
+      res.json({ values });
+    } catch { res.json({ values: {} }); }
+  });
+
   // PUT overstyr tokens for et workspace (admin). Body = patch (kun kjente string-tokens).
   app.put('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
     const admin = requireAdminSession(req, res);
@@ -319,8 +337,10 @@ export function registerInfographicRenderRoutes(
     try {
       const toks = await getTokens(pool, ws) as Record<string, unknown>;
       const metrics = (toks.metrics && typeof toks.metrics === 'object') ? toks.metrics as Record<string, { value?: unknown; label?: unknown }> : {};
-      const sources = Object.entries(metrics).map(([key, m]) => ({ key, value: m?.value ?? null, label: m?.label ?? null }));
-      res.json({ sources });
+      const manual = Object.entries(metrics).map(([key, m]) => ({ key, value: m?.value ?? null, label: m?.label ?? null, live: false, ok: m?.value != null }));
+      // LIVE connectors: resolvert fra ekte DB → verifisert verdi følger med.
+      const live = await listLiveConnectors(pool, ws);
+      res.json({ sources: [...manual, ...live] });
     } catch { res.json({ sources: [] }); }
   });
 
