@@ -32,6 +32,11 @@ const FIELDS: { key: string; label: string; type: 'color' | 'text' }[] = [
   { key: 'portalAccent', label: 'Portal-aksent (Role Room)', type: 'color' },
   { key: 'cyanAccent', label: 'Cyan-aksent (Role Room-arbeidsflate)', type: 'color' },
   { key: 'violetAccent', label: 'Fiolett-aksent (Role Room)', type: 'color' },
+  { key: 'notifBg', label: 'Notifikasjon: bakgrunn', type: 'color' },
+  { key: 'notifText', label: 'Notifikasjon: tekst', type: 'color' },
+  { key: 'notifRadius', label: 'Notifikasjon: radius (f.eks. 12px)', type: 'text' },
+  { key: 'notifShadow', label: 'Notifikasjon: skygge (box-shadow)', type: 'text' },
+  { key: 'notifBorder', label: 'Notifikasjon: ramme (f.eks. 1px solid #333)', type: 'text' },
   { key: 'fontFamily', label: 'Font-family', type: 'text' },
 ];
 
@@ -140,6 +145,17 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
                 <img key={previewSrc} src={previewSrc} alt="preview" style={{ maxWidth: '100%', maxHeight: 220 }}
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }} />
               </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+                Notifikasjon-preview (gjelder alle toasts/meldinger ved lagring):
+              </Typography>
+              <Alert severity="success" sx={{
+                mt: 0.5,
+                backgroundColor: tokens.notifBg || undefined,
+                color: tokens.notifText || undefined,
+                borderRadius: tokens.notifRadius || undefined,
+                boxShadow: tokens.notifShadow || undefined,
+                border: tokens.notifBorder || undefined,
+              }}>Lagret ✓</Alert>
             </Box>
           </Stack>
         </CardContent>
