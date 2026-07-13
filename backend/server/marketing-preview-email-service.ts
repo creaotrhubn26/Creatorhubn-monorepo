@@ -145,12 +145,17 @@ export async function notifyProducerOfClientComment(args: SendArgs & {
     const { rows: postRows } = await pool.query<{
       hook: string; projectTitle: string | null;
     }>(
+      // Prosjekt-scope: posten MÅ tilhøre prosjektet som varselet gjelder.
+      // Hindrer at en caller med uavhengig (projectId, postId) — f.eks. en
+      // klient-kommentar med vilkårlig anchor_ref — lekker en fremmed posts
+      // hook/prosjektnavn inn i et annet prosjekts produsent-e-post. Ved
+      // mismatch faller vi tilbake på nøytral tekst ("din post").
       `SELECT p.hook, prj.name AS "projectTitle"
          FROM role_room_marketing_plan_posts p
          JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
          LEFT JOIN projects prj ON prj.id = mp.project_id
-        WHERE p.id = $1`,
-      [postId],
+        WHERE p.id = $1 AND mp.project_id = $2`,
+      [postId, projectId],
     );
     const hook = postRows[0]?.hook ?? "din post";
     const projectTitle = postRows[0]?.projectTitle ?? "prosjektet";

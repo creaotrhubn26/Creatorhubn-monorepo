@@ -335,24 +335,30 @@ export function registerRoleRoomEditorCommentsRoutes(
           if (!CLIENT_VISIBLE_ANCHORS.has(anchorType)) {
             res.status(403).json({ error: "klient_kan_ikke_kommentere_paa_denne" }); return;
           }
-          // Timestamp-comments fra klient MÅ peke på en marketing_plan_
-          // post i klientens prosjekt — ellers kan en klient skrive
-          // timestamp-comments på andre prosjekter via vilkårlig
-          // anchor_ref.
-          if (anchorType === "timestamp") {
+          // Klient-kommentarer som peker på en marketing_plan_post — enten
+          // via 'timestamp'-anker (et sekund i preview-videoen) eller direkte
+          // 'marketing_plan_post'-anker — MÅ referere en post i klientens EGET
+          // prosjekt. Ellers kan en klient injisere en vilkårlig post-id som
+          // anchor_ref og lekke fremmed post-hook + prosjektnavn til sin egen
+          // produsent via klient-kommentar-varselet (notifyProducerOfClient-
+          // Comment slår opp posten uten prosjekt-scope). Timestamp krever
+          // alltid en ref; marketing_plan_post valideres når ref er satt.
+          if (anchorType === "timestamp" || anchorType === "marketing_plan_post") {
             const ref = typeof body?.anchorRef === "string" ? body.anchorRef : "";
-            if (!ref) {
+            if (anchorType === "timestamp" && !ref) {
               res.status(400).json({ error: "timestamp_krever_anchor_ref" }); return;
             }
-            const { rows: ck } = await pool.query<{ projectId: string }>(
-              `SELECT mp.project_id AS "projectId"
-                 FROM role_room_marketing_plan_posts p
-                 JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
-                WHERE p.id = $1`,
-              [ref],
-            );
-            if (ck[0]?.projectId !== projectId) {
-              res.status(403).json({ error: "timestamp_post_ikke_i_prosjekt" }); return;
+            if (ref) {
+              const { rows: ck } = await pool.query<{ projectId: string }>(
+                `SELECT mp.project_id AS "projectId"
+                   FROM role_room_marketing_plan_posts p
+                   JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
+                  WHERE p.id = $1`,
+                [ref],
+              );
+              if (ck[0]?.projectId !== projectId) {
+                res.status(403).json({ error: "post_ikke_i_prosjekt" }); return;
+              }
             }
           }
         } else {
