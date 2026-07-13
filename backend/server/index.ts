@@ -846,6 +846,8 @@ import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-route
 import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
+import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
+import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -66196,6 +66198,14 @@ registerRoutesAdherenceRoutes({ app, pool, requireUserSession });
 // gratis-API-ene med 60s in-memory-cache. Brukes av MePinActionsSheet
 // (adresse i HUD) + Team-fanen (ekte kommunegrenser).
 registerLeadgridKartverketRoutes({ app, requireUserSession });
+
+// Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
+// alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
+registerLeadgridEnturRoutes({ app, requireUserSession });
+
+// Bilparkering (Statens vegvesen Parkeringsregister, NLOD): nærmeste
+// p-områder for en lead + «Åpne parkering»-app-lenker.
+registerLeadgridParkingRoutes({ app, requireUserSession });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
