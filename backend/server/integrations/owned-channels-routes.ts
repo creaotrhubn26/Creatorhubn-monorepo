@@ -39,7 +39,7 @@ import { assembleDocument, createApplication, draftAndSaveSection, getApplicatio
 import { getDetectorPrecision } from "./system-precision.js";
 import { addExperiment, listExperimentsWithEffect } from "./geo-experiments.js";
 import { getLaunchTimingAnalysis } from "./launch-timing.js";
-import { composeToQueue, listQueue, publishViaDispatcher, transitionPost, type PostStatus } from "./social-queue.js";
+import { composeToQueue, listQueue, publishViaDispatcher, transitionPost, verifyPublishIdentity, type PostStatus } from "./social-queue.js";
 import { queryNormalizedSignals } from "./normalized-signal-store.js";
 import { resolveOrgIdForUser } from "../leadgrid-org-resolver.js";
 
@@ -648,6 +648,17 @@ export function registerOwnedChannelsRoutes({
     return res.json({ posts: await listQueue(pool, orgId) });
   });
 
+  // Verifiserings-broen: hvem publiserer du som? (levende token-sjekk)
+  app.get("/api/integrations/social-queue/verify-identity", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const identity = await verifyPublishIdentity(pool, session.userId);
+    return res.json({ identity });
+  });
+
   app.post("/api/integrations/social-queue/:id/publish", async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "ikke_innlogget" });
@@ -657,7 +668,11 @@ export function registerOwnedChannelsRoutes({
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
     try {
-      const result = await publishViaDispatcher(pool, orgId, req.params.id, session.userId);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof body.verifiedMemberId !== "string" || !body.verifiedMemberId) {
+        return res.status(400).json({ error: "verifisering_kreves_foer_publisering" });
+      }
+      const result = await publishViaDispatcher(pool, orgId, req.params.id, session.userId, body.verifiedMemberId);
       if ("error" in result) return res.status(result.status).json({ error: result.error });
       return res.json(result);
     } catch (err) {

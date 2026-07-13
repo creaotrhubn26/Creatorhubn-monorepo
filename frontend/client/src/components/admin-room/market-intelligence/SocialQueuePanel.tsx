@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
+  Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, MenuItem, Select, Stack, TextField, Tooltip, Typography,
 } from "@mui/material";
 import {
@@ -52,6 +53,45 @@ export default function SocialQueuePanel() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [publishUrl, setPublishUrl] = useState<Record<string, string>>({});
+  const [verifyFor, setVerifyFor] = useState<QueuedPost | null>(null);
+  const [identity, setIdentity] = useState<{ ok: boolean; name?: string | null; memberId?: string; reason?: string } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  const openVerifyBridge = async (post: QueuedPost) => {
+    setVerifyFor(post);
+    setIdentity(null);
+    setVerifying(true);
+    try {
+      const r = await fetch("/api/integrations/social-queue/verify-identity", {
+        credentials: "include", headers: authHeaders(),
+      });
+      setIdentity(r.ok ? (await r.json()).identity : { ok: false, reason: `http_${r.status}` });
+    } catch (e) {
+      setIdentity({ ok: false, reason: String(e) });
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const confirmPublish = async () => {
+    if (!verifyFor || !identity?.ok || !identity.memberId) return;
+    setVerifying(true);
+    try {
+      const r = await fetch(`/api/integrations/social-queue/${verifyFor.id}/publish`, {
+        method: "POST", credentials: "include",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ verifiedMemberId: identity.memberId }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => null);
+        setError(`LinkedIn-publisering: ${b?.error ?? r.status}`);
+      }
+      setVerifyFor(null);
+      await load();
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const r = await fetch("/api/integrations/social-queue", { credentials: "include", headers: authHeaders() });
@@ -163,17 +203,8 @@ export default function SocialQueuePanel() {
                 </Typography>
                 {p.status === "approved" && p.platform === "linkedin" && (
                   <Button size="small" variant="contained" sx={{ mt: 1, mr: 1 }}
-                    onClick={async () => {
-                      const r = await fetch(`/api/integrations/social-queue/${p.id}/publish`, {
-                        method: "POST", credentials: "include", headers: authHeaders(),
-                      });
-                      if (!r.ok) {
-                        const b = await r.json().catch(() => null);
-                        setError(`LinkedIn-publisering: ${b?.error ?? r.status}`);
-                      }
-                      await load();
-                    }}>
-                    Publiser via LinkedIn
+                    onClick={() => void openVerifyBridge(p)}>
+                    Publiser via LinkedIn…
                   </Button>
                 )}
                 {p.status === "approved" && (
@@ -203,6 +234,43 @@ export default function SocialQueuePanel() {
           })}
         </Stack>
       </CardContent>
+
+      <Dialog open={verifyFor !== null} onClose={() => setVerifyFor(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: "1rem" }}>Bekreft publisering</DialogTitle>
+        <DialogContent>
+          {verifying && !identity && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <CircularProgress size={16} />
+              <Typography variant="body2">Verifiserer LinkedIn-tilkoblingen…</Typography>
+            </Stack>
+          )}
+          {identity?.ok && (
+            <>
+              <Alert severity="info" sx={{ mb: 1 }}>
+                Tilkoblingen er verifisert live mot LinkedIn. Du publiserer som:{" "}
+                <strong>{identity.name ?? "ukjent navn"}</strong>
+              </Alert>
+              <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: "0.8rem", maxHeight: 160, overflowY: "auto", p: 1, bgcolor: "rgba(148,163,184,0.06)", borderRadius: 1 }}>
+                {verifyFor?.body}
+              </Typography>
+            </>
+          )}
+          {identity && !identity.ok && (
+            <Alert severity="warning">
+              {identity.reason === "not_connected" && "Ingen LinkedIn-tilkobling funnet — koble til i Role Room-innstillingene først."}
+              {identity.reason === "reconnect_required" && "LinkedIn-tokenet er utløpt eller trukket — logg inn på LinkedIn på nytt i Role Room-innstillingene."}
+              {identity.reason !== "not_connected" && identity.reason !== "reconnect_required" && `Verifisering feilet (${identity.reason}) — prøv igjen.`}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVerifyFor(null)}>Avbryt</Button>
+          <Button variant="contained" disabled={!identity?.ok || verifying}
+            onClick={() => void confirmPublish()}>
+            {verifying ? "Publiserer…" : `Publiser som ${identity?.ok ? (identity.name ?? "meg") : "…"}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

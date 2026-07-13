@@ -16,6 +16,7 @@ import { composeSocialDrafts } from "./content-composer.js";
 import type { SolutionKey } from "./grant-application.js";
 import { addExperiment } from "./geo-experiments.js";
 import { dispatchPublish } from "../social-publisher.js";
+import { verifyLinkedInIdentity } from "../social-publisher-linkedin.js";
 
 export type PostStatus = "draft" | "approved" | "published" | "failed" | "rejected";
 
@@ -89,12 +90,33 @@ export async function listQueue(pool: Pool, organizationId: string): Promise<Que
  * poster; resultatet skrives tilbake som published/failed med ærlig
  * feilmelding (inkl. «koble LinkedIn på nytt» fra publisheren selv).
  */
+/** Broen: verifiser identiteten publiseringen vil skje som. */
+export async function verifyPublishIdentity(
+  pool: Pool,
+  userId: string,
+): Promise<
+  | { ok: true; name: string | null; memberId: string; scopes: string[] }
+  | { ok: false; reason: string }
+> {
+  return verifyLinkedInIdentity(pool, userId);
+}
+
 export async function publishViaDispatcher(
   pool: Pool,
   organizationId: string,
   postId: string,
   userId: string,
+  /** Broens kvittering: klienten MÅ sende memberId fra fersk verifisering. */
+  verifiedMemberId: string,
 ): Promise<{ ok: true; permalink: string | null } | { error: string; status: number }> {
+  // Verifiser PÅ NYTT server-side — klient-påstand er ikke nok
+  const identity = await verifyLinkedInIdentity(pool, userId);
+  if (!identity.ok) {
+    return { error: `verifisering_feilet_${identity.reason}`, status: 401 };
+  }
+  if (identity.memberId !== verifiedMemberId) {
+    return { error: "verifisert_identitet_matcher_ikke", status: 409 };
+  }
   const current = await pool.query<{ status: PostStatus; platform: string; body: string }>(
     `SELECT status, platform, body FROM social_intel_posts
       WHERE id = $1::uuid AND organization_id = $2::uuid`,
