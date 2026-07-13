@@ -97,6 +97,18 @@ function sanitizeElementText(input: unknown): Record<string, string> {
   }
   return out;
 }
+// Bytt bildekilde på et EKSISTERENDE <img> (f.eks. logo): selektor → trygg URL (relativ eller https,
+// aldri javascript:/data-uri-scripts). Runtime setter img.src.
+function sanitizeElementSrc(input: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  let n = 0;
+  for (const [sel, url] of Object.entries(input as Record<string, unknown>)) {
+    if (n >= 200) break;
+    if (CHD_SEL_RE.test(sel) && !sel.includes('..') && chdSafeUrl(url)) { out[sel] = url; n++; }
+  }
+  return out;
+}
 function sanitizeElementAnim(input: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
@@ -215,6 +227,8 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
   // Per-element TEKST-overstyring (Edit-modus): { [selektor]: tekst }. textContent (ikke innerHTML)
   // → XSS-trygt av konstruksjon. Kun saniterte selektorer + lengdetak.
   if ((patch as any)?.elementText !== undefined) clean.elementText = sanitizeElementText((patch as any).elementText);
+  // Per-element BILDEKILDE (bytt logo/bilde): { [selektor]: trygg URL }.
+  if ((patch as any)?.elementSrc !== undefined) clean.elementSrc = sanitizeElementSrc((patch as any).elementSrc);
   // Per-element ANIMASJON (Edit-modus): { [selektor]: preset-nøkkel }. Kun nøkler fra fast katalog.
   if ((patch as any)?.elementAnim !== undefined) clean.elementAnim = sanitizeElementAnim((patch as any).elementAnim);
   // Per-element INNSATTE elementer (Insert-modus): { [anker-selektor]: [{ id, type, pos, text?, href?, src? }] }.

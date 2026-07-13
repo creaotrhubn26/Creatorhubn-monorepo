@@ -130,6 +130,8 @@ export default function WorkspaceDesignOverlay({
   const [bindEdits, setBindEdits] = React.useState<Record<string, string>>({}); // selektor → datakilde-nøkkel
   const [intxEdits, setIntxEdits] = React.useState<Record<string, { action: string; target: string }>>({}); // interaksjoner
   const [insertEdits, setInsertEdits] = React.useState<Record<string, InsertSpec[]>>({});
+  const [srcEdits, setSrcEdits] = React.useState<Record<string, string>>({}); // selektor → bytt-bilde-URL
+  const [imgUrl, setImgUrl] = React.useState('');
   // Insert-skjema
   const [insType, setInsType] = React.useState('heading');
   const [insText, setInsText] = React.useState('');
@@ -258,6 +260,21 @@ export default function WorkspaceDesignOverlay({
     const setter = device === 'tablet' ? setEditsTablet : device === 'mobile' ? setEditsMobile : setEdits;
     setter((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
   };
+
+  // Bytt bildekilde på et valgt <img> (f.eks. logo): sett src live + lagre selektor→URL.
+  const applyImageSrc = (url: string) => {
+    setImgUrl(url);
+    if (!sel || sel.tagName !== 'IMG') return;
+    const key = uniqueSelector(sel);
+    if (url) { sel.setAttribute('src', url); setSrcEdits((s) => ({ ...s, [key]: url })); }
+    else { setSrcEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
+  };
+  // Synk bilde-URL-feltet med valgt element (forhåndsutfyll evt. eksisterende override).
+  React.useEffect(() => {
+    if (sel && sel.tagName === 'IMG') { try { setImgUrl(srcEdits[uniqueSelector(sel)] || ''); } catch { setImgUrl(''); } }
+    else setImgUrl('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel]);
 
   // Finjuster et nyplassert tall: transform:translate flytter det VISUELT uten å reflow'e naboer.
   // Lagres på den stabile [data-chd-insert="id"]-selektoren (overlever last).
@@ -472,6 +489,7 @@ export default function WorkspaceDesignOverlay({
           if (d.tokens.elementText && typeof d.tokens.elementText === 'object') setTextEdits(d.tokens.elementText as Record<string, string>);
           if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
           if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
+          if (d.tokens.elementSrc && typeof d.tokens.elementSrc === 'object') setSrcEdits(d.tokens.elementSrc as Record<string, string>);
           if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
           if (d.tokens.elementInteractions && typeof d.tokens.elementInteractions === 'object') setIntxEdits(d.tokens.elementInteractions as Record<string, { action: string; target: string }>);
           if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
@@ -496,7 +514,7 @@ export default function WorkspaceDesignOverlay({
       setVariants(updated);
       return { designVariants: updated, variantConfig: vcfg };
     }
-    return { ...currentMaps(), elementInteractions: intxEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
+    return { ...currentMaps(), elementInteractions: intxEdits, elementSrc: srcEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
   };
   const saveAsVariant = () => {
     const name = newVariantName.trim();
@@ -1012,6 +1030,15 @@ export default function WorkspaceDesignOverlay({
                     <div style={section}>Tekst</div>
                     <textarea data-chd aria-label="Element-tekst" value={insp.text ?? ''} onChange={(e) => applyText(e.target.value)}
                       style={{ ...field, minHeight: 52, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
+
+                    {sel && sel.tagName === 'IMG' && (
+                      <>
+                        <div style={section}>Bytt bilde (logo)</div>
+                        <input data-chd aria-label="Bilde-URL" placeholder="/logo.png eller https://…" value={imgUrl}
+                          onChange={(e) => applyImageSrc(e.target.value)} style={field} />
+                        <p style={{ fontSize: 10.5, color: INK2, margin: 0 }}>Lim inn en URL (relativ sti eller https). Bildet byttes live; «Lagre endringer» publiserer det for alle.</p>
+                      </>
+                    )}
 
                     <div style={section}>Bind til datakilde</div>
                     <select data-chd aria-label="Bind tekst til datakilde" style={field}
