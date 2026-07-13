@@ -265,6 +265,8 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
       const v = vraw as Record<string, unknown>;
       designVariants[name] = {
         elementEdits: sanitizeElementEdits(v.elementEdits),
+        elementEditsTablet: sanitizeElementEdits(v.elementEditsTablet),
+        elementEditsMobile: sanitizeElementEdits(v.elementEditsMobile),
         elementText: sanitizeElementText(v.elementText),
         elementAnim: sanitizeElementAnim(v.elementAnim),
         elementInserts: sanitizeElementInserts(v.elementInserts),

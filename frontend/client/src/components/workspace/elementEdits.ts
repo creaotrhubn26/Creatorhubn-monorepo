@@ -325,11 +325,11 @@ function chdVisitorId(): string {
   } catch { return 'anon'; }
 }
 function chdHash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
-type VariantMaps = { elementEdits?: unknown; elementText?: unknown; elementAnim?: unknown; elementInserts?: unknown; elementBindings?: unknown };
+type VariantMaps = { elementEdits?: unknown; elementEditsTablet?: unknown; elementEditsMobile?: unknown; elementText?: unknown; elementAnim?: unknown; elementInserts?: unknown; elementBindings?: unknown };
 /** Velg effektive element-maps: aktiv variant, A/B-bøttet variant (stabil pr. besøkende), ellers base.
  *  Ved A/B kobles også en konverterings-lytter på målet (fyrer én gang pr. last) → cleanup returneres. */
 function resolveVariantMaps(t: Record<string, unknown>, workspace: string): { maps: VariantMaps; cleanup?: () => void } {
-  const base: VariantMaps = { elementEdits: t.elementEdits, elementText: t.elementText, elementAnim: t.elementAnim, elementInserts: t.elementInserts, elementBindings: t.elementBindings };
+  const base: VariantMaps = { elementEdits: t.elementEdits, elementEditsTablet: t.elementEditsTablet, elementEditsMobile: t.elementEditsMobile, elementText: t.elementText, elementAnim: t.elementAnim, elementInserts: t.elementInserts, elementBindings: t.elementBindings };
   const variants = t.designVariants as Record<string, VariantMaps> | undefined;
   const vc = t.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
   if (!variants || !vc || vc.mode === 'off') return { maps: base };
@@ -378,9 +378,10 @@ export function useElementEdits(workspace: string): void {
         const editCss = vm.elementEdits ? buildEditsCss(vm.elementEdits as ElementEdits) : '';
         const animCss = vm.elementAnim ? buildAnimCss(vm.elementAnim as ElementAnim) : '';
         const notifCss = buildNotifCss(t);
-        // Responsiv (top-nivå): breakpoint-overstyringer pakket i @media.
-        const tabletCss = t.elementEditsTablet ? buildEditsCss(t.elementEditsTablet as ElementEdits) : '';
-        const mobileCss = t.elementEditsMobile ? buildEditsCss(t.elementEditsMobile as ElementEdits) : '';
+        // Responsiv: breakpoint-overstyringer pakket i @media. Variant-bevisst — aktiv/A-B-variant
+        // har egne tablet/mobile-maps (faller tilbake til base når varianten ikke overstyrer bredden).
+        const tabletCss = vm.elementEditsTablet ? buildEditsCss(vm.elementEditsTablet as ElementEdits) : '';
+        const mobileCss = vm.elementEditsMobile ? buildEditsCss(vm.elementEditsMobile as ElementEdits) : '';
         const css = [editCss, animCss, notifCss,
           tabletCss ? `@media (max-width:900px){\n${tabletCss}\n}` : '',
           mobileCss ? `@media (max-width:600px){\n${mobileCss}\n}` : '',
