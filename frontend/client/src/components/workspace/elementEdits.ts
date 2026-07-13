@@ -30,8 +30,9 @@ export const EDITABLE_CSS_PROPS = new Set<string>([
 
 // Verdi-sanitering: samme trygge tegnsett som backend (hex/rgba/px/nøkkelord). Ikke url()/expression.
 const SAFE_VALUE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
-// Selektor-sanitering: strukturelle css-selektorer (tag, #id, .class, :nth-of-type, > mellomrom).
-const SAFE_SELECTOR = /^[A-Za-z0-9#.\-_ >:()]{1,400}$/;
+// Selektor-sanitering: strukturelle css-selektorer (tag, #id, .class, :nth-of-type, >, mellomrom)
+// + attributt-selektorer for stabile data-edit-id-er ([data-edit-id="..."]). Ingen ;{}@ → ingen breakout.
+const SAFE_SELECTOR = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
 
 export function isSafeEdit(prop: string, value: string): boolean {
   // Charsettet blokkerer CSS-breakout (;{}:@ ikke tillatt); nekt i tillegg url() (ekstern last).
@@ -46,6 +47,9 @@ export function isSafeSelector(sel: string): boolean {
  * (stabilt), ellers en :nth-of-type-sti opp til <body>. Unik ved fangst-tidspunkt.
  */
 export function uniqueSelector(el: Element): string {
+  // Foretrekk en eksplisitt, stabil data-edit-id (komponenter kan opt-inne) → drifter aldri.
+  const editId = el.getAttribute('data-edit-id');
+  if (editId && /^[A-Za-z0-9_-]{1,64}$/.test(editId)) return `[data-edit-id="${editId}"]`;
   if (el.id && /^[A-Za-z][\w-]*$/.test(el.id)) return `#${el.id}`;
   const parts: string[] = [];
   let node: Element | null = el;

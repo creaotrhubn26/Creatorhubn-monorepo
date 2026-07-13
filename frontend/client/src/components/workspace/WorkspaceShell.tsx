@@ -237,12 +237,12 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
         }}>
           {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
           <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
-            <Box component="img" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
+            <Box component="img" data-edit-id="ws-logo" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
           </Box>
 
           {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
           <Box sx={{ px: 1.5, pb: 1 }}>
-            <Button fullWidth onClick={onNewProject} startIcon={<Add />} variant="contained"
+            <Button fullWidth data-edit-id="ws-new-project" onClick={onNewProject} startIcon={<Add />} variant="contained"
               sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, borderRadius: 999, py: 1, '&:hover': { bgcolor: ws.accentHover } }}>
               {t('newProject')}
             </Button>
