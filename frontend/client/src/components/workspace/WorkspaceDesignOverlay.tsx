@@ -130,6 +130,7 @@ export default function WorkspaceDesignOverlay({
   const [insText, setInsText] = React.useState('');
   const [insUrl, setInsUrl] = React.useState('');
   const [insSource, setInsSource] = React.useState(''); // dynamisk infographic-kilde (metric-nøkkel)
+  const [sources, setSources] = React.useState<Array<{ key: string; value: unknown; label: unknown }>>([]);
   const [insPos, setInsPos] = React.useState<'before' | 'after'>('after');
   const nextId = React.useRef(1);
   const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
@@ -221,6 +222,18 @@ export default function WorkspaceDesignOverlay({
     if (document.getElementById(ID)) return;
     const s = document.createElement('style'); s.id = ID; s.textContent = ANIM_KEYFRAMES; document.head.appendChild(s);
   }, []);
+
+  // «Koble til»-picker: hent registeret av datakilder (marketing-metrics) når infographic velges.
+  // Hver kilde kommer MED sin gjeldende verdi → editoren viser at dataen faktisk kommer gjennom.
+  React.useEffect(() => {
+    if (insType !== 'infographic') return;
+    let live = true;
+    fetch(`/api/admin/design/sources?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && d && Array.isArray(d.sources)) setSources(d.sources); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [insType, workspace]);
 
   // Insert: legg et nytt element (overskrift/tekst/knapp/bilde/infographic/skille) ved ankeret.
   const b64url = (obj: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -627,7 +640,20 @@ export default function WorkspaceDesignOverlay({
                   <input data-chd style={field} placeholder="Etikett" value={insUrl} onChange={(e) => setInsUrl(e.target.value)} />
                 )}
                 {insType === 'infographic' && (
-                  <input data-chd style={field} placeholder="Dynamisk kilde (metric-nøkkel, valgfri)" value={insSource} onChange={(e) => setInsSource(e.target.value)} />
+                  <>
+                    <label style={flabel}>Koble til datakilde</label>
+                    <select data-chd aria-label="Koble til datakilde" style={field} value={insSource} onChange={(e) => setInsSource(e.target.value)}>
+                      <option value="">— Statisk verdi (ingen kobling) —</option>
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.key}{s.label ? ` · ${String(s.label)}` : ''}</option>)}
+                    </select>
+                    {insSource && (() => {
+                      const bound = sources.find((s) => s.key === insSource);
+                      return bound
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}>✓ Data kommer gjennom: <b>{String(bound.value ?? '—')}</b>{bound.label ? ` — ${String(bound.label)}` : ''}</div>
+                        : <div style={{ fontSize: 11, color: '#b45309' }}>⚠ «{insSource}» er ikke definert. Legg den til i Design-tokens → metrics.</div>;
+                    })()}
+                    {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen kilder ennå — definer marketing-metrics i CreatorHub Design → Design-tokens, så dukker de opp her.</div>}
+                  </>
                 )}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <select data-chd aria-label="Posisjon" style={{ ...field, flex: 1 }} value={insPos} onChange={(e) => setInsPos(e.target.value as 'before' | 'after')}>
