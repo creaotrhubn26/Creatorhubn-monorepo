@@ -61,7 +61,7 @@ import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
 import { getActiveProfessionMode } from './config/professionMode';
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
-import { useElementEdits } from '@/components/workspace/elementEdits';
+import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import { Route } from 'wouter';
 import {
@@ -428,8 +428,9 @@ function CastingStandaloneRuntimeContent() {
   useAriaHiddenFocusFix(true);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
   const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
-  // CreatorHub Design (per-element-lag): anvend lagrede stil-edits for theroleroom (alle brukere).
-  useElementEdits('theroleroom');
+  // CreatorHub Design (per-element-lag): anvend lagrede stil-edits (theroleroom.com el. leadgrid.no).
+  const designWs = useMemo(() => detectDesignWorkspace(), []);
+  useElementEdits(designWs);
   // Live per-element-editor på ?design=1 (persist er server-side admin-gated → trygt uten egen gate).
   const [designMode, setDesignMode] = useState<boolean>(() => {
     try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
@@ -726,7 +727,7 @@ function CastingStandaloneRuntimeContent() {
       {/* CreatorHub Design: live per-element-editor på ?design=1 (workspace=theroleroom). */}
       {designMode && (
         <WorkspaceDesignOverlay
-          workspace="theroleroom"
+          workspace={designWs}
           targetFile="frontend/client/src/components/role-room/casting-main.tsx"
           onClose={() => setDesignMode(false)}
         />

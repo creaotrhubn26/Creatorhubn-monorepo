@@ -11,6 +11,15 @@ import { useEffect } from 'react';
 
 export type ElementEdits = Record<string, Record<string, string>>;
 
+/** Utled design-workspace fra host (leadgrid.no → leadgrid, theroleroom.com → theroleroom, ellers
+ *  creatorhub). Brukes av de globale mount-punktene så editoren lagrer til riktig produkt. */
+export function detectDesignWorkspace(hostname?: string): string {
+  const h = (hostname ?? (typeof window !== 'undefined' ? window.location.hostname : '')).toLowerCase();
+  if (h.includes('leadgrid')) return 'leadgrid';
+  if (h.includes('theroleroom')) return 'theroleroom';
+  return 'creatorhub';
+}
+
 // Hvitlistede CSS-props (må matche ALLOWED i backend design-tokens-store). Trygge visuelle
 // egenskaper — ikke position/display/etc. som lett bryter layout katastrofalt.
 export const EDITABLE_CSS_PROPS = new Set<string>([

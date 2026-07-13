@@ -45,11 +45,21 @@ function describe(el: Element): ElDesc {
 
 const selOf = (d: ElDesc) => `${d.tag}${d.id ? '#' + d.id : ''}${d.cls ? '.' + d.cls : ''}`;
 
+// Singleton-vakt: hvis både et globalt mount (App.tsx/casting-main) og et per-side mount er aktivt
+// samtidig, skal KUN ett overlay rendres (ellers dobbelt UI). Modulnivå-flagg, claim ved mount.
+let overlayActive = false;
+
 export default function WorkspaceDesignOverlay({
   onClose,
   targetFile = 'frontend/client/src/components/workspace/WorkspaceShell.tsx',
   workspace = 'creatorhub',
 }: { onClose?: () => void; targetFile?: string; workspace?: string }) {
+  const [owns, setOwns] = React.useState(false);
+  React.useEffect(() => {
+    if (overlayActive) return; // et annet overlay eier allerede skjermen
+    overlayActive = true; setOwns(true);
+    return () => { overlayActive = false; };
+  }, []);
   const [mode, setMode] = React.useState<'annotate' | 'tweaks' | 'edit'>('annotate');
   const [notes, setNotes] = React.useState<Note[]>([]);
   const [hover, setHover] = React.useState<ElDesc | null>(null);
@@ -192,6 +202,8 @@ export default function WorkspaceDesignOverlay({
   const flabel: React.CSSProperties = { fontSize: 11.5, color: INK2, fontWeight: 600, marginBottom: 3, display: 'block' };
   const section: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: '#9AA1AE', margin: '4px 0 2px' };
   const highlight = mode === 'edit' ? (selDesc?.rect || null) : (hover?.rect || null);
+
+  if (!owns) return null; // et annet overlay-instans eier skjermen (singleton)
 
   return (
     <div data-chd style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'none', fontFamily: 'system-ui, sans-serif' }}>
