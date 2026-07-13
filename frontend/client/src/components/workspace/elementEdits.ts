@@ -75,6 +75,31 @@ export function buildEditsCss(edits: ElementEdits): string {
   return rules.join('\n');
 }
 
+export type ElementText = Record<string, string>;
+
+/** Anvend tekst-overstyringer via textContent (XSS-trygt). React kan re-rendre og overskrive, så
+ *  vi re-applikerer ved DOM-endringer (rAF-debounced, kun når teksten faktisk avviker). Best-effort. */
+function applyTextEdits(textEdits: ElementText): (() => void) | undefined {
+  const entries = Object.entries(textEdits || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, text] of entries) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => { if (el.textContent !== text) el.textContent = text; });
+      } catch { /* ugyldig selektor — hopp over */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; apply(); });
+  });
+  try { obs.observe(document.body, { childList: true, subtree: true, characterData: true }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
 const STYLE_ID = 'chd-element-edits';
 
 /**
@@ -84,17 +109,25 @@ const STYLE_ID = 'chd-element-edits';
 export function useElementEdits(workspace: string): void {
   useEffect(() => {
     let live = true;
+    let cleanupText: (() => void) | undefined;
     fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!live || !d || d.raw !== true || !d.tokens || !d.tokens.elementEdits) return;
-        const css = buildEditsCss(d.tokens.elementEdits as ElementEdits);
-        if (!css) return;
-        let tag = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
-        if (!tag) { tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
-        tag.textContent = css;
+        if (!live || !d || d.raw !== true || !d.tokens) return;
+        const t = d.tokens as Record<string, unknown>;
+        // Stil-edits → <style>-tag.
+        const css = t.elementEdits ? buildEditsCss(t.elementEdits as ElementEdits) : '';
+        if (css) {
+          let tag = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+          if (!tag) { tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
+          tag.textContent = css;
+        }
+        // Tekst-edits → textContent (m/ observer-reapply).
+        if (t.elementText && typeof t.elementText === 'object') {
+          cleanupText = applyTextEdits(t.elementText as ElementText);
+        }
       })
       .catch(() => {});
-    return () => { live = false; };
+    return () => { live = false; if (cleanupText) cleanupText(); };
   }, [workspace]);
 }
