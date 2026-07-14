@@ -36,6 +36,8 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 // Kompakt inline-ikon: konsistent størrelse, sentrert med teksten. «Ic» holder JSX ren.
 const ICO = { fontSize: 15, verticalAlign: 'text-bottom' } as const;
@@ -172,6 +174,7 @@ export default function WorkspaceDesignOverlay({
   const [bgEdits, setBgEdits] = React.useState<Record<string, string>>({}); // selektor → bakgrunnsbilde-URL
   const [hrefUrl, setHrefUrl] = React.useState('');
   const [bgUrl, setBgUrl] = React.useState('');
+  const [advOpen, setAdvOpen] = React.useState(false); // «Avansert»-gruppe (animasjon/interaksjon/innsett) kollapset som standard
   // Insert-skjema
   const [insType, setInsType] = React.useState('heading');
   const [insText, setInsText] = React.useState('');
@@ -1260,6 +1263,11 @@ export default function WorkspaceDesignOverlay({
                   </>
                 )}
 
+                <button data-chd onClick={() => setAdvOpen((v) => !v)} title="Vis/skjul avanserte seksjoner"
+                  style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  {advOpen ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Avansert
+                </button>
+                {advOpen && (<>
                 <div style={section}>Animasjon</div>
                 <select data-chd aria-label="Animasjon" style={field}
                   value={sel ? (animEdits[uniqueSelector(sel)] || '') : ''}
@@ -1394,6 +1402,7 @@ export default function WorkspaceDesignOverlay({
                   </div>
                 )}
 
+                </>)}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
                   <button data-chd style={cta} onClick={saveEdits}>Lagre endringer ({new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size})</button>
                   {saveMsg && <span style={{ fontSize: 12, color: INK2 }}>{saveMsg}</span>}
