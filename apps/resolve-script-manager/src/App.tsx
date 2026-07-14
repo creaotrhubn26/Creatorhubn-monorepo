@@ -55,6 +55,7 @@ import EVENT_AGENT_CONFIG from "./agents/event";
 import DOCUMENTARY_AGENT_CONFIG from "./agents/documentary";
 import PODCAST_AGENT_CONFIG from "./agents/podcast";
 import SHORT_FILM_AGENT_CONFIG from "./agents/short_film";
+import AD_FILM_AGENT_CONFIG from "./agents/ad_film";
 import type { AgentConfig } from "./agents/types";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
@@ -778,6 +779,7 @@ export default function App() {
           onOpenDocumentaryAgent={() => void openAgent(DOCUMENTARY_AGENT_CONFIG)}
           onOpenPodcastAgent={() => void openAgent(PODCAST_AGENT_CONFIG)}
           onOpenShortFilmAgent={() => void openAgent(SHORT_FILM_AGENT_CONFIG)}
+          onOpenAdFilmAgent={() => void openAgent(AD_FILM_AGENT_CONFIG)}
           onOpenDemoStudio={() => setView("demo")}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}

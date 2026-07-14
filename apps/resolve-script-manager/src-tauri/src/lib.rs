@@ -441,6 +441,90 @@ async fn ai_generate_image(
     })
 }
 
+/// Én storyboard-still regenerert fra tilbakemelding («Forbedre shot»).
+#[derive(serde::Serialize)]
+pub struct ShotVariant {
+    pub image_path: String,
+    pub attempt: u32,
+}
+
+/// Regenerer ETT enkelt ad-film-shot med en fix-prompt fra brukerens
+/// tilbakemelding. Kaller python-broen `adfilm_regenerate.py` (som bruker
+/// motorens `_gen_one_still` med continuity-ref + GROUNDED/SCREEN_PLATE-
+/// direktivene). Kun det ene bildet regenereres — resten røres ikke.
+#[tauri::command]
+async fn ad_film_regenerate_shot(
+    app: AppHandle,
+    spec_path: String,
+    shot_id: String,
+    fix: String,
+) -> Result<ShotVariant, String> {
+    let script = python::python_root(&app)?.join("scripts/adfilm_regenerate.py");
+    if !script.exists() {
+        return Err(format!("Fant ikke {}", script.display()));
+    }
+
+    // Samme python-oppløsning som spawn_python: foretrekk bundlet venv, ellers python3.
+    let venv_python: Option<PathBuf> = std::env::var("HOME").ok().map(|h| {
+        PathBuf::from(h)
+            .join("Library/Application Support/no.creatorhubn.roleroom-post-agent")
+            .join("venv-py312/bin/python")
+    });
+    let python_bin: PathBuf = match venv_python {
+        Some(p) if p.is_file() => p,
+        _ => PathBuf::from("python3"),
+    };
+
+    let mut cmd = std::process::Command::new(&python_bin);
+    cmd.arg(&script)
+        .arg("--spec")
+        .arg(&spec_path)
+        .arg("--shot")
+        .arg(&shot_id)
+        .arg("--fix")
+        .arg(&fix);
+    // Injiser bruker-konfigurerte env-vars (FAL_KEY, ANTHROPIC_API_KEY, …).
+    if let Some(settings) = app.try_state::<AppSettings>() {
+        for (k, v) in settings.snapshot().into_iter() {
+            if !v.is_empty() {
+                cmd.env(k, v);
+            }
+        }
+    }
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Klarte ikke starte python3: {}. Er Python 3 installert?", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Regenerering feilet: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Siste ikke-tomme stdout-linje er JSON-resultatet.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let last = stdout
+        .lines()
+        .rev()
+        .find(|l| l.trim_start().starts_with('{'))
+        .ok_or_else(|| format!("Ingen JSON fra adfilm_regenerate. stdout: {}", stdout))?;
+    let data: serde_json::Value =
+        serde_json::from_str(last.trim()).map_err(|e| format!("Parse resultat: {}", e))?;
+    if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+        return Err(err.to_string());
+    }
+    let image_path = data
+        .get("image_path")
+        .and_then(|v| v.as_str())
+        .ok_or("image_path mangler i resultat")?
+        .to_string();
+    let attempt = data.get("attempt").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+    Ok(ShotVariant { image_path, attempt })
+}
+
 /// Activate Resolve and send cmd+, via osascript to open the Preferences dialog.
 #[tauri::command]
 async fn open_resolve_preferences() -> Result<String, String> {
@@ -928,12 +1012,16 @@ pub fn run() {
             demo_capture::demo_fetch_site_context,
             demo_capture::demo_scan_dom,
             demo_capture::demo_scan_result,
-            demo_capture::demo_verify_action,
-            demo_capture::demo_verify_result,
-            demo_capture::demo_auto_execute,
-            demo_capture::demo_auto_result,
+            demo_capture::demo_scan_progress,
+            demo_capture::demo_scan_cancel,
             demo_capture::demo_screenshot,
             demo_capture::demo_shot_result,
+            demo_capture::demo_session_open,
+            demo_capture::demo_session_exec,
+            demo_capture::demo_session_verify,
+            demo_capture::demo_session_shot,
+            demo_capture::demo_session_close,
+            demo_capture::demo_session_report,
             demo_export::demo_write_text,
             demo_export::demo_write_binary,
             demo_export::demo_print_html,
@@ -959,6 +1047,7 @@ pub fn run() {
             open_udt,
             reveal_photoshop_plugin_manifest,
             ai_generate_image,
+            ad_film_regenerate_shot,
             creations::creation_save,
             creations::creation_list,
             creations::creation_load,
