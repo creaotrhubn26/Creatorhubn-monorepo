@@ -396,7 +396,7 @@ export default function MarketIntelligenceOverviewPanel({
                             </TableCell>
                             <TableCell>
                               <Typography variant="caption">
-                                {s.marketQuery.slice(0, 60)}{s.marketQuery.length > 60 ? "…" : ""}
+                                {(s.marketQuery ?? "").slice(0, 60)}{(s.marketQuery ?? "").length > 60 ? "…" : ""}
                               </Typography>
                             </TableCell>
                             <TableCell>

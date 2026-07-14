@@ -15,6 +15,33 @@
 
 import React, { Suspense, useState } from "react";
 import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
+import React from "react";
+
+/** Én panel-krasj skal aldri hvitskjerme hele AdminRoom (lærdom 14.07:
+ *  marketQuery-null felte alt). Boundary per seksjon, ærlig feilmelding. */
+class MiErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <Box sx={{ p: 2, border: "1px solid rgba(248,113,113,0.4)", borderRadius: 2 }}>
+          <Typography variant="subtitle2" sx={{ color: "#f87171", fontWeight: 700 }}>
+            Market Intelligence krasjet — resten av AdminRoom virker.
+          </Typography>
+          <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
+            {String(this.state.error)}
+          </Typography>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 import BrandKitPanel from "./BrandKitPanel";
 import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
@@ -55,7 +82,7 @@ interface Props {
   defaultBrandScanUrl?: string;
 }
 
-export default function MarketIntelligenceSection({
+function MarketIntelligenceSectionInner({
   projectId,
   defaultBrandScanUrl,
 }: Props) {
@@ -131,5 +158,14 @@ export default function MarketIntelligenceSection({
         </Stack>
       )}
     </Box>
+  );
+}
+
+
+export default function MarketIntelligenceSection(props: Parameters<typeof MarketIntelligenceSectionInner>[0]) {
+  return (
+    <MiErrorBoundary>
+      <MarketIntelligenceSectionInner {...props} />
+    </MiErrorBoundary>
   );
 }
