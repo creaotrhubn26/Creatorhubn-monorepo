@@ -420,6 +420,35 @@ const StoryArcStudioRouteWrapper = () => (
   </SettingsProvider>
 );
 
+// Workspace-flatene (prosjektvelger + per-prosjekt Team Workspace) rendrer
+// barn som kaller useRealTime()/useSettings() (ProjectCreationWithMemoryCards,
+// ProjectCommentsPanel m.fl.). Uten disse providerne kaster useRealTime og hele
+// /workspace-ruten krasjer. Komponentene har egen mørk ThemeProvider, så vi
+// legger IKKE på AppThemeProvider her (unngår å overstyre workspace-temaet).
+const WorkspaceHomeRouteWrapper = () => (
+  <SettingsProvider>
+    <RealTimeProvider>
+      <WorkspaceHome />
+    </RealTimeProvider>
+  </SettingsProvider>
+);
+
+const TeamWorkspaceRouteWrapper = () => (
+  <SettingsProvider>
+    <RealTimeProvider>
+      <React.Suspense
+        fallback={
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+            <CircularProgress />
+          </Box>
+        }
+      >
+        <TeamWorkspacePage />
+      </React.Suspense>
+    </RealTimeProvider>
+  </SettingsProvider>
+);
+
 // Community Landing Page Wrapper - gets userId and profession from hooks
 const CommunityLandingPageWrapper = () => {
   try {
@@ -679,30 +708,10 @@ function App() {
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
                   {/* Workspace-hjem (prosjektvelger) — hovedflate ved innlogging */}
-                  <Route path="/workspace" component={WorkspaceHome} />
+                  <Route path="/workspace" component={WorkspaceHomeRouteWrapper} />
                   {/* Per-prosjekt Team Workspace (dark) */}
-                  <Route path="/workspace/:projectId/:tab">
-                    {(params: { projectId: string; tab: string }) => (
-                      <React.Suspense fallback={
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-                          <CircularProgress />
-                        </Box>
-                      }>
-                        <TeamWorkspacePage />
-                      </React.Suspense>
-                    )}
-                  </Route>
-                  <Route path="/workspace/:projectId">
-                    {(params: { projectId: string }) => (
-                      <React.Suspense fallback={
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-                          <CircularProgress />
-                        </Box>
-                      }>
-                        <TeamWorkspacePage />
-                      </React.Suspense>
-                    )}
-                  </Route>
+                  <Route path="/workspace/:projectId/:tab" component={TeamWorkspaceRouteWrapper} />
+                  <Route path="/workspace/:projectId" component={TeamWorkspaceRouteWrapper} />
                   {/* Dans tester-invite landing */}
                   <Route path="/lead-map/accept">
                     {() => {
