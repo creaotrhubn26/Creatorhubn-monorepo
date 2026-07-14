@@ -1,31 +1,43 @@
 /**
- * ProjectTabAccessDialog — produksjonsteam-leder styrer hvilke faner
- * hver rolle og enkeltbruker ser på prosjektet sitt.
+ * ProjectTabAccessDialog — prosjektlederen styrer hvem som ser og hvem som
+ * administrerer hver fane i Story Arc Studio.
  *
- * Synlig kun for leder. Wired fra CrewSubPanel via "Tab-tilganger"-knapp.
+ * Synlig kun for leder. Tre tilgangsnivåer per fane:
+ *   - Skjult        → fanen vises ikke.
+ *   - Se            → synlig, men skrivebeskyttet.
+ *   - Administrere  → full lese/skrive.
  *
- * UX: To faner i selve dialogen:
- *   1. Pr. rolle — matrise (rolle × tab) for kjapp bulk-konfig.
- *   2. Pr. bruker — overstyrer for spesifikke personer.
+ * To faner i dialogen:
+ *   1. Pr. rolle  — sett standard for hver rolle på prosjektet.
+ *   2. Pr. bruker — overstyr for enkeltpersoner (vinner over rolle).
  *
- * Hvis ingen override finnes for en target, vises "Bruker plattform-default"
- * og bryteren er ufylt. Brukeren legger til override ved å klikke.
+ * Presets og fane-katalog kommer fra studioAccessModel (én kilde til sannhet).
+ * Uten overstyring følger en target rollens preset ("Default"); lederen kan
+ * når som helst tilbakestille en overstyring til preset igjen.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Avatar, Box, Button, Checkbox, Chip, CircularProgress,
-  Dialog, DialogContent, DialogTitle, Divider, FormControlLabel, IconButton,
-  Stack, Tab, Tabs, Typography,
+  Alert, Avatar, Box, Button, Chip, CircularProgress,
+  Dialog, DialogContent, DialogTitle, Divider, IconButton,
+  Stack, Tab, Tabs, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
-import { Close, Person, RestartAlt } from '@mui/icons-material';
+import {
+  Close, Person, RestartAlt, VisibilityOff, Visibility, EditNote,
+} from '@mui/icons-material';
 import {
   roleRoomProjectTabConfigService,
 } from '../services/roleRoomProjectTabConfigService';
 import type {
-  ProjectTabConfigResponse, ProjectTabMember, ProjectTabOverride,
-  TabConfigTargetType,
+  ProjectTabConfigResponse, ProjectTabOverride, TabConfigTargetType,
 } from '../services/roleRoomProjectTabConfigService';
+import {
+  STUDIO_TABS, STUDIO_TAB_CLUSTER_LABELS, ROLE_LABELS,
+  presetForRole, tabAccessToTabValues,
+} from '../models/studioAccessModel';
+import type {
+  TabAccessMap, TabAccessLevel, TabAccessState, StudioTabCluster,
+} from '../models/studioAccessModel';
 
 export interface ProjectTabAccessDialogProps {
   open: boolean;
@@ -33,49 +45,20 @@ export interface ProjectTabAccessDialogProps {
   projectId: string;
 }
 
-const TAB_LABELS: Record<string, string> = {
-  roles: 'Roller', candidates: 'Kandidater', crew: 'Crew', schedule: 'Tidsplan',
-  publishing: 'Publisering', carousel: 'Carousel', approval: 'Godkjenning',
-  brief: 'Brief', planner: 'Planner', shooting: 'Shooting', shotlist: 'Shotlist',
-  mannskap: 'Mannskap', agent: 'Agent', economy: 'Økonomi', 'admin-room': 'Admin Room',
-};
+const CLUSTER_ORDER: StudioTabCluster[] = ['oversikt', 'kreativt', 'produksjon', 'forretning'];
 
-const ROLE_LABELS: Record<string, string> = {
-  leder: 'Leder (deg)',
-  director: 'Director', producer: 'Producer', casting_director: 'Casting Director',
-  production_manager: 'Production Manager', camera_team: 'Camera Team',
-  content_producer: 'Content Producer', client_reviewer: 'Klient/reviewer',
-  agency: 'Byrå', writer: 'Forfatter', script_editor: 'Script Editor',
-  reader: 'Leser',
-};
-
-const FALLBACK_DEFAULTS_BY_ROLE: Record<string, string[]> = {
-  leder: ['roles', 'candidates', 'crew', 'schedule', 'brief', 'planner', 'approval', 'shooting', 'shotlist', 'mannskap', 'economy', 'agent', 'publishing', 'admin-room'],
-  director: ['roles', 'candidates', 'schedule', 'brief', 'crew', 'approval', 'shooting', 'shotlist', 'planner', 'agent'],
-  producer: ['roles', 'schedule', 'crew', 'approval', 'candidates', 'brief', 'planner', 'shooting', 'shotlist', 'mannskap', 'agent'],
-  casting_director: ['roles', 'candidates', 'schedule', 'brief', 'approval', 'crew', 'planner', 'agent'],
-  production_manager: ['roles', 'schedule', 'crew', 'approval', 'candidates', 'shooting', 'shotlist', 'mannskap', 'planner'],
-  camera_team: ['shooting', 'shotlist', 'schedule', 'crew', 'mannskap', 'roles'],
-  content_producer: ['candidates', 'brief', 'planner', 'approval', 'economy', 'roles', 'carousel', 'publishing', 'schedule', 'agent'],
-  client_reviewer: ['approval', 'brief'],
-};
-
-function tabsForTarget(
+/** Effektivt tilgangskart + om det er en eksplisitt overstyring. */
+function effectiveAccess(
   config: ProjectTabConfigResponse | null,
   targetType: TabConfigTargetType,
   targetValue: string,
   fallbackRole?: string | null,
-): { values: string[]; isOverride: boolean } {
-  if (!config) return { values: [], isOverride: false };
-  const override = config.overrides.find(
+): { access: TabAccessMap; isOverride: boolean } {
+  const override = config?.overrides.find(
     (o) => o.targetType === targetType && o.targetValue === targetValue,
   );
-  if (override) return { values: override.tabValues, isOverride: true };
-  const roleKey = fallbackRole ?? targetValue;
-  return {
-    values: FALLBACK_DEFAULTS_BY_ROLE[roleKey] ?? FALLBACK_DEFAULTS_BY_ROLE.producer,
-    isOverride: false,
-  };
+  if (override) return { access: override.tabAccess ?? {}, isOverride: true };
+  return { access: presetForRole(fallbackRole ?? targetValue), isOverride: false };
 }
 
 export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabAccessDialogProps) {
@@ -102,27 +85,30 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
     return () => { cancelled = true; };
   }, [open, projectId]);
 
-  const handleToggle = async (
+  const handleSetLevel = async (
     targetType: TabConfigTargetType,
     targetValue: string,
     tabKey: string,
-    currentValues: string[],
+    level: TabAccessState,
+    currentAccess: TabAccessMap,
   ) => {
     const key = `${targetType}:${targetValue}`;
     setSaving(key); setError(null);
-    const next = currentValues.includes(tabKey)
-      ? currentValues.filter((v) => v !== tabKey)
-      : [...currentValues, tabKey];
+    const next: TabAccessMap = { ...currentAccess };
+    if (level === 'hidden') delete next[tabKey];
+    else next[tabKey] = level as TabAccessLevel;
     try {
       await roleRoomProjectTabConfigService.setOverride(projectId, targetType, targetValue, next);
-      // Oppdater lokalt
       setConfig((prev) => {
         if (!prev) return prev;
         const others = prev.overrides.filter(
           (o) => !(o.targetType === targetType && o.targetValue === targetValue),
         );
         const updated: ProjectTabOverride = {
-          targetType, targetValue, tabValues: next, updatedAt: new Date().toISOString(),
+          targetType, targetValue,
+          tabValues: tabAccessToTabValues(next),
+          tabAccess: next,
+          updatedAt: new Date().toISOString(),
         };
         return { ...prev, overrides: [...others, updated] };
       });
@@ -151,25 +137,31 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
     }
   };
 
-  const allTabs = config?.validTabValues ?? Object.keys(TAB_LABELS);
-  const uniqueRoles = config
-    ? Array.from(new Set(config.members.map((m) => m.role).filter((r): r is string => !!r)))
-    : [];
+  const uniqueRoles = useMemo(
+    () => config
+      ? Array.from(new Set(config.members.map((m) => m.role).filter((r): r is string => !!r)))
+      : [],
+    [config],
+  );
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
-            PaperProps={{ sx: { borderRadius: 3, maxHeight: '85vh' } }}>
+            PaperProps={{ sx: { borderRadius: 3, maxHeight: '88vh' } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-            Tab-tilganger
+            Tilganger
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Styr hvilke faner hver rolle og bruker ser på dette prosjektet.
+            Bestem hvem som ser og hvem som administrerer hver fane på dette prosjektet.
           </Typography>
         </Box>
         <IconButton size="small" onClick={onClose}><Close /></IconButton>
       </DialogTitle>
+
+      <Box sx={{ px: 3, pb: 1 }}>
+        <AccessLegend />
+      </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v as 0 | 1)} sx={{ px: 3, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
         <Tab label="Pr. rolle" />
@@ -193,23 +185,21 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
           <Stack divider={<Divider />}>
             {uniqueRoles.length === 0 && (
               <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                <Typography>Ingen team-medlemmer ennå.</Typography>
-                <Typography variant="caption">Legg til medlemmer i Crew-fanen først.</Typography>
+                <Typography>Ingen roller på prosjektet ennå.</Typography>
+                <Typography variant="caption">Legg til team-medlemmer først, så dukker rollene opp her.</Typography>
               </Box>
             )}
             {uniqueRoles.map((role) => {
-              const { values, isOverride } = tabsForTarget(config, 'role', role);
+              const { access, isOverride } = effectiveAccess(config, 'role', role);
               const key = `role:${role}`;
               return (
                 <Box key={role} sx={{ p: 2.5 }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                       {ROLE_LABELS[role] ?? role}
-                      {isOverride ? (
-                        <Chip label="Overstyrt" size="small" color="primary" sx={{ ml: 1, height: 18 }} />
-                      ) : (
-                        <Chip label="Default" size="small" sx={{ ml: 1, height: 18 }} />
-                      )}
+                      <Chip label={isOverride ? 'Overstyrt' : 'Default'} size="small"
+                            color={isOverride ? 'primary' : 'default'}
+                            sx={{ ml: 1, height: 18 }} />
                     </Typography>
                     {isOverride && (
                       <Button size="small" startIcon={<RestartAlt />}
@@ -219,11 +209,10 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
                       </Button>
                     )}
                   </Stack>
-                  <TabCheckboxGrid
-                    allTabs={allTabs}
-                    selected={values}
-                    onToggle={(t) => handleToggle('role', role, t, values)}
+                  <TabAccessMatrix
+                    access={access}
                     disabled={saving === key}
+                    onSetLevel={(tabKey, level) => handleSetLevel('role', role, tabKey, level, access)}
                   />
                 </Box>
               );
@@ -239,11 +228,11 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
               </Box>
             )}
             {config.members.map((m) => {
-              const { values, isOverride } = tabsForTarget(config, 'user', m.userId, m.role);
+              const { access, isOverride } = effectiveAccess(config, 'user', m.userId, m.role);
               const key = `user:${m.userId}`;
               return (
                 <Box key={m.userId} sx={{ p: 2.5 }}>
-                  <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
+                  <Stack direction="row" alignItems="center" spacing={1.5} mb={1.5}>
                     <Avatar src={m.profileImageUrl ?? undefined} sx={{ width: 36, height: 36 }}>
                       {m.displayName?.[0] ?? <Person />}
                     </Avatar>
@@ -265,11 +254,10 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
                       </Button>
                     )}
                   </Stack>
-                  <TabCheckboxGrid
-                    allTabs={allTabs}
-                    selected={values}
-                    onToggle={(t) => handleToggle('user', m.userId, t, values)}
+                  <TabAccessMatrix
+                    access={access}
                     disabled={saving === key}
+                    onSetLevel={(tabKey, level) => handleSetLevel('user', m.userId, tabKey, level, access)}
                   />
                 </Box>
               );
@@ -281,27 +269,85 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
   );
 }
 
-function TabCheckboxGrid({ allTabs, selected, onToggle, disabled }: {
-  allTabs: string[]; selected: string[]; onToggle: (tab: string) => void; disabled?: boolean;
+// ── Underkomponenter ────────────────────────────────────────────────────
+
+function AccessLegend() {
+  return (
+    <Stack direction="row" spacing={2} sx={{ color: 'text.secondary' }}>
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <VisibilityOff sx={{ fontSize: 16 }} />
+        <Typography variant="caption">Skjult</Typography>
+      </Stack>
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Visibility sx={{ fontSize: 16 }} />
+        <Typography variant="caption">Se (les)</Typography>
+      </Stack>
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <EditNote sx={{ fontSize: 16 }} />
+        <Typography variant="caption">Administrere (skriv)</Typography>
+      </Stack>
+    </Stack>
+  );
+}
+
+function TabAccessMatrix({ access, onSetLevel, disabled }: {
+  access: TabAccessMap;
+  onSetLevel: (tabKey: string, level: TabAccessState) => void;
+  disabled?: boolean;
 }) {
   return (
-    <Box sx={{
-      display: 'grid',
-      gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)', md: 'repeat(4, 1fr)' },
-      gap: 0.25,
-    }}>
-      {allTabs.map((t) => (
-        <FormControlLabel
-          key={t}
-          control={
-            <Checkbox size="small" checked={selected.includes(t)} disabled={disabled}
-                      onChange={() => onToggle(t)} />
-          }
-          label={<Typography variant="body2">{TAB_LABELS[t] ?? t}</Typography>}
-          sx={{ m: 0 }}
-        />
-      ))}
-    </Box>
+    <Stack spacing={1.25}>
+      {CLUSTER_ORDER.map((cluster) => {
+        const tabs = STUDIO_TABS.filter((t) => t.cluster === cluster);
+        if (tabs.length === 0) return null;
+        return (
+          <Box key={cluster}>
+            <Typography variant="overline" color="text.secondary"
+                        sx={{ fontSize: 10, letterSpacing: 0.6 }}>
+              {STUDIO_TAB_CLUSTER_LABELS[cluster]}
+            </Typography>
+            <Box sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+              columnGap: 2, rowGap: 0.5,
+            }}>
+              {tabs.map((t) => {
+                const level: TabAccessState =
+                  access[t.key] === 'manage' ? 'manage'
+                  : access[t.key] === 'view' ? 'view' : 'hidden';
+                return (
+                  <Stack key={t.key} direction="row" alignItems="center"
+                         justifyContent="space-between" spacing={1}
+                         sx={{ py: 0.25 }}>
+                    <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
+                      {t.label}
+                    </Typography>
+                    <ToggleButtonGroup
+                      exclusive
+                      size="small"
+                      value={level}
+                      disabled={disabled}
+                      onChange={(_, v) => { if (v) onSetLevel(t.key, v as TabAccessState); }}
+                      sx={{ '& .MuiToggleButton-root': { px: 0.75, py: 0.25, border: '1px solid rgba(0,0,0,0.12)' } }}
+                    >
+                      <ToggleButton value="hidden" aria-label="Skjult">
+                        <Tooltip title="Skjult"><VisibilityOff sx={{ fontSize: 16 }} /></Tooltip>
+                      </ToggleButton>
+                      <ToggleButton value="view" aria-label="Se">
+                        <Tooltip title="Se (les)"><Visibility sx={{ fontSize: 16 }} /></Tooltip>
+                      </ToggleButton>
+                      <ToggleButton value="manage" aria-label="Administrere">
+                        <Tooltip title="Administrere (skriv)"><EditNote sx={{ fontSize: 16 }} /></Tooltip>
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  </Stack>
+                );
+              })}
+            </Box>
+          </Box>
+        );
+      })}
+    </Stack>
   );
 }
 

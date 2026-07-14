@@ -158,6 +158,16 @@ import {
 } from '../services/castingApiService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
+import { roleRoomProjectTabConfigService } from '../services/roleRoomProjectTabConfigService';
+import { ProjectTabAccessDialog } from './ProjectTabAccessDialog';
+import {
+  presetForRole,
+  hasRolePreset,
+  visibleTabKeys as accessVisibleTabKeys,
+  manageableTabKeys as accessManageableTabKeys,
+  TAB_INDEX_TO_KEY,
+} from '../models/studioAccessModel';
+import type { TabAccessMap } from '../models/studioAccessModel';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
@@ -312,6 +322,7 @@ import {
   type CastingRoleSelftape,
 } from '../services/roleRoomSelfTapesService';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -1202,6 +1213,11 @@ type RoleRoomProjectWorkspaceState = {
   const [quickContactIds, setQuickContactIds] = useState<Set<string>>(new Set());
   const [quickContactsLoaded, setQuickContactsLoaded] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<Awaited<ReturnType<typeof castingAuthService.getUserRole>> | null>(null);
+  // RBAC: effektivt tilgangskart (fane-nøkkel → nivå) for innlogget bruker på
+  // dette prosjektet. null mens det lastes → ingen begrensning (bakover-kompat).
+  const [effectiveTabAccess, setEffectiveTabAccess] = useState<TabAccessMap | null>(null);
+  const [tilgangerDialogOpen, setTilgangerDialogOpen] = useState(false);
+  const [tilgangerProjectId, setTilgangerProjectId] = useState<string | null>(null);
   
   // Permissions state for role-based tab visibility
   const [permissions, setPermissions] = useState<{
@@ -4041,6 +4057,62 @@ type RoleRoomProjectWorkspaceState = {
     { color: '#c084fc', icon: FactCheckIcon },
     { color: '#fbbf24', icon: ImportExportIcon },
   ], [professionConfig?.color]);
+  // ── RBAC: hent effektivt tilgangskart for prosjektet ────────────────
+  // Lederen delegerer tilgang pr. rolle/bruker via "Tilganger"-dialogen. my-tabs
+  // returnerer en overstyring (tabAccess) hvis satt, ellers null → vi bruker
+  // rollens preset fra studioAccessModel. null-tilstand = ingen begrensning.
+  // Avled effektiv tilgang fra my-tabs-svaret. Sikkerhetsventil: gating slår kun
+  // inn ved (a) eksplisitt overstyring fra lederen, eller (b) en gjenkjent rolle
+  // med preset. Ukjent/legacy rolle → null (ingen begrensning) så vi aldri låser
+  // ute eksisterende medlemmer.
+  const deriveEffectiveAccess = useCallback(
+    (res: Awaited<ReturnType<typeof roleRoomProjectTabConfigService.getMyTabs>>): TabAccessMap | null => {
+      if (res.tabAccess) return res.tabAccess;
+      if (res.role === 'leder') return null;
+      if (hasRolePreset(res.role)) return presetForRole(res.role);
+      return null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const pid = currentProject?.id ?? null;
+    if (!pid) { setEffectiveTabAccess(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await roleRoomProjectTabConfigService.getMyTabs(pid);
+        if (!cancelled) setEffectiveTabAccess(deriveEffectiveAccess(res));
+      } catch {
+        if (!cancelled) setEffectiveTabAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentProject?.id, deriveEffectiveAccess]);
+
+  const rbacManageableTabKeys = useMemo(
+    () => accessManageableTabKeys(effectiveTabAccess),
+    [effectiveTabAccess],
+  );
+  const rbacAccessibleTabKeys = useMemo(
+    () => accessVisibleTabKeys(effectiveTabAccess),
+    [effectiveTabAccess],
+  );
+
+  /** Kan innlogget bruker skrive i denne fanen? (null-tilgang = ja, bakover-kompat) */
+  const canManageTab = useCallback((tabIndex: number): boolean => {
+    if (!effectiveTabAccess) return true;
+    const key = TAB_INDEX_TO_KEY[tabIndex];
+    if (!key) return true;
+    return rbacManageableTabKeys.has(key);
+  }, [effectiveTabAccess, rbacManageableTabKeys]);
+
+  const isViewerLeaderOf = useCallback((p: CastingProject | null): boolean => {
+    const uid = getUserId();
+    if (!uid || !p) return false;
+    return [p.ownerId, p.createdBy].some((c) => c != null && String(c) === String(uid));
+  }, [getUserId]);
+
   const visibleTabValues = useMemo<number[]>(() => {
     if (isExternalClientPortalMode) {
       return [
@@ -4071,7 +4143,7 @@ type RoleRoomProjectWorkspaceState = {
       return reviewerTabs;
     }
 
-    return [
+    const baseTabs = [
       0,
       STORY_ARC_TAB_INDEX,
       STORYBOARD_TAB_INDEX,
@@ -4091,7 +4163,21 @@ type RoleRoomProjectWorkspaceState = {
       PRODUCER_EXPORT_TAB_INDEX,
       LIVE_SET_TAB_INDEX,
     ];
-  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode]);
+
+    // RBAC-filter: hvis lederen har delegert tilgang (eller rollen har et
+    // preset), skjul faner brukeren ikke har Se/Administrere på. Oversikt (0)
+    // holdes alltid synlig som landingsflate. Ingen effektiv tilgang lastet →
+    // vis alt (bakover-kompat).
+    if (effectiveTabAccess) {
+      return baseTabs.filter((idx) => {
+        if (idx === 0) return true;
+        const key = TAB_INDEX_TO_KEY[idx];
+        if (!key) return true;
+        return rbacAccessibleTabKeys.has(key);
+      });
+    }
+    return baseTabs;
+  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode, effectiveTabAccess, rbacAccessibleTabKeys]);
 
   useEffect(() => {
     if (!visibleTabValues.includes(activeTab)) {
@@ -9071,6 +9157,20 @@ type RoleRoomProjectWorkspaceState = {
                     {isArchivedWorkspaceProject(projectQuickActionsProject) ? 'Gjenopprett prosjekt' : 'Arkiver prosjekt'}
                   </MenuItem>
                 ) : null}
+                {projectQuickActionsProject && isViewerLeaderOf(projectQuickActionsProject) ? (
+                  <MenuItem
+                    onClick={() => {
+                      if (!projectQuickActionsProject) return;
+                      setTilgangerProjectId(projectQuickActionsProject.id);
+                      setTilgangerDialogOpen(true);
+                      handleCloseProjectQuickActions();
+                    }}
+                    sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                  >
+                    <GroupsIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
+                    Tilganger
+                  </MenuItem>
+                ) : null}
                 <MenuItem
                   onClick={() => {
                     if (!projectQuickActionsProject) return;
@@ -9992,6 +10092,20 @@ type RoleRoomProjectWorkspaceState = {
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
+        {currentProject && displayedActiveTab !== 0 && !canManageTab(displayedActiveTab) ? (
+          <Box
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75,
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              bgcolor: 'rgba(56,189,248,0.08)',
+            }}
+          >
+            <VisibilityIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />
+            <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>
+              Skrivebeskyttet — du har «Se»-tilgang til denne fanen. Kontakt prosjektlederen for å administrere.
+            </Typography>
+          </Box>
+        ) : null}
         <ProjectProvider key={currentProject?.id ?? 'no-project'}>
           {producerProjectSwitchPending ? (
             <Box
@@ -17833,6 +17947,24 @@ type RoleRoomProjectWorkspaceState = {
         viewerLabel={adminUser?.display_name || adminUser?.email || 'Produksjon'}
         onClose={() => setSelftapePreview(null)}
       />
+
+      {/* RBAC: lederens "Tilganger"-delegering (Skjult/Se/Administrere pr. fane) */}
+      {tilgangerDialogOpen && tilgangerProjectId ? (
+        <ProjectTabAccessDialog
+          open={tilgangerDialogOpen}
+          projectId={tilgangerProjectId}
+          onClose={() => {
+            setTilgangerDialogOpen(false);
+            // Oppdater egen tilgang i tilfelle lederen endret sin egen rad.
+            const pid = currentProject?.id ?? null;
+            if (pid) {
+              void roleRoomProjectTabConfigService.getMyTabs(pid)
+                .then((res) => setEffectiveTabAccess(deriveEffectiveAccess(res)))
+                .catch(() => { /* behold eksisterende */ });
+            }
+          }}
+        />
+      ) : null}
     </>
     </ErrorBoundary>
   );

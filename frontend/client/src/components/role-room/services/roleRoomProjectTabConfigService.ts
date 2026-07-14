@@ -5,10 +5,14 @@
 
 export type TabConfigTargetType = 'role' | 'user';
 
+/** Nivå-kart: fane-nøkkel → 'view' | 'manage'. Fane som mangler = Skjult. */
+export type TabAccessLevelMap = Record<string, 'view' | 'manage'>;
+
 export interface ProjectTabOverride {
   targetType: TabConfigTargetType;
   targetValue: string;
   tabValues: string[];
+  tabAccess: TabAccessLevelMap;
   updatedAt: string;
 }
 
@@ -29,6 +33,8 @@ export interface ProjectTabConfigResponse {
 
 export interface MyTabsResponse {
   tabValues: string[] | null;
+  /** Nivå-kart når det finnes en overstyring; null → bruk rollens preset. */
+  tabAccess: TabAccessLevelMap | null;
   source: 'user' | 'role' | 'default';
   role: string | null;
 }
@@ -72,7 +78,25 @@ export const roleRoomProjectTabConfigService = {
     return jsonRequest(`/api/role-room/projects/${encodeURIComponent(projectId)}/tab-config`, { method: 'GET' });
   },
 
+  /**
+   * Sett en overstyring. Ny studio-dialog sender et nivå-kart (`tabAccess`);
+   * det gamle dashbordet kan fortsatt sende `tabValues` (synlighet = full
+   * tilgang) via `setVisibilityOverride`.
+   */
   async setOverride(
+    projectId: string,
+    targetType: TabConfigTargetType,
+    targetValue: string,
+    tabAccess: TabAccessLevelMap,
+  ): Promise<{ ok: boolean }> {
+    return jsonRequest(`/api/role-room/projects/${encodeURIComponent(projectId)}/tab-config`, {
+      method: 'PUT',
+      body: JSON.stringify({ targetType, targetValue, tabAccess }),
+    });
+  },
+
+  /** Bakover-kompat: kun synlighet (behandles som full tilgang på backend). */
+  async setVisibilityOverride(
     projectId: string,
     targetType: TabConfigTargetType,
     targetValue: string,
