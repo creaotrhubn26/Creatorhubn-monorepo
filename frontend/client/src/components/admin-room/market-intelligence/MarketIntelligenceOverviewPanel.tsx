@@ -459,8 +459,9 @@ export default function MarketIntelligenceOverviewPanel({
                 </Stack>
                 <Stack spacing={1}>
                   {opportunities.map((o) => {
-                    const imp = IMPACT_META[o.impact];
-                    const cf = CONFIDENCE_META[o.confidence];
+                    // Samme fallback-regel som scan-listen: ukjent verdi feller aldri panelet
+                    const imp = IMPACT_META[o.impact] ?? { label: o.impact ?? "ukjent", color: "#94a3b8" };
+                    const cf = CONFIDENCE_META[o.confidence] ?? { label: o.confidence ?? "ukjent", color: "#94a3b8" };
                     return (
                       <Card key={o.id} variant="outlined" sx={{ bgcolor: "rgba(251, 191, 36, 0.04)" }}>
                         <CardContent sx={{ "&:last-child": { pb: 2 } }}>
