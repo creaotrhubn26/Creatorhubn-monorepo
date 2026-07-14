@@ -19,6 +19,7 @@ import {
   deleteDeliverable,
 } from './role-room-deliverables.js';
 import { getAssistantAreas } from './role-room-assistant-access.js';
+import { viewerMeetsTabLevel } from './role-room-tab-access.js';
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -46,8 +47,17 @@ async function viewerCanAccessProject(pool: Pool, projectId: string, viewerId: s
 export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): void {
   const { pool, activeSessions } = deps;
 
-  /** Felles auth + tilgang. Returnerer viewerId, eller sender feilrespons. */
-  async function authorize(req: Request, res: Response): Promise<string | null> {
+  /**
+   * Felles auth + tilgang. Returnerer viewerId, eller sender feilrespons.
+   * `need` håndhever Story Arc RBAC for 'delivery'-fanen: 'view' for lesing,
+   * 'manage' for skriving. Ingen eksplisitt leder-overstyring → full tilgang
+   * (nivå-null), så eksisterende medlemmer påvirkes ikke.
+   */
+  async function authorize(
+    req: Request,
+    res: Response,
+    need: 'view' | 'manage' = 'view',
+  ): Promise<string | null> {
     const viewerId = getUserId(req, activeSessions);
     if (!viewerId) {
       res.status(401).json({ error: 'krever_innlogging' });
@@ -59,6 +69,10 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
       return null;
     }
     if (!(await viewerCanAccessProject(pool, projectId, viewerId))) {
+      res.status(403).json({ error: 'ingen_tilgang' });
+      return null;
+    }
+    if (!(await viewerMeetsTabLevel(pool, projectId, viewerId, 'delivery', need))) {
       res.status(403).json({ error: 'ingen_tilgang' });
       return null;
     }
@@ -94,7 +108,7 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
 
   app.post('/api/role-room/projects/:projectId/deliverables', async (req, res) => {
     try {
-      const viewerId = await authorize(req, res);
+      const viewerId = await authorize(req, res, 'manage');
       if (!viewerId) return;
       if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
         res.status(403).json({ error: 'ingen_tilgang' });
@@ -128,7 +142,7 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
 
   app.patch('/api/role-room/projects/:projectId/deliverables/:id', async (req, res) => {
     try {
-      const viewerId = await authorize(req, res);
+      const viewerId = await authorize(req, res, 'manage');
       if (!viewerId) return;
       if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
         res.status(403).json({ error: 'ingen_tilgang' });
@@ -162,7 +176,7 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
 
   app.delete('/api/role-room/projects/:projectId/deliverables/:id', async (req, res) => {
     try {
-      const viewerId = await authorize(req, res);
+      const viewerId = await authorize(req, res, 'manage');
       if (!viewerId) return;
       if (await assistantBlocksDeliverables(String(req.params.projectId).trim(), viewerId)) {
         res.status(403).json({ error: 'ingen_tilgang' });

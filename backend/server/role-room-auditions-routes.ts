@@ -12,9 +12,14 @@
  * i `backend/server/index.ts`:
  *
  *   import { setupRoleRoomAuditionsRoutes } from './role-room-auditions-routes';
- *   setupRoleRoomAuditionsRoutes({ app, pool, requireAdminSession });
+ *   setupRoleRoomAuditionsRoutes({ app, pool, requireUserSession });
  *
- * Auth-pattern: requireAdminSession returnerer 401 hvis ikke logget inn.
+ * Auth-pattern: prosjekt-medlemskap + Story Arc RBAC. Tidligere krevde disse
+ * endepunktene `requireAdminSession` (rolle admin/super_admin) — det låste ute en
+ * casting_director som er MEDLEM men ikke global admin, stikk i strid med RBAC-
+ * modellen der casting_director skal administrere auditions. Nå: enhver innlogget
+ * bruker som er eier/medlem av prosjektet (canAccessRoleRoomProject) og møter
+ * fane-nivået 'auditions' (Se for lesing, Administrere for skriving).
  * Tabell-tilgang: SELECT/INSERT/UPDATE/DELETE direkte mot auditions-tabell.
  *
  * Robusthet:
@@ -22,28 +27,31 @@
  *   - Cascade-protected: schedules.audition_id settes til NULL ved DELETE
  *     (per migrasjon-141: ON DELETE SET NULL), så audition-sletting
  *     bryter ikke schedule-rader
+ *   - PATCH/DELETE/attach avleder prosjekt fra audition-raden og håndhever
+ *     tilgang på DET prosjektet (ikke bare et body-oppgitt projectId)
  *   - Audit-felter (created_by/updated_by) populeres fra session
  */
 
 import type express from 'express';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
+import { viewerMeetsTabLevel } from './role-room-tab-access.js';
 
-interface AdminSession {
+interface UserSession {
   userId: string;
   email: string;
   name: string;
   role: string;
-  loginAt: string;
 }
 
 export interface RoleRoomAuditionsRoutesDeps {
   app: express.Express;
   pool: Pool;
-  requireAdminSession: (
+  requireUserSession: (
     req: express.Request,
     res: express.Response,
-  ) => AdminSession | null;
+  ) => UserSession | null;
 }
 
 interface AuditionRow {
@@ -94,17 +102,50 @@ function serializeAudition(row: AuditionRow & {
 export function setupRoleRoomAuditionsRoutes(
   deps: RoleRoomAuditionsRoutesDeps,
 ): void {
-  const { app, pool, requireAdminSession } = deps;
+  const { app, pool, requireUserSession } = deps;
+
+  /**
+   * Auth + prosjekt-medlemskap + fane-nivå for et KJENT projectId.
+   * Returnerer sesjonen ved suksess; ellers har den allerede skrevet
+   * 401/400/403-respons og kalleren må `return`.
+   */
+  async function authorizeAuditionProject(
+    req: express.Request,
+    res: express.Response,
+    projectId: string,
+    need: 'view' | 'manage',
+  ): Promise<UserSession | null> {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    if (!projectId) {
+      res.status(400).json({ success: false, error: 'projectId er påkrevd' });
+      return null;
+    }
+    if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+      res.status(403).json({ success: false, error: 'ingen_tilgang' });
+      return null;
+    }
+    if (!(await viewerMeetsTabLevel(pool, projectId, session.userId, 'auditions', need))) {
+      res.status(403).json({ success: false, error: 'ingen_tilgang' });
+      return null;
+    }
+    return session;
+  }
+
+  /** Slå opp prosjektet en audition tilhører. null hvis auditionen ikke finnes. */
+  async function auditionProjectId(auditionId: string): Promise<string | null> {
+    const { rows } = await pool.query<{ project_id: string }>(
+      'SELECT project_id FROM auditions WHERE id = $1 LIMIT 1',
+      [auditionId],
+    );
+    return rows[0]?.project_id ?? null;
+  }
 
   // ── GET — liste alle auditions for prosjekt ──────────────────────
   app.get('/api/role-room/projects/:projectId/auditions', async (req, res) => {
-    const session = requireAdminSession(req, res);
-    if (!session) return;
-
     const projectId = String(req.params.projectId || '').trim();
-    if (!projectId) {
-      return res.status(400).json({ success: false, error: 'projectId er påkrevd' });
-    }
+    const session = await authorizeAuditionProject(req, res, projectId, 'view');
+    if (!session) return;
 
     try {
       // LEFT JOIN på schedules for aggregert candidate_count/completed_count
@@ -135,18 +176,18 @@ export function setupRoleRoomAuditionsRoutes(
 
   // ── POST — opprett audition ──────────────────────────────────────
   app.post('/api/role-room/auditions', async (req, res) => {
-    const session = requireAdminSession(req, res);
-    if (!session) return;
-
     const body = (req.body ?? {}) as Record<string, unknown>;
     const projectId = String(body.project_id ?? body.projectId ?? '').trim();
+    const session = await authorizeAuditionProject(req, res, projectId, 'manage');
+    if (!session) return;
+
     const title = String(body.title ?? '').trim();
     const date = String(body.date ?? '').trim();
 
-    if (!projectId || !title || !date) {
+    if (!title || !date) {
       return res.status(400).json({
         success: false,
-        error: 'project_id, title og date er påkrevd',
+        error: 'title og date er påkrevd',
       });
     }
 
@@ -187,13 +228,16 @@ export function setupRoleRoomAuditionsRoutes(
 
   // ── PATCH — oppdater audition ────────────────────────────────────
   app.patch('/api/role-room/auditions/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
-    if (!session) return;
-
     const auditionId = String(req.params.id || '').trim();
     if (!auditionId) {
       return res.status(400).json({ success: false, error: 'audition-id er påkrevd' });
     }
+    const projectId = await auditionProjectId(auditionId);
+    if (!projectId) {
+      return res.status(404).json({ success: false, error: 'Audition ikke funnet' });
+    }
+    const session = await authorizeAuditionProject(req, res, projectId, 'manage');
+    if (!session) return;
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     // Whitelist editable felter — hindrer cross-project-update via project_id-bytte
@@ -243,13 +287,16 @@ export function setupRoleRoomAuditionsRoutes(
 
   // ── DELETE — slett audition (schedules beholdes med audition_id=NULL) ──
   app.delete('/api/role-room/auditions/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
-    if (!session) return;
-
     const auditionId = String(req.params.id || '').trim();
     if (!auditionId) {
       return res.status(400).json({ success: false, error: 'audition-id er påkrevd' });
     }
+    const projectId = await auditionProjectId(auditionId);
+    if (!projectId) {
+      return res.status(404).json({ success: false, error: 'Audition ikke funnet' });
+    }
+    const session = await authorizeAuditionProject(req, res, projectId, 'manage');
+    if (!session) return;
 
     try {
       const result = await pool.query(
@@ -268,9 +315,6 @@ export function setupRoleRoomAuditionsRoutes(
 
   // ── POST — knytt en schedule til en audition ────────────────────
   app.post('/api/role-room/auditions/:id/schedules/:scheduleId', async (req, res) => {
-    const session = requireAdminSession(req, res);
-    if (!session) return;
-
     const auditionId = String(req.params.id || '').trim();
     const scheduleId = String(req.params.scheduleId || '').trim();
     if (!auditionId || !scheduleId) {
@@ -279,6 +323,12 @@ export function setupRoleRoomAuditionsRoutes(
         error: 'audition-id og schedule-id er påkrevd',
       });
     }
+    const projectId = await auditionProjectId(auditionId);
+    if (!projectId) {
+      return res.status(404).json({ success: false, error: 'Audition ikke funnet' });
+    }
+    const session = await authorizeAuditionProject(req, res, projectId, 'manage');
+    if (!session) return;
 
     try {
       // Validér at både audition og schedule eksisterer + tilhører samme prosjekt

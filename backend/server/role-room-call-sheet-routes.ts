@@ -8,11 +8,15 @@
  */
 
 import type express from "express";
+import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { aiRateLimit } from "./ai-rate-limiter.js";
+import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
+import { viewerMeetsTabLevel } from "./role-room-tab-access.js";
 
 export interface CallSheetRoutesDeps {
   app: express.Application;
+  pool: Pool;
   requireUserSession: (req: any, res: any) => any;
 }
 
@@ -30,13 +34,28 @@ const callSheetSendLimit = aiRateLimit({
 });
 
 export function setupRoleRoomCallSheetRoutes(deps: CallSheetRoutesDeps): void {
-  const { app, requireUserSession } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   app.post("/api/role-room/call-sheets/send", callSheetSendLimit, async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
     try {
       const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+
+      // Story Arc RBAC: en call-sheet-utsending fyrer e-post fra vårt domene til
+      // en vilkårlig mottakerliste. Uten prosjekt-gate kunne enhver innlogget
+      // bruker sende (spam/phishing) i et vilkårlig prosjekts navn. Krev derfor
+      // eier/medlemskap + fane-nivå 'callsheet' = Administrere (skriving/utsending).
+      const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId er påkrevd.", sent: 0, total: 0, results: [] });
+      }
+      if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+        return res.status(403).json({ error: "ingen_tilgang", sent: 0, total: 0, results: [] });
+      }
+      if (!(await viewerMeetsTabLevel(pool, projectId, session.userId, "callsheet", "manage"))) {
+        return res.status(403).json({ error: "ingen_tilgang", sent: 0, total: 0, results: [] });
+      }
       const subject = typeof body.subject === "string" && body.subject.trim()
         ? body.subject.trim().slice(0, 200)
         : "Call Sheet";

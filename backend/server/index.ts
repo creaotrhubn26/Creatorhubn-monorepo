@@ -31398,7 +31398,7 @@ setupRoleRoomBillingHealthRoutes({
 setupRoleRoomAuditionsRoutes({
   app,
   pool,
-  requireAdminSession,
+  requireUserSession,
 });
 
 // ── CMS-sider for SEO-landingssider (migrasjon 141) ────────────
@@ -31534,7 +31534,7 @@ setupCastingManuscriptsRoutes({
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
 });
-setupRoleRoomCallSheetRoutes({ app, requireUserSession });
+setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.

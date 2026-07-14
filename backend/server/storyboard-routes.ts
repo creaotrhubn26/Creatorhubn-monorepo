@@ -13,6 +13,8 @@ import {
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
+import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
+import { viewerMeetsTabLevel } from './role-room-tab-access.js';
 import * as svc from './storyboard-service.js';
 
 interface SessionData {
@@ -51,6 +53,30 @@ function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
   };
 }
 
+/**
+ * Prosjekt-tilgang + Story Arc RBAC for storyboard-fanen. Tidligere krevde disse
+ * rutene bare innlogging (`requireAuth`) uten noe prosjekt-eierskap/-medlemskap —
+ * en autentisert kryss-tenant IDOR: enhver innlogget bruker kunne liste, lese,
+ * skrive, slette (og brenne OpenAI-kreditt på bilde-generering for) et VILKÅRLIG
+ * prosjekts storyboards. Nå: må være eier/medlem (canAccessRoleRoomProject) og
+ * møte fane-nivået 'storyboard' (Se for lesing, Administrere for skriving).
+ * Kjøres ETTER `requireAuth`, så `req.userId` er satt.
+ */
+function requireStoryboardAccess(pool: Pool, need: 'view' | 'manage') {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { userId } = req as AuthedRequest;
+    const projectId = String(req.params.projectId || '').trim();
+    if (!userId || !projectId) { res.status(400).json({ error: 'bad_request' }); return; }
+    if (!(await canAccessRoleRoomProject(pool, userId, projectId))) {
+      res.status(403).json({ error: 'forbidden' }); return;
+    }
+    if (!(await viewerMeetsTabLevel(pool, projectId, userId, 'storyboard', need))) {
+      res.status(403).json({ error: 'forbidden_tab' }); return;
+    }
+    next();
+  };
+}
+
 const upsertBody = z.object({
   sceneId: z.string().nullable().optional(),
   frameId: z.string().nullable().optional(),
@@ -73,16 +99,18 @@ export function createStoryboardRouter(
 ): ExpressRouter {
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
+  const canView = requireStoryboardAccess(pool, 'view');
+  const canManage = requireStoryboardAccess(pool, 'manage');
 
   // List for project, optional ?sceneId filter
-  router.get('/projects/:projectId/storyboards', auth, async (req, res) => {
+  router.get('/projects/:projectId/storyboards', auth, canView, async (req, res) => {
     const sceneId = typeof req.query.sceneId === 'string' ? req.query.sceneId : undefined;
     const items = await svc.listStoryboards(pool, String(req.params.projectId), sceneId);
     res.json({ success: true, data: items });
   });
 
   // Get one
-  router.get('/projects/:projectId/storyboards/:id', auth, async (req, res) => {
+  router.get('/projects/:projectId/storyboards/:id', auth, canView, async (req, res) => {
     const sb = await svc.getStoryboard(pool, String(req.params.id));
     if (!sb || sb.projectId !== String(req.params.projectId)) {
       res.status(404).json({ error: 'not_found' });
@@ -92,7 +120,7 @@ export function createStoryboardRouter(
   });
 
   // Upsert (POST = create or update by frame_id)
-  router.post('/projects/:projectId/storyboards', auth, async (req, res) => {
+  router.post('/projects/:projectId/storyboards', auth, canManage, async (req, res) => {
     const parsed = upsertBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
@@ -112,7 +140,7 @@ export function createStoryboardRouter(
   });
 
   // Update specific row by id
-  router.patch('/projects/:projectId/storyboards/:id', auth, async (req, res) => {
+  router.patch('/projects/:projectId/storyboards/:id', auth, canManage, async (req, res) => {
     const parsed = upsertBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
@@ -124,7 +152,7 @@ export function createStoryboardRouter(
   });
 
   // Delete
-  router.delete('/projects/:projectId/storyboards/:id', auth, async (req, res) => {
+  router.delete('/projects/:projectId/storyboards/:id', auth, canManage, async (req, res) => {
     const ok = await svc.deleteStoryboard(pool, String(req.params.id));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
@@ -134,7 +162,7 @@ export function createStoryboardRouter(
   // Genererer et konseptbilde for et storyboard-frame basert på scene-
   // context + optional brukerprompt. Bildet lagres som image_data
   // (base64 data-URL) på framet så tegneren kan tegne over.
-  router.post('/projects/:projectId/storyboards/:id/generate-ai-image', auth, async (req, res) => {
+  router.post('/projects/:projectId/storyboards/:id/generate-ai-image', auth, canManage, async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       res.status(503).json({
