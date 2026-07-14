@@ -93,7 +93,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       const status = readString(req.query.status);
       const customerId =
         readString(req.query.customerId) || readString(req.query.clientId);
-      const requestedUserId = queryUserId || authUserId;
+      // query.userId er IKKE en tilgangs-vektor. Honorer den KUN når den er lik
+      // den autentiserte brukeren — ellers kunne hvem som helst hente en annen
+      // brukers prosjekt-liste via ?userId=<offer> (BOLA).
+      const requestedUserId =
+        queryUserId && queryUserId === authUserId ? queryUserId : authUserId;
       const isLocalDevelopmentWorkspaceUserId = (
         value: string | null | undefined,
       ): boolean =>
@@ -130,9 +134,14 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         params.push(scopedUserId);
       }
 
-      if (filters.length > 0) {
-        query += ` WHERE ${filters.join(" AND ")}`;
+      // Kjør ALDRI en ufiltrert SELECT * — det ville dumpet ALLE brukeres
+      // prosjekter til en uautentisert kaller. Ingen legitim kaller treffer
+      // dette endepunktet helt uten filter.
+      if (filters.length === 0) {
+        return res.json([]);
       }
+
+      query += ` WHERE ${filters.join(" AND ")}`;
 
       query += " ORDER BY created_at DESC";
 
