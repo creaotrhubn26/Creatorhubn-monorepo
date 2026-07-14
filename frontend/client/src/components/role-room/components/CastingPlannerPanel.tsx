@@ -4729,7 +4729,13 @@ type RoleRoomProjectWorkspaceState = {
   }, [currentProject, isContentProducerDemoProject, isContentProducerMode, permissionsLoading]);
 
   const roleDialogAccentColor = 'var(--role-accent, #b86bff)';
-  const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
+  // MUI alpha() runs decomposeColor() which cannot parse a CSS var() string and
+  // throws (minified error #9) — that crash white-screened the casting app. Derive
+  // translucent variants with CSS-native color-mix instead, which keeps the
+  // admin-rethemeable --role-accent variable live rather than baking in a hex.
+  const accentMix = (ratio: number): string =>
+    `color-mix(in srgb, var(--role-accent, #b86bff) ${Math.round(ratio * 100)}%, transparent)`;
+  const roleDialogAccentSoftColor = accentMix(0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
   const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();
   const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
@@ -13806,10 +13812,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -14391,10 +14397,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -15077,10 +15083,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
