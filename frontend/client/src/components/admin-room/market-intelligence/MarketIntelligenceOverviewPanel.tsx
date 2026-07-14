@@ -382,8 +382,9 @@ export default function MarketIntelligenceOverviewPanel({
                     </TableHead>
                     <TableBody>
                       {scans.map((s) => {
-                        const stMeta = STATUS_META[s.status];
-                        const cfMeta = CONFIDENCE_META[s.confidenceSummary];
+                        // Ukjent/null status skal aldri felle panelet (lærdom 14.07)
+                        const stMeta = STATUS_META[s.status] ?? { label: s.status ?? "ukjent", color: "#94a3b8" };
+                        const cfMeta = CONFIDENCE_META[s.confidenceSummary] ?? { label: s.confidenceSummary ?? "ukjent", color: "#94a3b8" };
                         return (
                           <TableRow key={s.id} hover>
                             <TableCell>
