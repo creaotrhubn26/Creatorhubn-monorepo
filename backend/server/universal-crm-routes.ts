@@ -143,15 +143,22 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // who has no open rebook task, create one (throttled via last_reminded_at so
   // we never spam). This is the motor that turns "delivered 11 months ago"
   // into a concrete follow-up instead of a lead rotting in silence.
-  const runCrmAutomationSweep = async (): Promise<{ rebookTasks: number }> => {
+  const runCrmAutomationSweep = async (
+    ownerId?: string,
+  ): Promise<{ rebookTasks: number }> => {
     try {
+      // ownerId satt (manuell trigger) => kun caller-egne kunder; null (timer)
+      // => global sweep. Uten dette kunne en innlogget bruker trigge en system-
+      // omfattende sweep over ALLE tenants' kunder.
       const due = await pool.query(
         `SELECT id, owner_user_id, name FROM crm_customers
          WHERE next_rebook_due_at IS NOT NULL
            AND next_rebook_due_at <= now()
            AND deleted_at IS NULL
            AND status <> 'archived'
-           AND (last_reminded_at IS NULL OR last_reminded_at < now() - interval '30 days')`,
+           AND (last_reminded_at IS NULL OR last_reminded_at < now() - interval '30 days')
+           AND ($1::text IS NULL OR owner_user_id = $1)`,
+        [ownerId ?? null],
       );
       let created = 0;
       for (const c of due.rows) {
@@ -1107,7 +1114,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/pipeline-stages", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    // crm_pipeline_stages er en GLOBAL delt katalog (ingen owner-kolonne).
+    // Uten admin-gate kunne enhver innlogget bruker injisere/omdøpe stadier
+    // synlige for ALLE tenants (BFLA). Lesning forblir åpen.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    if (session.role !== "admin" && session.role !== "super_admin")
+      return res.status(403).json({ error: "Admin only" });
     try {
       const { name, description, position, color } = req.body;
       if (!name) return res.status(400).json({ error: "Name is required" });
@@ -1640,9 +1653,12 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
 
   // Manual trigger for the automation sweep (also runs hourly on a timer).
   app.post("/api/universal-crm/automation/run", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const result = await runCrmAutomationSweep();
+      // Scoped til caller-egne kunder (ikke system-omfattende): teller nå kun
+      // brukerens egne rebook-tasks, som toast-en påstår. Timeren kjører global.
+      const result = await runCrmAutomationSweep(session.userId);
       return res.json({ ok: true, ...result });
     } catch (error) {
       console.error("CRM automation run error:", error);

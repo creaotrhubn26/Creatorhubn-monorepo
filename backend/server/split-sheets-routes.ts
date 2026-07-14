@@ -318,10 +318,16 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   // GET /api/split-sheets/:id — Get split sheet details with contributors
   app.get("/api/split-sheets/:id", async (req, res) => {
     try {
+      const userId = getSplitSheetUserId(req);
+      if (!userId)
+        return res.status(401).json({ success: false, error: "unauthorized" });
       const { id } = req.params;
+      // Object-first eierskap: split sheets er per-bruker (list/create/update/
+      // delete gater alle på user_id). Uten AND user_id=$2 kunne enhver hente en
+      // annens sheet + kontaktinfo/PII/prosentsplitt på gjettbar :id (IDOR).
       const ssResult = await pool.query(
-        "SELECT * FROM split_sheets WHERE id = $1",
-        [id],
+        "SELECT * FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
       );
       if (ssResult.rows.length === 0) {
         return res
@@ -579,6 +585,21 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   app.post("/api/split-sheets/:id/sign", async (req, res) => {
     try {
       const { id } = req.params;
+      // Orphan-endepunkt: ekte signering går via token-gatede /contributor-sign
+      // og /public/split-sheet/:code/sign. Denne legacy-ruten manglet eierskap,
+      // så hvem som helst kunne forfalske en signatur + drive status til
+      // 'completed' på en annens sheet (BFLA). Låst til eier.
+      const userId = getSplitSheetUserId(req);
+      if (!userId)
+        return res.status(401).json({ success: false, error: "unauthorized" });
+      const own = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      if (own.rowCount === 0)
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
       const { contributor_id, signature_data } = req.body;
 
       await pool.query(
@@ -660,18 +681,31 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const ss = await pool.query("SELECT * FROM split_sheets WHERE id = $1", [
         id,
       ]);
+      if (ss.rows.length === 0)
+        return res.status(404).json({ success: false, error: "Not found" });
+      const sheet = ss.rows[0];
+      // Eier ELLER portal-kontributor med gyldig access_code. Uten dette lekket
+      // PDF-eksporten hele sheetet + kontributor-PII/økonomi for enhver :id.
+      const userId = getSplitSheetUserId(req);
+      const isOwner = userId && sheet.user_id === userId;
+      const code = String(req.query.access_code || req.query.token || "")
+        .trim()
+        .toUpperCase();
+      const viaCode =
+        code &&
+        sheet.access_code &&
+        String(sheet.access_code).toUpperCase() === code;
+      if (!isOwner && !viaCode)
+        return res.status(403).json({ success: false, error: "forbidden" });
       const contribs = await pool.query(
         "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
         [id],
       );
 
-      if (ss.rows.length === 0)
-        return res.status(404).json({ success: false, error: "Not found" });
-
       res.json({
         success: true,
         data: {
-          splitSheet: ss.rows[0],
+          splitSheet: sheet,
           contributors: contribs.rows,
           generatedAt: new Date().toISOString(),
         },
@@ -685,6 +719,17 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   app.get("/api/split-sheets/:id/versions", async (req, res) => {
     try {
       const { id } = req.params;
+      // Eierskap: versjonshistorikk avslører historiske splitt/innhold. 404 (ikke
+      // 403) hindrer id-enumerering, som resten av fila.
+      const userId = getSplitSheetUserId(req);
+      if (!userId)
+        return res.status(401).json({ success: false, error: "unauthorized" });
+      const owner = await pool.query(
+        "SELECT user_id FROM split_sheets WHERE id = $1",
+        [id],
+      );
+      if (owner.rows.length === 0 || owner.rows[0].user_id !== userId)
+        return res.status(404).json({ success: false, error: "Not found" });
       const result = await pool.query(
         "SELECT * FROM split_sheet_versions WHERE split_sheet_id = $1 ORDER BY created_at DESC",
         [id],
@@ -846,6 +891,18 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   app.get("/api/split-sheets/:id/revenue", async (req, res) => {
     try {
       const { id } = req.params;
+      // Eierskap: inntektshistorikk = finansdata (beløp/kilde/plattform). POST
+      // /revenue gater allerede på user_id; denne lesningen manglet det (IDOR).
+      const userId = getSplitSheetUserId(req);
+      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      const own = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      if (own.rowCount === 0)
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
       const result = await pool.query(
         "SELECT * FROM split_sheet_revenue WHERE split_sheet_id = $1 ORDER BY created_at DESC",
         [id],
@@ -860,6 +917,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   app.get("/api/split-sheets/:id/payments", async (req, res) => {
     try {
       const { id } = req.params;
+      // Eierskap: betalingshistorikk (beløp/metode/referanse/status). PUT
+      // /payments/:paymentId gater via subquery; denne lesningen manglet det.
+      const userId = getSplitSheetUserId(req);
+      if (!userId)
+        return res.status(401).json({ success: false, error: "unauthorized" });
+      const owns = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      if (owns.rowCount === 0)
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
       const { contributor_id, status: payStatus } = req.query;
 
       let query = "SELECT * FROM split_sheet_payments WHERE split_sheet_id = $1";

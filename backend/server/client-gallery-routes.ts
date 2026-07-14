@@ -336,7 +336,9 @@ export function setupClientGalleryRoutes(
       return res.json({
         id: gallery.id,
         clientName: gallery.clientName,
-        clientEmail: gallery.clientEmail,
+        // Ikke lek klientens e-post til en passord-beskyttet lenke FØR passordet
+        // er tastet — access-tokenet alene skal ikke avsløre klient-PII.
+        clientEmail: requiresPassword ? null : gallery.clientEmail,
         projectTitle: gallery.projectTitle,
         status: gallery.status,
         createdAt: gallery.createdAt,
@@ -2180,9 +2182,11 @@ export function setupClientGalleryRoutes(
         });
       }
 
-      const clientEmail = typeof req.body?.clientEmail === 'string'
-        ? req.body.clientEmail.trim()
-        : gallery.clientEmail;
+      // Nedlastings-kvoten telles PER klient-e-post. Hvis vi stolte på en
+      // body-oppgitt e-post kunne en klient rotere e-post og nulle kvoten
+      // (ubegrenset gratis nedlasting forbi contracted limit). Bind alltid
+      // til galleriets registrerte klient-e-post.
+      const clientEmail = String(gallery.clientEmail || '').trim();
 
       // Slice 9X.11 — count-gate mot contractedImages. Tell HVOR MANGE
       // UNIKE bilder denne klienten allerede har lastet ned, og blokker

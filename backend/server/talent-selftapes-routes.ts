@@ -131,11 +131,14 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         ),
         project.current_take_id
           ? pool.query(
+              // Bind til talentet: current_take_id kan i teorien peke på en
+              // annen talents take — da skal vi ALDRI lekke deres AI-feedback.
               `SELECT f.*, f.id::text, f.take_id::text
                  FROM talent_selftape_ai_feedback f
                  JOIN talent_selftape_takes t ON t.ai_feedback_id = f.id
-                WHERE t.id = $1::uuid LIMIT 1`,
-              [project.current_take_id],
+                 JOIN talent_selftape_projects pp ON pp.id = t.project_id
+                WHERE t.id = $1::uuid AND pp.talent_id = $2::uuid LIMIT 1`,
+              [project.current_take_id, talentId],
             )
           : Promise.resolve({ rows: [] }),
         pool.query(
@@ -221,6 +224,20 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
     if (sets.length === 0) return res.status(400).json({ error: "Ingen felter å oppdatere" });
     vals.push(req.params.id, talentId);
     try {
+      // current_take_id settes via denne generiske PATCH-en; verifiser at taken
+      // tilhører DETTE prosjektet, ellers kan man lenke inn en annens take
+      // (som current-take-feedback senere ville forsøkt å lese).
+      const nextTakeId = (req.body || {})["current_take_id"];
+      if (nextTakeId !== undefined && nextTakeId !== null) {
+        const takeOwn = await pool.query(
+          `SELECT 1 FROM talent_selftape_takes
+            WHERE id = $1::uuid AND project_id = $2::uuid LIMIT 1`,
+          [nextTakeId, req.params.id],
+        );
+        if (!takeOwn.rowCount) {
+          return res.status(400).json({ error: "Ugyldig take for dette prosjektet" });
+        }
+      }
       const r = await pool.query(
         `UPDATE talent_selftape_projects SET ${sets.join(", ")}
           WHERE id = $${p}::uuid AND talent_id = $${p + 1}::uuid
@@ -1279,10 +1296,14 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(404).json({ error: "Rolle ikke funnet" });
       }
 
+      // ?demo=1 hopper over eierskap-sjekken over — da MÅ data-spørringen
+      // begrenses til demo-talentet, ellers kunne hvem som helst lese ekte
+      // talenters signerte self-tape-URLer ved å legge på ?demo=1.
       const r = await pool.query(
-        `SELECT * FROM v_casting_role_selftapes
-          WHERE role_id = $1`,
-        [req.params.roleId],
+        isDemo
+          ? `SELECT * FROM v_casting_role_selftapes WHERE role_id = $1 AND talent_id = $2::uuid`
+          : `SELECT * FROM v_casting_role_selftapes WHERE role_id = $1`,
+        isDemo ? [req.params.roleId, DEMO_TALENT_ID] : [req.params.roleId],
       );
 
       // Signer URLs on-the-fly hvis CF Stream + stream_uid finnes
@@ -1328,7 +1349,11 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
           [req.params.id],
         );
         const row = own.rows[0];
-        if (!own.rowCount || (!isDemo && (!row.created_by || row.created_by !== session?.userId))) {
+        // Demo (?demo=1) må begrenses til demo-talentet, ellers registrerer en
+        // uautorisert bruker visninger på ekte submissions.
+        if (!own.rowCount || (isDemo
+          ? row.talent_id !== DEMO_TALENT_ID
+          : (!row.created_by || row.created_by !== session?.userId))) {
           return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
@@ -1395,13 +1420,19 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       try {
         // Verifiser eierskap
         const own = await pool.query(
-          `SELECT s.id::text, cp.created_by
+          `SELECT s.id::text, p.talent_id::text, cp.created_by
              FROM talent_selftape_submissions s
+             LEFT JOIN talent_selftape_projects p ON p.id = s.project_id
              LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+        const row = own.rows[0];
+        // ?demo=1 må begrenses til demo-talentet — ellers kan hvem som helst
+        // trigge påminnelses-e-post på ekte submissions.
+        if (!own.rowCount || (isDemo
+          ? row.talent_id !== DEMO_TALENT_ID
+          : row.created_by !== session?.userId)) {
           return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
@@ -1441,13 +1472,19 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
 
       try {
         const own = await pool.query(
-          `SELECT s.id::text, cp.created_by
+          `SELECT s.id::text, p.talent_id::text, cp.created_by
              FROM talent_selftape_submissions s
+             LEFT JOIN talent_selftape_projects p ON p.id = s.project_id
              LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+        const row = own.rows[0];
+        // ?demo=1 må begrenses til demo-talentet — ellers kan en uautorisert
+        // bruker sette deadline på ekte submissions.
+        if (!own.rowCount || (isDemo
+          ? row.talent_id !== DEMO_TALENT_ID
+          : row.created_by !== session?.userId)) {
           return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
@@ -1507,7 +1544,12 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+        const ownRow = own.rows[0];
+        // ?demo=1 må begrenses til demo-talentet — ellers kan en uautorisert
+        // bruker skrive kommentarer + trigge e-post på ekte submissions.
+        if (!own.rowCount || (isDemo
+          ? ownRow.talent_id !== DEMO_TALENT_ID
+          : ownRow.created_by !== session?.userId)) {
           return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
@@ -1538,7 +1580,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             [req.params.id],
           );
           const row = ctx.rows[0];
-          if (row?.email) {
+          // Ikke send ekte e-post i demo-modus.
+          if (!isDemo && row?.email) {
             const baseUrl = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
             const sharedLink = `${baseUrl}/talents/profil#mine-delte`;
             const target = row.casting_project_name

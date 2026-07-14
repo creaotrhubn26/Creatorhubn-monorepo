@@ -1138,8 +1138,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/google-esignature", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      // Eier-only (BFLA): materialiserer kontraktinnhold i Google Drive via
+      // caller-connection. Uten dette kunne en angriper eksfiltrere en annens
+      // kontrakt til egen Drive. Ikke tiltenkt-signer her (ingen re-materialise).
+      const ownerCheck = await fetchContractById(req.params.contractId);
+      if (!ownerCheck) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
       const preferredUserId = await resolveContractUserId(req);
       const response = await sendContractGoogleESignature(pool, {
         contractId: req.params.contractId,
@@ -1173,8 +1186,19 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/backup-drive", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      // Eier-only (BFLA): samme Drive-materialisering som /google-esignature.
+      const ownerCheck = await fetchContractById(req.params.contractId);
+      if (!ownerCheck) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
       const preferredUserId = await resolveContractUserId(req);
       const response = await prepareContractGoogleESignature(pool, {
         contractId: req.params.contractId,
@@ -1253,8 +1277,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/prepare",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        // Eier-only (BFLA): materialiserer/overskriver kontraktens Drive-doc.
+        const ownerCheck = await fetchContractById(req.params.contractId);
+        if (!ownerCheck) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Forbidden" });
+        }
         const preferredUserId = await resolveContractUserId(req);
         const response = await prepareContractGoogleESignature(pool, {
           contractId: req.params.contractId,
@@ -1291,8 +1328,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/send",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        // Eier-only (BFLA): sender kontrakt til signering via caller-connection.
+        const ownerCheck = await fetchContractById(req.params.contractId);
+        if (!ownerCheck) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Forbidden" });
+        }
         const preferredUserId = await resolveContractUserId(req);
         const response = await sendContractGoogleESignature(pool, {
           contractId: req.params.contractId,
@@ -1327,8 +1377,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/sync",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        // Eier-only (BFLA): synk mutates kontrakt-status/artefakter.
+        const ownerCheck = await fetchContractById(req.params.contractId);
+        if (!ownerCheck) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Forbidden" });
+        }
         const preferredUserId = await resolveContractUserId(req);
         const response = await syncContractGoogleESignature(pool, {
           contractId: req.params.contractId,
@@ -1366,7 +1429,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/status",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const preferredUserId = await resolveContractUserId(req);
         const status = readString(req.body?.status) as any;
@@ -1392,6 +1456,30 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
               success: false,
               message: "Unsupported contract Google signature status",
             });
+        }
+        // Eier-eller-tiltenkt-signer (BOLA): uten dette kunne enhver forfalske
+        // signatur-status ('signed'/'rejected') + stemple signer-PII på ENHVER
+        // kontrakt. Speiler /sign (861) og /signature-status (1078).
+        const existingContract = await fetchContractById(req.params.contractId);
+        if (!existingContract) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        const isOwner =
+          !!existingContract.userId &&
+          existingContract.userId === session.userId;
+        const isIntendedSigner =
+          !!session.email &&
+          !!existingContract.clientEmail &&
+          String(session.email).toLowerCase() ===
+            String(existingContract.clientEmail).toLowerCase();
+        if (existingContract.userId && !isOwner && !isIntendedSigner) {
+          return res.status(403).json({
+            success: false,
+            message:
+              "Not authorized to update signature status for this contract",
+          });
         }
         const response = await updateContractGoogleESignatureStatus(pool, {
           contractId: req.params.contractId,
@@ -1429,9 +1517,23 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   );
 
   app.put("/api/contracts/:contractId/status", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
+      // Object-first eierskap (BOLA): uten dette kunne enhver innlogget bruker
+      // sette status (inkl. 'signed') på ENHVER kontrakt på gjettbar id, og
+      // dermed omgå den eier/tiltenkt-signer-gaten som /sign har. Lenient på
+      // null userId (legacy-rader), som søsterrutene.
+      const existing = await fetchContractById(req.params.contractId);
+      if (!existing) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      if (existing.userId && existing.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
       const status = normalizeContractStatusValue(req.body?.status);
       const result = await pool.query(
         `UPDATE contracts

@@ -1485,7 +1485,16 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         return res.json({ accepted: false, projectId: null, clientInfo: null });
       }
 
-      if (!isQuoteShareAllowed(result.rows[0], req)) {
+      // E-post-oppslag må presentere en gyldig share-token. isQuoteShareAllowed
+      // sin no-token-nådesti (`if(!shareToken) return true`) gjelder KUN for det
+      // ugjettbare client_id-UUID-et — ellers kunne hvem som helst enumerere en
+      // annens quote (status/beløp/PII) på gjettbar e-post (broken-auth).
+      const r0 = result.rows[0];
+      const key = String(clientId);
+      const matchedByEmailOnly =
+        key.toLowerCase() === String(r0.client_email || "").toLowerCase() &&
+        key !== String(r0.client_id || "");
+      if (!isQuoteShareAllowed(r0, req) || (matchedByEmailOnly && !r0.share_token)) {
         return res.json({ accepted: false, projectId: null, clientInfo: null });
       }
 

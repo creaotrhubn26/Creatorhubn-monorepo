@@ -513,13 +513,12 @@ export function setupCastingProjectsRoutes(
     // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
     // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
     // seg selv direkte etter opprettelse/oppdatering.
-    const createdBy = readString(
-      payloadRecord.createdBy,
-      payloadRecord.created_by,
-      existingRecord.createdBy,
-      existingRecord.created_by,
-      ownerId,
-    ) ?? session.userId;
+    // Eierskap avledes ALLTID fra sesjonen — aldri fra body. Ellers kunne en
+    // angriper opprette et prosjekt med created_by satt til en annen bruker,
+    // som så dukket opp i offerets GET /api/casting/projects-liste (spoofing).
+    // For selv-eide oppdateringer er dette en no-op (overwrite-gaten over
+    // krever allerede existing.created_by === session.userId).
+    const createdBy = session.userId;
     const createdByEmail = readString(
       payloadRecord.createdByEmail,
       payloadRecord.created_by_email,
@@ -703,13 +702,12 @@ export function setupCastingProjectsRoutes(
     // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
     // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
     // seg selv direkte etter opprettelse/oppdatering.
-    const createdBy = readString(
-      payloadRecord.createdBy,
-      payloadRecord.created_by,
-      existingRecord.createdBy,
-      existingRecord.created_by,
-      ownerId,
-    ) ?? session.userId;
+    // Eierskap avledes ALLTID fra sesjonen — aldri fra body. Ellers kunne en
+    // angriper opprette et prosjekt med created_by satt til en annen bruker,
+    // som så dukket opp i offerets GET /api/casting/projects-liste (spoofing).
+    // For selv-eide oppdateringer er dette en no-op (overwrite-gaten over
+    // krever allerede existing.created_by === session.userId).
+    const createdBy = session.userId;
     const createdByEmail = readString(
       payloadRecord.createdByEmail,
       payloadRecord.created_by_email,
