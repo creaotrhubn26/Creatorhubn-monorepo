@@ -175,6 +175,9 @@ export default function WorkspaceDesignOverlay({
   const [hrefUrl, setHrefUrl] = React.useState('');
   const [bgUrl, setBgUrl] = React.useState('');
   const [advOpen, setAdvOpen] = React.useState(false); // «Avansert»-gruppe (animasjon/interaksjon/innsett) kollapset som standard
+  const [grpInnhold, setGrpInnhold] = React.useState(true);  // Innhold (tekst/bilde/lenke/bakgrunn/skjul/bind)
+  const [grpStil, setGrpStil] = React.useState(true);        // Stil (typografi/utseende)
+  const [grpLayout, setGrpLayout] = React.useState(false);   // Layout (spacing/auto-layout) — kollapset som standard
   // Insert-skjema
   const [insType, setInsType] = React.useState('heading');
   const [insText, setInsText] = React.useState('');
@@ -1146,6 +1149,11 @@ export default function WorkspaceDesignOverlay({
 
                 {sel && sel.children.length === 0 && (
                   <>
+                    <button data-chd onClick={() => setGrpInnhold((v) => !v)} title="Vis/skjul Innhold"
+                      style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                      {grpInnhold ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Innhold
+                    </button>
+                    {grpInnhold && (<>
                     <div style={section}>Tekst</div>
                     <textarea data-chd aria-label="Element-tekst" value={insp.text ?? ''} onChange={(e) => applyText(e.target.value)}
                       style={{ ...field, minHeight: 52, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
@@ -1190,6 +1198,12 @@ export default function WorkspaceDesignOverlay({
                   </>
                 )}
 
+                </>)}
+                <button data-chd onClick={() => setGrpStil((v) => !v)} title="Vis/skjul Stil"
+                  style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  {grpStil ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Stil
+                </button>
+                {grpStil && (<>
                 <div style={section}>Typografi</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}><label style={flabel}>Størrelse (px)</label>
@@ -1223,6 +1237,12 @@ export default function WorkspaceDesignOverlay({
                 <label style={flabel}>Gjennomsiktighet ({Math.round((parseFloat(insp.opacity ?? '1') || 1) * 100)}%)</label>
                 <input data-chd type="range" aria-label="Gjennomsiktighet-slider" min={0} max={1} step={0.05} value={parseFloat(insp.opacity ?? '1') || 1} onChange={(e) => applyStyle('opacity', 'opacity', e.target.value)} style={{ width: '100%' }} />
 
+                </>)}
+                <button data-chd onClick={() => setGrpLayout((v) => !v)} title="Vis/skjul Layout"
+                  style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  {grpLayout ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Layout
+                </button>
+                {grpLayout && (<>
                 <div style={section}>Spacing</div>
                 <label style={flabel}>Padding</label>
                 <input data-chd aria-label="Padding" style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
@@ -1263,6 +1283,7 @@ export default function WorkspaceDesignOverlay({
                   </>
                 )}
 
+                </>)}
                 <button data-chd onClick={() => setAdvOpen((v) => !v)} title="Vis/skjul avanserte seksjoner"
                   style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
                   {advOpen ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Avansert
