@@ -15,7 +15,6 @@
 
 import React, { Suspense, useState } from "react";
 import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
-import React from "react";
 
 /** Én panel-krasj skal aldri hvitskjerme hele AdminRoom (lærdom 14.07:
  *  marketQuery-null felte alt). Boundary per seksjon, ærlig feilmelding. */
