@@ -704,6 +704,14 @@ function App() {
                 <GoogleSSOErrorBanner />
                 <EnterpriseOfferModal />
                 <UserNotificationModal />
+                {/* GLOBAL error boundary (topp-nivå). En kastet render-feil i
+                    EN hvilken som helst rute river ellers ned hele app-treet
+                    til React-roten → blank hvit skjerm (slik dans-formasjon
+                    #426 gjorde). Denne fanger enhver ufanget feil og viser en
+                    recovery-fallback + rapporterer til Sentry. Prinsipp: fail
+                    safe, aldri fail blank. Modul-boundaries under isolerer
+                    enkeltseksjoner slik at resten av skallet overlever. */}
+                <ErrorBoundary componentName="app-router">
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
@@ -1110,6 +1118,7 @@ function App() {
                                     <Route path="/photographer-dashboard/bring" component={() => <BringPhotographerDashboard profession={"photographer"} apiName={"bring"} />} />
                   <Route component={NotFound} />
                 </Switch>
+                </ErrorBoundary>
                 <AdminNotificationDisplay />
                 {/* <BackgroundUploadWidget />
           <BackgroundDownloadWidget profession="photographer" /> */}
