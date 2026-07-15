@@ -1452,7 +1452,9 @@ type RoleRoomProjectWorkspaceState = {
     setTeamDashboardDefaultSegment('technical');
     setTeamDashboardOpenSignal((current) => current + 1);
     setStoryArcView('shot-list');
-    setActiveTab(STORY_ARC_TAB_INDEX);
+    // #426-vakt: klikk-handler som mounter den lazy Story-Arc-fanen — byttet må
+    // være en transition, ellers suspender fanen under synkron input → #426.
+    startTransition(() => setActiveTab(STORY_ARC_TAB_INDEX));
   }, []);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
@@ -1831,7 +1833,13 @@ type RoleRoomProjectWorkspaceState = {
         flushSync(() => setActiveTab(nextTab));
         return;
       }
-      setActiveTab(nextTab);
+      // #426-vakt: nesten alle faner er lazy() (kodesplittet). Setter vi
+      // activeTab synkront (fra <Tabs onChange>, ⌘K-paletten, dyplenker),
+      // suspender den nye fanen midt i en synkron input-oppdatering → React
+      // #426, som blanker HELE workspacet. startTransition markerer byttet som
+      // ikke-hastende så Suspense får vise fallback trygt. (Live-Set-exit over
+      // beholder flushSync — det MÅ committe synkront ifm. fullskjerm-exit.)
+      startTransition(() => setActiveTab(nextTab));
     };
 
     if (tabIndex === SHOT_LIST_TAB_INDEX) {
@@ -9099,7 +9107,8 @@ type RoleRoomProjectWorkspaceState = {
                 // på dashboard og kan navigere fritt (Admin Room etc).
                 setCurrentProject(null);
                 setCurrentProjectId(null);
-                setActiveTab(0);
+                // #426-vakt: fane 0 (Dashboard) er lazy — bytt via transition.
+                startTransition(() => setActiveTab(0));
                 if (typeof window !== 'undefined') {
                   try {
                     window.history.replaceState({}, document.title, window.location.pathname);
@@ -10134,7 +10143,12 @@ type RoleRoomProjectWorkspaceState = {
               </Typography>
             </Box>
           ) : (
-          <ErrorBoundary>
+          // key={displayedActiveTab}: tab-baren ligger UTENFOR denne boundaryen,
+          // så uten key ville en krasj i én fane låse fallbacken selv når brukeren
+          // klikker en annen fane (activeTab endres, men hasError står igjen). Å
+          // key-e på aktiv fane remounter boundaryen ved fane-bytte → auto-reset,
+          // så en krasj isoleres til dén fanen. (Samme mønster som DanceWorkspace.)
+          <ErrorBoundary key={displayedActiveTab}>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
           {!currentProject && projects.length === 0 ? (
