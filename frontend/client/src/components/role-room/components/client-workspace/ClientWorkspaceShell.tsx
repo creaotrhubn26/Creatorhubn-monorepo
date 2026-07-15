@@ -14,8 +14,9 @@
  * ?preview=true (vises da med banner "Du ser dette som klient").
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, startTransition, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { getMyAccess, acceptInvite, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
 import BlockRenderer from '../../cms/BlockRenderer';
 import { useCmsBlocks } from '../../cms/useCmsBlocks';
@@ -134,7 +135,11 @@ export default function ClientWorkspaceShell({
   [navOv, copyOv]);
 
   const handleTabChange = (_e: React.SyntheticEvent, next: TabValue) => {
-    setActiveTab(next);
+    // #426-vakt: hver fane er en lazy() (kodesplittet) komponent. Setter vi
+    // activeTab synkront, suspender den nye fanen midt i en synkron input-
+    // oppdatering → React #426, som blanker HELE klientportalen. startTransition
+    // markerer byttet som ikke-hastende så Suspense får vise fallback trygt.
+    startTransition(() => setActiveTab(next));
     // Behold tab i URL så reload + deep-link funker
     const url = new URL(window.location.href);
     url.searchParams.set('tab', next);
@@ -289,6 +294,21 @@ export default function ClientWorkspaceShell({
 
       {/* Tab-innhold */}
       <Container maxWidth="lg" sx={{ py: { xs: 1.5, sm: 2.5 } }}>
+        {/* Modul-boundary per fane (keyed på activeTab → nullstilles ved bytte).
+            Kaster én lazy-fane under render, isoleres krasjen til dét panelet i
+            stedet for å blanke hele klientportalen; bytt fane for å komme videre. */}
+        <ErrorBoundary
+          key={activeTab}
+          componentName={`client-tab:${activeTab}`}
+          context={{ tab: activeTab }}
+          fallback={
+            <Stack alignItems="center" justifyContent="center" spacing={1} sx={{ py: 6, textAlign: 'center' }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Denne fanen kunne ikke vises akkurat nå. Prøv en annen fane, eller last siden på nytt.
+              </Typography>
+            </Stack>
+          }
+        >
         <Suspense
           fallback={
             <Stack direction="row" alignItems="center" justifyContent="center" sx={{ py: 6 }}>
@@ -311,6 +331,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
           {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
         </Suspense>
+        </ErrorBoundary>
       </Container>
 
       {/* Flytende chat-boble — tilgjengelig på alle faner unntatt selve Meldinger-fanen. */}
