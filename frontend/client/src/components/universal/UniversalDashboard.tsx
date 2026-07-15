@@ -2854,7 +2854,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       openStoryArcStudioPage();
       return;
     }
-    setTabValue(newValue);
+    // #426-vakt: flere faner (fotograf-projects/clients/profitability/equipment/
+    // settings) er React.lazy. Synkron setTabValue fra <MuiTabs onChange> lar den
+    // nye lazy-fanen suspende midt i en synkron input-oppdatering → React #426.
+    // Per-fane ErrorBoundary (TabPanel) fanger krasjen, men brukeren ser da et
+    // «Noe gikk galt»-blaff. startTransition markerer byttet som ikke-hastende så
+    // Suspense-fallbacken vises jevnt i stedet.
+    React.startTransition(() => setTabValue(newValue));
 }, [availableTabs, openStoryArcStudioPage, setTabValue]);
 
   // Optimized event handlers
