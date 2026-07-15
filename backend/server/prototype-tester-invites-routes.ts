@@ -35,6 +35,7 @@ export interface PrototypeTesterInvitesDeps {
     email: string,
     name: string,
     profession?: string | null,
+    company?: string | null,
   ) => Promise<any>;
 }
 
@@ -92,6 +93,10 @@ async function ensureSchema(pool: any): Promise<void> {
     // Slice 9X.58 — Profesjon per medlem: en fotograf-master kan invitere en
     // videograf. Settes på users.profession ved aksept → riktig dashboard.
     `member_profession VARCHAR(40)`,
+    // Firma per invitert tester: fanges ved invitasjon slik at tester-profilen
+    // er forhåndsutfylt ved aksept (bare bekreft, ikke fyll på nytt). Bæres
+    // videre til users.company_name → grunnlag for konvertering til kunde.
+    `member_company VARCHAR(160)`,
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
@@ -177,6 +182,7 @@ function rowToInvite(r: any): any {
     masterInviteId: r.master_invite_id || null,
     maxTeamSize: r.max_team_size || 1,
     memberProfession: r.member_profession || null,
+    memberCompany: r.member_company || null,
   };
 }
 
@@ -224,6 +230,10 @@ export async function createInviteFromApprovedRequest(
   grantedPlan: string = "tester_all_access",
   grantedFeatures: string[] = [],
   teamSize: number = 1,
+  // Bær profesjon + firma fra den godkjente invite-request-en → forhåndsutfylt
+  // tester-profil ved aksept (bare bekreft) + grunnlag for kunde-konvertering.
+  memberProfession: string | null = null,
+  memberCompany: string | null = null,
 ): Promise<{ id: string; token: string; inviteUrl: string } | null> {
   try {
     await ensureSchema(pool);
@@ -251,8 +261,8 @@ export async function createInviteFromApprovedRequest(
       `INSERT INTO prototype_tester_invites
          (token, email, name, testing_areas, invite_request_id, nda_version,
           program_terms_version, expires_at, invited_by, granted_plan,
-          granted_features, team_role, max_team_size)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+          granted_features, team_role, max_team_size, member_profession, member_company)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15)
        RETURNING id, token`,
       [
         token,
@@ -268,6 +278,10 @@ export async function createInviteFromApprovedRequest(
         JSON.stringify(grantedFeatures),
         isTeamMaster ? "master" : "individual",
         clampedTeamSize,
+        normalizeMemberProfession(memberProfession),
+        typeof memberCompany === "string" && memberCompany.trim()
+          ? memberCompany.trim().slice(0, 160)
+          : null,
       ],
     );
     const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
@@ -309,6 +323,13 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const testingAreas = Array.isArray(body.testingAreas) ? body.testingAreas : [];
       const personalMessage = typeof body.personalMessage === "string" ? body.personalMessage.slice(0, 2000) : null;
       const invitedBy = typeof body.invitedBy === "string" ? body.invitedBy : null;
+      // Fang profesjon + firma ved invitasjon → forhåndsutfylt tester-profil
+      // (bare bekreft, ikke fyll på nytt) + grunnlag for kunde-konvertering.
+      const memberProfession = normalizeMemberProfession(body.profession);
+      const memberCompany =
+        typeof body.company === "string" && body.company.trim()
+          ? body.company.trim().slice(0, 160)
+          : null;
 
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({ error: "Gyldig e-post er påkrevd" });
@@ -322,8 +343,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const ins = await pool.query(
         `INSERT INTO prototype_tester_invites
            (token, email, name, testing_areas, personal_message, nda_version,
-            program_terms_version, expires_at, invited_by)
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)
+            program_terms_version, expires_at, invited_by, member_profession, member_company)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id, token, expires_at, created_at`,
         [
           token,
@@ -335,6 +356,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           PROGRAM_TERMS_VERSION,
           expiresAt.toISOString(),
           invitedBy,
+          memberProfession,
+          memberCompany,
         ],
       );
       const row = ins.rows[0];
@@ -474,6 +497,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
             String(upd.rows[0].email || ""),
             ndaName,
             upd.rows[0].member_profession || null,
+            upd.rows[0].member_company || null,
           );
           accountUserId = acct?.id ? String(acct.id) : null;
         } catch (acctErr) {
@@ -613,6 +637,12 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const memberEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       const memberName = typeof body.name === "string" ? body.name.trim() : "";
       const memberProfession = normalizeMemberProfession(body.profession);
+      // Firma valgfritt per team-medlem; deler ofte master sitt firma, men lar
+      // master overstyre (f.eks. underleverandør). Speiles til users.company_name.
+      const memberCompany =
+        typeof body.company === "string" && body.company.trim()
+          ? body.company.trim().slice(0, 160)
+          : null;
       if (!memberEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(memberEmail)) {
         return res.status(400).json({ error: "Gyldig e-post påkrevd" });
       }
@@ -663,8 +693,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         `INSERT INTO prototype_tester_invites
            (token, email, name, nda_version, program_terms_version, expires_at,
             invited_by, granted_plan, granted_features, team_role,
-            master_invite_id, max_team_size, member_profession)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'member', $10, 1, $11)
+            master_invite_id, max_team_size, member_profession, member_company)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'member', $10, 1, $11, $12)
          RETURNING id, token`,
         [
           token,
@@ -678,6 +708,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           JSON.stringify(master.granted_features || []),
           master.id,
           memberProfession,
+          memberCompany,
         ],
       );
 
