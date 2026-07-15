@@ -449,15 +449,17 @@ const WorkspaceHomeRouteWrapper = () => (
 const TeamWorkspaceRouteWrapper = () => (
   <SettingsProvider>
     <RealTimeProvider>
-      <React.Suspense
-        fallback={
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-            <CircularProgress />
-          </Box>
-        }
-      >
-        <TeamWorkspacePage />
-      </React.Suspense>
+      <ErrorBoundary componentName="team-workspace-route">
+        <React.Suspense
+          fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+              <CircularProgress />
+            </Box>
+          }
+        >
+          <TeamWorkspacePage />
+        </React.Suspense>
+      </ErrorBoundary>
     </RealTimeProvider>
   </SettingsProvider>
 );
@@ -524,13 +526,15 @@ const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) =
   // ALDRI den generiske UniversalDashboard (photographer/vendor-chrome).
   if ((authUser?.role as string | undefined) === 'editing_vendor' && authUser?.id) {
     return (
-      <React.Suspense fallback={null}>
-        <div style={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', padding: '24px 16px' }}>
-          <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-            <EditingVendorWorkspaceShell userId={authUser.id} />
+      <ErrorBoundary componentName="editing-vendor-workspace">
+        <React.Suspense fallback={null}>
+          <div style={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', padding: '24px 16px' }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+              <EditingVendorWorkspaceShell userId={authUser.id} />
+            </div>
           </div>
-        </div>
-      </React.Suspense>
+        </React.Suspense>
+      </ErrorBoundary>
     );
   }
 

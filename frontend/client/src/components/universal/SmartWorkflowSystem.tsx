@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Alert,
   Box,
@@ -478,6 +479,7 @@ export default function SmartWorkflowSystem({
         </CardContent>
       </Card>
 
+      <ErrorBoundary componentName="smart-workflow-quote-generator">
       <Suspense fallback={<Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>}>
         <QuoteGeneratorModal
           open={showQuoteGenerator}
@@ -580,6 +582,7 @@ export default function SmartWorkflowSystem({
           </DialogContent>
         </Dialog>
       </Suspense>
+      </ErrorBoundary>
     </Box>
   );
 }

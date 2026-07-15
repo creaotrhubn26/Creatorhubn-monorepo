@@ -720,10 +720,13 @@ export function CastingPlannerPanel({
   // mode and avoids spinning up production data fetches we don't need.
   const __activeProfessionMode = getActiveProfessionModeForDance();
   if (isDanceModeCheck(__activeProfessionMode)) {
+    // Lokal ErrorBoundary (./ErrorBoundary) tar children/fallback, ikke componentName. CH-ARCH-003.
     return (
+      <ErrorBoundary>
       <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster dans-modus…</Box>}>
         <DanceWorkspace />
       </Suspense>
+      </ErrorBoundary>
     );
   }
 

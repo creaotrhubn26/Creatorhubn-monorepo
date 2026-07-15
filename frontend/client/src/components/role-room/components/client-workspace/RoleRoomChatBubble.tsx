@@ -5,6 +5,7 @@
  * panel som rendrer ClientConversationView. Mountes på shell-nivå.
  */
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Badge, Box, Fab, IconButton, Paper, Stack, Typography, CircularProgress } from '@mui/material';
 import {
   ChatBubbleOutlineRounded as ChatIcon,
@@ -86,9 +87,11 @@ export default function RoleRoomChatBubble({
             </IconButton>
           </Stack>
           <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 1.5 }}>
+            <ErrorBoundary componentName="role-room-chat-conversation">
             <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>}>
               <ClientConversationView projectId={projectId} canUseInternal={canUseInternal} />
             </Suspense>
+            </ErrorBoundary>
           </Box>
         </Paper>
       ) : null}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { createRoot } from 'react-dom/client';
 import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
@@ -263,9 +264,11 @@ function CastingStandaloneAppContent() {
       () => import('@/pages/leadgrid-research-consent')
     );
     return (
+      <ErrorBoundary componentName="casting-main-leadgrid-consent">
       <React.Suspense fallback={null}>
         <LeadgridResearchConsent />
       </React.Suspense>
+      </ErrorBoundary>
     );
   }
   if (leadgridPath === '/leadgrid/pricing' || leadgridPath === '/leadgrid/pricing/'
@@ -404,9 +407,11 @@ function CastingStandaloneAppContent() {
     const appRoute = THEROLEROOM_APP_ROUTES.find((r) => r.test.test(publicPath));
     if (appRoute) {
       return (
+        <ErrorBoundary componentName="casting-main-app-route">
         <React.Suspense fallback={null}>
           <Route path={appRoute.path} component={appRoute.component} />
         </React.Suspense>
+        </ErrorBoundary>
       );
     }
   }

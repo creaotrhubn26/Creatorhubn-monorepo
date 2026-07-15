@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys, type EvendiBooking, type EvendiAnalyticsSummary } from '@/lib/evendi-api';
@@ -9972,6 +9973,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           
           {/* Enhanced Video Showcase for Videographers */}
           {profession === 'videographer' && filter === 'video' && filteredItems.filter(item => item.type === 'video').length > 0 && (
+            <ErrorBoundary componentName="showcase-video-enhanced">
             <React.Suspense fallback={<CircularProgress />}>
               <VideoShowcaseEnhanced
                 item={filteredItems.filter(item => item.type === 'video')[0] as any}
@@ -9982,6 +9984,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 }}
               />
             </React.Suspense>
+            </ErrorBoundary>
           )}
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -13553,6 +13556,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       {/* FASE 2: Client Authentication Dialog , *, /}
       {showAuthDialog && (
+        <ErrorBoundary componentName="showcase-client-auth-dialog">
         <React.Suspense fallback={<div>Laster autentisering...</div>}>
           <ClientAuthDialog
             open={showAuthDialog}
@@ -13565,10 +13569,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             maxAttempts={authSessionData?.maxLoginAttempts || 3}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* CreatorHub Video Suite Dialog */}
       {showAdvancedVideoSuite && profession === 'videographer' && (
+        <ErrorBoundary componentName="showcase-video-suite">
         <React.Suspense fallback={<div>Laster CreatorHub Video Suite...</div>}>
           <VideographerVideoSuite
             selectedVideoFiles={selectedVideoItems.map((item) => ({
@@ -13581,10 +13587,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             onClose={() => setShowAdvancedVideoSuite(false)}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* CreatorHub Photo Suite Dialog */}
       {showAdvancedPhotoSuite && profession === 'photographer' && (
+        <ErrorBoundary componentName="showcase-photo-suite">
         <React.Suspense fallback={<div>Laster CreatorHub Photo Suite...</div>}>
           <PhotographerPhotoSuite
             selectedPhotoFiles={selectedPhotoItems.map((item) => ({
@@ -13597,6 +13605,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             selectedProject={selectedProject}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* Google Photos Integration Dialog */}
@@ -14853,6 +14862,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       <audio ref={audioPlayerRef} style={{ display: 'none' }} />
 
       {/* Client Auth Dialog */}
+      <ErrorBoundary componentName="showcase-client-auth-dialog-2">
       <React.Suspense fallback={<CircularProgress />}>
         {showAuthDialog && (
           <ClientAuthDialog
@@ -14866,6 +14876,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           />
         )}
       </React.Suspense>
+      </ErrorBoundary>
 
       {/* Push Notification Settings */}
       {showPushSettings && (

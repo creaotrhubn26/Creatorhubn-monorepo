@@ -13,6 +13,7 @@
  */
 
 import { danceFlowColors } from './danceFlowTheme';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import React, { Suspense } from 'react';
 import { Box } from '@mui/material';
 import { Canvas } from '@react-three/fiber';
@@ -175,6 +176,9 @@ export function StageMap3D({
         overflow: 'hidden',
       }}
     >
+      {/* ErrorBoundary på DOM-nivå rundt <Canvas> — en DOM-fallback inne i
+          R3F-treet (rundt Suspense) ville krasje reconcileren. CH-ARCH-003. */}
+      <ErrorBoundary componentName="dance-stage-map-3d">
       <Canvas
         shadows
         camera={{ position: [8, 9, 12], fov: 35 }}
@@ -225,6 +229,7 @@ export function StageMap3D({
           target={[0, 0.5, 0]}
         />
       </Canvas>
+      </ErrorBoundary>
     </Box>
   );
 }

@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useLocation as useWouterLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../hooks/usePushNotifications';
@@ -368,6 +369,17 @@ function LazyPanelFallback() {
         Loading panel...
       </Typography>
     </Box>
+  );
+}
+
+// CH-ARCH-003: co-lokaliserer en ErrorBoundary over hver lazy panel/dialog-grense
+// slik at en krasj (React #426 el. feilet chunk-lasting) i ett panel ikke blanker
+// hele Story Arc Studio. Erstatter de tidligere bare <Suspense>-innpakningene.
+function BoundedSuspense({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary componentName="story-arc-lazy-panel">
+      <Suspense fallback={<LazyPanelFallback />}>{children}</Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -15342,7 +15354,7 @@ export default function StoryArcStudio({
         </Dialog>
 
         {/* Export Dialog - Browser ffmpeg */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <ExportDialog
             open={showExportDialog}
             onClose={closeExportDialog}
@@ -15350,10 +15362,10 @@ export default function StoryArcStudio({
             tracks={tracks}
             storyArc={storyArc ? storyArc : undefined}
           />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* DaVinci Resolve Export Dialog - Professional finishing */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <DaVinciResolveExportDialog
             open={showResolveExportDialog}
             onClose={closeResolveExportDialog}
@@ -15363,25 +15375,25 @@ export default function StoryArcStudio({
             culture={resolveExportSettings.culture}
             projectType={resolveExportSettings.projectType}
           />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* AI Story Generator Dialog - AUTO-CREATE TIMELINE! */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <AIStoryGeneratorDialog {...aiStoryGeneratorDialogProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* ================================================ */}
         {/* ALL PROFESSIONAL FEATURE PANELS */}
         {/* ================================================ */}
         
         {/* Transition Library - 485 transitions! */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <TransitionLibrary {...transitionLibraryProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* Speed Ramp Panel */}
         {speedRampPanelProps.isVisible && (
-          <Suspense fallback={<LazyPanelFallback />}>
+          <BoundedSuspense>
             <SpeedRampPanel
               clipId={speedRampPanelProps.clipId}
               clipDuration={speedRampPanelProps.clipDuration}
@@ -15389,7 +15401,7 @@ export default function StoryArcStudio({
               onKeyframesChange={speedRampPanelProps.onKeyframesChange}
               onPreview={speedRampPanelProps.onPreview}
             />
-          </Suspense>
+          </BoundedSuspense>
         )}
         
         {/* ================================================ */}
@@ -15397,35 +15409,35 @@ export default function StoryArcStudio({
         {/* ================================================ */}
         
         {/* Text Overlay Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <TextOverlayPanel {...textOverlayPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* GPU Filters Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <GPUFiltersPanel {...gpuFiltersPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* Color Grading Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <ColorGradingPanel {...colorGradingPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
 
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <LUTLibrary
             open={showLUTLibraryDialog}
             onClose={closeLUTLibraryDialog}
             onSelectLUT={handleSelectLUT}
           />
-        </Suspense>
+        </BoundedSuspense>
 
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <HLSImportDialog
             open={showHLSImportDialog}
             onClose={closeHLSImportDialog}
             onImport={handleImportStream}
           />
-        </Suspense>
+        </BoundedSuspense>
 
         <StoryArcSceneDetectionDialog
           open={showSceneDetectionDialog}
@@ -15436,13 +15448,13 @@ export default function StoryArcStudio({
         />
 
         {/* Auto-Captions Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <AutoCaptionsPanel {...autoCaptionsPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* Beat Sync Panel */}
         {beatSyncPanelProps.isVisible && (
-          <Suspense fallback={<LazyPanelFallback />}>
+          <BoundedSuspense>
             <BeatSyncPanel
               open={beatSyncPanelProps.open}
               onClose={beatSyncPanelProps.onClose}
@@ -15450,28 +15462,28 @@ export default function StoryArcStudio({
               clips={beatSyncPanelProps.clips}
               onClipsSnapped={beatSyncPanelProps.onClipsSnapped}
             />
-          </Suspense>
+          </BoundedSuspense>
         )}
         
         {/* Background Removal Panel */}
         {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && selectedClips.size > 0 && (
-          <Suspense fallback={<LazyPanelFallback />}>
+          <BoundedSuspense>
             <BackgroundRemovalPanel
               open={showGPUFiltersPanel && appliedFilters.has('background-removal')}
               onClose={backgroundRemovalPanelProps.onClose}
               clipId={backgroundRemovalPanelProps.clipId}
               onProcessed={backgroundRemovalPanelProps.onProcessed}
             />
-          </Suspense>
+          </BoundedSuspense>
         )}
         
         {/* Motion Tracking Panel */}
         {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && selectedClips.size > 0 && (
           <>
-            <Suspense fallback={<LazyPanelFallback />}>
+            <BoundedSuspense>
               <ObjectSegmentationPanel {...objectSegmentationPanelProps} />
               <MotionTrackingPanel {...motionTrackingPanelProps} />
-            </Suspense>
+            </BoundedSuspense>
           </>
         )}
       </Box>

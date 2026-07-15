@@ -4,6 +4,7 @@
  * godkjenne, avvise og kommentere, men IKKE redigere produsentens utkast.
  */
 import { lazy, Suspense } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, CircularProgress, Stack, Typography } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleRoomViewportMode } from '../../hooks/useRoleRoomViewportMode';
@@ -27,6 +28,7 @@ export default function ClientApprovalView({ projectId }: { projectId: string })
           endringer, eller avvise — produsenten ser kommentarene dine umiddelbart.
         </Typography>
       </Box>
+      <ErrorBoundary componentName="client-approval-view">
       <Suspense
         fallback={
           <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
@@ -45,6 +47,7 @@ export default function ClientApprovalView({ projectId }: { projectId: string })
           canComment
         />
       </Suspense>
+      </ErrorBoundary>
     </Stack>
   );
 }

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useId, useMemo, useEffect, memo, useRef } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Box,
   Typography,
@@ -2772,6 +2773,7 @@ function CandidateManagementPanelInner({
 
                   {proDetailTab === 'videos' && projectId && (
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <ErrorBoundary componentName="candidate-video-review">
                       <React.Suspense fallback={<Box sx={{ p: 3, textAlign: 'center' }}><Typography sx={{ color: roleTextMuted }}>Laster video-review…</Typography></Box>}>
                         {(() => {
                           const LazyCandidateVideoReview = React.lazy(() =>
@@ -2786,6 +2788,7 @@ function CandidateManagementPanelInner({
                           );
                         })()}
                       </React.Suspense>
+                      </ErrorBoundary>
                     </Box>
                   )}
 

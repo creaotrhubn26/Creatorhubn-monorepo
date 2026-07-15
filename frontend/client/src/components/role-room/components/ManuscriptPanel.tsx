@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 
 // DEV-only debug-logging — autosave-meldinger og data-snapshot går
 // IKKE til prod-konsol (støy + privacy: klient-script lekker ikke).
@@ -3398,6 +3399,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                           scene={selectedScene}
                           onSceneUpdate={handleSceneUpdateFromStoryboard}
                           renderScriptEditor={({ content, onChange }) => (
+                            <ErrorBoundary componentName="manuscript-script-editor-split">
                             <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
                               <LazyScreenplayEditorWithNavigator
                                 editorKey={`${selectedManuscript.id}-production-split`}
@@ -3434,6 +3436,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                 showLineNumbers={false}
                               />
                             </React.Suspense>
+                            </ErrorBoundary>
                           )}
                           renderStoryboard={({ scene, onUpdate, activeFrameIndex, onFrameSelect }) => (
                             <StoryboardIntegrationView
@@ -4760,6 +4763,7 @@ Anna går raskt gjennom regnet.
               {isMobile ? `Parser (${contentStats.sceneHeadings})` : `Parser til Scener (${contentStats.sceneHeadings})`}
             </Button>
           )}
+          <ErrorBoundary componentName="manuscript-pdf-export">
           <React.Suspense fallback={<CircularProgress size={isMobile ? 16 : 20} />}>
             <LazyScreenplayPDFExport
               content={manuscript.content}
@@ -4767,6 +4771,7 @@ Anna går raskt gjennom regnet.
               author={manuscript.author}
             />
           </React.Suspense>
+          </ErrorBoundary>
           <Button
             variant="text"
             size={responsive.buttonSize}
@@ -4778,6 +4783,7 @@ Anna går raskt gjennom regnet.
         </Stack>
       </Stack>
       
+      <ErrorBoundary componentName="manuscript-screenplay-editor" key={manuscript.id}>
       <React.Suspense fallback={
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
           <CircularProgress size={is4K ? 48 : isDesktop ? 40 : 32} />
@@ -4819,6 +4825,7 @@ Anna går raskt gjennom regnet.
             onSceneSelect={handleSceneSelect}
           />
       </React.Suspense>
+      </ErrorBoundary>
 
       <Dialog
         open={Boolean(selectedRoleMention?.role)}
