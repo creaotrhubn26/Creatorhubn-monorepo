@@ -13,6 +13,8 @@ export interface RoleRoomMemberProfile {
   bio: string | null;
   professions: string[];
   companyName: string | null;
+  organizationNumber: string | null;
+  businessAddress: string | null;
   locationCity: string | null;
   locationCountry: string | null;
   website: string | null;

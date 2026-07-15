@@ -21,15 +21,18 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Avatar, Box, Button, Chip, Dialog, DialogContent, IconButton,
+  Autocomplete, Avatar, Box, Button, Chip, Dialog, DialogContent, IconButton,
   LinearProgress, MenuItem, Select, Stack, TextField, Typography,
-  CircularProgress, FormControl, InputLabel,
+  CircularProgress, FormControl, InputLabel, InputAdornment,
 } from '@mui/material';
 import {
-  ArrowBack, ArrowForward, Check, Close, CloudUpload, Person,
+  ArrowBack, ArrowForward, Check, Close, CloudUpload, Person, Business,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type { RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig } from '../services/roleRoomMemberProfileService';
+import {
+  searchBrregCompanies, toBrregSelection, type BrregCompany,
+} from '../utils/brregLookup';
 
 export interface RoleRoomOnboardingDialogProps {
   open: boolean;
@@ -46,6 +49,8 @@ interface FormState {
   displayName: string;
   professions: string[];
   companyName: string;
+  organizationNumber: string;
+  businessAddress: string;
   bio: string;
   locationCity: string;
   locationCountry: string;
@@ -60,9 +65,9 @@ interface FormState {
 const DEFAULT_CONFIG: OnboardingConfig = {
   welcomeMessage: 'Velkommen til The Role Room. La oss bygge profilen din slik at andre medlemmer kan finne deg og du kan vise hva du gjør.',
   professionsOptions: [
-    'Fotograf', 'Videograf', 'Editor', 'Colorist', 'Sound Designer',
-    'Producer', 'Director', 'DOP', 'Skuespiller', 'Modell',
-    'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
+    'Prosjektleder', 'Produsent', 'Regissør', 'Fotograf', 'Videograf', 'Editor',
+    'Colorist', 'Sound Designer', 'Producer', 'Director', 'DOP', 'Skuespiller',
+    'Modell', 'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
     'Makeup-artist', 'Stylist', 'Annet',
   ],
   skillsOptions: [
@@ -97,6 +102,8 @@ const EMPTY_FORM: FormState = {
   displayName: '',
   professions: [],
   companyName: '',
+  organizationNumber: '',
+  businessAddress: '',
   bio: '',
   locationCity: '',
   locationCountry: 'Norge',
@@ -113,6 +120,8 @@ function profileToForm(profile: RoleRoomMemberProfile): FormState {
     displayName: profile.displayName ?? '',
     professions: profile.professions ?? [],
     companyName: profile.companyName ?? '',
+    organizationNumber: profile.organizationNumber ?? '',
+    businessAddress: profile.businessAddress ?? '',
     bio: profile.bio ?? '',
     locationCity: profile.locationCity ?? '',
     locationCountry: profile.locationCountry ?? 'Norge',
@@ -137,6 +146,29 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
   const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<OnboardingConfig>(DEFAULT_CONFIG);
+  // Brønnøysund firma-søk (samme mønster som hovedflyten)
+  const [brregQuery, setBrregQuery] = useState('');
+  const [brregOptions, setBrregOptions] = useState<BrregCompany[]>([]);
+  const [brregLoading, setBrregLoading] = useState(false);
+
+  // Debounced Brreg-søk når brukeren skriver firmanavn/org.nr
+  useEffect(() => {
+    const term = brregQuery.trim();
+    if (term.length < 2) {
+      setBrregOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setBrregLoading(true);
+    const timer = setTimeout(() => {
+      void searchBrregCompanies(term).then((results) => {
+        if (cancelled) return;
+        setBrregOptions(results);
+        setBrregLoading(false);
+      });
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [brregQuery]);
 
   // Aktive steg (filtrert av admin-config)
   const activeSteps: StepKey[] = STEP_KEYS.filter(
@@ -255,8 +287,11 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
   const isLastStep = step === totalSteps - 1;
   const canProgressFromCurrent = (): boolean => {
     if (currentKey === 'welcome') {
-      return config.requiredFields?.displayName === false
+      const nameOk = config.requiredFields?.displayName === false
         || form.displayName.trim().length >= 2;
+      // Firma-info er påkrevd (fylles fra Brønnøysund-oppslag).
+      const companyOk = form.companyName.trim().length >= 2;
+      return nameOk && companyOk;
     }
     if (currentKey === 'image') {
       return config.requiredFields?.profileImage !== true || !!profileImage;
@@ -316,9 +351,77 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                           value={form.displayName}
                           onChange={(e) => updateField('displayName', e.target.value)}
                           helperText="Slik vises navnet ditt for andre" />
-              <TextField label="Bedrift / studio (valgfri)"
-                          value={form.companyName}
-                          onChange={(e) => updateField('companyName', e.target.value)} />
+              <Autocomplete
+                freeSolo
+                options={brregOptions}
+                loading={brregLoading}
+                filterOptions={(x) => x}
+                getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.navn)}
+                inputValue={form.companyName}
+                onInputChange={(_e, value, reason) => {
+                  if (reason === 'input') {
+                    updateField('companyName', value);
+                    setBrregQuery(value);
+                    // Manuell redigering nullstiller tidligere valgt org.nr/adresse.
+                    if (form.organizationNumber || form.businessAddress) {
+                      setForm((prev) => ({ ...prev, organizationNumber: '', businessAddress: '' }));
+                    }
+                  }
+                }}
+                onChange={(_e, value) => {
+                  if (value && typeof value !== 'string') {
+                    const sel = toBrregSelection(value);
+                    setForm((prev) => ({
+                      ...prev,
+                      companyName: sel.companyName,
+                      organizationNumber: sel.organizationNumber,
+                      businessAddress: sel.businessAddress,
+                    }));
+                    setBrregQuery('');
+                    setBrregOptions([]);
+                  }
+                }}
+                renderOption={(props, opt) => (
+                  <li {...props} key={opt.organisasjonsnummer}>
+                    <Box>
+                      <Typography variant="body2">{opt.navn}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Org.nr {opt.organisasjonsnummer}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Bedrift / studio"
+                    required
+                    helperText="Søk på firmanavn eller org.nr — henter fra Brønnøysundregistrene"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Business fontSize="small" />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <>
+                          {brregLoading ? <CircularProgress size={16} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+              {form.organizationNumber && (
+                <TextField label="Organisasjonsnummer" value={form.organizationNumber}
+                            size="small" InputProps={{ readOnly: true }} />
+              )}
+              {form.businessAddress && (
+                <TextField label="Forretningsadresse" value={form.businessAddress}
+                            size="small" InputProps={{ readOnly: true }} />
+              )}
             </Stack>
           )}
 
@@ -353,7 +456,8 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {!loading && currentKey === 'profession' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Hvilken rolle har du? Velg én eller flere.
+                Hva er hovedrollen din i prosjektet? Velg gjerne en
+                tilleggsprofesjon også hvis du har det (f.eks. Regissør).
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                 {config.professionsOptions.map((p) => (

@@ -42,9 +42,9 @@ interface RoleRoomProfileDeps {
 const DEFAULT_ONBOARDING_CONFIG = {
   welcomeMessage: 'Velkommen til The Role Room. La oss bygge profilen din slik at andre medlemmer kan finne deg og du kan vise hva du gjør.',
   professionsOptions: [
-    'Fotograf', 'Videograf', 'Editor', 'Colorist', 'Sound Designer',
-    'Producer', 'Director', 'DOP', 'Skuespiller', 'Modell',
-    'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
+    'Prosjektleder', 'Produsent', 'Regissør', 'Fotograf', 'Videograf', 'Editor',
+    'Colorist', 'Sound Designer', 'Producer', 'Director', 'DOP', 'Skuespiller',
+    'Modell', 'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
     'Makeup-artist', 'Stylist', 'Annet',
   ],
   skillsOptions: [
@@ -110,6 +110,37 @@ async function ensureConfigTable(pool: Pool): Promise<boolean> {
        ON CONFLICT (id) DO NOTHING`,
       [JSON.stringify(DEFAULT_ONBOARDING_CONFIG)],
     );
+    // En allerede seedet rad oppdateres ALDRI av INSERT ... DO NOTHING, så nye
+    // standard-profesjoner (Prosjektleder/Produsent/Regissør) ville aldri dukket
+    // opp i produksjon. Union inn manglende standardroller FORAN, uten å røre
+    // admin-tilpassede felter eller admin-tillegg.
+    try {
+      const { rows } = await pool.query(
+        `SELECT config FROM role_room_onboarding_config WHERE id = 1`,
+      );
+      const cfg = rows[0]?.config as { professionsOptions?: unknown } | undefined;
+      if (cfg && Array.isArray(cfg.professionsOptions)) {
+        const existing = cfg.professionsOptions as string[];
+        const missing = DEFAULT_ONBOARDING_CONFIG.professionsOptions.filter(
+          (p) => !existing.includes(p),
+        );
+        if (missing.length > 0) {
+          (cfg as { professionsOptions: string[] }).professionsOptions = [
+            ...missing,
+            ...existing,
+          ];
+          await pool.query(
+            `UPDATE role_room_onboarding_config SET config = $1::jsonb WHERE id = 1`,
+            [JSON.stringify(cfg)],
+          );
+        }
+      }
+    } catch (mergeErr) {
+      console.warn(
+        "[rr-profile] profession-options merge skipped:",
+        (mergeErr as any)?.message || mergeErr,
+      );
+    }
     configTableEnsured = true;
     return true;
   } catch (err) {
@@ -128,6 +159,8 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         bio TEXT,
         professions JSONB NOT NULL DEFAULT '[]'::jsonb,
         company_name VARCHAR(255),
+        organization_number VARCHAR(16),
+        business_address VARCHAR(500),
         location_city VARCHAR(120),
         location_country VARCHAR(120),
         website VARCHAR(500),
@@ -150,6 +183,16 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         ON role_room_member_profiles(onboarding_completed)
         WHERE onboarding_completed = FALSE;
     `);
+    // Firma-felter (org.nr + forretningsadresse) fylles fra Brønnøysund-oppslag
+    // i onboarding — samme mønster som hovedflyten. ALTER for eksisterende tabell.
+    for (const col of [
+      `organization_number VARCHAR(16)`,
+      `business_address VARCHAR(500)`,
+    ]) {
+      await pool
+        .query(`ALTER TABLE role_room_member_profiles ADD COLUMN IF NOT EXISTS ${col}`)
+        .catch(() => undefined);
+    }
     tableEnsured = true;
     return true;
   } catch (err) {
@@ -197,6 +240,8 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     bio: row.bio,
     professions: row.professions,
     companyName: row.company_name,
+    organizationNumber: row.organization_number,
+    businessAddress: row.business_address,
     locationCity: row.location_city,
     locationCountry: row.location_country,
     website: row.website,
@@ -215,7 +260,8 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 const ALLOWED_PROFILE_FIELDS: Array<keyof typeof FIELD_TO_COLUMN> = [
-  "displayName", "bio", "professions", "companyName", "locationCity",
+  "displayName", "bio", "professions", "companyName", "organizationNumber",
+  "businessAddress", "locationCity",
   "locationCountry", "website", "socialLinks", "showreelUrl", "skills",
   "languages", "visibility",
 ];
@@ -225,6 +271,8 @@ const FIELD_TO_COLUMN = {
   bio: "bio",
   professions: "professions",
   companyName: "company_name",
+  organizationNumber: "organization_number",
+  businessAddress: "business_address",
   locationCity: "location_city",
   locationCountry: "location_country",
   website: "website",
@@ -238,6 +286,48 @@ const FIELD_TO_COLUMN = {
 const JSONB_FIELDS = new Set<keyof typeof FIELD_TO_COLUMN>([
   "professions", "socialLinks", "skills", "languages",
 ]);
+
+/**
+ * Forhåndsutfyll-data hentet fra en Role Room tester-invitasjon (matchet på
+ * brukerens e-post). Bæres KUN innenfor role_room-flaten — aldri fra `users`-
+ * konto-provisjonering. Best-effort: alle feil svelges → tom seed.
+ */
+async function seedFromTesterInvite(
+  pool: Pool,
+  userId: string,
+): Promise<{ displayName: string | null; professions: string[]; companyName: string | null }> {
+  const empty = { displayName: null, professions: [] as string[], companyName: null };
+  try {
+    const userRes = await pool.query(
+      `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    const email = userRes.rows[0]?.email;
+    if (!email || typeof email !== "string") return empty;
+
+    const inviteRes = await pool.query(
+      `SELECT name, member_profession, member_company
+         FROM role_room_tester_invites
+        WHERE LOWER(email) = LOWER($1)
+        ORDER BY (status = 'accepted') DESC, created_at DESC
+        LIMIT 1`,
+      [email],
+    );
+    const inv = inviteRes.rows[0];
+    if (!inv) return empty;
+    return {
+      displayName: typeof inv.name === "string" && inv.name.trim() ? inv.name.trim() : null,
+      professions: inv.member_profession ? [String(inv.member_profession)] : [],
+      companyName:
+        typeof inv.member_company === "string" && inv.member_company.trim()
+          ? inv.member_company.trim()
+          : null,
+    };
+  } catch (err) {
+    console.warn("[rr-profile] seedFromTesterInvite skipped:", (err as any)?.message || err);
+    return empty;
+  }
+}
 
 // ─── Public registration ─────────────────────────────────────────────────
 
@@ -261,11 +351,22 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         [userId],
       );
       if (rows.length === 0) {
-        // Auto-create empty profile på første call
+        // Auto-create profil på første call. Forhåndsutfyll navn/profesjon/firma
+        // fra en tester-invitasjon (matchet på e-post) — samme «bekreft, ikke
+        // fyll på nytt»-mønster som hovedflyten. Brukeren bekrefter + fyller ut
+        // resten av firma-infoen (org.nr/adresse via Brønnøysund) i onboarding.
+        const seed = await seedFromTesterInvite(pool, userId);
         await pool.query(
-          `INSERT INTO role_room_member_profiles (user_id) VALUES ($1)
+          `INSERT INTO role_room_member_profiles
+             (user_id, display_name, professions, company_name)
+           VALUES ($1, $2, $3::jsonb, $4)
            ON CONFLICT (user_id) DO NOTHING`,
-          [userId],
+          [
+            userId,
+            seed.displayName,
+            JSON.stringify(seed.professions),
+            seed.companyName,
+          ],
         );
         const fresh = await pool.query(
           `SELECT * FROM role_room_member_profiles WHERE user_id = $1 LIMIT 1`,
