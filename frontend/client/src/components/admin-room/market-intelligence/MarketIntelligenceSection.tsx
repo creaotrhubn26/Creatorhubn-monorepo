@@ -14,6 +14,7 @@
  */
 
 import React, { Suspense, useState } from "react";
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
 
 /** Én panel-krasj skal aldri hvitskjerme hele AdminRoom (lærdom 14.07:
@@ -114,6 +115,7 @@ function MarketIntelligenceSectionInner({
       ) : (
         <Stack spacing={3}>
           {leadgridEnabled && (
+            <ErrorBoundary componentName="market-intelligence-leadgrid">
             <Suspense fallback={null}>
               {/* Innkommende Leadgrid-leads — øverst, høyest urgency */}
               <LeadInboxSection />
@@ -124,6 +126,7 @@ function MarketIntelligenceSectionInner({
               {/* Schedulerte rapporter — ukentlig PDF på e-post */}
               <ScheduledReportsPanel />
             </Suspense>
+            </ErrorBoundary>
           )}
 
           <MorningBriefCard />

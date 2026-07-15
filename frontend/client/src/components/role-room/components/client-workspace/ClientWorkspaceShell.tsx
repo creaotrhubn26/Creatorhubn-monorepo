@@ -336,9 +336,11 @@ export default function ClientWorkspaceShell({
 
       {/* Flytende chat-boble — tilgjengelig på alle faner unntatt selve Meldinger-fanen. */}
       {activeTab !== 'messages' ? (
+        <ErrorBoundary componentName="client-workspace-chat-bubble">
         <Suspense fallback={null}>
           <RoleRoomChatBubble projectId={projectId} canUseInternal={isPreviewMode} onOpenFullTab={() => setActiveTab('messages')} />
         </Suspense>
+        </ErrorBoundary>
       ) : null}
     </Box>
   );

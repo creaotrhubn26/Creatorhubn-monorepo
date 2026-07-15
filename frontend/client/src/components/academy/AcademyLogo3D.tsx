@@ -4,6 +4,7 @@
  */
 
 import React, { Suspense, useEffect, useMemo, useRef } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -486,21 +487,25 @@ export default function AcademyLogo3D({ width = 600, height = 400 }: AcademyLogo
         boxShadow: '0 30px 90px rgba(15, 23, 42, 0.8), 0 0 110px rgba(245, 158, 11, 0.25)',
       }}
     >
-      <Canvas
-        camera={{ position: [0, 1.4, 12], fov: 33, near: 0.1, far: 120 }}
-        gl={{
-          antialias: true,
-          alpha: false,
-          powerPreference: 'high-performance',
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.2,
-        }}
-        dpr={[1, 1.75]}
-      >
-        <Suspense fallback={null}>
-          <AcademyScene />
-        </Suspense>
-      </Canvas>
+      {/* ErrorBoundary på DOM-nivå rundt <Canvas> (ikke rundt Suspense inne i
+          R3F-treet — en DOM-fallback der ville krasje reconcileren). CH-ARCH-003. */}
+      <ErrorBoundary componentName="academy-logo-3d">
+        <Canvas
+          camera={{ position: [0, 1.4, 12], fov: 33, near: 0.1, far: 120 }}
+          gl={{
+            antialias: true,
+            alpha: false,
+            powerPreference: 'high-performance',
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: 1.2,
+          }}
+          dpr={[1, 1.75]}
+        >
+          <Suspense fallback={null}>
+            <AcademyScene />
+          </Suspense>
+        </Canvas>
+      </ErrorBoundary>
     </div>
   );
 }

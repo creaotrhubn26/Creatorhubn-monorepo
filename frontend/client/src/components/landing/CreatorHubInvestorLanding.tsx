@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { Suspense, useEffect, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 import { useElementEdits } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
@@ -2300,6 +2301,7 @@ export default function CreatorHubInvestorLanding({
         </Stack>
       </Drawer>
 
+      <ErrorBoundary componentName="investor-landing-modals">
       <Suspense
         fallback={
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
@@ -2328,6 +2330,7 @@ export default function CreatorHubInvestorLanding({
           source="prototype_tester_pricing"
         />
       </Suspense>
+      </ErrorBoundary>
 
       <GdprNotice position="bottom" />
     </Box>

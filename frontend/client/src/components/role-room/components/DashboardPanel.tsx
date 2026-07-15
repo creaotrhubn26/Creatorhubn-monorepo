@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useId, useMemo, useState, useEffect, memo, lazy, Suspense } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Box,
   Typography,
@@ -1070,6 +1071,7 @@ function DashboardPanelInner({
       {/* Kanban Board */}
       <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(132,204,22,0.2)', mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
         <CardContent sx={{ p: 0 }}>
+          <ErrorBoundary componentName="dashboard-kanban-panel">
           <Suspense fallback={<CircularProgress sx={{ color: '#84cc16', display: 'block', mx: 'auto', my: 4 }} />}>
             <KanbanPanelLazy
               project={project}
@@ -1081,6 +1083,7 @@ function DashboardPanelInner({
               onNavigateToTab={onNavigateToTab}
             />
           </Suspense>
+          </ErrorBoundary>
         </CardContent>
       </Card>
     </Box>

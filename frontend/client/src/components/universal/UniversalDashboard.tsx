@@ -5152,6 +5152,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </IconButton>
                   </DialogTitle>
                   <DialogContent dividers sx={{ p: 0 }}>
+                    <ErrorBoundary componentName="dashboard-quick-modal">
                     <Suspense fallback={
                       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
                         <CircularProgress />
@@ -5163,16 +5164,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       {quickModal === 'equipment' && <PhotographerEquipment />}
                       {quickModal === 'settings' && <PhotographerSettings />}
                     </Suspense>
+                    </ErrorBoundary>
                   </DialogContent>
                 </Dialog>
 
                 {/* Dedikert print-orders-modal (samme mønster som klient-modal): maxWidth="lg", dark-bg */}
+                <ErrorBoundary componentName="dashboard-print-orders-modal">
                 <Suspense fallback={null}>
                   <PrintOrdersModal
                     open={quickModal === 'print-orders'}
                     onClose={() => setQuickModal(null)}
                   />
                 </Suspense>
+                </ErrorBoundary>
               </Box>
             )}
 

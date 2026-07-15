@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Alert, Box, Container } from '@mui/material';
 import { motion, useReducedMotion } from 'framer-motion';
 import BlockRenderer from '../cms/BlockRenderer';
@@ -216,12 +217,16 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
         <Container maxWidth="lg" sx={{ pt: { xs: 4, md: 6 }, pb: 10 }}>
           <LandingHero introShowing={showIntro} />
           <LandingCTA onStartClick={handleStartClick} onGuestEnter={onGuestEnter} />
+          <ErrorBoundary componentName="casting-landing-features">
           <Suspense fallback={<Box sx={{ minHeight: 400 }} />}>
             <LandingFeatures introShowing={showIntro} />
           </Suspense>
+          </ErrorBoundary>
+          <ErrorBoundary componentName="casting-landing-device-showcase">
           <Suspense fallback={<Box sx={{ minHeight: 400 }} />}>
             <LandingDeviceShowcase />
           </Suspense>
+          </ErrorBoundary>
           <LandingFAQSection />
           <LandingFooter onAdminLoginClick={handleAdminLoginClick} />
         </Container>

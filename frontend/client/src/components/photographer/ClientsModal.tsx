@@ -4,6 +4,7 @@
 // for direkte-link-bruk (delte URL-er, breadcrumbs, mobil-deep-links).
 
 import React, { Suspense } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Dialog,
   DialogTitle,
@@ -55,6 +56,7 @@ export default function ClientsModal({ open, onClose }: ClientsModalProps) {
         </IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
+        <ErrorBoundary componentName="photographer-clients-modal">
         <Suspense
           fallback={(
             <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
@@ -64,6 +66,7 @@ export default function ClientsModal({ open, onClose }: ClientsModalProps) {
         >
           {open && <PhotographerClientsList />}
         </Suspense>
+        </ErrorBoundary>
       </DialogContent>
     </Dialog>
   );

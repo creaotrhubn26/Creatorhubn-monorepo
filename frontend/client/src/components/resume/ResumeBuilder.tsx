@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -6800,6 +6801,7 @@ export default function ResumeBuilder() {
       {/* Lazy-loaded Pro-dialoger. Suspense unngår blank skjerm mens
           chunk-en lastes. Hvert dialog rendrer kun når åpnet → ingen
           ekstra last for brukere som aldri åpner dem. */}
+      <ErrorBoundary componentName="resume-builder-pro-dialogs">
       <React.Suspense fallback={null}>
         {showCoverLetterLibrary && (
           <NextRoleCoverLetterLibrary
@@ -6987,6 +6989,7 @@ export default function ResumeBuilder() {
           />
         )}
       </React.Suspense>
+      </ErrorBoundary>
 
       {/* CV-import Dialog (PDF/DOCX → Claude) */}
       <Dialog

@@ -118,6 +118,7 @@ import { CommunityDMProvider } from './CommunityDMProvider';
 
 // Import new components and hooks
 import { OnboardingErrorBoundary } from './OnboardingErrorBoundary';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { OnboardingStep } from './OnboardingStep';
 import { CommunityHighlightsSidebar } from './CommunityHighlightsSidebar';
 import { CommunityLandingFallback } from './CommunityLandingFallback';
@@ -487,6 +488,7 @@ function CommunityLandingPageComponent({
           >
             {tt('Avslutt forhåndsvisning', 'Exit Preview')}
           </Button>
+          <ErrorBoundary componentName="community-preview-page">
           <Suspense fallback={
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
               <CircularProgress sx={{ color: '#f59e0b' }} />
@@ -494,6 +496,7 @@ function CommunityLandingPageComponent({
           }>
             <CommunityPage userId={userId || 'preview-user'} profession={profession || 'photographer'} />
           </Suspense>
+          </ErrorBoundary>
         </Box>
       </CommunityDMProvider>
     );

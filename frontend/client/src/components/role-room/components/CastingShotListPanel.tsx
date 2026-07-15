@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ReactNode, type ReactElement } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useShotListRealTime } from '../hooks/useShotListRealTime';
 import { useToast } from './ToastStack';
 import {
@@ -4017,9 +4018,11 @@ export function CastingShotListPanel({
       ) : viewMode === '2d-planner' ? (
         /* 2D Shot Planner View */
         <Box sx={{ height: 'calc(100vh - 300px)', bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 2, overflow: 'hidden' }}>
+          <ErrorBoundary componentName="shot-planner-panel" key={projectId}>
           <Suspense fallback={<MUICircularProgress sx={{ mt: 4 }} />}>
             <ShotPlannerPanel key={projectId} projectId={projectId} />
           </Suspense>
+          </ErrorBoundary>
         </Box>
       ) : (
         /* Card View - Responsive (flex + gap) */

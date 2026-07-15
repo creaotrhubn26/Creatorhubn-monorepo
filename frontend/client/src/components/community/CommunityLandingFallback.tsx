@@ -6,6 +6,7 @@
  */
 
 import React, { useState, Suspense } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Box,
   Container,
@@ -699,6 +700,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
 
       {/* Login Modal */}
       {showLoginModal && (
+        <ErrorBoundary componentName="community-fallback-login-modal">
         <Suspense fallback={
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
             <CircularProgress sx={{ color: '#f59e0b' }} />
@@ -710,6 +712,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
             context="community"
           />
         </Suspense>
+        </ErrorBoundary>
       )}
 
       {/* GDPR Notice */}
