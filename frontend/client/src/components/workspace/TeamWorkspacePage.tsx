@@ -14,6 +14,7 @@ import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import WorkspaceShell from './WorkspaceShell';
 import WorkspaceDesignOverlay from './WorkspaceDesignOverlay';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { createPortal } from 'react-dom';
 import OversiktTab from './tabs/OversiktTab';
 import ProsjektplanTab from './tabs/ProsjektplanTab';
@@ -316,7 +317,24 @@ const TeamWorkspacePage: React.FC = () => {
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >
-      {content}
+      {/* Modul-boundary per fane (keyed på tab → nullstilles ved bytte). Fane-
+          komponentene er statisk importert (ikke lazy), så #426 er ikke risikoen
+          her — men uten boundary bobler en render-krasj i ÉN fane opp til den
+          globale app-router-boundaryen og gjør HELE /workspace-ruten til feil-
+          skjerm. Her isoleres krasjen til dét panelet; bytt fane for å komme videre. */}
+      <ErrorBoundary
+        key={tab}
+        componentName={`workspace-tab:${tab}`}
+        context={{ tab, projectId }}
+        fallback={
+          <Stack alignItems="center" justifyContent="center" spacing={1} sx={{ height: '60vh', px: 3, textAlign: 'center' }}>
+            <Typography sx={{ fontSize: 16, fontWeight: 700, color: ws.text }}>Denne fanen kunne ikke vises</Typography>
+            <Typography sx={{ fontSize: 13, color: ws.textDim }}>Prøv en annen fane, eller last siden på nytt.</Typography>
+          </Stack>
+        }
+      >
+        {content}
+      </ErrorBoundary>
       {/* CreatorHub Design (N3): admin-gated. Portalert til <body> så position:fixed er ekte
           viewport-relativ (MUI-shell-wrappere lager containing-block-ancestorer som ellers
           dytter FAB-en utenfor skjermen og forskyver overlay-pins). FAB åpner live-overlayet. */}
