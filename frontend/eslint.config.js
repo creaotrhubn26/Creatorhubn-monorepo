@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import requireErrorBoundaryOnSuspense from './eslint-rules/require-error-boundary-on-suspense.js';
 
 export default tseslint.config(
   {
@@ -117,6 +118,23 @@ export default tseslint.config(
             'Hook kalt inline i JSX. Ekstrahere til const FØR JSX-returnen. Hvis dette ER bare en utility-funksjon som starter med "use", whitelist via eslint-disable-next-line.',
         },
       ],
+    },
+  },
+  // CH-ARCH-003 — maskin-håndhever «alle lazy/suspenderende flater trenger en
+  // error boundary» (utrullingen i PR #1470–#1474). Flagger <Suspense> uten en
+  // ErrorBoundary-forelder i samme fil. 'warn' (ikke required CI-gate) — gir
+  // IDE-/`npm run lint`-signal + fanger nye brudd, uten å blokkere tsc-gaten.
+  {
+    files: ['client/src/**/*.{ts,tsx}'],
+    plugins: {
+      'ch-arch': {
+        rules: {
+          'require-error-boundary-on-suspense': requireErrorBoundaryOnSuspense,
+        },
+      },
+    },
+    rules: {
+      'ch-arch/require-error-boundary-on-suspense': 'warn',
     },
   }
 );
