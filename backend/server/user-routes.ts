@@ -96,16 +96,29 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   // gyldig verdi — dette lukker hullet der Google-brukere fikk profession=NULL
   // og stille ble behandlet som fotograf.
   const shapeUserProfile = (r: any) => {
-    const required = [!!r.profile_image_url, !!r.profession, !!(r.first_name || r.last_name), !!r.company_name];
+    // Systemeiere (admin/super_admin) har tilgang til ALLE profesjoner og har
+    // ingen enkelt-profesjon. profession er derfor ikke et påkrevd profilfelt for
+    // dem — ellers ville «Fullfør profilen din» aldri kunne hakes av (profesjon
+    // er låst på /profil og kan ikke settes self-serve). Profilen deres regnes
+    // komplett når identitetsfeltene finnes.
+    const isSystemOwner = ["admin", "super_admin"].includes(
+      String(r.role || "").trim().toLowerCase(),
+    );
+    const required = [
+      !!r.profile_image_url,
+      isSystemOwner || !!r.profession,
+      !!(r.first_name || r.last_name),
+      !!r.company_name,
+    ];
     const done = required.filter(Boolean).length;
     return {
       id: r.id, firstName: r.first_name, lastName: r.last_name, email: r.email,
       phone: r.phone_number, profession: r.profession, avatarUrl: r.profile_image_url,
-      companyName: r.company_name,
+      companyName: r.company_name, isSystemOwner,
       completedCount: done, totalRequired: required.length, complete: done === required.length,
     };
   };
-  const PROFILE_COLS = "id, first_name, last_name, email, phone_number, profession, profile_image_url, company_name";
+  const PROFILE_COLS = "id, first_name, last_name, email, phone_number, profession, profile_image_url, company_name, role";
 
   // Validates that a string is a real UUID (prevents raw session tokens from
   // reaching the DB when activeSessions is empty after a Render restart).
