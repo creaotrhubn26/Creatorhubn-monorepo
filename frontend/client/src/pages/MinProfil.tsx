@@ -98,15 +98,21 @@ const MinProfil: React.FC = () => {
   }, []);
 
   const profession = profile?.profession || user?.profession;
+  // Systemeiere (admin/super_admin) har tilgang til ALLE profesjoner — ikke én
+  // enkelt. Da er «profesjon» oppfylt uten en lagret verdi (jf. shapeUserProfile
+  // i user-routes.ts), og labelen reflekterer eierskap i stedet for «Ikke satt».
+  const isSystemOwner = !!profile?.isSystemOwner;
   const category = workspaceCategoryFor(profession);
-  const professionLabel = profession ? getProfessionDisplayName(profession) : 'Ikke satt';
+  const professionLabel = profession
+    ? getProfessionDisplayName(profession)
+    : (isSystemOwner ? 'Systemeier · alle profesjoner' : 'Ikke satt');
   const professionColor = getProfessionIconColor(profession) || ACCENT;
   const services = useMemo(() => navForCategory(category), [category]);
 
   const completeness = (() => {
     const req: Array<[string, boolean]> = [
       ['Profilbilde', !!avatar], ['Navn', !!(form.firstName || form.lastName).trim()],
-      ['Profesjon', !!profession], ['Firmanavn', !!form.businessName.trim()],
+      ['Profesjon', !!profession || isSystemOwner], ['Firmanavn', !!form.businessName.trim()],
     ];
     return { items: req, done: req.filter(([, ok]) => ok).length, total: req.length };
   })();
