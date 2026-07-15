@@ -1,0 +1,155 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "3DC907C5-6A10-4BCD-8AD0-69A698ABF048.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "a11y-rapport_0_73BF1CFD-B1A5-4E31-B2F6-C69B5F31B445.txt",
+        "timestamp" : 1783197215.965
+      }
+    ],
+    "testIdentifier" : "QASweepTests/testAccessibilityAudit()",
+    "testIdentifierURL" : "test://com.apple.xcode/LeadMapApp/LeadMapAppUITests/QASweepTests/testAccessibilityAudit"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "B24FC2AA-83DF-40D7-85ED-22900713CC7B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "leads-detalj-sheet_0_F472C52A-800A-4626-B31D-881D89F72557.png",
+        "timestamp" : 1783197232.326
+      }
+    ],
+    "testIdentifier" : "QASweepTests/testLeadsDetaljSheet()",
+    "testIdentifierURL" : "test://com.apple.xcode/LeadMapApp/LeadMapAppUITests/QASweepTests/testLeadsDetaljSheet"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "18AEA843-BBD9-4201-B519-6B02144DD747.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-7-salgsledelse_0_3263965B-B88A-4058-8EBE-F60EF39C094D.png",
+        "timestamp" : 1783197374.064
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "6629CF58-DB7E-4784-BC1C-E9FE68CBFEE2.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-6-leadbook-statistikk-modal_0_752D636F-3AEE-4BB5-99B0-2ED7083492CA.png",
+        "timestamp" : 1783197359.06
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "8B0F36CC-7338-4CBC-A27F-D9FEED564C3B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-6-leadbook_0_C38A21C9-10DC-4DA9-B505-C326D654F998.png",
+        "timestamp" : 1783197355.028
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "350BC829-0FC9-4CB2-B87A-895558D3B1E5.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-5-team-statistikk-modal_0_1989E97C-A418-41C0-BB23-488EE02B1A9E.png",
+        "timestamp" : 1783197340.04
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "5C9B9D0B-1B4F-4069-89BF-A6B05CC51A99.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-5-team_0_F035A14F-8C43-4BB5-A024-A1119D557F8F.png",
+        "timestamp" : 1783197336.102
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "AAD92F34-922F-43EC-92FB-EEE97269C7B9.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-4-mer_0_4DABD891-69D5-4126-B67B-5B9644927B6A.png",
+        "timestamp" : 1783197319.71
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "831097FD-9E3B-48D0-B567-2666FFAC0D7E.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-3-moter-statistikk-modal_0_4E44DBAD-7677-4E07-8385-60B7BDBEC3BA.png",
+        "timestamp" : 1783197304.668
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "91D9B051-8DDB-4CC8-A815-EB620B24A718.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-3-moter_0_47D72DBD-091B-4995-A45E-01C64CDCE98E.png",
+        "timestamp" : 1783197300.787
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "FA2A14F7-1549-4B3C-AF9A-1B0FD5EA2D11.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-2-leads-statistikk-modal_0_7B804D5C-6EED-46E8-B621-D1D9F8BA0E0D.png",
+        "timestamp" : 1783197285.786
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "9652375E-A20A-429F-964D-E3EBF17EFD34.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-2-leads_0_BC7D6545-1E74-4779-B424-50203A50F2D2.png",
+        "timestamp" : 1783197281.902
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "F38CC696-9F46-493A-840F-357CF8990EF6.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-1-kart_0_5BB0C870-57A5-48CB-B545-AD8661DA018F.png",
+        "timestamp" : 1783197265.498
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "B7CED496-99FF-45DC-A8C1-1677C141BAA9.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-0-oversikt-statistikk-modal_0_97B29C4E-32A5-4BD2-B307-74B7097388B5.png",
+        "timestamp" : 1783197250.408
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "923F04B6-3224-4B50-BC99-2C507BA257C4",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "28A059EB-72E4-434E-844E-C79A61FD3F04.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-0-oversikt_0_82749479-B8A9-4D6A-A05D-0D0723EE6421.png",
+        "timestamp" : 1783197246.466
+      }
+    ],
+    "testIdentifier" : "QASweepTests/testSweepAlleFaner()",
+    "testIdentifierURL" : "test://com.apple.xcode/LeadMapApp/LeadMapAppUITests/QASweepTests/testSweepAlleFaner"
+  }
+]

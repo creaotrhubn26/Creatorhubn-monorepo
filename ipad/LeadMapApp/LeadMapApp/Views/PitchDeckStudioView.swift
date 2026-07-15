@@ -145,7 +145,7 @@ struct PitchDeckStudioView: View {
     private var emptyState: some View {
         VStack(spacing: 24) {
             Image(systemName: "doc.append")
-                .font(.system(size: 64))
+                .font(.appScaled(size: 64))
                 .foregroundStyle(.secondary)
             Text("Ingen pitch deck ennå")
                 .font(.title2.weight(.semibold))
@@ -777,7 +777,7 @@ private struct PitchExportShareSheet: View {
         NavigationStack {
             VStack(spacing: 24) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 56))
+                    .font(.appScaled(size: 56))
                     .foregroundStyle(.green)
                 Text("PDF klar")
                     .font(.title2.weight(.semibold))

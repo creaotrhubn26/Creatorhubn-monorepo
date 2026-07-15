@@ -85,6 +85,7 @@ import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRo
 import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
 import ChannelScorecardCard from './ChannelScorecardCard';
+import ClientUpdateComposer from './ClientUpdateComposer';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 import { LoadingSkeleton, ErrorAlert } from './ui';
 
@@ -497,6 +498,7 @@ export default function MarketingPlanPanel({
                   Del
                 </Button>
               </Tooltip>
+              {plan?.id ? <ClientUpdateComposer planId={plan.id} /> : null}
               <Tooltip title="Eksporter post-roadmap som .ics for Google Calendar / Outlook">
                 <Button
                   size="small"

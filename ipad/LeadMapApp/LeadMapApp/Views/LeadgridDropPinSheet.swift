@@ -104,7 +104,7 @@ struct LeadgridDropPinSheet: View {
         Section {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.appScaled(size: 32))
                     .foregroundStyle(Self.brandPurple)
                 VStack(alignment: .leading, spacing: 4) {
                     if let addr = resolvedAddress {
@@ -246,37 +246,19 @@ struct LeadgridDropPinSheet: View {
     }
 
     private func reverseGeocode() async {
-        let geocoder = CLGeocoder()
-        let loc = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        do {
-            let placemarks = try await geocoder.reverseGeocodeLocation(loc)
-            if let p = placemarks.first {
-                self.resolvedAddress = formatPlacemark(p)
-                self.geocodeFailed = false
-            } else {
-                self.geocodeFailed = true
-            }
-        } catch {
+        // Kartverkets offisielle punktsøk i Norge (via KartverketService),
+        // Apple CLGeocoder-fallback utenfor/ved bom — samme kilde som
+        // MePin-HUD-en så pin og lead får identisk adresse.
+        if let hit = await KartverketService.shared.reverseGeocode(
+            lat: coordinate.latitude,
+            lon: coordinate.longitude,
+            using: appState.api
+        ) {
+            self.resolvedAddress = hit.formatted
+            self.geocodeFailed = false
+        } else {
             self.geocodeFailed = true
         }
-    }
-
-    private func formatPlacemark(_ p: CLPlacemark) -> String {
-        var parts: [String] = []
-        if let thoroughfare = p.thoroughfare {
-            if let subThoroughfare = p.subThoroughfare {
-                parts.append("\(thoroughfare) \(subThoroughfare)")
-            } else {
-                parts.append(thoroughfare)
-            }
-        }
-        if let postal = p.postalCode, let city = p.locality {
-            parts.append("\(postal) \(city)")
-        } else if let city = p.locality {
-            parts.append(city)
-        }
-        if parts.isEmpty, let country = p.country { parts.append(country) }
-        return parts.joined(separator: ", ")
     }
 
     private func createLead() async {

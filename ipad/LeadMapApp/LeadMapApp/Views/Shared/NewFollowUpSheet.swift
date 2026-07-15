@@ -98,7 +98,7 @@ struct NewFollowUpSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                     }
                     .accessibilityLabel("Avbryt")
                 }
@@ -135,23 +135,23 @@ struct NewFollowUpSheet: View {
                 ZStack {
                     Circle().fill(NFS.purple.opacity(0.20))
                     Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(NFS.purpleLight)
                 }
                 .frame(width: 36, height: 36)
                 .overlay(Circle().strokeBorder(NFS.purple.opacity(0.35), lineWidth: 1))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("NÅR")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .black, design: .rounded))
                         .tracking(1.0)
                         .foregroundStyle(NFS.textDim)
                     Text(formatDateTime(followUpDate))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.appScaled(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(NFS.textTertiary)
             }
             .padding(14)
@@ -164,12 +164,12 @@ struct NewFollowUpSheet: View {
     private var leadPickerCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("HVILKEN LEAD?")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(NFS.textDim)
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(NFS.textTertiary)
                 TextField("Søk navn, firma, by …", text: $search)
                     .textFieldStyle(.plain)
@@ -188,7 +188,7 @@ struct NewFollowUpSheet: View {
                     }
                     if filteredLeads.count > 6 {
                         Text("+ \(filteredLeads.count - 6) flere — søk for å innsnevre")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.appScaled(size: 10, weight: .medium))
                             .foregroundStyle(NFS.textDim)
                             .padding(.top, 4)
                     }
@@ -206,19 +206,19 @@ struct NewFollowUpSheet: View {
                 ZStack {
                     Circle().fill(NFS.blue.opacity(0.20))
                     Text(String(lead.name.prefix(2)).uppercased())
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 34, height: 34)
                 .overlay(Circle().strokeBorder(NFS.blue.opacity(0.35), lineWidth: 1))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(lead.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if let city = lead.city, !city.isEmpty {
                         Text(city)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(NFS.textDim)
                             .lineLimit(1)
                     }
@@ -226,7 +226,7 @@ struct NewFollowUpSheet: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.appScaled(size: 18, weight: .bold))
                         .foregroundStyle(NFS.green)
                 }
             }
@@ -248,10 +248,10 @@ struct NewFollowUpSheet: View {
     private var emptyLeadRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "person.slash")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(NFS.textTertiary)
             Text("Ingen leads matcher søket")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(NFS.textDim)
         }
         .padding(14)
@@ -263,7 +263,7 @@ struct NewFollowUpSheet: View {
     private var actionCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("HVA SKAL SKJE?")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(NFS.textDim)
             TextField("F.eks. Ring for å avtale demo …",

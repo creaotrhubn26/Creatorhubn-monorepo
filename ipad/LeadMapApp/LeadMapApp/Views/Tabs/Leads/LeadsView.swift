@@ -27,8 +27,8 @@ private enum LdBrand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 // MARK: - Models
@@ -119,7 +119,7 @@ extension LeadRow {
         return palette[abs(hash) % palette.count]
     }
 
-    private static func initials(for name: String) -> String {
+    static func initials(for name: String) -> String {
         let parts = name.split(separator: " ").prefix(2)
         let letters = parts.compactMap { $0.first }.map(String.init).joined()
         return letters.isEmpty ? "–" : letters.uppercased()
@@ -233,7 +233,11 @@ struct LeadFileItem: Identifiable, Hashable {
 }
 
 enum LeadsData {
-    static let activities: [LeadActivityItem] = [
+    /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
+    static var activities: [LeadActivityItem] {
+        DemoModeManager.isActiveNonisolated ? _activities : []
+    }
+    private static let _activities: [LeadActivityItem] = [
         LeadActivityItem(icon: "phone.fill",        title: "Telefonsamtale m/ Jonas",   subtitle: "Lars K. · 15 min · Snakket om tilbudet", timestamp: "i dag 10:14",  color: Color(red: 0.20, green: 0.85, blue: 0.60)),
         LeadActivityItem(icon: "envelope.open.fill", title: "E-post åpnet",              subtitle: "Tilbud — del 2 sett 3 ganger",            timestamp: "i går 14:22",  color: Color(red: 0.34, green: 0.60, blue: 0.98)),
         LeadActivityItem(icon: "doc.text.fill",      title: "Tilbud sendt",               subtitle: "v3 — 350 000 NOK · Lars K.",              timestamp: "20. mai 09:15", color: Color(red: 0.66, green: 0.32, blue: 0.99)),
@@ -241,7 +245,11 @@ enum LeadsData {
         LeadActivityItem(icon: "person.badge.plus",  title: "Lead opprettet",              subtitle: "Manuell · Brønnøysund-beriking auto",     timestamp: "18. apr.",      color: Color(red: 0.98, green: 0.75, blue: 0.14)),
     ]
 
-    static let notes: [LeadNoteItem] = [
+    /// Mock-notater — KUN i demo-modus.
+    static var notes: [LeadNoteItem] {
+        DemoModeManager.isActiveNonisolated ? _notes : []
+    }
+    private static let _notes: [LeadNoteItem] = [
         LeadNoteItem(
             author: "Lars Kristensen", initials: "LK",
             authorColor: Color(red: 0.75, green: 0.45, blue: 1.0),
@@ -262,7 +270,11 @@ enum LeadsData {
         ),
     ]
 
-    static let files: [LeadFileItem] = [
+    /// Mock-filer — KUN i demo-modus.
+    static var files: [LeadFileItem] {
+        DemoModeManager.isActiveNonisolated ? _files : []
+    }
+    private static let _files: [LeadFileItem] = [
         LeadFileItem(name: "Tilbud_NordicElektro_v3.pdf",     kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
         LeadFileItem(name: "Befaringsbilder_StorgataAS.zip",  kind: .image,       size: "8.4 MB", uploadedAt: "20. mai"),
         LeadFileItem(name: "Kontorbygg_arealskisse.pdf",      kind: .pdf,         size: "640 KB", uploadedAt: "19. mai"),
@@ -308,11 +320,12 @@ struct LeadsView: View {
     @State private var logActivityOpen: Bool = false
     @State private var addLeadOpen: Bool = false
     @State private var kpiDrillDown: KPIKind?
+    @State private var showStatsModal = false
     @State private var followUpOpen: Bool = false
-    // Pakke 10.1 — rike header-popovere (samme som Oversikt)
-    @State private var analyseOpen: Bool = false
-    @State private var nextActionsOpen: Bool = false
-    @State private var notificationsOpen: Bool = false
+    // iPhone (compact): detalj-sidebaren presenteres som sheet i stedet
+    // for side-stilt kolonne.
+    @State private var phoneDetailOpen: Bool = false
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
     @Environment(AppState.self) private var appState
     // Pakke 10.1: 4 sheets bor NÅ på LeadDetailSidebar (der menyene er).
     // Kun det ubrukte state-blokket er fjernet — LeadsView har ikke lenger
@@ -331,6 +344,7 @@ struct LeadsView: View {
     @State private var savedViewsOpen: Bool = false
     @State private var importOpen: Bool = false
     @State private var exportOpen: Bool = false
+    @State private var cardScannerOpen: Bool = false
 
     // Mac Catalyst: Cmd+K/Cmd+F fokuserer søkefelt via `.leadgridFocusSearch`
     // NotificationCenter-broadcast.
@@ -410,8 +424,20 @@ struct LeadsView: View {
                 LeadgridExportShareView(api: api)
             }
         }
+        .sheet(isPresented: $cardScannerOpen) {
+            // Visittkort → OCR → lead (backend fyrer lead.created →
+            // welcome/intro-workflow). Refresh lista når sheeten lukkes.
+            BusinessCardScannerView()
+                .onDisappear { Task { await appState.refreshLeads() } }
+        }
         .sheet(isPresented: $uploadOpen) {
             UploadFileSheet(lead: selectedLead)
+        }
+        // iPhone (compact): samme LeadDetailSidebar som iPad viser til
+        // høyre, presentert som sheet. Egen wrapper med lokal sheet-state
+        // slik at underliggende ark kan legges oppå dette sheetet.
+        .sheet(isPresented: $phoneDetailOpen) {
+            PhoneLeadDetailSheet(lead: selectedLead, tab: $detailTab)
         }
         // Pakke 10.1: shared lead-action-modaler eier av LeadDetailSidebar.
         // Mac Catalyst Cmd+K/Cmd+F fokuserer søkefeltet.
@@ -441,138 +467,50 @@ struct LeadsView: View {
                     } else {
                         Color.clear.frame(height: 16)
                     }
+                    // iPhone-QA: nederste innhold («+ Nytt lead»-pillen i
+                    // tom-tilstand / pagineringen) lå halvt gjemt bak
+                    // tab-baren — ekstra bunn-luft så alt kan scrolles helt
+                    // fram (samme mønster som Salgsledelse i OversiktView).
+                    // iPad har sidebar-layout uten dette problemet — urørt.
+                    if DeviceIdiom.isPhone {
+                        Color.clear.frame(height: 72)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
 
             // Detail sidebar høyre — tom-tilstand når ingen leads finnes.
-            if sourceLeads.isEmpty {
-                LeadDetailEmptyState(onAddLead: { addLeadOpen = true })
-                    .frame(width: 340)
-            } else {
-                LeadDetailSidebar(lead: selectedLead, tab: $detailTab,
-                                  onLogActivity: { logActivityOpen = true },
-                                  onOpenFollowUp: { followUpOpen = true },
-                                  onUploadFile: { uploadOpen = true })
-                    .frame(width: 340)
+            // iPhone (compact): 340pt side-stilt kolonne får ikke plass —
+            // detaljene vises i stedet som sheet når en rad velges.
+            if !DeviceIdiom.isPhone {
+                if sourceLeads.isEmpty {
+                    LeadDetailEmptyState(onAddLead: { addLeadOpen = true })
+                        .frame(width: 340)
+                } else {
+                    LeadDetailSidebar(lead: selectedLead, tab: $detailTab,
+                                      onLogActivity: { logActivityOpen = true },
+                                      onOpenFollowUp: { followUpOpen = true },
+                                      onUploadFile: { uploadOpen = true })
+                        .frame(width: 340)
+                }
             }
         }
     }
 
-    // MARK: Header — samme som Oversikt/Kart (dato/område/popovers/avatar)
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+
+    /// Demo-aware datakilde for header-badges/popovers (samme gating som
+    /// sourceLeads).
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
+    }
 
     private var header: some View {
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Leads")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Få full oversikt over alle dine leads og deres status.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(LdBrand.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar", text: isNarrow ? "Tir 14" : "Tir. 14. mai")
-                    if !isNarrow {
-                        topPicker(icon: "location.fill", text: "Alle områder")
-                    }
-                    topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
-                        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                            AnalysePopover(leads: appState.leads)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    profileAvatar(isNarrow: isNarrow)
-                }
-            }
-        }
-        .frame(height: 64)
-    }
-
-    private func topPicker(icon: String, text: String) -> some View {
-        Button {} label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(LdBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(LdBrand.textTertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(LdBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>? = nil) -> some View {
-        Button { isOpen?.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(LdBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(LdBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(LdBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(LdBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(LdBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfilAvatar: Bool = false
-    @State private var showEcosystemAvatar: Bool = false
-    @State private var showTeamAccessAvatar: Bool = false
-    @State private var showSuperAdminAvatar: Bool = false
-
-    private func profileAvatar(isNarrow: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: LdBrand.purpleLight,
-            background: LdBrand.card,
-            borderColor: LdBrand.stroke,
-            secondaryText: LdBrand.textSecondary,
-            tertiaryText: LdBrand.textTertiary,
-            isCompact: isNarrow,
-            showMinProfil: $showMinProfilAvatar,
-            showEcosystem: $showEcosystemAvatar,
-            showTeamAccess: $showTeamAccessAvatar,
-            showSuperAdmin: $showSuperAdminAvatar
-        )
+        LeadgridTabHeader(
+            subtitle: "Få full oversikt over alle dine leads og deres status.",
+            leads: headerLeads)
     }
 
     // toolbarButton-helper fjernet — knappene er flyttet til søk-raden.
@@ -580,6 +518,13 @@ struct LeadsView: View {
     // MARK: KPI-rad
 
     private var kpiRow: some View {
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
+    }
+
+    private var kpiCards: some View {
         // Demo PÅ → mock-tall m/ trend-piler. Demo AV → EKTE tellinger fra
         // appState.leads (trend skjules — vi har ikke historikk-serie her,
         // og en gjettet pil ville lyve om vekst). Tomt → "—".
@@ -592,12 +537,87 @@ struct LeadsView: View {
             return f.string(from: NSNumber(value: n)) ?? "\(n)"
         }
         func realValue(_ n: Int) -> String { real.isEmpty ? "—" : fmt(n) }
-        return HStack(spacing: 12) {
+        return Group {
             kpiCard(.totalLeads,     icon: "person.3.fill",      iconColor: LdBrand.purple,      title: "Totalt leads", value: isDemo ? "1 248" : realValue(real.count), trend: isDemo ? "+18 %" : nil)
             kpiCard(.newLeads,       icon: "sparkles",           iconColor: LdBrand.green,       title: "Nye leads",    value: isDemo ? "842"   : realValue(real.filter { $0.createdAt >= weekAgo }.count), trend: isDemo ? "+16 %" : nil)
             kpiCard(.contacted,      icon: "phone.fill",         iconColor: LdBrand.blue,        title: "Kontaktet",    value: isDemo ? "542"   : realValue(real.filter { $0.status != .unvisited }.count), trend: isDemo ? "+11 %" : nil)
             kpiCard(.meetingsBooked, icon: "calendar",           iconColor: LdBrand.purpleLight, title: "Møter avtalt", value: isDemo ? "236"   : realValue(real.filter { $0.status == .meetingBooked }.count), trend: isDemo ? "+12 %" : nil)
             kpiCard(.won,            icon: "trophy.fill",        iconColor: LdBrand.yellow,      title: "Vunnet",       value: isDemo ? "68"    : realValue(real.filter { $0.status == .won }.count), trend: isDemo ? "+24 %" : nil)
+        }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let real = appState.leads
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let leadsText = isDemo ? "1 248 leads" : "\(real.count) leads"
+        let newCount = isDemo ? 842 : real.filter { $0.createdAt >= weekAgo }.count
+        return Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(LdBrand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(LdBrand.purple)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    HStack(spacing: 6) {
+                        Text(leadsText)
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(LdBrand.textSecondary)
+                        if newCount > 0 {
+                            Text("+\(newCount) nye")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(LdBrand.green)
+                        }
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(LdBrand.textSecondary)
+            }
+            .padding(14)
+            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(LdBrand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.appScaled(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                kpiCards
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(LdBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Kortene er drill-down-knapper — sheet må ligge PÅ modalen for at
+        // KPIDetailSheet skal kunne presenteres oppå statistikk-modalen.
+        .sheet(item: $kpiDrillDown) { kind in
+            KPIDetailSheet(kind: kind)
         }
     }
 
@@ -608,32 +628,32 @@ struct LeadsView: View {
                 ZStack {
                     Circle().fill(iconColor.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(iconColor)
                 }
                 .frame(width: 28, height: 28)
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LdBrand.textSecondary)
                 Spacer()
             }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(value)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 24, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 if let trend {
                     HStack(spacing: 2) {
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                         Text(trend)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                     }
                     .foregroundStyle(LdBrand.green)
                 }
             }
             Text(trend == nil ? "Ingen data" : "vs. forrige periode")
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(LdBrand.textTertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -647,100 +667,146 @@ struct LeadsView: View {
     // MARK: Søk + filtre
 
     private var searchAndFilters: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(LdBrand.textSecondary)
-                TextField("", text: $search,
-                          prompt: Text("Søk etter navn, selskap, bransje…")
-                    .foregroundColor(LdBrand.textTertiary))
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .font(.system(size: 12))
-                    .focused($searchFieldFocused)
+        // iPhone: søkefelt + 5 chips + 4 knapper får ikke plass i én rad
+        // på compact width — søkefeltet får egen linje og resten legges
+        // i en horisontal scroller. iPad/Mac beholder én rad som før.
+        Group {
+            if DeviceIdiom.isPhone {
+                VStack(spacing: 8) {
+                    searchField
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            filterChipsRow
+                            actionButtonsRow
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    searchField
+                        .frame(maxWidth: .infinity)
+                    filterChipsRow
+                    actionButtonsRow
+                }
             }
-            .padding(.horizontal, 10).padding(.vertical, 9)
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.appScaled(size: 12))
+                .foregroundStyle(LdBrand.textSecondary)
+            TextField("", text: $search,
+                      prompt: Text("Søk etter navn, selskap, bransje…")
+                .foregroundColor(LdBrand.textTertiary))
+                .textFieldStyle(.plain)
+                .foregroundStyle(.white)
+                .font(.appScaled(size: 12))
+                .focused($searchFieldFocused)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var filterChipsRow: some View {
+        filterChip(label: areaFilter == .all ? "Alle områder" : areaFilter.rawValue,
+                   active: areaFilter != .all, badge: nil, isOpen: $areaOpen)
+            .popover(isPresented: $areaOpen, arrowEdge: .top) {
+                LeadsAreaPopover(selected: $areaFilter)
+                    .presentationCompactAdaptation(.popover)
+            }
+        filterChip(label: statusFilter.isEmpty ? "Alle status" : "\(statusFilter.count) status",
+                   active: !statusFilter.isEmpty, badge: statusFilter.count, isOpen: $statusOpen)
+            .popover(isPresented: $statusOpen, arrowEdge: .top) {
+                LeadsStatusPopover(selected: $statusFilter)
+                    .presentationCompactAdaptation(.popover)
+            }
+        filterChip(label: scorePreset == .all ? "Alle lead score" : scorePreset.rawValue,
+                   active: scorePreset != .all, badge: nil, isOpen: $scoreOpen)
+            .popover(isPresented: $scoreOpen, arrowEdge: .top) {
+                LeadsScorePopover(range: $scoreRange, preset: $scorePreset)
+                    .presentationCompactAdaptation(.popover)
+            }
+        filterChip(label: "Flere filtre", active: false, badge: nil,
+                   isOpen: $moreFiltersOpen, icon: "slider.horizontal.3")
+        filterChip(label: savedView.isEmpty ? "Lagret visning" : savedView,
+                   active: !savedView.isEmpty, badge: nil, isOpen: $savedViewsOpen)
+            .popover(isPresented: $savedViewsOpen, arrowEdge: .top) {
+                SavedViewsPopover(selected: $savedView)
+                    .presentationCompactAdaptation(.popover)
+            }
+    }
+
+    @ViewBuilder
+    private var actionButtonsRow: some View {
+        Button { importOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.down.circle")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                Text("Importer")
+                    .font(.appScaled(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 8)
             .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            .frame(maxWidth: .infinity)
-
-            filterChip(label: areaFilter == .all ? "Alle områder" : areaFilter.rawValue,
-                       active: areaFilter != .all, badge: nil, isOpen: $areaOpen)
-                .popover(isPresented: $areaOpen, arrowEdge: .top) {
-                    LeadsAreaPopover(selected: $areaFilter)
-                        .presentationCompactAdaptation(.popover)
-                }
-            filterChip(label: statusFilter.isEmpty ? "Alle status" : "\(statusFilter.count) status",
-                       active: !statusFilter.isEmpty, badge: statusFilter.count, isOpen: $statusOpen)
-                .popover(isPresented: $statusOpen, arrowEdge: .top) {
-                    LeadsStatusPopover(selected: $statusFilter)
-                        .presentationCompactAdaptation(.popover)
-                }
-            filterChip(label: scorePreset == .all ? "Alle lead score" : scorePreset.rawValue,
-                       active: scorePreset != .all, badge: nil, isOpen: $scoreOpen)
-                .popover(isPresented: $scoreOpen, arrowEdge: .top) {
-                    LeadsScorePopover(range: $scoreRange, preset: $scorePreset)
-                        .presentationCompactAdaptation(.popover)
-                }
-            filterChip(label: "Flere filtre", active: false, badge: nil,
-                       isOpen: $moreFiltersOpen, icon: "slider.horizontal.3")
-            filterChip(label: savedView.isEmpty ? "Lagret visning" : savedView,
-                       active: !savedView.isEmpty, badge: nil, isOpen: $savedViewsOpen)
-                .popover(isPresented: $savedViewsOpen, arrowEdge: .top) {
-                    SavedViewsPopover(selected: $savedView)
-                        .presentationCompactAdaptation(.popover)
-                }
-
-            Button { importOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Importer")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            // Eksport (uke 2): samme flyt som i Hub-en (CSV → share sheet),
-            // nå tilgjengelig der man faktisk jobber med lead-lista.
-            Button { exportOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Eksporter")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            Button { addLeadOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("Nytt lead")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(
-                    LinearGradient(
-                        colors: [LdBrand.purple, LdBrand.purpleLight],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 9)
-                )
-            }
-            .buttonStyle(.plain)
         }
+        .buttonStyle(.plain)
+
+        // Visittkort-skanner (2026-07-04): OCR → lead → lead.created-
+        // workflow. Kjeden fantes (BusinessCardScannerView) men var
+        // frakoblet etter tab-porten.
+        Button { cardScannerOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "person.text.rectangle")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                Text("Skann kort")
+                    .font(.appScaled(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+
+        // Eksport (uke 2): samme flyt som i Hub-en (CSV → share sheet),
+        // nå tilgjengelig der man faktisk jobber med lead-lista.
+        Button { exportOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                Text("Eksporter")
+                    .font(.appScaled(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+
+        Button { addLeadOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.appScaled(size: 11, weight: .bold))
+                Text("Nytt lead")
+                    .font(.appScaled(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(
+                LinearGradient(
+                    colors: [LdBrand.purple, LdBrand.purpleLight],
+                    startPoint: .leading, endPoint: .trailing
+                ),
+                in: RoundedRectangle(cornerRadius: 9)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func filterChip(label: String, active: Bool, badge: Int?,
@@ -749,21 +815,21 @@ struct LeadsView: View {
             HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(active ? LdBrand.purpleLight : LdBrand.textSecondary)
                 }
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 if let b = badge, b > 0 {
                     Text("\(b)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(LdBrand.purple, in: Capsule())
                 }
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(LdBrand.textTertiary)
             }
             .padding(.horizontal, 10).padding(.vertical, 9)
@@ -793,7 +859,9 @@ struct LeadsView: View {
 
     private var leadsTable: some View {
         VStack(spacing: 0) {
-            tableHeader
+            // iPhone: kolonne-headeren hører til den brede tabell-layouten
+            // — kompakt-radene har ikke kolonner å overskrive.
+            if !DeviceIdiom.isPhone { tableHeader }
             if sourceLeads.isEmpty {
                 // Uke 2: skill «laster»/«feilet»/«ekte tom» via
                 // appState.leadsLoadState (samme mønster som prosjekt-kortet)
@@ -812,7 +880,12 @@ struct LeadsView: View {
                         lead: lead,
                         isSelected: selectedLeadID == lead.id,
                         isChecked: selectedRowIDs.contains(lead.id),
-                        onTap: { selectedLeadID = lead.id },
+                        onTap: {
+                            selectedLeadID = lead.id
+                            // iPhone: ingen side-stilt sidebar — åpne
+                            // detaljene som sheet.
+                            if DeviceIdiom.isPhone { phoneDetailOpen = true }
+                        },
                         onCheck: {
                             if selectedRowIDs.contains(lead.id) {
                                 selectedRowIDs.remove(lead.id)
@@ -865,13 +938,13 @@ struct LeadsView: View {
     private func errorLeadsState(message: String, retryable: Bool) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 34, weight: .regular))
+                .font(.appScaled(size: 34, weight: .regular))
                 .foregroundStyle(LdBrand.red.opacity(0.8))
             Text("Kunne ikke hente leads")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             Text(message)
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LdBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
@@ -881,7 +954,7 @@ struct LeadsView: View {
                     Task { await appState.refreshLeads() }
                 } label: {
                     Label("Prøv igjen", systemImage: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(LdBrand.purple, in: RoundedRectangle(cornerRadius: 9))
@@ -898,13 +971,13 @@ struct LeadsView: View {
     private var emptyLeadsState: some View {
         VStack(spacing: 12) {
             Image(systemName: "person.3.sequence.fill")
-                .font(.system(size: 34, weight: .regular))
+                .font(.appScaled(size: 34, weight: .regular))
                 .foregroundStyle(LdBrand.textTertiary)
             Text("Ingen leads enda")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Bruk «+ Nytt lead» eller skru på demo-modus i innstillinger for å se eksempeldata.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LdBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
@@ -912,7 +985,7 @@ struct LeadsView: View {
                 addLeadOpen = true
             } label: {
                 Text("+ Nytt lead")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 9)
                     .background(LdBrand.purple, in: Capsule())
@@ -947,7 +1020,7 @@ struct LeadsView: View {
 
     private func tableCol(_ s: String) -> some View {
         Text(s)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.appScaled(size: 10, weight: .semibold))
             .foregroundStyle(LdBrand.textSecondary)
             .textCase(.uppercase)
     }
@@ -989,7 +1062,7 @@ struct LeadsView: View {
     private var pagination: some View {
         HStack(spacing: 10) {
             Text(visibleRange)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(LdBrand.textSecondary)
             Spacer()
             HStack(spacing: 4) {
@@ -1000,7 +1073,7 @@ struct LeadsView: View {
                 ForEach(Array(visiblePageNumbers.enumerated()), id: \.offset) { (idx, n) in
                     if n == -1 {
                         Text("…")
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(LdBrand.textSecondary)
                             .frame(minWidth: 18)
                     } else {
@@ -1029,10 +1102,10 @@ struct LeadsView: View {
             } label: {
                 HStack(spacing: 5) {
                     Text("\(perPage) per side")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(LdBrand.textTertiary)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 7)
@@ -1045,7 +1118,7 @@ struct LeadsView: View {
     private func paginationButton(icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(enabled ? .white : LdBrand.textTertiary)
                 .frame(width: 28, height: 28)
                 .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 7))
@@ -1060,7 +1133,7 @@ struct LeadsView: View {
         let isCurrent = currentPage == n
         return Button { currentPage = n } label: {
             Text("\(n)")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(isCurrent ? .white : .white)
                 .frame(minWidth: 28, minHeight: 28)
                 .padding(.horizontal, 4)
@@ -1092,12 +1165,72 @@ struct LeadTableRow: View {
     let onCheck: () -> Void
 
     var body: some View {
+        // iPhone (compact width): kolonnene får ikke plass side-ved-side —
+        // render en enklere, stablet rad i stedet for full tabellrad.
+        if DeviceIdiom.isPhone {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    /// Kompakt rad for iPhone — logo + selskap/kontakt til venstre,
+    /// verdi + status stablet til høyre. Gjenbruker feltene fra full-raden.
+    private var compactBody: some View {
+        Button(action: onTap) {
+            // AXStack: på accessibility-størrelser stables verdi + status
+            // under navnet i stedet for å klemme det til «Coop…» (AX5-QA).
+            AXStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(lead.companyColor.opacity(0.20))
+                    Image(systemName: "building.2.fill")
+                        // Fast 36pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(lead.companyColor)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(lead.company)
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .axLineLimit(1, ax: 2)
+                    Text(lead.contactName.isEmpty ? lead.category : lead.contactName)
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(LdBrand.textSecondary)
+                        .axLineLimit(1, ax: 2)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("NOK \(formatThousands(lead.valueNok))")
+                        .font(.appScaled(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                    statusBadge(lead.status)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(
+                isSelected ? LdBrand.purple.opacity(0.12) : Color.clear
+            )
+            .overlay(
+                Rectangle().fill(LdBrand.stroke).frame(height: 1),
+                alignment: .bottom
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var fullBody: some View {
         Button(action: onTap) {
             HStack(spacing: 0) {
                 // Checkbox
                 Button(action: onCheck) {
                     Image(systemName: isChecked ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 15))
+                        .font(.appScaled(size: 15))
                         .foregroundStyle(isChecked ? LdBrand.purpleLight : LdBrand.stroke)
                         .frame(width: 36, height: 30)
                 }
@@ -1109,17 +1242,17 @@ struct LeadTableRow: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(lead.companyColor.opacity(0.20))
                         Image(systemName: "building.2.fill")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                             .foregroundStyle(lead.companyColor)
                     }
                     .frame(width: 36, height: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(lead.company)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Text(lead.category)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(LdBrand.textSecondary)
                             .lineLimit(1)
                     }
@@ -1129,11 +1262,11 @@ struct LeadTableRow: View {
                 // Kontaktperson
                 VStack(alignment: .leading, spacing: 2) {
                     Text(lead.contactName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(lead.contactRole)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LdBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -1150,7 +1283,7 @@ struct LeadTableRow: View {
                         .rotationEffect(.degrees(-90))
                         .frame(width: 38, height: 38)
                     Text("\(lead.leadScore)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                 }
@@ -1165,12 +1298,12 @@ struct LeadTableRow: View {
                     ZStack {
                         Circle().fill(lead.ownerColor.opacity(0.30))
                         Text(lead.ownerInitials)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(lead.ownerColor)
                     }
                     .frame(width: 24, height: 24)
                     Text(lead.ownerName)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                 }
@@ -1178,13 +1311,13 @@ struct LeadTableRow: View {
 
                 // Neste oppfølging
                 Text(lead.nextFollowUp ?? "–")
-                    .font(.system(size: 11, weight: lead.nextFollowUpOverdue ? .bold : .regular))
+                    .font(.appScaled(size: 11, weight: lead.nextFollowUpOverdue ? .bold : .regular))
                     .foregroundStyle(lead.nextFollowUpOverdue ? LdBrand.red : .white)
                     .frame(width: 130, alignment: .leading)
 
                 // Verdi
                 Text("NOK \(formatThousands(lead.valueNok))")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.appScaled(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .frame(width: 96, alignment: .trailing)
@@ -1223,11 +1356,16 @@ struct LeadTableRow: View {
                             Label("Endre status", systemImage: "tag.fill")
                         }
                         Menu {
-                            Button {} label: { Label("Kari Nordmann", systemImage: "person.crop.circle") }
-                            Button {} label: { Label("Mikkel Berg", systemImage: "person.crop.circle") }
-                            Button {} label: { Label("Anniken Sørli", systemImage: "person.crop.circle") }
+                            // Mock-navn KUN i demo — ellers ekte team fra
+                            // TeamLiveStore (tom liste → bare «Meg selv»).
+                            let sellerNames = DemoModeManager.isActiveNonisolated
+                                ? ["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"]
+                                : TeamLiveStore.shared.members.map(\.name)
+                            ForEach(sellerNames, id: \.self) { n in
+                                Button {} label: { Label(n, systemImage: "person.crop.circle") }
+                            }
                             Divider()
-                            Button {} label: { Label("Selv (Lars)", systemImage: "person.crop.circle.fill") }
+                            Button {} label: { Label("Meg selv", systemImage: "person.crop.circle.fill") }
                         } label: {
                             Label("Tilordne selger", systemImage: "person.2.fill")
                         }
@@ -1256,7 +1394,7 @@ struct LeadTableRow: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LdBrand.textSecondary)
                         .frame(width: 36, height: 30)
                         .contentShape(Rectangle())
@@ -1303,9 +1441,9 @@ struct LeadTableRow: View {
     private func statusBadge(_ st: LeadRow.LeadStatus) -> some View {
         HStack(spacing: 4) {
             Image(systemName: st.icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
             Text(st.label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
         }
         .foregroundStyle(st == .notContacted ? LdBrand.textSecondary : st.color)
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1338,13 +1476,13 @@ struct LeadDetailEmptyState: View {
         VStack(spacing: 14) {
             Spacer()
             Image(systemName: "person.crop.rectangle.stack")
-                .font(.system(size: 44, weight: .regular))
+                .font(.appScaled(size: 44, weight: .regular))
                 .foregroundStyle(LdBrand.textTertiary)
             Text("Ingen lead valgt")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Detaljer, kontaktinfo og pipeline-status vises her når du har valgt en lead.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LdBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
@@ -1352,7 +1490,7 @@ struct LeadDetailEmptyState: View {
                 onAddLead()
             } label: {
                 Text("+ Nytt lead")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 9)
                     .background(LdBrand.purple, in: Capsule())
@@ -1366,6 +1504,40 @@ struct LeadDetailEmptyState: View {
             Rectangle().fill(LdBrand.stroke).frame(width: 1),
             alignment: .leading
         )
+    }
+}
+
+// MARK: - PhoneLeadDetailSheet (iPhone)
+
+/// iPhone (compact): detalj-panelet vises som sheet i stedet for
+/// side-stilt 340pt-kolonne. Egen lokal state for Loggfør/Oppfølging/
+/// Last opp slik at de kan presenteres oppå dette sheetet uten å
+/// kollidere med LeadsView sine body-nivå-sheets (som er blokkert så
+/// lenge dette sheetet er åpent).
+struct PhoneLeadDetailSheet: View {
+    let lead: LeadRow
+    @Binding var tab: LeadsView.DetailTab
+    @State private var logActivityOpen: Bool = false
+    @State private var followUpOpen: Bool = false
+    @State private var uploadOpen: Bool = false
+
+    var body: some View {
+        LeadDetailSidebar(lead: lead, tab: $tab,
+                          onLogActivity: { logActivityOpen = true },
+                          onOpenFollowUp: { followUpOpen = true },
+                          onUploadFile: { uploadOpen = true })
+            .background(LdBrand.bg.ignoresSafeArea())
+            .preferredColorScheme(.dark)
+            .presentationDetents([.large])
+            .sheet(isPresented: $logActivityOpen) {
+                LogActivitySheet(lead: lead)
+            }
+            .sheet(isPresented: $followUpOpen) {
+                FollowUpDetailSheet(lead: lead)
+            }
+            .sheet(isPresented: $uploadOpen) {
+                UploadFileSheet(lead: lead)
+            }
     }
 }
 
@@ -1386,6 +1558,8 @@ struct LeadDetailSidebar: View {
     @State private var showLeadArchiveConfirm: Bool = false
     // Tilbudssending (funn #7) — krever backend-lead + APIClient.
     @State private var showSendProposal: Bool = false
+    // Tilbudshistorikk (2026-07-04) — hentes per lead i detaljer-fanen.
+    @State private var proposals: [ProposalDTO] = []
     @Environment(AppState.self) private var appState
     @State private var actionToast: String?
 
@@ -1408,12 +1582,45 @@ struct LeadDetailSidebar: View {
         }
         // Pakke 10.1: shared lead-action-sheets
         .sheet(isPresented: $showLeadStatusChange) {
+            // Workflow-QA 2026-07-05: onSave var toast-fasade — nå ekte
+            // API-kall i ekte modus (LeadRow.id = crm_customers-uuid for
+            // backend-rader). Demo: toast.
             LeadStatusChangeSheet(
                 companyName: lead.company,
-                companyColor: lead.companyColor
-            ) { newStatus, _ in
-                actionToast = "Status endret til \(newStatus.label)"
-            }
+                companyColor: lead.companyColor,
+                onSave: { newStatus, _ in
+                    let leadId = lead.id.uuidString.lowercased()
+                    if DemoModeManager.isActiveNonisolated {
+                        actionToast = "Status endret til \(newStatus.label)"
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue)
+                                actionToast = "Status endret til \(newStatus.label)"
+                                await appState.refreshLeads()
+                            } catch {
+                                actionToast = "Kunne ikke endre status"
+                            }
+                        }
+                    }
+                },
+                onSaveTemperature: { temp in
+                    let leadId = lead.id.uuidString.lowercased()
+                    if DemoModeManager.isActiveNonisolated {
+                        actionToast = "Temperatur endret"
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateTemperature(leadId: leadId, temperature: temp)
+                                actionToast = "Temperatur endret"
+                                await appState.refreshLeads()
+                            } catch {
+                                actionToast = "Kunne ikke endre temperatur"
+                            }
+                        }
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showLeadAssignSeller) {
             LeadAssignSellerSheet(
@@ -1441,7 +1648,10 @@ struct LeadDetailSidebar: View {
                 leadName: lead.company,
                 leadEmail: lead.email,
                 api: appState.api,
-                onSent: { actionToast = "Tilbud sendt til \(lead.company)" }
+                onSent: {
+                    actionToast = "Tilbud sendt til \(lead.company)"
+                    Task { await loadProposals() }
+                }
             )
         }
         .confirmationDialog(
@@ -1459,7 +1669,7 @@ struct LeadDetailSidebar: View {
         .overlay(alignment: .top) {
             if let t = actionToast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(LdBrand.green, in: Capsule())
                     .padding(.top, 10)
@@ -1482,21 +1692,21 @@ struct LeadDetailSidebar: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Text(lead.company)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.appScaled(size: 17, weight: .bold))
                     .foregroundStyle(.white)
                 Image(systemName: "star")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LdBrand.textTertiary)
                 Spacer()
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(LdBrand.textSecondary)
             }
             HStack(spacing: 5) {
                 Image(systemName: lead.status.icon)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                 Text(lead.status.label)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
             }
             .foregroundStyle(lead.status.color)
             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1515,21 +1725,29 @@ struct LeadDetailSidebar: View {
                         .rotationEffect(.degrees(-90))
                         .frame(width: 72, height: 72)
                     Text("\(lead.leadScore)")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Lead score")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("12")
-                            .font(.system(size: 12, weight: .bold))
+                    // Mock-trenden («↑12») vises kun når det finnes en score
+                    // å trende fra — «score 0, ↑12» var selvmotsigende.
+                    if lead.leadScore > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("12")
+                                .font(.appScaled(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(LdBrand.green)
+                    } else {
+                        Text("Ingen score enda")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(LdBrand.textSecondary)
                     }
-                    .foregroundStyle(LdBrand.green)
                 }
                 Spacer()
             }
@@ -1556,7 +1774,7 @@ struct LeadDetailSidebar: View {
         return Button { tab = t } label: {
             VStack(spacing: 5) {
                 Text(t.rawValue)
-                    .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+                    .font(.appScaled(size: 12, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(isSelected ? LdBrand.purpleLight : LdBrand.textSecondary)
                 Rectangle()
                     .fill(isSelected ? LdBrand.purpleLight : Color.clear)
@@ -1585,30 +1803,131 @@ struct LeadDetailSidebar: View {
             companySection
             pipelineSection
             nextFollowUpSection
+            proposalsSection
             metaSection
         }
+    }
+
+    // MARK: Tilbud (2026-07-04) — historikk fra /leads/:id/proposals
+
+    private var proposalsSection: some View {
+        Group {
+            if lead.backendId != nil && !proposals.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    sectionTitle("Tilbud")
+                    ForEach(proposals) { p in
+                        proposalRow(p)
+                    }
+                }
+            }
+        }
+        .task(id: lead.backendId) {
+            await loadProposals()
+        }
+    }
+
+    private func proposalRow(_ p: ProposalDTO) -> some View {
+        let (label, color): (String, Color) = {
+            switch p.status {
+            case "opened":   return ("Åpnet", LdBrand.blue)
+            case "accepted": return ("Akseptert", LdBrand.green)
+            case "rejected": return ("Avslått", LdBrand.red)
+            case "expired":  return ("Utløpt", LdBrand.textTertiary)
+            default:         return ("Sendt", LdBrand.orange)
+            }
+        }()
+        return HStack(spacing: 9) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.20))
+                Image(systemName: "doc.text.fill")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.title)
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("NOK \(formatThousands(Int(p.totalAmountNok))) eks. mva.")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(LdBrand.textSecondary)
+            }
+            Spacer()
+            // Utfall settes via meny når tilbudet er åpnet/sendt.
+            if p.status == "sent" || p.status == "opened" {
+                Menu {
+                    Button { Task { await setProposalStatus(p, "accepted") } } label: {
+                        Label("Marker som akseptert", systemImage: "checkmark.seal.fill")
+                    }
+                    Button(role: .destructive) { Task { await setProposalStatus(p, "rejected") } } label: {
+                        Label("Marker som avslått", systemImage: "xmark.seal")
+                    }
+                } label: {
+                    statusChip(label, color)
+                }
+                .buttonStyle(.plain)
+            } else {
+                statusChip(label, color)
+            }
+        }
+        .padding(9)
+        .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func statusChip(_ label: String, _ color: Color) -> some View {
+        Text(label)
+            .font(.appScaled(size: 10, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color.opacity(0.16), in: Capsule())
+    }
+
+    private func loadProposals() async {
+        guard let backendId = lead.backendId, let api = appState.api else {
+            proposals = []
+            return
+        }
+        proposals = (try? await api.fetchProposals(leadId: backendId)) ?? []
+    }
+
+    private func setProposalStatus(_ p: ProposalDTO, _ status: String) async {
+        guard let api = appState.api else { return }
+        try? await api.updateProposalStatus(id: p.id, status: status)
+        actionToast = status == "accepted" ? "Tilbud markert som akseptert" : "Tilbud markert som avslått"
+        await loadProposals()
     }
 
     private var kontaktSection: some View {
         VStack(alignment: .leading, spacing: 9) {
             sectionTitle("Kontaktperson")
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(LdBrand.purple.opacity(0.30))
-                    Text("JE")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(LdBrand.purpleLight)
+            // Initialene var hardkodet «JE» og navnet ble tomt for backend-
+            // leads — nå ekte initialer, og ærlig tom-tilstand uten navn.
+            if lead.contactName.isEmpty {
+                Text("Ingen kontaktperson registrert")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LdBrand.textSecondary)
+            } else {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(LdBrand.purple.opacity(0.30))
+                        Text(LeadRow.initials(for: lead.contactName))
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(LdBrand.purpleLight)
+                    }
+                    .frame(width: 38, height: 38)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(lead.contactName)
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                        if !lead.contactRole.isEmpty {
+                            Text(lead.contactRole)
+                                .font(.appScaled(size: 11))
+                                .foregroundStyle(LdBrand.textSecondary)
+                        }
+                    }
+                    Spacer()
                 }
-                .frame(width: 38, height: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(lead.contactName)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text(lead.contactRole)
-                        .font(.system(size: 11))
-                        .foregroundStyle(LdBrand.textSecondary)
-                }
-                Spacer()
             }
             if let phone = lead.displayPhone {
                 contactRow(icon: "phone", text: phone, color: LdBrand.green)
@@ -1627,12 +1946,12 @@ struct LeadDetailSidebar: View {
             ZStack {
                 Circle().fill(color.opacity(0.20))
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 26, height: 26)
             Text(text)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(.white)
                 .lineLimit(1)
             Spacer()
@@ -1642,16 +1961,24 @@ struct LeadDetailSidebar: View {
     private var companySection: some View {
         VStack(alignment: .leading, spacing: 9) {
             sectionTitle("Om selskapet")
-            metaRow("Bransje", "Elektroinstallasjon")
-            metaRow("Sted", "Oslo, Norge")
-            metaRow("Ansatte", "25-50")
-            metaRow("Omsetning", "10-20 mill. NOK")
+            // QA-runde 2: radene var hardkodet mock («Elektroinstallasjon /
+            // Oslo / 25-50») for ALLE leads — nå ekte kategori, og mock kun
+            // i demo-modus.
+            if DemoModeManager.isActiveNonisolated {
+                metaRow("Bransje", "Elektroinstallasjon")
+                metaRow("Sted", "Oslo, Norge")
+                metaRow("Ansatte", "25-50")
+                metaRow("Omsetning", "10-20 mill. NOK")
+            } else {
+                metaRow("Bransje", lead.category == "—" ? "Ikke kategorisert" : lead.category)
+                metaRow("Eier", lead.ownerName)
+            }
             Button {} label: {
                 HStack(spacing: 4) {
                     Text("Se mer informasjon")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(LdBrand.purpleLight)
             }
@@ -1662,11 +1989,11 @@ struct LeadDetailSidebar: View {
     private func metaRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(LdBrand.textSecondary)
             Spacer()
             Text(value)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
         }
     }
@@ -1677,7 +2004,15 @@ struct LeadDetailSidebar: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Status i pipelinen")
             let stages = ["Ny lead", "Kontaktet", "Møte\navtalt", "Tilbud\nsendt", "Vunnet"]
-            let current = 2  // Møte avtalt
+            // QA-runde 2: steget var hardkodet til «Møte avtalt» for alle
+            // leads — nå avledet fra faktisk status.
+            let current: Int = {
+                switch lead.status {
+                case .newLead, .notContacted: return 0
+                case .interested, .contacted, .warm: return 1
+                case .hot: return 2
+                }
+            }()
             HStack(spacing: 0) {
                 ForEach(0..<stages.count, id: \.self) { i in
                     VStack(spacing: 5) {
@@ -1688,7 +2023,7 @@ struct LeadDetailSidebar: View {
                                 .stroke(i <= current ? LdBrand.purpleLight : LdBrand.stroke, lineWidth: 2)
                             if i < current {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .font(.appScaled(size: 8, weight: .bold))
                                     .foregroundStyle(.white)
                             } else if i == current {
                                 Circle().fill(.white).frame(width: 6, height: 6)
@@ -1696,9 +2031,13 @@ struct LeadDetailSidebar: View {
                         }
                         .frame(width: 18, height: 18)
                         Text(stages[i])
-                            .font(.system(size: 9, weight: i == current ? .bold : .regular))
+                            .font(.appScaled(size: 9, weight: i == current ? .bold : .regular))
                             .foregroundStyle(i <= current ? .white : LdBrand.textTertiary)
                             .multilineTextAlignment(.center)
+                            // «Kontaktet» brakk til «Kontakte / t» på iPhone
+                            // — skalér ned i stedet for å ordbryte.
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity)
@@ -1720,31 +2059,37 @@ struct LeadDetailSidebar: View {
                 sectionTitle("Neste oppfølging")
                 Spacer()
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LdBrand.textSecondary)
             }
             HStack(spacing: 7) {
                 Image(systemName: "calendar")
-                    .font(.system(size: 10))
-                    .foregroundStyle(LdBrand.red)
+                    .font(.appScaled(size: 10))
+                    // Rød er alarm-farge — kun når noe faktisk haster
+                    // (overforfalt), ikke for «ikke planlagt».
+                    .foregroundStyle(lead.nextFollowUpOverdue ? LdBrand.red : LdBrand.textSecondary)
                 Text(lead.nextFollowUp ?? "Ikke planlagt")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 if lead.nextFollowUpOverdue {
                     Text("Overforfalt")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LdBrand.red)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(LdBrand.red.opacity(0.18), in: Capsule())
                         .overlay(Capsule().stroke(LdBrand.red.opacity(0.4), lineWidth: 1))
                 }
             }
-            Text("Telefonmøte med Jonas Eide")
-                .font(.system(size: 11))
-                .foregroundStyle(LdBrand.textSecondary)
+            // Mock-beskrivelsen vises kun i demo-modus — ekte leads har
+            // ingen oppfølgings-beskrivelse i dette feltet.
+            if DemoModeManager.isActiveNonisolated {
+                Text("Telefonmøte med Jonas Eide")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LdBrand.textSecondary)
+            }
             Button { onOpenFollowUp() } label: {
                 Text("Åpne oppfølging")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 9)
@@ -1759,31 +2104,36 @@ struct LeadDetailSidebar: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Forventet verdi")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(LdBrand.textSecondary)
                 Text("NOK \(formatThousands(lead.valueNok))")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
-                Text("Høy")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(LdBrand.green)
+                // «Høy» sannsynlighet gir bare mening med en faktisk verdi.
+                if lead.valueNok > 0 {
+                    Text("Høy")
+                        .font(.appScaled(size: 9, weight: .bold))
+                        .foregroundStyle(LdBrand.green)
+                }
             }
             Spacer()
+            // QA-runde 2: selgeren var hardkodet «Kari Nordmann» for alle
+            // leads — nå faktisk eier fra tildelingen.
             HStack(spacing: 6) {
                 ZStack {
-                    Circle().fill(LdBrand.purple.opacity(0.30))
-                    Text("KN")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(LdBrand.purpleLight)
+                    Circle().fill(lead.ownerColor.opacity(0.30))
+                    Text(lead.ownerInitials)
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(lead.ownerColor)
                 }
                 .frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Kari Nordmann")
-                        .font(.system(size: 11, weight: .semibold))
+                    Text(lead.ownerName)
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Selger")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(LdBrand.textSecondary)
                 }
             }
@@ -1798,22 +2148,41 @@ struct LeadDetailSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Aktivitetshistorikk")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button { } label: {
                     Text("Filtrer")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(LdBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
-            VStack(spacing: 6) {
-                ForEach(LeadsData.activities) { a in
-                    activityRow(a)
+            if LeadsData.activities.isEmpty {
+                detailEmptyState(icon: "clock.arrow.circlepath", text: "Ingen aktiviteter registrert enda")
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(LeadsData.activities) { a in
+                        activityRow(a)
+                    }
                 }
             }
         }
+    }
+
+    /// Ærlig tom-tilstand for detalj-tabs når det ikke finnes ekte data (ikke-demo).
+    private func detailEmptyState(icon: String, text: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.appScaled(size: 22, weight: .semibold))
+                .foregroundStyle(LdBrand.textTertiary)
+            Text(text)
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LdBrand.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func activityRow(_ a: LeadActivityItem) -> some View {
@@ -1821,23 +2190,23 @@ struct LeadDetailSidebar: View {
             ZStack {
                 Circle().fill(a.color.opacity(0.20))
                 Image(systemName: a.icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(a.color)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(a.title)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     Text(a.timestamp)
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(LdBrand.textTertiary)
                 }
                 Text(a.subtitle)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(LdBrand.textSecondary)
                     .lineLimit(2)
             }
@@ -1855,15 +2224,15 @@ struct LeadDetailSidebar: View {
                     ZStack {
                         Circle().fill(LdBrand.purple.opacity(0.25))
                         Text("LK")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LdBrand.purpleLight)
                     }
                     .frame(width: 26, height: 26)
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LdBrand.textTertiary)
                     Text("Skriv et notat…")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LdBrand.textTertiary)
                     Spacer()
                 }
@@ -1872,8 +2241,12 @@ struct LeadDetailSidebar: View {
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            ForEach(LeadsData.notes) { n in
-                noteRow(n)
+            if LeadsData.notes.isEmpty {
+                detailEmptyState(icon: "note.text", text: "Ingen notater enda")
+            } else {
+                ForEach(LeadsData.notes) { n in
+                    noteRow(n)
+                }
             }
         }
     }
@@ -1884,25 +2257,25 @@ struct LeadDetailSidebar: View {
                 ZStack {
                     Circle().fill(n.authorColor.opacity(0.25))
                     Text(n.initials)
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.appScaled(size: 8, weight: .bold))
                         .foregroundStyle(n.authorColor)
                 }
                 .frame(width: 22, height: 22)
                 Text(n.author)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
                 if n.pinned {
                     Image(systemName: "pin.fill")
-                        .font(.system(size: 8))
+                        .font(.appScaled(size: 8))
                         .foregroundStyle(LdBrand.yellow)
                 }
                 Spacer()
                 Text(n.timestamp)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(LdBrand.textTertiary)
             }
             Text(n.body)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1923,22 +2296,26 @@ struct LeadDetailSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(LeadsData.files.count) filer")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LdBrand.textSecondary)
                 Spacer()
                 Button { onUploadFile() } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("Last opp")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(LdBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
-            ForEach(LeadsData.files) { f in
-                fileRow(f)
+            if LeadsData.files.isEmpty {
+                detailEmptyState(icon: "tray", text: "Ingen filer lastet opp enda")
+            } else {
+                ForEach(LeadsData.files) { f in
+                    fileRow(f)
+                }
             }
         }
     }
@@ -1950,30 +2327,30 @@ struct LeadDetailSidebar: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(f.kind.color.opacity(0.22))
                     Image(systemName: f.kind.icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(f.kind.color)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(f.name)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Text(f.size)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(LdBrand.textSecondary)
                         Text("·")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(LdBrand.textTertiary)
                         Text(f.uploadedAt)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(LdBrand.textTertiary)
                     }
                 }
                 Spacer()
                 Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(LdBrand.purpleLight)
             }
             .padding(8)
@@ -1989,9 +2366,9 @@ struct LeadDetailSidebar: View {
             Button { onLogActivity() } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Text("Loggfør aktivitet")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 11)
@@ -2091,9 +2468,9 @@ struct LeadDetailSidebar: View {
             } label: {
                 HStack(spacing: 4) {
                     Text("Flere handlinger")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 11)
@@ -2125,7 +2502,7 @@ struct LeadDetailSidebar: View {
 
     private func sectionTitle(_ s: String) -> some View {
         Text(s)
-            .font(.system(size: 11, weight: .bold))
+            .font(.appScaled(size: 11, weight: .bold))
             .foregroundStyle(.white)
     }
 }

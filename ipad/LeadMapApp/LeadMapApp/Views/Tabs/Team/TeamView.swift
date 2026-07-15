@@ -32,8 +32,8 @@ enum TBrand {
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
     static let pink = Color(red: 0.98, green: 0.35, blue: 0.65)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 // MARK: - Models
@@ -117,10 +117,10 @@ enum TeamData {
         DemoModeManager.isActiveNonisolated ? _members : TeamLiveStore.shared.members
     }
 
-    /// Demo-mode-gated aktiviteter. Ved demo AV → tom → «Ingen aktivitet
-    /// enda» (ingen aktivitets-feed-endepunkt i backend enda).
-    static var activities: [ActivityEvent] {
-        DemoModeManager.isActiveNonisolated ? _activities : []
+    /// Demo PÅ → mock; ellers EKTE feed fra /api/leadgrid/activity-feed
+    /// (2026-07-04 — crm_lead_activities fylles nå av tilbud/besøk).
+    @MainActor static var activities: [ActivityEvent] {
+        DemoModeManager.isActiveNonisolated ? _activities : TeamLiveStore.shared.activities
     }
 
     /// Demo PÅ → mock-trakt; ellers beregnet fra ekte lead-statuser.
@@ -226,9 +226,8 @@ struct TeamView: View {
     @State private var showPipeline = false
     @State private var selectedKPI: TeamKPI?
     @State private var showNewKPI = false
-    // Pakke 10.1 — rike header-popovere (chart wired til pipeline, kun checklist + bell)
-    @State private var nextActionsOpen = false
-    @State private var notificationsOpen = false
+    @State private var showStatsModal = false
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
     // Team-tilganger flyttet fra global profil-menu → Team-fanen (2026-07-01).
     @State private var showTeamAccess = false
     // Rute-status dashboard (salgssjef+, 2026-07-02).
@@ -283,81 +282,29 @@ struct TeamView: View {
         }
     }
 
-    // MARK: Header — alignet m/ Leads/Møter (6 høyre-elementer + Inviter-CTA)
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+    //
+    // Fane-spesifikt (extraControls): live-aktivitet + «+ Ny»-menyen.
+    // «Hele teamet» og pipeline-knappen er flyttet inn i «+ Ny»-menyen
+    // (Team-medlemmer / Team-pipeline) så ingen innganger går tapt.
 
-    private var header: some View {
-        GeometryReader { geo in
-            let isCompact = geo.size.width < 1300        // iPad Pro 11" landscape = 1194pt
-            let isVeryCompact = geo.size.width < 1050    // mindre enheter
-
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Team")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isCompact {
-                        Text("Få oversikt over teamets aktivitet, resultater og områder.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(TBrand.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 7) {
-                    topPicker(icon: "calendar", text: isCompact ? "Tir 20" : "Tir. 20. mai 2025") {}
-                    if !isCompact {
-                        topPicker(icon: "person.3.fill", text: "Hele teamet") {
-                            showMembers = true
-                        }
-                    }
-                    if !isVeryCompact {
-                        topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil) {
-                            showPipeline = true
-                        }
-                    }
-                    activityLiveButton                              // ← live-aktivitet
-                    topIconButton(icon: "checklist", badge: 8) { nextActionsOpen.toggle() }
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3) { notificationsOpen.toggle() }
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    profileAvatar(isCompact: isCompact)
-                    inviteButton(isCompact: isCompact)
-                }
-                .fixedSize()                              // hindrer komprimering
-            }
-        }
-        .frame(height: 64)
+    /// Demo-aware datakilde for header-badges/popovers.
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
     }
 
-    private func topPicker(icon: String, text: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .fixedSize()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(TBrand.textTertiary)
+    private var header: some View {
+        LeadgridTabHeader(
+            subtitle: "Få oversikt over teamets aktivitet, resultater og områder.",
+            leads: headerLeads
+        ) {
+            HStack(spacing: 8) {
+                activityLiveButton                        // live-aktivitet
+                inviteButton(isCompact: DeviceIdiom.isPhone)
             }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
         }
-        .buttonStyle(.plain)
-        .macCatalystHover()
     }
 
     // Live-aktivitet-knapp m/ pulserende grønn prikk + count-badge
@@ -368,7 +315,7 @@ struct TeamView: View {
                     RoundedRectangle(cornerRadius: 11).fill(TBrand.card)
                     RoundedRectangle(cornerRadius: 11).stroke(TBrand.green.opacity(0.40), lineWidth: 1)
                     Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(TBrand.green)
                 }
                 .frame(width: 42, height: 42)
@@ -385,53 +332,6 @@ struct TeamView: View {
         .macCatalystHover()
     }
 
-    private func topIconButton(icon: String, badge: Int?, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(TBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(TBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(TBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(TBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfilAvatar: Bool = false
-    @State private var showEcosystemAvatar: Bool = false
-    @State private var showTeamAccessAvatar: Bool = false
-    @State private var showSuperAdminAvatar: Bool = false
-
-    private func profileAvatar(isCompact: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: TBrand.purpleLight,
-            background: TBrand.card,
-            borderColor: TBrand.stroke,
-            secondaryText: TBrand.textSecondary,
-            tertiaryText: TBrand.textTertiary,
-            isCompact: isCompact,
-            showMinProfil: $showMinProfilAvatar,
-            showEcosystem: $showEcosystemAvatar,
-            showTeamAccess: $showTeamAccessAvatar,
-            showSuperAdmin: $showSuperAdminAvatar
-        )
-    }
-
     private func inviteButton(isCompact: Bool) -> some View {
         Menu {
             Button {
@@ -443,6 +343,20 @@ struct TeamView: View {
                 showNewKPI = true
             } label: {
                 Label("Ny KPI", systemImage: "chart.bar.fill")
+            }
+            Divider()
+            // Innganger som tidligere lå som egne header-knapper («Hele
+            // teamet»-pill + pipeline-ikon) — bevart her etter at headeren
+            // ble unifisert med Oversikt (delt LeadgridTabHeader).
+            Button {
+                showMembers = true
+            } label: {
+                Label("Team-medlemmer", systemImage: "person.3.fill")
+            }
+            Button {
+                showPipeline = true
+            } label: {
+                Label("Team-pipeline", systemImage: "chart.line.uptrend.xyaxis")
             }
             Divider()
             // Team-tilganger (RBAC) — flyttet fra global profil-menu 2026-07-01.
@@ -472,10 +386,10 @@ struct TeamView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                 if !isCompact {
                     Text("Ny")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .lineLimit(1)
                         .fixedSize()
                 }
@@ -494,13 +408,80 @@ struct TeamView: View {
     // MARK: KPI row
 
     private var kpiRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let hasData = !TeamData.members.isEmpty
+        let leadsValue = isDemo ? TeamKPI.totalLeads.bigValue : TeamKPI.totalLeads.liveValue
+        let meetingsValue = isDemo ? TeamKPI.meetings.bigValue : TeamKPI.meetings.liveValue
+        let subtitle = hasData ? "\(leadsValue) leads · \(meetingsValue) møter" : "Ingen data"
+        return Button {
+            showStatsModal = true
+        } label: {
             HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(TBrand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(TBrand.purple)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(TBrand.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(TBrand.textSecondary)
+            }
+            .padding(14)
+            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(TBrand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.appScaled(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
                 ForEach(TeamKPI.allCases) { k in
                     kpiCard(k, trend: k.trend.replacingOccurrences(of: "+", with: "↑ "))
-                        .frame(width: 220)
+                        .frame(maxWidth: .infinity)
                 }
             }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(TBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Kortene er drill-down-knapper — sheet må ligge PÅ modalen for at
+        // TeamKPIDetailSheet skal kunne presenteres oppå statistikk-modalen.
+        .sheet(item: $selectedKPI) { k in
+            TeamKPIDetailSheet(kpi: k)
         }
     }
 
@@ -510,34 +491,37 @@ struct TeamView: View {
         let isDemo = DemoModeManager.isActiveNonisolated
         let hasData = !TeamData.members.isEmpty
         let value = isDemo ? k.bigValue : k.liveValue
+        // «—» fra liveValue = KPI-en kan ikke beregnes ærlig enda
+        // (f.eks. momentum m/ 1 medlem, score uten scorede leads).
+        let noData = !hasData || value == "—"
         return Button { selectedKPI = k } label: {
             VStack(alignment: .leading, spacing: 7) {
                 Text(k.rawValue)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                     .lineLimit(1)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(hasData ? value : "—")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     if hasData && isDemo {
                         Text(trend)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(TBrand.green)
                             .monospacedDigit()
                     }
                 }
                 HStack {
-                    Text(hasData ? (isDemo ? "vs. forrige periode" : "live fra teamet") : "Ingen data")
-                        .font(.system(size: 10))
+                    Text(noData ? "Ingen data enda" : (isDemo ? "vs. forrige periode" : "live fra teamet"))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textTertiary)
                     Spacer()
                     if hasData && isDemo {
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(k.tint)
                     }
                 }

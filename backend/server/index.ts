@@ -825,9 +825,17 @@ import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
 import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
+import { registerLeadgridAcademyRoutes } from "./leadgrid-academy-routes";
+import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
+import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
-import { registerPondusRoutes } from "./pondus-routes";
+import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
+import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
+import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
+import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
+import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
+import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
 import { setupCmsRoutes } from "./cms-routes";
@@ -42607,6 +42615,67 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
 });
 
 // ============================================================
+// GDPR: last ned mine data (self-scopet). To web-knapper (BusinessInfo-
+// Settings + wcag-util/ResumeBuilder) kalte tidligere endepunkter som
+// IKKE eksisterte → 404 (QA 2026-07-06). Ett ekte, session-scopet
+// endepunkt + alias for begge stiene. Bruker session.userId — path-
+// param ignoreres, så en bruker kan aldri eksportere en ANNENS data.
+// ============================================================
+const handleUserDataExport = async (
+  req: express.Request,
+  res: express.Response,
+) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ error: "Innlogging kreves" });
+  }
+  try {
+    const email = session.email ?? "";
+    const [userRow, businessProfile, vendor] = await Promise.all([
+      pool.query(
+        `SELECT id, email, name, first_name, role, created_at
+           FROM users WHERE id = $1`,
+        [session.userId],
+      ),
+      (await hasTable("invite_requests")) && email
+        ? pool.query(
+            `SELECT company_name, organization_number, business_address,
+                    profession, website, phone_number, status, created_at
+               FROM invite_requests WHERE email = $1
+               ORDER BY created_at DESC LIMIT 1`,
+            [email],
+          )
+        : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+      email ? getVendorByEmail(email).catch(() => null) : Promise.resolve(null),
+    ]);
+    const payload = {
+      exported_at: new Date().toISOString(),
+      description:
+        "Dine personlige data (GDPR art. 20 dataportabilitet). Self-scopet til innlogget bruker.",
+      account: userRow.rows[0] ?? null,
+      business_profile: businessProfile.rows[0] ?? null,
+      vendor_profile: vendor
+        ? {
+            business_name: (vendor as any).business_name,
+            category: (vendor as any).category,
+            location: (vendor as any).location,
+            website: (vendor as any).website,
+            status: (vendor as any).status,
+            created_at: (vendor as any).created_at,
+          }
+        : null,
+    };
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.json({ data: payload });
+  } catch (e) {
+    console.error("[gdpr] user data-export failed", e);
+    return res.status(500).json({ error: "Kunne ikke eksportere data" });
+  }
+};
+app.get("/api/users/:id/export-data", handleUserDataExport);
+app.get("/api/business-lifecycle/export-data/:id", handleUserDataExport);
+
+// ============================================================
 // CLIENT SUBMISSIONS API → flyttet til ./submissions-routes.ts
 // (6 endpoints + mapSubmissionRow-helper).
 // ============================================================
@@ -42737,6 +42806,11 @@ const adminUsernameFromEmail = (email: string): string => {
 function normalizeAdminRoleId(value: unknown): string {
   const raw = toAdminString(value)?.toLowerCase().replace(/\s+/g, "_") || "";
   if (!raw) return "user";
+  // Slipper gjennom uendret med VILJE: `super_admin` og `salgssjef` er
+  // gyldige DB-roller som IKKE ligger i adminRoleCatalogById (de gates
+  // spesielt andre steder). Å clampe ukjente → "user" her ville brutt
+  // super_admin-deteksjonen. Katalog-sjekken beholdes kun som en
+  // eksplisitt markør på at ukjente roller er tillatt å passere.
   return adminRoleCatalogById.has(raw) ? raw : raw;
 }
 
@@ -43639,11 +43713,17 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
   const accountIsAdminRole = ADMIN_SESSION_ROLES.has(accountRoleId);
   const sessionIsAdminRole = ADMIN_SESSION_ROLES.has(sessionRoleId);
   const roleId =
-    accountIsAdminRole && !sessionIsAdminRole
-      ? accountRoleId
-      : sessionRoleId === "user" && accountRoleId !== "user"
+    // DB-rollen 'super_admin' er høyeste tier og skal aldri skygges av en
+    // sesjon som bare sier 'admin' (sesjoner minter rollen ved login og
+    // blir stående etter en DB-oppgradering). Uten denne så iPad-appens
+    // isSuperAdmin aldri super_admin → SuperAdmin-konsollen forble skjult.
+    accountRoleId === "super_admin" && sessionIsAdminRole
+      ? "super_admin"
+      : accountIsAdminRole && !sessionIsAdminRole
         ? accountRoleId
-        : sessionRoleId || accountRoleId;
+        : sessionRoleId === "user" && accountRoleId !== "user"
+          ? accountRoleId
+          : sessionRoleId || accountRoleId;
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);
@@ -65562,6 +65642,20 @@ registerLeadgridSalesTeamsRoutes({ app, pool, requireUserSession });
 // proposal.opened-workflow-eventet. Forutsetter mig 0363.
 registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
 
+// Leadgrid Academy fase 1 (mig 0368) — org-scopet opplæring: offisielle
+// Leadgrid-kurs (Pondus-Akademiet seedet) + org-egne kurs, med progresjon
+// per bruker og presignert R2-video. iPad PondusAcademy binder mot dette.
+registerLeadgridAcademyRoutes({ app, pool, requireUserSession });
+
+// Org-modus-velger (mig 0365) — super_admin kan bytte mellom solo-modus
+// og valgfri org; alle Leadgrid-org-oppslag (leadgrid-org-resolver.ts)
+// respekterer valget.
+registerLeadgridOrgOverrideRoutes({ app, pool, requireUserSession });
+
+// Workflow wait-scheduler (mig 0366) — gjenopptar workflows med
+// wait-actions når resume_at passeres (låser opp auto_followup_7_days).
+registerWorkflowResumeCron(pool);
+
 // /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
 // actions: positions/my-route/assignments/visits/team-nearby/adherence-
 // report/leads-at-position/cleanup). Forutsetter mig 0358.
@@ -65573,10 +65667,33 @@ registerRoutesAdherenceRoutes({ app, pool, requireUserSession });
 // (adresse i HUD) + Team-fanen (ekte kommunegrenser).
 registerLeadgridKartverketRoutes({ app, requireUserSession });
 
+// Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
+// alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
+registerLeadgridEnturRoutes({ app, requireUserSession });
+
+// Bilparkering (Statens vegvesen Parkeringsregister, NLOD): nærmeste
+// p-områder for en lead + «Åpne parkering»-app-lenker.
+registerLeadgridParkingRoutes({ app, requireUserSession });
+
+// NVDB v4 (Nasjonal vegdatabank, NLOD): fartsgrense nær en koordinat
+// (fartsgrense-skilt i nav). Krever X-Client (env NVDB_CLIENT).
+registerLeadgridNvdbRoutes({ app, requireUserSession });
+
+// Statens vegvesen Kjøretøyoppslag (Autosys): «Min bil» via regnr → tekniske
+// data (drivstoff/merke) for skreddersøm i nav. Krever VEGVESEN_KJORETOY_APIKEY.
+registerLeadgridVehicleRoutes({ app, requireUserSession });
+
+// Leadgrid Go — elektronisk kjørebok (auto trip-logg + Skatteetaten-CSV).
+// Personlig (user_id-scopet, IDOR-trygt). Tabell leadgrid_trips (mig 0372).
+registerLeadgridTripsRoutes({ app, pool, requireUserSession });
+
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
 // Forutsetter mig 0355.
 registerPondusRoutes({ app, pool, requireUserSession });
+// Pondus usage-tracking (mig 0364) — «Bruk mal»-logging + aggregerte
+// stats som gir Leadbook-KPI-ene ekte tall.
+registerPondusUsageRoutes({ app, pool, requireUserSession });
 
 // /api/external-data/* — 7 unike endpoints (2 SSB-indikatorer +
 // 5 Kartverket-proxies). Selvstendig modul. 2 SSB-dups slettet i samme

@@ -76,6 +76,20 @@ final class AppStateBridge {
         appState?.clearPondusDeepLink()
     }
 
+    // MARK: - Notification-tap (cold-start-support)
+
+    /// Et varsel-tap ber om å åpne varsel-inboksen (+ evt. deep-linke til
+    /// en lead). Buffres hvis AppState ikke er klar enda (cold-start-tap
+    /// fyrer før en header monteres) og deployes i `register(_:)`.
+    func handleNotificationTap(_ payload: [String: String]) {
+        if appState != nil {
+            appState?.pendingNotificationTap = payload
+        } else {
+            pendingNotificationTap = (payload, Date())
+        }
+    }
+    private var pendingNotificationTap: (payload: [String: String], at: Date)?
+
     // MARK: - Pending buffer (cold-start-support)
 
     private var pendingPondusDeepLink: (templateId: String?, templateName: String?, at: Date)?
@@ -84,15 +98,23 @@ final class AppStateBridge {
     /// vi har en buffret deep-link fra en intent-perform som kjørte før
     /// SwiftUI-scenen kom opp, deployer vi den nå.
     func flushPendingDeepLinks() {
-        guard let state = appState, let pending = pendingPondusDeepLink else { return }
-        // Skip stale pending (>60s gammel) — sannsynlig at en tidligere
-        // Intent kjørte men brukeren nå åpner appen manuelt.
-        if Date().timeIntervalSince(pending.at) < 60 {
-            state.setPondusDeepLink(
-                templateId: pending.templateId,
-                templateName: pending.templateName
-            )
+        guard let state = appState else { return }
+        if let pending = pendingPondusDeepLink {
+            // Skip stale pending (>60s gammel) — sannsynlig at en tidligere
+            // Intent kjørte men brukeren nå åpner appen manuelt.
+            if Date().timeIntervalSince(pending.at) < 60 {
+                state.setPondusDeepLink(
+                    templateId: pending.templateId,
+                    templateName: pending.templateName
+                )
+            }
+            pendingPondusDeepLink = nil
         }
-        pendingPondusDeepLink = nil
+        if let tap = pendingNotificationTap {
+            if Date().timeIntervalSince(tap.at) < 60 {
+                state.pendingNotificationTap = tap.payload
+            }
+            pendingNotificationTap = nil
+        }
     }
 }

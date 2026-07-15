@@ -56,7 +56,7 @@ struct LeadgridDealForecastCard: View {
             Text("Weighted pipeline")
                 .font(.caption).foregroundStyle(.secondary)
             Text(fmtNok(s.totalWeightedValue))
-                .font(.system(size: 32, weight: .bold))
+                .font(.appScaled(size: 32, weight: .bold))
                 .foregroundStyle(Color(hex: "a855f7"))
             Text(
                 "av \(fmtNok(s.totalPipelineValue)) · \(s.dealsCount) deals · snitt \(Int(s.averageProbability))%"

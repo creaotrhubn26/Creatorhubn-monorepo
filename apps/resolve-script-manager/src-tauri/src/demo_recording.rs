@@ -146,14 +146,39 @@ pub async fn check_url_embeddable(url: String) -> Result<EmbedCheck, String> {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_lowercase();
-    if let Some(idx) = csp.find("frame-ancestors") {
-        let rest = &csp[idx..];
-        let end = rest.find(';').unwrap_or(rest.len());
-        let directive = &rest[..end];
-        // Begrenset hvis 'none', eller kun 'self' uten wildcard.
-        if directive.contains("'none'") || (directive.contains("'self'") && !directive.contains('*')) {
-            return Ok(EmbedCheck { embeddable: false, reason: "CSP frame-ancestors begrenser innbygging".to_string() });
+    if let Some(reason) = csp_frame_ancestors_blocks(&csp) {
+        return Ok(EmbedCheck { embeddable: false, reason });
+    }
+    // Meta-CSP: enkelte sider setter frame-ancestors via <meta http-equiv> i
+    // stedet for header — les (begrenset) body og sjekk der også.
+    if let Ok(body) = res.text().await {
+        let head: String = body.chars().take(20_000).collect::<String>().to_lowercase();
+        if let Some(idx) = head
+            .find("http-equiv=\"content-security-policy\"")
+            .or_else(|| head.find("http-equiv='content-security-policy'"))
+        {
+            // get() i stedet for slicing: idx+1000 kan lande midt i et
+            // multibyte-tegn — da faller vi tilbake til resten av strengen.
+            let end = head.len().min(idx + 1_000);
+            let window = head.get(idx..end).unwrap_or(&head[idx..]);
+            if let Some(reason) = csp_frame_ancestors_blocks(window) {
+                return Ok(EmbedCheck { embeddable: false, reason });
+            }
         }
     }
     Ok(EmbedCheck { embeddable: true, reason: "ok".to_string() })
+}
+
+/// Blokkerer en CSP-streng innbygging via frame-ancestors? (delt mellom
+/// header- og meta-varianten.)
+fn csp_frame_ancestors_blocks(csp: &str) -> Option<String> {
+    let idx = csp.find("frame-ancestors")?;
+    let rest = &csp[idx..];
+    let end = rest.find(';').unwrap_or(rest.len());
+    let directive = &rest[..end];
+    // Begrenset hvis 'none', eller kun 'self' uten wildcard.
+    if directive.contains("'none'") || (directive.contains("'self'") && !directive.contains('*')) {
+        return Some("CSP frame-ancestors begrenser innbygging".to_string());
+    }
+    None
 }

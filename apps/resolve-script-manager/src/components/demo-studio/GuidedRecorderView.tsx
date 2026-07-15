@@ -21,6 +21,7 @@ import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
 import { FramedDevice } from './FramedDevice';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, pickShot, type DemoDevice } from './demoStudioModel';
+import { sessionAutoRunCurrent, sessionVerifyCurrent } from './demoSessionActions';
 import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -61,6 +62,25 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [showConnectGuide, setShowConnectGuide] = useState(false);
   const [embedBlocked, setEmbedBlocked] = useState<string | null>(null);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  // G21: native opptak (screencapture/simctl) blokkerer 2–120 s uten at
+  // useSceneRecorder-state settes — egen flagg så UI-et viser «Recording».
+  const [nativeBusy, setNativeBusy] = useState(false);
+  // G22: delte verifiser/auto-handlinger (demoSessionActions) — synlige her
+  // i hoved-opptaksflaten, ikke bare i shellens innebygde recorder.
+  const [sessionBusy, setSessionBusy] = useState<'auto' | 'verify' | null>(null);
+  const [sessionMsg, setSessionMsg] = useState<string | null>(null);
+  const [panelTab, setPanelTab] = useState<'Guide' | 'Script' | 'Notes'>('Guide');
+  const runSessionAction = async (kind: 'auto' | 'verify') => {
+    if (sessionBusy) return;
+    setSessionBusy(kind);
+    setSessionMsg(null);
+    try {
+      const r = kind === 'auto' ? await sessionAutoRunCurrent() : await sessionVerifyCurrent();
+      setSessionMsg(r.message ?? (r.outcome === 'done' ? '✓ Utført' : r.outcome === 'cancelled' ? 'Avbrutt.' : null));
+    } finally {
+      setSessionBusy(null);
+    }
+  };
   const [me, setMe] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void fetchCurrentUser().then(setMe);
@@ -103,7 +123,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
   const scenes = project.scenes;
   const cur = scenes[recorderStepIndex] ?? scenes[0];
-  const recording = rec.state === 'recording';
+  const recording = rec.state === 'recording' || nativeBusy;
   const actionMeta = ACTION_META[cur?.actionType ?? 'click'];
   const autoMode = (project.continueMode ?? 'manual') === 'auto';
   const captureKind = project.captureKind ?? 'web';
@@ -126,9 +146,14 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     else setDeviceForAll(val as DemoDevice, 'portrait');
   };
 
-  /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */
+  /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl).
+   *  Blokkerer til scenens varighet er nådd — nativeBusy holder UI-et ærlig imens. */
   const recordNativeScene = async (sceneId: string): Promise<string | null> => {
-    const dur = Math.min(Math.max(cur?.duration ?? 8, 2), 120);
+    // Les varigheten FERSKT for scenen som faktisk tas opp — `cur` er fra
+    // klikk-renderen og peker på forrige scene når vi auto-starter neste.
+    const scene = useDemoStudio.getState().project?.scenes.find((s) => s.id === sceneId);
+    const dur = Math.min(Math.max(scene?.duration ?? 8, 2), 120);
+    setNativeBusy(true);
     try {
       if (captureKind === 'ios_simulator') {
         return await recordSimulator(project.id, sceneId, project.captureSourceId ?? '', dur);
@@ -144,6 +169,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       // Rust gir meningsfulle feil («ffmpeg ikke funnet», «er enheten kablet + trusted?»).
       setNativeError(String((e as Error)?.message ?? e));
       return null;
+    } finally {
+      setNativeBusy(false);
     }
   };
 
@@ -212,21 +239,29 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const runAuto = async () => {
     autoAbort.current = false;
     setAutoRunning(true);
-    for (let i = recorderStepIndex; i < scenes.length; i++) {
+    // Les start-indeks og scener FERSKT fra storen: beginRecording kaller
+    // startRecorder() rett før oss, så render-closurens recorderStepIndex
+    // kan peke på feil scene.
+    const st = useDemoStudio.getState();
+    const proj = st.project;
+    const sceneList = proj?.scenes ?? [];
+    if (!proj) { setAutoRunning(false); return; }
+    for (let i = st.recorderStepIndex; i < sceneList.length; i++) {
       if (autoAbort.current) break;
       goToStep(i);
-      const scene = scenes[i];
+      const scene = sceneList[i];
       await sleep(400);
       await performAction(scene);
       // Vent scenens varighet (cap for å unngå evig venting).
       await sleep(Math.min(Math.max((scene.duration || 6) * 1000, 1500), 20000));
       if (autoAbort.current) break;
-      if (rec.state === 'recording') {
-        const path = await rec.stopAndSave(project.id, scene.id);
-        if (path) updateScene(scene.id, { recordingPath: path });
-      }
+      // Ubetinget stopp+lagre: rec.state her er en stale render-verdi (alltid
+      // klikk-øyeblikkets 'idle') — stopAndSave sjekker selv den ekte
+      // MediaRecorder-tilstanden og er no-op hvis ingenting tas opp.
+      const path = await rec.stopAndSave(proj.id, scene.id);
+      if (path) updateScene(scene.id, { recordingPath: path });
       markCurrentDone();
-      if (i < scenes.length - 1) { nextStep(); await startForCurrent(); }
+      if (i < sceneList.length - 1) { nextStep(); await startForCurrent(); }
     }
     setAutoRunning(false);
   };
@@ -244,10 +279,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       }
       return;
     }
-    if (rec.state === 'recording') {
-      const path = await rec.stopAndSave(project.id, sc.id);
-      if (path) updateScene(sc.id, { recordingPath: path });
-    }
+    // Ubetinget stopp+lagre — stopAndSave er no-op hvis ingenting tas opp,
+    // og render-verdien rec.state kan være stale (se runAuto).
+    const path = await rec.stopAndSave(project.id, sc.id);
+    if (path) updateScene(sc.id, { recordingPath: path });
     markCurrentDone();
     if (recorderStepIndex < scenes.length - 1) { nextStep(); await startForCurrent(); }
   };
@@ -411,10 +446,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
           {/* Guide-panel (høyre) */}
           <div style={{ width: 360, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column' }}>
-            {/* Tabs */}
+            {/* Tabs — funksjonelle: Guide = gjennomgang, Script = redigér
+                narration, Notes = interne notater (før var de døde pynt). */}
             <div style={{ display: 'flex', gap: 18, padding: '14px 18px 0', borderBottom: `1px solid ${C.line}` }}>
-              {['Guide', 'Script', 'Notes'].map((t, i) => (
-                <div key={t} style={{ fontSize: 13, paddingBottom: 11, color: i === 0 ? C.ink : C.inkFaint, fontWeight: i === 0 ? 600 : 400, borderBottom: i === 0 ? `2px solid ${C.ink}` : '2px solid transparent', cursor: 'pointer' }}>{t}</div>
+              {(['Guide', 'Script', 'Notes'] as const).map((t) => (
+                <div key={t} onClick={() => setPanelTab(t)}
+                  style={{ fontSize: 13, paddingBottom: 11, color: panelTab === t ? C.ink : C.inkFaint, fontWeight: panelTab === t ? 600 : 400, borderBottom: panelTab === t ? `2px solid ${C.ink}` : '2px solid transparent', cursor: 'pointer' }}>{t}</div>
               ))}
             </div>
 
@@ -432,10 +469,28 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 {scenes.map((s, i) => <div key={s.id} style={{ flex: 1, height: 4, borderRadius: 2, background: i < recorderStepIndex ? C.green : i === recorderStepIndex ? C.accent : '#e8e1d6' }} />)}
               </div>
 
+              {panelTab === 'Script' && (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Narration (redigerbar)</div>
+                  <textarea value={cur?.narration ?? ''} placeholder="Skriv det som skal leses opp for denne scenen…"
+                    onChange={(e) => cur && updateScene(cur.id, { narration: e.target.value })}
+                    style={{ width: '100%', minHeight: 180, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: 10, font: 'inherit', fontSize: 13.5, lineHeight: 1.5, resize: 'vertical', marginBottom: 16 }} />
+                </>
+              )}
+              {panelTab === 'Notes' && (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Interne notater</div>
+                  <textarea value={cur?.notes ?? ''} placeholder="Timing-hint, pauser, ting å huske under opptak…"
+                    onChange={(e) => cur && updateScene(cur.id, { notes: e.target.value })}
+                    style={{ width: '100%', minHeight: 180, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: 10, font: 'inherit', fontSize: 13.5, lineHeight: 1.5, resize: 'vertical', marginBottom: 16 }} />
+                </>
+              )}
+              {panelTab === 'Guide' && (
+                <>
               {/* Narration */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>Narration</span>
-                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }}>✎</span>
+                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }} title="Redigér narration" onClick={() => setPanelTab('Script')}>✎</span>
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.5, color: C.ink, marginBottom: 22 }}>
                 {cur?.narration || <em style={{ color: C.inkFaint }}>(ingen narration — generér i Script Builder)</em>}
@@ -476,6 +531,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                   </div>
                 </div>
               )}
+                </>
+              )}
               {rec.error === REC_UNAVAILABLE ? (
                 <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 10, padding: 10, border: `1px solid ${C.line}`, borderRadius: 8, background: C.cream }}>
                   Skjermopptak er ikke tilgjengelig i app-vinduet (eller mangler skjermopptak-tillatelse).
@@ -496,6 +553,17 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <button style={{ ...outlineBtn, flex: 1 }} onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
                 <button style={{ ...darkBtn, flex: 1, opacity: rec.state === 'saving' ? 0.6 : 1 }} disabled={rec.state === 'saving'} onClick={() => void doneAndNext()}>✓ Mark as Done</button>
               </div>
+              {/* G22: samme verifiser/auto-handlinger som shell-recorderen —
+                  validering skal være synlig i HOVED-opptaksflaten også. */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <button style={{ ...outlineBtn, flex: 1, opacity: sessionBusy ? 0.6 : 1 }} disabled={!!sessionBusy}
+                  title="La systemet utføre scenens handling automatisk i demo-økten"
+                  onClick={() => void runSessionAction('auto')}>▶ {sessionBusy === 'auto' ? 'Kjører…' : 'Kjør automatisk'}</button>
+                <button style={{ ...outlineBtn, flex: 1, opacity: sessionBusy ? 0.6 : 1 }} disabled={!!sessionBusy}
+                  title="Klikk elementet i økt-vinduet — handlingen utføres og utfallet vision-verifiseres"
+                  onClick={() => void runSessionAction('verify')}>◎ {sessionBusy === 'verify' ? 'Venter…' : 'Verifiser'}</button>
+              </div>
+              {sessionMsg && <div style={{ fontSize: 11.5, color: sessionMsg.startsWith('✓') ? C.green : C.inkSoft, marginBottom: 8 }}>{sessionMsg}</div>}
               <button style={{ ...darkBtn, width: '100%', opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
                 onClick={() => void doneAndNext()}>
                 Next Step →

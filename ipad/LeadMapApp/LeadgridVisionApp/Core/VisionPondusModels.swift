@@ -92,6 +92,14 @@ final class VisionPondusStore {
     init() {
         // Seed så pondus-coach har innhold selv uten backend. Skal senere
         // erstattes av APIClient-fetch mot /api/leadgrid/pondus/templates.
+        //
+        // NB (entitlement-gating, QA 2026-07-06): denne flaten er seed-only
+        // og deltar IKKE i tilgangs-løkka enda. Når den kobles til Pondus-
+        // endepunktet håndheves `leadbookPondus`-gating AUTOMATISK server-
+        // side (`assertEntitled` i pondus-routes.ts → 403 for sperret org)
+        // — ingen egen klient-gating trengs her. Det er hele poenget med
+        // server-side håndhevelse: den dekker alle klienter (iPad/Watch/
+        // Vision) fra ett sted.
         self.templates = Self.seed()
         self.activeTemplate = templates.first
     }

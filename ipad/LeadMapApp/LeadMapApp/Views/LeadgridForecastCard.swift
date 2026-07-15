@@ -63,7 +63,7 @@ struct LeadgridForecastCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(formatNok(f.predictedRevenueMid))
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.appScaled(size: 32, weight: .bold))
                     .foregroundStyle(.primary)
                 Text("NOK").font(.caption).foregroundStyle(.secondary)
             }

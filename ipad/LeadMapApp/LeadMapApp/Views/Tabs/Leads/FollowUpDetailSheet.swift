@@ -18,8 +18,8 @@ private enum FuBrand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 struct FollowUpDetailSheet: View {
@@ -100,7 +100,7 @@ struct FollowUpDetailSheet: View {
                         Button { } label: { Label("Del lenke", systemImage: "square.and.arrow.up") }
                     } label: {
                         Image(systemName: "ellipsis.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.appScaled(size: 18))
                             .foregroundStyle(FuBrand.purpleLight)
                     }
                 }
@@ -134,21 +134,21 @@ struct FollowUpDetailSheet: View {
                     RoundedRectangle(cornerRadius: 11)
                         .fill(FuBrand.red.opacity(0.22))
                     Image(systemName: "phone.fill")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.appScaled(size: 20, weight: .semibold))
                         .foregroundStyle(FuBrand.red)
                 }
                 .frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(followUpType)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.appScaled(size: 15, weight: .bold))
                             .foregroundStyle(.white)
                         if lead.nextFollowUpOverdue {
                             HStack(spacing: 3) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .font(.appScaled(size: 8, weight: .bold))
                                 Text("Overforfalt")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.appScaled(size: 9, weight: .bold))
                             }
                             .foregroundStyle(FuBrand.red)
                             .padding(.horizontal, 6).padding(.vertical, 2)
@@ -157,10 +157,10 @@ struct FollowUpDetailSheet: View {
                         }
                     }
                     Text(lead.nextFollowUp ?? "Ikke planlagt")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(FuBrand.red)
                     Text("Med \(lead.contactName) · \(lead.company)")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(FuBrand.textSecondary)
                 }
                 Spacer()
@@ -184,16 +184,16 @@ struct FollowUpDetailSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 0) {
                 Text(label)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(FuBrand.textSecondary)
                 Text(value)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -211,17 +211,17 @@ struct FollowUpDetailSheet: View {
             Button { call(lead.displayPhone ?? "") } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "phone.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.appScaled(size: 16, weight: .bold))
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Ring \(lead.contactName.isEmpty ? lead.company : lead.contactName) nå")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                         Text("\(lead.displayPhone ?? "Mangler telefonnummer") · Telefon")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(.white.opacity(0.75))
                     }
                     Spacer()
                     Image(systemName: "phone.connection.fill")
-                        .font(.system(size: 15))
+                        .font(.appScaled(size: 15))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16).padding(.vertical, 14)
@@ -256,12 +256,12 @@ struct FollowUpDetailSheet: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 32, height: 32)
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity)
@@ -290,15 +290,15 @@ struct FollowUpDetailSheet: View {
         HStack {
             HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(FuBrand.textSecondary)
                 Text(label)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(FuBrand.textSecondary)
             }
             Spacer()
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(valueColor)
         }
     }
@@ -308,7 +308,7 @@ struct FollowUpDetailSheet: View {
     private var agendaCard: some View {
         sectionCard(title: "Agenda + notat", icon: "list.bullet.rectangle.portrait") {
             Text(agenda)
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(10)
@@ -325,22 +325,22 @@ struct FollowUpDetailSheet: View {
                 ZStack {
                     Circle().fill(FuBrand.blue.opacity(0.22))
                     Image(systemName: "envelope.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(FuBrand.blue)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(isDemoRow ? "Tilbud sendt" : "Siste registrerte aktivitet")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(previousActivity)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(FuBrand.textSecondary)
                 }
                 Spacer()
                 Button { } label: {
                     Image(systemName: "arrow.right.circle")
-                        .font(.system(size: 14))
+                        .font(.appScaled(size: 14))
                         .foregroundStyle(FuBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
@@ -358,17 +358,17 @@ struct FollowUpDetailSheet: View {
                 ZStack {
                     Circle().fill(FuBrand.purpleLight.opacity(0.25))
                     Image(systemName: "sparkles")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(FuBrand.purpleLight)
                 }
                 .frame(width: 24, height: 24)
                 Text("Leadgrid AI foreslår")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(FuBrand.purpleLight)
                 Spacer()
             }
             Text("Anders pleier å være tilgjengelig mellom 09-11 på tirsdag. Send heller en SMS først som heads-up — han har lest 3 e-poster denne uka uten å svare. Vurder å ringe direkte til mobilen.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -386,9 +386,9 @@ struct FollowUpDetailSheet: View {
         Button { } label: {
             HStack(spacing: 8) {
                 Image(systemName: "trash.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                 Text("Slett oppfølging")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
             }
             .foregroundStyle(FuBrand.red)
             .frame(maxWidth: .infinity)
@@ -417,11 +417,11 @@ struct FollowUpDetailSheet: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Text("Utsett")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 13)
@@ -432,9 +432,9 @@ struct FollowUpDetailSheet: View {
             Button { logActivityOpen = true } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Loggfør og fullfør")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -464,10 +464,10 @@ struct FollowUpDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FuBrand.purpleLight)
                 Text(title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }

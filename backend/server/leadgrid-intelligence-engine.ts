@@ -1273,7 +1273,35 @@ async function persistIntelligence(
         result.nextBestAction.expectedImpact,
       ],
     );
-    return r.rows[0]?.id ?? null;
+    const recId = r.rows[0]?.id ?? null;
+    // Workflow-QA 2026-07-05: recommendation.published-triggeren hadde
+    // ingen publisher — nå fyrer den når motoren faktisk publiserer en
+    // ny anbefaling (dedup-treffet over publiserer IKKE på nytt).
+    if (recId && lead.organization_id) {
+      const recOrgId = lead.organization_id;
+      void (async () => {
+        try {
+          const bus = await import("./leadgrid-workflow-engine.js");
+          await bus.publishEvent({
+            pool,
+            organizationId: recOrgId,
+            type: "recommendation.published",
+            leadId: lead.id,
+            actorUserId: lead.assigned_user_id ?? null,
+            data: {
+              recommendation_id: recId,
+              action_type: result.nextBestAction.action,
+              channel: result.nextBestAction.channel,
+              priority: result.nextBestAction.priority,
+              occurred_at: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          console.warn("[intelligence-engine] recommendation.published publish feilet:", (err as Error).message);
+        }
+      })();
+    }
+    return recId;
   } catch (err) {
     console.warn("[intelligence-engine] persist recommendation failed:", err);
     return null;

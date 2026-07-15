@@ -685,6 +685,33 @@ async function processItem(
         } catch {
           /* aldri blokker batchen på broadcast-feil */
         }
+        // Workflow-event (2026-07-04): `lead.created` fantes som trigger
+        // men INGEN publiserte det — welcome-workflows fyrte aldri.
+        // Dynamic import unngår statisk import-sykel (engine →
+        // continuous-discovery → denne fila). Fire-and-forget.
+        if (orgId) {
+          void import("./leadgrid-workflow-engine.js")
+            .then(({ publishEvent }) =>
+              publishEvent({
+                pool,
+                organizationId: orgId,
+                type: "lead.created",
+                leadId: item.draft_lead_id,
+                actorUserId: userId,
+                data: {
+                  source: "lead_discovery",
+                  batch_id: batchId,
+                  occurred_at: new Date().toISOString(),
+                },
+              }),
+            )
+            .catch((err) =>
+              console.warn(
+                "[batch] lead.created-event feilet:",
+                (err as Error).message,
+              ),
+            );
+        }
       }
       return; // success — bryt retry-loop
     } catch (err) {
@@ -1120,10 +1147,13 @@ export function registerUrlResearchResumeCron(pool: Pool): void {
   resumeHandle = setInterval(() => {
     void sweep();
   }, RESUME_INTERVAL_MS);
+  // Boot-delay 5 min (var 45s): første sweep ved deploy 2026-07-03 kjørte
+  // midt i boot-trengselen og 79 items feilet transient med
+  // orchestrator_unavailable. La resten av oppstarten lande først.
   setTimeout(() => {
     void sweep();
-  }, 45_000);
-  console.log("[url-research-resume] sweeper registered (boot +45s, deretter hver time)");
+  }, 5 * 60_000);
+  console.log("[url-research-resume] sweeper registered (boot +5 min, deretter hver time)");
 }
 
 /** Internt for tester — stopp sweeper. */

@@ -47,6 +47,7 @@ FAL_MODELS = {
     "edit":     "fal-ai/nano-banana/edit",
     "i2v":      "fal-ai/bytedance/seedance/v1/pro/image-to-video",  # Seedance
     "tts":      "fal-ai/elevenlabs/tts/multilingual-v2",
+    "audio":    "fal-ai/stable-audio",  # musikk/ambiens (payload: prompt + seconds_total)
 }
 
 def _fal_key() -> str:

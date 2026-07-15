@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { listAssets, removeAsset, clearAssets, ASSET_KIND_LABELS, type AssetItem, type AssetKind } from './assetLibrary';
-import { svgToPngDataUrl } from './demoStudioExports';
+import { svgToPngDataUrl, svgForInlineDisplay } from './demoStudioExports';
 import { pushCloudAsset, listCloudAssets, removeCloudAsset } from '../../services/cloudAssetsService';
 import { isAiConnected } from '../../services/claudeProxyService';
 
@@ -60,7 +60,8 @@ export function LibraryPanel() {
 
   const downloadAsset = async (a: AssetItem) => {
     if (a.svg) {
-      try { download(await svgToPngDataUrl(a.svg, 1080, 1350, 2), `${a.title}.png`); }
+      // Størrelse fra viewBox (ikke hardkodet) + logo inlines i rastreringen.
+      try { download(await svgToPngDataUrl(a.svg), `${a.title}.png`); }
       catch { download(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(a.svg)}`, `${a.title}.svg`); }
     } else if (a.dataUrl) download(a.dataUrl, `${a.title}.png`);
     else if (a.text) {
@@ -111,7 +112,7 @@ export function LibraryPanel() {
             <div key={a.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column' }}>
               <div style={{ height: 150, background: C.cream, display: 'grid', placeItems: 'center', overflow: 'hidden', borderBottom: `1px solid ${C.line}` }}>
                 {a.svg ? (
-                  <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }} dangerouslySetInnerHTML={{ __html: a.svg }} />
+                  <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', padding: 8, boxSizing: 'border-box' }} dangerouslySetInnerHTML={{ __html: svgForInlineDisplay(a.svg) }} />
                 ) : a.dataUrl ? (
                   <img src={a.dataUrl} alt={a.title} style={{ maxWidth: '100%', maxHeight: '100%' }} />
                 ) : (

@@ -26,6 +26,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionUser = {
   userId: string;
@@ -40,27 +41,6 @@ export interface SalesTeamsRoutesDeps {
   requireUserSession: (req: Request, res: Response) => SessionUser | null;
 }
 
-/** Samme org-oppslag som sales-leadership-routes.ts (modul-privat der). */
-async function resolveOrgIdForUser(
-  pool: Pool,
-  userId: string,
-): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Tabell mangler eller spørring feilet — fall til userId-modell.
-  }
-  return userId;
-}
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const ROLES = new Set(["seller", "promoter", "manager"]);
@@ -77,6 +57,8 @@ function mapTeamRow(row: Record<string, unknown>): Record<string, unknown> {
     area_center_lat: row.area_center_lat !== null && row.area_center_lat !== undefined ? Number(row.area_center_lat) : null,
     area_center_lng: row.area_center_lng !== null && row.area_center_lng !== undefined ? Number(row.area_center_lng) : null,
     area_radius_km: row.area_radius_km !== null && row.area_radius_km !== undefined ? Number(row.area_radius_km) : null,
+    area_kommunenummer: row.area_kommunenummer ?? null,
+    area_kommune_navn: row.area_kommune_navn ?? null,
   };
 }
 
@@ -99,6 +81,53 @@ function mapAssignmentRow(row: Record<string, unknown>): Record<string, unknown>
 
 export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
+
+  // ───────────────────────────────────────────────────────────────
+  // AKTIVITETSFEED (2026-07-04) — Team-fanens «Siste aktivitet»
+  // crm_lead_activities fylles nå av tilbud/besøk/status-endringer;
+  // feeden viser org-ens siste hendelser m/ bruker- og lead-navn.
+  // ───────────────────────────────────────────────────────────────
+  app.get("/api/leadgrid/activity-feed", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 25));
+    try {
+      const r = await pool.query(
+        `SELECT a.id::text,
+                a.activity_type,
+                COALESCE(a.description, '') AS description,
+                a.new_value,
+                a.created_at,
+                COALESCE(
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                  u.email, 'System'
+                ) AS user_name,
+                c.name AS lead_name
+           FROM crm_lead_activities a
+           JOIN crm_customers c ON c.id = a.customer_id
+           LEFT JOIN users u ON u.id = a.user_id
+          WHERE c.organization_id::text = $1
+          ORDER BY a.created_at DESC
+          LIMIT $2`,
+        [orgId, limit],
+      );
+      return res.json({
+        activities: r.rows.map((row) => ({
+          id: String(row.id),
+          activity_type: String(row.activity_type),
+          description: String(row.description ?? ""),
+          new_value: row.new_value ?? null,
+          user_name: String(row.user_name ?? "System"),
+          lead_name: String(row.lead_name ?? ""),
+          created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        })),
+      });
+    } catch (err) {
+      console.error("[activity-feed] GET failed:", err);
+      return res.status(500).json({ error: "activity_feed_failed", detail: String((err as Error).message) });
+    }
+  });
 
   // ───────────────────────────────────────────────────────────────
   // SALES TEAMS
@@ -139,6 +168,13 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
     const lat = typeof body.area_center_lat === "number" ? body.area_center_lat : null;
     const lng = typeof body.area_center_lng === "number" ? body.area_center_lng : null;
     const radius = typeof body.area_radius_km === "number" ? body.area_radius_km : null;
+    // Kommune-basert område (Kartverket, mig 0369). 4-sifret kommunenr.
+    const kommunenr = typeof body.area_kommunenummer === "string" && /^\d{4}$/.test(body.area_kommunenummer)
+      ? body.area_kommunenummer
+      : null;
+    const kommuneNavn = typeof body.area_kommune_navn === "string" && body.area_kommune_navn.trim()
+      ? body.area_kommune_navn.trim().slice(0, 120)
+      : null;
 
     if (!id || id.length > 120) return res.status(400).json({ error: "ugyldig_id" });
     if (!name || name.length > 120) return res.status(400).json({ error: "ugyldig_navn" });
@@ -155,8 +191,8 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
         `INSERT INTO leadgrid_sales_teams
            (organization_id, id, name, color_hex, leader_user_id,
             member_user_ids, area_center_lat, area_center_lng, area_radius_km,
-            created_by)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+            area_kommunenummer, area_kommune_navn, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (organization_id, id) DO UPDATE SET
            name = EXCLUDED.name,
            color_hex = EXCLUDED.color_hex,
@@ -165,9 +201,11 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
            area_center_lat = EXCLUDED.area_center_lat,
            area_center_lng = EXCLUDED.area_center_lng,
            area_radius_km = EXCLUDED.area_radius_km,
+           area_kommunenummer = EXCLUDED.area_kommunenummer,
+           area_kommune_navn = EXCLUDED.area_kommune_navn,
            updated_at = NOW()
          RETURNING *`,
-        [orgId, id, name, colorHex, safeLeaderId, JSON.stringify(memberIds), lat, lng, radius, session.userId],
+        [orgId, id, name, colorHex, safeLeaderId, JSON.stringify(memberIds), lat, lng, radius, kommunenr, kommuneNavn, session.userId],
       );
       return res.json({ team: mapTeamRow(r.rows[0]) });
     } catch (err) {

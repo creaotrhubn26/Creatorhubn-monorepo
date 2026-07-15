@@ -161,6 +161,39 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
   });
 
+  // Workflow-trigger-publisering (QA 2026-07-05): lead.status_changed
+  // hadde INGEN publisher — workflows med status-trigger fyrte aldri.
+  // Brukes av begge status-endepunktene + begge visit-endepunktene
+  // (besøk kan sette newStatus). Fire-and-forget.
+  function publishLeadStatusChanged(opts: {
+    leadId: string;
+    from: string | null;
+    to: string;
+    userId: string;
+  }): void {
+    void (async () => {
+      try {
+        const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+        const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+        const orgId = await resolveOrgIdForUser(pool, opts.userId);
+        await publishEvent({
+          pool,
+          organizationId: orgId,
+          type: "lead.status_changed",
+          leadId: opts.leadId,
+          actorUserId: opts.userId,
+          data: {
+            from: opts.from,
+            to: opts.to,
+            occurred_at: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn("[lead-map] lead.status_changed publish feilet:", (err as Error).message);
+      }
+    })();
+  }
+
   // PATCH /leads/:id/status
   app.patch("/api/admin-room/lead-map/leads/:id/status",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
@@ -198,11 +231,78 @@ export function setupLeadMapRoutes(deps: Deps): void {
             triggeredByUserId: session.userId,
           });
         });
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.status,
+          userId: session.userId,
+        });
       }
 
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "status_failed", detail: String(err) });
+    }
+  });
+
+  // PATCH /leads/:id/temperature (workflow-QA 2026-07-05)
+  //
+  // Temperatur kunne bare settes ved opprettelse (from-pin) — det fantes
+  // ingen oppdateringsflate, så lead.temperature_changed-workflows kunne
+  // aldri fyre. Whitelist matcher check-constrainten på crm_customers.
+  app.patch("/api/admin-room/lead-map/leads/:id/temperature",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+    const session = await getUser(req, pool, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const VALID_TEMPS = new Set(["cold", "warm", "hot", "ready"]);
+    const body = (req.body ?? {}) as { temperature?: string };
+    if (!body.temperature || !VALID_TEMPS.has(body.temperature)) {
+      return res.status(400).json({ error: "ugyldig_temperatur" });
+    }
+    try {
+      const prev = await pool.query<{ lead_temperature: string | null }>(
+        `SELECT lead_temperature FROM crm_customers WHERE id = $1`,
+        [req.params.id],
+      );
+      if (prev.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const oldTemp = prev.rows[0].lead_temperature ?? null;
+
+      await pool.query(
+        `UPDATE crm_customers
+            SET lead_temperature = $1, updated_at = NOW()
+          WHERE id = $2`,
+        [body.temperature, req.params.id],
+      );
+
+      if (oldTemp !== body.temperature) {
+        void (async () => {
+          try {
+            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            await publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "lead.temperature_changed",
+              leadId: req.params.id,
+              actorUserId: session.userId,
+              data: {
+                from: oldTemp,
+                to: body.temperature,
+                occurred_at: new Date().toISOString(),
+              },
+            });
+          } catch (err) {
+            console.warn("[lead-map] lead.temperature_changed publish feilet:", (err as Error).message);
+          }
+        })();
+      }
+
+      return res.json({ ok: true, temperature: body.temperature });
+    } catch (err) {
+      return res.status(500).json({ error: "temperature_failed", detail: String(err) });
     }
   });
 
@@ -263,6 +363,17 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
 
     try {
+      // Gammel status FØR logVisit — besøk kan sette newStatus, og da
+      // skal lead.status_changed-workflows fyre (QA 2026-07-05).
+      let oldStatus: string | null = null;
+      if (body.newStatus) {
+        const prev = await pool.query<{ lead_status: string | null }>(
+          `SELECT lead_status FROM crm_customers WHERE id = $1`,
+          [req.params.id],
+        );
+        oldStatus = prev.rows[0]?.lead_status ?? null;
+      }
+
       const r = await logVisit(pool, {
         ownerUserId: session.userId,
         leadId: req.params.id,
@@ -278,6 +389,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
         visitLongitude: body.visitLongitude,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      if (body.newStatus && oldStatus !== body.newStatus) {
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.newStatus,
+          userId: session.userId,
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "visit_failed", detail: String(err) });
@@ -401,9 +522,9 @@ export function setupLeadMapRoutes(deps: Deps): void {
              project_id, notes,
              created_at, updated_at
            ) VALUES (
-             gen_random_uuid()::text, $1, $2, $3, $4, $5,
+             gen_random_uuid(), $1, $2, $3, $4, $5,
              'unvisited', 'business_card_scan',
-             $6, $6, NOW(), $6, $7, $8,
+             $6::text, $6::text, NOW(), $6::text, $7, $8,
              NOW(), NOW()
            ) RETURNING id::text`,
           [
@@ -419,7 +540,28 @@ export function setupLeadMapRoutes(deps: Deps): void {
         );
         // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
         // separat — på crm_customers er notes-feltet tilstrekkelig)
-        return res.json({ ok: true, id: r.rows[0].id });
+        // Workflow-event (2026-07-04): visittkort-skannede leads skal
+        // også fyre lead.created (welcome/intro-workflows) — samme
+        // mønster som pin-drop-ruten. Fire-and-forget.
+        const cardLeadId = r.rows[0].id;
+        void (async () => {
+          try {
+            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            await publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "lead.created",
+              leadId: cardLeadId,
+              actorUserId: session.userId,
+              data: { source: "business_card_scan", occurred_at: new Date().toISOString() },
+            });
+          } catch (err) {
+            console.warn("[lead-map] from-card lead.created feilet:", (err as Error).message);
+          }
+        })();
+        return res.json({ ok: true, id: cardLeadId });
       } catch (err) {
         return res.status(500).json({ error: "create_failed", detail: String(err) });
       }
@@ -459,11 +601,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (typeof body.latitude !== 'number' || typeof body.longitude !== 'number') {
         return res.status(400).json({ error: "mangler_koordinat" });
       }
-      // Defensiv whitelist for lead_temperature — backend cap'es av VARCHAR(10).
-      const validTemps = new Set(['hot', 'warm', 'lukewarm', 'cold', 'ready', 'cool']);
+      // Whitelist speiler crm_customers_lead_temperature_check — alt utenfor
+      // constrainten (lukewarm/cool fra eldre klienter) mappes til 'warm'.
+      const validTemps = new Set(['hot', 'warm', 'cold', 'ready']);
       const temperature = body.lead_temperature && validTemps.has(body.lead_temperature)
         ? body.lead_temperature
-        : 'lukewarm';
+        : 'warm';
       const validConfidences = new Set(['exact', 'geocoded', 'approximate', 'unknown']);
       const locationConfidence = body.location_confidence && validConfidences.has(body.location_confidence)
         ? body.location_confidence
@@ -483,11 +626,11 @@ export function setupLeadMapRoutes(deps: Deps): void {
              project_id,
              created_at, updated_at
            ) VALUES (
-             gen_random_uuid()::text, $1, $2, $3, $4,
+             gen_random_uuid(), $1, $2, $3, $4,
              $5, $6, $7,
              $8::uuid, $9, $10,
              'unvisited', $11,
-             $12, $12, NOW(), $12,
+             $12::text, $12::text, NOW(), $12::text,
              $13,
              NOW(), NOW()
            ) RETURNING id::text`,
@@ -507,7 +650,28 @@ export function setupLeadMapRoutes(deps: Deps): void {
             body.project_id ?? null,
           ],
         );
-        return res.json({ ok: true, id: r.rows[0].id });
+        // Workflow-event (2026-07-04): manuelt opprettede leads skal også
+        // fyre lead.created (welcome-workflows). Org via felles resolver,
+        // dynamic import unngår import-sykel. Fire-and-forget.
+        const newLeadId = r.rows[0].id;
+        void (async () => {
+          try {
+            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            await publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "lead.created",
+              leadId: newLeadId,
+              actorUserId: session.userId,
+              data: { source: leadSource, occurred_at: new Date().toISOString() },
+            });
+          } catch (err) {
+            console.warn("[lead-map] lead.created-event feilet:", (err as Error).message);
+          }
+        })();
+        return res.json({ ok: true, id: newLeadId });
       } catch (err) {
         return res.status(500).json({ error: "create_failed", detail: String(err) });
       }
@@ -621,6 +785,13 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_status" });
     }
     try {
+      // Gammel status FØR oppdatering — trengs av workflow-triggeren.
+      const prev = await pool.query<{ lead_status: string | null }>(
+        `SELECT lead_status FROM crm_customers WHERE id = $1`,
+        [req.params.id],
+      );
+      const oldStatus = prev.rows[0]?.lead_status ?? null;
+
       const r = await updateLeadStatus(pool, {
         ownerUserId: session.userId,
         agentConfigId: req.params.configId,
@@ -629,6 +800,17 @@ export function setupLeadMapRoutes(deps: Deps): void {
         notes: body.notes,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      // Workflow-trigger (QA 2026-07-05): samme kobling som admin-ruten.
+      if (oldStatus !== body.status) {
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.status,
+          userId: session.userId,
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "status_failed", detail: String(err) });
@@ -653,6 +835,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_visit_type" });
     }
     try {
+      // Gammel status FØR logVisit (workflow-trigger, QA 2026-07-05).
+      let oldStatus: string | null = null;
+      if (body.newStatus) {
+        const prev = await pool.query<{ lead_status: string | null }>(
+          `SELECT lead_status FROM crm_customers WHERE id = $1`,
+          [req.params.id],
+        );
+        oldStatus = prev.rows[0]?.lead_status ?? null;
+      }
+
       const r = await logVisit(pool, {
         ownerUserId: session.userId,
         agentConfigId: req.params.configId,
@@ -668,6 +860,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
         visitLatitude: body.visitLatitude, visitLongitude: body.visitLongitude,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      if (body.newStatus && oldStatus !== body.newStatus) {
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.newStatus,
+          userId: session.userId,
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "visit_failed", detail: String(err) });
@@ -836,6 +1038,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.post("/api/role-room/agent/configs/:configId/lead-map/auto-populate", async (req, res) => {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    // UUID-validering FØR noen ::uuid-cast — en malformet configId ville
+    // ellers kastet «invalid input syntax for type uuid» i verifyConfig-
+    // Access/SELECT (før try) → uhåndtert → HENG (Notification-QA 2026-07-07).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.configId)) {
+      return res.status(400).json({ error: "ugyldig_config_id" });
+    }
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
     }

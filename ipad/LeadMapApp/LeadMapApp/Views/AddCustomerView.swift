@@ -66,7 +66,7 @@ struct AddCustomerView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Legg til en kunde")
-                        .font(.system(size: 36, weight: .bold))
+                        .font(.appScaled(size: 36, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Du gir oss to ting. Leadgrid gjør resten.")
                         .font(.title3)
@@ -206,7 +206,7 @@ struct AddCustomerView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(headlineFor(audit: a))
-                        .font(.system(size: 32, weight: .bold))
+                        .font(.appScaled(size: 32, weight: .bold))
                         .foregroundStyle(.white)
                     if let subtitle = subtitleFor(audit: a) {
                         Text(subtitle)
@@ -357,7 +357,7 @@ struct AddCustomerView: View {
     private func statTile(value: String, label: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(value)
-                .font(.system(size: 28, weight: .bold))
+                .font(.appScaled(size: 28, weight: .bold))
                 .foregroundStyle(color)
             Text(label)
                 .font(.caption2.weight(.semibold))

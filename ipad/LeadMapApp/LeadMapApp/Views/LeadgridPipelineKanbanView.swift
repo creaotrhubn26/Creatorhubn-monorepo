@@ -165,7 +165,7 @@ struct LeadgridPipelineKanbanView: View {
             HStack(spacing: 4) {
                 if let temp = lead.leadTemperature {
                     Text(temp.uppercased())
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(tempColor(temp).opacity(0.2), in: Capsule())
                         .foregroundStyle(tempColor(temp))

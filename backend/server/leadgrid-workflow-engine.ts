@@ -287,7 +287,7 @@ export function triggerMatches(
 
 async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
   const r = await pool.query<LeadRow>(
-    `SELECT id::text, business_name, lead_score, lead_temperature,
+    `SELECT id::text, name AS business_name, lead_score, lead_temperature,
             pipeline_stage, industry_id::text, city,
             deal_amount::text AS deal_amount, deal_probability,
             owner_user_id, email, phone
@@ -371,7 +371,16 @@ export async function executeWorkflow(
   pool: Pool,
   workflow: WorkflowRow,
   event: WorkflowEvent,
-  opts?: { dryRun?: boolean; lead?: LeadRow | null },
+  opts?: {
+    dryRun?: boolean;
+    lead?: LeadRow | null;
+    /**
+     * Wait-scheduler (mig 0366): resume-kjøringer starter her (indexen
+     * ETTER wait-action-en). Kjedede waits fungerer — treffer loopen en
+     * ny wait planlegges ny resume-jobb.
+     */
+    startAtActionIndex?: number;
+  },
 ): Promise<{ executionId: string; status: string; actionResults: ActionResult[] }> {
   const startedAt = Date.now();
   const lead =
@@ -421,9 +430,58 @@ export async function executeWorkflow(
   // Execute actions sekvensielt
   const actionResults: ActionResult[] = [];
   let overallStatus: "completed" | "failed" = "completed";
-  for (let i = 0; i < workflow.actions.length; i++) {
+  for (let i = opts?.startAtActionIndex ?? 0; i < workflow.actions.length; i++) {
     const a = workflow.actions[i];
     const aStart = Date.now();
+
+    // Wait-scheduler (mig 0366): persister resume-jobb og STOPP — de
+    // resterende action-ene kjøres av polleren når resume_at passeres.
+    // (Tidligere var wait en no-op og oppfølgingen sendte umiddelbart.)
+    if (a.type === "wait" && !opts?.dryRun) {
+      const minutes = Math.max(1, Math.min(a.duration_minutes ?? 0, 60 * 24 * 90)); // cap 90 dager
+      const resumeAt = new Date(Date.now() + minutes * 60_000);
+      try {
+        await pool.query(
+          `INSERT INTO leadgrid_workflow_resume_jobs
+             (workflow_id, organization_id, lead_id, event, next_action_index,
+              parent_execution_id, resume_at)
+           VALUES ($1::uuid, $2, $3, $4::jsonb, $5, $6::uuid, $7)`,
+          [
+            workflow.id,
+            event.organizationId,
+            event.leadId ?? null,
+            JSON.stringify({
+              type: event.type,
+              data: event.data,
+              actorUserId: event.actorUserId,
+            }),
+            i + 1,
+            executionId || null,
+            resumeAt.toISOString(),
+          ],
+        );
+        actionResults.push({
+          index: i,
+          type: a.type,
+          status: "scheduled",
+          message: `wait_scheduled_until:${resumeAt.toISOString()}`,
+          durationMs: Date.now() - aStart,
+        });
+      } catch (err) {
+        // Tabell mangler (pre-mig-0366) — behold gammel deferred-adferd
+        // så workflows ikke knekker under utrulling.
+        actionResults.push({
+          index: i,
+          type: a.type,
+          status: "deferred",
+          message: `wait_schedule_failed:${String((err as Error).message).slice(0, 120)}`,
+          durationMs: Date.now() - aStart,
+        });
+        continue;
+      }
+      break; // resten kjøres av resume-polleren
+    }
+
     try {
       const result = await runAction(
         pool,
@@ -1379,10 +1437,159 @@ export async function publishEvent(event: WorkflowEvent): Promise<void> {
     if (workflows.length === 0) return;
 
     // Concurrent execution — én feilende workflow stopper ikke de andre
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       workflows.map((w) => executeWorkflow(event.pool, w, event)),
     );
+    // Feil FØR execution-raden inserts (f.eks. fetchLead) etterlater ellers
+    // null spor — skriv til workflow-radens last_error så det er synlig i DB
+    // og UI i stedet for kun en warn i server-loggen.
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status !== "rejected") continue;
+      const msg =
+        r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.warn(
+        `[workflow-engine] workflow ${workflows[i].id} (${workflows[i].name}) feilet:`,
+        msg,
+      );
+      try {
+        await event.pool.query(
+          `UPDATE leadgrid_workflows
+              SET last_error_at = NOW(), last_error_message = $2
+            WHERE id = $1::uuid`,
+          [workflows[i].id, msg.slice(0, 500)],
+        );
+      } catch {
+        // best effort — logging skal aldri velte event-publisering
+      }
+    }
   } catch (err) {
     console.warn("[workflow-engine] publishEvent failed:", err);
+  }
+}
+
+// =====================================================================
+// Wait-scheduler-poller (mig 0366)
+// =====================================================================
+// executeWorkflow persisterer en resume-jobb ved wait-actions og stopper.
+// Polleren (5 min + boot +2 min) plukker forfalte jobber og gjenopptar
+// kjøringen fra neste action. Claim via status-flip m/ SKIP LOCKED så
+// flere instanser aldri dobbeltkjører samme jobb.
+//
+// Aktivitets-guard: auto_followup-semantikken er «hvis ikke noe har
+// skjedd» — jobben hoppes over hvis leaden har fått crm_lead_activities
+// ETTER at wait-en startet (f.eks. møte booket manuelt i mellomtiden).
+
+const RESUME_POLL_INTERVAL_MS = 5 * 60_000;
+const RESUME_BATCH_SIZE = 20;
+
+let resumePollerHandle: NodeJS.Timeout | null = null;
+let resumePollerRunning = false;
+
+interface ResumeJobRow {
+  id: string;
+  workflow_id: string;
+  organization_id: string;
+  lead_id: string | null;
+  event: { type: string; data: Record<string, unknown>; actorUserId: string | null };
+  next_action_index: number;
+  created_at: Date;
+}
+
+export function registerWorkflowResumeCron(pool: Pool): void {
+  if (resumePollerHandle) return; // idempotent
+
+  resumePollerHandle = setInterval(() => {
+    void runResumeTick(pool);
+  }, RESUME_POLL_INTERVAL_MS);
+  setTimeout(() => {
+    void runResumeTick(pool);
+  }, 2 * 60_000);
+  console.log("[workflow-resume] poller registered (boot +2 min, deretter hvert 5. min)");
+}
+
+export function _stopWorkflowResumeCron(): void {
+  if (resumePollerHandle) {
+    clearInterval(resumePollerHandle);
+    resumePollerHandle = null;
+  }
+}
+
+async function runResumeTick(pool: Pool): Promise<void> {
+  if (resumePollerRunning) return;
+  resumePollerRunning = true;
+  try {
+    // Claim forfalte jobber atomisk.
+    const claimed = await pool.query<ResumeJobRow>(
+      `UPDATE leadgrid_workflow_resume_jobs
+          SET status = 'running', resumed_at = NOW()
+        WHERE id IN (
+          SELECT id FROM leadgrid_workflow_resume_jobs
+           WHERE status = 'pending' AND resume_at <= NOW()
+           ORDER BY resume_at ASC
+           LIMIT ${RESUME_BATCH_SIZE}
+           FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id::text, workflow_id::text, organization_id, lead_id,
+                  event, next_action_index, created_at`,
+    ).catch(() => ({ rows: [] as ResumeJobRow[] })); // tabell mangler pre-mig
+
+    for (const job of claimed.rows) {
+      const finish = (status: string) =>
+        pool.query(
+          `UPDATE leadgrid_workflow_resume_jobs SET status = $1 WHERE id = $2::uuid`,
+          [status, job.id],
+        ).catch(() => undefined);
+
+      try {
+        // 1. Workflow må fortsatt finnes og være aktiv.
+        const wfRes = await pool.query<WorkflowRow>(
+          `SELECT id::text, organization_id::text, name, trigger_type,
+                  trigger_config, conditions, actions, is_active
+             FROM leadgrid_workflows
+            WHERE id = $1::uuid AND is_active = TRUE`,
+          [job.workflow_id],
+        );
+        const workflow = wfRes.rows[0];
+        if (!workflow) {
+          await finish("cancelled");
+          continue;
+        }
+
+        // 2. Aktivitets-guard: «hvis ikke noe har skjedd» siden wait.
+        if (job.lead_id) {
+          const act = await pool.query<{ n: number }>(
+            `SELECT COUNT(*)::int AS n FROM crm_lead_activities
+              WHERE customer_id = $1::uuid AND created_at > $2`,
+            [job.lead_id, job.created_at],
+          ).catch(() => ({ rows: [{ n: 0 }] }));
+          if ((act.rows[0]?.n ?? 0) > 0) {
+            await finish("skipped");
+            continue;
+          }
+        }
+
+        // 3. Gjenoppta fra neste action.
+        const event: WorkflowEvent = {
+          pool,
+          organizationId: job.organization_id,
+          type: job.event.type as WorkflowEvent["type"],
+          leadId: job.lead_id,
+          actorUserId: job.event.actorUserId ?? null,
+          data: job.event.data ?? {},
+        };
+        const result = await executeWorkflow(pool, workflow, event, {
+          startAtActionIndex: job.next_action_index,
+        });
+        await finish(result.status === "failed" ? "failed" : "done");
+      } catch (err) {
+        console.warn("[workflow-resume] jobb feilet:", job.id, (err as Error).message);
+        await finish("failed");
+      }
+    }
+  } catch (err) {
+    console.warn("[workflow-resume] tick feilet:", err);
+  } finally {
+    resumePollerRunning = false;
   }
 }

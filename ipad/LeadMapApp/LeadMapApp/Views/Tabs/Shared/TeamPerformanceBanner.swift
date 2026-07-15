@@ -122,13 +122,51 @@ struct TeamPerformanceBanner: View {
     @State private var shakeOffset: CGFloat = 0
 
     var body: some View {
+        if DeviceIdiom.isPhone {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    /// Kompakt phone-variant (2026-07-04): mini-kartet på iPhone er for
+    /// lite til full banner-stack — badges/trofeer/glow overlappet
+    /// cluster-nålene til uleselighet. Viser KUN team-navn i en liten
+    /// pill i team-farge + en status-dot i prestasjons-fargen. Ingen
+    /// pulse/shake/glow. iPad/Mac beholder full variant under.
+    private var compactBody: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(performance.level.accentColor)
+                .frame(width: 6, height: 6)
+            Text(team.name)
+                .font(.appScaled(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(
+            LinearGradient(
+                colors: [team.color.opacity(0.95), team.color.opacity(0.75)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: Capsule()
+        )
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.20), lineWidth: 0.5))
+        .saturation(performance.level.saturation)
+        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+    }
+
+    /// Full variant — iPad/Mac (uendret oppførsel).
+    private var fullBody: some View {
         VStack(spacing: 6) {
             // Prestasjons-badge (SF Symbol + label)
             HStack(spacing: 5) {
                 Image(systemName: performance.level.icon)
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.appScaled(size: 10, weight: .heavy))
                 Text(performance.level.label)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(1.0)
             }
             .foregroundStyle(.white)
@@ -140,7 +178,7 @@ struct TeamPerformanceBanner: View {
 
             // Team-navn (stor, i team-farge)
             Text(team.name)
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 15, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -176,9 +214,9 @@ struct TeamPerformanceBanner: View {
                 // Won count
                 HStack(spacing: 3) {
                     Image(systemName: "trophy.fill")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.appScaled(size: 8, weight: .bold))
                     Text("\(performance.wonThisWeek) / \(performance.weeklyTarget)")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                 }
                 .foregroundStyle(.white)
@@ -191,9 +229,9 @@ struct TeamPerformanceBanner: View {
                     Image(systemName: performance.trendPercent >= 0
                           ? "arrow.up.right"
                           : "arrow.down.right")
-                        .font(.system(size: 8, weight: .heavy))
+                        .font(.appScaled(size: 8, weight: .heavy))
                     Text("\(abs(performance.trendPercent))%")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                 }
                 .foregroundStyle(

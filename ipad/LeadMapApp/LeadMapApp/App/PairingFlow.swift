@@ -40,20 +40,23 @@ struct PairingView: View {
                     .ignoresSafeArea()
                 )
             paringContent
+                .frame(maxWidth: 460)
         }
     }
 
     private var paringContent: some View {
         VStack(spacing: 24) {
-            Image("LeadgridLogo")
+            // Topp-Spacer sentrerer alt vertikalt — sammen med den
+            // eksisterende `Spacer()` foran footeren blir logo + knapper
+            // sentrert både på iPad-portrait og Mac Catalyst store vinduer.
+            Spacer(minLength: 24)
+            // Lockup-en (2026-07-04) inneholder wordmarken — erstatter
+            // kvadrat-ikonet + separat «Leadgrid»-tittel.
+            Image("LeadgridLockup")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 96, height: 96)
-                .clipShape(RoundedRectangle(cornerRadius: 22))
-                .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 8)
-            Text("Leadgrid")
-                .font(.largeTitle.bold())
-                .foregroundStyle(.white)
+                .frame(maxWidth: 320)
+                .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 6)
             Text("Logg inn for å begynne")
                 .foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
@@ -162,7 +165,8 @@ struct PairingView: View {
             }
             .padding(.bottom, 24)
         }
-        .padding(.top, 60)
+        // Topp-padding fjernet — Spacer() øverst og Spacer() foran footer
+        // sentrerer nå innholdet vertikalt.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

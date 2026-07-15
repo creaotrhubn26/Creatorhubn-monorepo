@@ -94,6 +94,15 @@ actor APIClient {
         )
     }
 
+    /// Workflow-QA 2026-07-05: temperatur var kun settbar ved opprettelse
+    /// — nå PATCH-bar, og backend fyrer lead.temperature_changed-workflows.
+    func updateTemperature(leadId: String, temperature: String) async throws {
+        try await patch(
+            "/api/admin-room/lead-map/leads/\(leadId)/temperature",
+            body: ["temperature": temperature]
+        )
+    }
+
     func logVisit(leadId: String, body: [String: Any]) async throws {
         try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/visits",
@@ -1488,7 +1497,18 @@ actor APIClient {
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        // Samme fix som `_request` (2026-07-02): `appendingPathComponent`
+        // percent-koder `?`/`&` i path → "/leads?projectId=…" ble
+        // "/leads%3FprojectId=…" → Express 404. QA 2026-07-04: dette slo ut
+        // HELE refreshAll (leads/competitors/metrics/calendar/reminders) så
+        // snart et prosjekt var valgt — appen viste «Ingen leads enda» tross
+        // 121 leads i API-et. Bygg URL via string-konkat så query overlever.
+        let baseString = baseURL.absoluteString.hasSuffix("/")
+            ? String(baseURL.absoluteString.dropLast())
+            : baseURL.absoluteString
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        let url = URL(string: baseString + normalizedPath) ?? baseURL.appendingPathComponent(path)
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1644,7 +1664,13 @@ actor APIClient {
     /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
     func executeRaw(method: String, path: String, body: Data?) async throws -> Data {
         do {
-            var req = URLRequest(url: baseURL.appendingPathComponent(path))
+            // String-konkat i stedet for appendingPathComponent — se makeRequest.
+            let baseString = baseURL.absoluteString.hasSuffix("/")
+                ? String(baseURL.absoluteString.dropLast())
+                : baseURL.absoluteString
+            let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+            let url = URL(string: baseString + normalizedPath) ?? baseURL.appendingPathComponent(path)
+            var req = URLRequest(url: url)
             req.httpMethod = method
             req.timeoutInterval = 30
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -2154,6 +2180,75 @@ extension APIClient {
 
     func fetchSuperAdminOrgs() async throws -> SuperAdminOrgsResponse {
         try await get("/api/superadmin/organizations")
+    }
+
+    // -- Feature-entitlements (tilgangs-matrisen, mig 0370) ---------
+
+    func fetchOrgEntitlements(_ orgId: String) async throws -> OrgEntitlementsEnvelope {
+        try await get("/api/superadmin/organizations/\(orgId)/entitlements")
+    }
+
+    /// Full erstatning — matrisen sender alltid hele katalogen.
+    func saveOrgEntitlements(_ orgId: String, entitlements: [Entitlement]) async throws {
+        let rows: [[String: Any]] = entitlements.map { ent in
+            var row: [String: Any] = [
+                "feature_key": ent.feature.key,
+                "state": ent.state.apiValue,
+            ]
+            if let l = ent.monthlyLimit { row["monthly_limit"] = l }
+            if let p = ent.addOnPriceMonthly { row["addon_price_monthly"] = p }
+            return row
+        }
+        try await put(
+            "/api/superadmin/organizations/\(orgId)/entitlements",
+            body: ["entitlements": rows]
+        )
+    }
+
+    /// GDPR: last ned mine data (rå JSON-streng). Session-scopet.
+    func fetchMyDataExport() async throws -> String {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/me/export"))
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard http.statusCode == 200 else { throw APIError.statusCode(http.statusCode) }
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// Egen orgs entitlements (kunde-siden av løkka — leses ved bootstrap
+    /// og ved org-bytte). `organizationId` scoper til AKTIV org for
+    /// multi-org-brukere (ellers server-resolvet primær-org).
+    func fetchMyEntitlements(organizationId: String? = nil) async throws -> OrgEntitlementsEnvelope {
+        var path = "/api/leadgrid/me/entitlements"
+        if let organizationId, !organizationId.isEmpty {
+            path += "?organization_id=\(organizationId)"
+        }
+        return try await get(path)
+    }
+
+    /// Audit-hendelser for én org (OrgDetailSheet > Audit-logg).
+    func fetchSuperAdminAuditLog(orgId: String, limit: Int = 50) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?organization_id=\(orgId)&limit=\(limit)")
+    }
+
+    /// Global audit-logg på tvers av alle orgs (dashboard-menyen).
+    func fetchSuperAdminAuditLog(limit: Int = 100) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?limit=\(limit)")
+    }
+
+    /// Suspender/reaktiver org (POST set-status; reason påkrevd ved ikke-active).
+    func setOrgStatus(_ orgId: String, status: String, reason: String?) async throws {
+        var body: [String: Any] = ["status": status]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/organizations/\(orgId)/set-status", body: body)
+    }
+
+    /// Start impersonation / org-kontekst-bytte (POST switch-context).
+    /// Serveren logger i superadmin_audit_log + setter aktiv-org-sesjon.
+    func switchOrgContext(_ orgId: String, reason: String?) async throws {
+        var body: [String: Any] = ["orgId": orgId]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/switch-context", body: body)
     }
 
     func fetchActiveImpersonation() async throws -> ImpersonationStatus {

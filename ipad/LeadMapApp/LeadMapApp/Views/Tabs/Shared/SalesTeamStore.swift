@@ -33,13 +33,22 @@ struct LeadgridSalesTeam: Codable, Identifiable, Hashable {
     var areaCenterLat: Double?
     var areaCenterLng: Double?
     var areaRadiusKm: Double?
+    /// Kommune-basert område (2026-07-05, mig 0369): offisiell norsk
+    /// kommune fra Kartverket. Når satt tegnes den ekte kommunegrensen
+    /// på Team-kartet i stedet for sirkelsonen.
+    var areaKommunenummer: String?
+    var areaKommuneNavn: String?
 
     var color: Color { Color(teamHex: colorHex) ?? .purple }
 
-    /// Har teamet et allokert område?
+    /// Har teamet et allokert område (sirkel eller kommune)?
     var hasArea: Bool {
-        areaCenterLat != nil && areaCenterLng != nil && areaRadiusKm != nil
+        hasKommune
+            || (areaCenterLat != nil && areaCenterLng != nil && areaRadiusKm != nil)
     }
+
+    /// Har teamet en tildelt kommune?
+    var hasKommune: Bool { areaKommunenummer != nil }
 
     /// «Initialer» for team-badge — første 2 bokstaver i team-navnet, i caps.
     var initials: String {

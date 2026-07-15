@@ -135,3 +135,52 @@ extension APIClient {
         return resp.variant
     }
 }
+
+// MARK: - Usage-tracking (mig 0364)
+
+/// Aggregert bruk per mal — datakilde for Leadbook-KPI-ene og
+/// used/conversion på mal-kortene.
+struct PondusTemplateUsageStatDTO: Decodable, Hashable {
+    let templateId: String
+    let usedTotal: Int
+    let usedToday: Int
+    let used30d: Int
+    /// (meeting_booked + won) / used_total, 0-1.
+    let meetingRate: Double
+}
+
+struct PondusUsageTotalsDTO: Decodable, Hashable {
+    let usedToday: Int
+    let used30d: Int
+    let distinctUsers30d: Int
+    let meetingRate30d: Double
+}
+
+struct PondusUsageStatsDTO: Decodable {
+    let templates: [PondusTemplateUsageStatDTO]
+    let totals: PondusUsageTotalsDTO
+}
+
+extension APIClient {
+    /// Logg at en mal ble brukt («Bruk mal»). Outcome kan ettersendes
+    /// som ny logging (meeting_booked/won/...) for konverteringsrater.
+    func pondusLogUsage(
+        templateId: String,
+        leadId: String? = nil,
+        outcome: String = "used"
+    ) async throws {
+        struct Payload: Encodable {
+            let leadId: String?
+            let outcome: String
+        }
+        try await _post(
+            "/api/leadgrid/pondus/templates/\(templateId)/usage",
+            body: Payload(leadId: leadId, outcome: outcome)
+        )
+    }
+
+    /// Aggregert bruk for org-en (per mal + topp-nivå).
+    func pondusUsageStats() async throws -> PondusUsageStatsDTO {
+        try await _get("/api/leadgrid/pondus/usage/stats")
+    }
+}

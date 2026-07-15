@@ -83,12 +83,62 @@ export interface KartverketKommune {
   admin_senter: string | null;
 }
 
+// Kommune-katalogen (alle ~357 kommuner) endrer seg ~én gang i året —
+// egen 24t-cache i stedet for 60s LRU-en.
+let kommuneListeCache: { at: number; body: unknown } | null = null;
+const KOMMUNE_LISTE_TTL_MS = 24 * 60 * 60 * 1000;
+
 // ─── main ───────────────────────────────────────────────────────────
 export function registerLeadgridKartverketRoutes(deps: {
   app: Express;
   requireUserSession: (req: Request, res: Response) => { userId: string } | null;
 }) {
   const { app, requireUserSession } = deps;
+
+  // ────────────────────────────────────────────────────────────────
+  // GET /kommuner
+  //
+  // Full kommune-katalog (nummer + norsk navn), sortert på navn.
+  // Brukes av «Tildel område»-sheeten på iPad som ekte katalog i
+  // stedet for mock. 24t cache — Geonorge-listen er nær-statisk.
+  // ────────────────────────────────────────────────────────────────
+  app.get("/api/leadgrid/kartverket/kommuner", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+
+    if (kommuneListeCache && Date.now() - kommuneListeCache.at < KOMMUNE_LISTE_TTL_MS) {
+      return res.json(kommuneListeCache.body);
+    }
+    try {
+      const upstream = await fetch("https://ws.geonorge.no/kommuneinfo/v1/kommuner", {
+        headers: { Accept: "application/json" },
+      });
+      if (!upstream.ok) {
+        return res.status(502).json({ error: "upstream_failure" });
+      }
+      const raw = (await upstream.json()) as Array<{
+        kommunenummer?: string;
+        kommunenavnNorsk?: string;
+        kommunenavn?: string;
+      }>;
+      const kommuner = (Array.isArray(raw) ? raw : [])
+        .map((k) => ({
+          nummer: String(k.kommunenummer ?? "").trim(),
+          navn: String(k.kommunenavnNorsk ?? k.kommunenavn ?? "").trim(),
+        }))
+        .filter((k) => /^\d{4}$/.test(k.nummer) && k.navn)
+        .sort((a, b) => a.navn.localeCompare(b.navn, "no"));
+      const body = { kommuner };
+      kommuneListeCache = { at: Date.now(), body };
+      return res.json(body);
+    } catch (err) {
+      console.warn(
+        "[leadgrid-kartverket] kommune-liste failed:",
+        (err as Error).message,
+      );
+      return res.status(502).json({ error: "upstream_failure" });
+    }
+  });
 
   // ────────────────────────────────────────────────────────────────
   // GET /reverse?lat=&lon=&radius=

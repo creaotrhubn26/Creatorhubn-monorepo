@@ -51,10 +51,13 @@ enum TeamKPI: String, Identifiable, CaseIterable {
         case .wonValue:
             return "NOK \(fmt(members.reduce(0) { $0 + $1.valueNok }))"
         case .avgLeadScore:
-            return "\(store.avgLeadScore)"
+            // 0 = ingen leads har score enda — vis «—», ikke et falskt tall.
+            return store.avgLeadScore > 0 ? "\(store.avgLeadScore)" : "—"
         case .momentum:
-            return members.isEmpty
-                ? "0 %"
+            // Momentum er RELATIV produktivitet (vs. beste selger) — med
+            // under 2 medlemmer er den per definisjon 100 % og lyver.
+            return members.count < 2
+                ? "—"
                 : "\(members.reduce(0) { $0 + $1.momentum } / members.count) %"
         case .sales:
             return fmt(store.salesCount)
@@ -154,29 +157,29 @@ struct TeamKPIDetailSheet: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: kpi.icon)
-                    .font(.system(size: 19, weight: .black))
+                    .font(.appScaled(size: 19, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(kpi.subtitle)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                     .textCase(.uppercase)
                     .tracking(0.5)
                 HStack(alignment: .firstTextBaseline, spacing: 9) {
                     Text(kpi.bigValue)
-                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 30, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.6)
                     Text(kpi.trend)
-                        .font(.system(size: 13, weight: .black))
+                        .font(.appScaled(size: 13, weight: .black))
                         .foregroundStyle(TBrand.green)
                         .monospacedDigit()
                 }
                 Text("vs. forrige periode")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textTertiary)
             }
             Spacer()
@@ -199,7 +202,7 @@ struct TeamKPIDetailSheet: View {
                     withAnimation(.easeInOut(duration: 0.15)) { period = p }
                 } label: {
                     Text(p.rawValue)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(period == p ? .white : TBrand.textSecondary)
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(
@@ -257,13 +260,13 @@ struct TeamKPIDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Trend")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 HStack(spacing: 5) {
                     Circle().fill(kpi.tint).frame(width: 7, height: 7)
                     Text(kpi.rawValue)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(TBrand.textSecondary)
                 }
             }
@@ -310,11 +313,11 @@ struct TeamKPIDetailSheet: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack {
                 Text("Per medlem")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(TeamData.members.count) selgere")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
             }
             VStack(spacing: 8) {
@@ -359,19 +362,19 @@ struct TeamKPIDetailSheet: View {
             ZStack {
                 Circle().fill(m.color.opacity(0.85))
                 Text(m.initials)
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(m.name)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer()
                     Text(formatVal(v))
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                 }
@@ -399,17 +402,17 @@ struct TeamKPIDetailSheet: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "sparkles")
-                    .font(.system(size: 14, weight: .black))
+                    .font(.appScaled(size: 14, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 2) {
                 Text("AI-INNSIKT")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(TBrand.purpleLight)
                     .tracking(0.6)
                 Text(aiInsight)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -450,10 +453,10 @@ struct TeamKPIDetailSheet: View {
         Button(action: action) {
             VStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(color)
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity)
@@ -533,16 +536,16 @@ struct SetKPIGoalSheet: View {
             ZStack {
                 Circle().fill(kpi.tint.opacity(0.22))
                 Image(systemName: "target")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(kpi.tint)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
                 Text(kpi.rawValue)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Nåværende: \(kpi.bigValue) \(kpi.trend)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
             Spacer()
@@ -556,11 +559,11 @@ struct SetKPIGoalSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Målverdi")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                 Spacer()
                 Text(formatted)
-                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 22, weight: .black, design: .rounded))
                     .foregroundStyle(kpi.tint)
                     .monospacedDigit()
             }
@@ -569,11 +572,11 @@ struct SetKPIGoalSheet: View {
                 .tint(kpi.tint)
             HStack {
                 Text(formatRange(sliderRange.lowerBound))
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(TBrand.textTertiary)
                 Spacer()
                 Text(formatRange(sliderRange.upperBound))
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(TBrand.textTertiary)
             }
         }
@@ -591,7 +594,7 @@ struct SetKPIGoalSheet: View {
     private var deadlineCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Frist")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             DatePicker("Frist", selection: $deadline, in: Date()..., displayedComponents: .date)
                 .datePickerStyle(.compact)
@@ -608,7 +611,7 @@ struct SetKPIGoalSheet: View {
     private var reminderCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Påminnelse")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             HStack(spacing: 6) {
                 ForEach(Reminder.allCases, id: \.self) { r in
@@ -616,7 +619,7 @@ struct SetKPIGoalSheet: View {
                         withAnimation(.easeInOut(duration: 0.15)) { reminderFreq = r }
                     } label: {
                         Text(r.rawValue)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(reminderFreq == r ? .white : TBrand.purpleLight)
                             .padding(.horizontal, 9).padding(.vertical, 7)
                             .background(
@@ -638,18 +641,18 @@ struct SetKPIGoalSheet: View {
         VStack(spacing: 8) {
             Toggle(isOn: $notifyTeam) {
                 HStack(spacing: 7) {
-                    Image(systemName: "person.3.fill").font(.system(size: 11)).foregroundStyle(TBrand.blue)
-                    Text("Del med hele teamet").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: "person.3.fill").font(.appScaled(size: 11)).foregroundStyle(TBrand.blue)
+                    Text("Del med hele teamet").font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 }
             }
             .tint(TBrand.purple)
             Divider().overlay(TBrand.stroke)
             Toggle(isOn: $stretch) {
                 HStack(spacing: 7) {
-                    Image(systemName: "flame.fill").font(.system(size: 11)).foregroundStyle(TBrand.orange)
+                    Image(systemName: "flame.fill").font(.appScaled(size: 11)).foregroundStyle(TBrand.orange)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Stretch-mål").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                        Text("+25 % over baseline").font(.system(size: 10)).foregroundStyle(TBrand.textSecondary)
+                        Text("Stretch-mål").font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        Text("+25 % over baseline").font(.appScaled(size: 10)).foregroundStyle(TBrand.textSecondary)
                     }
                 }
             }
@@ -664,9 +667,9 @@ struct SetKPIGoalSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "target")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text("Sett mål: \(formatted)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -768,16 +771,16 @@ struct CreateKPIAlertSheet: View {
             ZStack {
                 Circle().fill(TBrand.orange.opacity(0.22))
                 Image(systemName: "bell.badge.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(TBrand.orange)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Varsle når \(kpi.rawValue)")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Nåværende: \(kpi.bigValue)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
             Spacer()
@@ -790,7 +793,7 @@ struct CreateKPIAlertSheet: View {
     private var conditionCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Trigger")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             VStack(spacing: 6) {
                 ForEach(Condition.allCases, id: \.self) { c in
@@ -800,14 +803,14 @@ struct CreateKPIAlertSheet: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: c.icon)
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.appScaled(size: 14, weight: .bold))
                                 .foregroundStyle(c.color)
                             Text(c.rawValue + (c == .changes ? "" : " terskel"))
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 17))
+                                .font(.appScaled(size: 17))
                                 .foregroundStyle(isSelected ? c.color : TBrand.stroke)
                         }
                         .padding(10)
@@ -827,11 +830,11 @@ struct CreateKPIAlertSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Terskel")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                 Spacer()
                 Text(thresholdFormatted)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 18, weight: .black, design: .rounded))
                     .foregroundStyle(condition.color)
                     .monospacedDigit()
             }
@@ -864,9 +867,10 @@ struct CreateKPIAlertSheet: View {
     private var channelsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Kanaler")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+            // Korte kanal-navn — 2 kolonner fungerer også på iPhone.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 7), spacing: 7) {
                 ForEach(Channel.allCases, id: \.self) { c in
                     let isOn = channels.contains(c)
                     Button {
@@ -876,15 +880,15 @@ struct CreateKPIAlertSheet: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: c.icon)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(isOn ? .white : c.color)
                             Text(c.rawValue)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                             Spacer()
                             if isOn {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 13))
+                                    .font(.appScaled(size: 13))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -904,7 +908,7 @@ struct CreateKPIAlertSheet: View {
     private var freqCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Frekvens")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             HStack(spacing: 6) {
                 ForEach(Frequency.allCases, id: \.self) { f in
@@ -912,7 +916,7 @@ struct CreateKPIAlertSheet: View {
                         withAnimation(.easeInOut(duration: 0.15)) { freq = f }
                     } label: {
                         Text(f.rawValue)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(freq == f ? .white : TBrand.purpleLight)
                             .padding(.horizontal, 11).padding(.vertical, 8)
                             .background(
@@ -931,9 +935,9 @@ struct CreateKPIAlertSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text(channels.isEmpty ? "Velg minst én kanal" : "Aktiver alert")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -1034,11 +1038,11 @@ struct KPIMemberBreakdownSheet: View {
     private func sumStat(_ label: String, _ value: String, _ color: Color) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.appScaled(size: 16, weight: .black, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.system(size: 10)).foregroundStyle(TBrand.textSecondary)
+            Text(label).font(.appScaled(size: 10)).foregroundStyle(TBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -1046,15 +1050,15 @@ struct KPIMemberBreakdownSheet: View {
 
     private var sortToggle: some View {
         HStack {
-            Text("Sortering:").font(.system(size: 11, weight: .semibold)).foregroundStyle(TBrand.textSecondary)
+            Text("Sortering:").font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(TBrand.textSecondary)
             Button {
                 withAnimation { sortDescending.toggle() }
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: sortDescending ? "arrow.down" : "arrow.up")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text(sortDescending ? "Høyest øverst" : "Lavest øverst")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10).padding(.vertical, 6)
@@ -1071,21 +1075,21 @@ struct KPIMemberBreakdownSheet: View {
             ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, m in
                 HStack(spacing: 11) {
                     Text("\(idx + 1)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .black, design: .rounded))
                         .foregroundStyle(idx == 0 ? TBrand.yellow : (idx <= 2 ? TBrand.purpleLight : TBrand.textTertiary))
                         .monospacedDigit()
                         .frame(width: 20, alignment: .center)
                     ZStack {
                         Circle().fill(m.color.opacity(0.85))
-                        Text(m.initials).font(.system(size: 10, weight: .black)).foregroundStyle(.white)
+                        Text(m.initials).font(.appScaled(size: 10, weight: .black)).foregroundStyle(.white)
                     }
                     .frame(width: 30, height: 30)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text(m.name).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            Text(m.name).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             Spacer()
                             Text(format(memberValue(m)))
-                                .font(.system(size: 12, weight: .black, design: .rounded))
+                                .font(.appScaled(size: 12, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
                                 .monospacedDigit()
                         }
@@ -1176,16 +1180,16 @@ struct ShareKPIReportSheet: View {
             ZStack {
                 Circle().fill(TBrand.green.opacity(0.22))
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(TBrand.green)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Del \(kpi.rawValue)-rapport")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Innhold: \(kpi.bigValue) \(kpi.trend) for \(period.lowercased())")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
             Spacer()
@@ -1198,9 +1202,10 @@ struct ShareKPIReportSheet: View {
     private var formatGrid: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Format")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+            // Korte format-navn — 2 kolonner fungerer også på iPhone.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 7), spacing: 7) {
                 ForEach(Format.allCases, id: \.self) { f in
                     let isSelected = format == f
                     Button {
@@ -1210,14 +1215,14 @@ struct ShareKPIReportSheet: View {
                             ZStack {
                                 Circle().fill(f.color.opacity(isSelected ? 0.35 : 0.18))
                                 Image(systemName: f.icon)
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                                     .foregroundStyle(f.color)
                             }
                             .frame(width: 30, height: 30)
-                            Text(f.rawValue).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            Text(f.rawValue).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             Spacer()
                             Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 14))
+                                .font(.appScaled(size: 14))
                                 .foregroundStyle(isSelected ? f.color : TBrand.stroke)
                         }
                         .padding(9)
@@ -1236,19 +1241,19 @@ struct ShareKPIReportSheet: View {
     private var recipientsField: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Mottakere")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $recipients)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .padding(12)
                     .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
                     .textInputAutocapitalization(.never)
                 if recipients.isEmpty {
                     Text("navn@bedrift.no, eller @teamet")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(TBrand.textTertiary)
                         .padding(.horizontal, 15)
                         .allowsHitTesting(false)
@@ -1258,7 +1263,7 @@ struct ShareKPIReportSheet: View {
                 ForEach(["Hele teamet", "Salgssjef", "CEO"], id: \.self) { tag in
                     Button { recipients = (recipients.isEmpty ? tag : "\(recipients), \(tag)") } label: {
                         Text("+ \(tag)")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(TBrand.purpleLight)
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(TBrand.purple.opacity(0.15), in: Capsule())
@@ -1275,18 +1280,18 @@ struct ShareKPIReportSheet: View {
             Toggle(isOn: $includeChart) {
                 HStack(spacing: 7) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(kpi.tint)
-                    Text("Inkluder trend-graf").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Text("Inkluder trend-graf").font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 }
             }.tint(TBrand.purple)
             Divider().overlay(TBrand.stroke)
             Toggle(isOn: $includeBreakdown) {
                 HStack(spacing: 7) {
                     Image(systemName: "person.3.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TBrand.blue)
-                    Text("Inkluder per-medlem-breakdown").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Text("Inkluder per-medlem-breakdown").font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 }
             }.tint(TBrand.purple)
         }
@@ -1301,16 +1306,16 @@ struct ShareKPIReportSheet: View {
                 ZStack {
                     Circle().fill(TBrand.orange.opacity(0.22))
                     Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(TBrand.orange)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Send ukentlig automatisk")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Hver mandag kl. 08:00")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                 }
             }
@@ -1324,20 +1329,20 @@ struct ShareKPIReportSheet: View {
     private var noteField: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Følgenotat (valgfritt)")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $note)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 70)
                     .padding(8)
                     .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
                 if note.isEmpty {
                     Text("Skriv en intro til rapporten…")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(TBrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -1350,9 +1355,9 @@ struct ShareKPIReportSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: format.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text(recipients.isEmpty ? "Legg til mottakere først" : "Send \(format.rawValue)-rapport nå")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)

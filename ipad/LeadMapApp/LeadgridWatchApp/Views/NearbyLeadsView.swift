@@ -21,31 +21,35 @@ struct NearbyLeadsView: View {
         }
     }
 
+    // MERK: INGEN egen NavigationStack her. Denne visningen er en side i en
+    // `TabView(.verticalPage)` (se RootTabs), som på watchOS allerede pakker
+    // hver side i sin egen navigasjons-kontroller. En ekstra NavigationStack
+    // ga to konkurrerende PUICStackedNavigationBar-er → «top item belongs to a
+    // different navigation bar»-krasj så snart lista fikk innhold. NavigationLink
+    // pusher på den implisitte stacken.
     var body: some View {
-        NavigationStack {
-            List {
-                if sortedLeads.isEmpty {
-                    Text("Ingen leads")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(sortedLeads, id: \.0.id) { (lead, distance) in
-                        NavigationLink(destination: QuickActionView(lead: lead)) {
-                            LeadRow(lead: lead, distance: distance)
-                        }
+        List {
+            if sortedLeads.isEmpty {
+                Text("Ingen leads")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(sortedLeads, id: \.0.id) { (lead, distance) in
+                    NavigationLink(destination: QuickActionView(lead: lead)) {
+                        LeadRow(lead: lead, distance: distance)
                     }
                 }
-            }
-            .navigationTitle("Leads")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        locationVM.requestLocation()
-                    } label: {
-                        Image(systemName: "location.fill")
-                    }
+                // Oppdater posisjon — som list-rad (ikke toolbar, som ville
+                // gjenskapt nav-bar-konflikten på watchOS' paged TabView).
+                Button {
+                    locationVM.requestLocation()
+                } label: {
+                    Label("Oppdater posisjon", systemImage: "location.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.purple)
                 }
             }
         }
+        .navigationTitle("Leads")
     }
 }
 

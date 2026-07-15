@@ -31,10 +31,6 @@ extension Notification.Name {
     /// Bruker trykket «Les mer» i map-pin-overlay-en → naviger til Leads-
     /// fanen og åpne full detalj-visning for denne lead-en.
     static let oversiktRequestOpenLeadInLeadsTab = Notification.Name("oversiktRequestOpenLeadInLeadsTab")
-    /// Kalender-handling ble valgt (fra LeadgridDatePickerSheet). userInfo:
-    /// { "date": Date, "action": String } med action ∈
-    /// ["book_meeting","new_followup","new_lead","view_day"].
-    static let oversiktCalendarActionRequested = Notification.Name("oversiktCalendarActionRequested")
     /// Ny oppfølging ble lagret (fra NewFollowUpSheet). userInfo:
     /// { "leadName": String, "date": Date }.
     static let oversiktFollowUpCreated = Notification.Name("oversiktFollowUpCreated")
@@ -52,8 +48,8 @@ private enum Brand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 struct OversiktView: View {
@@ -65,23 +61,8 @@ struct OversiktView: View {
     @State private var forecast: LeadgridForecast?
     @State private var loading = false
     @State private var lastUpdated: Date?
-    @State private var activitiesOpen = false
-    @State private var nextActionsOpen = false
-    @State private var analyseOpen = false
-    @State private var profileOpen = false
-    @State private var myProfileOpen = false
-    // Kalender-handlinger 2026-07-02: sheets startet fra dato-picker.
-    // Bruker sheet(item:) med enum for å garantere at bare én sheet
-    // vises om gangen — SwiftUI/Mac Catalyst krasjet med UIView-
-    // constraint-exception når to sheets ble presentert samtidig.
-    @State private var activeCalendarSheet: CalendarSheetKind?
-    @State private var bookMeetingDay: Int = Calendar.current.component(.day, from: Date())
-    @State private var followUpDate: Date = Date()
-
-    enum CalendarSheetKind: String, Identifiable {
-        case bookMeeting, addLead, newFollowUp
-        var id: String { rawValue }
-    }
+    // Header-state + kalender-quick-actions eies nå av LeadgridTabHeader
+    // (Views/Tabs/Shared/LeadgridTabHeader.swift) — delt av alle faner.
 
     /// iPhone-kompakt = bottom-tabs + enkelt-kolonne (alt under hverandre).
     private var isCompact: Bool { hSize == .compact }
@@ -95,11 +76,6 @@ struct OversiktView: View {
 
     var body: some View {
         contentBody
-            .sheet(isPresented: $myProfileOpen) {
-                MyProfileSheet(name: profileDisplayName,
-                               email: appState.userEmail,
-                               leads: effectiveLeads)
-            }
             // Lytter på «Les mer»-request fra map-lead-overlay → bytt
             // til Leads-fanen. Selve detalj-sheet-en åpnes av
             // Leads-fanen når den observerer samme Notification.
@@ -108,95 +84,6 @@ struct OversiktView: View {
             )) { _ in
                 appState.selectedSidebarItem = .leads
             }
-            // Kalender-handlinger → én sheet-slot (BookMeeting eller AddLead).
-            // sheet(item:) hindrer at to sheets stakkes → unngår NSLayout-
-            // exception som krasjet Mac Catalyst.
-            .sheet(item: $activeCalendarSheet) { kind in
-                switch kind {
-                case .bookMeeting:
-                    BookMeetingSheet(dayOfMonth: bookMeetingDay)
-                case .addLead:
-                    AddLeadSheet { _ in
-                        // Sheet håndterer egen dismiss + save.
-                    }
-                case .newFollowUp:
-                    NewFollowUpSheet(
-                        initialDate: followUpDate,
-                        leads: effectiveLeads,
-                        onSave: { payload in
-                            // Toast — backend-PATCH kommer når endepunktet
-                            // /leadgrid/leads/:id/follow-up bygges.
-                            NotificationCenter.default.post(
-                                name: .oversiktFollowUpCreated,
-                                object: nil,
-                                userInfo: [
-                                    "leadName": payload.leadName,
-                                    "date": payload.date,
-                                ]
-                            )
-                        }
-                    )
-                }
-            }
-            // Kalender-handlinger → åpne relevant flyt. Book møte og Ny lead
-            // krever hele iPad-mocking-kjeden så vi ruter dem til de allerede-
-            // eksisterende popoverne (analyseOpen / nextActionsOpen) med
-            // riktig kontekst. Ny lead + book møte-flyt kommer i egne sheets
-            // senere når vi porterer BookMeetingSheet/AddLeadSheet.
-            .onReceive(NotificationCenter.default.publisher(
-                for: .oversiktCalendarActionRequested
-            )) { note in
-                guard let action = note.userInfo?["action"] as? String,
-                      let date = note.userInfo?["date"] as? Date
-                else { return }
-                handleCalendarAction(action, at: date)
-            }
-    }
-
-    /// Rutes kalender-handlingene til relevant sheet/popover.
-    ///   book_meeting  → BookMeetingSheet(dayOfMonth:)
-    ///   new_lead      → AddLeadSheet(onSave:)
-    ///   new_followup  → nextActionsOpen (Follow-Up-Queue popover)
-    ///   view_day      → nextActionsOpen (samme popover viser dagens plan)
-    @MainActor
-    private func handleCalendarAction(_ action: String, at date: Date) {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
-        switch action {
-        case "book_meeting":
-            bookMeetingDay = cal.component(.day, from: date)
-            // Vent lenger på Mac Catalyst så dato-picker rekker å lukke helt
-            // FØR nye sheet monteres — ellers krasjer UIView-hierarkiet med
-            // NSInternalInconsistencyException.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-                activeCalendarSheet = .bookMeeting
-            }
-        case "new_lead":
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-                activeCalendarSheet = .addLead
-            }
-        case "new_followup":
-            followUpDate = date
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-                activeCalendarSheet = .newFollowUp
-            }
-        case "view_day":
-            nextActionsOpen = true
-        default:
-            break
-        }
-    }
-
-    private var profileDisplayName: String {
-        let email = appState.userEmail ?? "bruker@leadgrid"
-        let local = email.split(separator: "@").first.map(String.init) ?? "Bruker"
-        let cleaned = local
-            .replacingOccurrences(of: ".", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-        return cleaned.split(separator: " ")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
     }
 
     private var contentBody: some View {
@@ -207,24 +94,31 @@ struct OversiktView: View {
             // kartet ~1000+px, mens iPad landscape holder ~640px minimum.
             // Konstantene: header (~60) + KPI (~120) + spacing (~68) + padding
             // (~42) = ~290pt. Vi bruker 320 som konservativ margin.
-            let dynamicMapHeight = max(Self.mapHeight, geo.size.height - 320)
+            // iPhone: 640pt minimum tvinger unødig scrolling (portrett-
+            // vindu er ~844, landskap ~390) — bruk lavere gulv så kartet
+            // følger tilgjengelig høyde i stedet.
+            let minMapHeight: CGFloat = DeviceIdiom.isPhone ? 420 : Self.mapHeight
+            let dynamicMapHeight = max(minMapHeight, geo.size.height - 320)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    HeaderRow(lastUpdated: lastUpdated,
-                              activitiesOpen: $activitiesOpen,
-                              nextActionsOpen: $nextActionsOpen,
-                              analyseOpen: $analyseOpen,
-                              profileOpen: $profileOpen,
-                              myProfileOpen: $myProfileOpen,
-                              upcomingFollowups: upcomingFollowupsCount,
-                              momentum: momentum,
-                              leads: effectiveLeads)
+                    LeadgridTabHeader(
+                        subtitle: "Få full kontroll over dine leads, aktiviteter og resultater.",
+                        leads: effectiveLeads,
+                        momentum: momentum,
+                        lastUpdated: lastUpdated)
                     KPICardRow(leads: effectiveLeads, momentum: momentum, forecast: forecast,
                                compact: isCompact || isPortrait)
                     if isCompact {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
+                        // iPhone (QA-runde 2, Daniels design-gjennomgang):
+                        // plassen under kartet sto død — vis det en selger
+                        // faktisk trenger på farten: neste møte + forfalte
+                        // oppfølginger.
+                        if DeviceIdiom.isPhone {
+                            NextActionCard(leads: effectiveLeads)
+                        }
                     } else if isPortrait {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: max(720, geo.size.height - 320))
@@ -285,15 +179,6 @@ struct OversiktView: View {
 
     // MARK: - Data
 
-    private var upcomingFollowupsCount: Int {
-        let cal = Calendar.current
-        let threeDays = cal.date(byAdding: .day, value: 3, to: Date()) ?? Date()
-        return effectiveLeads.filter { lead in
-            guard let next = lead.nextFollowUpAt else { return false }
-            return next <= threeDays
-        }.count
-    }
-
     private func initialLoad() async {
         if momentum == nil && forecast == nil { await refresh() }
     }
@@ -312,6 +197,9 @@ struct OversiktView: View {
         }
         // Team-store sync (idempotent) — backend er fasit for team-oppsettet.
         LeadgridSalesTeamStore.shared.attach(api: api)
+        // Team-medlemmer (idempotent) — trengs for ekte «Tildel til
+        // teammedlem»-liste og TopSellers-leaderboard når demo er AV.
+        TeamLiveStore.shared.attach(api: api, appState: appState)
         async let momTask: LeadgridMomentum? = try? api.fetchMomentumToday()
         async let fcTask: LeadgridForecast? = try? api.fetchPipelineForecast()
         let (mom, fc) = await (momTask, fcTask)
@@ -323,453 +211,6 @@ struct OversiktView: View {
     }
 }
 
-// MARK: - HeaderRow
-
-private struct HeaderRow: View {
-    let lastUpdated: Date?
-    @Binding var activitiesOpen: Bool
-    @Binding var nextActionsOpen: Bool
-    @Binding var analyseOpen: Bool
-    @Binding var profileOpen: Bool
-    @Binding var myProfileOpen: Bool
-    let upcomingFollowups: Int
-    let momentum: LeadgridMomentum?
-    let leads: [LeadModel]
-    @Environment(AppState.self) private var state
-    // Header-filtre (2026-07-02): gjør «dato»- og «områder»-pillene
-    // funksjonelle. Tidligere var pickerButton bare visuell.
-    @State private var headerDate: Date = Date()
-    @State private var headerDatePickerOpen: Bool = false
-    @State private var headerAreaFilter: String = "Alle områder"
-
-    private var topActions: [LeadModel] {
-        Array(leads
-            .filter { $0.nextFollowUpAt != nil || $0.status == .meetingBooked || ($0.leadScore ?? 0) >= 70 }
-            .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
-            .prefix(8))
-    }
-
-    var body: some View {
-        // Matcher Kart-fanens unifiedHeader (Pakke 10.1 header-harmoni
-        // 2026-07-01): 28pt title, 13pt subtitle, spacing 14/8, tightere
-        // date-label på isNarrow. Popovers har fortsatt Oversikt-spesifikt
-        // innhold, men ramme + presentation stil er i tråd med Kart.
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Oversikt")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Få full kontroll over dine leads, aktiviteter og resultater.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Brand.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    // Fix 2026-07-02: pickerButton var bare et visuelt kort.
-                    // Nå er dato-pillen en Button som åpner LeadgridDatePicker,
-                    // og områder-pillen er en Menu med kommuner-filter.
-                    Button {
-                        headerDatePickerOpen = true
-                    } label: {
-                        pickerButton(icon: "calendar",
-                                     text: isNarrow ? headerDateShort() : headerDateFull())
-                    }
-                    .buttonStyle(.plain)
-                    .macCatalystHover()
-                    .sheet(isPresented: $headerDatePickerOpen) {
-                        LeadgridDatePickerSheet(
-                            initialDate: headerDate,
-                            showTime: false,
-                            onConfirm: { d in
-                                headerDate = d
-                                headerDatePickerOpen = false
-                                // Broadcast så kartet zoomer til leads med
-                                // aktivitet på valgt dato (møter/oppfølginger).
-                                NotificationCenter.default.post(
-                                    name: .oversiktDateChanged,
-                                    object: nil,
-                                    userInfo: ["date": d]
-                                )
-                            },
-                            onCancel: { headerDatePickerOpen = false },
-                            // 4 kalender-handlinger: sheeten dispatch-er via
-                            // Notification så OversiktView kan åpne relevant
-                            // eksisterende modal (BookMeetingSheet, follow-up,
-                            // AddLeadSheet, dagsplan-list).
-                            quickActions: [
-                                LeadgridCalendarAction(
-                                    title: "Book møte denne dagen",
-                                    icon: "calendar.badge.plus",
-                                    color: Brand.purpleLight,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "book_meeting"]
-                                        )
-                                    }
-                                ),
-                                LeadgridCalendarAction(
-                                    title: "Ny oppfølging",
-                                    icon: "flag.badge.ellipsis.fill",
-                                    color: Brand.blue,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "new_followup"]
-                                        )
-                                    }
-                                ),
-                                LeadgridCalendarAction(
-                                    title: "Ny lead",
-                                    icon: "person.crop.circle.badge.plus",
-                                    color: Brand.green,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "new_lead"]
-                                        )
-                                    }
-                                ),
-                                LeadgridCalendarAction(
-                                    title: "Vis dagens plan",
-                                    icon: "list.bullet.rectangle.portrait.fill",
-                                    color: Brand.orange,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "view_day"]
-                                        )
-                                    }
-                                ),
-                            ],
-                            dayIndicators: HeaderRow.buildDayIndicators(from: leads)
-                        )
-                    }
-                    if !isNarrow {
-                        Menu {
-                            ForEach(availableAreas, id: \.self) { area in
-                                Button {
-                                    headerAreaFilter = area
-                                    // Broadcast så OversiktView kan zoome mini-
-                                    // kartet + filtrere leads. Bruker Notification
-                                    // for å slippe å hoiste state gjennom struct-
-                                    // hierarkiet (HeaderRow er private).
-                                    NotificationCenter.default.post(
-                                        name: .oversiktAreaChanged,
-                                        object: nil,
-                                        userInfo: ["area": area]
-                                    )
-                                } label: {
-                                    if area == headerAreaFilter {
-                                        Label(area, systemImage: "checkmark")
-                                    } else {
-                                        Text(area)
-                                    }
-                                }
-                            }
-                        } label: {
-                            pickerButton(icon: "location.fill", text: headerAreaFilter)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .macCatalystHover()
-                    }
-                    analyseButton
-                    nextActionsButton
-                    activitiesButton
-                    Button { profileOpen.toggle() } label: {
-                        if !isNarrow { userBadge } else { userAvatarOnly }
-                    }
-                    .buttonStyle(.plain)
-                    .macCatalystHover()
-                    .popover(isPresented: $profileOpen, arrowEdge: .top) {
-                        ProfilePopover(
-                            name: displayName,
-                            email: state.userEmail,
-                            onOpenMyProfile: {
-                                profileOpen = false
-                                // Liten delay så popover lukker rent før sheet åpner
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                    myProfileOpen = true
-                                }
-                            }
-                        )
-                        .frame(width: 320, height: 480)
-                        .presentationCompactAdaptation(.popover)
-                    }
-                }
-            }
-        }
-        .frame(height: 60)
-    }
-
-    private var analyseButton: some View {
-        Button {
-            analyseOpen.toggle()
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
-            }
-            .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-            AnalysePopover(leads: leads)
-                .frame(width: 460, height: 640)
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private var nextActionsButton: some View {
-        Button {
-            nextActionsOpen.toggle()
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                    RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                    Image(systemName: "checklist")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
-                }
-                .frame(width: 44, height: 44)
-                // Liten badge med antall hot/varme leads som venter
-                if topActions.count > 0 {
-                    Text("\(min(topActions.count, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Brand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(Brand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-            NextActionsPopover(leads: topActions, totalCount: leads.count)
-                .frame(width: 420, height: 560)
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private var activitiesButton: some View {
-        Button {
-            activitiesOpen.toggle()
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                    RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                    Image(systemName: "bell.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
-                }
-                .frame(width: 44, height: 44)
-                // Liten badge med antall nye aktiviteter (preview viser 4)
-                Circle()
-                    .fill(Brand.red)
-                    .frame(width: 8, height: 8)
-                    .offset(x: -8, y: 8)
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .popover(isPresented: $activitiesOpen, arrowEdge: .top) {
-            RecentActivitiesPopover(leads: leads,
-                                    upcomingFollowups: upcomingFollowups,
-                                    momentum: momentum)
-                .frame(width: 420, height: 600)
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private func pickerButton(icon: String, text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Brand.purpleLight)
-            Text(text)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Brand.textSecondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
-    }
-
-    private var userBadge: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Brand.purple.opacity(0.25))
-                Text(initials)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Brand.purpleLight)
-            }
-            .frame(width: 32, height: 32)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(displayName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text("Salgssjef")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Brand.textSecondary)
-                    .lineLimit(1)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Brand.textSecondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
-    }
-
-    private var displayName: String {
-        let email = state.userEmail ?? "bruker@leadgrid"
-        let local = email.split(separator: "@").first.map(String.init) ?? "Bruker"
-        // Bytte vanlige separator-tegn (., _, -) til space + capitalize hvert ord.
-        let cleaned = local
-            .replacingOccurrences(of: ".", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-        return cleaned.split(separator: " ")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
-    }
-
-    private var initials: String {
-        let parts = displayName.split(separator: " ")
-        return parts.prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
-    }
-
-    private static var todayLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM yyyy"
-        return f.string(from: Date())
-    }
-
-    private static var todayShortLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM"
-        return f.string(from: Date())
-    }
-
-    /// Formatter valgt header-dato — «I dag» hvis dagens dato, ellers
-    /// «5. juli 2026»/«5. jul» avhengig av bredde.
-    private func headerDateFull() -> String {
-        if Calendar.current.isDateInToday(headerDate) {
-            return "I dag"
-        }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM yyyy"
-        return f.string(from: headerDate)
-    }
-    private func headerDateShort() -> String {
-        if Calendar.current.isDateInToday(headerDate) {
-            return "I dag"
-        }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM"
-        return f.string(from: headerDate)
-    }
-
-    /// Bygg dato → aktivitets-indikator-map fra leads. Møter = leads med
-    /// status = .meetingBooked og `nextFollowUpAt` på den dagen (møte-
-    /// dato). Oppfølginger = alle andre leads med `nextFollowUpAt`.
-    /// Nøkkelen er start-of-day i Europe/Oslo — samme som kalender-cellen
-    /// sammenligner mot.
-    static func buildDayIndicators(
-        from leads: [LeadModel]
-    ) -> [Date: LeadgridDayIndicator] {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
-        var meetings: [Date: Int] = [:]
-        var followUps: [Date: Int] = [:]
-        for lead in leads {
-            guard let d = lead.nextFollowUpAt else { continue }
-            let day = cal.startOfDay(for: d)
-            if lead.status == .meetingBooked {
-                meetings[day, default: 0] += 1
-            } else {
-                followUps[day, default: 0] += 1
-            }
-        }
-        var result: [Date: LeadgridDayIndicator] = [:]
-        for day in Set(meetings.keys).union(followUps.keys) {
-            result[day] = LeadgridDayIndicator(
-                meetings: meetings[day] ?? 0,
-                followUps: followUps[day] ?? 0
-            )
-        }
-        return result
-    }
-
-    /// Områder som kan filtreres på i header. Bygges dynamisk fra
-    /// eksisterende leads sine `city`-felter + faste hurtigvalg.
-    private var availableAreas: [String] {
-        var seen = Set<String>()
-        var out: [String] = ["Alle områder"]
-        for lead in leads {
-            if let city = lead.city, !city.isEmpty, seen.insert(city).inserted {
-                out.append(city)
-            }
-        }
-        // Fallback-lokasjoner hvis vi ikke har leads enda
-        if out.count == 1 {
-            out.append(contentsOf: ["Oslo", "Bergen", "Trondheim", "Stavanger", "Lillestrøm"])
-        }
-        return out
-    }
-
-    /// Brukerinfo-versjon for trange headere (portrait iPad) — viser bare
-    /// initialene som lilla rund avatar.
-    private var userAvatarOnly: some View {
-        ZStack {
-            Circle().fill(Brand.purple.opacity(0.25))
-            Text(initials)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Brand.purpleLight)
-            Circle().stroke(Brand.stroke, lineWidth: 1)
-        }
-        .frame(width: 44, height: 44)
-    }
-}
-
 // MARK: - KPI-row (5 kort)
 
 private struct KPICardRow: View {
@@ -778,33 +219,83 @@ private struct KPICardRow: View {
     let forecast: LeadgridForecast?
     var compact: Bool = false  // Bytter til 2-rad grid på smalere skjermer
 
+    @State private var showStatsModal = false
+
     @ViewBuilder
     var body: some View {
-        if compact {
-            // Portrait/iPhone: 5 KPI fordelt på 2 like rader så hvert
-            // kort får mest mulig plass. Total + Hot på rad 1, og
-            // Oppfølginger + Forventet + Vunnet på rad 2 (de tre med
-            // tydeligere tall/badges fungerer fint i smalere format).
-            VStack(spacing: 14) {
-                HStack(spacing: 14) {
-                    totalLeadsCard.frame(maxWidth: .infinity)
-                    hotLeadsCard.frame(maxWidth: .infinity)
+        // Alle idiomer (Daniel 2026-07-05): én kompakt statistikk-knapp
+        // med kortene i modal — iPad-gridene tok for mye vertikal plass
+        // og iPhone-mønsteret fungerer like godt der.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Brand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Brand.purple)
                 }
-                HStack(spacing: 14) {
-                    followupsCard.frame(maxWidth: .infinity)
-                    expectedValueCard.frame(maxWidth: .infinity)
-                    wonCard.frame(maxWidth: .infinity)
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    // Én sammensatt Text (ikke HStack) så underteksten
+                    // wrapper som tekst på AX-størrelser. Trenden er
+                    // hardkodet mockup — vises KUN i demo-modus.
+                    (Text("\(formatNumber(totalLeads)) leads")
+                        .font(.appScaled(size: 12))
+                        .foregroundColor(Brand.textSecondary)
+                     + Text(DemoModeManager.isActiveNonisolated && totalLeads > 0 ? "  ↑ +18%" : "")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundColor(Brand.green))
                 }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.textSecondary)
             }
-        } else {
-            HStack(spacing: 14) {
-                totalLeadsCard
-                hotLeadsCard
-                followupsCard
-                expectedValueCard
-                wonCard
-            }
+            .padding(14)
+            .background(Brand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(Brand.stroke, lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.appScaled(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                totalLeadsCard.frame(maxWidth: .infinity)
+                hotLeadsCard.frame(maxWidth: .infinity)
+                followupsCard.frame(maxWidth: .infinity)
+                expectedValueCard.frame(maxWidth: .infinity)
+                wonCard.frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(Brand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     // Trend-pille: vis kun når vi har en faktisk verdi å trende fra.
@@ -816,14 +307,16 @@ private struct KPICardRow: View {
             icon: "person.2.fill", iconBg: Brand.blue.opacity(0.25), iconColor: Brand.blue,
             label: "Total leads",
             value: formatNumber(totalLeads),
-            trend: totalLeads > 0 ? "+18%" : nil, trendUp: totalLeads > 0 ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && totalLeads > 0 ? "+18%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && totalLeads > 0 ? true : nil)
     }
     private var hotLeadsCard: some View {
         KPICard(
             icon: "flame.fill", iconBg: Brand.red.opacity(0.25), iconColor: Brand.red,
             label: "Hot leads",
             value: "\(hotLeads)",
-            trend: hotLeads > 0 ? "+24%" : nil, trendUp: hotLeads > 0 ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && hotLeads > 0 ? "+24%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && hotLeads > 0 ? true : nil)
     }
     private var followupsCard: some View {
         KPICard(
@@ -840,7 +333,8 @@ private struct KPICardRow: View {
             iconColor: Brand.purple,
             label: "Forventet verdi",
             value: forecastValue,
-            trend: hasValue ? "+15%" : nil, trendUp: hasValue ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && hasValue ? "+15%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && hasValue ? true : nil)
     }
     private var wonCard: some View {
         let wonCount = leads.filter { $0.status == .won }.count
@@ -848,7 +342,8 @@ private struct KPICardRow: View {
             icon: "trophy.fill", iconBg: Brand.green.opacity(0.25), iconColor: Brand.green,
             label: "Vunnet i år",
             value: wonValue,
-            trend: wonCount > 0 ? "+32%" : nil, trendUp: wonCount > 0 ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && wonCount > 0 ? "+32%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && wonCount > 0 ? true : nil)
     }
 
     private var totalLeads: Int { leads.count }
@@ -900,19 +395,19 @@ private struct KPICard: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10).fill(iconBg)
                     Image(systemName: icon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(iconColor)
                 }
                 .frame(width: 36, height: 36)
                 Text(label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.appScaled(size: 13, weight: .medium))
                     .foregroundStyle(Brand.textSecondary)
                     .lineLimit(2)
                 Spacer()
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(value)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -920,9 +415,9 @@ private struct KPICard: View {
                 if let trend = trend, let up = trendUp {
                     HStack(spacing: 2) {
                         Image(systemName: up ? "arrow.up" : "arrow.down")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text(trend)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(up ? Brand.green : Brand.red)
                     .padding(.horizontal, 6).padding(.vertical, 3)
@@ -936,11 +431,11 @@ private struct KPICard: View {
             // Pakke 10: tomme KPI skal ikke late som de har en historikk.
             if trend != nil {
                 Text("vs. forrige periode")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.appScaled(size: 10, weight: .medium))
                     .foregroundStyle(Brand.textTertiary)
             } else {
                 Text("Ingen data enda")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.appScaled(size: 10, weight: .medium))
                     .foregroundStyle(Brand.textTertiary.opacity(0.7))
             }
         }
@@ -1047,9 +542,11 @@ private struct LeadsInAreaCard: View {
     @State private var assignmentSuccessToastVisible: Bool = false
 
     // Team-på-kartet (2026-07-02): toggle via `.teamMembers` i lag-picker.
-    // Mock data hentes fra TeamOnMapMock; erstattes med live-data fra
+    // Mock KUN i demo-modus; erstattes med live-data fra
     // `GET /leadgrid/team-live-locations` (kommer i backend-pakke).
-    @State private var teamOnMap: [TeamMemberOnMap] = TeamOnMapMock.members()
+    // Demo AV → tomt lag (ærlig — ingen falske selgere på kartet).
+    @State private var teamOnMap: [TeamMemberOnMap] =
+        DemoModeManager.isActiveNonisolated ? TeamOnMapMock.members() : []
     @State private var selectedTeamMember: TeamMemberOnMap?
 
     // MeMapPin tap-actions (2026-07-02)
@@ -1095,11 +592,16 @@ private struct LeadsInAreaCard: View {
         }
     }
 
+    /// Status-filter fra «Alle status»-chipen (QA-runde 2: chipen var en
+    /// ren visning uten handling). nil = alle statuser.
+    @State private var mapStatusFilter: LeadStatus?
+
     /// Pakke 10.1: filter mini-kart + KPI-strippen basert på tier.
     private var pinnedLeads: [LeadModel] {
         leads
             .filter { $0.latitude != 0 || $0.longitude != 0 }
             .filter { activeTier.matches($0) }
+            .filter { mapStatusFilter == nil || $0.status == mapStatusFilter }
     }
 
     private var region: MKCoordinateRegion {
@@ -1263,13 +765,50 @@ private struct LeadsInAreaCard: View {
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            // AXStack: ved accessibility-størrelser kveles tittelen ved
+            // siden av filter-chipen (brakk bokstav-for-bokstav på AX5).
+            AXStack {
                 Text("Leads i området").font(.headline).foregroundStyle(.white)
-                Text("\(pinnedLeads.count) leads")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                // iPhone: tallet står allerede i statistikk-knappen og
+                // temperatur-chipsene — tre steder er to for mange.
+                if !DeviceIdiom.isPhone {
+                    Text("\(pinnedLeads.count) leads")
+                        .font(.appScaled(size: 13, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
                 Spacer()
-                FilterChip(label: "Alle status", icon: "line.3.horizontal.decrease.circle")
+                // QA-runde 2 (Daniel): chipen var død — nå ekte statusfilter
+                // som snevrer pins + cluster-telling på mini-kartet.
+                Menu {
+                    Button {
+                        mapStatusFilter = nil
+                    } label: {
+                        if mapStatusFilter == nil {
+                            Label("Alle status", systemImage: "checkmark")
+                        } else {
+                            Text("Alle status")
+                        }
+                    }
+                    Divider()
+                    ForEach(LeadStatus.allCases) { status in
+                        Button {
+                            mapStatusFilter = status
+                        } label: {
+                            if mapStatusFilter == status {
+                                Label(status.label, systemImage: "checkmark")
+                            } else {
+                                Text(status.label)
+                            }
+                        }
+                    }
+                } label: {
+                    FilterChip(
+                        label: mapStatusFilter?.label ?? "Alle status",
+                        icon: "line.3.horizontal.decrease.circle"
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
             // Lead score fordeling — filter-strip (Daniel 2026-06-28 + 07-01):
             // brukeren ser samme fargene som pinene under, tapper for å
@@ -1283,27 +822,108 @@ private struct LeadsInAreaCard: View {
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
-    }
-
-    /// Kart-fargen følger tidspunktet på dagen — natt blir mørkt, dag
-    /// blir lyst. Speiler hvordan Apple Maps + Google Maps oppfører seg
-    /// i Auto-modus + gir salgskonsulenten en intuitiv "klokke-feeling"
-    /// uten å måtte se på systemklokken.
-    private var timeOfDayColorScheme: ColorScheme {
-        let hour = Calendar.current.component(.hour, from: Date())
-        return (hour < 7 || hour >= 19) ? .dark : .light
-    }
-
-    /// Tint som forsterker tids-følelsen: gylden om morgen, blå om
-    /// kveld/natt. Liten opacity så kartet er fortsatt lesbart.
-    private var timeOfDayTint: Color {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<8:   return Color(red: 0.95, green: 0.70, blue: 0.40)  // gryning
-        case 8..<17:  return Color.clear                                 // dag
-        case 17..<20: return Color(red: 0.95, green: 0.55, blue: 0.30)  // skumring
-        default:       return Color(red: 0.20, green: 0.25, blue: 0.55)  // natt
+        // iPhone: lead-info som bottom-sheet — overlay-varianten kolliderte
+        // med FAB-kolonnen og klippet «Tildel»/«Les mer»-CTA-ene.
+        .sheet(item: phoneLeadSheetBinding) { sel in
+            leadInfoCard(for: sel)
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(Brand.bg.ignoresSafeArea())
+                .presentationDetents([.height(380), .medium])
+                .presentationDragIndicator(.visible)
         }
+    }
+
+    /// Konfigurert lead-info-kort — delt mellom iPad-overlay (flytende på
+    /// kartet) og iPhone-sheet (bottom-sheet, unngår FAB-kollisjon).
+    private func leadInfoCard(for sel: LeadModel) -> some View {
+        MapLeadInfoCard(
+            lead: sel,
+            onClose: {
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+            },
+            onOpenLead: { lead in
+                NotificationCenter.default.post(
+                    name: .oversiktRequestOpenLeadInLeadsTab,
+                    object: nil,
+                    userInfo: ["leadId": lead.id, "leadName": lead.name]
+                )
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+            },
+            onAssignAsDestination: { lead in
+                assignAsMyDestination(lead)
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+            },
+            onAssignToTeamMember: { lead in
+                // Lukk info-kortet + åpne team-picker-sheet med lead.
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    assignToTeamLead = lead
+                }
+            },
+            canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
+        )
+    }
+
+    /// iPhone: pin-tap → bottom-sheet i stedet for kart-overlay.
+    private var phoneLeadSheetBinding: Binding<LeadModel?> {
+        DeviceIdiom.isPhone ? $mapSelectedLead : .constant(nil)
+    }
+
+    // ── Cluster-logikk for mini-kartet (QA-runde 2) ──────────────────
+    // Grupperer leads som ligger nærmere hverandre enn ~1/7 av synlig
+    // span — gir «8»-sirkler i stedet for ti overlappende nåler, og
+    // enkelt-nåler når man zoomer inn. Ren geometri, ingen ny state.
+
+    private struct MiniCluster: Identifiable {
+        let id: String
+        let coordinate: CLLocationCoordinate2D
+        let leads: [LeadModel]
+    }
+
+    private var miniClusters: [MiniCluster] {
+        let latT = max(miniCurrentRegion.span.latitudeDelta, 0.0005) / 7
+        let lonT = max(miniCurrentRegion.span.longitudeDelta, 0.0005) / 7
+        var groups: [(lat: Double, lon: Double, leads: [LeadModel])] = []
+        for lead in pinnedLeads.prefix(60) {
+            if let idx = groups.firstIndex(where: {
+                abs($0.lat - lead.latitude) < latT && abs($0.lon - lead.longitude) < lonT
+            }) {
+                groups[idx].leads.append(lead)
+                let n = Double(groups[idx].leads.count)
+                groups[idx].lat += (lead.latitude - groups[idx].lat) / n
+                groups[idx].lon += (lead.longitude - groups[idx].lon) / n
+            } else {
+                groups.append((lead.latitude, lead.longitude, [lead]))
+            }
+        }
+        return groups.map { g in
+            MiniCluster(
+                id: g.leads.map(\.id).joined(separator: "|"),
+                coordinate: CLLocationCoordinate2D(latitude: g.lat, longitude: g.lon),
+                leads: g.leads
+            )
+        }
+    }
+
+    private var miniSingleLeads: [LeadModel] {
+        miniClusters.filter { $0.leads.count == 1 }.compactMap(\.leads.first)
+    }
+
+    private var miniMultiClusters: [MiniCluster] {
+        miniClusters.filter { $0.leads.count > 1 }
     }
 
     @ViewBuilder
@@ -1314,7 +934,28 @@ private struct LeadsInAreaCard: View {
             // når measure-mode er ON; ellers pan/zoom fungerer normalt.
             MapReader { proxy in
                 Map(position: $miniCamera, interactionModes: [.pan, .zoom]) {
-                    ForEach(Array(pinnedLeads.prefix(10).enumerated()), id: \.offset) { _, lead in
+                    // Cluster-nåler (QA-runde 2, Daniels funn): overlappende
+                    // pins med «0»-score ga null informasjon — leads som
+                    // ligger tett vises nå som én sirkel med ANTALL, og tap
+                    // zoomer inn til klyngen. Re-clustres per zoom-nivå via
+                    // miniCurrentRegion.
+                    ForEach(miniMultiClusters) { cluster in
+                        Annotation("", coordinate: cluster.coordinate, anchor: .center) {
+                            OvClusterPin(count: cluster.leads.count)
+                                .onTapGesture {
+                                    let span = MKCoordinateSpan(
+                                        latitudeDelta: max(miniCurrentRegion.span.latitudeDelta / 4, 0.004),
+                                        longitudeDelta: max(miniCurrentRegion.span.longitudeDelta / 4, 0.004)
+                                    )
+                                    let region = MKCoordinateRegion(center: cluster.coordinate, span: span)
+                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                        miniCamera = .region(region)
+                                    }
+                                    miniCurrentRegion = region
+                                }
+                        }
+                    }
+                    ForEach(miniSingleLeads, id: \.id) { lead in
                         let score = lead.leadScore ?? 0
                         Annotation(lead.name,
                                    coordinate: CLLocationCoordinate2D(latitude: lead.latitude,
@@ -1567,16 +1208,12 @@ private struct LeadsInAreaCard: View {
                 }
                 .coordinateSpace(.named("miniMap"))
                 .mapStyle(miniMapStyle.mapKitStyle)
-                .environment(\.colorScheme, timeOfDayColorScheme)
+                // Alltid mørkt kart — identisk med Kart-fanen (ingen dag/natt-
+                // veksling), så Oversikt matcher det mørke brand-uttrykket.
+                .environment(\.colorScheme, .dark)
                 // Strekkes naturlig — fyller resten av cardet
                 .frame(maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(timeOfDayTint.opacity(0.15))
-                        .blendMode(.overlay)
-                        .allowsHitTesting(false)
-                )
                 .onMapCameraChange(frequency: .continuous) { ctx in
                     miniCurrentRegion = ctx.region
                     // Fallback for scroll-zoom (trackpad pinch, scroll-hjul) —
@@ -1610,14 +1247,18 @@ private struct LeadsInAreaCard: View {
                     }
                     measureBottomToolbar
                 }
-                .padding(10)
+                .padding(DeviceIdiom.isPhone ? 8 : 10)
                 .background(Brand.card.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Brand.green.opacity(0.5), lineWidth: 1)
                 )
-                .padding(14)
-                .frame(maxWidth: 380)
+                .padding([.leading, .top, .bottom], 14)
+                // iPhone: 74pt trailing-marg garanterer at HUD-en ALDRI
+                // overlapper FAB-kolonnen langs høyre kant (52pt strip +
+                // 14pt padding, zIndex 100). iPad/Mac beholder 14pt.
+                .padding(.trailing, DeviceIdiom.isPhone ? 74 : 14)
+                .frame(maxWidth: DeviceIdiom.isPhone ? .infinity : 380)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .allowsHitTesting(true)
             }
@@ -1687,7 +1328,7 @@ private struct LeadsInAreaCard: View {
 
             // Mini-toast øverst-venstre
             if let t = miniToast {
-                Text(t).font(.system(size: 11, weight: .semibold))
+                Text(t).font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background(Brand.purple.opacity(0.95), in: Capsule())
@@ -1699,45 +1340,11 @@ private struct LeadsInAreaCard: View {
 
             // Lead-info-overlay nederst på kartet — vises når bruker
             // tapper en pin. Har «Les mer»-CTA som hopper til Leads-fanen.
-            if let sel = mapSelectedLead {
-                MapLeadInfoCard(
-                    lead: sel,
-                    onClose: {
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                    },
-                    onOpenLead: { lead in
-                        NotificationCenter.default.post(
-                            name: .oversiktRequestOpenLeadInLeadsTab,
-                            object: nil,
-                            userInfo: ["leadId": lead.id, "leadName": lead.name]
-                        )
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                    },
-                    onAssignAsDestination: { lead in
-                        assignAsMyDestination(lead)
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                    },
-                    onAssignToTeamMember: { lead in
-                        // Lukk info-kortet + åpne team-picker-sheet med lead.
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            assignToTeamLead = lead
-                        }
-                    },
-                    canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
-                )
+            // iPhone (QA-runde 2): overlay-kortet kolliderte med FAB-
+            // kolonnen og klippet CTA-ene — vises som bottom-sheet i stedet
+            // (se .sheet på bodyContent).
+            if let sel = mapSelectedLead, !DeviceIdiom.isPhone {
+                leadInfoCard(for: sel)
                 .padding(14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 // Asymmetric transition (2026-07-02): fortsatt slide-opp
@@ -1823,7 +1430,7 @@ private struct LeadsInAreaCard: View {
                     latitude: lead.latitude,
                     longitude: lead.longitude
                 ),
-                members: mockAssignableMembers(for: lead),
+                members: assignableMembers(for: lead),
                 onAssign: { assignment in
                     completeTeamAssignment(assignment)
                 },
@@ -1943,7 +1550,7 @@ private struct LeadsInAreaCard: View {
             NavigationStack {
                 VStack(spacing: 16) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 40))
+                        .font(.appScaled(size: 40))
                         .foregroundStyle(.green)
                     Text("Lead opprettet")
                         .font(.headline)
@@ -2283,7 +1890,7 @@ private struct LeadsInAreaCard: View {
             Circle().fill(Brand.green)
                 .overlay(Circle().stroke(.white, lineWidth: 2))
             Text(label)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
         }
         .frame(width: 22, height: 22)
@@ -2416,22 +2023,22 @@ private struct LeadsInAreaCard: View {
                 Circle().fill(a.assigneeRole.color.opacity(0.22))
                 Circle().strokeBorder(a.assigneeRole.color.opacity(0.55), lineWidth: 1)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .heavy))
+                    .font(.appScaled(size: 14, weight: .heavy))
                     .foregroundStyle(a.assigneeRole.color)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text("OPPDRAG SENDT")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .black, design: .rounded))
                         .tracking(1.0)
                         .foregroundStyle(a.assigneeRole.color)
                     if a.priority != .normal {
                         HStack(spacing: 3) {
                             Image(systemName: a.priority.icon)
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.appScaled(size: 8, weight: .bold))
                             Text(a.priority.label.uppercased())
-                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                                .font(.appScaled(size: 8, weight: .heavy, design: .rounded))
                                 .tracking(0.6)
                         }
                         .foregroundStyle(.white)
@@ -2440,7 +2047,7 @@ private struct LeadsInAreaCard: View {
                     }
                 }
                 Text("\(a.assigneeName) → \(a.leadName)")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -2451,7 +2058,7 @@ private struct LeadsInAreaCard: View {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(.white.opacity(0.6))
             }
             .buttonStyle(.plain)
@@ -2466,9 +2073,32 @@ private struct LeadsInAreaCard: View {
         .frame(maxWidth: 420)
     }
 
-    /// Mock team-medlem-liste for demo-modus. Byttes ut med live-data fra
-    /// `GET /leadgrid/sales-leadership/team-members` + `NearbyTeamMemberDTO`
-    /// for avstand fra lead-koord.
+    /// Demo → mock-liste; ellers ekte team-medlemmer fra TeamLiveStore
+    /// (`/sales-leadership/team-members`). Avstand fra lead-koord har vi
+    /// ingen live-posisjonskilde for i denne konteksten enda → nil (UI-et
+    /// skjuler avstands-raden). Tom liste → sheetens egen empty-state.
+    private func assignableMembers(for lead: LeadModel) -> [AssignableTeamMember] {
+        guard !DemoModeManager.isActiveNonisolated else {
+            return mockAssignableMembers(for: lead)
+        }
+        return TeamLiveStore.shared.memberDTOs.map { dto in
+            let initials = dto.name.split(separator: " ")
+                .prefix(2).compactMap { $0.first }.map(String.init).joined()
+            return AssignableTeamMember(
+                userId: dto.userId,
+                name: dto.name,
+                email: dto.email,
+                title: dto.title,
+                role: .seller,
+                distanceKm: nil,
+                weeklyWon: dto.won,
+                isAvailable: nil,
+                avatarInitials: initials.isEmpty ? "?" : initials
+            )
+        }
+    }
+
+    /// Mock team-medlem-liste — KUN demo-modus.
     private func mockAssignableMembers(for lead: LeadModel) -> [AssignableTeamMember] {
         let leadLoc = CLLocation(latitude: lead.latitude, longitude: lead.longitude)
         func dist(_ lat: Double, _ lon: Double) -> Double {
@@ -2562,11 +2192,11 @@ private struct LeadsInAreaCard: View {
                 .shadow(color: Brand.green.opacity(0.7), radius: 4)
             VStack(alignment: .leading, spacing: 2) {
                 Text("NY DESTINASJON")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(1.0)
                     .foregroundStyle(Brand.green)
                 Text(dest.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -2585,9 +2215,9 @@ private struct LeadsInAreaCard: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "location.north.line.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Naviger")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -2599,7 +2229,7 @@ private struct LeadsInAreaCard: View {
                 clearAssignedDestination()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(.white.opacity(0.6))
             }
             .buttonStyle(.plain)
@@ -2637,18 +2267,27 @@ private struct LeadsInAreaCard: View {
     /// samt visualisering-lag (linjer / sirkel) rendret INNE i Map { … }.
 
     private var measureBannerHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: DeviceIdiom.isPhone ? 6 : 8) {
             Image(systemName: "ruler.fill")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(Brand.green)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MÅLE-VERKTØY")
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(Brand.green).tracking(0.6)
+            if DeviceIdiom.isPhone {
+                // Kompakt phone-variant: kun måle-teksten — overskriften
+                // sløyfes (ikonet + avstanden er nok signal).
                 Text(miniMeasureBannerText)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MÅLE-VERKTØY")
+                        .font(.appScaled(size: 9, weight: .black))
+                        .foregroundStyle(Brand.green).tracking(0.6)
+                    Text(miniMeasureBannerText)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                }
             }
             Spacer()
             Menu {
@@ -2666,22 +2305,32 @@ private struct LeadsInAreaCard: View {
                     }
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Text(measureUnit.label)
-                        .font(.system(size: 10, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
+                if DeviceIdiom.isPhone {
+                    // Enhets-velgeren bak et kompakt ellipsis-ikon på phone
+                    // (metrisk er default i Norge — sjelden brukt).
+                    Image(systemName: "ellipsis")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 6)
+                        .background(Brand.cardHi, in: Capsule())
+                } else {
+                    HStack(spacing: 3) {
+                        Text(measureUnit.label)
+                            .font(.appScaled(size: 10, weight: .semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.appScaled(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Brand.cardHi, in: Capsule())
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Brand.cardHi, in: Capsule())
             }
             Button {
                 miniMeasureMode = false
                 measureResetAll()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(.white.opacity(0.8))
             }.buttonStyle(.plain)
         }
@@ -2696,14 +2345,15 @@ private struct LeadsInAreaCard: View {
                     // Bytt kind = nullstill så vi ikke blander punkter
                     measureResetAll()
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: DeviceIdiom.isPhone ? 4 : 5) {
                         Image(systemName: kind.icon)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: DeviceIdiom.isPhone ? 9 : 10, weight: .bold))
                         Text(kind.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: DeviceIdiom.isPhone ? 9 : 10, weight: .semibold))
                     }
                     .foregroundStyle(isActive ? .white : Brand.textSecondary)
-                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .padding(.horizontal, DeviceIdiom.isPhone ? 7 : 8)
+                    .padding(.vertical, DeviceIdiom.isPhone ? 4 : 5)
                     .background(
                         isActive ? Brand.green.opacity(0.55) : Color.white.opacity(0.06),
                         in: Capsule()
@@ -2717,7 +2367,7 @@ private struct LeadsInAreaCard: View {
     private var measureRadiusSlider: some View {
         HStack(spacing: 8) {
             Text("Radius: \(Self.formatRadiusKm(measureRadiusKm))")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 100, alignment: .leading)
             Slider(value: $measureRadiusKm, in: 0.5...25, step: 0.5)
@@ -2733,7 +2383,7 @@ private struct LeadsInAreaCard: View {
                 miniShowToast("Nullstilt")
             } label: {
                 Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(6)
                     .background(Brand.cardHi, in: Circle())
@@ -2751,7 +2401,7 @@ private struct LeadsInAreaCard: View {
                     )
                 } label: {
                     Image(systemName: measureShowHull ? "hexagon.fill" : "hexagon")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(measureShowHull ? Brand.purpleLight : .white)
                         .padding(6)
                         .background(
@@ -2764,7 +2414,7 @@ private struct LeadsInAreaCard: View {
             // Del
             ShareLink(item: measureShareText()) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(6)
                     .background(Brand.cardHi, in: Circle())
@@ -2775,9 +2425,9 @@ private struct LeadsInAreaCard: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "bookmark.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Lagre")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8).padding(.vertical, 6)
@@ -2791,9 +2441,9 @@ private struct LeadsInAreaCard: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "list.bullet.rectangle")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Lagret (\(measureSavedRoutes.count))")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(Brand.purpleLight)
                 .padding(.horizontal, 8).padding(.vertical, 6)
@@ -2853,11 +2503,16 @@ private struct LeadsInAreaCard: View {
         // 3) .contentShape(Rectangle()) sikrer hele frame er klikkbart
         // Sammen med .zIndex(100) på FAB-VStack (settes lenger opp) gir
         // dette stabil oppførsel på både iPad og Mac.
-        Button(action: action) {
+        // iPhone (QA-runde 2): 44pt-knappene dominerte det lille innfelte
+        // kartet — 36×36 m/ 13pt ikon der; iPad/Mac beholder 44 (HIG).
+        let side: CGFloat = DeviceIdiom.isPhone ? 36 : 44
+        let iconSize: CGFloat = DeviceIdiom.isPhone ? 13 : 16
+        return Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                // Fast kart-FAB-ramme — ikonet skal ikke AX-skalere
+                .font(.system(size: iconSize, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
+                .frame(width: side, height: side)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2950,9 +2605,19 @@ private struct LeadScoreFilterStrip: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<tiers.count, id: \.self) { idx in
-                tierChip(tiers[idx])
+        // QA-runde 2 (Daniel): chips med 0 sier ingenting og stjeler en hel
+        // rad — vis kun tiers med innhold (+ den aktive så toggle-tilbake
+        // alltid er mulig). Alt-null → skjul hele stripen.
+        let visible = tiers.filter { $0.count > 0 || activeTier == $0.key }
+        if !visible.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(0..<visible.count, id: \.self) { idx in
+                    tierChip(visible[idx])
+                        // 1-2 chips skal ikke strekkes over hele raden —
+                        // naturlig bredde + venstrejustering ser riktig ut.
+                        .fixedSize(horizontal: visible.count <= 2, vertical: false)
+                }
+                if visible.count <= 2 { Spacer(minLength: 0) }
             }
         }
     }
@@ -2981,10 +2646,14 @@ private struct LeadScoreFilterStrip: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(tier.label)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(.white)
+                        // iPhone-QA: «Lunken» brakk til «Lunke / n» på 4
+                        // chips over 390pt — labels skal aldri ordbrytes.
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     Text("\(tier.count.formatted(.number.locale(Locale(identifier: "nb_NO"))))")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                 }
@@ -3077,18 +2746,18 @@ private struct MapLeadInfoCard: View {
                 Circle().fill(accentColor.opacity(0.22))
                 Circle().strokeBorder(accentColor.opacity(0.55), lineWidth: 1)
                 Text(String(lead.name.prefix(2)).uppercased())
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text(lead.name)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 if let city = lead.city, !city.isEmpty {
                     Text(city)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(Brand.textSecondary)
                         .lineLimit(1)
                 }
@@ -3097,9 +2766,9 @@ private struct MapLeadInfoCard: View {
             // Score-badge
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                 Text("\(lead.leadScore ?? 0)")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                     .monospacedDigit()
             }
             .foregroundStyle(.white)
@@ -3109,7 +2778,7 @@ private struct MapLeadInfoCard: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
+                    .font(.appScaled(size: 18))
                     .foregroundStyle(Brand.textSecondary)
             }
             .buttonStyle(.plain)
@@ -3120,10 +2789,10 @@ private struct MapLeadInfoCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(accentColor)
                 Text(statusLabel)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
             }
             if let address = lead.address, !address.isEmpty {
@@ -3147,11 +2816,11 @@ private struct MapLeadInfoCard: View {
     private func detailRow(icon: String, text: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
                 .frame(width: 14)
             Text(text)
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(Brand.textSecondary)
                 .lineLimit(1)
         }
@@ -3167,9 +2836,9 @@ private struct MapLeadInfoCard: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "target")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("Send meg dit")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -3191,9 +2860,9 @@ private struct MapLeadInfoCard: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "person.2.badge.plus.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                             Text("Tildel…")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -3219,9 +2888,9 @@ private struct MapLeadInfoCard: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "location.north.line.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Naviger")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -3236,7 +2905,7 @@ private struct MapLeadInfoCard: View {
                let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
                 Link(destination: url) {
                     Image(systemName: "phone.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(8)
                         .background(Brand.card, in: Circle())
@@ -3250,7 +2919,7 @@ private struct MapLeadInfoCard: View {
                let url = URL(string: "mailto:\(email)") {
                 Link(destination: url) {
                     Image(systemName: "envelope.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(8)
                         .background(Brand.card, in: Circle())
@@ -3267,9 +2936,9 @@ private struct MapLeadInfoCard: View {
             } label: {
                 HStack(spacing: 5) {
                     Text("Les mer")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -3305,6 +2974,131 @@ private struct BounceKeyframe {
     var offsetY: CGFloat = 0
     var scaleX: CGFloat = 1.0
     var scaleY: CGFloat = 1.0
+}
+
+/// «Neste handling»-kort under mini-kartet på iPhone (QA-runde 2):
+/// neste kommende møte + forfalte oppfølginger — det en selger trenger
+/// på farten. Tom-tilstand med hint når ingenting er planlagt.
+private struct NextActionCard: View {
+    @Environment(AppState.self) private var appState
+    let leads: [LeadModel]
+
+    private var nextMeeting: CalendarEvent? {
+        appState.calendar
+            .filter { ($0.datetime ?? .distantPast) >= Date() }
+            .sorted { ($0.datetime ?? .distantFuture) < ($1.datetime ?? .distantFuture) }
+            .first
+    }
+
+    private var overdueFollowups: [LeadModel] {
+        leads.filter { ($0.nextFollowUpAt ?? .distantFuture) < Date() }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "EEE d. MMM HH:mm"
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Neste handling")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            if nextMeeting == nil && overdueFollowups.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.appScaled(size: 16))
+                        .foregroundStyle(Brand.green)
+                    Text("Ingenting planlagt — book et møte eller legg til en oppfølging fra en lead.")
+                        .font(.appScaled(size: 13))
+                        .foregroundStyle(Brand.textSecondary)
+                }
+            } else {
+                if let meeting = nextMeeting {
+                    actionRow(
+                        icon: "calendar",
+                        color: Brand.purpleLight,
+                        title: meeting.leadName,
+                        subtitle: meeting.datetime.map { Self.timeFormatter.string(from: $0) } ?? "Tid ikke satt"
+                    )
+                }
+                if !overdueFollowups.isEmpty {
+                    actionRow(
+                        icon: "bell.badge.fill",
+                        color: Brand.orange,
+                        title: overdueFollowups.count == 1
+                            ? "1 forfalt oppfølging"
+                            : "\(overdueFollowups.count) forfalte oppfølginger",
+                        subtitle: overdueFollowups.first.map { "Eldst: \($0.name)" } ?? ""
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+    }
+
+    private func actionRow(icon: String, color: Color, title: String, subtitle: String) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.2))
+                Image(systemName: icon)
+                    .font(.appScaled(size: 14, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.appScaled(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(Brand.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// Cluster-sirkel for mini-kartet — viser ANTALL leads i klyngen
+/// (QA-runde 2: erstatter overlappende nåler med «0»-badge).
+private struct OvClusterPin: View {
+    let count: Int
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(RadialGradient(
+                    colors: [Brand.purple.opacity(0.45), Brand.purple.opacity(0)],
+                    center: .center, startRadius: 12, endRadius: 26
+                ))
+                .frame(width: 52, height: 52)
+                .blur(radius: 3)
+            Circle()
+                // Mørkere lilla enn Brand.purple: hvit 14pt-tekst på
+                // #a852fc ga ~3.2:1 og strøk WCAG-kontrast (a11y-audit
+                // 2026-07-05). Denne gir >5:1 og beholder glow-en.
+                .fill(Color(red: 0.42, green: 0.16, blue: 0.72))
+                .overlay(Circle().stroke(Color.white.opacity(0.85), lineWidth: 2))
+                .frame(width: 34, height: 34)
+                .shadow(color: Brand.purple.opacity(0.55), radius: 6, x: 0, y: 2)
+            Text("\(count)")
+                // Kart-grafikk — fast størrelse (AX sprenger sirkelen)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+        }
+        .contentShape(Circle())
+    }
 }
 
 private struct MiniPin: View {
@@ -3352,11 +3146,23 @@ private struct MiniPin: View {
                     ))
                 OvDropPin()
                     .stroke(Color.white.opacity(0.92), lineWidth: 2)
-                Text("\(score)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .offset(y: -6)
+                // Score 0 = ingen informasjon — vis bygnings-ikon i stedet
+                // for et misvisende «0» (QA-runde 2, Daniels funn).
+                if score > 0 {
+                    Text("\(score)")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                        .offset(y: -6)
+                } else {
+                    Image(systemName: "building.2.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .offset(y: -6)
+                        // Dekorativt — pin-en som helhet er treffflaten
+                        // (a11y-audit: «hit area too small» på ikonet).
+                        .accessibilityHidden(true)
+                }
             }
             .frame(width: 38, height: 48)
             .shadow(color: shadowColor, radius: 6, x: 0, y: 2)
@@ -3383,7 +3189,7 @@ private struct MiniPin: View {
                 .shadow(color: color.opacity(0.6), radius: 3)
             Circle().strokeBorder(.white, lineWidth: 1.5)
             Image(systemName: icon)
-                .font(.system(size: 8, weight: .bold))
+                .font(.appScaled(size: 8, weight: .bold))
                 .foregroundStyle(.white)
         }
         .frame(width: 18, height: 18)
@@ -3395,9 +3201,9 @@ private struct FilterChip: View {
     let icon: String
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-            Text(label).font(.system(size: 11, weight: .semibold))
-            Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+            Image(systemName: icon).font(.appScaled(size: 10, weight: .semibold))
+            Text(label).font(.appScaled(size: 11, weight: .semibold))
+            Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold))
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -3423,7 +3229,7 @@ private struct NextActionsCard: View {
                 Text("Neste handlinger").font(.headline).foregroundStyle(.white)
                 Spacer()
                 Text("Se alle (\(leads.count))")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             ForEach(topLeads, id: \.id) { lead in
@@ -3503,7 +3309,7 @@ struct NextActionRow: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(iconBgColor)
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(iconFgColor)
             }
             .frame(width: 42, height: 42)
@@ -3511,29 +3317,29 @@ struct NextActionRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(lead.name)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if let sb = statusBadge {
                         Text(sb.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(sb.color)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(sb.color.opacity(0.15), in: Capsule())
                     }
                 }
                 Text("\(lead.status.label) · \(actionLabel)")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(Brand.textSecondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 6) {
                 Text(actionTime)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appScaled(size: 11, weight: .medium))
                     .foregroundStyle(Brand.textSecondary)
                 Text(actionLabel)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 7)
                     .background(
@@ -3598,8 +3404,8 @@ private struct PipelineOverviewCard: View {
             Divider().background(Brand.stroke).padding(.top, 4)
             HStack {
                 Spacer()
-                Text("Se full pipeline rapport").font(.system(size: 12, weight: .semibold))
-                Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                Text("Se full pipeline rapport").font(.appScaled(size: 12, weight: .semibold))
+                Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
                 Spacer()
             }
             .foregroundStyle(Brand.purpleLight).padding(.top, 2)
@@ -3612,7 +3418,7 @@ private struct PipelineOverviewCard: View {
     private func stageRow(_ stage: Stage) -> some View {
         HStack(spacing: 12) {
             Text(stage.name)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 100, alignment: .leading)
             GeometryReader { geo in
@@ -3630,7 +3436,7 @@ private struct PipelineOverviewCard: View {
             }
             .frame(height: 8)
             Text("\(stage.count.formatted(.number.locale(Locale(identifier: "nb_NO"))))")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .frame(width: 56, alignment: .trailing)
@@ -3640,12 +3446,12 @@ private struct PipelineOverviewCard: View {
             HStack(spacing: 2) {
                 if let trend = stage.trend {
                     Image(systemName: stage.trendUp ? "arrow.up" : "arrow.down")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                     Text(trend)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                 } else {
                     Text("—")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(Brand.textTertiary)
                 }
             }
@@ -3679,8 +3485,8 @@ private struct ActivityTodayCard: View {
             Divider().background(Brand.stroke).padding(.top, 4)
             HStack {
                 Spacer()
-                Text("Se alle aktiviteter").font(.system(size: 12, weight: .semibold))
-                Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
+                Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
                 Spacer()
             }
             .foregroundStyle(Brand.purpleLight).padding(.top, 2)
@@ -3695,16 +3501,16 @@ private struct ActivityTodayCard: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 38, height: 38)
             Text(label)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
             Spacer()
             Text("\(value)")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -3766,11 +3572,11 @@ private struct LeadsOverTimeCard: View {
             // hardkodete "1. mai / 31. mai"-labels.
             HStack {
                 Text(Self.dateLabel(daysAgo: 29))
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
                 Spacer()
                 Text(Self.dateLabel(daysAgo: 0))
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
             }
         }
@@ -3883,11 +3689,11 @@ private struct LeadScoreDonutCard: View {
 
             VStack(spacing: 2) {
                 Text(total.formatted(.number.locale(Locale(identifier: "nb_NO"))))
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Text("Totalt")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                     .textCase(.uppercase)
                     .tracking(0.8)
@@ -3929,20 +3735,20 @@ private struct LeadScoreDonutCard: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(b.label)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(b.range)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(Brand.textTertiary)
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 0) {
                 Text("\(b.count.formatted(.number.locale(Locale(identifier: "nb_NO"))))")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Text("\(percent(b.count))%")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.appScaled(size: 9, weight: .medium))
                     .foregroundStyle(Brand.textSecondary)
             }
         }
@@ -4022,7 +3828,24 @@ struct TopSellersSheet: View {
         let color: Color
     }
 
+    /// Demo → mock-leaderboard; ellers ekte selgere fra TeamLiveStore
+    /// (`/sales-leadership/team-members`), rangert etter total verdi.
+    /// topDeals/regions/industries har ingen backend-kilde enda → tomme.
     private var sellers: [Seller] {
+        if DemoModeManager.isActiveNonisolated { return mockSellers }
+        return TeamLiveStore.shared.memberDTOs
+            .sorted { $0.totalValueNok > $1.totalValueNok }
+            .enumerated()
+            .map { idx, dto in
+                Seller(rank: idx + 1, name: dto.name, title: dto.title ?? "Selger",
+                       avatarColor: Brand.purpleLight,
+                       won: dto.won, leads: dto.leads, trend: 0,
+                       totalValue: Double(dto.totalValueNok),
+                       topDeals: [], regions: [], industries: [])
+            }
+    }
+
+    private var mockSellers: [Seller] {
         [
             makeSeller(rank: 1, name: "Anniken Sørli", title: "Salgsdirektør",
                        color: Brand.purple, won: 312, leads: 1820, trend: 0,
@@ -4159,9 +3982,27 @@ struct TopSellersSheet: View {
             ScrollView {
                 VStack(spacing: 20) {
                     periodPicker
-                    podiumSection
-                    listHeader
-                    sellerList
+                    // Podium krever minst 3 selgere (indekserer [0...2]);
+                    // ekte team kan være mindre — da vises kun listen.
+                    if sellers.count >= 3 { podiumSection }
+                    if sellers.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "person.3")
+                                .font(.appScaled(size: 28, weight: .semibold))
+                                .foregroundStyle(Brand.textTertiary)
+                            Text("Ingen selger-data enda")
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("Leaderboardet fylles når teamet har aktivitet.")
+                                .font(.appScaled(size: 11))
+                                .foregroundStyle(Brand.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else {
+                        listHeader
+                        sellerList
+                    }
                     Spacer(minLength: 16)
                 }
                 .padding(.horizontal, 24)
@@ -4178,7 +4019,7 @@ struct TopSellersSheet: View {
                             Circle().fill(Brand.cardHi)
                             Circle().stroke(Brand.stroke, lineWidth: 1)
                             Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 34, height: 34)
@@ -4190,9 +4031,9 @@ struct TopSellersSheet: View {
                         Button { leadershipOpen = true } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "slider.horizontal.3")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                                 Text("Salgsledelse")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -4225,7 +4066,7 @@ struct TopSellersSheet: View {
             ForEach(Period.allCases, id: \.self) { p in
                 Button { period = p } label: {
                     Text(p.rawValue)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(period == p ? .white : Brand.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -4279,11 +4120,11 @@ struct TopSellersSheet: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Text(initials(s.name))
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.appScaled(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 if s.rank == 1 {
                     Image(systemName: "crown.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(accent)
                         .offset(y: -38)
                 }
@@ -4292,11 +4133,11 @@ struct TopSellersSheet: View {
             .shadow(color: s.avatarColor.opacity(0.5), radius: 6, y: 3)
             VStack(spacing: 2) {
                 Text(s.name.split(separator: " ").first.map(String.init) ?? s.name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text("\(s.won) vunnet")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textSecondary)
             }
             // Podium-pille
@@ -4307,7 +4148,7 @@ struct TopSellersSheet: View {
                         startPoint: .top, endPoint: .bottom
                     ))
                 Text("\(s.rank)")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.top, 10)
             }
@@ -4319,14 +4160,14 @@ struct TopSellersSheet: View {
     private var listHeader: some View {
         HStack {
             Text("Alle selgere (\(sellers.count))")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
             HStack(spacing: 4) {
                 Image(systemName: "arrow.up.arrow.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                 Text("Vunnet")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
             }
             .foregroundStyle(Brand.purpleLight)
         }
@@ -4350,42 +4191,42 @@ struct TopSellersSheet: View {
         let isMe = s.name == currentUserName
         return HStack(spacing: 12) {
             Text("\(s.rank)")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(Brand.textSecondary)
                 .frame(width: 26, alignment: .leading)
             ZStack {
                 Circle().fill(s.avatarColor.opacity(0.3))
                 Text(initials(s.name))
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(s.avatarColor)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(s.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if isMe {
                         Text("Du")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(Brand.purpleLight)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Brand.purple.opacity(0.25), in: Capsule())
                     }
                 }
                 Text(s.title)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(s.won)")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Text("\(s.leads) leads")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
             }
             trendBadge(s.trend)
@@ -4407,10 +4248,10 @@ struct TopSellersSheet: View {
         let icon: String = trend > 0 ? "arrow.up" : (trend < 0 ? "arrow.down" : "minus")
         return HStack(spacing: 2) {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
             if trend != 0 {
                 Text("\(abs(trend))")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .monospacedDigit()
             }
         }
@@ -4435,8 +4276,34 @@ struct MyProfileSheet: View {
     let leads: [LeadModel]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @State private var editing = false
     @State private var topSellersOpen = false
+    // «Last ned mine data» (GDPR) — ekte eksport fra backend.
+    @State private var exporting = false
+    @State private var exportJSON: String?
+    @State private var showExportShare = false
+    @State private var exportError: String?
+
+    /// Konto-sikkerhet (passord/2FA) styres på web-kontoen — iPad logger
+    /// inn via paring/Google, så disse er ærlige lenker dit, ikke native.
+    private let webAccountBase = "https://theroleroom.com/innstillinger"
+
+    private func downloadMyData() {
+        guard let api = appState.api else { return }
+        exporting = true
+        exportError = nil
+        Task {
+            do {
+                exportJSON = try await api.fetchMyDataExport()
+                showExportShare = true
+            } catch {
+                exportError = "Kunne ikke laste ned data"
+            }
+            exporting = false
+        }
+    }
 
     private var initials: String {
         let parts = name.split(separator: " ")
@@ -4469,10 +4336,63 @@ struct MyProfileSheet: View {
     // Realistisk månedsmål — basert på Daniels gjennomsnitt + 15% strekk.
     private var monthGoal: Int { max(wonThisMonth + 80, 250) }
     private var monthProgress: Double { min(Double(wonThisMonth) / Double(monthGoal), 1.0) }
-    private var teamRank: Int { 3 }
-    private var teamSize: Int { 24 }
-    private var currentStreak: Int { 12 }
-    private var bestStreak: Int { 28 }
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    /// Team-plassering: demo → mock (#3 av 24); ekte → rangert på vunnet
+    /// verdi blant teamets medlemmer. Nil (skjul) med under 2 medlemmer —
+    /// «#1 av 1» er ikke en plassering.
+    private var teamRankInfo: (rank: Int, size: Int)? {
+        if isDemo { return (3, 24) }
+        let members = TeamLiveStore.shared.memberDTOs
+        guard members.count >= 2 else { return nil }
+        let sorted = members.sorted { $0.totalValueNok > $1.totalValueNok }
+        guard let idx = sorted.firstIndex(where: { $0.name == name }) else { return nil }
+        return (idx + 1, sorted.count)
+    }
+
+    /// Dager med faktisk aktivitet (lead opprettet eller besøkt).
+    private var activityDays: [Date] {
+        let cal = Calendar.current
+        var days = Set<Date>()
+        for l in leads {
+            days.insert(cal.startOfDay(for: l.createdAt))
+            if let v = l.lastVisitAt { days.insert(cal.startOfDay(for: v)) }
+        }
+        return days.sorted()
+    }
+
+    /// Streaks fra ekte aktivitetsdager (demo → mock 12/28).
+    private var streaks: (current: Int, best: Int) {
+        if isDemo { return (12, 28) }
+        let cal = Calendar.current
+        let days = activityDays
+        guard !days.isEmpty else { return (0, 0) }
+        // Beste: lengste sammenhengende dag-rekke
+        var best = 1, run = 1
+        for i in 1..<days.count {
+            if cal.dateComponents([.day], from: days[i - 1], to: days[i]).day == 1 {
+                run += 1
+                best = max(best, run)
+            } else {
+                run = 1
+            }
+        }
+        // Nåværende: tell bakover fra i dag (eller i går)
+        var current = 0
+        var cursor = cal.startOfDay(for: Date())
+        let daySet = Set(days)
+        if !daySet.contains(cursor) {
+            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? cursor
+        }
+        while daySet.contains(cursor) {
+            current += 1
+            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? cursor
+        }
+        return (current, best)
+    }
+    private var currentStreak: Int { streaks.current }
+    private var bestStreak: Int { streaks.best }
 
     var body: some View {
         NavigationStack {
@@ -4489,7 +4409,7 @@ struct MyProfileSheet: View {
                     // Utvikler-verktøy (Pakke 10) — demo-modus toggle.
                     VStack(alignment: .leading, spacing: 10) {
                         Text("UTVIKLER")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(.white.opacity(0.4))
                             .tracking(0.8)
                         DemoModeToggleRow()
@@ -4513,7 +4433,7 @@ struct MyProfileSheet: View {
                             Circle().fill(Brand.cardHi)
                             Circle().stroke(Brand.stroke, lineWidth: 1)
                             Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 34, height: 34)
@@ -4527,9 +4447,9 @@ struct MyProfileSheet: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: editing ? "checkmark" : "pencil")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                             Text(editing ? "Lagre" : "Rediger profil")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -4567,7 +4487,7 @@ struct MyProfileSheet: View {
                     .frame(width: 108, height: 108)
                     .shadow(color: Brand.purple.opacity(0.6), radius: 16, y: 6)
                 Text(initials)
-                    .font(.system(size: 36, weight: .bold))
+                    .font(.appScaled(size: 36, weight: .bold))
                     .foregroundStyle(.white)
                 // Online-indikator
                 Circle()
@@ -4580,7 +4500,7 @@ struct MyProfileSheet: View {
                     Circle().fill(Brand.bg)
                     Circle().stroke(Brand.purpleLight, lineWidth: 1.5)
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(Brand.purpleLight)
                 }
                 .frame(width: 30, height: 30)
@@ -4588,7 +4508,7 @@ struct MyProfileSheet: View {
             }
             VStack(spacing: 6) {
                 Text(name)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.appScaled(size: 24, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Salgssjef · Creatorhub AS")
                     .font(.subheadline.weight(.medium))
@@ -4599,8 +4519,8 @@ struct MyProfileSheet: View {
                         .foregroundStyle(Brand.textSecondary)
                 }
                 HStack(spacing: 16) {
-                    streakChip
-                    teamRankChip
+                    if currentStreak > 0 { streakChip }
+                    if teamRankInfo != nil { teamRankChip }
                 }
                 .padding(.top, 6)
             }
@@ -4626,10 +4546,10 @@ struct MyProfileSheet: View {
     private var streakChip: some View {
         HStack(spacing: 6) {
             Image(systemName: "flame.fill")
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(Brand.red)
             Text("\(currentStreak)-dagers streak")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -4640,10 +4560,10 @@ struct MyProfileSheet: View {
     private var teamRankChip: some View {
         HStack(spacing: 6) {
             Image(systemName: "trophy.fill")
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(Brand.yellow)
-            Text("#\(teamRank) av \(teamSize)")
-                .font(.system(size: 12, weight: .semibold))
+            Text("#\(teamRankInfo?.rank ?? 0) av \(teamRankInfo?.size ?? 0)")
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -4651,7 +4571,14 @@ struct MyProfileSheet: View {
         .overlay(Capsule().stroke(Brand.yellow.opacity(0.4), lineWidth: 1))
     }
 
+    @ViewBuilder
     private var teamPositionCard: some View {
+        if let info = teamRankInfo {
+            teamPositionCardBody(info)
+        }
+    }
+
+    private func teamPositionCardBody(_ info: (rank: Int, size: Int)) -> some View {
         Button { topSellersOpen = true } label: {
             HStack(spacing: 16) {
                 ZStack {
@@ -4660,33 +4587,40 @@ struct MyProfileSheet: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     Image(systemName: "trophy.fill")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.appScaled(size: 22, weight: .semibold))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 54, height: 54)
                 .shadow(color: Brand.yellow.opacity(0.5), radius: 8, y: 3)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Topp \(teamRank) av \(teamSize) selgere")
-                        .font(.system(size: 15, weight: .bold))
+                    Text("Topp \(info.rank) av \(info.size) selgere")
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Du ligger på 3. plass i Creatorhub Norge for Q2 2026")
-                        .font(.system(size: 11))
+                    // Demo: mockup-tekst. Ekte: si hva rangeringen faktisk
+                    // bygger på — «3. plass i Creatorhub Norge» var oppspinn.
+                    Text(isDemo
+                         ? "Du ligger på 3. plass i Creatorhub Norge for Q2 2026"
+                         : "Rangert på vunnet verdi i teamet ditt")
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text("↑ 2")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Brand.green)
+                        if isDemo {
+                            // Plass-endring krever historikk — kun demo.
+                            Text("↑ 2")
+                                .font(.appScaled(size: 14, weight: .bold))
+                                .foregroundStyle(Brand.green)
+                        }
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(Brand.textTertiary)
                     }
                     Text("Se hele lista")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.appScaled(size: 9, weight: .medium))
                         .foregroundStyle(Brand.purpleLight)
                 }
             }
@@ -4700,37 +4634,72 @@ struct MyProfileSheet: View {
         }
     }
 
-    private var activityTrendCard: some View {
-        // Mini sparkline siste 30 dager (akkumulert won deals)
-        struct P: Identifiable { let id = UUID(); let day: Int; let v: Double }
-        let cal = Calendar.current
-        let now = Date()
-        var running = 0
-        let points: [P] = (0..<30).map { d in
-            let chance = Double(d) / 30.0 + Double((d * 7) % 5) / 10
-            if chance > 0.5 { running += 1 }
-            return P(day: d, v: Double(running))
+    /// Sparkline-serien: demo → syntetisk mockup-kurve; ekte → akkumulerte
+    /// NYE leads siste 30 dager fra `createdAt` (QA 2026-07-05: kurven var
+    /// syntetisk og «+18%»-pillen oppspinn også i ekte modus).
+    private struct TrendPoint: Identifiable {
+        let id = UUID(); let day: Int; let v: Double
+    }
+    private var trendPoints: [TrendPoint] {
+        if isDemo {
+            var running = 0
+            return (0..<30).map { d in
+                let chance = Double(d) / 30.0 + Double((d * 7) % 5) / 10
+                if chance > 0.5 { running += 1 }
+                return TrendPoint(day: d, v: Double(running))
+            }
         }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var perDay = [Int](repeating: 0, count: 30)
+        for l in leads {
+            let diff = cal.dateComponents([.day], from: cal.startOfDay(for: l.createdAt), to: today).day ?? 99
+            if (0..<30).contains(diff) { perDay[29 - diff] += 1 }
+        }
+        var running = 0
+        return perDay.enumerated().map { d, c in
+            running += c
+            return TrendPoint(day: d, v: Double(running))
+        }
+    }
+
+    /// Trend-pille: demo → mock «+18%»; ekte → siste 15 dager vs. de 15
+    /// før (nil = ikke nok historikk til å si noe).
+    private var trendLabel: String? {
+        if isDemo { return "+18%" }
+        let pts = trendPoints
+        guard pts.count == 30, pts[29].v > 0 else { return nil }
+        let firstHalf = pts[14].v
+        let secondHalf = pts[29].v - firstHalf
+        guard firstHalf > 0 else { return nil }
+        let pct = Int(((secondHalf - firstHalf) / firstHalf * 100).rounded())
+        return pct >= 0 ? "+\(pct)%" : "\(pct)%"
+    }
+
+    private var activityTrendCard: some View {
+        let points = trendPoints
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Min trend — siste 30 dager")
-                    .font(.system(size: 15, weight: .semibold))
+                Text(isDemo ? "Min trend — siste 30 dager" : "Nye leads — siste 30 dager")
+                    .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text("+18%")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Brand.green)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Brand.green.opacity(0.15), in: Capsule())
+                if let trend = trendLabel {
+                    Text(trend)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(trend.hasPrefix("-") ? Brand.red : Brand.green)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background((trend.hasPrefix("-") ? Brand.red : Brand.green).opacity(0.15), in: Capsule())
+                }
             }
             Chart(points) { pt in
-                LineMark(x: .value("Dag", pt.day), y: .value("Won", pt.v))
+                LineMark(x: .value("Dag", pt.day), y: .value("Antall", pt.v))
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(LinearGradient(
                         colors: [Brand.purple, Brand.purpleLight],
                         startPoint: .leading, endPoint: .trailing))
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
-                AreaMark(x: .value("Dag", pt.day), y: .value("Won", pt.v))
+                AreaMark(x: .value("Dag", pt.day), y: .value("Antall", pt.v))
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(LinearGradient(
                         colors: [Brand.purple.opacity(0.4), Brand.purple.opacity(0)],
@@ -4739,14 +4708,16 @@ struct MyProfileSheet: View {
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
             .frame(height: 90)
-            HStack {
-                Text("Beste streak")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Brand.textTertiary)
-                Spacer()
-                Text("\(bestStreak) dager")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+            if bestStreak > 0 {
+                HStack {
+                    Text("Beste streak")
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(Brand.textTertiary)
+                    Spacer()
+                    Text("\(bestStreak) dager")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
         }
         .padding(16)
@@ -4760,11 +4731,11 @@ struct MyProfileSheet: View {
             statCard(icon: "person.2.fill", color: Brand.blue,
                      label: "Mine leads",
                      value: formatNum(totalLeads),
-                     trend: "+18%")
+                     trend: isDemo ? "+18%" : nil)
             statCard(icon: "trophy.fill", color: Brand.green,
                      label: "Vunnet i mnd",
                      value: "\(wonThisMonth)",
-                     trend: "+5")
+                     trend: isDemo ? "+5" : nil)
             statCard(icon: "chart.bar.fill", color: Brand.purple,
                      label: "Gjennomsnittlig score",
                      value: "\(avgScore)",
@@ -4772,7 +4743,7 @@ struct MyProfileSheet: View {
             statCard(icon: "checkmark.seal.fill", color: Brand.orange,
                      label: "Conversion",
                      value: String(format: "%.1f%%", conversionRate),
-                     trend: "+2.3%")
+                     trend: isDemo ? "+2.3%" : nil)
         }
     }
 
@@ -4783,25 +4754,25 @@ struct MyProfileSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 32, height: 32)
                 Spacer()
                 if let trend = trend {
                     Text("↑ \(trend)")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(Brand.green)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Brand.green.opacity(0.15), in: Capsule())
                 }
             }
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
             Text(label)
-                .font(.system(size: 11, weight: .medium))
+                .font(.appScaled(size: 11, weight: .medium))
                 .foregroundStyle(Brand.textSecondary)
         }
         .padding(14)
@@ -4814,11 +4785,11 @@ struct MyProfileSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Månedsmål")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(wonThisMonth) / \(Int(monthGoal))")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
@@ -4836,7 +4807,7 @@ struct MyProfileSheet: View {
             }
             .frame(height: 10)
             Text("\(Int(monthProgress * 100))% av månedsmål nådd — \(Int(monthGoal) - wonThisMonth) igjen.")
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(Brand.textSecondary)
         }
         .padding(16)
@@ -4847,7 +4818,7 @@ struct MyProfileSheet: View {
     private var contactInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Kontaktinformasjon")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             VStack(spacing: 10) {
                 contactRow(icon: "envelope.fill", color: Brand.blue,
@@ -4869,16 +4840,16 @@ struct MyProfileSheet: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.20))
-                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                Image(systemName: icon).font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.appScaled(size: 12, weight: .medium))
                 .foregroundStyle(Brand.textSecondary)
             Spacer()
             Text(value)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
         }
@@ -4888,11 +4859,11 @@ struct MyProfileSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Achievements")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("6 av 12")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textTertiary)
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -4931,14 +4902,14 @@ struct MyProfileSheet: View {
                 Circle()
                     .stroke(earned ? color.opacity(0.6) : Brand.stroke, lineWidth: 1.5)
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.appScaled(size: 20, weight: .semibold))
                     .foregroundStyle(earned ? color : Brand.textTertiary)
                 if earned {
                     // Liten "checkmark" badge i hjørnet
                     ZStack {
                         Circle().fill(Brand.green)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 7, weight: .bold))
+                            .font(.appScaled(size: 7, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     .frame(width: 14, height: 14)
@@ -4947,10 +4918,10 @@ struct MyProfileSheet: View {
             }
             .frame(width: 54, height: 54)
             Text(label)
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(earned ? .white : Brand.textTertiary)
             Text(desc)
-                .font(.system(size: 9))
+                .font(.appScaled(size: 9))
                 .foregroundStyle(Brand.textTertiary)
                 .lineLimit(1)
         }
@@ -4962,31 +4933,73 @@ struct MyProfileSheet: View {
 
     private var actionRows: some View {
         VStack(spacing: 10) {
-            actionRow(icon: "lock.fill", color: Brand.purple, label: "Endre passord")
-            actionRow(icon: "key.fill", color: Brand.blue, label: "Tofaktor-autentisering")
-            actionRow(icon: "arrow.down.doc.fill", color: Brand.green, label: "Last ned mine data")
+            // Passord + 2FA styres på web-kontoen (native paring/Google-
+            // login på iPad) → ærlige lenker, ikke døde rader.
+            actionRow(icon: "lock.fill", color: Brand.purple,
+                      label: "Endre passord", trailingIcon: "arrow.up.right") {
+                if let url = URL(string: webAccountBase) { openURL(url) }
+            }
+            actionRow(icon: "key.fill", color: Brand.blue,
+                      label: "Tofaktor-autentisering", trailingIcon: "arrow.up.right") {
+                if let url = URL(string: "\(webAccountBase)/sikkerhet") { openURL(url) }
+            }
+            actionRow(icon: "arrow.down.doc.fill", color: Brand.green,
+                      label: "Last ned mine data",
+                      trailingIcon: exporting ? nil : "chevron.right",
+                      showSpinner: exporting) {
+                downloadMyData()
+            }
+            if let exportError {
+                Text(exportError).font(.appScaled(size: 11)).foregroundStyle(Brand.red)
+            }
+        }
+        .sheet(isPresented: $showExportShare) {
+            if let json = exportJSON, let fileURL = exportFileURL(json) {
+                ShareSheet(items: [fileURL])
+            }
         }
     }
 
-    private func actionRow(icon: String, color: Color, label: String) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(color)
+    /// Skriv JSON til en temp-fil så ShareLink/AirDrop/Filer får et ekte
+    /// dokument (ikke bare en råstreng).
+    private func exportFileURL(_ json: String) -> URL? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("leadgrid-mine-data.json")
+        try? json.data(using: .utf8)?.write(to: url)
+        return url
+    }
+
+    private func actionRow(
+        icon: String, color: Color, label: String,
+        trailingIcon: String? = "chevron.right",
+        showSpinner: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.22))
+                    Image(systemName: icon).font(.appScaled(size: 14, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 34, height: 34)
+                Text(label)
+                    .font(.appScaled(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                Spacer()
+                if showSpinner {
+                    ProgressView().tint(Brand.textTertiary)
+                } else if let trailingIcon {
+                    Image(systemName: trailingIcon)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(Brand.textTertiary)
+                }
             }
-            .frame(width: 34, height: 34)
-            Text(label)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Brand.textTertiary)
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
+        .buttonStyle(.plain)
     }
 }
 
@@ -5000,7 +5013,20 @@ struct MyProfileSheet: View {
 struct ProfilePopover: View {
     let name: String
     let email: String?
+    /// Rolle-linje under navnet — ekte verdi fra AppState (Leadgrid-admin
+    /// vs Salgssjef), ikke hardkodet mock.
+    var role: String = "Salgssjef"
     var onOpenMyProfile: () -> Void = {}
+    /// SuperAdmin-konsoll — kun satt for Leadgrid-ansatte på faner som
+    /// eier root-switchen (Leadbook).
+    var onOpenSuperAdmin: (() -> Void)? = nil
+    @Environment(AppState.self) private var appState
+
+    /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
+    private var appVersion: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return v.map { "v\($0)" } ?? "—"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5015,24 +5041,90 @@ struct ProfilePopover: View {
                             row(icon: "person.fill", color: Brand.purple, label: "Min profil")
                         }
                         .buttonStyle(.plain)
-                        row(icon: "building.2.fill", color: Brand.blue,
-                            label: "Bytt organisasjon",
-                            trailing: "Creatorhub AS")
-                        row(icon: "folder.fill", color: Brand.green,
-                            label: "Bytt prosjekt",
-                            trailing: "Alle (5)")
+                        // Ekte org/prosjekt-bytte via AppState — radene var
+                        // døde (ingen action) frem til 2026-07-05-QA-en.
+                        Menu {
+                            ForEach(appState.organizations, id: \.id) { o in
+                                Button {
+                                    appState.activeOrganizationId = o.id
+                                    Task { await appState.loadOrgContext() }
+                                } label: {
+                                    if appState.activeOrganizationId == o.id {
+                                        Label(o.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(o.name)
+                                    }
+                                }
+                            }
+                        } label: {
+                            row(icon: "building.2.fill", color: Brand.blue,
+                                label: "Bytt organisasjon",
+                                trailing: appState.organizations.first {
+                                    $0.id == appState.activeOrganizationId
+                                }?.name)
+                        }
+                        .buttonStyle(.plain)
+                        Menu {
+                            ForEach(appState.projects, id: \.id) { p in
+                                Button {
+                                    appState.activeProjectId = p.id
+                                    Task { await appState.refreshLeads() }
+                                } label: {
+                                    if appState.activeProjectId == p.id {
+                                        Label(p.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(p.name)
+                                    }
+                                }
+                            }
+                        } label: {
+                            row(icon: "folder.fill", color: Brand.green,
+                                label: "Bytt prosjekt",
+                                trailing: appState.projects.first {
+                                    $0.id == appState.activeProjectId
+                                }?.name)
+                        }
+                        .buttonStyle(.plain)
+                        if let onOpenSuperAdmin {
+                            Button(action: onOpenSuperAdmin) {
+                                row(icon: "crown.fill", color: Brand.yellow,
+                                    label: "SuperAdmin-konsoll")
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     section(title: "Apper") {
-                        row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
+                        Button {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
+                        }
+                        .buttonStyle(.plain)
                         row(icon: "moon.fill", color: Brand.purpleLight, label: "Mørk modus",
                             toggle: .constant(true))
-                        row(icon: "bell.badge.fill", color: Brand.orange, label: "Varslinger")
+                        Button {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            row(icon: "bell.badge.fill", color: Brand.orange, label: "Varslinger")
+                        }
+                        .buttonStyle(.plain)
                     }
                     section(title: "Hjelp") {
-                        row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
+                        Button {
+                            if let url = URL(string: "mailto:support@creatorhubn.com?subject=Leadgrid%20support") {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
+                        }
+                        .buttonStyle(.plain)
                         row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
                         row(icon: "info.circle.fill", color: Brand.textSecondary,
-                            label: "Om Leadgrid", trailing: "v1.3.1")
+                            label: "Om Leadgrid", trailing: appVersion)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -5042,12 +5134,14 @@ struct ProfilePopover: View {
 
             Divider().background(Brand.stroke)
 
-            Button {} label: {
+            Button {
+                appState.signOut()
+            } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                     Text("Logg ut")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                 }
                 .foregroundStyle(Brand.red)
                 .frame(maxWidth: .infinity)
@@ -5067,7 +5161,7 @@ struct ProfilePopover: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                 Text(initials)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.appScaled(size: 18, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 52, height: 52)
@@ -5075,17 +5169,17 @@ struct ProfilePopover: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.appScaled(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 if let email = email {
                     Text(email)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                         .lineLimit(1)
                 }
-                Text("Salgssjef · Creatorhub AS")
-                    .font(.system(size: 11, weight: .medium))
+                Text(role)
+                    .font(.appScaled(size: 11, weight: .medium))
                     .foregroundStyle(Brand.purpleLight)
             }
             Spacer()
@@ -5104,7 +5198,7 @@ struct ProfilePopover: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(Brand.textSecondary)
                 .textCase(.uppercase)
                 .tracking(0.8)
@@ -5121,12 +5215,12 @@ struct ProfilePopover: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.20))
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 30, height: 30)
             Text(label)
-                .font(.system(size: 13, weight: .medium))
+                .font(.appScaled(size: 13, weight: .medium))
                 .foregroundStyle(.white)
             Spacer(minLength: 4)
             if let toggle = toggle {
@@ -5137,12 +5231,12 @@ struct ProfilePopover: View {
             } else {
                 if let t = trailing {
                     Text(t)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textTertiary)
                         .lineLimit(1)
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(Brand.textTertiary)
             }
         }
@@ -5169,12 +5263,12 @@ struct AnalysePopover: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                     Text("Pipeline + trend siste 30 dager")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
                 Text("Full rapport")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .padding(16)
@@ -5212,12 +5306,12 @@ struct NextActionsPopover: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                     Text("\(totalCount) leads i kø")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
                 Text("Se alle")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .padding(16)
@@ -5229,10 +5323,10 @@ struct NextActionsPopover: View {
                     if leads.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 28))
+                                .font(.appScaled(size: 28))
                                 .foregroundStyle(Brand.green)
                             Text("Du er ajour!")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.appScaled(size: 14, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text("Ingen oppfølginger venter.")
                                 .font(.caption)
@@ -5262,6 +5356,19 @@ struct RecentActivitiesPopover: View {
     let leads: [LeadModel]
     let upcomingFollowups: Int
     let momentum: LeadgridMomentum?
+    /// Når data sist ble hentet — driver den EKTE «Oppdatert …»-teksten i
+    /// footeren (før: hardkodet «Oppdaterte data for 2 min siden»).
+    var lastUpdated: Date? = nil
+
+    private var lastUpdatedLabel: String? {
+        guard let lastUpdated else { return nil }
+        let seconds = Date().timeIntervalSince(lastUpdated)
+        if seconds < 60 { return "Oppdatert nettopp" }
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.unitsStyle = .short
+        return "Oppdatert \(f.localizedString(for: lastUpdated, relativeTo: Date()))"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5269,7 +5376,7 @@ struct RecentActivitiesPopover: View {
                 Text("Aktivitet").font(.headline).foregroundStyle(.white)
                 Spacer()
                 Text("Se alle")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .padding(16)
@@ -5297,18 +5404,20 @@ struct RecentActivitiesPopover: View {
                 .padding(.bottom, 18)
             }
 
-            Divider().background(Brand.stroke)
+            if let label = lastUpdatedLabel {
+                Divider().background(Brand.stroke)
 
-            HStack {
-                Spacer()
-                Text("Oppdaterte data for 2 min siden")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Brand.textTertiary)
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Brand.textTertiary)
+                HStack {
+                    Spacer()
+                    Text(label)
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(Brand.textTertiary)
+                    Image(systemName: "arrow.clockwise")
+                        .font(.appScaled(size: 10, weight: .semibold))
+                        .foregroundStyle(Brand.textTertiary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
         }
         .background(Brand.card)
     }
@@ -5318,7 +5427,7 @@ struct PopoverSectionHeader: View {
     let label: String
     var body: some View {
         Text(label)
-            .font(.system(size: 11, weight: .bold))
+            .font(.appScaled(size: 11, weight: .bold))
             .foregroundStyle(Brand.textSecondary)
             .textCase(.uppercase)
             .tracking(0.8)
@@ -5353,16 +5462,16 @@ private struct ActivityTodayCompact: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 30, height: 30)
             Text(label)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
             Spacer()
             Text("\(value)")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -5378,18 +5487,18 @@ private struct TipsRow: View {
             ZStack {
                 Circle().fill(Brand.purple.opacity(0.20))
                 Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Tips")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .textCase(.uppercase)
                     .tracking(0.5)
                 Text("Du har \(upcoming) oppfølginger som forfaller i løpet av de neste 3 dagene.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(Brand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -5418,9 +5527,11 @@ private struct RecentActivitiesCard: View {
     }
 
     private var events: [Event] {
-        // Demo AV OG ingen ekte leads → tom aktivitet, så popover ikke
-        // fabrikkerer «Lead åpnet tilbudet»-hendelser fra tomme data.
-        guard DemoModeManager.isActiveNonisolated || !leads.isEmpty else {
+        // KUN demo-modus viser eksempel-hendelser. I ekte modus har vi
+        // ingen aktivitets-feed fra backend enda → ærlig tom-tilstand i
+        // stedet for fabrikkerte «Lead åpnet tilbudet»-rader bygget av
+        // ekte lead-navn (Daniel 2026-07-04: hele headeren = ekte data).
+        guard DemoModeManager.isActiveNonisolated else {
             return []
         }
         let f = DateFormatter()
@@ -5470,20 +5581,20 @@ private struct RecentActivitiesCard: View {
                     Text("Siste aktiviteter").font(.headline).foregroundStyle(.white)
                     Spacer()
                     Text("Se alle")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(Brand.purpleLight)
                 }
             }
             if events.isEmpty {
                 VStack(spacing: 6) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 22))
+                        .font(.appScaled(size: 22))
                         .foregroundStyle(Brand.textTertiary)
                     Text("Ingen hendelser enda")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(Brand.textSecondary)
                     Text("Aktivitet dukker opp her etter hvert som teamet ringer, sender e-post og booker møter.")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(Brand.textTertiary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 260)
@@ -5496,17 +5607,17 @@ private struct RecentActivitiesCard: View {
                         HStack(spacing: 12) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 9).fill(e.iconBg)
-                                Image(systemName: e.icon).font(.system(size: 13, weight: .semibold))
+                                Image(systemName: e.icon).font(.appScaled(size: 13, weight: .semibold))
                                     .foregroundStyle(e.iconColor)
                             }
                             .frame(width: 32, height: 32)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(e.title)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
                                 Text(e.subtitle)
-                                    .font(.system(size: 11))
+                                    .font(.appScaled(size: 11))
                                     .foregroundStyle(Brand.textSecondary)
                                     .lineLimit(1)
                             }
@@ -5520,8 +5631,8 @@ private struct RecentActivitiesCard: View {
                 Divider().background(Brand.stroke).padding(.top, 4)
                 HStack {
                     Spacer()
-                    Text("Se alle aktiviteter").font(.system(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                    Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
                     Spacer()
                 }
                 .foregroundStyle(Brand.purpleLight).padding(.top, 2)
@@ -5533,35 +5644,6 @@ private struct RecentActivitiesCard: View {
         .overlay(
             embedded ? nil : RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1)
         )
-    }
-}
-
-// MARK: - TipsBanner
-
-private struct TipsBanner: View {
-    let upcoming: Int
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Brand.purpleLight)
-            Text("Tips:")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
-            Text("Du har \(upcoming) oppfølginger som forfaller i løpet av de neste 3 dagene.")
-                .font(.system(size: 13))
-                .foregroundStyle(Brand.textSecondary)
-            Spacer()
-            Text("Oppdaterte data for 2 min siden")
-                .font(.system(size: 11))
-                .foregroundStyle(Brand.textTertiary)
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Brand.textTertiary)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
     }
 }
 
@@ -5592,8 +5674,8 @@ struct SellerDetailSheet: View {
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     private func nok(_ v: Double) -> String {
@@ -5641,7 +5723,7 @@ struct SellerDetailSheet: View {
                             Circle().fill(Brand.cardHi)
                             Circle().stroke(Brand.stroke, lineWidth: 1)
                             Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 34, height: 34)
@@ -5660,31 +5742,31 @@ struct SellerDetailSheet: View {
             ZStack {
                 Circle().fill(seller.avatarColor.opacity(0.3))
                 Text(initials)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.appScaled(size: 26, weight: .bold))
                     .foregroundStyle(seller.avatarColor)
             }
             .frame(width: 72, height: 72)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(seller.name)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.appScaled(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                     if isCurrentUser {
                         Text("Du")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(Brand.purpleLight)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Brand.purple.opacity(0.25), in: Capsule())
                     }
                 }
                 Text(seller.title)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(Brand.textSecondary)
                 HStack(spacing: 6) {
                     Image(systemName: "rosette")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Text("Rang #\(seller.rank) i organisasjonen")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(Brand.yellow)
             }
@@ -5712,18 +5794,18 @@ struct SellerDetailSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(accent)
                 Spacer()
             }
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(title)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(Brand.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -5752,26 +5834,26 @@ struct SellerDetailSheet: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Brand.purple.opacity(0.18))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(deal.customer)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text(deal.category)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(Brand.purpleLight)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Brand.purple.opacity(0.18), in: Capsule())
                     HStack(spacing: 3) {
                         Image(systemName: "mappin")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                         Text(deal.city)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                     }
                     .foregroundStyle(Brand.textSecondary)
                 }
@@ -5779,11 +5861,11 @@ struct SellerDetailSheet: View {
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(nok(deal.value))
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(Brand.green)
                     .monospacedDigit()
                 Text(deal.daysAgo == 0 ? "i dag" : "\(deal.daysAgo)d siden")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
             }
         }
@@ -5809,17 +5891,17 @@ struct SellerDetailSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(Brand.purpleLight)
                 Text(r.city)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(r.count) deals")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Text(String(format: "%.0f %%", r.valueShare * 100))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(Brand.green)
                     .frame(width: 44, alignment: .trailing)
                     .monospacedDigit()
@@ -5861,15 +5943,15 @@ struct SellerDetailSheet: View {
                     HStack(spacing: 8) {
                         Circle().fill(ind.color).frame(width: 8, height: 8)
                         Text(ind.name)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(.white)
                         Spacer()
                         Text("\(ind.count)")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                             .monospacedDigit()
                         Text(String(format: "%.0f %%", Double(ind.count) / Double(total) * 100))
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(Brand.textSecondary)
                             .frame(width: 44, alignment: .trailing)
                             .monospacedDigit()
@@ -5885,15 +5967,15 @@ struct SellerDetailSheet: View {
     private func sectionHeader(icon: String, title: String, subtitle: String) -> some View {
         HStack(alignment: .top) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text(subtitle)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textTertiary)
             }
             Spacer()
@@ -5917,6 +5999,9 @@ struct SellerDetailSheet: View {
 struct SalesLeadershipSheet: View {
     let sellers: [TopSellersSheet.Seller]
     let currentUserName: String
+    /// true når viewet vises som innebygd FANE (SalgsledelseView) i stedet
+    /// for modal sheet — skjuler X-lukkeknappen som ellers ikke gir mening.
+    var embedded: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .catalog
     @State private var newContestOpen: Bool = false
@@ -5938,14 +6023,15 @@ struct SalesLeadershipSheet: View {
 
     // Org-spesifikke premier som salgssjefen har lagt til. Persisteres i
     // prod (per-org-rad i `org_prize_catalog`); her er det @State.
-    // Mock-eksemplene bruker ikoner siden vi ikke har EKTE produktbilder.
-    // Når salgssjefen laster opp via PhotosPicker eller setter URL → vises
-    // det ekte bildet (siden det er aktivt valgt og matcher produktet).
-    @State private var orgCatalog: [PrizeProduct] = [
+    // Mock-eksemplene (KUN demo-modus) bruker ikoner siden vi ikke har EKTE
+    // produktbilder. Når salgssjefen laster opp via PhotosPicker eller
+    // setter URL → vises det ekte bildet. Demo AV → tom (ærlig) liste;
+    // salgssjefen kan fortsatt legge til egne via «+».
+    @State private var orgCatalog: [PrizeProduct] = DemoModeManager.isActiveNonisolated ? [
         PrizeProduct(name: "Drone DJI Mavic 3",           icon: "airplane",                              priceNok: 18_500, category: .tech,       vendor: "Komplett (org)"),
         PrizeProduct(name: "Org-helgetur til Lofoten",    icon: "mountain.2.fill",                       priceNok: 14_000, category: .travel,     vendor: "Egen avtale"),
         PrizeProduct(name: "Personlig PT-pakke 10 timer", icon: "figure.strengthtraining.traditional",   priceNok: 6_500,  category: .experience, vendor: "Sats (avtale)"),
-    ]
+    ] : []
     @State private var newProductOpen: Bool = false
 
     private enum Brand {
@@ -5960,8 +6046,8 @@ struct SalesLeadershipSheet: View {
         static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
         static let red = Color(red: 0.95, green: 0.20, blue: 0.20)
         static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     // MARK: Provisjon — modell-bibliotek
@@ -6308,35 +6394,47 @@ struct SalesLeadershipSheet: View {
                         case .goal:       goalTab
                         }
                         Spacer(minLength: 16)
+                        // Ekstra bunn-luft på iPhone så siste rad (f.eks.
+                        // produktkort-griden) kan scrolles helt fram og
+                        // ikke klippes bak tab-baren.
+                        if DeviceIdiom.isPhone {
+                            Color.clear.frame(height: 72)
+                        }
                     }
                     .padding(20)
                 }
             }
             .background(Brand.bg.ignoresSafeArea())
-            .navigationTitle("Salgsledelse")
+            // Fanetittelen er fjernet som innebygd fane — tab-baren viser
+            // hvor du er. I sheet-modus beholdes tittelen (ingen tab-bar).
+            .navigationTitle(embedded ? "" : "Salgsledelse")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: {
-                        ZStack {
-                            Circle().fill(Brand.cardHi)
-                            Circle().stroke(Brand.stroke, lineWidth: 1)
-                            Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
+                // X-lukkeknapp kun i sheet-modus — som innebygd fane finnes
+                // det ingenting å lukke.
+                if !embedded {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: {
+                            ZStack {
+                                Circle().fill(Brand.cardHi)
+                                Circle().stroke(Brand.stroke, lineWidth: 1)
+                                Image(systemName: "xmark")
+                                    .font(.appScaled(size: 12, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                            .frame(width: 34, height: 34)
                         }
-                        .frame(width: 34, height: 34)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 if tab == .contest {
                     ToolbarItem(placement: .primaryAction) {
                         Button { newContestOpen = true } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                                 Text("Ny konkurranse")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -6356,9 +6454,9 @@ struct SalesLeadershipSheet: View {
                         Button { newProductOpen = true } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                                 Text("Nytt produkt")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -6401,18 +6499,38 @@ struct SalesLeadershipSheet: View {
     }
 
     private var tabBar: some View {
+        // iPhone: pillene får naturlig bredde og rulles horisontalt i stedet
+        // for å presses inn på likt fordelt bredde (ga ord-brekk midt i
+        // «Konkurranser»). iPad beholder full-bredde-fordelingen.
+        Group {
+            if DeviceIdiom.isPhone {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    tabBarPills
+                }
+            } else {
+                tabBarPills
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    private var tabBarPills: some View {
         HStack(spacing: 0) {
             ForEach(Tab.allCases, id: \.self) { t in
                 Button { tab = t } label: {
                     HStack(spacing: 6) {
                         Image(systemName: t.icon)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                         Text(t.rawValue)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .foregroundStyle(tab == t ? .white : Brand.textSecondary)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: DeviceIdiom.isPhone ? nil : .infinity)
                     .padding(.vertical, 10)
+                    .padding(.horizontal, DeviceIdiom.isPhone ? 14 : 0)
                     .background(
                         tab == t ? Brand.purple : Color.clear,
                         in: Capsule()
@@ -6424,8 +6542,6 @@ struct SalesLeadershipSheet: View {
         .padding(4)
         .background(Brand.card, in: Capsule())
         .overlay(Capsule().stroke(Brand.stroke, lineWidth: 1))
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
     }
 
     // MARK: Provisjon
@@ -6443,14 +6559,14 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Org-preset")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Ulike organisasjoner kjører ulike modeller — start med et preset")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textTertiary)
                 }
                 Spacer()
@@ -6466,7 +6582,7 @@ struct SalesLeadershipSheet: View {
                             }
                         } label: {
                             Text(p.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(preset == p ? .white : Brand.textSecondary)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
@@ -6488,10 +6604,10 @@ struct SalesLeadershipSheet: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.green)
                 Text("\(activeModels.count) modeller aktive — de stables på hver deal")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
         }
@@ -6504,14 +6620,14 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "books.vertical.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Text("Modell-bibliotek")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(ModelType.allCases.count) typer")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
             VStack(spacing: 8) {
@@ -6534,16 +6650,16 @@ struct SalesLeadershipSheet: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(t.accent.opacity(isActive ? 0.25 : 0.10))
                     Image(systemName: t.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(isActive ? t.accent : Brand.textTertiary)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.title)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(t.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                         .lineLimit(2)
                 }
@@ -6604,16 +6720,16 @@ struct SalesLeadershipSheet: View {
     private var tieredConfig: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Volum-trapp (NOK i måneden)")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
             ForEach($tieredBands) { $band in
                 HStack(spacing: 8) {
                     Image(systemName: "stairs")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(ModelType.tiered.accent)
                         .frame(width: 24)
                     Text(String(format: "Fra %.0fK NOK", band.fromK))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 4) {
@@ -6621,14 +6737,14 @@ struct SalesLeadershipSheet: View {
                             if band.pct > 0.5 { band.pct -= 0.5 }
                         } label: {
                             Image(systemName: "minus")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 20, height: 20)
                                 .background(Brand.stroke, in: Circle())
                         }
                         .buttonStyle(.plain)
                         Text(String(format: "%.1f %%", band.pct))
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(ModelType.tiered.accent)
                             .monospacedDigit()
                             .frame(width: 56)
@@ -6636,7 +6752,7 @@ struct SalesLeadershipSheet: View {
                             band.pct += 0.5
                         } label: {
                             Image(systemName: "plus")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 20, height: 20)
                                 .background(Brand.stroke, in: Circle())
@@ -6654,11 +6770,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Multiplier")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.2f×", acceleratorMult))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.accelerator.accent)
                     .monospacedDigit()
             }
@@ -6666,11 +6782,11 @@ struct SalesLeadershipSheet: View {
                 .tint(ModelType.accelerator.accent)
             HStack {
                 Text("Aktiveres ved")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.0f %% av mål", acceleratorThreshold))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
@@ -6683,11 +6799,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Provisjon av MRR")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.1f %%", recurringPct))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.recurring.accent)
                     .monospacedDigit()
             }
@@ -6695,11 +6811,11 @@ struct SalesLeadershipSheet: View {
                 .tint(ModelType.recurring.accent)
             HStack {
                 Text("Varighet")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.0f mnd", recurringMonths))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
@@ -6713,11 +6829,11 @@ struct SalesLeadershipSheet: View {
             ForEach($spiffs) { $rule in
                 HStack(spacing: 8) {
                     Image(systemName: "gift.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(ModelType.spiff.accent)
                         .frame(width: 22)
                     Text(rule.trigger)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .lineLimit(1)
@@ -6726,14 +6842,14 @@ struct SalesLeadershipSheet: View {
                             if rule.amountNok > 500 { rule.amountNok -= 500 }
                         } label: {
                             Image(systemName: "minus")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 20, height: 20)
                                 .background(Brand.stroke, in: Circle())
                         }
                         .buttonStyle(.plain)
                         Text("\(Int(rule.amountNok)) kr")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(ModelType.spiff.accent)
                             .monospacedDigit()
                             .frame(width: 76)
@@ -6741,7 +6857,7 @@ struct SalesLeadershipSheet: View {
                             rule.amountNok += 500
                         } label: {
                             Image(systemName: "plus")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 20, height: 20)
                                 .background(Brand.stroke, in: Circle())
@@ -6755,9 +6871,9 @@ struct SalesLeadershipSheet: View {
             Button {} label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                     Text("Legg til spiff-regel")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(ModelType.spiff.accent)
                 .frame(maxWidth: .infinity)
@@ -6771,11 +6887,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Standard splitt")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.0f / %.0f", splitDefaultPrimary, 100 - splitDefaultPrimary))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.split.accent)
                     .monospacedDigit()
             }
@@ -6791,10 +6907,10 @@ struct SalesLeadershipSheet: View {
     private func splitChip(label: String, pct: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(Brand.textSecondary)
             Text(String(format: "%.0f %%", pct))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
         }
@@ -6807,11 +6923,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Provisjon av margin")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.1f %%", marginPct))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.margin.accent)
                     .monospacedDigit()
             }
@@ -6819,10 +6935,10 @@ struct SalesLeadershipSheet: View {
                 .tint(ModelType.margin.accent)
             HStack(spacing: 6) {
                 Image(systemName: "info.circle")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
                 Text("Krever at deal-marginen er registrert i CRM")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
             }
         }
@@ -6832,11 +6948,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Per kvalifisert aktivitet")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text("\(Int(perActivityNok)) kr")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.perActivity.accent)
                     .monospacedDigit()
             }
@@ -6853,7 +6969,7 @@ struct SalesLeadershipSheet: View {
 
     private func activityChip(_ label: String, color: Color) -> some View {
         Text(label)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.appScaled(size: 10, weight: .semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(color.opacity(0.15), in: Capsule())
@@ -6864,11 +6980,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Pott av team-omsetning")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.1f %%", teamPoolPct))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.teamPool.accent)
                     .monospacedDigit()
             }
@@ -6876,10 +6992,10 @@ struct SalesLeadershipSheet: View {
                 .tint(ModelType.teamPool.accent)
             HStack(spacing: 6) {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
                 Text("Hele teamets sum: ca \(Int(teamPoolPct * 100 / 5 * 8))K NOK/mnd ved 8M omsetning")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
             }
         }
@@ -6889,11 +7005,11 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Garantilønn")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.0fK / mnd", hybridBaseK))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(ModelType.hybridBase.accent)
                     .monospacedDigit()
             }
@@ -6901,11 +7017,11 @@ struct SalesLeadershipSheet: View {
                 .tint(ModelType.hybridBase.accent)
             HStack {
                 Text("Komisjon over")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.0fK NOK", hybridDealThresholdK))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
@@ -6917,15 +7033,15 @@ struct SalesLeadershipSheet: View {
     private var commissionExplain: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Provisjons-modell")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Selgere får base-sats per deal-kategori. Når selger passerer måneds-terskelen, økes alle deals samme måned til bonus-sats.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer()
@@ -6939,18 +7055,18 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "rectangle.stack.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Text("Satser per kategori")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {} label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("Legg til")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(Brand.purpleLight)
                 }
@@ -6971,7 +7087,7 @@ struct SalesLeadershipSheet: View {
         HStack(spacing: 10) {
             Circle().fill(tier.wrappedValue.color).frame(width: 10, height: 10)
             Text(tier.wrappedValue.category)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .lineLimit(1)
@@ -6985,7 +7101,7 @@ struct SalesLeadershipSheet: View {
     private func commissionStepper(label: String, value: Binding<Double>, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.appScaled(size: 9, weight: .semibold))
                 .foregroundStyle(Brand.textTertiary)
             HStack(spacing: 4) {
                 Button {
@@ -6994,14 +7110,14 @@ struct SalesLeadershipSheet: View {
                     }
                 } label: {
                     Image(systemName: "minus")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 20, height: 20)
                         .background(Brand.stroke, in: Circle())
                 }
                 .buttonStyle(.plain)
                 Text(String(format: "%.1f %%", value.wrappedValue))
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
                     .monospacedDigit()
                     .frame(width: 50)
@@ -7009,7 +7125,7 @@ struct SalesLeadershipSheet: View {
                     value.wrappedValue += 0.5
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 20, height: 20)
                         .background(Brand.stroke, in: Circle())
@@ -7023,14 +7139,14 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Image(systemName: "arrow.up.right.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.yellow)
                 Text("Bonus-terskel")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text(String(format: "%.0f K", monthlyTargetK))
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(Brand.yellow)
                     .monospacedDigit()
             }
@@ -7038,11 +7154,11 @@ struct SalesLeadershipSheet: View {
                 .tint(Brand.yellow)
             HStack {
                 Text("100K")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
                 Spacer()
                 Text("2M")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
             }
         }
@@ -7055,18 +7171,18 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "person.crop.circle.fill.badge.checkmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Text("Override per selger")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("3 aktive")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
             }
             Text("Spesielle satser for utvalgte selgere (f.eks. trainees, partner-selgere).")
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(Brand.textTertiary)
             VStack(spacing: 6) {
                 overrideRow(name: "Anniken Sørli",  rule: "+2 % bonus på B2B SaaS")
@@ -7084,22 +7200,22 @@ struct SalesLeadershipSheet: View {
             ZStack {
                 Circle().fill(Brand.purple.opacity(0.25))
                 Image(systemName: "person.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text(name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(rule)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
                     .lineLimit(1)
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(Brand.textTertiary)
         }
         .padding(10)
@@ -7120,14 +7236,14 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "books.vertical.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Konkurranse-maler")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Org-en din kjører \(contestTemplatesForPreset.count) av \(ContestTemplateType.allCases.count) typer")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textTertiary)
                 }
                 Spacer()
@@ -7156,36 +7272,36 @@ struct SalesLeadershipSheet: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(t.accent.opacity(active ? 0.25 : 0.10))
                         Image(systemName: t.icon)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(active ? t.accent : Brand.textTertiary)
                     }
                     .frame(width: 30, height: 30)
                     Spacer()
                     if active {
                         Text("AKTIV")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(t.accent)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(t.accent.opacity(0.18), in: Capsule())
                     }
                 }
                 Text(t.title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(active ? .white : Brand.textSecondary)
                     .lineLimit(1)
                 Text(t.subtitle)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textTertiary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                     Text("\(t.defaultDays) dager")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                     Spacer()
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(t.accent)
                 }
                 .foregroundStyle(Brand.textSecondary)
@@ -7207,10 +7323,10 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "flag.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Text("Aktive nå (\(contests.count))")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -7233,14 +7349,14 @@ struct SalesLeadershipSheet: View {
     private func summaryPill(value: String, label: String, color: Color, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(color)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(Brand.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -7261,24 +7377,24 @@ struct SalesLeadershipSheet: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                     Image(systemName: "trophy.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(Brand.yellow)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.name)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text(c.kpi)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(Brand.purpleLight)
                 }
                 Spacer()
                 HStack(spacing: 4) {
                     Image(systemName: ended ? "checkmark.circle.fill" : "clock.fill")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                     Text(ended ? "Ferdig" : "\(c.endsInDays)d")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .monospacedDigit()
                 }
                 .foregroundStyle(urgencyColor)
@@ -7288,10 +7404,10 @@ struct SalesLeadershipSheet: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "gift.fill")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.yellow)
                 Text(c.prize)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -7299,22 +7415,22 @@ struct SalesLeadershipSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("LEDER")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(Brand.textTertiary)
                     Text(c.leaderName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(Brand.yellow)
                     Text(c.leaderValue)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("DELTAKERE")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(Brand.textTertiary)
                     Text("\(c.participants)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                 }
@@ -7322,9 +7438,9 @@ struct SalesLeadershipSheet: View {
                     Button { fulfillContest = c } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "gift.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                             Text("Tildel premier")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -7341,7 +7457,7 @@ struct SalesLeadershipSheet: View {
                 } else {
                     Button {} label: {
                         Text("Se rangering")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Brand.purple, in: Capsule())
@@ -7388,15 +7504,15 @@ struct SalesLeadershipSheet: View {
     private var catalogExplain: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Egne produkter for org-en din")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Standard-katalogen dekker det meste, men du kan legge til produkter org-en har egne avtaler på (f.eks. drone-leverandør, hytteutleier, SATS-medlemskap).")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer()
@@ -7411,21 +7527,21 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: deletable ? "person.crop.rectangle.stack.fill" : "books.vertical.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(deletable ? Brand.green : Brand.purpleLight)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textTertiary)
                 }
                 Spacer()
             }
             if products.isEmpty {
                 Text("Ingen egne produkter enda. Tap «Nytt produkt» øverst.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(Brand.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 12)
@@ -7453,7 +7569,7 @@ struct SalesLeadershipSheet: View {
                         orgCatalog.removeAll { $0.id == p.id }
                     } label: {
                         Image(systemName: "trash.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 28, height: 28)
                             .background(Color.red.opacity(0.8), in: Circle())
@@ -7463,7 +7579,7 @@ struct SalesLeadershipSheet: View {
                     .padding(6)
                 } else {
                     Text("STANDARD")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.appScaled(size: 8, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.black.opacity(0.55), in: Capsule())
@@ -7472,13 +7588,13 @@ struct SalesLeadershipSheet: View {
                 }
             }
             Text(p.name)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 4) {
                 Text(p.category.rawValue)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(p.category.color)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(p.category.color.opacity(0.15), in: Capsule())
@@ -7486,13 +7602,13 @@ struct SalesLeadershipSheet: View {
             }
             HStack {
                 Text(PrizeCatalog.formattedPrice(p.priceNok))
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Spacer()
                 if let v = p.vendor {
                     Text(v)
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(Brand.textTertiary)
                         .lineLimit(1)
                 }
@@ -7511,14 +7627,14 @@ struct SalesLeadershipSheet: View {
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Text("Team-mål denne måneden")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text(String(format: "%.0f %%", progress * 100))
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(progress >= 1.0 ? Brand.green : Brand.yellow)
                     .monospacedDigit()
             }
@@ -7538,21 +7654,21 @@ struct SalesLeadershipSheet: View {
                 .frame(height: 14)
                 HStack {
                     Text(String(format: "%.1fM oppnådd", teamMonthlyAchievedK / 1000))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Text(String(format: "Mål: %.1fM NOK", teamMonthlyGoalK / 1000))
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                 }
             }
             HStack {
                 Text("Juster mål")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(Brand.textSecondary)
                 Spacer()
                 Text(String(format: "%.1f M NOK", teamMonthlyGoalK / 1000))
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(Brand.purpleLight)
                     .monospacedDigit()
             }
@@ -7568,14 +7684,14 @@ struct SalesLeadershipSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "person.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Text("Individuelle mål")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(sellers.count) selgere")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
             VStack(spacing: 8) {
@@ -7587,10 +7703,10 @@ struct SalesLeadershipSheet: View {
                 HStack {
                     Spacer()
                     Text("Se alle \(sellers.count) selgere")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(Brand.purpleLight)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(Brand.purpleLight)
                     Spacer()
                 }
@@ -7612,19 +7728,19 @@ struct SalesLeadershipSheet: View {
             ZStack {
                 Circle().fill(s.avatarColor.opacity(0.3))
                 Text(s.name.split(separator: " ").prefix(2).map { String($0.prefix(1)) }.joined().uppercased())
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(s.avatarColor)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(s.name)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer()
                     Text(String(format: "%.0f %%", progress * 100))
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(progress >= 1.0 ? Brand.green : Brand.yellow)
                         .monospacedDigit()
                 }
@@ -7862,17 +7978,17 @@ struct PrizeImageView: View {
                                 .frame(width: geo.size.width, height: geo.size.height)
                         case .failure:
                             Image(systemName: product.icon)
-                                .font(.system(size: iconSize, weight: .semibold))
+                                .font(.appScaled(size: iconSize, weight: .semibold))
                                 .foregroundStyle(product.category.color)
                         @unknown default:
                             Image(systemName: product.icon)
-                                .font(.system(size: iconSize, weight: .semibold))
+                                .font(.appScaled(size: iconSize, weight: .semibold))
                                 .foregroundStyle(product.category.color)
                         }
                     }
                 } else {
                     Image(systemName: product.icon)
-                        .font(.system(size: iconSize, weight: .semibold))
+                        .font(.appScaled(size: iconSize, weight: .semibold))
                         .foregroundStyle(product.category.color)
                 }
             }
@@ -7931,7 +8047,7 @@ struct NewContestSheet: View {
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
+        static let textSecondary = Color.white.opacity(0.62)
     }
 
     private let kpiOptions = ["Mest vunnet NOK", "Flest nye møter",
@@ -7951,17 +8067,17 @@ struct NewContestSheet: View {
                     prizeSection
                     VStack(alignment: .leading, spacing: 8) {
                         Text("KPI å konkurrere på")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(Brand.textSecondary)
                         VStack(spacing: 6) {
                             ForEach(kpiOptions, id: \.self) { opt in
                                 Button { kpi = opt } label: {
                                     HStack {
                                         Image(systemName: kpi == opt ? "largecircle.fill.circle" : "circle")
-                                            .font(.system(size: 14))
+                                            .font(.appScaled(size: 14))
                                             .foregroundStyle(kpi == opt ? Brand.purpleLight : Brand.stroke)
                                         Text(opt)
-                                            .font(.system(size: 13))
+                                            .font(.appScaled(size: 13))
                                             .foregroundStyle(.white)
                                         Spacer()
                                     }
@@ -7978,11 +8094,11 @@ struct NewContestSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Varighet")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(Brand.textSecondary)
                             Spacer()
                             Text("\(Int(days)) dager")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(Brand.yellow)
                                 .monospacedDigit()
                         }
@@ -8006,7 +8122,7 @@ struct NewContestSheet: View {
                         onSave(contest)
                     } label: {
                         Text("Lanser konkurranse")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.appScaled(size: 15, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -8068,14 +8184,14 @@ struct NewContestSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "gift.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(Brand.yellow)
                 Text("Premier")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(prizes.count) av 3 plasser")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
             VStack(spacing: 8) {
@@ -8099,7 +8215,7 @@ struct NewContestSheet: View {
                 ZStack {
                     Circle().fill(rankColor(rank).opacity(0.25))
                     Text("\(rank)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(rankColor(rank))
                 }
                 .frame(width: 32, height: 32)
@@ -8108,17 +8224,17 @@ struct NewContestSheet: View {
                         .frame(width: 44, height: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(tier.product.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         HStack(spacing: 6) {
                             Text(tier.product.category.rawValue)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                                 .foregroundStyle(tier.product.category.color)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(tier.product.category.color.opacity(0.15), in: Capsule())
                             Text(PrizeCatalog.formattedPrice(tier.product.priceNok))
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(Brand.textSecondary)
                                 .monospacedDigit()
                         }
@@ -8128,7 +8244,7 @@ struct NewContestSheet: View {
                         prizes.removeAll { $0.rank == rank }
                     } label: {
                         Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(Color.red.opacity(0.8))
                             .frame(width: 28, height: 28)
                             .background(Color.red.opacity(0.12), in: Circle())
@@ -8136,11 +8252,11 @@ struct NewContestSheet: View {
                     .buttonStyle(.plain)
                 } else {
                     Text("\(rank).plass — velg premie")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(Brand.textSecondary)
                     Spacer()
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.appScaled(size: 16))
                         .foregroundStyle(Brand.purpleLight)
                 }
             }
@@ -8232,16 +8348,16 @@ struct NewContestSheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(t.accent.opacity(0.25))
                 Image(systemName: t.icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(t.accent)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mal: \(t.title)")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text(t.subtitle)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
                     .lineLimit(2)
             }
@@ -8258,7 +8374,7 @@ struct NewContestSheet: View {
     private func formField(label: String, placeholder: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.3)))
                 .textFieldStyle(.plain)
@@ -8294,8 +8410,8 @@ struct PrizePickerSheet: View {
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     private var filtered: [PrizeProduct] {
@@ -8359,9 +8475,9 @@ struct PrizePickerSheet: View {
                     Button { customSheetOpen = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                             Text("Egen")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -8390,16 +8506,16 @@ struct PrizePickerSheet: View {
             ZStack {
                 Circle().fill(rankColor.opacity(0.25))
                 Text("\(forRank)")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(rankColor)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Premie til \(rankLabel)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Velg fra katalog — \(PrizeCatalog.all.count) produkter")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer()
@@ -8430,9 +8546,9 @@ struct PrizePickerSheet: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                 Text(label)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
             }
             .foregroundStyle(active ? .white : Brand.textSecondary)
             .padding(.horizontal, 11).padding(.vertical, 6)
@@ -8448,27 +8564,27 @@ struct PrizePickerSheet: View {
                 PrizeImageView(product: p, cornerRadius: 12, iconSize: 40)
                     .frame(height: 110)
                 Text(p.name)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .multilineTextAlignment(.leading)
                 HStack(spacing: 4) {
                     Text(p.category.rawValue)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(p.category.color)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(p.category.color.opacity(0.15), in: Capsule())
                     if let v = p.vendor {
                         Text(v)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(Brand.textTertiary)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
                 }
                 Text(PrizeCatalog.formattedPrice(p.priceNok))
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
@@ -8503,8 +8619,8 @@ struct CustomPrizeSheet: View {
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     var body: some View {
@@ -8563,7 +8679,7 @@ struct CustomPrizeSheet: View {
     private var imagePreview: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Forhåndsvisning")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
             PrizeImageView(product: preview, cornerRadius: 16, iconSize: 60)
                 .frame(height: 200)
@@ -8579,9 +8695,9 @@ struct CustomPrizeSheet: View {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 HStack {
                     Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                     Text(photoData == nil ? "Velg bilde fra galleriet" : "Bytt bilde")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                     Spacer()
                     if photoData != nil {
                         Image(systemName: "checkmark.circle.fill")
@@ -8596,7 +8712,7 @@ struct CustomPrizeSheet: View {
             HStack {
                 Rectangle().fill(Brand.stroke).frame(height: 1)
                 Text("eller")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(Brand.textTertiary)
                 Rectangle().fill(Brand.stroke).frame(height: 1)
             }
@@ -8610,7 +8726,7 @@ struct CustomPrizeSheet: View {
     private var categoryPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Kategori")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -8618,9 +8734,9 @@ struct CustomPrizeSheet: View {
                         Button { category = c } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: c.icon)
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.appScaled(size: 10, weight: .semibold))
                                 Text(c.rawValue)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.appScaled(size: 11, weight: .semibold))
                             }
                             .foregroundStyle(category == c ? .white : Brand.textSecondary)
                             .padding(.horizontal, 11).padding(.vertical, 6)
@@ -8639,7 +8755,7 @@ struct CustomPrizeSheet: View {
             onSave(preview)
         } label: {
             Text("Bruk denne premien")
-                .font(.system(size: 15, weight: .bold))
+                .font(.appScaled(size: 15, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -8660,7 +8776,7 @@ struct CustomPrizeSheet: View {
     private func formField(label: String, placeholder: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.3)))
                 .textFieldStyle(.plain)
@@ -8702,8 +8818,8 @@ struct PrizeFulfillmentSheet: View {
         static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
         static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
         static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     enum Step: String, CaseIterable {
@@ -8758,7 +8874,7 @@ struct PrizeFulfillmentSheet: View {
                             Circle().fill(Brand.cardHi)
                             Circle().stroke(Brand.stroke, lineWidth: 1)
                             Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 34, height: 34)
@@ -8800,24 +8916,24 @@ struct PrizeFulfillmentSheet: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                 Image(systemName: "trophy.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.appScaled(size: 22, weight: .semibold))
                     .foregroundStyle(Brand.yellow)
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(contest.name)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.appScaled(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                 Text(contest.kpi)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.green)
                     Text("Konkurransen er avsluttet — tildel premier")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                 }
             }
@@ -8831,15 +8947,15 @@ struct PrizeFulfillmentSheet: View {
     private var explainCard: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Slik tildeles premier")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Leadgrid orkestrerer hele leveransen ut fra fulfillment-metoden. Du klikker «Tildel» — vinneren får e-post med neste steg (adresse, e-gavekort, booking-lenke).")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer()
@@ -8859,17 +8975,17 @@ struct PrizeFulfillmentSheet: View {
                 ZStack {
                     Circle().fill(a.winnerAvatar.opacity(0.3))
                     Text(initials(a.winnerName))
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(a.winnerAvatar)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(a.winnerName)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text("Vinner — \(a.rank).plass")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
@@ -8879,15 +8995,15 @@ struct PrizeFulfillmentSheet: View {
             // Premie + fulfillment-metode
             HStack(spacing: 8) {
                 Image(systemName: "gift.fill")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.yellow)
                 Text(a.product.name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Spacer()
                 Text(PrizeCatalog.formattedPrice(a.product.priceNok))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(Brand.green)
                     .monospacedDigit()
             }
@@ -8904,7 +9020,7 @@ struct PrizeFulfillmentSheet: View {
         ZStack {
             Circle().fill(rankBorderColor(rank).opacity(0.25))
             Text("\(rank)")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(rankBorderColor(rank))
         }
         .frame(width: 32, height: 32)
@@ -8922,14 +9038,14 @@ struct PrizeFulfillmentSheet: View {
     private func fulfillmentChip(_ m: FulfillmentMethod) -> some View {
         HStack(spacing: 6) {
             Image(systemName: m.icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
             VStack(alignment: .leading, spacing: 1) {
                 Text(m.title)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                 Text(m.subtitle)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer()
@@ -8947,12 +9063,12 @@ struct PrizeFulfillmentSheet: View {
                         Circle().fill(isDone ? Brand.green : Brand.cardHi)
                         Circle().stroke(isDone ? Brand.green : Brand.stroke, lineWidth: 1)
                         Image(systemName: step.icon)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(isDone ? .white : Brand.textTertiary)
                     }
                     .frame(width: 26, height: 26)
                     Text(step.rawValue)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(isDone ? .white : Brand.textTertiary)
                 }
                 .frame(maxWidth: .infinity)
@@ -8983,13 +9099,13 @@ struct PrizeFulfillmentSheet: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: a.currentStep == .received ? "checkmark.seal.fill" : "arrow.right.circle.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                 Text(cta)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                 Spacer()
                 if next != nil {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
             }
             .foregroundStyle(.white)
@@ -9033,15 +9149,15 @@ struct PrizeFulfillmentSheet: View {
         let allReceived = awards.allSatisfy { $0.currentStep == .received }
         return HStack(spacing: 10) {
             Image(systemName: allReceived ? "checkmark.seal.fill" : "envelope.badge.fill")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(allReceived ? Brand.green : Brand.purpleLight)
             VStack(alignment: .leading, spacing: 2) {
                 Text(allReceived ? "Alt levert!" : "Vinnere får varsel + e-post")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text(allReceived ? "Alle premier er bekreftet mottatt. Konkurransen arkiveres automatisk."
                                  : "Hver gang du flytter en status, sender Leadgrid push + e-post til vinneren.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
             }
             Spacer()

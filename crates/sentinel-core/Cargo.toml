@@ -1,0 +1,20 @@
+[package]
+name = "sentinel-core"
+version = "0.1.0"
+edition = "2021"
+description = "CreatorHub Sentinel — deterministic code-analysis engine (scanner + rule engine + findings). Shared by the Tauri cockpit and the headless CI gate."
+authors = ["CreatorHub Norge"]
+
+# Pure-std on purpose: zero external crates so the CI gate compiles offline and
+# fast, with no supply-chain surface of its own. Detection is deterministic;
+# the AI explanation layer lives in the Tauri app, never in the gate.
+[lib]
+name = "sentinel_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sentinel-ci"
+path = "src/bin/sentinel-ci.rs"
+
+[profile.release]
+opt-level = 2

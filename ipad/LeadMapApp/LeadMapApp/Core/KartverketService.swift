@@ -64,16 +64,19 @@ final class KartverketService {
 
     // MARK: - Kartverket
 
+    // NB: `_get` dekoder med .convertFromSnakeCase — feltnavnene her MÅ
+    // være camelCase (postal_code i JSON → postalCode her). Med snake_case
+    // properties kastet dekodingen stille og alt falt tilbake til Apple.
     private struct KartverketReverseDTO: Decodable {
         struct Match: Decodable {
             let address: String
             let formatted: String
-            let postal_code: String
+            let postalCode: String
             let city: String
             let municipality: String
-            let municipality_number: String
+            let municipalityNumber: String
             let county: String
-            let matrikkel_id: String?
+            let matrikkelId: String?
         }
         let match: Match?
     }
@@ -88,16 +91,42 @@ final class KartverketService {
         return ReverseResult(
             address: m.address,
             formatted: m.formatted.isEmpty
-                ? "\(m.address), \(m.postal_code) \(m.city)"
+                ? "\(m.address), \(m.postalCode) \(m.city)"
                 : m.formatted,
-            postalCode: m.postal_code,
+            postalCode: m.postalCode,
             city: m.city,
             municipality: m.municipality,
-            municipalityNumber: m.municipality_number,
+            municipalityNumber: m.municipalityNumber,
             county: m.county,
-            matrikkelId: m.matrikkel_id,
+            matrikkelId: m.matrikkelId,
             source: .kartverket
         )
+    }
+
+    // MARK: - Kommune-katalog
+
+    /// Én kommune fra Kartverkets offisielle katalog (~357 stk).
+    struct KommuneInfo: Decodable, Sendable, Identifiable, Hashable {
+        let nummer: String
+        let navn: String
+        var id: String { nummer }
+    }
+
+    private struct KommuneListeDTO: Decodable {
+        let kommuner: [KommuneInfo]
+    }
+
+    private var kommuneListeCache: [KommuneInfo] = []
+
+    /// Full kommune-katalog fra backend-proxyen (24t-cachet der, session-
+    /// cachet her). Tom liste ved feil — UI viser ærlig feilmelding.
+    func fetchKommuneListe(using api: APIClient) async -> [KommuneInfo] {
+        if !kommuneListeCache.isEmpty { return kommuneListeCache }
+        guard let dto: KommuneListeDTO = try? await api._get(
+            "/api/leadgrid/kartverket/kommuner"
+        ) else { return [] }
+        kommuneListeCache = dto.kommuner
+        return dto.kommuner
     }
 
     // MARK: - Apple CLGeocoder fallback
@@ -154,17 +183,24 @@ final class KartverketService {
         let center: CLLocationCoordinate2D
     }
 
+    /// Session-cache for kommunegrenser — polygonene er store (100-500 KB)
+    /// og endrer seg aldri i en app-økt.
+    private var omradeCache: [String: KommuneOmrade] = [:]
+
     /// Hent kommune-grense fra Leadgrid-backendens Kartverket-proxy.
     /// Returnerer nil ved feil (klient faller tilbake til hardkodet).
     func fetchKommuneOmrade(
         kommunenummer: String, using api: APIClient
     ) async -> KommuneOmrade? {
+        if let hit = omradeCache[kommunenummer] { return hit }
         // Response = GeoJSON Feature. Vi må trekke ut rå JSON-bytes fra
         // backend og gi dem til MKGeoJSONDecoder.
         let path = "/api/leadgrid/kartverket/kommune/\(kommunenummer)/omrade"
         do {
             let data = try await api._raw(path)
-            return decodeKommuneOmrade(kommunenummer: kommunenummer, data: data)
+            let omrade = decodeKommuneOmrade(kommunenummer: kommunenummer, data: data)
+            if let omrade { omradeCache[kommunenummer] = omrade }
+            return omrade
         } catch {
             return nil
         }

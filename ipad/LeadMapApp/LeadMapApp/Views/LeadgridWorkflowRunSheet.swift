@@ -272,7 +272,7 @@ struct LeadgridWorkflowRunSheet: View {
             Spacer().frame(height: 8)
             VStack(spacing: 12) {
                 Image(systemName: "bolt.circle.fill")
-                    .font(.system(size: 56))
+                    .font(.appScaled(size: 56))
                     .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
                 Text("Kjør workflow '\(workflow.name)' for \(selectedLeadIds.count) leads?")
                     .font(.headline)
@@ -343,7 +343,7 @@ struct LeadgridWorkflowRunSheet: View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 56))
+                    .font(.appScaled(size: 56))
                     .foregroundStyle(.green)
                 Text("Workflow startet for \(selectedLeadIds.count) leads")
                     .font(.headline)

@@ -66,9 +66,14 @@ final class PondusWatchSync {
               session.isWatchAppInstalled
         else { return }
 
+        // Gating speiles til klokka: mister org-en Pondus-tilgang, skal
+        // allerede-synkede lynkort forsvinne — ikke bli liggende igjen.
+        // Sperret → push TOM liste (klokka tømmer sin cache).
+        let pondusAllowed = EntitlementStore.shared.canUse(.leadbookPondus)
+
         // Sorter etter score (fallende) — mest verdifulle først.
         let sorted = templates.sorted { $0.score > $1.score }
-        let trimmed = Array(sorted.prefix(maxCount))
+        let trimmed = pondusAllowed ? Array(sorted.prefix(maxCount)) : []
 
         let watchTemplates: [[String: Any]] = trimmed.map { encode($0) }
 
@@ -78,8 +83,13 @@ final class PondusWatchSync {
             "ts": Date().timeIntervalSince1970,
         ]
 
-        // Dedup: samme signatur → hopp over. Enkelt hash på id-er + scores.
-        let signature = trimmed.map { "\($0.id.uuidString):\($0.score)" }.joined(separator: "|")
+        // Dedup: samme signatur → hopp over. Inkluderer INNHOLDS-hash
+        // (navn + antall steg + kind), ikke bare id+score — ellers ble en
+        // ren tekst-redigering (samme id/score) aldri synket, og klokka
+        // viste utdatert innhold (QA 2026-07-06).
+        let signature = trimmed.map {
+            "\($0.id.uuidString):\($0.score):\($0.name.hashValue):\($0.orderedSteps.count):\($0.kind)"
+        }.joined(separator: "|")
         if signature == lastPushSignature { return }
         lastPushSignature = signature
 

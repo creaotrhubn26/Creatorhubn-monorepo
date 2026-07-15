@@ -28,6 +28,7 @@ import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { publishEvent } from "./leadgrid-workflow-engine.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
 import { LEADGRID_LOGO_BUFFER } from "./leadgrid-brand-assets.js";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionUser = {
   userId: string;
@@ -40,28 +41,6 @@ export interface ProposalsRoutesDeps {
   app: Express;
   pool: Pool;
   requireUserSession: (req: Request, res: Response) => SessionUser | null;
-}
-
-/** Samme org-oppslag som sales-leadership/sales-teams (modul-privat der). */
-async function resolveOrgIdForUser(
-  pool: Pool,
-  userId: string,
-): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Fall til userId-modell (solo).
-  }
-  return userId;
 }
 
 function publicBackendBase(): string {
@@ -272,8 +251,16 @@ function renderProposalPdf(
 
   // Header: org-navn (+ ev. logo) + TILBUD-chip venstre, meta høyre.
   // Lockup (Leadgrid-default) tegnes større uten navnetekst ved siden.
+  // Navnet klippes med ellipsis FØR meta-blokken (metaX) så lange
+  // brand-navn ikke kolliderer med «Tilbudsnr./Dato»-kolonnen.
   let y = 44;
   let drewLockup = false;
+  const metaX = W - M - 190;
+  const nameOpts = (x: number) => ({
+    width: metaX - x - 14,
+    lineBreak: false as const,
+    ellipsis: true as const,
+  });
   if (logoBuffer) {
     try {
       if (logoIsLockup) {
@@ -281,20 +268,22 @@ function renderProposalPdf(
         drewLockup = true;
       } else {
         doc.image(logoBuffer, M, y - 4, { fit: [110, 36] });
-        doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M + 122, y);
+        doc.fillColor(ink).font("Helvetica-Bold").fontSize(19)
+          .text(branding.name, M + 122, y, nameOpts(M + 122));
       }
     } catch {
-      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
+      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19)
+        .text(branding.name, M, y, nameOpts(M));
     }
   } else {
-    doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(19)
+      .text(branding.name, M, y, nameOpts(M));
   }
   const chipY = drewLockup ? y + 60 : y + 28;
   doc.roundedRect(M, chipY, 68, 20, 10).fill(accent);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(9)
     .text("TILBUD", M, chipY + 6, { width: 68, align: "center" });
 
-  const metaX = W - M - 190;
   const meta: Array<[string, string]> = [
     ["Tilbudsnr.", proposal.number],
     ["Dato", longDate(proposal.created_at)],
@@ -469,14 +458,23 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
 
       // E-post m/ offentlig lenke (Resend → SMTP-fallback, logges).
       // Org-branding (accent/navn) — best-effort, default Leadgrid-lilla.
+      // Kunde-org-branding: leadgrid_email_branding_config er fasit
+      // (settes via web EmailBrandingTab) — brand_name/-logo/-farge/
+      // reply-to. organizations-raden er fallback; Leadgrid-lockup kun
+      // for default-branding (org uten rad).
       let orgName = "Leadgrid";
       let accent = "#7c3aed";
       let emailLogoUrl: string | null = `${publicBackendBase()}/api/leadgrid/assets/logo.png`;
+      let replyTo: string | null = null;
       try {
-        const b = await pool.query<{ name: string; primary_color: string; logo_url: string | null }>(
-          `SELECT o.name,
+        const b = await pool.query<{
+          name: string; primary_color: string; logo_url: string | null; reply_to: string | null;
+        }>(
+          `SELECT CASE WHEN eb.brand_name IS NOT NULL AND eb.brand_name <> 'Leadgrid'
+                       THEN eb.brand_name ELSE o.name END          AS name,
                   COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color,
-                  o.logo_url
+                  COALESCE(eb.brand_logo_url, o.logo_url)          AS logo_url,
+                  eb.reply_to_email                                AS reply_to
              FROM organizations o
              LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
             WHERE o.id = $1::uuid`,
@@ -485,9 +483,8 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         if (b.rows[0]) {
           orgName = b.rows[0].name;
           accent = b.rows[0].primary_color;
-          // Org-egen logo når den finnes; ellers tekst-navn (Leadgrid-
-          // lockup-en gjelder kun default-brandingen).
           emailLogoUrl = b.rows[0].logo_url;
+          replyTo = b.rows[0].reply_to;
         }
       } catch {
         // org er slug/user-id — behold Leadgrid-default.
@@ -503,6 +500,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         }),
         text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nSum eks. mva.: ${fmtNok(total)} kr\nMva. 25 %: ${fmtNok(Math.round(total * 0.25))} kr\nTotalt inkl. mva.: ${fmtNok(total + Math.round(total * 0.25))} kr\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}\n${orgName}`,
         fromLabel: orgName,
+        replyTo,
         kind: "leadgrid_proposal",
         sentByUserId: session.userId,
         pool,
@@ -649,10 +647,11 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         const b = await pool.query<{
           name: string; primary_color: string; sender_name: string | null; logo_url: string | null;
         }>(
-          `SELECT o.name,
+          `SELECT CASE WHEN eb.brand_name IS NOT NULL AND eb.brand_name <> 'Leadgrid'
+                       THEN eb.brand_name ELSE o.name END          AS name,
                   COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color,
-                  eb.sender_full_name AS sender_name,
-                  o.logo_url
+                  eb.sender_full_name                              AS sender_name,
+                  COALESCE(eb.brand_logo_url, o.logo_url)          AS logo_url
              FROM organizations o
              LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
             WHERE o.id = $1::uuid`,

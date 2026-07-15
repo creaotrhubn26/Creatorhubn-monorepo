@@ -22,14 +22,16 @@ enum LBrand {
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
     static let pink = Color(red: 0.98, green: 0.35, blue: 0.65)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 // MARK: - Models
 
 struct LeadbookTemplate: Identifiable, Hashable {
-    let id = UUID()
+    /// Mock-rader får tilfeldig UUID; backend-rader (Pondus) får malens
+    /// uuid slik at seleksjon overlever re-fetch.
+    var id = UUID()
     let name: String
     let channel: Channel
     let step: Int            // current
@@ -37,6 +39,8 @@ struct LeadbookTemplate: Identifiable, Hashable {
     let used: Int            // brukt
     let conversion: Double   // 0-1
     let status: Status
+    /// pondus_templates.id (lowercase uuid-streng). Nil for mock-rader.
+    var backendId: String? = nil
 
     enum Channel: String, CaseIterable, Hashable {
         case field = "Felt"
@@ -140,9 +144,10 @@ enum LeadbookData {
         LeadbookTemplate(name: "Ikke til stede / return",      channel: .field, step: 1, stepTotal: 4, used: 19, conversion: 0.18, status: .underReview),
     ]
 
-    /// Demo-mode-gated computed getter
-    static var templates: [LeadbookTemplate] {
-        DemoModeManager.isActiveNonisolated ? _templates : []
+    /// Demo PÅ → mock; ellers EKTE Pondus-maler m/ usage-tall fra
+    /// LeadbookLiveStore (backenden fantes hele tiden — mig 0355/0364).
+    @MainActor static var templates: [LeadbookTemplate] {
+        DemoModeManager.isActiveNonisolated ? _templates : LeadbookLiveStore.shared.templates
     }
 
     /// Krasj-safe fallback for `@State`-init.
@@ -209,7 +214,12 @@ enum LeadbookData {
         ],
     ]
 
-    static let objections: [Objection] = [
+    /// Demo PÅ → mock; ellers innvendinger fra publiserte Pondus-maler.
+    @MainActor static var objections: [Objection] {
+        DemoModeManager.isActiveNonisolated ? _objections : LeadbookLiveStore.shared.objections
+    }
+
+    private static let _objections: [Objection] = [
         Objection(title: "\"Vi har allerede leverandør\"",
                   response: "Det forstår jeg godt. Mange av våre kunder hadde det også – helt til de så resultatene vi leverer på X, Y og Z.",
                   icon: "shield.fill",
@@ -224,7 +234,11 @@ enum LeadbookData {
                   iconColor: LBrand.blue),
     ]
 
-    static let perf: [PerformanceRow] = [
+    /// Mock ytelses-tall — KUN i demo-modus (ingen per-mal-analytics enda).
+    static var perf: [PerformanceRow] {
+        DemoModeManager.isActiveNonisolated ? _perf : []
+    }
+    private static let _perf: [PerformanceRow] = [
         PerformanceRow(name: "Møtebooking – telefon",     responseRate: 0.52, conversion: 0.41),
         PerformanceRow(name: "Første kontakt – feltbesøk", responseRate: 0.48, conversion: 0.32),
         PerformanceRow(name: "Oppfølging etter interesse", responseRate: 0.46, conversion: 0.26),
@@ -232,7 +246,11 @@ enum LeadbookData {
         PerformanceRow(name: "Ikke til stede / return",    responseRate: 0.29, conversion: 0.18),
     ]
 
-    static let versions: [VersionEntry] = [
+    /// Mock versjonshistorikk — KUN i demo-modus (versjons-backend mangler).
+    static var versions: [VersionEntry] {
+        DemoModeManager.isActiveNonisolated ? _versions : []
+    }
+    private static let _versions: [VersionEntry] = [
         VersionEntry(version: "v2.1", date: "Oppdatert i dag av Kari Nordmann", author: "Kari Nordmann",
                      summary: "Justert åpningsreplikk og spørsmål • Steg 1-2", status: .current),
         VersionEntry(version: "v2.0", date: "19. mai 2025 av Kari Nordmann", author: "Kari Nordmann",
@@ -254,6 +272,7 @@ struct LeadbookView: View {
     @State private var showPerformance = false
     @State private var showVersions = false
     @State private var selectedKPI: LeadbookKPI?
+    @State private var showStatsModal = false
     @State private var subTab: LeadbookSubTab = .pondus
     @State private var selectedPondusTemplate: PondusTemplate = PondusData.templates[0]
     @State private var showTeamAccess = false
@@ -262,8 +281,7 @@ struct LeadbookView: View {
     @State private var showCardScanner = false
     @State private var showSuperAdmin = false
     @State private var showLiveTranscription = false
-    // Pakke 10.1 — rike notifikasjons-popover
-    @State private var notificationsOpen = false
+    // Header: delt LeadgridTabHeader eier varsel-/popover-state selv.
     // Pondus (Leadgrid-produkt) — backend-backed mal-store. Byttet fra
     // lokal @State til `appState.pondusStore` (delt singleton) 2026-07-01
     // slik at App Intents / Watch / Vision-target kan lese samme instans.
@@ -282,16 +300,29 @@ struct LeadbookView: View {
     private var isCompactLayout: Bool { hSize == .compact }
 
     var body: some View {
-        Group {
-            if showSuperAdmin {
-                SuperAdminDashboard(onExit: { showSuperAdmin = false })
-                    .transition(.move(edge: .trailing))
-            } else {
-                leadbookBody
-                    .transition(.move(edge: .leading))
+        // iPhone: fullScreenCover — LeadbookView er pushet inne i Mer-
+        // fanens NavigationStack, og SuperAdminDashboards egen stack
+        // nestet i pushen kollapset og poppet brukeren til Mer-roten.
+        // iPad/Mac: innholds-bytte — Leadbook er egen fane (ingen push),
+        // og fullScreenCover legges ut i portrett-bredde på landskap-iPad
+        // (svart dødfelt til høyre).
+        if DeviceIdiom.isPhone {
+            leadbookBody
+                .fullScreenCover(isPresented: $showSuperAdmin) {
+                    SuperAdminDashboard(onExit: { showSuperAdmin = false })
+                }
+        } else {
+            Group {
+                if showSuperAdmin {
+                    SuperAdminDashboard(onExit: { showSuperAdmin = false })
+                        .transition(.move(edge: .trailing))
+                } else {
+                    leadbookBody
+                        .transition(.move(edge: .leading))
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: showSuperAdmin)
         }
-        .animation(.easeInOut(duration: 0.25), value: showSuperAdmin)
     }
 
     private var leadbookBody: some View {
@@ -309,11 +340,14 @@ struct LeadbookView: View {
                             case .oversikt:  oversiktContent
                             case .maler:     malerContent.gated(.leadbookMaler)
                             case .pondus:    pondusContent.gated(.leadbookPondus)
+                            case .akademi:   AcademyTabView()
                             case .eksempler: LeadbookExamplesView().gated(.leadbookEksempler)
                             case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
                             }
                         }
-                        Color.clear.frame(height: 20)
+                        // Telefon: den flytende tab-baren overlapper de
+                        // siste ~100pt — innhold lakk bak den (QA 2026-07-05).
+                        Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 20)
                     }
                     .padding(.horizontal, 20).padding(.top, 14)
                 }
@@ -322,6 +356,11 @@ struct LeadbookView: View {
         .preferredColorScheme(.dark)
         .task {
             await pondusStore.load(api: appState.api)
+            // Uke 2-oppfølger: live-store for fanens mal-liste/KPI-er
+            // (Pondus-maler + usage-stats). Idempotent attach.
+            if let api = appState.api {
+                LeadbookLiveStore.shared.attach(api: api)
+            }
             // Ved cold-start konsumer deep-link satt av App Intent (som kjørte
             // før view-en var ready). Vi må gjøre det ETTER load() slik at
             // matching kan skje mot live templates.
@@ -390,58 +429,41 @@ struct LeadbookView: View {
         }
     }
 
-    // MARK: Header
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+    //
+    // Fane-verktøyene (Bibliotek/Ytelse/Versjoner/skanner/transkripsjon/
+    // + Ny) ligger i en egen horisontalt scrollbar kontrollrad rett under
+    // headeren — Leadbook har for mange knapper til extraControls-slotten.
 
-    private var header: some View {
-        GeometryReader { geo in
-            let isCompact = geo.size.width < 1300
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Leadbook")                         // ← omdøpt fra Playbook
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isCompact {
-                        Text("Standardiser salgsprosessen med maler, scripts og oppfølging.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(LBrand.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar", text: isCompact ? "Tir 20" : "Tir. 20. mai 2025")
-                    libraryButton                                    // Bibliotek
-                    performanceButton(isCompact: isCompact)          // Ytelse
-                    versionsButton(isCompact: isCompact)              // Versjoner
-                    cardScannerButton                                 // + Lead m/ visittkort
-                    transcriptionButton                              // Live transkripsjon
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    profileAvatar(isCompact: isCompact)
-                    newButton(isCompact: isCompact)
-                }
-                .fixedSize()
-            }
-        }
-        .frame(height: 64)
+    /// Demo-aware datakilde for header-badges/popovers.
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
     }
 
-    private func topPicker(icon: String, text: String) -> some View {
-        Button {} label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundStyle(LBrand.purpleLight)
-                Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white).lineLimit(1).fixedSize()
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LeadgridTabHeader(
+                subtitle: "Standardiser salgsprosessen med maler, scripts og oppfølging.",
+                leads: headerLeads,
+                onSuperAdmin: { showSuperAdmin = true })
+            // Full-bleed scroller: negativ padding opphever ytre 20pt-marg
+            // og margen legges i stedet inn i innholdet — uten dette klippes
+            // siste knapp halvveis ved høyre kant på maks scroll.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    libraryButton                            // Bibliotek
+                    performanceButton(isCompact: false)      // Ytelse
+                    versionsButton(isCompact: false)         // Versjoner
+                    cardScannerButton                        // + Lead m/ visittkort
+                    transcriptionButton                      // Live transkripsjon
+                    newButton(isCompact: false)
+                }
+                .padding(.horizontal, 20)
             }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
+            .padding(.horizontal, -20)
         }
-        .buttonStyle(.plain)
     }
 
     // Bibliotek-knapp m/ tellebrikke
@@ -449,14 +471,14 @@ struct LeadbookView: View {
         Button { showLibrary = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "books.vertical.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
                 Text("Bibliotek")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1).fixedSize()
                 Text("\(LeadbookData.templates.count)")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .foregroundStyle(LBrand.purpleLight)
                     .monospacedDigit()
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -467,17 +489,18 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private func performanceButton(isCompact: Bool) -> some View {
         Button { showPerformance = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.green)
                 if !isCompact {
                     Text("Ytelse")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1).fixedSize()
                 }
@@ -487,22 +510,23 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private func versionsButton(isCompact: Bool) -> some View {
         Button { showVersions = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.orange)
                 if !isCompact {
                     Text("Versjoner")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1).fixedSize()
                 }
                 Text("\(LeadbookData.versions.filter { $0.status == .pending }.count)")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .foregroundStyle(LBrand.orange)
                     .monospacedDigit()
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -513,13 +537,14 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private var transcriptionButton: some View {
         Button { showLiveTranscription = true } label: {
             ZStack {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(LBrand.pink)
                     .frame(width: 44, height: 44)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
@@ -532,14 +557,14 @@ struct LeadbookView: View {
         Button { showCardScanner = true } label: {
             ZStack {
                 Image(systemName: "rectangle.and.text.magnifyingglass")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(LBrand.green)
                     .frame(width: 44, height: 44)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.green.opacity(0.35), lineWidth: 1))
                 ZStack {
                     Circle().fill(LBrand.purpleLight)
-                    Image(systemName: "plus").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white)
+                    Image(systemName: "plus").font(.appScaled(size: 7, weight: .heavy)).foregroundStyle(.white)
                 }
                 .frame(width: 14, height: 14)
                 .overlay(Circle().stroke(LBrand.bg, lineWidth: 1.5))
@@ -549,54 +574,23 @@ struct LeadbookView: View {
         .buttonStyle(.plain)
     }
 
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>? = nil) -> some View {
-        Button { isOpen?.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(LBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(LBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(LBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(LBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func profileAvatar(isCompact: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: LBrand.purpleLight,
-            background: LBrand.card,
-            borderColor: LBrand.stroke,
-            secondaryText: LBrand.textSecondary,
-            tertiaryText: LBrand.textTertiary,
-            isCompact: isCompact,
-            showMinProfil: $showMinProfil,
-            showEcosystem: $showEcosystem,
-            showTeamAccess: $showTeamAccess,
-            showSuperAdmin: $showSuperAdmin
-        )
-    }
-
     private func newButton(isCompact: Bool) -> some View {
         Menu {
             Button { showNewTemplate = true } label: { Label("Ny mal", systemImage: "doc.badge.plus") }
             Button {} label: { Label("Ny innvending", systemImage: "shield.fill") }
             Divider()
+            // Innganger som tidligere lå i fanens egen avatar-meny
+            // (SharedProfileAvatar) — bevart her etter at headeren ble
+            // unifisert med Oversikt (delt LeadgridTabHeader).
+            Button { showMinProfil = true } label: { Label("Min Pondus-profil", systemImage: "person.circle") }
+            Button { showEcosystem = true } label: { Label("Pondus overalt", systemImage: "applewatch") }
+            Divider()
             Button {} label: { Label("Tilpass Leadbook", systemImage: "slider.horizontal.3") }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                Image(systemName: "plus").font(.appScaled(size: 12, weight: .bold))
                 if !isCompact {
-                    Text("Ny mal").font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
+                    Text("Ny mal").font(.appScaled(size: 12, weight: .bold)).lineLimit(1).fixedSize()
                 }
             }
             .foregroundStyle(.white)
@@ -611,14 +605,19 @@ struct LeadbookView: View {
 
     // MARK: Sub-tabs
 
-    private var subTabBar: some View {
+    /// Fane-knappene delt mellom iPhone (scrollbar rad) og iPad/Mac (fast rad).
+    /// `.lineLimit(1)` + `.fixedSize()` hindrer at ordene brytes midt i
+    /// («Overs ikt», «Pond us») når compact width presser bredden.
+    private var subTabButtons: some View {
         HStack(spacing: 4) {
             ForEach(LeadbookSubTab.allCases) { tab in
                 Button { withAnimation(.easeInOut(duration: 0.18)) { subTab = tab } } label: {
                     VStack(spacing: 6) {
                         Text(tab.label)
-                            .font(.system(size: 13, weight: subTab == tab ? .bold : .semibold))
+                            .font(.appScaled(size: 13, weight: subTab == tab ? .bold : .semibold))
                             .foregroundStyle(subTab == tab ? .white : LBrand.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize()
                             .padding(.horizontal, 14).padding(.vertical, 9)
                         Rectangle()
                             .fill(subTab == tab ? LBrand.purpleLight : .clear)
@@ -626,13 +625,41 @@ struct LeadbookView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // Stabil id for QA-harnessen — label-CONTAINS-søk traff
+                // kurs-kort («…Pondus…») og åpnet fullskjerm-spilleren.
+                .accessibilityIdentifier("leadbook-subtab-\(tab.label)")
             }
-            Spacer()
         }
-        .background(
-            Rectangle().fill(LBrand.stroke).frame(height: 1),
-            alignment: .bottom
-        )
+    }
+
+    @ViewBuilder
+    private var subTabBar: some View {
+        if DeviceIdiom.isPhone {
+            // iPhone: fem faner får ikke plass side om side på compact width —
+            // horisontal scroller i stedet. Full-bleed (negativ padding
+            // opphever ytre 20pt-marg) med marg lagt inn i innholdet, slik at
+            // siste fane kan scrolles helt inn.
+            ScrollView(.horizontal, showsIndicators: false) {
+                subTabButtons
+                    .padding(.horizontal, 20)
+            }
+            .accessibilityIdentifier("leadbook-subtab-scroller")
+            .padding(.horizontal, -20)
+            .background(
+                Rectangle().fill(LBrand.stroke).frame(height: 1),
+                alignment: .bottom
+            )
+        } else {
+            // iPad/Mac: behold dagens faste rad — her er det alltid plass.
+            HStack(spacing: 4) {
+                subTabButtons
+                Spacer()
+            }
+            .background(
+                Rectangle().fill(LBrand.stroke).frame(height: 1),
+                alignment: .bottom
+            )
+        }
     }
 
     // MARK: Content per sub-tab
@@ -686,15 +713,15 @@ struct LeadbookView: View {
     private func placeholderContent(_ title: String, icon: String, subtitle: String) -> some View {
         VStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 44, weight: .semibold))
+                .font(.appScaled(size: 44, weight: .semibold))
                 .foregroundStyle(LBrand.purpleLight.opacity(0.7))
-            Text(title).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
-            Text(subtitle).font(.system(size: 13))
+            Text(title).font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
+            Text(subtitle).font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
             Button {} label: {
                 Text("Få beskjed når klar")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(
@@ -712,47 +739,100 @@ struct LeadbookView: View {
     // MARK: KPI-rad
 
     private var kpiRow: some View {
-        // iPhone-compact (portrait): 2×2-grid slik at KPI-kortene ikke
-        // klemmes til uleselige. iPad/Mac-regular beholder eksisterende
-        // 1×4 HStack. LazyVGrid re-flyter automatisk ved rotasjon.
-        Group {
-            if isCompactLayout {
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 10),
-                              GridItem(.flexible(), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(LeadbookKPI.allCases) { kpi in
-                        kpiCard(kpi: kpi)
-                    }
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let activeTemplates = isDemo ? LeadbookKPI.activeTemplates.value : LeadbookKPI.activeTemplates.liveValue
+        return Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(LBrand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(LBrand.purple)
                 }
-            } else {
-                HStack(spacing: 12) {
-                    ForEach(LeadbookKPI.allCases) { kpi in
-                        kpiCard(kpi: kpi)
-                    }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("\(activeTemplates) aktive maler")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(LBrand.textSecondary)
+            }
+            .padding(14)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.appScaled(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                ForEach(LeadbookKPI.allCases) { kpi in
+                    kpiCard(kpi: kpi)
+                        .frame(maxWidth: .infinity)
                 }
             }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
         }
+        .background(LBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Kortene er drill-down-knapper — sheet må ligge PÅ modalen for at
+        // LeadbookKPIDetailSheet skal kunne presenteres oppå statistikk-modalen.
+        .sheet(item: $selectedKPI) { kpi in LeadbookKPIDetailSheet(kpi: kpi) }
     }
 
     private func kpiCard(kpi: LeadbookKPI) -> some View {
-        Button { selectedKPI = kpi } label: {
+        // Demo PÅ → mockup-tall m/ trend. Demo AV → ekte tall fra
+        // usage-stats (trend skjules — ingen historikk-serie enda).
+        let isDemo = DemoModeManager.isActiveNonisolated
+        return Button { selectedKPI = kpi } label: {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(kpi.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
-                    Text(kpi.value)
-                        .font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                    Text(kpi.title).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
+                    Text(isDemo ? kpi.value : kpi.liveValue)
+                        .font(.appScaled(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
                         .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     HStack(spacing: 6) {
-                        Text("vs. forrige periode").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
-                        Text(kpi.trend).font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
+                        Text(isDemo ? "vs. forrige periode" : "live fra teamet").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
+                        if isDemo {
+                            Text(kpi.trend).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
+                        }
                     }
                 }
                 Spacer(minLength: 0)
                 ZStack {
                     RoundedRectangle(cornerRadius: 10).fill(kpi.tint.opacity(0.22))
-                    Image(systemName: kpi.icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(kpi.tint)
+                    Image(systemName: kpi.icon).font(.appScaled(size: 17, weight: .semibold)).foregroundStyle(kpi.tint)
                 }
                 .frame(width: 42, height: 42)
             }
@@ -786,6 +866,18 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
         case .usedToday:       return "142"
         case .meetingRate:     return "28,6 %"
         case .teamAdoption:    return "76 %"
+        }
+    }
+
+    /// EKTE verdi fra LeadbookLiveStore (usage-stats, mig 0364) — brukes
+    /// når demo er AV så KPI-kortene ikke viser mockup-tallene over.
+    @MainActor var liveValue: String {
+        let store = LeadbookLiveStore.shared
+        switch self {
+        case .activeTemplates: return store.kpiActiveTemplates
+        case .usedToday:       return store.kpiUsedToday
+        case .meetingRate:     return store.kpiMeetingRate
+        case .teamAdoption:    return store.kpiTeamAdoption
         }
     }
 
@@ -839,13 +931,14 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
 // MARK: - Sub-tabs
 
 enum LeadbookSubTab: String, CaseIterable, Identifiable {
-    case oversikt, maler, pondus, eksempler, innsikt
+    case oversikt, maler, pondus, akademi, eksempler, innsikt
     var id: String { rawValue }
     var label: String {
         switch self {
         case .oversikt: return "Oversikt"
         case .maler: return "Maler"
         case .pondus: return "Pondus"
+        case .akademi: return "Akademi"
         case .eksempler: return "Eksempler"
         case .innsikt: return "Innsikt"
         }

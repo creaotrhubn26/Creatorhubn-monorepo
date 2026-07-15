@@ -17,6 +17,13 @@
     } catch (e) { /* IPC utilgjengelig */ }
     return undefined;
   }
+  // G10: meld fremdrift til frontenden så dens timeout holdes levende så lenge
+  // skannet faktisk jobber (før: fast 20 s som var kortere enn skannet selv).
+  function progress(phase, extra) {
+    var p = { phase: phase };
+    if (extra) { for (var k in extra) { p[k] = extra[k]; } }
+    invoke('demo_scan_progress', { progress: p });
+  }
 
   function esc(s) { try { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&'); } catch (e) { return s; } }
 
@@ -196,11 +203,16 @@
     return new Promise(function (resolve) {
       if (!window.html2canvas) { resolve(null); return; }
       try {
+        // PII-sladding (G23): shots blir preview-thumbnails, guide-bilder og
+        // vision-input — masker skjemafelt + e-post/telefon under skuddet.
+        if (window.__demoPii) window.__demoPii.mask();
+        function unmask() { if (window.__demoPii) window.__demoPii.restore(); }
         window.html2canvas(document.documentElement, {
           x: window.scrollX || 0, y: window.scrollY || 0,
           width: window.innerWidth, height: window.innerHeight,
           useCORS: true, logging: false, scale: 1, backgroundColor: '#ffffff'
         }).then(function (canvas) {
+          unmask();
           var maxW = 900, c = canvas;
           if (canvas.width > maxW) {
             c = document.createElement('canvas');
@@ -208,8 +220,11 @@
             var ctx = c.getContext('2d'); if (ctx) ctx.drawImage(canvas, 0, 0, c.width, c.height);
           }
           resolve(c.toDataURL('image/jpeg', 0.7));
-        }).catch(function () { resolve(null); });
-      } catch (e) { resolve(null); }
+        }).catch(function () { unmask(); resolve(null); });
+      } catch (e) {
+        if (window.__demoPii) window.__demoPii.restore();
+        resolve(null);
+      }
     });
   }
 
@@ -225,6 +240,7 @@
       var scrollPct = maxScroll > 0 ? Math.max(0, Math.min(1, y / maxScroll)) : 0;
       window.scrollTo(0, y);
       setTimeout(function () {
+        progress('shot', { index: i + 1, of: bands });
         shootViewport().then(function (dataUrl) {
           if (dataUrl) shots.push({ scrollPct: scrollPct, dataUrl: dataUrl });
           i++; nextShot();
@@ -246,7 +262,8 @@
       pageText: pageText, branding: branding,
       viewport: { w: window.innerWidth || 0, h: window.innerHeight || 0 },
       docHeight: (document.documentElement.scrollHeight || 0),
-      shots: shots || []
+      shots: shots || [],
+      wall: WALL
     });
   }
 
@@ -262,6 +279,7 @@
       setTimeout(function () {
         collect(out, seen);
         guard++;
+        progress('scan', { step: guard, found: out.length });
         if (y >= maxScroll || guard > 40 || out.length >= 150) {
           window.scrollTo(0, 0);
           setTimeout(function () { captureShots(function (shots) { finish(out, shots); }); }, 150);
@@ -274,7 +292,69 @@
     next();
   }
 
-  function go() { setTimeout(scrollThrough, 1200); } // gi SPA-en tid til første render
+  // G10: ikke fast 1200 ms — vent til DOM-en har vært ROLIG i 500 ms (trege
+  // SPA-er/lazy hero rendrer ferdig), minst 400 ms, maks 5 s.
+  function waitForStable(cb) {
+    var start = Date.now(), last = Date.now(), mo = null;
+    try {
+      mo = new MutationObserver(function () { last = Date.now(); });
+      mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+    } catch (e) { /* */ }
+    (function poll() {
+      var now = Date.now();
+      if ((now - last >= 500 && now - start >= 400) || now - start >= 5000) {
+        if (mo) { try { mo.disconnect(); } catch (e) { /* */ } }
+        cb();
+        return;
+      }
+      setTimeout(poll, 120);
+    })();
+  }
+
+  // G12: cookie-/login-vegg skal ikke katalogiseres som om den var produktet.
+  // Consent-bannere forsøkes lukket automatisk (godta-knapp); login-vegger kan
+  // ikke fikses — de flagges i resultatet så UI-et kan si det ærlig.
+  var WALL = null;
+  function detectAndDismissWall(done) {
+    try {
+      var pw = document.querySelector('input[type="password"]');
+      if (pw) {
+        var pr = pw.getBoundingClientRect();
+        if (pr.width > 0 && pr.height > 0) { WALL = { kind: 'login', dismissed: false }; done(); return; }
+      }
+      var iw = window.innerWidth || 1, ih = window.innerHeight || 1;
+      var cands = document.querySelectorAll('[class*="cookie" i],[id*="cookie" i],[class*="consent" i],[id*="consent" i],[class*="gdpr" i],[role="dialog"],[aria-modal="true"]');
+      for (var i = 0; i < cands.length; i++) {
+        var el = cands[i], rc = el.getBoundingClientRect();
+        if (rc.width * rc.height < iw * ih * 0.05) continue; // små badges teller ikke
+        var t = ((el.innerText || '') + '').slice(0, 500).toLowerCase();
+        if (!/cookie|samtykke|consent|personvern|informasjonskapsl|gdpr/.test(t)) continue;
+        var btns = el.querySelectorAll('button,[role="button"],a');
+        for (var j = 0; j < btns.length; j++) {
+          var bl = ((btns[j].innerText || btns[j].textContent || '') + '').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (/godta alle|aksepter alle|accept all|allow all|tillat alle/.test(bl) || /^(godta|aksepter|tillat|accept|agree|allow|ok)\b/.test(bl)) {
+            try { btns[j].click(); } catch (e) { /* */ }
+            WALL = { kind: 'consent', dismissed: true, label: bl.slice(0, 40) };
+            progress('wall', { kind: 'consent', dismissed: true });
+            setTimeout(done, 700); // la banneret lukke før skann
+            return;
+          }
+        }
+        WALL = { kind: 'consent', dismissed: false };
+        progress('wall', { kind: 'consent', dismissed: false });
+        done();
+        return;
+      }
+    } catch (e) { /* */ }
+    done();
+  }
+
+  function go() {
+    waitForStable(function () {
+      progress('stable');
+      detectAndDismissWall(scrollThrough);
+    });
+  }
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go);
 })();

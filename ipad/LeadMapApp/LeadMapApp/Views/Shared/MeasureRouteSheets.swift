@@ -49,7 +49,7 @@ struct SaveMeasureRouteSheet: View {
                 summaryCard
                 VStack(alignment: .leading, spacing: 8) {
                     Text("NAVN")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .black, design: .rounded))
                         .tracking(1.0)
                         .foregroundStyle(MRS.textDim)
                     TextField(defaultName, text: $name)
@@ -74,7 +74,7 @@ struct SaveMeasureRouteSheet: View {
                         onCancel()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                     }
                     .accessibilityLabel("Avbryt")
                 }
@@ -97,18 +97,18 @@ struct SaveMeasureRouteSheet: View {
             ZStack {
                 Circle().fill(MRS.green.opacity(0.20))
                 Image(systemName: kind.icon)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(MRS.green)
             }
             .frame(width: 42, height: 42)
             .overlay(Circle().strokeBorder(MRS.green.opacity(0.35), lineWidth: 1))
             VStack(alignment: .leading, spacing: 2) {
                 Text(kind.label.uppercased())
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(0.8)
                     .foregroundStyle(MRS.textDim)
                 Text(unit.format(distanceMeters))
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 17, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -153,7 +153,7 @@ struct SavedMeasureRoutesSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                     }
                     .accessibilityLabel("Lukk")
                 }
@@ -166,10 +166,10 @@ struct SavedMeasureRoutesSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "bookmark.slash")
-                .font(.system(size: 32))
+                .font(.appScaled(size: 32))
                 .foregroundStyle(MRS.textTertiary)
             Text("Ingen lagrede målinger")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Trykk «Lagre» i måle-banneret for å lagre dagens rute.")
                 .font(.caption)
@@ -192,28 +192,28 @@ struct SavedMeasureRoutesSheet: View {
                 ZStack {
                     Circle().fill(MRS.purple.opacity(0.22))
                     Image(systemName: route.kind.icon)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(MRS.purpleLight)
                 }
                 .frame(width: 36, height: 36)
                 .overlay(Circle().strokeBorder(MRS.purple.opacity(0.35), lineWidth: 1))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(route.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         Text(route.kind.label)
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                             .foregroundStyle(MRS.textDim)
                         Text("·").foregroundStyle(MRS.textTertiary)
                         Text(unit.format(totalMeters))
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(MRS.textDim)
                         if route.kind == .route {
                             Text("·").foregroundStyle(MRS.textTertiary)
                             Text("\(route.points.count) stopp")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                                 .foregroundStyle(MRS.textDim)
                         }
                     }
@@ -230,7 +230,7 @@ struct SavedMeasureRoutesSheet: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(MRS.textDim)
                         .padding(8)
                 }

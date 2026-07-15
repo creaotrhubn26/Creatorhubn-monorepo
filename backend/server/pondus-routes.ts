@@ -35,6 +35,8 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { assertAnyEntitled, LEADBOOK_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 
 // Speil den globale SessionUser-typen i backend/server/index.ts. Denne
 // modulen bruker kun feltene som eksisterer i alle callsteder. isPlatformAdmin
@@ -62,28 +64,6 @@ const VALID_KINDS = new Set(["telephone", "video", "email", "meeting", "field"])
 // Helpers
 // ─────────────────────────────────────────────────────────────────
 
-/**
- * Returnerer organization_id for innlogget bruker. Faller til userId hvis
- * brukeren ikke er medlem av en enterprise-org (samme mønster som
- * sales-leadership-routes.ts).
- */
-async function resolveOrgIdForUser(pool: Pool, userId: string): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Tabell mangler eller spørring feilet — fall til userId-modell.
-  }
-  return userId;
-}
 
 function readString(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -194,6 +174,9 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
     if (!session) return;
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     const admin = isPlatformAdmin(session);
+    // Server-side håndhevelse (QA 2026-07-06): sperret Pondus-tilgang
+    // blokkeres her, ikke bare i UI. Admin bypasser; fail-open ved 0 rader.
+    if (!admin && !(await assertAnyEntitled(pool, session.userId, LEADBOOK_FEATURE_KEYS, res))) return;
     const category = readString(req.query.category).trim();
     const kind = readString(req.query.kind).trim();
     const publishedParam = readString(req.query.published).toLowerCase();
@@ -251,6 +234,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
     if (!session) return;
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     const admin = isPlatformAdmin(session);
+    if (!admin && !(await assertAnyEntitled(pool, session.userId, LEADBOOK_FEATURE_KEYS, res))) return;
     const id = readString(req.params.id);
     if (!isUuid(id)) return res.status(400).json({ error: "invalid_id" });
 
@@ -660,6 +644,8 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
   app.get("/api/leadgrid/pondus/content-by-step", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!isPlatformAdmin(session)
+        && !(await assertAnyEntitled(pool, session.userId, LEADBOOK_FEATURE_KEYS, res))) return;
     const templateId = readString(req.query.template_id);
     const stepKey = readString(req.query.step_key).trim();
     if (!isUuid(templateId)) return res.status(400).json({ error: "missing_or_invalid_template_id" });
@@ -747,6 +733,146 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       return res
         .status(500)
         .json({ error: "pondus_content_create_failed", detail: String((err as Error).message) });
+    }
+  });
+}
+
+// =====================================================================
+// Usage-tracking (mig 0364) — datakilde for Leadbook-KPI-ene
+// =====================================================================
+// Registreres via registerPondusUsageRoutes (kalles rett etter
+// registerPondusRoutes i index.ts). Egen register-funksjon så vi slipper
+// å flytte eksisterende ruter.
+
+export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
+  const { app, pool, requireUserSession } = deps;
+
+  const VALID_OUTCOMES = new Set([
+    "used", "meeting_booked", "proposal_sent", "won", "lost", "no_answer",
+  ]);
+
+  // ── POST /api/leadgrid/pondus/templates/:id/usage ──────────────────
+  // Logg at en mal ble brukt (fra «Bruk mal» på iPad/Watch). lead_id og
+  // outcome er valgfrie; outcome kan også oppdateres senere via ny POST
+  // (append-only — konvertering regnes på beste utfall per bruk-økt er
+  // overkill; vi teller rader per outcome).
+  app.post("/api/leadgrid/pondus/templates/:id/usage", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const templateId = String(req.params.id ?? "");
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const leadId = typeof body.lead_id === "string" && /^[0-9a-f-]{36}$/i.test(body.lead_id)
+      ? body.lead_id : null;
+    const outcome = typeof body.outcome === "string" && VALID_OUTCOMES.has(body.outcome)
+      ? body.outcome : "used";
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      // Utfalls-registrering (outcome != 'used') OPPGRADERER siste
+      // 'used'-rad for samme mal+bruker innen 1 time i stedet for å
+      // inserte ny — ellers dobles nevneren og møte-raten halveres
+      // (én bruk m/ møte ville telt 2 rader / 1 møte = 50 %).
+      if (outcome !== "used") {
+        const upd = await pool.query(
+          `UPDATE pondus_template_usage
+              SET outcome = $1, lead_id = COALESCE($2::uuid, lead_id)
+            WHERE id = (
+              SELECT id FROM pondus_template_usage
+               WHERE template_id = $3::uuid AND user_id = $4
+                 AND outcome = 'used'
+                 AND used_at > NOW() - INTERVAL '1 hour'
+               ORDER BY used_at DESC LIMIT 1
+            )
+            RETURNING id, used_at`,
+          [outcome, leadId, templateId, session.userId],
+        );
+        if (upd.rows[0]) {
+          return res.status(200).json({
+            usage: {
+              id: String(upd.rows[0].id),
+              template_id: templateId,
+              outcome,
+              used_at: upd.rows[0].used_at,
+            },
+          });
+        }
+        // Ingen fersk 'used'-rad å oppgradere — fall gjennom til insert.
+      }
+      const r = await pool.query(
+        `INSERT INTO pondus_template_usage
+           (template_id, organization_id, user_id, lead_id, outcome)
+         VALUES ($1::uuid, $2, $3, $4::uuid, $5)
+         RETURNING id, used_at`,
+        [templateId, orgId, session.userId, leadId, outcome],
+      );
+      return res.status(201).json({
+        usage: {
+          id: String(r.rows[0].id),
+          template_id: templateId,
+          outcome,
+          used_at: r.rows[0].used_at,
+        },
+      });
+    } catch (err) {
+      console.error("[pondus] usage POST failed:", err);
+      return res.status(500).json({ error: "pondus_usage_failed", detail: String((err as Error).message) });
+    }
+  });
+
+  // ── GET /api/leadgrid/pondus/usage/stats ────────────────────────────
+  // Aggregert bruk for org-en: per mal (totalt, i dag, siste 30d,
+  // møte-rate = (meeting_booked+won)/totalt) + topp-nivå KPI-er
+  // (bruk i dag, distinkte brukere siste 30d for team-adopsjon).
+  app.get("/api/leadgrid/pondus/usage/stats", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const perTemplate = await pool.query(
+        `SELECT template_id::text,
+                COUNT(*)::int                                                        AS used_total,
+                COUNT(*) FILTER (WHERE used_at::date = CURRENT_DATE)::int            AS used_today,
+                COUNT(*) FILTER (WHERE used_at > NOW() - INTERVAL '30 days')::int    AS used_30d,
+                COUNT(*) FILTER (WHERE outcome IN ('meeting_booked','won'))::int     AS meetings
+           FROM pondus_template_usage
+          WHERE organization_id = $1
+          GROUP BY template_id`,
+        [orgId],
+      );
+      const totals = await pool.query<{
+        used_today: number; distinct_users_30d: number; meetings_30d: number; used_30d: number;
+      }>(
+        `SELECT COUNT(*) FILTER (WHERE used_at::date = CURRENT_DATE)::int          AS used_today,
+                COUNT(DISTINCT user_id) FILTER (WHERE used_at > NOW() - INTERVAL '30 days')::int AS distinct_users_30d,
+                COUNT(*) FILTER (WHERE outcome IN ('meeting_booked','won')
+                                   AND used_at > NOW() - INTERVAL '30 days')::int   AS meetings_30d,
+                COUNT(*) FILTER (WHERE used_at > NOW() - INTERVAL '30 days')::int   AS used_30d
+           FROM pondus_template_usage
+          WHERE organization_id = $1`,
+        [orgId],
+      );
+      const t = totals.rows[0];
+      return res.json({
+        templates: perTemplate.rows.map((row) => ({
+          template_id: String(row.template_id),
+          used_total: Number(row.used_total),
+          used_today: Number(row.used_today),
+          used_30d: Number(row.used_30d),
+          meeting_rate: Number(row.used_total) > 0
+            ? Math.round((Number(row.meetings) / Number(row.used_total)) * 100) / 100
+            : 0,
+        })),
+        totals: {
+          used_today: Number(t?.used_today ?? 0),
+          used_30d: Number(t?.used_30d ?? 0),
+          distinct_users_30d: Number(t?.distinct_users_30d ?? 0),
+          meeting_rate_30d: Number(t?.used_30d ?? 0) > 0
+            ? Math.round((Number(t.meetings_30d) / Number(t.used_30d)) * 100) / 100
+            : 0,
+        },
+      });
+    } catch (err) {
+      console.error("[pondus] usage stats failed:", err);
+      return res.status(500).json({ error: "pondus_usage_stats_failed", detail: String((err as Error).message) });
     }
   });
 }

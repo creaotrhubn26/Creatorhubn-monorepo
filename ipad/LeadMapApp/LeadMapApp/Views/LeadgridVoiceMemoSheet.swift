@@ -67,7 +67,7 @@ struct LeadgridVoiceMemoSheet: View {
     @ViewBuilder
     private var idleView: some View {
         Image(systemName: "mic.circle.fill")
-            .font(.system(size: 100))
+            .font(.appScaled(size: 100))
             .foregroundStyle(.purple)
         Text("Trykk for å spille inn samtalen.\nClaude lager action items automatisk.")
             .multilineTextAlignment(.center)
@@ -90,11 +90,11 @@ struct LeadgridVoiceMemoSheet: View {
     @ViewBuilder
     private var recordingView: some View {
         Image(systemName: "waveform.circle.fill")
-            .font(.system(size: 100))
+            .font(.appScaled(size: 100))
             .foregroundStyle(.red)
             .symbolEffect(.pulse, options: .repeating)
         Text(formatDuration(recorder.currentDuration))
-            .font(.system(size: 48, weight: .bold).monospacedDigit())
+            .font(.appScaled(size: 48, weight: .bold).monospacedDigit())
         HStack(spacing: 14) {
             Button {
                 recorder.cancelRecording()
@@ -121,7 +121,7 @@ struct LeadgridVoiceMemoSheet: View {
     @ViewBuilder
     private var uploadingView: some View {
         Image(systemName: "icloud.and.arrow.up")
-            .font(.system(size: 80))
+            .font(.appScaled(size: 80))
             .foregroundStyle(.blue)
         Text("Laster opp...").font(.headline)
         ProgressView()
@@ -130,7 +130,7 @@ struct LeadgridVoiceMemoSheet: View {
     @ViewBuilder
     private var processingView: some View {
         Image(systemName: "sparkles")
-            .font(.system(size: 80))
+            .font(.appScaled(size: 80))
             .foregroundStyle(.purple)
             .symbolEffect(.variableColor, options: .repeating)
         Text("Claude analyserer...").font(.headline)
@@ -245,7 +245,7 @@ struct LeadgridVoiceMemoSheet: View {
     @ViewBuilder
     private var failedView: some View {
         Image(systemName: "exclamationmark.triangle.fill")
-            .font(.system(size: 80))
+            .font(.appScaled(size: 80))
             .foregroundStyle(.red)
         Text("Noe gikk galt").font(.headline)
         if let err = errorText {

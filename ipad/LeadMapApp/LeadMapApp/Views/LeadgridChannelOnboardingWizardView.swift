@@ -103,7 +103,7 @@ struct LeadgridChannelOnboardingWizardView: View {
     private func activatedView(_ s: ChannelOnboardingStateResponse) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 64))
+                .font(.appScaled(size: 64))
                 .foregroundStyle(.green)
             Text("Varslings-kanalene er aktivert")
                 .font(.title2.bold())
