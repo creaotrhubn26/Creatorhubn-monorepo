@@ -71,6 +71,8 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }]
     }
   },
+  // CH-ARCH-001 (touch-target-konstanter) + CH-ARCH-002 (hooks inline i JSX)
+  // — se docs/architecture-rules.md for hendelse/begrunnelse.
   // Role Room design-system-guardrails — forhindrer drift på shared
   // konstanter etter fase 1-3-konsolidering (commits ad5e5536..0f237391).
   // Definert i 2 nivåer: error for cross-cutting konstanter (touch-target),
@@ -95,7 +97,7 @@ export default tseslint.config(
           selector: 'VariableDeclarator[id.name="MOBILE_TOUCH_TARGET_SIZE"]',
           message: 'Bruk shared import fra `constants/accessibility.ts`.',
         },
-        // React hooks-rule guardrails — fanger hooks som ESLint's
+        // CH-ARCH-002 — React hooks-rule guardrails — fanger hooks som ESLint's
         // 'react-hooks/rules-of-hooks' IKKE detekterer. Begge mønstrene
         // har shipped UI-bugs i denne kodebasen (FormationViewConnected +
         // AnnotationExportOverlay) som brakte ned alle dance-* spec-er.
@@ -124,6 +126,7 @@ export default tseslint.config(
   // error boundary» (utrullingen i PR #1470–#1474). Flagger <Suspense> uten en
   // ErrorBoundary-forelder i samme fil. 'warn' (ikke required CI-gate) — gir
   // IDE-/`npm run lint`-signal + fanger nye brudd, uten å blokkere tsc-gaten.
+  // Se docs/architecture-rules.md for full hendelse/begrunnelse.
   {
     files: ['client/src/**/*.{ts,tsx}'],
     plugins: {
