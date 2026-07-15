@@ -348,10 +348,23 @@ const createAcademyRouteWrapper = (
       );
     }
 
+    // Modul-boundary per Academy-rute: en krasj i ett studio blanker ikke hele
+    // SPA-en, den faller tilbake til feilkortet mens resten av appen lever. Keyet
+    // på pathname → navigasjon (også param-bytte innen samme rute) remonterer
+    // boundaryen og gir auto-recovery uten full reload. Se app-router-boundaryen.
+    const academyComponentName =
+      (Component as any).displayName || (Component as any).name || 'AcademyRoute';
+
     return (
       <AcademyDesignProvider>
         <AcademyProvider>
-          {gatedContent}
+          <ErrorBoundary
+            key={pathname}
+            componentName={`academy:${academyComponentName}`}
+            context={{ pathname, accessMode }}
+          >
+            {gatedContent}
+          </ErrorBoundary>
         </AcademyProvider>
       </AcademyDesignProvider>
     );
@@ -815,31 +828,37 @@ function App() {
                   <Route path="/meta-page-inspector" component={MetaPagePublicMetadataInspector} />
                   <Route path="/admin" component={AdminDashboardWrapper} />
                   <Route path="/admin-room">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <AdminRoomPage />
-                    </React.Suspense>
+                    <ErrorBoundary componentName="admin-room">
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <AdminRoomPage />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </Route>
                   <Route path="/admin-workspace">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <AdminWorkspacePage />
-                    </React.Suspense>
+                    <ErrorBoundary componentName="admin-workspace">
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <AdminWorkspacePage />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </Route>
                   <Route path="/admin-room/deck/:deckId">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <DeckEditorPage />
-                    </React.Suspense>
+                    <ErrorBoundary componentName="deck-editor">
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <DeckEditorPage />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </Route>
                   <Route path="/verification-demo" component={VerificationSystemDashboard as React.ComponentType<any>} />
                   <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard as React.ComponentType<any>} />
@@ -972,7 +991,11 @@ function App() {
                   />
                   <Route path="/settings" component={() => <SmartDashboardRoute />} />
                   <Route path="/smart-meeting-notes" component={SmartMeetingNotesPage} />
-                  <Route path="/resume-builder" component={ResumeBuilder} />
+                  <Route path="/resume-builder">
+                    <ErrorBoundary componentName="resume-builder">
+                      <ResumeBuilder />
+                    </ErrorBoundary>
+                  </Route>
                   <Route path="/cv/:slug" component={PublicCV as React.ComponentType<any>} />
                   <Route path="/nextrole" component={NextRoleLanding as React.ComponentType<any>} />
                   <Route path="/for-byraer" component={AgencyLandingPage as React.ComponentType<any>} />
