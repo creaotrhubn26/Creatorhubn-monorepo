@@ -1348,7 +1348,13 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             stageOpacity={stageOpacity}
             onStageOpacityChange={setStageOpacity}
             stageMode={stageMode}
-            onStageModeChange={setStageMode}
+            // #426-fiks: 3D-stage (StageMap3D → drei-<Text>/font) suspender ved
+            // mount. Uten transition mountes Suspense-grensen i SAMME synkrone
+            // klikk-oppdatering → React tillater ikke fallback ved synkron input
+            // → «#426: suspended while responding to synchronous input» (fanges
+            // av ErrorBoundary, men blanker 3D-visningen). startTransition lar
+            // oppdateringen suspende og beholder 2D til fonten er lastet.
+            onStageModeChange={(m) => React.startTransition(() => setStageMode(m))}
             onChange={updateActiveFormation}
           />
         ) : null}
