@@ -9,7 +9,7 @@
  *   - Ingen prosjekter → tom-tilstand med primær «lag ditt første prosjekt».
  * Dark CreatorHub-skall (workspaceDarkTheme + ws-tokens).
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Container, Stack, Typography, Button, Card, Grid, Chip, Avatar,
   CircularProgress, IconButton, Dialog, DialogContent, ThemeProvider,
@@ -62,7 +62,11 @@ const WorkspaceHome: React.FC = () => {
       // ellers blir Back en felle som umiddelbart redirecter framover igjen).
       if (list.length === 1 && !redirected.current && !pickMode) {
         redirected.current = true;
-        navigate(`/workspace/${list[0].id}`, { replace: true });
+        // startTransition: navigasjonen monterer den lazy-lastede
+        // TeamWorkspacePage. Uten transition erstatter det synkront den
+        // synlige velgeren mens chunken lastes → React #426 (suspend under
+        // synkron input). Transition holder velgeren synlig til den er klar.
+        startTransition(() => navigate(`/workspace/${list[0].id}`, { replace: true }));
         return;
       }
       setProjects(list);
@@ -71,7 +75,7 @@ const WorkspaceHome: React.FC = () => {
     return () => { alive = false; };
   }, [userId, profession, reloadKey]);
 
-  const openProject = (id: string) => navigate(`/workspace/${id}`);
+  const openProject = (id: string) => startTransition(() => navigate(`/workspace/${id}`));
 
   if (loading) return (
     <ThemeProvider theme={workspaceDarkTheme}>
@@ -195,7 +199,7 @@ const WorkspaceHome: React.FC = () => {
                 userId={userId}
                 onProjectCreated={(p: any) => {
                   setShowCreate(false);
-                  if (p?.id) navigate(`/workspace/${p.id}`);
+                  if (p?.id) startTransition(() => navigate(`/workspace/${p.id}`));
                 }}
               />
             )}
