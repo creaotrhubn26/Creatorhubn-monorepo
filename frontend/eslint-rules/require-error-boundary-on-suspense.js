@@ -1,5 +1,6 @@
 /**
  * CH-ARCH-003 — Krev en <ErrorBoundary> over hver <Suspense>-grense.
+ * Del av arkitekturregelregisteret: docs/architecture-rules.md
  *
  * Bakgrunn: en `React.lazy`-komponent som suspenderer under en SYNKRON
  * state-oppdatering (fane-bytte fra klikk/⌘K/input) kaster React #426; uten en
