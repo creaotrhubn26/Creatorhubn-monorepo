@@ -248,11 +248,14 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   // Signatur på antall + fullført-antall i stedet for array-REFERANSENE, ellers
   // re-fetches team-sync på hvert render/poll (nye array-refs med samme innhold)
   // — inkl. hvert checkbox-klikk. Nå kun ved reell endring.
-  const doneSig = [...tasks, ...checks].reduce((n: number, x: any) => n + (x?.done || x?.completed || x?.checked || x?.status === 'done' ? 1 : 0), 0);
+  // tasks/checks starter som null (før fetch) og kan forbli null hvis board-tasks/
+  // checklist feiler (f.eks. 401). Spread av null kaster «tasks is not iterable»
+  // og krasjer hele Oversikt-fanen på første render — guard med (… || []).
+  const doneSig = [...(tasks || []), ...(checks || [])].reduce((n: number, x: any) => n + (x?.done || x?.completed || x?.checked || x?.status === 'done' ? 1 : 0), 0);
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
-  }, [projectId, isReal, tasks.length, checks.length, doneSig]);
+  }, [projectId, isReal, tasks?.length, checks?.length, doneSig]);
   // Ekte prosjekter: kun ekte team-sync (0 %/tom-tilstand til data finnes); demo-tall kun på sample.
   const syncPct = isReal ? (teamSync?.pct ?? 0) : 82;
   const syncItems = (teamSync && Array.isArray(teamSync.readiness) && teamSync.readiness.length)
