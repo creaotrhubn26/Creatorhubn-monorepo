@@ -66104,6 +66104,7 @@ setupPrototypeTesterInvitesRoutes({
     email: string,
     name: string,
     profession?: string | null,
+    company?: string | null,
   ) => {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
     const acct = await upsertAdminAccountUser({
@@ -66115,6 +66116,12 @@ setupPrototypeTesterInvitesRoutes({
       profession:
         typeof profession === "string" && profession.trim()
           ? profession.trim().toLowerCase()
+          : undefined,
+      // Firma fanget ved invitasjon → forhåndsutfylt tester-profil (company_name)
+      // + grunnlag for kunde-konvertering. undefined → ikke rør eksisterende.
+      businessName:
+        typeof company === "string" && company.trim()
+          ? company.trim()
           : undefined,
       isActive: true,
     });

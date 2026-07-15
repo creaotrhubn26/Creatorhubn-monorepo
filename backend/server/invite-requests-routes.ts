@@ -73,6 +73,8 @@ export interface InviteRequestsRoutesDeps {
     grantedPlan: string,
     grantedFeatures: any[],
     teamSize: number,
+    memberProfession?: string | null,
+    memberCompany?: string | null,
   ) => Promise<any>;
 }
 
@@ -698,6 +700,9 @@ export function setupInviteRequestsRoutes(
               grantedPlan,
               grantedFeatures,
               teamSize,
+              // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
+              request.profession || null,
+              request.company_name || null,
             );
           } catch (bridgeErr) {
             console.error("[invite-requests/process] prototype master-bridge failed", bridgeErr);
@@ -836,6 +841,9 @@ export function setupInviteRequestsRoutes(
             grantedPlan,
             grantedFeatures,
             teamSize,
+            // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
+            row.profession || null,
+            row.company_name || null,
           );
         }
 
