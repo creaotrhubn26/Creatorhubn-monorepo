@@ -621,6 +621,11 @@ function syncAppFavicon(location: string) {
 
 function App() {
   const [location] = useLocation();
+  // Rute-gruppe = første path-segment (/admin-room/deck/x → 'admin-room'). Brukes
+  // som key på den globale error-boundaryen: navigasjon MELLOM flater remounter
+  // boundaryen → auto-reset etter en krasj, mens param-/fane-bytte INNEN samme
+  // flate beholder gruppen (ingen remount, tung state bevares). Se boundary under.
+  const routeGroup = location.split('/')[1] || 'root';
   // CreatorHub Design (per-element-lag): GLOBALT mount — hele CreatorHub-appen (og Leadgrid-appen
   // på dens host) får per-element-editoren. Runtime-hooken anvender lagrede edits for alle; ?design=1
   // åpner live-editoren. Singleton-vakten i overlayet hindrer dobling mot per-side-mount.
@@ -710,8 +715,13 @@ function App() {
                     #426 gjorde). Denne fanger enhver ufanget feil og viser en
                     recovery-fallback + rapporterer til Sentry. Prinsipp: fail
                     safe, aldri fail blank. Modul-boundaries under isolerer
-                    enkeltseksjoner slik at resten av skallet overlever. */}
-                <ErrorBoundary componentName="app-router">
+                    enkeltseksjoner slik at resten av skallet overlever.
+                    key={routeGroup}: uten key nullstilles boundaryen ALDRI, så en
+                    rute-krasj låser fallbacken selv når brukeren navigerer til en
+                    frisk flate («Prøv igjen» re-rendrer bare den samme krasjede
+                    ruten). Key-et på rute-gruppen remounter den ved navigasjon
+                    mellom flater → ekte recovery uten full reload. */}
+                <ErrorBoundary key={routeGroup} componentName={`app-router:${routeGroup}`}>
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
