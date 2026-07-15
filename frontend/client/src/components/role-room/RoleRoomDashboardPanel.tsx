@@ -39,6 +39,7 @@ import { roleRoomProjectTabConfigService } from './services/roleRoomProjectTabCo
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
 import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
 import { roleRoomMemberProfileService } from './services/roleRoomMemberProfileService';
+import { focalToObjectPosition } from './utils/avatarFocalPoint';
 import RoleRoomMobileBriefWizard from './components/mobile-brief/RoleRoomMobileBriefWizard';
 import RoleRoomMobilePlannerView from './components/mobile-planner/RoleRoomMobilePlannerView';
 import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRoomMobileShootingDayView';
@@ -328,6 +329,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingMinimized, setOnboardingMinimized] = useState(false);
   const [memberProfileImageUrl, setMemberProfileImageUrl] = useState<string | null>(null);
+  // Fokuspunkt (object-position) for header-avataren, satt i onboarding.
+  const [memberAvatarObjectPosition, setMemberAvatarObjectPosition] = useState<string>('50% 50%');
   useEffect(() => {
     if (!auth.user?.id) return;
     if (onboardingMinimized) return;
@@ -341,6 +344,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         if (cancelled) return;
         if (status.requiresOnboarding) setOnboardingOpen(true);
         if (profile?.profileImageUrl) setMemberProfileImageUrl(profile.profileImageUrl);
+        setMemberAvatarObjectPosition(
+          focalToObjectPosition(profile?.profileImageFocalX, profile?.profileImageFocalY),
+        );
       } catch (err) {
         console.warn('Onboarding status check failed:', err);
       }
@@ -749,7 +755,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               }}
             >
               {memberProfileImageUrl ? (
-                <Avatar src={memberProfileImageUrl} sx={{ width: 28, height: 28 }} />
+                <Avatar src={memberProfileImageUrl} sx={{ width: 28, height: 28 }}
+                        imgProps={{ style: { objectPosition: memberAvatarObjectPosition } }} />
               ) : profileInitials ? (
                 <Avatar sx={{ width: 28, height: 28, bgcolor: 'transparent', fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>
                   {profileInitials}
@@ -934,7 +941,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               aria-label="Åpne profil"
             >
               {memberProfileImageUrl ? (
-                <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }} />
+                <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }}
+                        imgProps={{ style: { objectPosition: memberAvatarObjectPosition } }} />
               ) : profileInitials ? (
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366f1', fontSize: '0.85rem', fontWeight: 700 }}>
                   {profileInitials}

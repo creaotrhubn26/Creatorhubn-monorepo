@@ -33,6 +33,8 @@ import type { RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig } from 
 import {
   searchBrregCompanies, toBrregSelection, type BrregCompany,
 } from '../utils/brregLookup';
+import { AvatarFocalPointEditor } from './AvatarFocalPointEditor';
+import { focalToObjectPosition } from '../utils/avatarFocalPoint';
 
 export interface RoleRoomOnboardingDialogProps {
   open: boolean;
@@ -60,6 +62,8 @@ interface FormState {
   skills: string[];
   languages: string[];
   visibility: ProfileVisibility;
+  profileImageFocalX: number | null;
+  profileImageFocalY: number | null;
 }
 
 const DEFAULT_CONFIG: OnboardingConfig = {
@@ -83,7 +87,7 @@ const DEFAULT_CONFIG: OnboardingConfig = {
     { code: 'en', name: 'English' },
   ],
   stepsEnabled: { welcome: true, image: true, profession: true, about: true, links: true, privacy: true },
-  requiredFields: { displayName: true, professions: true, bio: false, profileImage: false },
+  requiredFields: { displayName: true, professions: true, bio: false, profileImage: true },
 };
 
 const STEP_KEYS = ['welcome', 'image', 'profession', 'about', 'links', 'privacy'] as const;
@@ -97,6 +101,15 @@ const STEP_LABELS: Record<StepKey, string> = {
   links: 'Lenker',
   privacy: 'Personvern',
 };
+
+// Starter-avsnitt for «Om meg» — hjelper brukeren i gang med å skrive.
+const BIO_PROMPTS: Array<{ label: string; template: string }> = [
+  { label: 'Hva jeg gjør', template: 'Jeg jobber med ' },
+  { label: 'Erfaring', template: 'Jeg har jobbet med dette i … år, blant annet med ' },
+  { label: 'Stil / signatur', template: 'Stilen min kjennetegnes av ' },
+  { label: 'Utstyr', template: 'Jeg jobber med utstyr som ' },
+  { label: 'Hva jeg ser etter', template: 'Jeg er interessert i prosjekter som ' },
+];
 
 const EMPTY_FORM: FormState = {
   displayName: '',
@@ -113,6 +126,8 @@ const EMPTY_FORM: FormState = {
   skills: [],
   languages: ['no'],
   visibility: 'connections',
+  profileImageFocalX: null,
+  profileImageFocalY: null,
 };
 
 function profileToForm(profile: RoleRoomMemberProfile): FormState {
@@ -131,6 +146,8 @@ function profileToForm(profile: RoleRoomMemberProfile): FormState {
     skills: profile.skills ?? [],
     languages: profile.languages?.length ? profile.languages : ['no'],
     visibility: profile.visibility ?? 'connections',
+    profileImageFocalX: profile.profileImageFocalX ?? null,
+    profileImageFocalY: profile.profileImageFocalY ?? null,
   };
 }
 
@@ -263,6 +280,8 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
     try {
       const url = await roleRoomMemberProfileService.uploadProfileImage(file);
       setProfileImage(url);
+      // Nytt bilde → nullstill fokuspunkt slik at auto-ansiktsgjenkjenning kjører på nytt.
+      setForm((prev) => ({ ...prev, profileImageFocalX: null, profileImageFocalY: null }));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -272,6 +291,15 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
   const updateField = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Legg til et starter-avsnitt i «Om meg» (på ny linje hvis det alt er tekst).
+  const appendBioPrompt = (template: string) => {
+    setForm((prev) => {
+      const existing = prev.bio.trimEnd();
+      const separator = existing.length > 0 ? '\n\n' : '';
+      return { ...prev, bio: `${existing}${separator}${template}` };
+    });
   };
 
   const toggleArrayItem = (field: 'professions' | 'skills' | 'languages', item: string) => {
@@ -305,6 +333,10 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
     }
     return true;
   };
+
+  // Fullfør-knappen (siste steg) skal aldri kunne omgå påkrevd avatar — dekker
+  // brukere som gjenopptar onboarding forbi bilde-steget (lagret currentStep).
+  const canFinish = config.requiredFields?.profileImage !== true || !!profileImage;
 
   return (
     <Dialog open={open} fullWidth maxWidth="sm"
@@ -427,11 +459,21 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
           {!loading && currentKey === 'image' && (
             <Stack spacing={2} alignItems="center" sx={{ py: 2 }}>
-              <Avatar src={profileImage ?? undefined}
-                       sx={{ width: 120, height: 120, fontSize: 48,
+              {profileImage ? (
+                <AvatarFocalPointEditor
+                  imageUrl={profileImage}
+                  focalX={form.profileImageFocalX}
+                  focalY={form.profileImageFocalY}
+                  onChange={(x, y) => setForm((prev) => ({
+                    ...prev, profileImageFocalX: x, profileImageFocalY: y,
+                  }))}
+                />
+              ) : (
+                <Avatar sx={{ width: 120, height: 120, fontSize: 48,
                               bgcolor: 'rgba(160, 48, 192, 0.2)' }}>
-                {profileImage ? null : <Person sx={{ fontSize: 60 }} />}
-              </Avatar>
+                  <Person sx={{ fontSize: 60 }} />
+                </Avatar>
+              )}
               <Button variant="outlined" component="label"
                        disabled={uploadingImage}
                        startIcon={uploadingImage ? <CircularProgress size={16} /> : <CloudUpload />}>
@@ -445,7 +487,12 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
               <Typography variant="caption" color="text.secondary" align="center">
                 JPG, PNG, WebP eller GIF · maks 4 MB
               </Typography>
-              {!profileImage && (
+              {!profileImage && config.requiredFields?.profileImage === true && (
+                <Typography variant="caption" color="error" align="center" sx={{ mt: 2 }}>
+                  Profilbilde er påkrevd for å fullføre profilen.
+                </Typography>
+              )}
+              {!profileImage && config.requiredFields?.profileImage !== true && (
                 <Typography variant="caption" color="text.secondary" align="center" sx={{ mt: 2 }}>
                   Du kan hoppe over dette nå og legge til bilde senere.
                 </Typography>
@@ -488,6 +535,17 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                           onChange={(e) => updateField('bio', e.target.value)}
                           placeholder="Skriv litt om hva du gjør, stil, erfaring …"
                           helperText="Synlig for andre medlemmer" />
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  Trenger du hjelp i gang? Legg til et avsnitt:
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {BIO_PROMPTS.map((p) => (
+                    <Chip key={p.label} label={p.label} clickable size="small" variant="outlined"
+                           onClick={() => appendBioPrompt(p.template)} />
+                  ))}
+                </Box>
+              </Box>
               <Stack direction="row" spacing={1}>
                 <TextField label="By" fullWidth
                             value={form.locationCity}
@@ -535,6 +593,21 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                           onChange={(e) => updateField('socialLinks',
                             { ...form.socialLinks, linkedin: e.target.value })}
                           placeholder="https://linkedin.com/in/…" />
+              <TextField label="TikTok"
+                          value={form.socialLinks.tiktok ?? ''}
+                          onChange={(e) => updateField('socialLinks',
+                            { ...form.socialLinks, tiktok: e.target.value })}
+                          placeholder="@brukernavn" />
+              <TextField label="YouTube"
+                          value={form.socialLinks.youtube ?? ''}
+                          onChange={(e) => updateField('socialLinks',
+                            { ...form.socialLinks, youtube: e.target.value })}
+                          placeholder="https://youtube.com/@…" />
+              <TextField label="Facebook"
+                          value={form.socialLinks.facebook ?? ''}
+                          onChange={(e) => updateField('socialLinks',
+                            { ...form.socialLinks, facebook: e.target.value })}
+                          placeholder="https://facebook.com/…" />
             </Stack>
           )}
 
@@ -557,9 +630,19 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 Du kan endre dette når som helst senere i Innstillinger.
               </Typography>
               <Box sx={{ background: 'rgba(160, 48, 192, 0.08)', p: 2, borderRadius: 2, mt: 2 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                  Oppsummering
-                </Typography>
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                  <Avatar
+                    src={profileImage ?? undefined}
+                    imgProps={{ style: { objectPosition: focalToObjectPosition(
+                      form.profileImageFocalX, form.profileImageFocalY) } }}
+                    sx={{ width: 44, height: 44, bgcolor: 'rgba(160, 48, 192, 0.2)' }}
+                  >
+                    {profileImage ? null : <Person />}
+                  </Avatar>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    Oppsummering
+                  </Typography>
+                </Stack>
                 <Typography variant="caption" color="text.secondary" component="div">
                   <strong>{form.displayName || '(uten navn)'}</strong>
                   {form.companyName && ` · ${form.companyName}`}
@@ -594,7 +677,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             </Button>
           ) : <Box />}
           {isLastStep ? (
-            <Button onClick={finishOnboarding} disabled={saving || loading}
+            <Button onClick={finishOnboarding} disabled={saving || loading || !canFinish}
                      variant="contained" endIcon={saving ? <CircularProgress size={14} /> : <Check />}>
               {isEditMode ? 'Lagre endringer' : 'Fullfør profil'}
             </Button>

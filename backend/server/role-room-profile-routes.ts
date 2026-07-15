@@ -71,7 +71,7 @@ const DEFAULT_ONBOARDING_CONFIG = {
     displayName: true,
     professions: true,
     bio: false,
-    profileImage: false,
+    profileImage: true,
   },
 };
 
@@ -118,17 +118,31 @@ async function ensureConfigTable(pool: Pool): Promise<boolean> {
       const { rows } = await pool.query(
         `SELECT config FROM role_room_onboarding_config WHERE id = 1`,
       );
-      const cfg = rows[0]?.config as { professionsOptions?: unknown } | undefined;
-      if (cfg && Array.isArray(cfg.professionsOptions)) {
-        const existing = cfg.professionsOptions as string[];
-        const missing = DEFAULT_ONBOARDING_CONFIG.professionsOptions.filter(
-          (p) => !existing.includes(p),
-        );
-        if (missing.length > 0) {
-          (cfg as { professionsOptions: string[] }).professionsOptions = [
-            ...missing,
-            ...existing,
-          ];
+      const cfg = rows[0]?.config as
+        | { professionsOptions?: unknown; requiredFields?: Record<string, unknown> }
+        | undefined;
+      if (cfg) {
+        let changed = false;
+        if (Array.isArray(cfg.professionsOptions)) {
+          const existing = cfg.professionsOptions as string[];
+          const missing = DEFAULT_ONBOARDING_CONFIG.professionsOptions.filter(
+            (p) => !existing.includes(p),
+          );
+          if (missing.length > 0) {
+            (cfg as { professionsOptions: string[] }).professionsOptions = [
+              ...missing,
+              ...existing,
+            ];
+            changed = true;
+          }
+        }
+        // Avatar er nå et fast krav (produktbeslutning). Håndhev i en allerede
+        // seedet rad som fortsatt har profileImage:false fra gammel default.
+        if (cfg.requiredFields && cfg.requiredFields.profileImage !== true) {
+          cfg.requiredFields.profileImage = true;
+          changed = true;
+        }
+        if (changed) {
           await pool.query(
             `UPDATE role_room_onboarding_config SET config = $1::jsonb WHERE id = 1`,
             [JSON.stringify(cfg)],
@@ -169,6 +183,8 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         skills JSONB NOT NULL DEFAULT '[]'::jsonb,
         languages JSONB NOT NULL DEFAULT '[]'::jsonb,
         profile_image_url VARCHAR(500),
+        profile_image_focal_x SMALLINT,
+        profile_image_focal_y SMALLINT,
         banner_image_url VARCHAR(500),
         visibility VARCHAR(32) NOT NULL DEFAULT 'connections',
         onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -188,6 +204,8 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
     for (const col of [
       `organization_number VARCHAR(16)`,
       `business_address VARCHAR(500)`,
+      `profile_image_focal_x SMALLINT`,
+      `profile_image_focal_y SMALLINT`,
     ]) {
       await pool
         .query(`ALTER TABLE role_room_member_profiles ADD COLUMN IF NOT EXISTS ${col}`)
@@ -250,6 +268,8 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     skills: row.skills,
     languages: row.languages,
     profileImageUrl: row.profile_image_url,
+    profileImageFocalX: row.profile_image_focal_x,
+    profileImageFocalY: row.profile_image_focal_y,
     bannerImageUrl: row.banner_image_url,
     visibility: row.visibility,
     onboardingCompleted: row.onboarding_completed,
@@ -263,7 +283,7 @@ const ALLOWED_PROFILE_FIELDS: Array<keyof typeof FIELD_TO_COLUMN> = [
   "displayName", "bio", "professions", "companyName", "organizationNumber",
   "businessAddress", "locationCity",
   "locationCountry", "website", "socialLinks", "showreelUrl", "skills",
-  "languages", "visibility",
+  "languages", "visibility", "profileImageFocalX", "profileImageFocalY",
 ];
 
 const FIELD_TO_COLUMN = {
@@ -273,6 +293,8 @@ const FIELD_TO_COLUMN = {
   companyName: "company_name",
   organizationNumber: "organization_number",
   businessAddress: "business_address",
+  profileImageFocalX: "profile_image_focal_x",
+  profileImageFocalY: "profile_image_focal_y",
   locationCity: "location_city",
   locationCountry: "location_country",
   website: "website",

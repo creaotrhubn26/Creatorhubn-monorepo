@@ -23,6 +23,9 @@ export interface RoleRoomMemberProfile {
   skills: string[];
   languages: string[];
   profileImageUrl: string | null;
+  /** Fokuspunkt for profilbildet i prosent (0–100). Brukes til object-position. */
+  profileImageFocalX: number | null;
+  profileImageFocalY: number | null;
   bannerImageUrl: string | null;
   visibility: ProfileVisibility;
   onboardingCompleted: boolean;
