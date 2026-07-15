@@ -72,6 +72,8 @@ export interface MemberListItem {
   locationCity: string | null;
   locationCountry: string | null;
   profileImageUrl: string | null;
+  profileImageFocalX: number | null;
+  profileImageFocalY: number | null;
   visibility: ProfileVisibility;
 }
 

@@ -674,7 +674,8 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       const { rows } = await pool.query(
         `SELECT p.user_id, p.display_name, p.bio, p.professions, p.skills,
                 p.company_name, p.location_city, p.location_country,
-                p.profile_image_url, p.visibility, p.updated_at, u.email
+                p.profile_image_url, p.profile_image_focal_x, p.profile_image_focal_y,
+                p.visibility, p.updated_at, u.email
            FROM role_room_member_profiles p
            JOIN users u ON u.id = p.user_id
           WHERE ${where.join(" AND ")}
@@ -693,6 +694,8 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         locationCity: row.location_city,
         locationCountry: row.location_country,
         profileImageUrl: row.profile_image_url,
+        profileImageFocalX: row.profile_image_focal_x,
+        profileImageFocalY: row.profile_image_focal_y,
         visibility: row.visibility,
       }));
 

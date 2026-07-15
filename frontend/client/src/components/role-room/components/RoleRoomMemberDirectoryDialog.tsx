@@ -18,6 +18,7 @@ import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileS
 import type {
   MemberListItem, RoleRoomMemberProfile,
 } from '../services/roleRoomMemberProfileService';
+import { focalToObjectPosition } from '../utils/avatarFocalPoint';
 
 export interface RoleRoomMemberDirectoryDialogProps {
   open: boolean;
@@ -189,6 +190,8 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
     >
       <Avatar
         src={member.profileImageUrl ?? undefined}
+        imgProps={{ style: { objectPosition: focalToObjectPosition(
+          member.profileImageFocalX, member.profileImageFocalY) } }}
         sx={{ width: 48, height: 48, bgcolor: '#6366f1', flexShrink: 0 }}
       >
         {member.displayName?.[0] ?? <Person />}
@@ -271,6 +274,8 @@ function PublicProfileView({ userId }: { userId: string }) {
       <Box sx={{ px: 3, pt: 0, pb: 3 }}>
         <Avatar
           src={profile.profileImageUrl ?? undefined}
+          imgProps={{ style: { objectPosition: focalToObjectPosition(
+            profile.profileImageFocalX, profile.profileImageFocalY) } }}
           sx={{
             width: 100, height: 100, mt: -6, mb: 1.5,
             bgcolor: '#6366f1', fontSize: 32,
