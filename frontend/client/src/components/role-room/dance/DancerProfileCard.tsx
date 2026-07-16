@@ -10,13 +10,14 @@
  */
 
 import { danceFlowColors } from './danceFlowTheme';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Avatar,
   Box,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   IconButton,
   Stack,
   Tooltip,
@@ -27,6 +28,8 @@ import {
   Edit as EditIcon,
   AddCircleOutline as AddIcon,
   Healing as InjuryIcon,
+  Schedule as ScheduleIcon,
+  CheckCircleOutline as CheckIcon,
 } from '@mui/icons-material';
 import type { DancerProfile, SkillLevel } from './dancerProfileService';
 import { getInitials } from './dancerProfile';
@@ -73,6 +76,28 @@ function isAvailableNow(profile: DancerProfile): boolean | null {
   return false;
 }
 
+/** Antall hele dager siden et ISO-tidspunkt, eller null hvis ugyldig/tomt. */
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((Date.now() - t) / 86_400_000);
+}
+
+const AVAILABILITY_STALE_DAYS = 30;
+
+/**
+ * Ferskhet på tilgjengeligheten. Utdatert = aldri bekreftet, eller bekreftet
+ * for mer enn {@link AVAILABILITY_STALE_DAYS} dager siden.
+ */
+function availabilityFreshness(confirmedAt: string | null): { stale: boolean; label: string } {
+  const days = daysSince(confirmedAt);
+  if (days == null) return { stale: true, label: 'Ikke bekreftet' };
+  if (days <= 0) return { stale: false, label: 'Bekreftet i dag' };
+  if (days === 1) return { stale: false, label: 'Bekreftet i går' };
+  return { stale: days > AVAILABILITY_STALE_DAYS, label: `Bekreftet for ${days} d siden` };
+}
+
 function injuryColor(status: DancerProfile['injuryStatus']): string {
   switch (status) {
     case 'healthy': return danceFlowColors.successPrimary;
@@ -100,6 +125,11 @@ export interface DancerProfileCardProps {
   profile: DancerProfile | null;
   /** Klikk på "Rediger" eller "Opprett profil". */
   onEdit?: () => void;
+  /**
+   * Bekreft at tilgjengeligheten fortsatt stemmer (ferskhets-nudge). Får
+   * danser-id. Vises kun når profilen har vinduer og stemplet er utdatert.
+   */
+  onConfirmAvailability?: (dancerId: string) => void | Promise<void>;
   /** Tighter layout for sidebars. */
   compact?: boolean;
   /** F6-2: aggregerte tall (formasjoner / prøver / annotasjoner). */
@@ -112,6 +142,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
   dancer,
   profile,
   onEdit,
+  onConfirmAvailability,
   compact,
   stats,
 }) => {
@@ -121,6 +152,22 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
     [profile],
   );
   const availableNow = profile ? isAvailableNow(profile) : null;
+  const hasWindows = !!profile && profile.availabilityWindows.length > 0;
+  const freshness = useMemo(
+    () => (hasWindows ? availabilityFreshness(profile!.availabilityConfirmedAt) : null),
+    [hasWindows, profile],
+  );
+
+  const [confirming, setConfirming] = useState(false);
+  const handleConfirm = async (): Promise<void> => {
+    if (!profile || !onConfirmAvailability) return;
+    setConfirming(true);
+    try {
+      await onConfirmAvailability(profile.dancerId);
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   return (
     <Card
@@ -295,6 +342,50 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
               >
                 {availableNow ? '✓ Tilgjengelig nå' : '— Utenfor tilgjengelighets-vindu'}
               </Typography>
+            )}
+
+            {/* Ferskhet — når ble vinduene sist bekreftet? */}
+            {hasWindows && freshness && (
+              <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  icon={<ScheduleIcon sx={{ fontSize: 11 }} />}
+                  label={freshness.label}
+                  data-testid={`dancer-availability-freshness-${dancer.id}`}
+                  sx={{
+                    height: 18,
+                    fontSize: 9.5,
+                    bgcolor: freshness.stale ? 'rgba(251,191,36,0.15)' : 'rgba(148,163,184,0.12)',
+                    color: freshness.stale ? danceFlowColors.gold : danceFlowColors.textMuted,
+                    border: freshness.stale ? '1px solid rgba(251,191,36,0.4)' : '1px solid transparent',
+                    '& .MuiChip-icon': {
+                      color: freshness.stale ? danceFlowColors.gold : danceFlowColors.textMuted,
+                    },
+                  }}
+                />
+                {freshness.stale && onConfirmAvailability && (
+                  <Button
+                    size="small"
+                    onClick={() => void handleConfirm()}
+                    disabled={confirming}
+                    startIcon={confirming
+                      ? <CircularProgress size={11} sx={{ color: 'inherit' }} />
+                      : <CheckIcon sx={{ fontSize: 12 }} />}
+                    data-testid={`dancer-availability-confirm-${dancer.id}`}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: 9.5,
+                      minWidth: 0,
+                      py: 0,
+                      px: 0.75,
+                      color: danceFlowColors.successPrimary,
+                      '&:hover': { bgcolor: 'rgba(52,211,153,0.08)' },
+                    }}
+                  >
+                    Bekreft
+                  </Button>
+                )}
+              </Stack>
             )}
           </Stack>
         )}

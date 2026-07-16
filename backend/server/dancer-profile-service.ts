@@ -70,6 +70,13 @@ export interface DancerProfileRecord extends DancerProfileExtras {
   dancerId: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Ferskhets-stempel: når danseren sist bekreftet tilgjengeligheten sin.
+   * Bumpes automatisk når `availabilityWindows` skrives, og via
+   * {@link confirmDancerAvailability}. NULL = aldri bekreftet (vises som
+   * utdatert i UI). Server-styrt — ikke skrivbar via `extras`.
+   */
+  availabilityConfirmedAt: string | null;
 }
 
 // ─── Row → DTO mapping ──────────────────────────────────────────────────
@@ -78,6 +85,13 @@ function isoFrom(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'string') return value;
   return new Date().toISOString();
+}
+
+function isoFromNullable(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return value;
+  return null;
 }
 
 function asNumberOrNull(value: unknown): number | null {
@@ -167,6 +181,7 @@ function mapRow(row: Record<string, unknown>): DancerProfileRecord {
     projectId: row.project_id == null ? null : String(row.project_id),
     createdAt: isoFrom(row.created_at),
     updatedAt: isoFrom(row.updated_at),
+    availabilityConfirmedAt: isoFromNullable(row.availability_confirmed_at),
   };
 }
 
@@ -271,6 +286,8 @@ export async function upsertDancerProfile(
   if (extras.strengths !== undefined) push('strengths', JSON.stringify(extras.strengths));
   if (extras.availabilityWindows !== undefined) {
     push('availability_windows', JSON.stringify(extras.availabilityWindows));
+    // Å skrive vinduer teller som en fersk bekreftelse av tilgjengeligheten.
+    push('availability_confirmed_at', new Date().toISOString());
   }
   if (extras.injuryStatus !== undefined) push('injury_status', extras.injuryStatus);
   if (extras.injuryNote !== undefined) push('injury_note', extras.injuryNote);
@@ -307,6 +324,27 @@ export async function upsertDancerProfile(
     throw new Error('upsertDancerProfile: row missing after upsert');
   }
   return result;
+}
+
+/**
+ * Bekreft at tilgjengeligheten fortsatt stemmer — bumper kun
+ * `availability_confirmed_at` (og `updated_at`) uten å røre vinduene.
+ * Returnerer den oppdaterte raden, eller null hvis profilen ikke finnes.
+ */
+export async function confirmDancerAvailability(
+  pool: Pool,
+  ownerUserId: string,
+  dancerId: string,
+): Promise<DancerProfileRecord | null> {
+  const { rows } = await pool.query(
+    `UPDATE dancer_profile_extras
+        SET availability_confirmed_at = now(), updated_at = now()
+      WHERE owner_user_id = $1 AND dancer_id = $2
+      RETURNING *`,
+    [ownerUserId, dancerId],
+  );
+  if (rows.length === 0) return null;
+  return mapRow(rows[0]);
 }
 
 export async function deleteDancerProfile(
