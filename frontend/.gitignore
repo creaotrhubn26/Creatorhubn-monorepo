@@ -54,3 +54,4 @@ client/src/assets/_L9A8606.ppm
 
 # Demo-opptak (genererte screenshots)
 demo-artifacts/
+/client/dist-geo
