@@ -20,9 +20,9 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
-import { assertAnyEntitled } from "./leadgrid-entitlement-guard.js";
+import { assertAnyEntitled, LEADGRID_KVALITET_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 
-const QUALITY_FEATURE_KEYS = ["leadgrid_quality", "leadgrid_core"];
+const QUALITY_FEATURE_KEYS = LEADGRID_KVALITET_FEATURE_KEYS;
 const QUALITY_ROLES = new Set(["admin", "salgssjef", "kvalitet"]);
 const VALID_VERDICTS = new Set(["verified", "rejected", "needs_followup"]);
 const VALID_REASONS = new Set([

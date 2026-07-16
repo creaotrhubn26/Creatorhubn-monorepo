@@ -852,6 +852,7 @@ import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
 import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
+import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -66464,6 +66465,9 @@ registerLeadgridTripsRoutes({ app, pool, requireUserSession });
 // Kvalitet-avdelingen — verifiseringskø for vunnede salg + samtale-maler
 // (mig 0377). Roller: kvalitet/admin/salgssjef.
 registerLeadgridQualityRoutes({ app, pool, requireUserSession });
+
+// «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
+registerLeadgridSignupInterestRoutes({ app, pool });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
