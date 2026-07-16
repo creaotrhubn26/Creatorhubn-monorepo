@@ -53,7 +53,8 @@ export function registerLeadgridSignupInterestRoutes(deps: { app: Express; pool:
       );
       // Løftet i appen er «vi tar kontakt» — da må salg få vite om leaden.
       // Varsle kun for NYE leads (rowCount=1), mottaker styres av env.
-      const notify = process.env.LEADGRID_SIGNUP_NOTIFY_EMAIL || "";
+      // Fallback til Daniel så leads aldri varsles ut i tomrommet; env overstyrer.
+      const notify = process.env.LEADGRID_SIGNUP_NOTIFY_EMAIL || "daniel@creatorhubn.com";
       if ((inserted.rowCount ?? 0) > 0 && notify && isEmailConfigured()) {
         void sendEmail({
           to: notify,
