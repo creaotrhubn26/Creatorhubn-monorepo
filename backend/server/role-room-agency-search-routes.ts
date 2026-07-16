@@ -260,7 +260,9 @@ function buildSearchSql(
       t.headshot_url, t.showreel_url, t.resume_url,
       t.playing_age_min, t.playing_age_max, t.gender,
       t.skills, t.languages, t.dialects,
-      t.availability_status, t.willing_to_travel,
+      t.availability_status, t.availability_notes,
+      t.availability_windows, t.availability_confirmed_at,
+      t.willing_to_travel,
       t.represented, t.agency_name,
       t.created_at, t.updated_at,
       array_agg(DISTINCT c.scope) AS granted_scopes,
@@ -313,8 +315,14 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
     masked.playing_age_max = row.playing_age_max;
     masked.gender = row.gender;
   }
+  // availability_visible gjøres ALLTID eksplisitt slik at UI kan vise «skjult
+  // (ikke delt)» i stedet for stille å utelate feltet — samtykke-transparens.
+  masked.availability_visible = has("availability");
   if (has("availability")) {
     masked.availability_status = row.availability_status;
+    masked.availability_notes = row.availability_notes;
+    masked.availability_windows = row.availability_windows;
+    masked.availability_confirmed_at = row.availability_confirmed_at;
     masked.willing_to_travel = row.willing_to_travel;
   }
   if (has("contact_info")) {

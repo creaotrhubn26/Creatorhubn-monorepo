@@ -12057,6 +12057,7 @@ type RoleRoomProjectWorkspaceState = {
                         id: member.id,
                         name: member.name,
                         role: resolvedRole?.trim() || 'Crew-medlem',
+                        email: (member as { contactInfo?: { email?: string } }).contactInfo?.email,
                       };
                     })}
                     locations={(currentProject.locations || []).map((location) => ({

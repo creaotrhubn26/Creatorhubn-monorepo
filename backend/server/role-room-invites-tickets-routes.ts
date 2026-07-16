@@ -34,6 +34,17 @@ export function setupRoleRoomInvitesTicketsRoutes(
           updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+      // Profesjon + firma fanget ved invitasjon → forhåndsutfyller Role Room-
+      // onboarding (bare bekreft, ikke fyll på nytt). Holdes HELT i role_room-
+      // flaten (seedes til role_room_member_profiles ved første /me), aldri users.
+      for (const col of [
+        `member_profession VARCHAR(40)`,
+        `member_company VARCHAR(160)`,
+      ]) {
+        await pool
+          .query(`ALTER TABLE role_room_tester_invites ADD COLUMN IF NOT EXISTS ${col}`)
+          .catch(() => undefined);
+      }
       return true;
     } catch (err) {
       console.error("Failed to ensure role_room_tester_invites table:", err);
@@ -55,6 +66,15 @@ export function setupRoleRoomInvitesTicketsRoutes(
       const ndaVersion = typeof body.ndaVersion === "string" ? body.ndaVersion : "1.0";
       const expiresAtRaw = typeof body.expiresAt === "string" ? body.expiresAt : null;
       const invitedBy = typeof body.invitedBy === "string" ? body.invitedBy : null;
+      // Valgfri profesjon + firma → forhåndsutfyller onboarding ved aksept.
+      const memberProfession =
+        typeof body.profession === "string" && body.profession.trim()
+          ? body.profession.trim().slice(0, 40)
+          : null;
+      const memberCompany =
+        typeof body.company === "string" && body.company.trim()
+          ? body.company.trim().slice(0, 160)
+          : null;
 
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({ error: "Valid email required" });
@@ -75,8 +95,8 @@ export function setupRoleRoomInvitesTicketsRoutes(
       const token = crypto.randomBytes(24).toString("hex");
       const result = await pool.query(
         `INSERT INTO role_room_tester_invites
-          (token, email, name, testing_areas, personal_message, nda_version, expires_at, invited_by)
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+          (token, email, name, testing_areas, personal_message, nda_version, expires_at, invited_by, member_profession, member_company)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10)
          RETURNING id, token, expires_at, created_at`,
         [
           token,
@@ -87,6 +107,8 @@ export function setupRoleRoomInvitesTicketsRoutes(
           ndaVersion,
           expiresAt.toISOString(),
           invitedBy,
+          memberProfession,
+          memberCompany,
         ],
       );
       const row = result.rows[0];
@@ -114,7 +136,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
         return res.status(400).json({ error: "Token required" });
       }
       const result = await pool.query(
-        `SELECT id, email, name, testing_areas, personal_message, nda_version, status, expires_at, accepted_at, created_at
+        `SELECT id, email, name, testing_areas, personal_message, nda_version, status, expires_at, accepted_at, created_at, member_profession, member_company
          FROM role_room_tester_invites WHERE token = $1 LIMIT 1`,
         [token],
       );
@@ -134,6 +156,8 @@ export function setupRoleRoomInvitesTicketsRoutes(
         expiresAt: row.expires_at,
         acceptedAt: row.accepted_at,
         createdAt: row.created_at,
+        profession: row.member_profession || null,
+        company: row.member_company || null,
       });
     } catch (err) {
       console.error("Error fetching role-room tester invite:", err);

@@ -66,7 +66,8 @@ import { alpha } from '@mui/material/styles';
 import { MonthGridView } from './calendar/MonthGridView';
 import { CalendarMonthHeader } from './calendar/CalendarMonthHeader';
 import { CalendarStatsBar } from './calendar/CalendarStatsBar';
-import { CrewCalendarView, type CrewCalendarMember } from './calendar/CrewCalendarView';
+import { CrewCalendarView, type CrewCalendarMember, type CrewDayAvailability } from './calendar/CrewCalendarView';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 
 interface Candidate {
   id: string;
@@ -77,6 +78,8 @@ interface Crew {
   id: string;
   name: string;
   role?: string;
+  /** Brukes til å matche crew-raden mot medlemmets egen tilgjengelighets-kalender. */
+  email?: string;
 }
 
 interface Location {
@@ -287,6 +290,31 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const [equipmentConflicts, setEquipmentConflicts] = useState<Map<string, EquipmentConflict[]>>(new Map());
   const reopenSignalRef = useRef(0);
 
+  // Tilgjengelighet fra crew-medlemmenes egne kalendere (samme delte kilde som
+  // Crew Management) — toner Gantt-cellene så produsenten ser hvem som er ledig.
+  const { availabilityByUser, emailToUser } = useProjectMemberAvailability(projectId);
+  // crewId → { 'YYYY-MM-DD': status } bygget ved å matche crew-e-post mot medlem.
+  const crewAvailabilityByDay = useMemo(() => {
+    const out = new Map<string, Record<string, CrewDayAvailability>>();
+    if (emailToUser.size === 0) return out;
+    for (const member of crew) {
+      const em = (member.email || '').toLowerCase().trim();
+      if (!em) continue;
+      const userId = emailToUser.get(em);
+      if (!userId) continue;
+      const overlay = availabilityByUser.get(userId);
+      if (!overlay || overlay.cells.length === 0) continue;
+      const byDay: Record<string, CrewDayAvailability> = {};
+      for (const c of overlay.cells) {
+        if (c.availability === 'available' || c.availability === 'unavailable' || c.availability === 'hold') {
+          byDay[c.date] = c.availability;
+        }
+      }
+      out.set(member.id, byDay);
+    }
+    return out;
+  }, [crew, availabilityByUser, emailToUser]);
+
   const mentionCandidates = useMemo(
     () => [
       ...candidates.map((candidate) => candidate.name),
@@ -421,6 +449,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             id: member.id,
             name: member.name,
             role: resolveCrewRole(member),
+            email: (member as { contactInfo?: { email?: string } }).contactInfo?.email,
           }))
         : [];
     const apiLocations =
@@ -1038,6 +1067,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                 : (m as { status?: string }).status === 'pending' ? '#f59e0b'
                 : (m as { status?: string }).status === 'invited' ? '#60a5fa'
                 : null,
+              availabilityByDay: crewAvailabilityByDay.get(m.id),
             }))}
             events={events}
             eventTypeConfig={{
