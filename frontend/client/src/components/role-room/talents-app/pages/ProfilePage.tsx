@@ -21,6 +21,8 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
+  IconButton,
   MenuItem,
   Stack,
   Step,
@@ -33,9 +35,10 @@ import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/EditOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useCallback, useEffect, useState } from 'react';
 
-import roleRoomTalentsService, { type RoleRoomTalent } from '../../services/roleRoomTalentsService';
+import roleRoomTalentsService, { type RoleRoomTalent, type TalentAvailabilityWindow } from '../../services/roleRoomTalentsService';
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
@@ -54,6 +57,32 @@ const cardSx = {
 // Direkte fil-opplastning til Cloudflare R2 via presigned PUT-URL.
 // Faller tilbake til URL-input hvis R2 ikke er konfigurert på backend.
 
+const AVAILABILITY_LABEL: Record<string, string> = {
+  open: 'Tilgjengelig', limited: 'Begrenset', unavailable: 'Ikke tilgjengelig',
+};
+
+/** Antall hele dager siden et ISO-tidspunkt (null hvis mangler). */
+function daysSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.floor((Date.now() - then) / 86_400_000);
+}
+
+/** Ferskhets-tekst + om signalet regnes som utdatert (> 30 dager). */
+function availabilityFreshness(iso: string | null | undefined): { text: string; stale: boolean } {
+  const d = daysSince(iso);
+  if (d === null) return { text: 'Aldri bekreftet', stale: true };
+  if (d <= 0) return { text: 'Bekreftet i dag', stale: false };
+  if (d === 1) return { text: 'Bekreftet i går', stale: false };
+  return { text: `Bekreftet for ${d} dager siden`, stale: d > 30 };
+}
+
+function formatWindow(w: TalentAvailabilityWindow): string {
+  const label = w.status === 'open' ? 'Åpen' : 'Begrenset';
+  return `${label}: ${w.startDate} – ${w.endDate}${w.notes ? ` · ${w.notes}` : ''}`;
+}
+
 export default function ProfilePage({ demoMode }: ProfilePageProps) {
   const [talent, setTalent] = useState<RoleRoomTalent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,6 +90,16 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  const handleConfirmAvailability = useCallback(async () => {
+    setConfirming(true);
+    const updated = await roleRoomTalentsService.confirmMyAvailability();
+    setConfirming(false);
+    if ('error' in updated) { setError(updated.error); return; }
+    setTalent(updated);
+    setSuccess('Tilgjengelighet bekreftet.');
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -228,6 +267,62 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
           ) : null}
         </Stack>
       </Box>
+
+      {/* Tilgjengelighet: status + vinduer + ferskhets-stempel */}
+      {(() => {
+        const fresh = availabilityFreshness(talent.availability_confirmed_at);
+        const windows = talent.availability_windows ?? [];
+        return (
+          <Box sx={{ ...cardSx, mb: 2 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
+              <Typography sx={{ color: palette.textPrimary, fontWeight: 700 }}>Tilgjengelighet</Typography>
+              <Chip
+                size="small"
+                label={fresh.text}
+                sx={{
+                  bgcolor: fresh.stale ? palette.warningBg : palette.successBg,
+                  color: fresh.stale ? palette.warning : palette.success,
+                  fontWeight: 600, fontSize: '0.72rem',
+                }}
+              />
+            </Stack>
+            <Stack direction="row" flexWrap="wrap" gap={0.7} useFlexGap sx={{ mb: windows.length ? 1.2 : 0 }}>
+              <Chip size="small" label={AVAILABILITY_LABEL[talent.availability_status] ?? talent.availability_status}
+                sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.textPrimary, fontWeight: 600 }} />
+              {talent.willing_to_travel ? (
+                <Chip size="small" label="Kan reise" sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.textPrimary }} />
+              ) : null}
+            </Stack>
+            {windows.length > 0 ? (
+              <Stack spacing={0.6} sx={{ mb: 1 }}>
+                {windows.map((w, i) => (
+                  <Typography key={i} sx={{ color: palette.textSecondary, fontSize: '0.84rem' }}>
+                    • {formatWindow(w)}
+                  </Typography>
+                ))}
+              </Stack>
+            ) : (
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1 }}>
+                Ingen konkrete vinduer lagt inn. Legg til perioder i «Rediger profil» så produsenter ser når du er ledig.
+              </Typography>
+            )}
+            {fresh.stale ? (
+              <Alert severity="warning" sx={{ mb: 1, py: 0.2, fontSize: '0.8rem' }}>
+                Tilgjengeligheten din er utdatert. Bekreft at den fortsatt stemmer så produsenter kan stole på den.
+              </Alert>
+            ) : null}
+            <Button
+              onClick={() => void handleConfirmAvailability()}
+              disabled={confirming}
+              size="small"
+              startIcon={confirming ? <CircularProgress size={13} /> : <CheckCircleIcon fontSize="small" />}
+              sx={{ textTransform: 'none', fontWeight: 700, color: palette.accent }}
+            >
+              Bekreft at dette stemmer
+            </Button>
+          </Box>
+        );
+      })()}
 
       {/* Mine delte self-tapes (GDPR-oversikt + revoke) */}
       <Box sx={{ ...cardSx, mb: 2 }}>
@@ -501,10 +596,16 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
     showreel_url: talent.showreel_url ?? '',
     resume_url: talent.resume_url ?? '',
     availability_status: talent.availability_status,
+    windows: (talent.availability_windows ?? []) as TalentAvailabilityWindow[],
     skills: (talent.skills ?? []).map((s) => (typeof s === 'string' ? s : s.label)).join(', '),
     languages: (talent.languages ?? []).map((l) => `${l.label}${l.level ? `|${l.level}` : ''}`).join(', '),
   });
   const [saving, setSaving] = useState(false);
+
+  const addWindow = () => setForm((f) => ({ ...f, windows: [...f.windows, { status: 'open', startDate: '', endDate: '', notes: '' }] }));
+  const removeWindow = (idx: number) => setForm((f) => ({ ...f, windows: f.windows.filter((_, i) => i !== idx) }));
+  const patchWindow = (idx: number, patch: Partial<TalentAvailabilityWindow>) =>
+    setForm((f) => ({ ...f, windows: f.windows.map((w, i) => (i === idx ? { ...w, ...patch } : w)) }));
 
   const handleSave = async () => {
     setSaving(true);
@@ -523,6 +624,10 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
       showreel_url: form.showreel_url || undefined,
       resume_url: form.resume_url || undefined,
       availability_status: form.availability_status,
+      // Behold kun gyldige vinduer (begge datoer satt, start ≤ slutt).
+      availability_windows: form.windows
+        .filter((w) => w.startDate && w.endDate && w.startDate <= w.endDate)
+        .map((w) => ({ status: w.status, startDate: w.startDate, endDate: w.endDate, notes: w.notes?.trim() || undefined })),
       skills,
       languages,
     });
@@ -571,6 +676,51 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
             <MenuItem value="limited">Begrenset</MenuItem>
             <MenuItem value="unavailable">Ikke tilgjengelig</MenuItem>
           </TextField>
+
+          {/* Tilgjengelighets-vinduer: konkrete åpne/begrensede datoperioder.
+              Deles kun med partnere som har fått 'availability'-samtykke. */}
+          <Box>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }}>Tilgjengelighets-vinduer</Typography>
+              <Button onClick={addWindow} size="small" startIcon={<AddIcon fontSize="small" />}
+                sx={{ textTransform: 'none', color: palette.accent }}>Legg til</Button>
+            </Stack>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mb: 1 }}>
+              Vis produsenter når du faktisk er ledig. Deles kun med partnere du har gitt tilgjengelighets-tilgang.
+            </Typography>
+            <Stack spacing={1}>
+              {form.windows.length === 0 ? (
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.8rem', fontStyle: 'italic' }}>
+                  Ingen vinduer lagt til ennå.
+                </Typography>
+              ) : form.windows.map((w, idx) => (
+                <Box key={idx} sx={{ border: `1px solid ${palette.border}`, borderRadius: radius.sm, p: 1.2 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <TextField select label="Type" value={w.status} size="small" sx={{ minWidth: 120 }}
+                      onChange={(e) => patchWindow(idx, { status: e.target.value as TalentAvailabilityWindow['status'] })}>
+                      <MenuItem value="open">Åpen</MenuItem>
+                      <MenuItem value="limited">Begrenset</MenuItem>
+                    </TextField>
+                    <Box sx={{ flex: 1 }} />
+                    <IconButton onClick={() => removeWindow(idx)} size="small" sx={{ color: palette.textMuted }} aria-label="Fjern vindu">
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                  <Stack direction="row" spacing={1}>
+                    <TextField label="Fra" type="date" value={w.startDate} size="small" fullWidth InputLabelProps={{ shrink: true }}
+                      onChange={(e) => patchWindow(idx, { startDate: e.target.value })} />
+                    <TextField label="Til" type="date" value={w.endDate} size="small" fullWidth InputLabelProps={{ shrink: true }}
+                      error={Boolean(w.startDate && w.endDate && w.startDate > w.endDate)}
+                      onChange={(e) => patchWindow(idx, { endDate: e.target.value })} />
+                  </Stack>
+                  <TextField label="Notat (valgfritt)" value={w.notes ?? ''} size="small" fullWidth sx={{ mt: 1 }}
+                    onChange={(e) => patchWindow(idx, { notes: e.target.value })} />
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+
+          <Divider sx={{ borderColor: palette.border }} />
           <TextField label="Ferdigheter (komma-separert)" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} fullWidth size="small" />
           <TextField label="Språk (komma-separert, bruk | for nivå)" value={form.languages} onChange={(e) => setForm({ ...form, languages: e.target.value })} fullWidth size="small" />
         </Stack>
