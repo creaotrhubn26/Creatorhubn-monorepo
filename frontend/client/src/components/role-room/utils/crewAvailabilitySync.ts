@@ -113,6 +113,25 @@ export function professionToCrewRole(professions: string[] | undefined | null): 
   return 'other';
 }
 
+/**
+ * Kort tekst-oppsummering av tilgjengelighet «i dag + fremover» — for kompakte
+ * flater (mobil crew-liste, chips) som ikke tegner hele kalenderen.
+ */
+export function summarizeAvailabilityForToday(overlay?: CrewAvailabilityOverlay): string | null {
+  if (!overlay || overlay.cells.length === 0) return null;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayCell = overlay.cells.find((c) => c.date === today);
+  const upcomingAvailable = overlay.cells.filter((c) => c.date >= today && c.availability === 'available').length;
+  if (todayCell?.availability === 'available') {
+    return upcomingAvailable > 1 ? `Ledig i dag · ${upcomingAvailable} dager fremover` : 'Ledig i dag';
+  }
+  if (todayCell?.availability === 'unavailable') return 'Opptatt i dag';
+  if (todayCell?.availability === 'hold') return 'Tentativ i dag';
+  if (upcomingAvailable > 0) return `${upcomingAvailable} ledige dager fremover`;
+  return null;
+}
+
 /** Stabil, gjenkjennelig id for en auto-avledet (virtuell) crew-rad. */
 export function virtualCrewId(userId: string): string {
   return `member:${userId}`;

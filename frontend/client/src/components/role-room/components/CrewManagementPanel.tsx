@@ -128,13 +128,10 @@ import {
 } from './icons/CastingIcons';
 import type { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
 import { castingService } from '../services/castingService';
-import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
-import type { MemberListItem } from '../services/roleRoomMemberProfileService';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 import {
-  availabilityEntriesToCrewCells,
   memberToVirtualCrew,
   isVirtualCrewId,
-  type CrewAvailabilityOverlay,
 } from '../utils/crewAvailabilitySync';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { useToast } from './ToastStack';
@@ -1208,46 +1205,17 @@ export function CrewManagementPanel({
   // ─── Auto-vis brukere lagt til i prosjektet + synk tilgjengeligheten deres ──
   // Medlemmer som deler produksjonsteam-prosjektet (medlemskatalogen) dukker
   // automatisk opp som crew-rader, med tilgjengelighet hentet fra deres egen
-  // kalender (role_room_member_availability). Manuelt opprettede crew-rader med
-  // samme e-post beriker vi i stedet for å duplisere.
-  const [projectMembers, setProjectMembers] = useState<Array<MemberListItem & { email?: string | null }>>([]);
-  const [availabilityByUser, setAvailabilityByUser] = useState<Map<string, CrewAvailabilityOverlay>>(new Map());
-
-  useEffect(() => {
-    if (!projectId) { setProjectMembers([]); setAvailabilityByUser(new Map()); return; }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { members } = await roleRoomMemberProfileService.listMembers({ projectId, limit: 100 });
-        if (cancelled) return;
-        setProjectMembers(members);
-        const overlay = new Map<string, CrewAvailabilityOverlay>();
-        await Promise.all(members.map(async (m) => {
-          try {
-            const entries = await roleRoomMemberProfileService.getMemberAvailability(m.userId);
-            if (entries.length) overlay.set(m.userId, availabilityEntriesToCrewCells(entries));
-          } catch { /* per-medlem: privat kalender el. nettfeil — hopp over */ }
-        }));
-        if (!cancelled) setAvailabilityByUser(overlay);
-      } catch {
-        // Katalogen kan degradere (schema-drift) — behold manuell crew uendret.
-        if (!cancelled) { setProjectMembers([]); setAvailabilityByUser(new Map()); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [projectId]);
+  // kalender (role_room_member_availability). Delt hook = samme kilde som resten
+  // av The Role Room synker mot. Manuelt opprettede crew-rader med samme e-post
+  // beriker vi i stedet for å duplisere.
+  const { members: projectMembers, availabilityByUser, emailToUser } =
+    useProjectMemberAvailability(projectId);
 
   // Manuelle crew-rader beriket med kalender + virtuelle rader for lagt-til
   // medlemmer. Kun display-avledet: `crewMembers` (persistert kilde) er urørt,
   // så redigering/lagring/sletting nedenfor treffer aldri synket data.
   const enrichedCrew = useMemo<CrewMember[]>(() => {
     if (projectMembers.length === 0) return crewMembers;
-
-    const emailToUser = new Map<string, string>();
-    for (const m of projectMembers) {
-      const em = (m.email || '').toLowerCase().trim();
-      if (em) emailToUser.set(em, m.userId);
-    }
 
     const usedUserIds = new Set<string>();
     const rows: CrewMember[] = crewMembers.map((member) => {
@@ -1276,7 +1244,7 @@ export function CrewManagementPanel({
       rows.push({ ...memberToVirtualCrew(m, overlay), availabilitySynced: Boolean(overlay) } as CrewMember);
     }
     return rows;
-  }, [crewMembers, projectMembers, availabilityByUser]);
+  }, [crewMembers, projectMembers, availabilityByUser, emailToUser]);
 
   const [editingCrewMember, setEditingCrewMember] = useState<CrewMember | null>(null);
   const [formData, setFormData] = useState<Partial<CrewMember>>({
