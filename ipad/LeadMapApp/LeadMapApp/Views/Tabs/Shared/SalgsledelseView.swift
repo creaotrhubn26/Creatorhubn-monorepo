@@ -62,24 +62,18 @@ struct SalgsledelseView: View {
             }
     }
 
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Cockpit-strip m/ 5 salgssjef-CTA-er (Pakke 10.1):
-                // Godkjenning · Team-forecast · Coaching · Kjøregodtgjørelse · Ruter.
-                // TeamRoutesTodaySheet's «Naviger dit» starter den EKTE Kart-nav-
-                // motoren (POV/Kjøre, MKDirections, POI langs rute) via
-                // AppState.requestNavigation.
-                SalgssjefCockpitStrip()
+    /// true når viewet PUSHES inn i en ytre NavigationStack (iPhone Mer-fanen).
+    /// Nestet NavigationStack i en push tripper SwiftUI-assertion på enhet
+    /// (samme klasse som Leadgrid Go-krasjen 2026-07-16) — da hopper vi over
+    /// vår egen stack og lar den ytre eie navigasjonen.
+    var embeddedInStack = false
 
-                // Full Salgsledelse-suite (4 sub-tabs: Provisjon/Konkurranser/
-                // Premie-katalog/Tildel premier) portet fra preview.
-                // embedded: true → skjuler X-lukkeknappen (arv fra sheet-modus).
-                SalesLeadershipSheet(
-                    sellers: sellers,
-                    currentUserName: currentUserName,
-                    embedded: true
-                )
+    var body: some View {
+        Group {
+            if embeddedInStack {
+                inner
+            } else {
+                NavigationStack { inner }
             }
         }
         // Ekte team-data når demo er AV — attach er idempotent (samme
@@ -89,6 +83,26 @@ struct SalgsledelseView: View {
             if let api = appState.api {
                 TeamLiveStore.shared.attach(api: api, appState: appState)
             }
+        }
+    }
+
+    private var inner: some View {
+        VStack(spacing: 0) {
+            // Cockpit-strip m/ 5 salgssjef-CTA-er (Pakke 10.1):
+            // Godkjenning · Team-forecast · Coaching · Kjøregodtgjørelse · Ruter.
+            // TeamRoutesTodaySheet's «Naviger dit» starter den EKTE Kart-nav-
+            // motoren (POV/Kjøre, MKDirections, POI langs rute) via
+            // AppState.requestNavigation.
+            SalgssjefCockpitStrip()
+
+            // Full Salgsledelse-suite (4 sub-tabs: Provisjon/Konkurranser/
+            // Premie-katalog/Tildel premier) portet fra preview.
+            // embedded: true → skjuler X-lukkeknappen (arv fra sheet-modus).
+            SalesLeadershipSheet(
+                sellers: sellers,
+                currentUserName: currentUserName,
+                embedded: true
+            )
         }
     }
 }

@@ -468,6 +468,7 @@ struct UpsellSheet: View {
         case .rapportExport: return "Eksport til CSV/PDF, delte rapporter (Slack + e-post) og bulk-handlinger for team-data."
         case .analyseAI: return "AI-drevne innsikts-verktøy: forecast, sammenligning, pipeline-helse og formel-forslag."
         case .leadgridGo: return "Leadgrid Go — automatisk elektronisk kjørebok, kjøregodtgjørelse og kjøretøy-oversikt for hele teamet."
+        case .kvalitet: return "Kvalitet — verifiser vunnede salg med velkomstsamtale, samtale-maler per produkt og kvalitetsscore per selger."
         }
     }
 }

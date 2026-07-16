@@ -49,6 +49,7 @@ const ROLE_RANK: Record<string, number> = {
   admin: 7,
   salgssjef: 6,
   teamleder: 5,
+  kvalitet: 4,        // sidestilt med salgskonsulent — kontrollerer salg, selger ikke
   salgskonsulent: 4,
   promotor: 3,
   member: 2,
@@ -64,7 +65,7 @@ function classifyChange(from: string | null, to: string): string {
 }
 
 const VALID_TARGET_ROLES = new Set([
-  "salgssjef", "teamleder", "salgskonsulent", "promotor", "member", "viewer",
+  "salgssjef", "teamleder", "salgskonsulent", "kvalitet", "promotor", "member", "viewer",
 ]);
 
 function yearMonth(): string {

@@ -24,6 +24,7 @@ struct PairingView: View {
     @State private var isGoogleSigning = false
     @State private var errorMessage: String?
     @State private var showManualCode = false
+    @State private var showGetStarted = false
 
     var body: some View {
         ZStack {
@@ -153,17 +154,26 @@ struct PairingView: View {
 
             Spacer()
 
-            // Footer m/ link til registrering
+            // Footer: «Kom i gang» — interessenter blir LEADS for Leadgrid
+            // (ingen konto-opprettelse her; salg tar kontakt). Nettside: leadgrid.no.
             VStack(spacing: 4) {
                 Text("Ny her?")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.5))
-                Link("Opprett konto på theroleroom.com/leadgrid",
-                     destination: URL(string: "https://theroleroom.com/leadgrid")!)
-                    .font(.caption.bold())
-                    .foregroundStyle(.tint)
+                Button {
+                    showGetStarted = true
+                } label: {
+                    Text("Kom i gang med Leadgrid")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tint)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.bottom, 24)
+            .sheet(isPresented: $showGetStarted) {
+                LeadgridGetStartedSheet()
+                    .presentationDetents([.height(340)])
+            }
         }
         // Topp-padding fjernet — Spacer() øverst og Spacer() foran footer
         // sentrerer nå innholdet vertikalt.
@@ -175,7 +185,7 @@ struct PairingView: View {
             Label("Slik henter du koden", systemImage: "info.circle")
                 .font(.caption.bold())
                 .foregroundStyle(.tint)
-            Text("1. Logg inn på theroleroom.com/leadgrid")
+            Text("1. Logg inn på leadgrid.no")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text("2. Innstillinger → Mine enheter → Par ny enhet")
@@ -242,4 +252,101 @@ struct PairingView: View {
 // Workaround: Color.tint krever ekstern type — bruker en mild accent.
 private extension Color {
     static var tint: Color { Color(red: 0.752, green: 0.518, blue: 0.988) } // #c084fc (samme som web-accent)
+}
+
+// MARK: - «Kom i gang» — interessent-e-post blir lead for Leadgrid
+
+/// Vist fra login-footeren: e-post inn → POST /api/leadgrid/signup-interest
+/// (offentlig endepunkt — ingen sesjon finnes her) → Leadgrid-salg tar kontakt.
+struct LeadgridGetStartedSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var email = ""
+    @State private var sending = false
+    @State private var sent = false
+    @State private var errorMessage: String?
+
+    private var emailLooksValid: Bool {
+        let t = email.trimmingCharacters(in: .whitespaces)
+        return t.contains("@") && t.contains(".") && t.count >= 6
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Capsule().fill(.white.opacity(0.25)).frame(width: 40, height: 5).padding(.top, 10)
+            if sent {
+                Spacer()
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 44)).foregroundStyle(.green)
+                Text("Takk for interessen!")
+                    .font(.title3.bold()).foregroundStyle(.white)
+                Text("Vi tar kontakt på \(email.trimmingCharacters(in: .whitespaces)) for å komme i gang.")
+                    .font(.callout).foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center).padding(.horizontal, 28)
+                Text("Les mer på leadgrid.no")
+                    .font(.caption).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button("Lukk") { dismiss() }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .padding(.bottom, 20)
+            } else {
+                Text("Kom i gang med Leadgrid")
+                    .font(.title3.bold()).foregroundStyle(.white)
+                Text("Legg igjen e-posten din, så tar vi kontakt og setter opp bedriften deres.")
+                    .font(.callout).foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center).padding(.horizontal, 28)
+                TextField("din@bedrift.no", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.white)
+                    .padding(14)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 24)
+                if let errorMessage {
+                    Text(errorMessage).font(.caption).foregroundStyle(.red)
+                }
+                Button {
+                    Task { await submit() }
+                } label: {
+                    if sending {
+                        ProgressView().tint(.white).frame(maxWidth: .infinity)
+                    } else {
+                        Text("Kom i gang").fontWeight(.bold).frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.horizontal, 24)
+                .disabled(!emailLooksValid || sending)
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.05, green: 0.04, blue: 0.10))
+        .preferredColorScheme(.dark)
+    }
+
+    private func submit() async {
+        sending = true; errorMessage = nil
+        defer { sending = false }
+        struct Body: Encodable { let email: String; let source: String }
+        guard let url = URL(string: "\(APIClient.baseURL)/api/leadgrid/signup-interest") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(
+            Body(email: email.trimmingCharacters(in: .whitespaces), source: "app_login"))
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200 {
+                sent = true
+            } else {
+                errorMessage = "Sjekk at e-posten er riktig og prøv igjen."
+            }
+        } catch {
+            errorMessage = "Fikk ikke kontakt med serveren — prøv igjen."
+        }
+    }
 }

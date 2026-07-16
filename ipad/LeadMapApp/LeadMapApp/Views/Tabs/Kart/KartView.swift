@@ -1194,10 +1194,17 @@ struct KartView: View {
     private var content: some View {
         // Header + søk er FAST øverst. Resten scrolles internt slik at
         // detailPanel (kan bli lang i Notater-tab) ikke dytter ut header.
+        //
+        // AnyView på hver hovedgren er LOAD-BEARING, ikke pynt: den samlede
+        // opake typen av denne fanen ble så dypt nestet at Swift-runtimens
+        // metadata-oppløsning (swift_getTypeByMangledName) rekurserte forbi
+        // 1 MB-stacken på ekte enhet → SIGSEGV ved oppstart (iOS 26.5.2,
+        // build 20260717). Simulator overlever (8 MB stack) — fjern ALDRI
+        // erasure her uten å teste på fysisk enhet.
         VStack(spacing: 0) {
-            kartHeader
+            AnyView(kartHeader)
                 .padding(.horizontal, 20).padding(.top, 14)
-            searchAndFilters
+            AnyView(searchAndFilters)
                 .padding(.horizontal, 20).padding(.top, 12)
                 .padding(.bottom, 12)
 
@@ -1210,23 +1217,23 @@ struct KartView: View {
                     : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
                 columns {
                     VStack(spacing: 12) {
-                        mapCard
+                        AnyView(mapCard)
                             // Kartet skal dominere Kart-fanen. På iPad/Mac
                             // (romslig vindu) gir vi det vesentlig mer høyde;
                             // iPhone holder en kompakt høyde så resten får plass.
                             .frame(minHeight: DeviceIdiom.isPhone ? 360 : 520,
                                    maxHeight: DeviceIdiom.isPhone ? 460 : 680)
-                        legendCard
+                        AnyView(legendCard)
                         if showDetailPanel {
-                            detailPanel
+                            AnyView(detailPanel)
                         } else {
-                            emptyDetailPanel
+                            AnyView(emptyDetailPanel)
                         }
                     }
                     .frame(maxWidth: .infinity)
 
                     VStack(spacing: 12) {
-                        leadsInAreaCard
+                        AnyView(leadsInAreaCard)
                         Spacer(minLength: 0)
                     }
                     .kartColumnWidth(300)

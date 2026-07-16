@@ -155,6 +155,7 @@ enum PlanDefaults {
                 // Starter: kun sammenlign-forrige gratis, AI-features som addOn
                 state = (feature == .teamCompareToPrevious) ? .included : .addOn
             case .leadgridGo: state = .addOn   // tilleggstjeneste
+            case .kvalitet: state = .addOn     // tilleggstjeneste
             }
             if feature == .leads { limit = 500 }
         case .pro:
@@ -165,6 +166,7 @@ enum PlanDefaults {
                 // Pro: alle analyse-features inkludert, AI-formel som trial (14 dager)
                 state = (feature == .teamAIFormulaSuggest) ? .trial : .included
             case .leadgridGo: state = .addOn   // tilleggstjeneste (også på Pro)
+            case .kvalitet: state = .addOn     // tilleggstjeneste (også på Pro)
             default: state = .included
             }
         case .enterprise: state = .included

@@ -16,7 +16,7 @@ settings:
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: "20260708"
+    CURRENT_PROJECT_VERSION: "20260718"
     MARKETING_VERSION: "1.4.0"
 
 targets:
@@ -38,6 +38,8 @@ targets:
     info:
       path: LeadMapApp/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         UILaunchScreen:
@@ -148,6 +150,8 @@ targets:
     info:
       path: LeadMapWidget/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
@@ -199,6 +203,8 @@ targets:
     info:
       path: LeadgridWatchApp/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         WKApplication: true
@@ -269,6 +275,8 @@ targets:
     info:
       path: LeadgridVisionApp/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         UIApplicationSceneManifest:

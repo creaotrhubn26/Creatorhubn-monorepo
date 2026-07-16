@@ -82,15 +82,17 @@ final class TripService {
         return r?.bookings ?? []
     }
     /// Reserver. Returnerer nil ved suksess, ellers en feilkode («time_conflict» osv.).
+    /// `vehicleId` (flåtebil) vinner over fritekst-label på serveren.
     func createBooking(label: String, plate: String?, startAt: Date, endAt: Date,
-                       purpose: String, bookedByName: String, using api: APIClient?) async -> String? {
+                       purpose: String, bookedByName: String,
+                       vehicleId: String? = nil, using api: APIClient?) async -> String? {
         guard let api else { return "no_api" }
         struct Body: Encodable {
-            let vehicleLabel: String; let vehiclePlate: String?
+            let vehicleLabel: String; let vehiclePlate: String?; let vehicleId: String?
             let startAt: String; let endAt: String; let purpose: String; let bookedByName: String
         }
         let iso = ISO8601DateFormatter()
-        let body = Body(vehicleLabel: label, vehiclePlate: plate,
+        let body = Body(vehicleLabel: label, vehiclePlate: plate, vehicleId: vehicleId,
                         startAt: iso.string(from: startAt), endAt: iso.string(from: endAt),
                         purpose: purpose, bookedByName: bookedByName)
         do {
@@ -102,6 +104,79 @@ final class TripService {
         guard let api else { return }
         try? await api._delete("/api/leadgrid/vehicle/bookings/\(id)")
     }
+
+    // MARK: flåteregister — org-EIDE firmabiler (admin registrerer sentralt)
+
+    private struct OrgVehiclesResponse: Decodable { let vehicles: [OrgVehicle] }
+    private struct IdAck: Decodable { let ok: Bool?; let id: String?; let error: String? }
+
+    /// Aktiv flåte i org-en. Tom liste ved feil (og for org uten flåte).
+    func orgVehicles(using api: APIClient?) async -> [OrgVehicle] {
+        guard let api else { return [] }
+        let r: OrgVehiclesResponse? = try? await api._get("/api/leadgrid/org-vehicles")
+        return r?.vehicles ?? []
+    }
+
+    struct OrgVehicleDraft: Encodable {
+        var plate: String
+        var displayName: String
+        var fuel: String
+        var kind: String = "car"
+        var euControlDue: String?
+        var isShared: Bool = true
+        var assignedUserId: String?
+        var note: String = ""
+    }
+
+    /// Registrer firmabil. Returnerer nil ved suksess, ellers feilkode
+    /// («plate_exists», «not_go_admin» …).
+    func createOrgVehicle(_ draft: OrgVehicleDraft, using api: APIClient?) async -> String? {
+        guard let api else { return "no_api" }
+        do {
+            let r: IdAck = try await api._post("/api/leadgrid/org-vehicles", body: draft)
+            return r.ok == true ? nil : (r.error ?? "failed")
+        } catch { return "plate_exists" }   // 409 → duplikat (vanligste feil)
+    }
+
+    /// PATCH — kun satte felter sendes (JSONEncoder utelater nil-optionals).
+    struct OrgVehiclePatch: Encodable {
+        var displayName: String?
+        var fuel: String?
+        var euControlDue: String?
+        var isShared: Bool?
+        var assignedUserId: String?   // "" → fjern tildeling (server tolker tom som null)
+        var note: String?
+        var status: String?
+    }
+
+    func updateOrgVehicle(id: String, _ patch: OrgVehiclePatch, using api: APIClient?) async -> Bool {
+        guard let api else { return false }
+        do { try await api._patch("/api/leadgrid/org-vehicles/\(id)", body: patch); return true }
+        catch { return false }
+    }
+
+    /// Avregistrer (soft delete — historikk/booking-referanser består).
+    func retireOrgVehicle(id: String, using api: APIClient?) async -> Bool {
+        guard let api else { return false }
+        do { try await api._delete("/api/leadgrid/org-vehicles/\(id)"); return true }
+        catch { return false }
+    }
+}
+
+/// Org-eid firmabil fra flåteregisteret (leadgrid_org_vehicles).
+struct OrgVehicle: Decodable, Identifiable, Hashable {
+    let id: String
+    let plate: String
+    let displayName: String?
+    let fuel: String?
+    let kind: String?
+    let euControlDue: String?
+    let isShared: Bool
+    let assignedUserId: String?
+    let assignedUserName: String?
+    let note: String?
+    let status: String?
+    var label: String { (displayName?.isEmpty == false ? displayName! : plate) }
 }
 
 struct GoFleetVehicle: Decodable, Identifiable, Hashable {

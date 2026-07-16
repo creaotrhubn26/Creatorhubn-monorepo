@@ -512,7 +512,7 @@ struct PhoneMerTab: View {
     @Environment(AppState.self) private var state
 
     private enum Destination: Int, Hashable {
-        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8
+        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9
     }
 
     @State private var path: [Destination] = {
@@ -538,19 +538,30 @@ struct PhoneMerTab: View {
                            title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
                     merRow(.leadgridGo, icon: "car.circle.fill", color: .green,
                            title: "Leadgrid Go", subtitle: "Elektronisk kjørebok og kjøretøy")
+                    merRow(.kvalitet, icon: "checkmark.seal.fill", color: .teal,
+                           title: "Kvalitet", subtitle: "Verifiser salg med velkomstsamtale")
                 }
             }
             .navigationTitle("Mer")
             .navigationDestination(for: Destination.self) { dest in
-                Group {
-                    switch dest {
-                    case .team: TeamView()
-                    case .leadbook: LeadbookView()
-                    case .salgsledelse: SalgsledelseView()
-                    case .leadgridGo: LeadgridGoDashboardView()
-                    }
+                // Team/Leadbook/Salgsledelse har egne fulle headere → skjult navbar.
+                // Leadgrid Go bruker system-navigasjon og pushes EMBEDDED (uten sin
+                // egen NavigationStack — nestet stack i push tripper SwiftUI-assertion).
+                switch dest {
+                case .team:
+                    TeamView().toolbar(.hidden, for: .navigationBar)
+                case .leadbook:
+                    LeadbookView().toolbar(.hidden, for: .navigationBar)
+                case .salgsledelse:
+                    SalgsledelseView(embeddedInStack: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .leadgridGo:
+                    LeadgridGoDashboardView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .kvalitet:
+                    KvalitetView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
                 }
-                .toolbar(.hidden, for: .navigationBar)
             }
         }
     }
@@ -773,6 +784,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case leadbook
     case salgsledelse
     case leadgridGo
+    case kvalitet
 
     var id: String { rawValue }
 
@@ -786,6 +798,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .leadbook:     return "Leadbook"
         case .salgsledelse: return "Salgsledelse"
         case .leadgridGo:   return "Leadgrid Go"
+        case .kvalitet:     return "Kvalitet"
         }
     }
 
@@ -799,6 +812,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .leadbook:     return "book.pages.fill"
         case .salgsledelse: return "rosette"
         case .leadgridGo:   return "car.circle.fill"
+        case .kvalitet:     return "checkmark.seal.fill"
         }
     }
 }
@@ -925,6 +939,7 @@ struct MainSidebarView: View {
         case .leadbook:     LeadbookView()
         case .salgsledelse: SalgsledelseView()
         case .leadgridGo:   LeadgridGoDashboardView()
+        case .kvalitet:     KvalitetView()
         }
     }
 

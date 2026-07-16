@@ -11,10 +11,12 @@ struct LeadgridGoBookingView: View {
     @Environment(AppState.self) private var appState
 
     @State private var fleet: [GoFleetVehicle] = []
+    @State private var orgFleet: [OrgVehicle] = []   // flåteregisteret (delte biler)
     @State private var bookings: [GoBooking] = []
     @State private var loading = false
 
-    // Ny reservasjon
+    // Ny reservasjon — flåtebil (orgSelected) vinner over selvregistrert.
+    @State private var orgSelected: OrgVehicle?
     @State private var selected: GoFleetVehicle?
     @State private var start = Date()
     @State private var end = Date().addingTimeInterval(3600)
@@ -50,29 +52,49 @@ struct LeadgridGoBookingView: View {
     private func load() async {
         loading = true
         async let f = TripService.shared.fleet(using: appState.api)
+        async let o = TripService.shared.orgVehicles(using: appState.api)
         async let b = TripService.shared.bookings(using: appState.api)
         fleet = await f
+        orgFleet = (await o).filter { $0.isShared }   // kun bookbare
         bookings = await b
-        if selected == nil { selected = fleet.first }
+        if orgSelected == nil && selected == nil {
+            if let first = orgFleet.first { orgSelected = first } else { selected = fleet.first }
+        }
         loading = false
     }
 
     private var newBookingCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Reserver bil").font(.appScaled(size: 15, weight: .bold)).foregroundStyle(.white)
-            if fleet.isEmpty {
-                Text("Ingen firmabiler registrert ennå. Sjåfører markerer bilen som «Firmabil» i Min bil.")
+            if fleet.isEmpty && orgFleet.isEmpty {
+                Text("Ingen firmabiler registrert ennå. Admin registrerer flåten i Leadgrid Go Dashboard, eller sjåfører markerer bilen som «Firmabil» i Min bil.")
                     .font(.appScaled(size: 11)).foregroundStyle(NavPOIBrand.textSecondary)
             } else {
-                // Velg bil
+                // Velg bil — flåtebiler (org-registrerte, delte) først.
                 Menu {
-                    ForEach(fleet) { v in
-                        Button { selected = v } label: { Text("\(v.label)\(v.driverName.map { " · \($0)" } ?? "")") }
+                    if !orgFleet.isEmpty {
+                        Section("Flåte") {
+                            ForEach(orgFleet) { v in
+                                Button { orgSelected = v; selected = nil } label: {
+                                    Text("\(v.label) · \(v.plate)")
+                                }
+                            }
+                        }
+                    }
+                    if !fleet.isEmpty {
+                        Section("Selvregistrerte firmabiler") {
+                            ForEach(fleet) { v in
+                                Button { selected = v; orgSelected = nil } label: {
+                                    Text("\(v.label)\(v.driverName.map { " · \($0)" } ?? "")")
+                                }
+                            }
+                        }
                     }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "car.fill").foregroundStyle(NavPOIBrand.purpleLight)
-                        Text(selected?.label ?? "Velg bil").font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
+                        Text(orgSelected?.label ?? selected?.label ?? "Velg bil")
+                            .font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down").font(.appScaled(size: 10)).foregroundStyle(NavPOIBrand.textSecondary)
                     }
@@ -97,7 +119,7 @@ struct LeadgridGoBookingView: View {
                     .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(LinearGradient(colors: [NavPOIBrand.purple, NavPOIBrand.purpleLight], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 11))
                 }
-                .buttonStyle(.plain).disabled(submitting || selected == nil)
+                .buttonStyle(.plain).disabled(submitting || (selected == nil && orgSelected == nil))
             }
         }
         .padding(14)
@@ -106,12 +128,16 @@ struct LeadgridGoBookingView: View {
     }
 
     private func submit() async {
-        guard let v = selected else { return }
+        guard orgSelected != nil || selected != nil else { return }
         submitting = true; errorMsg = nil
         defer { submitting = false }
+        // Flåtebil: server slår opp label/plate fra vehicleId (org-verifisert).
         let err = await TripService.shared.createBooking(
-            label: v.label, plate: v.plate, startAt: start, endAt: end,
-            purpose: purpose, bookedByName: appState.displayName, using: appState.api)
+            label: orgSelected?.label ?? selected?.label ?? "",
+            plate: orgSelected?.plate ?? selected?.plate,
+            startAt: start, endAt: end,
+            purpose: purpose, bookedByName: appState.displayName,
+            vehicleId: orgSelected?.id, using: appState.api)
         if let err {
             errorMsg = err == "time_conflict" ? "Bilen er allerede reservert i dette tidsrommet." : "Kunne ikke reservere."
         } else {

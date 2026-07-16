@@ -89,6 +89,8 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     case leadgridGoKjorebok = "Leadgrid Go · Kjørebok"
     case leadgridGoAuto = "Leadgrid Go · Auto-registrering"
     case leadgridGoDashboard = "Leadgrid Go · Team-dashbord"
+    // Kvalitet-avdelingen — tilleggstjeneste (salgsverifisering). Gate GRUPPEN.
+    case leadgridKvalitet = "Kvalitet · Salgsverifisering"
 
     var id: String { rawValue }
 
@@ -141,6 +143,8 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridGoKjorebok: return "book.closed.fill"
         case .leadgridGoAuto: return "car.fill"
         case .leadgridGoDashboard: return "chart.bar.doc.horizontal.fill"
+        // Kvalitet
+        case .leadgridKvalitet: return "checkmark.seal.fill"
         }
     }
 
@@ -157,6 +161,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .routeTracking, .routeAdherenceReports, .teamNearbyView,
              .createLeadAtPosition: return .kjerne
         case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo
+        case .leadgridKvalitet: return .kvalitet
         }
     }
 
@@ -168,6 +173,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case rapportExport = "Rapport & eksport"
         case analyseAI = "Analyse & AI"
         case leadgridGo = "Leadgrid Go"
+        case kvalitet = "Kvalitet"
         var id: String { rawValue }
         var icon: String {
             switch self {
@@ -178,6 +184,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
             case .rapportExport: return "square.and.arrow.up.on.square.fill"
             case .analyseAI: return "sparkles"
             case .leadgridGo: return "car.circle.fill"
+            case .kvalitet: return "checkmark.seal.fill"
             }
         }
         var tint: Color {
@@ -189,6 +196,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
             case .rapportExport: return LBrand.yellow
             case .analyseAI: return LBrand.pink
             case .leadgridGo: return LBrand.green
+            case .kvalitet: return Color.teal
             }
         }
     }

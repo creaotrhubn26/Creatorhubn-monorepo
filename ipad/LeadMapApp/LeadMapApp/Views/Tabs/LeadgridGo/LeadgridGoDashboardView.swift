@@ -11,6 +11,12 @@
 import SwiftUI
 
 struct LeadgridGoDashboardView: View {
+    /// true når viewet PUSHES inn i en ytre NavigationStack (iPhone Mer-fanen).
+    /// Da må vi IKKE lage vår egen NavigationStack — nestet stack i en push
+    /// tripper SwiftUI-assertion (SIGTRAP i NavigationColumnState.boundPathChange,
+    /// krasjlogg 2026-07-16 14:27, iOS 26.5.2). iPad/sidebar bruker default false.
+    var embedded = false
+
     @Environment(AppState.self) private var appState
     @State private var team: GoTeamResponse?
     @State private var loadingTeam = false
@@ -32,21 +38,14 @@ struct LeadgridGoDashboardView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    if isGoAdmin { adminSection }
-                    personalSection
-                    Color.clear.frame(height: 24)
+        Group {
+            if embedded {
+                inner   // ytre stack eier navigasjonen; navbar skjules av pushen
+            } else {
+                NavigationStack {
+                    inner.toolbar(.hidden, for: .navigationBar)
                 }
-                .padding(16)
             }
-            .background(NavPOIBrand.bg.ignoresSafeArea())
-            .navigationTitle("Leadgrid Go")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(NavPOIBrand.bg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .gated(.leadgridGoKjorebok)   // tilleggstjeneste — låst uten entitlement
         .sheet(isPresented: $showVehicle) {
@@ -55,6 +54,51 @@ struct LeadgridGoDashboardView: View {
         .sheet(isPresented: $showKjorebok) { KjorebokView() }
         .sheet(isPresented: $showBooking) { LeadgridGoBookingView() }
         .task { await loadTeam() }
+    }
+
+    /// Demo-aware datakilde for header-badges (samme gating som søsterfanene).
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
+    }
+
+    private var goHeader: some View {
+        LeadgridTabHeader(
+            subtitle: "Elektronisk kjørebok, flåte og kjøretøy.",
+            leads: headerLeads
+        ) {
+            Button { showBooking = true } label: {
+                Label("Book bil", systemImage: "calendar.badge.plus")
+                    .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(NavPOIBrand.purple, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var inner: some View {
+        // Delt fane-header (fasit: Team/Leadbook) i stedet for system-navbar —
+        // pushen fra Mer skjuler navbaren, tilbake = swipe som søsterfanene.
+        VStack(spacing: 0) {
+            AnyView(goHeader)
+                .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 12)
+            ScrollView {
+                VStack(spacing: 14) {
+                    if isGoAdmin {
+                        adminSection
+                        // Flåteregister — egen struct + AnyView-terskel med vilje
+                        // (dashboard-typen skal ikke vokse, jf. KartView-krasjen).
+                        AnyView(GoFleetAdminSection(drivers: team?.drivers ?? []))
+                    }
+                    personalSection
+                    Color.clear.frame(height: 24)
+                }
+                .padding(16)
+            }
+        }
+        .background(NavPOIBrand.bg.ignoresSafeArea())
     }
 
     private func loadTeam() async {
