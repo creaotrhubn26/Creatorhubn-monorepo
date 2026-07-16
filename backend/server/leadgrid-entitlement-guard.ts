@@ -139,3 +139,6 @@ export const LEADGRID_GO_FEATURE_KEYS = [
   "leadgridGoAuto",
   "leadgridGoDashboard",
 ];
+
+/** Kvalitet-avdelingen (tilleggstjeneste) — salgsverifisering m/ samtale-maler. */
+export const LEADGRID_KVALITET_FEATURE_KEYS = ["leadgridKvalitet"];
