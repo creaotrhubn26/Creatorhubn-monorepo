@@ -13,13 +13,15 @@ import { useEffect, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, Divider, IconButton, Stack, Tab, Tabs,
-  TextField, Typography,
+  TextField, Tooltip, Typography,
 } from '@mui/material';
 import {
   Close, Delete, DeleteForever, PersonAdd, PersonOff, Person,
 } from '@mui/icons-material';
 import { roleRoomProjectMembersService } from '../services/roleRoomProjectMembersService';
 import type { ProjectMember } from '../services/roleRoomProjectMembersService';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
+import { summarizeAvailabilityForToday } from '../utils/crewAvailabilitySync';
 
 export interface ProjectMembersDialogProps {
   open: boolean;
@@ -42,6 +44,10 @@ export function ProjectMembersDialog({
   const [confirmRemove, setConfirmRemove] = useState<ProjectMember | null>(null);
   const [removeReason, setRemoveReason] = useState('');
   const [permanentNotice, setPermanentNotice] = useState(false);
+
+  // Tilgjengelighet fra medlemmenes egne kalendere (samme delte kilde som Crew
+  // Management) — så lederen ser hvem som er ledig mens teamet settes sammen.
+  const { availabilityByUser } = useProjectMemberAvailability(open ? projectId : undefined);
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -140,6 +146,7 @@ export function ProjectMembersDialog({
                   key={m.userId}
                   member={m}
                   busy={busy === m.userId}
+                  availabilityLabel={summarizeAvailabilityForToday(availabilityByUser.get(m.userId))}
                   actions={
                     <Button size="small" color="error" startIcon={<PersonOff />}
                             disabled={busy === m.userId}
@@ -236,8 +243,9 @@ export function ProjectMembersDialog({
   );
 }
 
-function MemberRow({ member, actions, busy }: {
+function MemberRow({ member, actions, busy, availabilityLabel }: {
   member: ProjectMember; actions: React.ReactNode; busy: boolean;
+  availabilityLabel?: string | null;
 }) {
   return (
     <Box sx={{ p: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5,
@@ -264,6 +272,20 @@ function MemberRow({ member, actions, busy }: {
             {member.professions.slice(0, 3).map((p) => (
               <Chip key={p} label={p} size="small" sx={{ height: 18, fontSize: 11 }} />
             ))}
+          </Stack>
+        )}
+        {availabilityLabel && (
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+            <Chip
+              label={availabilityLabel}
+              size="small"
+              variant="outlined"
+              sx={{ height: 18, fontSize: 11, borderColor: '#a030c0', color: '#c07fe0' }}
+            />
+            <Tooltip title="Synket fra medlemmets egen kalender" arrow>
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#a030c0',
+                         boxShadow: '0 0 4px rgba(160,48,192,0.9)' }} />
+            </Tooltip>
           </Stack>
         )}
       </Box>
