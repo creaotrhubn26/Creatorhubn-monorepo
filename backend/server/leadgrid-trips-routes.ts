@@ -94,6 +94,33 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_lg_vbookings_org ON leadgrid_vehicle_bookings (organization_id, start_at)`,
   );
+  // Flåteregister: org-EIDE firmabiler (mig 0376) — sentralt registrert av
+  // admin, i motsetning til leadgrid_vehicles (sjåførens egen «Min bil»).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_org_vehicles (
+      id UUID PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      plate TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      fuel TEXT NOT NULL DEFAULT 'unknown',
+      kind TEXT NOT NULL DEFAULT 'car',
+      eu_control_due DATE,
+      is_shared BOOLEAN NOT NULL DEFAULT true,
+      assigned_user_id TEXT,
+      assigned_user_name TEXT,
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_lg_orgveh_org_plate_active
+       ON leadgrid_org_vehicles (organization_id, plate) WHERE status = 'active'`,
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_lg_orgveh_org_status ON leadgrid_org_vehicles (organization_id, status)`,
+  );
   schemaReady = true;
 }
 
@@ -654,6 +681,186 @@ export function registerLeadgridTripsRoutes(deps: {
     }
   });
 
+  // ── Flåteregister: org-eide firmabiler ───────────────────────────
+  // Lesing: alle org-medlemmer m/ Go-entitlement (booking-velger + «Min bil»
+  // trenger lista). Skriving: kun Go-admin (admin/salgssjef/leadgrid_go.admin).
+  async function requireGoAdmin(res: Response, orgId: string, userId: string): Promise<boolean> {
+    const { role, permissions } = await resolveEffectivePermissions(pool, orgId, userId);
+    const ok =
+      (role && GO_ADMIN_ROLES.has(role)) ||
+      permissions.has("leadgrid_go.admin") ||
+      permissions.has("teams.view");
+    if (!ok) res.status(403).json({ error: "not_go_admin" });
+    return ok;
+  }
+
+  const orgVehicleDto = (v: any) => ({
+    id: v.id,
+    plate: v.plate,
+    display_name: v.display_name,
+    fuel: v.fuel,
+    kind: v.kind,
+    eu_control_due: v.eu_control_due
+      ? new Date(v.eu_control_due).toISOString().slice(0, 10) : null,
+    is_shared: v.is_shared,
+    assigned_user_id: v.assigned_user_id,
+    assigned_user_name: v.assigned_user_name,
+    note: v.note,
+    status: v.status,
+  });
+
+  // GET /org-vehicles — aktiv flåte i innloggedes org.
+  app.get("/api/leadgrid/org-vehicles", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const r = await pool.query(
+        `SELECT * FROM leadgrid_org_vehicles
+          WHERE organization_id = $1 AND status = 'active'
+          ORDER BY display_name, plate LIMIT 500`,
+        [orgId],
+      );
+      return res.json({ vehicles: r.rows.map(orgVehicleDto) });
+    } catch (err) {
+      console.warn("[leadgrid-trips] org-vehicles list failed:", (err as Error).message);
+      return res.status(500).json({ error: "org_vehicles_failed" });
+    }
+  });
+
+  // POST /org-vehicles — registrer firmabil (Go-admin).
+  app.post("/api/leadgrid/org-vehicles", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!(await requireGoAdmin(res, orgId, session.userId))) return;
+      const b = req.body || {};
+      const plate = String(b.plate ?? "").trim().toUpperCase().replace(/\s+/g, "");
+      if (!plate || plate.length > 12) return res.status(400).json({ error: "invalid_plate" });
+      // Tildelt sjåfør må være medlem av SAMME org (IDOR-vern: aldri stol på id-en alene).
+      let assignedId: string | null = null;
+      let assignedName: string | null = null;
+      const rawAssigned = b.assignedUserId ?? b.assigned_user_id;
+      if (rawAssigned) {
+        const m = await pool.query(
+          `SELECT om.user_id, COALESCE(up.display_name, u.email, om.user_id) AS name
+             FROM organization_members om
+             LEFT JOIN user_profiles up ON up.user_id = om.user_id AND up.organization_id = $1
+             LEFT JOIN users u ON u.id = om.user_id
+            WHERE om.organization_id = $1 AND om.user_id = $2`,
+          [orgId, String(rawAssigned)],
+        );
+        if (m.rowCount === 0) return res.status(400).json({ error: "assigned_not_in_org" });
+        assignedId = m.rows[0].user_id;
+        assignedName = m.rows[0].name;
+      }
+      const id = (globalThis.crypto as any).randomUUID();
+      await pool.query(
+        `INSERT INTO leadgrid_org_vehicles
+           (id, organization_id, plate, display_name, fuel, kind, eu_control_due,
+            is_shared, assigned_user_id, assigned_user_name, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, orgId, plate, String(b.displayName ?? b.display_name ?? ""),
+         String(b.fuel ?? "unknown"), String(b.kind ?? "car"),
+         b.euControlDue ?? b.eu_control_due ?? null,
+         assignedId == null ? (b.isShared ?? b.is_shared ?? true) : false,
+         assignedId, assignedName, String(b.note ?? "")],
+      );
+      return res.json({ ok: true, id });
+    } catch (err: any) {
+      if (String(err?.code) === "23505") return res.status(409).json({ error: "plate_exists" });
+      console.warn("[leadgrid-trips] org-vehicle create failed:", (err as Error).message);
+      return res.status(500).json({ error: "org_vehicle_create_failed" });
+    }
+  });
+
+  // PATCH /org-vehicles/:id — rediger/tildel/avregistrer (Go-admin).
+  app.patch("/api/leadgrid/org-vehicles/:id", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    const id = req.params.id;
+    if (!UUID_RE.test(id)) return res.status(400).json({ error: "invalid_id" });
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!(await requireGoAdmin(res, orgId, session.userId))) return;
+      const b = req.body || {};
+      const sets: string[] = [];
+      const params: any[] = [id, orgId];
+      const push = (sql: string, val: any) => { params.push(val); sets.push(`${sql} = $${params.length}`); };
+      if (b.displayName !== undefined || b.display_name !== undefined)
+        push("display_name", String(b.displayName ?? b.display_name ?? ""));
+      if (b.fuel !== undefined) push("fuel", String(b.fuel));
+      if (b.kind !== undefined) push("kind", String(b.kind));
+      if (b.euControlDue !== undefined || b.eu_control_due !== undefined)
+        push("eu_control_due", b.euControlDue ?? b.eu_control_due ?? null);
+      if (b.note !== undefined) push("note", String(b.note));
+      if (b.status !== undefined && ["active", "retired"].includes(String(b.status)))
+        push("status", String(b.status));
+      const rawAssigned = b.assignedUserId ?? b.assigned_user_id;
+      if (rawAssigned !== undefined) {
+        if (rawAssigned === null || rawAssigned === "") {
+          push("assigned_user_id", null); push("assigned_user_name", null);
+          push("is_shared", b.isShared ?? b.is_shared ?? true);
+        } else {
+          const m = await pool.query(
+            `SELECT om.user_id, COALESCE(up.display_name, u.email, om.user_id) AS name
+               FROM organization_members om
+               LEFT JOIN user_profiles up ON up.user_id = om.user_id AND up.organization_id = $1
+               LEFT JOIN users u ON u.id = om.user_id
+              WHERE om.organization_id = $1 AND om.user_id = $2`,
+            [orgId, String(rawAssigned)],
+          );
+          if (m.rowCount === 0) return res.status(400).json({ error: "assigned_not_in_org" });
+          push("assigned_user_id", m.rows[0].user_id);
+          push("assigned_user_name", m.rows[0].name);
+          push("is_shared", false);
+        }
+      } else if (b.isShared !== undefined || b.is_shared !== undefined) {
+        push("is_shared", !!(b.isShared ?? b.is_shared));
+      }
+      if (sets.length === 0) return res.status(400).json({ error: "no_fields" });
+      sets.push("updated_at = now()");
+      const r = await pool.query(
+        `UPDATE leadgrid_org_vehicles SET ${sets.join(", ")}
+          WHERE id = $1 AND organization_id = $2`,   // org-scopet: aldri andres flåte
+        params,
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json({ ok: true });
+    } catch (err: any) {
+      if (String(err?.code) === "23505") return res.status(409).json({ error: "plate_exists" });
+      console.warn("[leadgrid-trips] org-vehicle update failed:", (err as Error).message);
+      return res.status(500).json({ error: "org_vehicle_update_failed" });
+    }
+  });
+
+  // DELETE /org-vehicles/:id — avregistrer (soft, Go-admin).
+  app.delete("/api/leadgrid/org-vehicles/:id", async (req, res) => {
+    const session = await gate(req, res);
+    if (!session) return;
+    const id = req.params.id;
+    if (!UUID_RE.test(id)) return res.status(400).json({ error: "invalid_id" });
+    try {
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!(await requireGoAdmin(res, orgId, session.userId))) return;
+      const r = await pool.query(
+        `UPDATE leadgrid_org_vehicles SET status = 'retired', updated_at = now()
+          WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+        [id, orgId],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.warn("[leadgrid-trips] org-vehicle retire failed:", (err as Error).message);
+      return res.status(500).json({ error: "org_vehicle_retire_failed" });
+    }
+  });
+
   // ── GET /vehicle/bookings — kommende reservasjoner i org ─────────
   app.get("/api/leadgrid/vehicle/bookings", async (req, res) => {
     const session = await gate(req, res);
@@ -687,8 +894,23 @@ export function registerLeadgridTripsRoutes(deps: {
       await ensureSchema(pool);
       const orgId = await resolveOrgIdForUser(pool, session.userId);
       const b = req.body || {};
-      const label = String(b.vehicleLabel ?? b.vehicle_label ?? "").trim();
-      const plate = b.vehiclePlate ?? b.vehicle_plate ?? null;
+      let label = String(b.vehicleLabel ?? b.vehicle_label ?? "").trim();
+      let plate = b.vehiclePlate ?? b.vehicle_plate ?? null;
+      // Flåtebil: vehicleId slår opp label/plate fra org-flåten (verifisert
+      // org-scopet + delt + aktiv) — fritekst beholdes som fallback.
+      const vehicleId = b.vehicleId ?? b.vehicle_id;
+      if (vehicleId) {
+        if (!UUID_RE.test(String(vehicleId))) return res.status(400).json({ error: "invalid_vehicle_id" });
+        const v = await pool.query(
+          `SELECT plate, display_name, is_shared FROM leadgrid_org_vehicles
+            WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+          [String(vehicleId), orgId],
+        );
+        if (v.rowCount === 0) return res.status(404).json({ error: "vehicle_not_found" });
+        if (!v.rows[0].is_shared) return res.status(409).json({ error: "vehicle_not_shared" });
+        label = v.rows[0].display_name || v.rows[0].plate;
+        plate = v.rows[0].plate;
+      }
       const startAt = b.startAt ?? b.start_at;
       const endAt = b.endAt ?? b.end_at;
       if (!label || !startAt || !endAt) return res.status(400).json({ error: "missing_fields" });
