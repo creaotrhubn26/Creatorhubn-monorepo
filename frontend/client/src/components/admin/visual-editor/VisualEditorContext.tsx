@@ -2317,4 +2317,14 @@ export function useVisualEditor() {
   return context;
 }
 
+/**
+ * Non-throwing variant for components that are legitimately rendered BOTH
+ * inside and outside the visual editor (e.g. dashboard tabs that only want to
+ * fire a toast). Returns null when no provider is mounted instead of crashing
+ * the subtree into its error boundary. Consumers must null-check.
+ */
+export function useVisualEditorOptional() {
+  return useContext(VisualEditorContext);
+}
+
 // Types are already exported via interface declarations above

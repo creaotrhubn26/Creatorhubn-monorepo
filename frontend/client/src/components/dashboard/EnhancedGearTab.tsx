@@ -8,7 +8,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { isProfessionFeatureAvailable } from '../../../../shared/profession-feature-matrix';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { getProfessionIcon } from '@/utils/profession-icons';
@@ -346,8 +346,11 @@ export function EnhancedGearTab({
   // Master Integration System
   const { features, analytics, performance } = useEnhancedMasterIntegration();
   
-  // Toast notification system
-  const { addToast } = useVisualEditor();
+  // Toast notification system — optional: EnhancedGearTab rendres også utenfor
+  // VisualEditorProvider (f.eks. i Utstyr/gear-fanen). Uten provider blir toast
+  // en no-op i stedet for at hele fanen kræsjer inn i error-boundaryen.
+  const editor = useVisualEditorOptional();
+  const addToast = editor?.addToast ?? (() => {});
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
