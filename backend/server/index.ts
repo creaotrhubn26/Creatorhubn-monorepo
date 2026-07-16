@@ -527,6 +527,7 @@ import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
 import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-routes.js";
+import { setupControlCenterRoutes } from "./control-center-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
@@ -25010,6 +25011,7 @@ setupCustomerSuccessRoutes({
 });
 // Market Intelligence — GET-routes for iPad SuperAdminMarketScansView
 setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
+setupControlCenterRoutes({ app, pool, activeSessions });
 // Lead Map module pricing-admin
 setupAdminLeadMapPricingRoutes({
   app,

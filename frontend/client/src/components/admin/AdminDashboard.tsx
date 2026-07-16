@@ -44,6 +44,7 @@ import {
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Assessment,
+  MonitorHeart,
   Settings,
   People,
   Dashboard as DashboardIcon,
@@ -152,6 +153,7 @@ import ProfessionTypeManager from './ProfessionTypeManager';
 import ComprehensiveProtocolManager from './ComprehensiveProtocolManager';
 import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
 import CentralizedMonitoringConsole from './CentralizedMonitoringConsole';
+import ControlCenterPanel from './ControlCenterPanel';
 import AdminDashboardIntegrationTest from './AdminDashboardIntegrationTest';
 import PaymentSystemsIntegrationTest from './PaymentSystemsIntegrationTest';
 import EditingPaymentTestPanel from './EditingPaymentTestPanel';
@@ -1414,6 +1416,7 @@ export default function AdminDashboard({
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
+    { id: 'control-center', label: 'Control Center', icon: MonitorHeart },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
     { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
@@ -1459,7 +1462,7 @@ export default function AdminDashboard({
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['creatorhub-design', 'integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['creatorhub-design', 'control-center', 'integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -1496,6 +1499,7 @@ export default function AdminDashboard({
     'creatorhub-design': 'Administrer produkt-flatene som data — merkevare, navigasjon, tekst, maler og konnektorer per workspace (CreatorHub / The Role Room / Leadgrid).',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
+    'control-center': 'Drift-cockpit: feilrate, aktive hendelser (Sentry + backend) med kvitter/tildel/lukk, og logg — samlet på ett sted.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
     protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
     'secrets-rotation': 'Spor når Stripe-/Cloudflare-/Render-nøkler ble rotert sist; varsel ved forfall.',
@@ -3634,6 +3638,8 @@ export default function AdminDashboard({
         );
       case 'feature-management':
         return <FeatureManagement {...sharedPanelProps} />;
+      case 'control-center':
+        return <ControlCenterPanel />;
       case 'centralized-monitoring':
         return <CentralizedMonitoringConsole {...sharedPanelProps} />;
       case 'protokollstyring':

@@ -78,6 +78,9 @@ const RECOMMENDED: EnvVar[] = [
 // ─────────────────────────────────────────────────────────
 const OPTIONAL: EnvVar[] = [
   { name: "SENTRY_DSN", description: "Backend Sentry. Hvis satt, sendes alle uncaught errors hit." },
+  { name: "SENTRY_AUTH_TOKEN", description: "Sentry read-token (project:read/org:read). Lar Control Center LESE issues/feilrate tilbake. Uten den faller cockpiten tilbake på error_log." },
+  { name: "SENTRY_ORG", description: "Sentry org-slug. Hører sammen med SENTRY_AUTH_TOKEN (Control Center)." },
+  { name: "SENTRY_PROJECT", description: "Sentry project-slug. Hører sammen med SENTRY_AUTH_TOKEN (Control Center)." },
   { name: "VERCEL_URL", description: "Auto-satt av Vercel build-pipeline. Kun for build-time." },
   { name: "RENDER_EXTERNAL_URL", description: "Auto-satt av Render. Kun for build-time." },
   { name: "META_APP_ID", description: "Meta/Facebook OAuth. Påvirker Facebook-publishing." },
