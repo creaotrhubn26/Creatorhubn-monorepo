@@ -44,6 +44,7 @@ import {
 } from '../utils/brregLookup';
 import { AvatarFocalPointEditor } from './AvatarFocalPointEditor';
 import { focalToObjectPosition } from '../utils/avatarFocalPoint';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
 
 export interface RoleRoomOnboardingDialogProps {
   open: boolean;
@@ -104,11 +105,11 @@ const DEFAULT_CONFIG: OnboardingConfig = {
     { code: 'da', name: 'Dansk' },
     { code: 'en', name: 'English' },
   ],
-  stepsEnabled: { welcome: true, image: true, profession: true, about: true, links: true, privacy: true },
+  stepsEnabled: { welcome: true, image: true, profession: true, about: true, links: true, availability: true, privacy: true },
   requiredFields: { displayName: true, professions: true, bio: false, profileImage: true },
 };
 
-const STEP_KEYS = ['welcome', 'image', 'profession', 'about', 'links', 'privacy'] as const;
+const STEP_KEYS = ['welcome', 'image', 'profession', 'about', 'links', 'availability', 'privacy'] as const;
 type StepKey = typeof STEP_KEYS[number];
 
 const STEP_LABELS: Record<StepKey, string> = {
@@ -117,6 +118,7 @@ const STEP_LABELS: Record<StepKey, string> = {
   profession: 'Profesjon',
   about: 'Om meg',
   links: 'Lenker',
+  availability: 'Tilgjengelighet',
   privacy: 'Personvern',
 };
 
@@ -779,30 +781,6 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 }}
               />
 
-              {/* Tilgjengelighet & arbeidspreferanser */}
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Tilgjengelighet (valgfri)
-              </Typography>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select label="Status"
-                         value={form.availabilityStatus}
-                         onChange={(e) => updateField('availabilityStatus',
-                           e.target.value as AvailabilityStatus | '')}>
-                  <MenuItem value=""><em>Ikke oppgitt</em></MenuItem>
-                  {AVAILABILITY_OPTIONS.map((o) => (
-                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {WORK_PREFERENCE_OPTIONS.map((w) => (
-                  <Chip key={w} label={w} clickable size="small"
-                         color={form.workPreferences.includes(w) ? 'secondary' : 'default'}
-                         variant={form.workPreferences.includes(w) ? 'filled' : 'outlined'}
-                         onClick={() => toggleArrayItem('workPreferences', w)} />
-                ))}
-              </Box>
             </Stack>
           )}
 
@@ -990,6 +968,50 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     Legg til arbeidsprøve
                   </Button>
                 </Stack>
+              </Box>
+            </Stack>
+          )}
+
+          {!loading && currentKey === 'availability' && (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Vis når du er ledig for oppdrag. Produsenter ser dette når de
+                setter sammen team — så du slipper unødvendige forespørsler på
+                datoer du er opptatt.
+              </Typography>
+
+              <FormControl size="small" fullWidth>
+                <InputLabel>Generell status</InputLabel>
+                <Select label="Generell status"
+                         value={form.availabilityStatus}
+                         onChange={(e) => updateField('availabilityStatus',
+                           e.target.value as AvailabilityStatus | '')}>
+                  <MenuItem value=""><em>Ikke oppgitt</em></MenuItem>
+                  {AVAILABILITY_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                  Arbeidspreferanser
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {WORK_PREFERENCE_OPTIONS.map((w) => (
+                    <Chip key={w} label={w} clickable size="small"
+                           color={form.workPreferences.includes(w) ? 'secondary' : 'default'}
+                           variant={form.workPreferences.includes(w) ? 'filled' : 'outlined'}
+                           onClick={() => toggleArrayItem('workPreferences', w)} />
+                  ))}
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                  Kalender — marker konkrete datoer (auto-lagres)
+                </Typography>
+                <AvailabilityCalendar editable months={2} />
               </Box>
             </Stack>
           )}

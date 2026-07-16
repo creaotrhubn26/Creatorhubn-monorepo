@@ -18,10 +18,12 @@ import {
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type {
   MemberListItem, RoleRoomMemberProfile, SharedProject, AvailabilityStatus,
+  AvailabilityEntry,
 } from '../services/roleRoomMemberProfileService';
 import { focalToObjectPosition } from '../utils/avatarFocalPoint';
 import { categoryForEquipment } from '../utils/equipmentCatalog';
 import { EquipmentCategoryIcon } from './EquipmentCategoryIcon';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
 
 const AVAILABILITY_META: Record<AvailabilityStatus, { label: string; color: 'success' | 'warning' | 'default' }> = {
   available: { label: 'Tilgjengelig for oppdrag', color: 'success' },
@@ -240,6 +242,7 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
 function PublicProfileView({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<RoleRoomMemberProfile | null>(null);
   const [sharedProjects, setSharedProjects] = useState<SharedProject[]>([]);
+  const [availability, setAvailability] = useState<AvailabilityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,6 +254,10 @@ function PublicProfileView({ userId }: { userId: string }) {
         const { profile: p, sharedProjects: sp } =
           await roleRoomMemberProfileService.getPublicProfileWithProjects(userId);
         if (!cancelled) { setProfile(p); setSharedProjects(sp); }
+        // Kalender hentes separat (best-effort — feiler stille).
+        const avail = await roleRoomMemberProfileService
+          .getMemberAvailability(userId).catch(() => []);
+        if (!cancelled) setAvailability(avail);
       } catch (err) {
         if (!cancelled) setError(String(err));
       } finally {
@@ -511,6 +518,15 @@ function PublicProfileView({ userId }: { userId: string }) {
                 </Stack>
               ))}
             </Stack>
+          </Box>
+        )}
+
+        {availability.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Tilgjengelighet
+            </Typography>
+            <AvailabilityCalendar entries={availability} months={2} />
           </Box>
         )}
 

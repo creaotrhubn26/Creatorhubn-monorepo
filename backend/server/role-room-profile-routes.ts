@@ -207,6 +207,19 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
       CREATE INDEX IF NOT EXISTS idx_rr_member_profiles_onboarding
         ON role_room_member_profiles(onboarding_completed)
         WHERE onboarding_completed = FALSE;
+
+      CREATE TABLE IF NOT EXISTS role_room_member_availability (
+        id BIGSERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'available',
+        note VARCHAR(200),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_rr_availability_user
+        ON role_room_member_availability(user_id, start_date);
     `);
     // Firma-felter (org.nr + forretningsadresse) fylles fra Brønnøysund-oppslag
     // i onboarding — samme mønster som hovedflyten. ALTER for eksisterende tabell.
@@ -404,6 +417,36 @@ function sanitizeEarlierProjects(val: unknown): Array<{ title: string; role: str
       return { title: s(o.title, 160), role: s(o.role, 80), year: s(o.year, 12) };
     })
     .filter((e) => e.title.length > 0);
+}
+
+const AVAILABILITY_ENTRY_STATUSES = new Set(["available", "busy", "tentative"]);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Saniter tilgjengelighets-oppføringer for kalenderen. Hver oppføring er et
+ * dato-intervall med status (ledig/opptatt/tentativ) + valgfritt notat.
+ * Kapper antall + feltlengder og forkaster ugyldige datoer.
+ */
+function sanitizeAvailabilityEntries(
+  val: unknown,
+): Array<{ startDate: string; endDate: string; status: string; note: string }> {
+  if (!Array.isArray(val)) return [];
+  const out: Array<{ startDate: string; endDate: string; status: string; note: string }> = [];
+  for (const e of val.slice(0, 400)) {
+    const o = (e ?? {}) as Record<string, unknown>;
+    const start = typeof o.startDate === "string" ? o.startDate.slice(0, 10) : "";
+    const endRaw = typeof o.endDate === "string" ? o.endDate.slice(0, 10) : start;
+    const end = endRaw || start;
+    if (!ISO_DATE_RE.test(start) || !ISO_DATE_RE.test(end)) continue;
+    // Normaliser slik at end aldri er før start.
+    const [s0, e0] = start <= end ? [start, end] : [end, start];
+    const status = typeof o.status === "string" && AVAILABILITY_ENTRY_STATUSES.has(o.status)
+      ? o.status
+      : "available";
+    const note = typeof o.note === "string" ? o.note.trim().slice(0, 200) : "";
+    out.push({ startDate: s0, endDate: e0, status, note });
+  }
+  return out;
 }
 
 /**
@@ -904,6 +947,120 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
     } catch (err) {
       console.error("[rr-profile] GET /:userId failed:", err);
       res.status(500).json({ error: "intern_feil" });
+    }
+  });
+
+  // ─── Tilgjengelighets-kalender ───────────────────────────────────────
+  // Medlemmet maler datoer ledig/opptatt/tentativ i en branded kalender.
+  // Lagres som dato-intervaller i role_room_member_availability. Bulk-replace
+  // (hele settet erstattes) holder klient/server enkelt og idempotent.
+
+  const availabilityRowToDto = (r: Record<string, unknown>) => ({
+    id: String(r.id),
+    // node-postgres gir DATE som Date-objekt; normaliser til YYYY-MM-DD.
+    startDate: r.start_date instanceof Date
+      ? (r.start_date as Date).toISOString().slice(0, 10)
+      : String(r.start_date).slice(0, 10),
+    endDate: r.end_date instanceof Date
+      ? (r.end_date as Date).toISOString().slice(0, 10)
+      : String(r.end_date).slice(0, 10),
+    status: String(r.status || "available"),
+    note: typeof r.note === "string" ? r.note : "",
+  });
+
+  // ── GET min egen kalender ──
+  app.get("/api/role-room/profile/me/availability", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res, activeSessions);
+    if (!userId) return;
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, start_date, end_date, status, note
+           FROM role_room_member_availability
+          WHERE user_id = $1
+          ORDER BY start_date ASC`,
+        [userId],
+      );
+      res.json({ availability: rows.map(availabilityRowToDto) });
+    } catch (err) {
+      console.warn("[rr-profile] GET /me/availability degraded:", (err as any)?.message || err);
+      res.json({ availability: [] });
+    }
+  });
+
+  // ── PUT min egen kalender (bulk-replace) ──
+  app.put("/api/role-room/profile/me/availability", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res, activeSessions);
+    if (!userId) return;
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+    const entries = sanitizeAvailabilityEntries((req.body ?? {}).availability);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM role_room_member_availability WHERE user_id = $1`,
+        [userId],
+      );
+      for (const e of entries) {
+        await client.query(
+          `INSERT INTO role_room_member_availability
+             (user_id, start_date, end_date, status, note)
+           VALUES ($1, $2::date, $3::date, $4, $5)`,
+          [userId, e.startDate, e.endDate, e.status, e.note || null],
+        );
+      }
+      await client.query("COMMIT");
+      const { rows } = await client.query(
+        `SELECT id, start_date, end_date, status, note
+           FROM role_room_member_availability
+          WHERE user_id = $1 ORDER BY start_date ASC`,
+        [userId],
+      );
+      res.json({ availability: rows.map(availabilityRowToDto) });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[rr-profile] PUT /me/availability failed:", err);
+      res.status(500).json({ error: "intern_feil" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ── GET annet medlems kalender (respekterer visibility) ──
+  app.get("/api/role-room/profile/:userId/availability", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    const targetUserId = req.params.userId;
+    if (!targetUserId) { res.status(400).json({ error: "userId_mangler" }); return; }
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+    try {
+      const { rows: pr } = await pool.query(
+        `SELECT visibility FROM role_room_member_profiles WHERE user_id = $1`,
+        [targetUserId],
+      );
+      if (pr.length === 0) { res.status(404).json({ error: "ikke_funnet" }); return; }
+      const visibility = pr[0].visibility || "connections";
+      if (visibility === "private" && viewerId !== targetUserId) {
+        res.status(403).json({ error: "privat_profil" }); return;
+      }
+      if (visibility === "connections" && !viewerId) {
+        res.status(401).json({ error: "krever_innlogging" }); return;
+      }
+      const { rows } = await pool.query(
+        `SELECT id, start_date, end_date, status, note
+           FROM role_room_member_availability
+          WHERE user_id = $1 ORDER BY start_date ASC`,
+        [targetUserId],
+      );
+      res.json({ availability: rows.map(availabilityRowToDto) });
+    } catch (err) {
+      console.warn("[rr-profile] GET /:userId/availability degraded:", (err as any)?.message || err);
+      res.json({ availability: [] });
     }
   });
 

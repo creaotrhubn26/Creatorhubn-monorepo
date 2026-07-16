@@ -29,6 +29,20 @@ export interface MemberReference {
 
 export type AvailabilityStatus = 'available' | 'busy' | 'unavailable';
 
+/** Status for én dag/intervall i tilgjengelighets-kalenderen. */
+export type CalendarDayStatus = 'available' | 'busy' | 'tentative';
+
+/** En oppføring i tilgjengelighets-kalenderen (dato-intervall). */
+export interface AvailabilityEntry {
+  id?: string;
+  /** ISO YYYY-MM-DD. */
+  startDate: string;
+  /** ISO YYYY-MM-DD (>= startDate). */
+  endDate: string;
+  status: CalendarDayStatus;
+  note: string;
+}
+
 export interface RoleRoomMemberProfile {
   userId: string;
   displayName: string | null;
@@ -92,6 +106,7 @@ export interface OnboardingConfig {
     profession?: boolean;
     about?: boolean;
     links?: boolean;
+    availability?: boolean;
     privacy?: boolean;
   };
   requiredFields: {
@@ -221,6 +236,30 @@ export const roleRoomMemberProfileService = {
       { method: 'GET' },
     );
     return { profile: data.profile, sharedProjects: data.sharedProjects ?? [] };
+  },
+
+  async getMyAvailability(): Promise<AvailabilityEntry[]> {
+    const data = await jsonRequest<{ availability: AvailabilityEntry[] }>(
+      '/api/role-room/profile/me/availability',
+      { method: 'GET' },
+    );
+    return data.availability ?? [];
+  },
+
+  async setMyAvailability(entries: AvailabilityEntry[]): Promise<AvailabilityEntry[]> {
+    const data = await jsonRequest<{ availability: AvailabilityEntry[] }>(
+      '/api/role-room/profile/me/availability',
+      { method: 'PUT', body: JSON.stringify({ availability: entries }) },
+    );
+    return data.availability ?? [];
+  },
+
+  async getMemberAvailability(userId: string): Promise<AvailabilityEntry[]> {
+    const data = await jsonRequest<{ availability: AvailabilityEntry[] }>(
+      `/api/role-room/profile/${encodeURIComponent(userId)}/availability`,
+      { method: 'GET' },
+    );
+    return data.availability ?? [];
   },
 
   async getOnboardingConfig(): Promise<OnboardingConfig> {
