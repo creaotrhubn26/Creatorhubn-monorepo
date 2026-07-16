@@ -185,6 +185,8 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         profile_image_url VARCHAR(500),
         profile_image_focal_x SMALLINT,
         profile_image_focal_y SMALLINT,
+        years_experience SMALLINT,
+        earlier_projects JSONB NOT NULL DEFAULT '[]'::jsonb,
         banner_image_url VARCHAR(500),
         visibility VARCHAR(32) NOT NULL DEFAULT 'connections',
         onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -206,6 +208,8 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
       `business_address VARCHAR(500)`,
       `profile_image_focal_x SMALLINT`,
       `profile_image_focal_y SMALLINT`,
+      `years_experience SMALLINT`,
+      `earlier_projects JSONB NOT NULL DEFAULT '[]'::jsonb`,
     ]) {
       await pool
         .query(`ALTER TABLE role_room_member_profiles ADD COLUMN IF NOT EXISTS ${col}`)
@@ -270,6 +274,8 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     profileImageUrl: row.profile_image_url,
     profileImageFocalX: row.profile_image_focal_x,
     profileImageFocalY: row.profile_image_focal_y,
+    yearsExperience: row.years_experience,
+    earlierProjects: row.earlier_projects ?? [],
     bannerImageUrl: row.banner_image_url,
     visibility: row.visibility,
     onboardingCompleted: row.onboarding_completed,
@@ -284,6 +290,7 @@ const ALLOWED_PROFILE_FIELDS: Array<keyof typeof FIELD_TO_COLUMN> = [
   "businessAddress", "locationCity",
   "locationCountry", "website", "socialLinks", "showreelUrl", "skills",
   "languages", "visibility", "profileImageFocalX", "profileImageFocalY",
+  "yearsExperience", "earlierProjects",
 ];
 
 const FIELD_TO_COLUMN = {
@@ -295,6 +302,8 @@ const FIELD_TO_COLUMN = {
   businessAddress: "business_address",
   profileImageFocalX: "profile_image_focal_x",
   profileImageFocalY: "profile_image_focal_y",
+  yearsExperience: "years_experience",
+  earlierProjects: "earlier_projects",
   locationCity: "location_city",
   locationCountry: "location_country",
   website: "website",
@@ -306,8 +315,25 @@ const FIELD_TO_COLUMN = {
 } as const;
 
 const JSONB_FIELDS = new Set<keyof typeof FIELD_TO_COLUMN>([
-  "professions", "socialLinks", "skills", "languages",
+  "professions", "socialLinks", "skills", "languages", "earlierProjects",
 ]);
+
+/**
+ * Saniter tidligere-prosjekt-historikk (bruker-redigert CV-liste). Kapper
+ * antall og feltlengder slik at vi ikke lagrer vilkårlig/enorm JSON.
+ */
+function sanitizeEarlierProjects(val: unknown): Array<{ title: string; role: string; year: string }> {
+  if (!Array.isArray(val)) return [];
+  const s = (x: unknown, max: number): string =>
+    (typeof x === "string" ? x : "").trim().slice(0, max);
+  return val
+    .slice(0, 30)
+    .map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { title: s(o.title, 160), role: s(o.role, 80), year: s(o.year, 12) };
+    })
+    .filter((e) => e.title.length > 0);
+}
 
 /**
  * Forhåndsutfyll-data hentet fra en Role Room tester-invitasjon (matchet på
@@ -420,7 +446,9 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       if (field in body) {
         const val = body[field];
         const col = FIELD_TO_COLUMN[field];
-        if (JSONB_FIELDS.has(field)) {
+        if (field === "earlierProjects") {
+          updates.push({ col, value: JSON.stringify(sanitizeEarlierProjects(val)) });
+        } else if (JSONB_FIELDS.has(field)) {
           updates.push({ col, value: JSON.stringify(val ?? (Array.isArray(val) ? [] : {})) });
         } else {
           updates.push({ col, value: typeof val === "string" ? val.trim() : val });
@@ -675,7 +703,7 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         `SELECT p.user_id, p.display_name, p.bio, p.professions, p.skills,
                 p.company_name, p.location_city, p.location_country,
                 p.profile_image_url, p.profile_image_focal_x, p.profile_image_focal_y,
-                p.visibility, p.updated_at, u.email
+                p.years_experience, p.visibility, p.updated_at, u.email
            FROM role_room_member_profiles p
            JOIN users u ON u.id = p.user_id
           WHERE ${where.join(" AND ")}
@@ -696,6 +724,7 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         profileImageUrl: row.profile_image_url,
         profileImageFocalX: row.profile_image_focal_x,
         profileImageFocalY: row.profile_image_focal_y,
+        yearsExperience: row.years_experience,
         visibility: row.visibility,
       }));
 
@@ -745,7 +774,47 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       delete (profile as Record<string, unknown>).onboardingCompleted;
       delete (profile as Record<string, unknown>).onboardingCompletedAt;
       delete (profile as Record<string, unknown>).onboardingProgress;
-      res.json({ profile });
+
+      // Felles prosjekter: prosjekter DER både betrakter og medlem deltar,
+      // slik at man ser hvilket team / hvilke prosjekter de er med på.
+      // Kun scoped til betrakters egne prosjekter (samme som katalog-scopet).
+      let sharedProjects: Array<{ id: string; name: string; status: string | null; role: string }> = [];
+      if (viewerId) {
+        try {
+          const { rows: proj } = await pool.query(
+            `WITH viewer_projects AS (
+               SELECT id FROM casting_projects WHERE created_by = $1
+               UNION
+               SELECT project_id FROM casting_user_roles WHERE user_id = $1
+             ),
+             target_projects AS (
+               SELECT id AS project_id, 'Leder'::text AS role
+                 FROM casting_projects WHERE created_by = $2
+               UNION
+               SELECT project_id, COALESCE(NULLIF(role, ''), 'Medlem') AS role
+                 FROM casting_user_roles WHERE user_id = $2
+             )
+             SELECT DISTINCT ON (cp.id) cp.id, cp.name, cp.status, tp.role
+               FROM target_projects tp
+               JOIN casting_projects cp ON cp.id = tp.project_id
+              WHERE tp.project_id IN (SELECT id FROM viewer_projects)
+              ORDER BY cp.id, (tp.role = 'Leder') DESC
+              LIMIT 25`,
+            [viewerId, targetUserId],
+          );
+          sharedProjects = proj.map((r) => ({
+            id: r.id,
+            name: r.name || "Uten navn",
+            status: r.status ?? null,
+            role: r.role || "Medlem",
+          }));
+        } catch (projErr) {
+          // Schema-drift skal ikke bryte profil-visningen.
+          console.warn("[rr-profile] sharedProjects degraded:", (projErr as any)?.message || projErr);
+        }
+      }
+
+      res.json({ profile, sharedProjects });
     } catch (err) {
       console.error("[rr-profile] GET /:userId failed:", err);
       res.status(500).json({ error: "intern_feil" });

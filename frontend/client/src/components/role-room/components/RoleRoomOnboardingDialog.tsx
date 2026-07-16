@@ -27,9 +27,10 @@ import {
 } from '@mui/material';
 import {
   ArrowBack, ArrowForward, Check, Close, CloudUpload, Person, Business,
+  Add, DeleteOutline,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
-import type { RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig } from '../services/roleRoomMemberProfileService';
+import type { RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig, EarlierProject } from '../services/roleRoomMemberProfileService';
 import {
   searchBrregCompanies, toBrregSelection, type BrregCompany,
 } from '../utils/brregLookup';
@@ -62,6 +63,8 @@ interface FormState {
   skills: string[];
   languages: string[];
   visibility: ProfileVisibility;
+  yearsExperience: number | null;
+  earlierProjects: EarlierProject[];
   profileImageFocalX: number | null;
   profileImageFocalY: number | null;
 }
@@ -126,6 +129,8 @@ const EMPTY_FORM: FormState = {
   skills: [],
   languages: ['no'],
   visibility: 'connections',
+  yearsExperience: null,
+  earlierProjects: [],
   profileImageFocalX: null,
   profileImageFocalY: null,
 };
@@ -146,6 +151,8 @@ function profileToForm(profile: RoleRoomMemberProfile): FormState {
     skills: profile.skills ?? [],
     languages: profile.languages?.length ? profile.languages : ['no'],
     visibility: profile.visibility ?? 'connections',
+    yearsExperience: profile.yearsExperience ?? null,
+    earlierProjects: profile.earlierProjects ?? [],
     profileImageFocalX: profile.profileImageFocalX ?? null,
     profileImageFocalY: profile.profileImageFocalY ?? null,
   };
@@ -300,6 +307,27 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
       const separator = existing.length > 0 ? '\n\n' : '';
       return { ...prev, bio: `${existing}${separator}${template}` };
     });
+  };
+
+  // Tidligere prosjekter (CV-historikk)
+  const addEarlierProject = () => {
+    setForm((prev) => ({
+      ...prev,
+      earlierProjects: [...prev.earlierProjects, { title: '', role: '', year: '' }],
+    }));
+  };
+  const updateEarlierProject = (index: number, field: keyof EarlierProject, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      earlierProjects: prev.earlierProjects.map((p, i) =>
+        i === index ? { ...p, [field]: value } : p),
+    }));
+  };
+  const removeEarlierProject = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      earlierProjects: prev.earlierProjects.filter((_, i) => i !== index),
+    }));
   };
 
   const toggleArrayItem = (field: 'professions' | 'skills' | 'languages', item: string) => {
@@ -514,6 +542,20 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                          onClick={() => toggleArrayItem('professions', p)} />
                 ))}
               </Box>
+              <TextField
+                label="År med erfaring (valgfri)"
+                type="number"
+                size="small"
+                value={form.yearsExperience ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === '' ? null : Math.max(0, Math.min(80, parseInt(raw, 10) || 0));
+                  updateField('yearsExperience', n);
+                }}
+                inputProps={{ min: 0, max: 80 }}
+                sx={{ mt: 1, maxWidth: 220 }}
+                helperText="Hvor lenge har du jobbet i faget?"
+              />
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                 Ferdigheter (valgfri)
               </Typography>
@@ -566,6 +608,42 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                            onClick={() => toggleArrayItem('languages', lang.code)} />
                   ))}
                 </Box>
+              </Box>
+
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Tidligere prosjekter (valgfri)
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Vis hva du har jobbet med før — det hjelper andre å se erfaringen din.
+                </Typography>
+                <Stack spacing={1.5}>
+                  {form.earlierProjects.map((proj, i) => (
+                    <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
+                      <Stack spacing={1} sx={{ flex: 1 }}>
+                        <TextField label="Prosjekt / tittel" size="small" value={proj.title}
+                                    onChange={(e) => updateEarlierProject(i, 'title', e.target.value)}
+                                    placeholder="F.eks. musikkvideo for …" />
+                        <Stack direction="row" spacing={1}>
+                          <TextField label="Din rolle" size="small" fullWidth value={proj.role}
+                                      onChange={(e) => updateEarlierProject(i, 'role', e.target.value)}
+                                      placeholder="F.eks. Regissør" />
+                          <TextField label="År" size="small" value={proj.year}
+                                      onChange={(e) => updateEarlierProject(i, 'year', e.target.value)}
+                                      placeholder="2024" sx={{ maxWidth: 96 }} />
+                        </Stack>
+                      </Stack>
+                      <IconButton size="small" onClick={() => removeEarlierProject(i)}
+                                   sx={{ mt: 0.5 }} aria-label="Fjern prosjekt">
+                        <DeleteOutline fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                  <Button startIcon={<Add />} onClick={addEarlierProject} size="small"
+                           variant="outlined" sx={{ alignSelf: 'flex-start' }}>
+                    Legg til prosjekt
+                  </Button>
+                </Stack>
               </Box>
             </Stack>
           )}

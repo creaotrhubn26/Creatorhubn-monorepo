@@ -7,6 +7,13 @@ import { apiFetch } from '@/lib/queryClient';
 
 export type ProfileVisibility = 'public' | 'connections' | 'private';
 
+/** En rad i medlemmets tidligere prosjekt-historikk (CV-stil). */
+export interface EarlierProject {
+  title: string;
+  role: string;
+  year: string;
+}
+
 export interface RoleRoomMemberProfile {
   userId: string;
   displayName: string | null;
@@ -22,6 +29,10 @@ export interface RoleRoomMemberProfile {
   showreelUrl: string | null;
   skills: string[];
   languages: string[];
+  /** Antall års erfaring (valgfri). */
+  yearsExperience: number | null;
+  /** Tidligere prosjekter (bruker-redigert historikk). */
+  earlierProjects: EarlierProject[];
   profileImageUrl: string | null;
   /** Fokuspunkt for profilbildet i prosent (0–100). Brukes til object-position. */
   profileImageFocalX: number | null;
@@ -71,10 +82,19 @@ export interface MemberListItem {
   companyName: string | null;
   locationCity: string | null;
   locationCountry: string | null;
+  yearsExperience: number | null;
   profileImageUrl: string | null;
   profileImageFocalX: number | null;
   profileImageFocalY: number | null;
   visibility: ProfileVisibility;
+}
+
+export interface SharedProject {
+  id: string;
+  name: string;
+  status: string | null;
+  /** Medlemmets rolle i prosjektet ('Leder' hvis de eier det). */
+  role: string;
 }
 
 export interface AdminOnboardingConfigResponse {
@@ -161,6 +181,17 @@ export const roleRoomMemberProfileService = {
       { method: 'GET' },
     );
     return data.profile;
+  },
+
+  /** Som getPublicProfile, men inkluderer felles prosjekter (team-oversikt). */
+  async getPublicProfileWithProjects(
+    userId: string,
+  ): Promise<{ profile: RoleRoomMemberProfile; sharedProjects: SharedProject[] }> {
+    const data = await jsonRequest<{ profile: RoleRoomMemberProfile; sharedProjects?: SharedProject[] }>(
+      `/api/role-room/profile/${encodeURIComponent(userId)}`,
+      { method: 'GET' },
+    );
+    return { profile: data.profile, sharedProjects: data.sharedProjects ?? [] };
   },
 
   async getOnboardingConfig(): Promise<OnboardingConfig> {

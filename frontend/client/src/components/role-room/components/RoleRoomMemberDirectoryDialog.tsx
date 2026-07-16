@@ -12,11 +12,11 @@ import {
 } from '@mui/material';
 import {
   ArrowBack, Close, Email, Language, LinkedIn, Instagram,
-  LocationOn, OpenInNew, Person, Search,
+  LocationOn, OpenInNew, Person, Search, WorkOutline,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type {
-  MemberListItem, RoleRoomMemberProfile,
+  MemberListItem, RoleRoomMemberProfile, SharedProject,
 } from '../services/roleRoomMemberProfileService';
 import { focalToObjectPosition } from '../utils/avatarFocalPoint';
 
@@ -208,6 +208,8 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
         {member.professions.length > 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {member.professions.slice(0, 3).join(' · ')}
+            {typeof member.yearsExperience === 'number' && member.yearsExperience > 0
+              && ` · ${member.yearsExperience} års erfaring`}
           </Typography>
         )}
         {(member.locationCity || member.locationCountry) && (
@@ -228,6 +230,7 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
 
 function PublicProfileView({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<RoleRoomMemberProfile | null>(null);
+  const [sharedProjects, setSharedProjects] = useState<SharedProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -236,8 +239,9 @@ function PublicProfileView({ userId }: { userId: string }) {
     void (async () => {
       setLoading(true); setError(null);
       try {
-        const p = await roleRoomMemberProfileService.getPublicProfile(userId);
-        if (!cancelled) setProfile(p);
+        const { profile: p, sharedProjects: sp } =
+          await roleRoomMemberProfileService.getPublicProfileWithProjects(userId);
+        if (!cancelled) { setProfile(p); setSharedProjects(sp); }
       } catch (err) {
         if (!cancelled) setError(String(err));
       } finally {
@@ -303,11 +307,20 @@ function PublicProfileView({ userId }: { userId: string }) {
         )}
 
         {profile.professions.length > 0 && (
-          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: 2 }}>
+          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: profile.yearsExperience ? 1 : 2 }}>
             {profile.professions.map((p) => (
               <Chip key={p} label={p} color="primary" size="small"
                     sx={{ fontWeight: 600 }} />
             ))}
+          </Stack>
+        )}
+
+        {typeof profile.yearsExperience === 'number' && profile.yearsExperience > 0 && (
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: 'text.secondary', mb: 2 }}>
+            <WorkOutline sx={{ fontSize: 16 }} />
+            <Typography variant="body2">
+              {profile.yearsExperience} års erfaring
+            </Typography>
           </Stack>
         )}
 
@@ -332,6 +345,62 @@ function PublicProfileView({ userId }: { userId: string }) {
           <Box sx={{ mb: 3 }}>
             <Typography variant="overline" color="text.secondary">Språk</Typography>
             <Typography variant="body2">{profile.languages.join(' · ')}</Typography>
+          </Box>
+        )}
+
+        {profile.earlierProjects?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">
+              Tidligere prosjekter
+            </Typography>
+            <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+              {profile.earlierProjects.map((proj, i) => (
+                <Stack key={i} direction="row" spacing={1} alignItems="center"
+                       sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(0,0,0,0.03)' }}>
+                  <WorkOutline sx={{ fontSize: 18, color: 'text.secondary', flexShrink: 0 }} />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                      {proj.title}
+                    </Typography>
+                    {(proj.role || proj.year) && (
+                      <Typography variant="caption" color="text.secondary">
+                        {[proj.role, proj.year].filter(Boolean).join(' · ')}
+                      </Typography>
+                    )}
+                  </Box>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {sharedProjects.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">
+              Felles prosjekter ({sharedProjects.length})
+            </Typography>
+            <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+              {sharedProjects.map((proj) => (
+                <Stack key={proj.id} direction="row" spacing={1} alignItems="center"
+                       sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(139,92,246,0.06)' }}>
+                  <WorkOutline sx={{ fontSize: 18, color: 'rgba(139,92,246,0.8)', flexShrink: 0 }} />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                      {proj.name}
+                    </Typography>
+                    {proj.status && (
+                      <Typography variant="caption" color="text.secondary">
+                        {proj.status}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Chip label={proj.role} size="small"
+                        color={proj.role === 'Leder' ? 'primary' : 'default'}
+                        variant={proj.role === 'Leder' ? 'filled' : 'outlined'}
+                        sx={{ flexShrink: 0 }} />
+                </Stack>
+              ))}
+            </Stack>
           </Box>
         )}
 
