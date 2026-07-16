@@ -30,7 +30,15 @@ import {
   Add, DeleteOutline,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
-import type { RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig, EarlierProject } from '../services/roleRoomMemberProfileService';
+import type {
+  RoleRoomMemberProfile, ProfileVisibility, OnboardingConfig, EarlierProject,
+  PortfolioItem, MemberReference, AvailabilityStatus,
+} from '../services/roleRoomMemberProfileService';
+import {
+  EQUIPMENT_CATALOG, EQUIPMENT_CATEGORY_LABELS, categoryForEquipment,
+  type EquipmentCatalogItem,
+} from '../utils/equipmentCatalog';
+import { EquipmentCategoryIcon } from './EquipmentCategoryIcon';
 import {
   searchBrregCompanies, toBrregSelection, type BrregCompany,
 } from '../utils/brregLookup';
@@ -65,6 +73,13 @@ interface FormState {
   visibility: ProfileVisibility;
   yearsExperience: number | null;
   earlierProjects: EarlierProject[];
+  portfolioItems: PortfolioItem[];
+  availabilityStatus: AvailabilityStatus | '';
+  workPreferences: string[];
+  equipment: string[];
+  certifications: string[];
+  memberReferences: MemberReference[];
+  expertiseAreas: string[];
   profileImageFocalX: number | null;
   profileImageFocalY: number | null;
 }
@@ -131,9 +146,40 @@ const EMPTY_FORM: FormState = {
   visibility: 'connections',
   yearsExperience: null,
   earlierProjects: [],
+  portfolioItems: [],
+  availabilityStatus: '',
+  workPreferences: [],
+  equipment: [],
+  certifications: [],
+  memberReferences: [],
+  expertiseAreas: [],
   profileImageFocalX: null,
   profileImageFocalY: null,
 };
+
+const WORK_PREFERENCE_OPTIONS = [
+  'Tilgjengelig for oppdrag', 'Frilans', 'Heltid', 'På sett', 'Remote',
+  'Kan reise', 'Kortoppdrag', 'Langtidsprosjekt',
+];
+
+// Fagområder / spesialiseringer for foto/video- OG film/TV-bransjen.
+const EXPERTISE_AREA_OPTIONS = [
+  // Film & TV
+  'Spillefilm', 'Kortfilm', 'TV-serie', 'TV-drama', 'TV-produksjon',
+  'Reklamefilm', 'Dokumentar', 'Streaming / OTT', 'Underholdning',
+  'Nyheter / aktualitet', 'Barne-TV', 'Realityproduksjon',
+  // Foto / video / kommersielt
+  'Bryllup', 'Musikkvideo', 'Reklame', 'Bedriftsfilm',
+  'Event', 'Portrett', 'Mote', 'Produkt', 'Sosiale medier',
+  'Drone / luftfoto', 'Live-produksjon', 'Podcast',
+  'Konsert', 'Sport', 'Mat', 'Eiendom', 'Reise',
+];
+
+const AVAILABILITY_OPTIONS: Array<{ value: AvailabilityStatus; label: string }> = [
+  { value: 'available', label: 'Tilgjengelig for oppdrag' },
+  { value: 'busy', label: 'Delvis opptatt' },
+  { value: 'unavailable', label: 'Ikke tilgjengelig nå' },
+];
 
 function profileToForm(profile: RoleRoomMemberProfile): FormState {
   return {
@@ -153,6 +199,13 @@ function profileToForm(profile: RoleRoomMemberProfile): FormState {
     visibility: profile.visibility ?? 'connections',
     yearsExperience: profile.yearsExperience ?? null,
     earlierProjects: profile.earlierProjects ?? [],
+    portfolioItems: profile.portfolioItems ?? [],
+    availabilityStatus: profile.availabilityStatus ?? '',
+    workPreferences: profile.workPreferences ?? [],
+    equipment: profile.equipment ?? [],
+    certifications: profile.certifications ?? [],
+    memberReferences: profile.memberReferences ?? [],
+    expertiseAreas: profile.expertiseAreas ?? [],
     profileImageFocalX: profile.profileImageFocalX ?? null,
     profileImageFocalY: profile.profileImageFocalY ?? null,
   };
@@ -174,6 +227,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
   const [brregQuery, setBrregQuery] = useState('');
   const [brregOptions, setBrregOptions] = useState<BrregCompany[]>([]);
   const [brregLoading, setBrregLoading] = useState(false);
+  const [certInput, setCertInput] = useState('');
 
   // Debounced Brreg-søk når brukeren skriver firmanavn/org.nr
   useEffect(() => {
@@ -330,7 +384,64 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
     }));
   };
 
-  const toggleArrayItem = (field: 'professions' | 'skills' | 'languages', item: string) => {
+  // Portfolio / arbeidsprøver
+  const addPortfolioItem = () => {
+    setForm((prev) => ({
+      ...prev,
+      portfolioItems: [...prev.portfolioItems, { title: '', url: '' }],
+    }));
+  };
+  const updatePortfolioItem = (index: number, field: keyof PortfolioItem, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      portfolioItems: prev.portfolioItems.map((p, i) =>
+        i === index ? { ...p, [field]: value } : p),
+    }));
+  };
+  const removePortfolioItem = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      portfolioItems: prev.portfolioItems.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Referanser / attester
+  const addReference = () => {
+    setForm((prev) => ({
+      ...prev,
+      memberReferences: [...prev.memberReferences, { name: '', role: '', quote: '' }],
+    }));
+  };
+  const updateReference = (index: number, field: keyof MemberReference, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      memberReferences: prev.memberReferences.map((r, i) =>
+        i === index ? { ...r, [field]: value } : r),
+    }));
+  };
+  const removeReference = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      memberReferences: prev.memberReferences.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Legg til / fjern et fritt tag-element (utstyr, sertifiseringer)
+  const addTag = (field: 'equipment' | 'certifications', value: string) => {
+    const v = value.trim();
+    if (!v) return;
+    setForm((prev) => (prev[field].includes(v)
+      ? prev
+      : { ...prev, [field]: [...prev[field], v] }));
+  };
+  const removeTag = (field: 'equipment' | 'certifications', value: string) => {
+    setForm((prev) => ({ ...prev, [field]: prev[field].filter((x) => x !== value) }));
+  };
+
+  const toggleArrayItem = (
+    field: 'professions' | 'skills' | 'languages' | 'workPreferences' | 'expertiseAreas',
+    item: string,
+  ) => {
     setForm((prev) => {
       const current = prev[field];
       const next = current.includes(item)
@@ -567,6 +678,131 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                          onClick={() => toggleArrayItem('skills', s)} />
                 ))}
               </Box>
+
+              {/* Fagområder / spesialiseringer (film/TV + foto/video) */}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Fagområder — hva spesialiserer du deg på? (valgfri)
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {EXPERTISE_AREA_OPTIONS.map((a) => (
+                  <Chip key={a} label={a} clickable size="small"
+                         color={form.expertiseAreas.includes(a) ? 'primary' : 'default'}
+                         variant={form.expertiseAreas.includes(a) ? 'filled' : 'outlined'}
+                         onClick={() => toggleArrayItem('expertiseAreas', a)} />
+                ))}
+              </Box>
+
+              {/* Utstyr / gear — fra foto/video-katalog, med kategori-ikon */}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Utstyr / gear (valgfri)
+              </Typography>
+              <Autocomplete
+                multiple
+                freeSolo
+                size="small"
+                options={EQUIPMENT_CATALOG}
+                value={form.equipment}
+                groupBy={(opt) =>
+                  (typeof opt === 'string'
+                    ? EQUIPMENT_CATEGORY_LABELS[categoryForEquipment(opt)]
+                    : EQUIPMENT_CATEGORY_LABELS[opt.category])}
+                getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.name)}
+                isOptionEqualToValue={(opt, val) =>
+                  (typeof opt === 'string' ? opt : opt.name) === val}
+                onChange={(_e, value) => {
+                  const names = value.map((v) =>
+                    (typeof v === 'string' ? v.trim() : v.name)).filter(Boolean);
+                  updateField('equipment', Array.from(new Set(names)));
+                }}
+                renderOption={(props, opt) => {
+                  const item = opt as EquipmentCatalogItem | string;
+                  const name = typeof item === 'string' ? item : item.name;
+                  const cat = typeof item === 'string' ? categoryForEquipment(item) : item.category;
+                  return (
+                    <li {...props} key={name}>
+                      <EquipmentCategoryIcon category={cat}
+                        sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
+                      {name}
+                    </li>
+                  );
+                }}
+                renderTags={(value, getTagProps) =>
+                  value.map((name, index) => (
+                    <Chip
+                      {...getTagProps({ index })}
+                      key={name}
+                      size="small"
+                      icon={<EquipmentCategoryIcon category={categoryForEquipment(name)}
+                        sx={{ fontSize: 16 }} />}
+                      label={name}
+                    />
+                  ))}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Søk kamera, objektiv, drone, lys …"
+                    helperText="Velg fra katalogen eller skriv inn eget utstyr" />
+                )}
+              />
+
+              {/* Sertifiseringer & lisenser */}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Sertifiseringer & lisenser (valgfri)
+              </Typography>
+              {form.certifications.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {form.certifications.map((c) => (
+                    <Chip key={c} label={c} size="small"
+                           onDelete={() => removeTag('certifications', c)} />
+                  ))}
+                </Box>
+              )}
+              <TextField
+                size="small"
+                value={certInput}
+                onChange={(e) => setCertInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addTag('certifications', certInput);
+                    setCertInput('');
+                  }
+                }}
+                placeholder="F.eks. Dronesertifikat A1/A3, HMS-kort — trykk Enter"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton size="small" aria-label="Legg til sertifisering"
+                        onClick={() => { addTag('certifications', certInput); setCertInput(''); }}>
+                        <Add fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              {/* Tilgjengelighet & arbeidspreferanser */}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Tilgjengelighet (valgfri)
+              </Typography>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select label="Status"
+                         value={form.availabilityStatus}
+                         onChange={(e) => updateField('availabilityStatus',
+                           e.target.value as AvailabilityStatus | '')}>
+                  <MenuItem value=""><em>Ikke oppgitt</em></MenuItem>
+                  {AVAILABILITY_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {WORK_PREFERENCE_OPTIONS.map((w) => (
+                  <Chip key={w} label={w} clickable size="small"
+                         color={form.workPreferences.includes(w) ? 'secondary' : 'default'}
+                         variant={form.workPreferences.includes(w) ? 'filled' : 'outlined'}
+                         onClick={() => toggleArrayItem('workPreferences', w)} />
+                ))}
+              </Box>
             </Stack>
           )}
 
@@ -645,6 +881,43 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                   </Button>
                 </Stack>
               </Box>
+
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Referanser & attester (valgfri)
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Kort attest fra tidligere kunder eller samarbeidspartnere.
+                </Typography>
+                <Stack spacing={1.5}>
+                  {form.memberReferences.map((ref, i) => (
+                    <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
+                      <Stack spacing={1} sx={{ flex: 1 }}>
+                        <Stack direction="row" spacing={1}>
+                          <TextField label="Navn" size="small" fullWidth value={ref.name}
+                                      onChange={(e) => updateReference(i, 'name', e.target.value)}
+                                      placeholder="F.eks. Kari Nordmann" />
+                          <TextField label="Rolle / firma" size="small" fullWidth value={ref.role}
+                                      onChange={(e) => updateReference(i, 'role', e.target.value)}
+                                      placeholder="F.eks. Produsent, NRK" />
+                        </Stack>
+                        <TextField label="Sitat / attest" size="small" multiline rows={2}
+                                    value={ref.quote}
+                                    onChange={(e) => updateReference(i, 'quote', e.target.value)}
+                                    placeholder="«Leverte over forventning …»" />
+                      </Stack>
+                      <IconButton size="small" onClick={() => removeReference(i)}
+                                   sx={{ mt: 0.5 }} aria-label="Fjern referanse">
+                        <DeleteOutline fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                  <Button startIcon={<Add />} onClick={addReference} size="small"
+                           variant="outlined" sx={{ alignSelf: 'flex-start' }}>
+                    Legg til referanse
+                  </Button>
+                </Stack>
+              </Box>
             </Stack>
           )}
 
@@ -686,6 +959,38 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                           onChange={(e) => updateField('socialLinks',
                             { ...form.socialLinks, facebook: e.target.value })}
                           placeholder="https://facebook.com/…" />
+
+              {/* Portfolio / arbeidsprøver — flere lenker, hver med egen tittel */}
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Portfolio / arbeidsprøver (valgfri)
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Legg til så mange arbeidsprøver du vil — hver med tittel og lenke.
+                </Typography>
+                <Stack spacing={1.5}>
+                  {form.portfolioItems.map((item, i) => (
+                    <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
+                      <Stack spacing={1} sx={{ flex: 1 }}>
+                        <TextField label="Tittel" size="small" value={item.title}
+                                    onChange={(e) => updatePortfolioItem(i, 'title', e.target.value)}
+                                    placeholder="F.eks. Reklamefilm for …" />
+                        <TextField label="Lenke" size="small" value={item.url}
+                                    onChange={(e) => updatePortfolioItem(i, 'url', e.target.value)}
+                                    placeholder="https://vimeo.com/…" />
+                      </Stack>
+                      <IconButton size="small" onClick={() => removePortfolioItem(i)}
+                                   sx={{ mt: 0.5 }} aria-label="Fjern arbeidsprøve">
+                        <DeleteOutline fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                  <Button startIcon={<Add />} onClick={addPortfolioItem} size="small"
+                           variant="outlined" sx={{ alignSelf: 'flex-start' }}>
+                    Legg til arbeidsprøve
+                  </Button>
+                </Stack>
+              </Box>
             </Stack>
           )}
 

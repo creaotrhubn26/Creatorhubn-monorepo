@@ -187,6 +187,13 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         profile_image_focal_y SMALLINT,
         years_experience SMALLINT,
         earlier_projects JSONB NOT NULL DEFAULT '[]'::jsonb,
+        portfolio_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        availability_status VARCHAR(32),
+        work_preferences JSONB NOT NULL DEFAULT '[]'::jsonb,
+        equipment JSONB NOT NULL DEFAULT '[]'::jsonb,
+        certifications JSONB NOT NULL DEFAULT '[]'::jsonb,
+        member_references JSONB NOT NULL DEFAULT '[]'::jsonb,
+        expertise_areas JSONB NOT NULL DEFAULT '[]'::jsonb,
         banner_image_url VARCHAR(500),
         visibility VARCHAR(32) NOT NULL DEFAULT 'connections',
         onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -210,6 +217,13 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
       `profile_image_focal_y SMALLINT`,
       `years_experience SMALLINT`,
       `earlier_projects JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `portfolio_items JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `availability_status VARCHAR(32)`,
+      `work_preferences JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `equipment JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `certifications JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `member_references JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `expertise_areas JSONB NOT NULL DEFAULT '[]'::jsonb`,
     ]) {
       await pool
         .query(`ALTER TABLE role_room_member_profiles ADD COLUMN IF NOT EXISTS ${col}`)
@@ -276,6 +290,13 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     profileImageFocalY: row.profile_image_focal_y,
     yearsExperience: row.years_experience,
     earlierProjects: row.earlier_projects ?? [],
+    portfolioItems: row.portfolio_items ?? [],
+    availabilityStatus: row.availability_status,
+    workPreferences: row.work_preferences ?? [],
+    equipment: row.equipment ?? [],
+    certifications: row.certifications ?? [],
+    memberReferences: row.member_references ?? [],
+    expertiseAreas: row.expertise_areas ?? [],
     bannerImageUrl: row.banner_image_url,
     visibility: row.visibility,
     onboardingCompleted: row.onboarding_completed,
@@ -290,7 +311,9 @@ const ALLOWED_PROFILE_FIELDS: Array<keyof typeof FIELD_TO_COLUMN> = [
   "businessAddress", "locationCity",
   "locationCountry", "website", "socialLinks", "showreelUrl", "skills",
   "languages", "visibility", "profileImageFocalX", "profileImageFocalY",
-  "yearsExperience", "earlierProjects",
+  "yearsExperience", "earlierProjects", "portfolioItems", "availabilityStatus",
+  "workPreferences", "equipment", "certifications", "memberReferences",
+  "expertiseAreas",
 ];
 
 const FIELD_TO_COLUMN = {
@@ -304,6 +327,13 @@ const FIELD_TO_COLUMN = {
   profileImageFocalY: "profile_image_focal_y",
   yearsExperience: "years_experience",
   earlierProjects: "earlier_projects",
+  portfolioItems: "portfolio_items",
+  availabilityStatus: "availability_status",
+  workPreferences: "work_preferences",
+  equipment: "equipment",
+  certifications: "certifications",
+  memberReferences: "member_references",
+  expertiseAreas: "expertise_areas",
   locationCity: "location_city",
   locationCountry: "location_country",
   website: "website",
@@ -316,7 +346,48 @@ const FIELD_TO_COLUMN = {
 
 const JSONB_FIELDS = new Set<keyof typeof FIELD_TO_COLUMN>([
   "professions", "socialLinks", "skills", "languages", "earlierProjects",
+  "portfolioItems", "workPreferences", "equipment", "certifications",
+  "memberReferences", "expertiseAreas",
 ]);
+
+const AVAILABILITY_STATUSES = new Set(["available", "busy", "unavailable"]);
+
+/** Saniter en enkel streng-liste (utstyr, sertifiseringer, arbeidspreferanser). */
+function sanitizeStringArray(val: unknown, maxItems: number, maxLen: number): string[] {
+  if (!Array.isArray(val)) return [];
+  return val
+    .map((x) => (typeof x === "string" ? x.trim().slice(0, maxLen) : ""))
+    .filter((x) => x.length > 0)
+    .slice(0, maxItems);
+}
+
+/** Saniter portfolio-oppføringer ({title,url}). */
+function sanitizePortfolioItems(val: unknown): Array<{ title: string; url: string }> {
+  if (!Array.isArray(val)) return [];
+  const s = (x: unknown, max: number): string =>
+    (typeof x === "string" ? x : "").trim().slice(0, max);
+  return val
+    .slice(0, 12)
+    .map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { title: s(o.title, 160), url: s(o.url, 500) };
+    })
+    .filter((e) => e.url.length > 0);
+}
+
+/** Saniter referanser/attester ({name,role,quote}). */
+function sanitizeReferences(val: unknown): Array<{ name: string; role: string; quote: string }> {
+  if (!Array.isArray(val)) return [];
+  const s = (x: unknown, max: number): string =>
+    (typeof x === "string" ? x : "").trim().slice(0, max);
+  return val
+    .slice(0, 12)
+    .map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { name: s(o.name, 120), role: s(o.role, 120), quote: s(o.quote, 500) };
+    })
+    .filter((e) => e.name.length > 0 || e.quote.length > 0);
+}
 
 /**
  * Saniter tidligere-prosjekt-historikk (bruker-redigert CV-liste). Kapper
@@ -448,6 +519,21 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         const col = FIELD_TO_COLUMN[field];
         if (field === "earlierProjects") {
           updates.push({ col, value: JSON.stringify(sanitizeEarlierProjects(val)) });
+        } else if (field === "portfolioItems") {
+          updates.push({ col, value: JSON.stringify(sanitizePortfolioItems(val)) });
+        } else if (field === "memberReferences") {
+          updates.push({ col, value: JSON.stringify(sanitizeReferences(val)) });
+        } else if (field === "equipment") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 40, 120)) });
+        } else if (field === "certifications") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 20, 120)) });
+        } else if (field === "workPreferences") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 12, 40)) });
+        } else if (field === "expertiseAreas") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 24, 60)) });
+        } else if (field === "availabilityStatus") {
+          const v = typeof val === "string" ? val.trim() : "";
+          updates.push({ col, value: AVAILABILITY_STATUSES.has(v) ? v : null });
         } else if (JSONB_FIELDS.has(field)) {
           updates.push({ col, value: JSON.stringify(val ?? (Array.isArray(val) ? [] : {})) });
         } else {

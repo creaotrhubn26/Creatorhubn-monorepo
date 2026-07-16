@@ -13,12 +13,21 @@ import {
 import {
   ArrowBack, Close, Email, Language, LinkedIn, Instagram,
   LocationOn, OpenInNew, Person, Search, WorkOutline,
+  CheckCircle, FormatQuote, Verified,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type {
-  MemberListItem, RoleRoomMemberProfile, SharedProject,
+  MemberListItem, RoleRoomMemberProfile, SharedProject, AvailabilityStatus,
 } from '../services/roleRoomMemberProfileService';
 import { focalToObjectPosition } from '../utils/avatarFocalPoint';
+import { categoryForEquipment } from '../utils/equipmentCatalog';
+import { EquipmentCategoryIcon } from './EquipmentCategoryIcon';
+
+const AVAILABILITY_META: Record<AvailabilityStatus, { label: string; color: 'success' | 'warning' | 'default' }> = {
+  available: { label: 'Tilgjengelig for oppdrag', color: 'success' },
+  busy: { label: 'Delvis opptatt', color: 'warning' },
+  unavailable: { label: 'Ikke tilgjengelig nå', color: 'default' },
+};
 
 export interface RoleRoomMemberDirectoryDialogProps {
   open: boolean;
@@ -324,6 +333,23 @@ function PublicProfileView({ userId }: { userId: string }) {
           </Stack>
         )}
 
+        {(profile.availabilityStatus || profile.workPreferences?.length > 0) && (
+          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: 2 }}>
+            {profile.availabilityStatus && AVAILABILITY_META[profile.availabilityStatus] && (
+              <Chip
+                icon={<CheckCircle sx={{ fontSize: 16 }} />}
+                label={AVAILABILITY_META[profile.availabilityStatus].label}
+                color={AVAILABILITY_META[profile.availabilityStatus].color}
+                size="small"
+                sx={{ fontWeight: 600 }}
+              />
+            )}
+            {profile.workPreferences?.map((w) => (
+              <Chip key={w} label={w} size="small" variant="outlined" />
+            ))}
+          </Stack>
+        )}
+
         {profile.bio && (
           <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 3 }}>
             {profile.bio}
@@ -336,6 +362,45 @@ function PublicProfileView({ userId }: { userId: string }) {
             <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
               {profile.skills.map((s) => (
                 <Chip key={s} label={s} size="small" variant="outlined" />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.expertiseAreas?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Fagområder</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+              {profile.expertiseAreas.map((a) => (
+                <Chip key={a} label={a} size="small" color="secondary" variant="outlined" />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.equipment?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Utstyr</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+              {profile.equipment.map((e) => (
+                <Chip
+                  key={e}
+                  size="small"
+                  variant="outlined"
+                  icon={<EquipmentCategoryIcon category={categoryForEquipment(e)} sx={{ fontSize: 15 }} />}
+                  label={e}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.certifications?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Sertifiseringer & lisenser</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+              {profile.certifications.map((c) => (
+                <Chip key={c} size="small" icon={<Verified sx={{ fontSize: 15 }} />} label={c} />
               ))}
             </Stack>
           </Box>
@@ -369,6 +434,51 @@ function PublicProfileView({ userId }: { userId: string }) {
                     )}
                   </Box>
                 </Stack>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.portfolioItems?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">
+              Portfolio / arbeidsprøver
+            </Typography>
+            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+              {profile.portfolioItems.map((item, i) => (
+                <LinkRow
+                  key={i}
+                  icon={<OpenInNew fontSize="small" />}
+                  href={item.url}
+                  label={item.title || item.url}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.memberReferences?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Referanser</Typography>
+            <Stack spacing={1} sx={{ mt: 0.5 }}>
+              {profile.memberReferences.map((ref, i) => (
+                <Box key={i} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(0,0,0,0.03)' }}>
+                  <Stack direction="row" spacing={0.75} alignItems="flex-start">
+                    <FormatQuote sx={{ fontSize: 18, color: 'text.disabled', flexShrink: 0, mt: 0.25 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      {ref.quote && (
+                        <Typography variant="body2" sx={{ fontStyle: 'italic', mb: 0.5 }}>
+                          {ref.quote}
+                        </Typography>
+                      )}
+                      {(ref.name || ref.role) && (
+                        <Typography variant="caption" color="text.secondary">
+                          {[ref.name, ref.role].filter(Boolean).join(' · ')}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Stack>
+                </Box>
               ))}
             </Stack>
           </Box>

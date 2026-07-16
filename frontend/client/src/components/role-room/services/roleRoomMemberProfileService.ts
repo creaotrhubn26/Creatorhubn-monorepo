@@ -14,6 +14,21 @@ export interface EarlierProject {
   year: string;
 }
 
+/** En arbeidsprøve / portfolio-lenke. */
+export interface PortfolioItem {
+  title: string;
+  url: string;
+}
+
+/** En referanse / attest fra tidligere kunde. */
+export interface MemberReference {
+  name: string;
+  role: string;
+  quote: string;
+}
+
+export type AvailabilityStatus = 'available' | 'busy' | 'unavailable';
+
 export interface RoleRoomMemberProfile {
   userId: string;
   displayName: string | null;
@@ -33,6 +48,20 @@ export interface RoleRoomMemberProfile {
   yearsExperience: number | null;
   /** Tidligere prosjekter (bruker-redigert historikk). */
   earlierProjects: EarlierProject[];
+  /** Portfolio / arbeidsprøver (lenker med tittel). */
+  portfolioItems: PortfolioItem[];
+  /** Tilgjengelighet for oppdrag. */
+  availabilityStatus: AvailabilityStatus | null;
+  /** Arbeidspreferanser (På sett / Remote / Kan reise / Frilans / …). */
+  workPreferences: string[];
+  /** Utstyr / gear (fra foto/video-katalog + egne). */
+  equipment: string[];
+  /** Sertifiseringer & lisenser. */
+  certifications: string[];
+  /** Referanser / attester fra tidligere kunder. */
+  memberReferences: MemberReference[];
+  /** Fagområder / spesialiseringer (Bryllup, Musikkvideo, Reklame …). */
+  expertiseAreas: string[];
   profileImageUrl: string | null;
   /** Fokuspunkt for profilbildet i prosent (0–100). Brukes til object-position. */
   profileImageFocalX: number | null;
