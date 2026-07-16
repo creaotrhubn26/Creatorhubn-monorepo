@@ -1,0 +1,520 @@
+/**
+ * ControlCenterPanel.tsx
+ *
+ * CreatorHub Control Center — Fase 1c (byggeplanen): cockpit-flaten som binder
+ * seg til Fase 1a+1b-aggregatoren (`/api/control-center/*`). Read-heavy drift-
+ * oversikt + tynn handlingsflate (ack/tildel/lukk) over hendelser. Ingen
+ * provider-write (flags/rollback = Fase 4).
+ *
+ * Sub-faner:
+ *   - Oversikt     — feilrate-KPI + kilde-status + observability-uttrekk
+ *   - Hendelser    — Sentry unresolved + error_log unresolved, med ack-layer
+ *   - Logg         — error_log (backend-feil)
+ *
+ * Auth: super_admin (håndhevet server-side). apiRequest legger på Bearer +
+ * x-user-id fra localStorage.
+ */
+
+import * as React from 'react';
+import { useState } from 'react';
+import {
+  Box, Stack, Typography, Chip, Button, CircularProgress,
+  Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Alert,
+} from '@mui/material';
+import {
+  Refresh as RefreshIcon,
+  CheckCircleOutline as ResolveIcon,
+  ReplayCircleFilled as ReopenIcon,
+  PersonAddAlt1 as AssignIcon,
+  DoneAll as AckIcon,
+  OpenInNew as OpenIcon,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+// ─── Backend-speilende typer ───────────────────────────────────────────────
+
+interface ErrorStats {
+  total24h: number;
+  unresolvedTotal: number;
+  bySource: Array<{ source: string; count: number }>;
+  byStatus: Array<{ statusCode: number; count: number }>;
+  topEndpoints: Array<{ endpoint: string; count: number }>;
+}
+
+interface SentryIssue {
+  id: string;
+  shortId: string | null;
+  title: string;
+  culprit: string | null;
+  level: string | null;
+  count: number;
+  userCount: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  permalink: string | null;
+}
+
+interface ObservabilityResponse {
+  sentryConfigured: boolean;
+  errorLog: ErrorStats | null;
+  sentry: {
+    unresolvedIssues: number;
+    events24h: number;
+    crashFreeSessionsPct: number | null;
+    topIssues: SentryIssue[];
+  } | null;
+  generatedAt: string;
+}
+
+interface IncidentAck {
+  incidentId: string;
+  source: 'sentry' | 'error_log';
+  ackedAt: string | null;
+  ackedByUserId: string | null;
+  assignedTo: string | null;
+  note: string | null;
+  resolvedAt: string | null;
+  resolvedByUserId: string | null;
+}
+
+interface Incident {
+  incidentId: string;
+  source: 'sentry' | 'error_log';
+  title: string;
+  level: string | null;
+  count: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  reference: string | null;
+  ack: IncidentAck | null;
+}
+
+interface IncidentsResponse {
+  sentryConfigured: boolean;
+  incidents: Incident[];
+  generatedAt: string;
+}
+
+interface LoggedError {
+  id: string;
+  level: string;
+  source: string;
+  statusCode: number | null;
+  endpoint: string | null;
+  message: string;
+  errorName: string | null;
+  occurrenceCount: number;
+  lastSeenAt: string;
+}
+
+interface LogsResponse {
+  success: boolean;
+  data: LoggedError[];
+}
+
+// ─── Hjelpere ──────────────────────────────────────────────────────────────
+
+const POLL_MS = 45_000;
+
+function relTime(iso: string | null): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const diffMs = Date.now() - t;
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return 'nå nettopp';
+  if (min < 60) return `for ${min} min siden`;
+  const hrs = Math.floor(min / 60);
+  if (hrs < 24) return `for ${hrs} t siden`;
+  const days = Math.floor(hrs / 24);
+  return `for ${days} d siden`;
+}
+
+function levelColor(level: string | null): string {
+  switch ((level ?? '').toLowerCase()) {
+    case 'fatal':
+    case 'error': return '#e5484d';
+    case 'warning': return '#f5a623';
+    case 'info': return '#4c6ef5';
+    default: return '#8b8b8b';
+  }
+}
+
+const SUBTABS = [
+  { id: 'overview', label: 'Oversikt' },
+  { id: 'incidents', label: 'Hendelser' },
+  { id: 'logs', label: 'Logg' },
+] as const;
+type SubTabId = (typeof SUBTABS)[number]['id'];
+
+// ─── KPI-kort ──────────────────────────────────────────────────────────────
+
+const KpiCard: React.FC<{ label: string; value: string; hint?: string; accent?: string }> = ({
+  label, value, hint, accent,
+}) => (
+  <Box
+    sx={{
+      flex: '1 1 160px', minWidth: 160, p: 2, borderRadius: 2,
+      border: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.02)',
+    }}
+  >
+    <Typography sx={{ fontSize: 11, letterSpacing: 1, color: 'text.secondary', textTransform: 'uppercase' }}>
+      {label}
+    </Typography>
+    <Typography sx={{ fontSize: 28, fontWeight: 800, color: accent ?? '#fff', lineHeight: 1.2 }}>
+      {value}
+    </Typography>
+    {hint && <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>{hint}</Typography>}
+  </Box>
+);
+
+// ─── Panel ─────────────────────────────────────────────────────────────────
+
+const ControlCenterPanel: React.FC = () => {
+  const [subTab, setSubTab] = useState<SubTabId>('overview');
+  const qc = useQueryClient();
+
+  const obs = useQuery<ObservabilityResponse>({
+    queryKey: ['/api/control-center/observability'],
+    queryFn: () => apiRequest('/api/control-center/observability'),
+    refetchInterval: POLL_MS,
+  });
+
+  const inc = useQuery<IncidentsResponse>({
+    queryKey: ['/api/control-center/incidents'],
+    queryFn: () => apiRequest('/api/control-center/incidents'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'incidents' || subTab === 'overview',
+  });
+
+  const logs = useQuery<LogsResponse>({
+    queryKey: ['/api/control-center/logs'],
+    queryFn: () => apiRequest('/api/control-center/logs?hoursAgo=168&limit=200'),
+    enabled: subTab === 'logs',
+  });
+
+  const incidentAction = useMutation({
+    mutationFn: (args: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) =>
+      apiRequest(
+        `/api/control-center/incidents/${encodeURIComponent(args.incidentId)}/${args.action}`,
+        { method: 'POST', body: args.assignedTo ? { assignedTo: args.assignedTo } : undefined },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['/api/control-center/incidents'] });
+      void qc.invalidateQueries({ queryKey: ['/api/control-center/observability'] });
+    },
+  });
+
+  const sentryConfigured = obs.data?.sentryConfigured ?? false;
+
+  return (
+    <Box sx={{ color: '#fff' }}>
+      {/* Header */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Box>
+          <Typography sx={{ fontSize: 22, fontWeight: 800 }}>Control Center</Typography>
+          <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
+            Drift-oversikt · feilrate, hendelser og logg. Kilde: Sentry{sentryConfigured ? '' : ' (ikke koblet)'} + backend error_log.
+          </Typography>
+        </Box>
+        <Button
+          size="small" startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
+          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); }}
+          sx={{ textTransform: 'none' }}
+        >
+          Oppdater
+        </Button>
+      </Stack>
+
+      {/* Sub-nav */}
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+        {SUBTABS.map((t) => (
+          <Button
+            key={t.id} size="small" onClick={() => setSubTab(t.id)}
+            variant={subTab === t.id ? 'contained' : 'text'}
+            sx={{ textTransform: 'none', fontWeight: subTab === t.id ? 700 : 500 }}
+          >
+            {t.label}
+            {t.id === 'incidents' && inc.data
+              ? ` (${inc.data.incidents.filter((i) => !i.ack?.resolvedAt).length})`
+              : ''}
+          </Button>
+        ))}
+      </Stack>
+
+      {!sentryConfigured && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Sentry-lese-token er ikke konfigurert (<code>SENTRY_AUTH_TOKEN</code>/<code>SENTRY_ORG</code>/<code>SENTRY_PROJECT</code>).
+          Frontend-feil (via Sentry) vises ikke enda — cockpiten viser backend-feil fra <code>error_log</code>.
+        </Alert>
+      )}
+
+      {subTab === 'overview' && <OverviewSection obs={obs} inc={inc} />}
+      {subTab === 'incidents' && (
+        <IncidentsSection inc={inc} onAction={(a) => incidentAction.mutate(a)} pending={incidentAction.isPending} />
+      )}
+      {subTab === 'logs' && <LogsSection logs={logs} />}
+    </Box>
+  );
+};
+
+// ─── Oversikt ──────────────────────────────────────────────────────────────
+
+const OverviewSection: React.FC<{
+  obs: ReturnType<typeof useQuery<ObservabilityResponse>>;
+  inc: ReturnType<typeof useQuery<IncidentsResponse>>;
+}> = ({ obs, inc }) => {
+  if (obs.isLoading) return <Loading />;
+  if (obs.isError || !obs.data) return <ErrorLine msg="Kunne ikke hente observability." />;
+
+  const el = obs.data.errorLog;
+  const sentry = obs.data.sentry;
+  const activeIncidents = inc.data?.incidents.filter((i) => !i.ack?.resolvedAt).length ?? 0;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 3 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+        <KpiCard
+          label="Aktive hendelser"
+          value={String(activeIncidents)}
+          hint="Sentry + error_log, uløste"
+          accent={activeIncidents > 0 ? '#e5484d' : '#3dd68c'}
+        />
+        <KpiCard
+          label="Crash-free (24t)"
+          value={sentry?.crashFreeSessionsPct != null ? `${sentry.crashFreeSessionsPct}%` : '—'}
+          hint={sentry ? 'Sentry sessions' : 'Sentry ikke koblet'}
+          accent={sentry?.crashFreeSessionsPct != null && sentry.crashFreeSessionsPct < 99 ? '#f5a623' : undefined}
+        />
+        <KpiCard
+          label="Backend-feil (24t)"
+          value={String(el?.total24h ?? 0)}
+          hint={`${el?.unresolvedTotal ?? 0} uløste`}
+        />
+        <KpiCard
+          label="Sentry issues"
+          value={sentry ? String(sentry.unresolvedIssues) : '—'}
+          hint={sentry ? `${sentry.events24h} events 24t` : 'Sentry ikke koblet'}
+        />
+      </Stack>
+
+      {/* Observability-uttrekk fra error_log */}
+      {el && (el.bySource.length > 0 || el.byStatus.length > 0 || el.topEndpoints.length > 0) && (
+        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' } }}>
+          <MiniList title="Feil per kilde (24t)" rows={el.bySource.map((r) => [r.source, r.count])} />
+          <MiniList title="Feil per status (24t)" rows={el.byStatus.map((r) => [String(r.statusCode), r.count])} />
+          <MiniList title="Verste endepunkter (24t)" rows={el.topEndpoints.map((r) => [r.endpoint, r.count])} />
+        </Box>
+      )}
+
+      {/* Sentry top-issues */}
+      {sentry && sentry.topIssues.length > 0 && (
+        <Box>
+          <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Sentry — verste issues (24t)</Typography>
+          <Stack spacing={0.5}>
+            {sentry.topIssues.map((i) => (
+              <Stack key={i.id} direction="row" spacing={1} alignItems="center" sx={{ fontSize: 12 }}>
+                <Chip size="small" label={i.level ?? 'issue'} sx={{ bgcolor: levelColor(i.level), color: '#fff', height: 18, fontSize: 10 }} />
+                <Typography sx={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {i.title}
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>{i.count}×</Typography>
+                {i.permalink && (
+                  <Tooltip title="Åpne i Sentry">
+                    <a href={i.permalink} target="_blank" rel="noreferrer" style={{ color: '#4c6ef5', display: 'flex' }}>
+                      <OpenIcon sx={{ fontSize: 15 }} />
+                    </a>
+                  </Tooltip>
+                )}
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Sist oppdatert {relTime(obs.data.generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
+
+const MiniList: React.FC<{ title: string; rows: Array<[string, number]> }> = ({ title, rows }) => (
+  <Box sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(255,255,255,0.08)' }}>
+    <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 1 }}>{title}</Typography>
+    {rows.length === 0 ? (
+      <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>Ingen</Typography>
+    ) : (
+      <Stack spacing={0.5}>
+        {rows.map(([k, v]) => (
+          <Stack key={k} direction="row" justifyContent="space-between" sx={{ fontSize: 12 }}>
+            <Typography sx={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>{k}</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{v}</Typography>
+          </Stack>
+        ))}
+      </Stack>
+    )}
+  </Box>
+);
+
+// ─── Hendelser ─────────────────────────────────────────────────────────────
+
+const IncidentsSection: React.FC<{
+  inc: ReturnType<typeof useQuery<IncidentsResponse>>;
+  onAction: (a: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) => void;
+  pending: boolean;
+}> = ({ inc, onAction, pending }) => {
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [assignVal, setAssignVal] = useState('');
+
+  if (inc.isLoading) return <Loading />;
+  if (inc.isError || !inc.data) return <ErrorLine msg="Kunne ikke hente hendelser." />;
+
+  const incidents = inc.data.incidents;
+  if (incidents.length === 0) {
+    return <Typography sx={{ fontSize: 13, color: 'text.disabled', py: 4, textAlign: 'center' }}>Ingen aktive hendelser 🎉</Typography>;
+  }
+
+  return (
+    <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+      <TableHead>
+        <TableRow>
+          <TableCell sx={{ color: 'text.secondary' }}>Hendelse</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }}>Kilde</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }} align="right">Antall</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }}>Sist</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }} align="right">Handling</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {incidents.map((i) => {
+          const resolved = !!i.ack?.resolvedAt;
+          const acked = !!i.ack?.ackedAt;
+          return (
+            <TableRow key={i.incidentId} sx={{ opacity: resolved ? 0.5 : 1 }}>
+              <TableCell sx={{ maxWidth: 360 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: levelColor(i.level), flexShrink: 0 }} />
+                  <Typography sx={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {i.title}
+                  </Typography>
+                  {i.source === 'sentry' && i.reference && (
+                    <a href={i.reference} target="_blank" rel="noreferrer" style={{ color: '#4c6ef5', display: 'flex' }}>
+                      <OpenIcon sx={{ fontSize: 14 }} />
+                    </a>
+                  )}
+                </Stack>
+                {i.ack?.assignedTo && (
+                  <Typography sx={{ fontSize: 10.5, color: 'text.disabled' }}>Tildelt: {i.ack.assignedTo}</Typography>
+                )}
+              </TableCell>
+              <TableCell><Chip size="small" label={i.source === 'sentry' ? 'Sentry' : 'Backend'} sx={{ height: 18, fontSize: 10 }} /></TableCell>
+              <TableCell align="right" sx={{ fontSize: 12 }}>{i.count}</TableCell>
+              <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>{relTime(i.lastSeen)}</TableCell>
+              <TableCell>
+                {resolved
+                  ? <Chip size="small" label="Løst" color="success" sx={{ height: 18, fontSize: 10 }} />
+                  : acked
+                    ? <Chip size="small" label="Kvittert" color="warning" sx={{ height: 18, fontSize: 10 }} />
+                    : <Chip size="small" label="Åpen" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(229,72,77,0.2)', color: '#e5484d' }} />}
+              </TableCell>
+              <TableCell align="right">
+                {assigning === i.incidentId ? (
+                  <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                    <TextField
+                      size="small" placeholder="e-post/navn" value={assignVal}
+                      onChange={(e) => setAssignVal(e.target.value)} sx={{ width: 130, '& input': { fontSize: 11, py: 0.5 } }}
+                      autoFocus
+                    />
+                    <Button
+                      size="small" disabled={pending || !assignVal.trim()}
+                      onClick={() => { onAction({ incidentId: i.incidentId, action: 'assign', assignedTo: assignVal.trim() }); setAssigning(null); setAssignVal(''); }}
+                    >OK</Button>
+                    <Button size="small" onClick={() => { setAssigning(null); setAssignVal(''); }}>×</Button>
+                  </Stack>
+                ) : (
+                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                    {!resolved && !acked && (
+                      <Tooltip title="Kvitter">
+                        <span><Button size="small" disabled={pending} onClick={() => onAction({ incidentId: i.incidentId, action: 'ack' })} sx={{ minWidth: 0, p: 0.5 }}><AckIcon sx={{ fontSize: 16 }} /></Button></span>
+                      </Tooltip>
+                    )}
+                    {!resolved && (
+                      <Tooltip title="Tildel">
+                        <span><Button size="small" disabled={pending} onClick={() => setAssigning(i.incidentId)} sx={{ minWidth: 0, p: 0.5 }}><AssignIcon sx={{ fontSize: 16 }} /></Button></span>
+                      </Tooltip>
+                    )}
+                    {!resolved ? (
+                      <Tooltip title="Lukk">
+                        <span><Button size="small" disabled={pending} onClick={() => onAction({ incidentId: i.incidentId, action: 'resolve' })} sx={{ minWidth: 0, p: 0.5, color: '#3dd68c' }}><ResolveIcon sx={{ fontSize: 16 }} /></Button></span>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Gjenåpne">
+                        <span><Button size="small" disabled={pending} onClick={() => onAction({ incidentId: i.incidentId, action: 'reopen' })} sx={{ minWidth: 0, p: 0.5 }}><ReopenIcon sx={{ fontSize: 16 }} /></Button></span>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                )}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+};
+
+// ─── Logg ──────────────────────────────────────────────────────────────────
+
+const LogsSection: React.FC<{ logs: ReturnType<typeof useQuery<LogsResponse>> }> = ({ logs }) => {
+  if (logs.isLoading) return <Loading />;
+  if (logs.isError || !logs.data) return <ErrorLine msg="Kunne ikke hente logg." />;
+  const rows = logs.data.data;
+  if (rows.length === 0) return <Typography sx={{ fontSize: 13, color: 'text.disabled', py: 4, textAlign: 'center' }}>Ingen backend-feil siste 7 dager.</Typography>;
+
+  return (
+    <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+      <TableHead>
+        <TableRow>
+          <TableCell sx={{ color: 'text.secondary' }}>Nivå</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }}>Melding</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }}>Endepunkt</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }} align="right">Antall</TableCell>
+          <TableCell sx={{ color: 'text.secondary' }}>Sist</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.id}>
+            <TableCell>
+              <Chip size="small" label={r.level} sx={{ bgcolor: levelColor(r.level), color: '#fff', height: 18, fontSize: 10 }} />
+            </TableCell>
+            <TableCell sx={{ maxWidth: 420 }}>
+              <Typography sx={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {r.errorName ? `${r.errorName}: ${r.message}` : r.message}
+              </Typography>
+            </TableCell>
+            <TableCell sx={{ fontSize: 11.5, color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {r.endpoint ?? '—'}{r.statusCode ? ` (${r.statusCode})` : ''}
+            </TableCell>
+            <TableCell align="right" sx={{ fontSize: 12 }}>{r.occurrenceCount}</TableCell>
+            <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>{relTime(r.lastSeenAt)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+};
+
+// ─── Delte små ─────────────────────────────────────────────────────────────
+
+const Loading: React.FC = () => (
+  <Box sx={{ textAlign: 'center', py: 5 }}><CircularProgress size={26} /></Box>
+);
+const ErrorLine: React.FC<{ msg: string }> = ({ msg }) => (
+  <Alert severity="error" sx={{ my: 2 }}>{msg}</Alert>
+);
+
+export default ControlCenterPanel;
