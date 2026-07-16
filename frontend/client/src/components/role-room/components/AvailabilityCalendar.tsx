@@ -32,6 +32,15 @@ export interface AvailabilityCalendarProps {
   entries?: AvailabilityEntry[];
   /** Antall måneder som vises samtidig (default 1). */
   months?: number;
+  /**
+   * Kontrollert modus: seed fra `value` og lever endringer via `onChangeEntries`
+   * i stedet for medlems-tjenesten. Brukes når produsent maler en KANDIDATs
+   * tilgjengelighet (kandidaten har ingen egen `role_room_member_availability`).
+   * Krever `editable`. Utelater medlems-fetch/-lagring helt.
+   */
+  onChangeEntries?: (entries: AvailabilityEntry[]) => void;
+  /** Overstyr header-tittel (default «Min tilgjengelighet»/«Tilgjengelighet»). */
+  title?: string;
 }
 
 const STATUS_META: Record<CalendarDayStatus, { label: string; color: string; soft: string }> = {
@@ -103,8 +112,9 @@ function buildMonthGrid(year: number, month: number): Array<string | null> {
 }
 
 export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
-  editable = false, userId, entries, months = 1,
+  editable = false, userId, entries, months = 1, onChangeEntries, title,
 }) => {
+  const controlled = typeof onChangeEntries === 'function';
   const today = useMemo(() => {
     const n = new Date();
     return { y: n.getFullYear(), m: n.getMonth(), iso: toStr(n.getFullYear(), n.getMonth(), n.getDate()) };
@@ -113,13 +123,16 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   const [cursor, setCursor] = useState({ y: today.y, m: today.m });
   const [dayMap, setDayMap] = useState<Map<string, CalendarDayStatus>>(new Map());
   const [brush, setBrush] = useState<Brush>('available');
-  const [loading, setLoading] = useState(editable || !!userId);
+  const [loading, setLoading] = useState(!onChangeEntries && (editable || !!userId));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const paintingRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Last data
   useEffect(() => {
+    // Kontrollert modus: seed fra `entries` (kandidatens celler), ingen fetch.
+    // Parent gir `key={candidateId}` for å re-seede ved bytte av kandidat.
+    if (controlled) { setDayMap(entriesToDayMap(entries ?? [])); setLoading(false); return; }
     if (entries) { setDayMap(entriesToDayMap(entries)); setLoading(false); return; }
     let cancelled = false;
     void (async () => {
@@ -138,7 +151,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [editable, userId, entries]);
+  }, [editable, userId, entries, controlled]);
 
   // Stopp maling når pekeren slippes hvor som helst
   useEffect(() => {
@@ -152,12 +165,19 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaveState('saving');
     saveTimer.current = setTimeout(() => {
+      const nextEntries = dayMapToEntries(next);
+      if (onChangeEntries) {
+        // Kontrollert modus: parent eier lagringen (f.eks. kandidatens availabilityCells).
+        try { onChangeEntries(nextEntries); setSaveState('saved'); }
+        catch { setSaveState('error'); }
+        return;
+      }
       void roleRoomMemberProfileService
-        .setMyAvailability(dayMapToEntries(next))
+        .setMyAvailability(nextEntries)
         .then(() => setSaveState('saved'))
         .catch(() => setSaveState('error'));
     }, 700);
-  }, []);
+  }, [onChangeEntries]);
 
   const applyBrush = useCallback((iso: string) => {
     if (!editable) return;
@@ -194,7 +214,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       }}>
         <EditCalendar sx={{ color: '#c084fc', fontSize: 20 }} />
         <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600, flex: 1 }}>
-          {editable ? 'Min tilgjengelighet' : 'Tilgjengelighet'}
+          {title ?? (editable ? 'Min tilgjengelighet' : 'Tilgjengelighet')}
         </Typography>
         <IconButton size="small" onClick={() => shiftMonth(-1)} sx={{ color: 'white' }}>
           <ChevronLeft fontSize="small" />

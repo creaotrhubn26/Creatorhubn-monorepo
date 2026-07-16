@@ -86,6 +86,7 @@ import {
   DoneAll as DoneAllIcon,
   Rule as RuleIcon,
   ViewCarousel as ViewCarouselIcon,
+  EventAvailable as EventAvailableIcon,
 } from '@mui/icons-material';
 import { Virtuoso } from 'react-virtuoso';
 import { CandidatesIcon as RecentActorsIcon, StatsIcon } from './icons/CastingIcons';
@@ -213,6 +214,12 @@ const LIGHTING_PRESETS: LightingPreset[] = [
   },
 ];
 import type { Candidate, ContactInfo, Role } from '../models/casting';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
+import type { AvailabilityEntry } from '../services/roleRoomMemberProfileService';
+import {
+  candidateCellsToAvailabilityEntries,
+  availabilityEntriesToCandidateCells,
+} from '../utils/crewAvailabilitySync';
 import { getRoleTypeMeta } from '../config/roleType';
 import { formatRelativeNb } from '../utils/formatRelativeNb';
 import { castingService } from '../services/castingService';
@@ -239,7 +246,7 @@ type StatusFilter = 'all' | 'pending' | 'requested' | 'shortlist' | 'selected' |
 type ProSortField = 'fitScore' | 'name' | 'status' | 'updatedAt' | 'createdAt';
 type ProGroupBy = 'none' | 'status';
 type ProPreset = 'casting' | 'compliance' | 'final' | 'custom';
-type ProDetailTab = 'overview' | 'media' | 'videos' | 'consent' | 'history' | 'actions' | 'compare';
+type ProDetailTab = 'overview' | 'media' | 'videos' | 'consent' | 'availability' | 'history' | 'actions' | 'compare';
 
 type CandidateConsent = {
   id?: string;
@@ -776,6 +783,14 @@ function CandidateManagementPanelInner({
 
   const selectedCandidateNotes = useMemo(
     () => (selectedCandidate ? getCandidateAuditionNotes(selectedCandidate) : ''),
+    [selectedCandidate],
+  );
+
+  // Produsent-satt tilgjengelighet: seed AvailabilityCalendar fra kandidatens
+  // lagrede celler. Memoisert på kandidat-identitet → stabil under maling
+  // (endres først når lagringen har oppdatert kandidaten i store).
+  const selectedCandidateAvailabilityEntries = useMemo<AvailabilityEntry[]>(
+    () => candidateCellsToAvailabilityEntries(selectedCandidate?.availabilityCells),
     [selectedCandidate],
   );
 
@@ -2598,6 +2613,7 @@ function CandidateManagementPanelInner({
                     <Tab value="media" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Bilder" />
                     <Tab value="videos" icon={<VideocamIcon fontSize="small" />} iconPosition="start" label="Video" />
                     <Tab value="consent" icon={<GavelIcon fontSize="small" />} iconPosition="start" label="Samtykke" />
+                    <Tab value="availability" icon={<EventAvailableIcon fontSize="small" />} iconPosition="start" label="Tilgjengelighet" />
                     <Tab value="history" icon={<TimelineIcon fontSize="small" />} iconPosition="start" label="Historikk" />
                     <Tab value="actions" icon={<TuneIcon fontSize="small" />} iconPosition="start" label="Handlinger" />
                     <Tab value="compare" icon={<CompareArrowsIcon fontSize="small" />} iconPosition="start" label={`Sammenlign (${compareCandidates.length})`} />
@@ -2854,6 +2870,27 @@ function CandidateManagementPanelInner({
                           </>
                         );
                       })()}
+                    </Box>
+                  )}
+
+                  {proDetailTab === 'availability' && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                        Marker når kandidaten er ledig, opptatt eller tentativ. Dette flagges
+                        automatisk på call-sheet og i produksjonskalenderen på innspillingsdager.
+                      </Typography>
+                      <AvailabilityCalendar
+                        key={selectedCandidate.id}
+                        editable
+                        months={1}
+                        title="Kandidatens tilgjengelighet"
+                        entries={selectedCandidateAvailabilityEntries}
+                        onChangeEntries={(entries) => {
+                          void saveCandidatePatch(selectedCandidate, {
+                            availabilityCells: availabilityEntriesToCandidateCells(entries),
+                          });
+                        }}
+                      />
                     </Box>
                   )}
 

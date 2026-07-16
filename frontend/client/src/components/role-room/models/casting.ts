@@ -507,6 +507,12 @@ export interface Candidate {
   personality?: string;
   reminderPrefs?: CandidateReminderPrefs;
   reminder_prefs?: CandidateReminderPrefs;
+  /**
+   * Produsent-satt tilgjengelighet for kandidaten. Kandidater er casting-poster
+   * (ingen medlemskonto / egen `role_room_member_availability`), så produsenten
+   * maler dette på kandidat-kortet. Persisteres inline i prosjekt-JSON.
+   */
+  availabilityCells?: AvailabilityCell[];
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;

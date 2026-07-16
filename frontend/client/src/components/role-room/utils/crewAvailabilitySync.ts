@@ -79,6 +79,41 @@ export function availabilityEntriesToCrewCells(
   };
 }
 
+// Crew-cellestatus → kalender-pensel-status (invers av MEMBER_TO_CREW_STATUS).
+// Brukes for produsent-satt KANDIDAT-tilgjengelighet: kandidater har ingen egen
+// medlems-kalender, så produsenten maler cellene på kandidat-kortet. Cellene
+// lagres i crew-vokabular ('available'|'unavailable'|'hold') slik at call-sheet-
+// konflikt-logikken (som ser etter unavailable/hold) fungerer identisk for cast.
+const CREW_TO_MEMBER_STATUS: Record<string, CalendarDayStatus> = {
+  available: 'available',
+  unavailable: 'busy',
+  hold: 'tentative',
+  busy: 'busy',
+  tentative: 'tentative',
+};
+
+/** Kandidatens celler → kalender-oppføringer (én pr. dag) for AvailabilityCalendar-seed. */
+export function candidateCellsToAvailabilityEntries(
+  cells: AvailabilityCell[] | undefined | null,
+): AvailabilityEntry[] {
+  if (!Array.isArray(cells)) return [];
+  const out: AvailabilityEntry[] = [];
+  for (const cell of cells) {
+    if (!cell?.date) continue;
+    const raw = (cell.availability ?? cell.status ?? 'available') as string;
+    const status = CREW_TO_MEMBER_STATUS[raw] ?? 'available';
+    out.push({ startDate: cell.date, endDate: cell.date, status, note: '' });
+  }
+  return out;
+}
+
+/** Kalender-oppføringer → kandidat-celler (crew-vokabular) for lagring. */
+export function availabilityEntriesToCandidateCells(
+  entries: AvailabilityEntry[],
+): AvailabilityCell[] {
+  return availabilityEntriesToCrewCells(entries).cells;
+}
+
 // Fritekst-profesjon (norsk) → nærmeste CrewRole. Første treff vinner.
 const ROLE_KEYWORDS: Array<[RegExp, CrewRole]> = [
   [/regi|regiss/i, 'director'],
