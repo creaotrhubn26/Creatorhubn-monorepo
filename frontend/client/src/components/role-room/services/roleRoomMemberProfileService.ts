@@ -119,6 +119,8 @@ export interface OnboardingConfig {
 
 export interface MemberListItem {
   userId: string;
+  /** E-post fra `users` — brukt til å matche crew-rader mot medlemskalendere. */
+  email: string | null;
   displayName: string | null;
   bio: string | null;
   professions: string[];

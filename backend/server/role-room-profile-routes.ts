@@ -843,6 +843,7 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
 
       const members = rows.map((row) => ({
         userId: row.user_id,
+        email: row.email ?? null,
         displayName: row.display_name,
         bio: row.bio,
         professions: row.professions ?? [],

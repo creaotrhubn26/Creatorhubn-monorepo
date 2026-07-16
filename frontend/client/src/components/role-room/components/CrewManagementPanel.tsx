@@ -128,6 +128,14 @@ import {
 } from './icons/CastingIcons';
 import type { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
+import type { MemberListItem } from '../services/roleRoomMemberProfileService';
+import {
+  availabilityEntriesToCrewCells,
+  memberToVirtualCrew,
+  isVirtualCrewId,
+  type CrewAvailabilityOverlay,
+} from '../utils/crewAvailabilitySync';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
@@ -342,6 +350,14 @@ function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; has
       {hasConflict && (
         <Tooltip title="Dobbeltbooket!" arrow>
           <WarningAmberIcon sx={{ fontSize: 12, color: '#ef4444', ml: 0.3 }} />
+        </Tooltip>
+      )}
+      {Boolean((member as { availabilitySynced?: boolean }).availabilitySynced) && (
+        <Tooltip title="Tilgjengelighet synket fra medlemmets egen kalender" arrow>
+          <Box sx={{
+            width: 6, height: 6, borderRadius: '50%', ml: 0.3, flexShrink: 0,
+            bgcolor: '#a030c0', boxShadow: '0 0 4px rgba(160,48,192,0.9)',
+          }} />
         </Tooltip>
       )}
     </Box>
@@ -1188,6 +1204,80 @@ export function CrewManagementPanel({
     };
     loadCrew();
   }, [projectId]);
+
+  // ─── Auto-vis brukere lagt til i prosjektet + synk tilgjengeligheten deres ──
+  // Medlemmer som deler produksjonsteam-prosjektet (medlemskatalogen) dukker
+  // automatisk opp som crew-rader, med tilgjengelighet hentet fra deres egen
+  // kalender (role_room_member_availability). Manuelt opprettede crew-rader med
+  // samme e-post beriker vi i stedet for å duplisere.
+  const [projectMembers, setProjectMembers] = useState<Array<MemberListItem & { email?: string | null }>>([]);
+  const [availabilityByUser, setAvailabilityByUser] = useState<Map<string, CrewAvailabilityOverlay>>(new Map());
+
+  useEffect(() => {
+    if (!projectId) { setProjectMembers([]); setAvailabilityByUser(new Map()); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { members } = await roleRoomMemberProfileService.listMembers({ projectId, limit: 100 });
+        if (cancelled) return;
+        setProjectMembers(members);
+        const overlay = new Map<string, CrewAvailabilityOverlay>();
+        await Promise.all(members.map(async (m) => {
+          try {
+            const entries = await roleRoomMemberProfileService.getMemberAvailability(m.userId);
+            if (entries.length) overlay.set(m.userId, availabilityEntriesToCrewCells(entries));
+          } catch { /* per-medlem: privat kalender el. nettfeil — hopp over */ }
+        }));
+        if (!cancelled) setAvailabilityByUser(overlay);
+      } catch {
+        // Katalogen kan degradere (schema-drift) — behold manuell crew uendret.
+        if (!cancelled) { setProjectMembers([]); setAvailabilityByUser(new Map()); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // Manuelle crew-rader beriket med kalender + virtuelle rader for lagt-til
+  // medlemmer. Kun display-avledet: `crewMembers` (persistert kilde) er urørt,
+  // så redigering/lagring/sletting nedenfor treffer aldri synket data.
+  const enrichedCrew = useMemo<CrewMember[]>(() => {
+    if (projectMembers.length === 0) return crewMembers;
+
+    const emailToUser = new Map<string, string>();
+    for (const m of projectMembers) {
+      const em = (m.email || '').toLowerCase().trim();
+      if (em) emailToUser.set(em, m.userId);
+    }
+
+    const usedUserIds = new Set<string>();
+    const rows: CrewMember[] = crewMembers.map((member) => {
+      let userId = typeof (member as { memberUserId?: unknown }).memberUserId === 'string'
+        ? (member as { memberUserId?: string }).memberUserId
+        : undefined;
+      if (!userId && isVirtualCrewId(member.id)) userId = member.id.slice('member:'.length);
+      if (!userId) {
+        const em = (member.contactInfo?.email || '').toLowerCase().trim();
+        if (em) userId = emailToUser.get(em);
+      }
+      if (userId) usedUserIds.add(userId);
+      const overlay = userId ? availabilityByUser.get(userId) : undefined;
+      if (!overlay) return member;
+      return {
+        ...member,
+        availabilityCells: overlay.cells.length ? overlay.cells : member.availabilityCells,
+        availability: overlay.range ? { ...member.availability, ...overlay.range } : member.availability,
+        availabilitySynced: true,
+      } as CrewMember;
+    });
+
+    for (const m of projectMembers) {
+      if (usedUserIds.has(m.userId)) continue;
+      const overlay = availabilityByUser.get(m.userId);
+      rows.push({ ...memberToVirtualCrew(m, overlay), availabilitySynced: Boolean(overlay) } as CrewMember);
+    }
+    return rows;
+  }, [crewMembers, projectMembers, availabilityByUser]);
+
   const [editingCrewMember, setEditingCrewMember] = useState<CrewMember | null>(null);
   const [formData, setFormData] = useState<Partial<CrewMember>>({
     name: '',
@@ -1675,7 +1765,7 @@ export function CrewManagementPanel({
         .map(a => a.crewMemberId),
     );
 
-    crewMembers.forEach(member => {
+    enrichedCrew.forEach(member => {
       roleCount[member.role] = (roleCount[member.role] || 0) + 1;
       if (member.rate) totalRate += member.rate;
       if (isAvailableNow(member)) availableCount++;
@@ -1690,7 +1780,7 @@ export function CrewManagementPanel({
     const busyCount = assignedTodaySet.size;
 
     return {
-      total: crewMembers.length,
+      total: enrichedCrew.length,
       roleCount,
       totalDailyRate: totalRate,
       availableNow: availableCount,
@@ -1701,11 +1791,11 @@ export function CrewManagementPanel({
       assignedToday: assignedTodaySet.size,
       totalConflicts: conflicts.length,
     };
-  }, [crewMembers, crewAssignments, todayStr]);
+  }, [enrichedCrew, crewAssignments, todayStr]);
 
   // Filtered and sorted crew members
   const filteredAndSortedCrew = useMemo(() => {
-    let result = [...crewMembers];
+    let result = [...enrichedCrew];
 
     // Search filter (debounced – avoids re-filtering on every keystroke)
     if (debouncedSearch.trim()) {
@@ -1769,7 +1859,7 @@ export function CrewManagementPanel({
     });
 
     return result;
-  }, [crewMembers, debouncedSearch, filterRole, filterDept, filterStatus, filterAvailable, filterAssignedToday, crewAssignments, todayStr, sortField, sortDirection]);
+  }, [enrichedCrew, debouncedSearch, filterRole, filterDept, filterStatus, filterAvailable, filterAssignedToday, crewAssignments, todayStr, sortField, sortDirection]);
 
   // Conflict map: crewMemberId → has double-booking conflict (O(assignments) once per assignment change)
   const conflictMap = useMemo<Map<string, boolean>>(() => {
@@ -2676,8 +2766,13 @@ export function CrewManagementPanel({
   // Keyboard shortcuts
   const handleOpenDialog = useCallback((crewMember?: CrewMember) => {
     if (crewMember) {
-      setEditingCrewMember(crewMember);
-      setFormData(crewMember);
+      // Rediger den PERSISTERTE raden, ikke den kalender-berikede visningen —
+      // ellers ville synket tilgjengelighet lekket inn i lagret data. Virtuelle
+      // «lagt til i prosjekt»-rader finnes ikke i crewMembers og materialiseres
+      // (med sin kalender-snapshot) ved første lagring.
+      const original = crewMembers.find((m) => m.id === crewMember.id) ?? crewMember;
+      setEditingCrewMember(original);
+      setFormData(original);
     } else {
       setEditingCrewMember(null);
       // Set profession-specific default role
@@ -2696,7 +2791,7 @@ export function CrewManagementPanel({
       });
     }
     setDialogOpen(true);
-  }, [profession]);
+  }, [profession, crewMembers]);
 
   useEffect(() => {
     if (!externalCreateSignal || externalCreateSignal === externalCreateSignalRef.current) {
@@ -3926,7 +4021,7 @@ export function CrewManagementPanel({
 
         {/* CENTER: crew list */}
         <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', border: `1px solid ${roleBorder}`, borderRadius: 2, bgcolor: roleSurfaceMuted, backdropFilter: 'blur(6px)', p: 1 }}>
-          {crewMembers.length === 0 ? (
+          {enrichedCrew.length === 0 ? (
             <RoleRoomEmptyState
               iconSrc={crewPng}
               title="Ingen teammedlemmer ennå"
