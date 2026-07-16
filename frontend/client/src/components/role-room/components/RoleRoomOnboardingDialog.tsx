@@ -698,7 +698,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                 Utstyr / gear (valgfri)
               </Typography>
-              <Autocomplete
+              <Autocomplete<EquipmentCatalogItem, true, false, true>
                 multiple
                 freeSolo
                 size="small"
@@ -710,7 +710,8 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     : EQUIPMENT_CATEGORY_LABELS[opt.category])}
                 getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.name)}
                 isOptionEqualToValue={(opt, val) =>
-                  (typeof opt === 'string' ? opt : opt.name) === val}
+                  (typeof opt === 'string' ? opt : opt.name)
+                    === (typeof val === 'string' ? val : val.name)}
                 onChange={(_e, value) => {
                   const names = value.map((v) =>
                     (typeof v === 'string' ? v.trim() : v.name)).filter(Boolean);
@@ -729,16 +730,19 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                   );
                 }}
                 renderTags={(value, getTagProps) =>
-                  value.map((name, index) => (
-                    <Chip
-                      {...getTagProps({ index })}
-                      key={name}
-                      size="small"
-                      icon={<EquipmentCategoryIcon category={categoryForEquipment(name)}
-                        sx={{ fontSize: 16 }} />}
-                      label={name}
-                    />
-                  ))}
+                  value.map((opt, index) => {
+                    const name = typeof opt === 'string' ? opt : opt.name;
+                    return (
+                      <Chip
+                        {...getTagProps({ index })}
+                        key={name}
+                        size="small"
+                        icon={<EquipmentCategoryIcon category={categoryForEquipment(name)}
+                          sx={{ fontSize: 16 }} />}
+                        label={name}
+                      />
+                    );
+                  })}
                 renderInput={(params) => (
                   <TextField {...params} placeholder="Søk kamera, objektiv, drone, lys …"
                     helperText="Velg fra katalogen eller skriv inn eget utstyr" />
