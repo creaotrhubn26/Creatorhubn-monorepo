@@ -23,9 +23,13 @@
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import Anthropic from "@anthropic-ai/sdk";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled } from "./leadgrid-entitlement-guard.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 type SessionUser = {
   userId: string;
@@ -181,6 +185,65 @@ export function registerLeadgridLeadbookExamplesRoutes(
     } catch (err) {
       console.warn("[leadbook-examples] list failed:", (err as Error).message);
       return res.status(500).json({ error: "list_failed" });
+    }
+  });
+
+  // ── POST /api/leadgrid/leadbook/examples/structure ────────────────
+  // LLM-strukturering (2026-07-17, Daniel: forbedring #1 — senk terskelen
+  // for innhold): leder limer inn rå notater/referat → Claude strukturerer
+  // til eksempel-feltene (transkript, Pondus-scores, lærdommer). Kun
+  // forslag — lederen redigerer og lagrer selv via POST /examples.
+  app.post("/api/leadgrid/leadbook/examples/structure", async (req, res) => {
+    const g = await guard(req, res);
+    if (!g) return;
+    if (g.role == null || !WRITE_ROLES.has(g.role)) {
+      return res.status(403).json({ error: "krever_leder_rolle" });
+    }
+    const raw = str((req.body ?? {}).raw_text).trim();
+    if (raw.length < 40) {
+      return res.status(400).json({ error: "for_kort_tekst" });
+    }
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({ error: "ai_ikke_konfigurert" });
+    }
+    try {
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const prompt = `Du er en norsk salgscoach-ekspert. En salgsleder har limt inn rå notater/referat fra en salgssamtale. Strukturer det til et lærings-eksempel. Returner KUN gyldig JSON i nøyaktig dette skjemaet (norsk innhold):
+
+{
+  "title": "<kort beskrivende tittel, f.eks. 'Prisinnvending snudd med referansekunde'>",
+  "summary": "<2-3 setninger>",
+  "outcome": "won|lost|ongoing",
+  "transcript": [{"speaker": "Selger|Kunde|Notat", "text": "..."}],
+  "key_learnings": ["<3-5 konkrete lærdommer>"],
+  "alternative_phrasings": ["<0-3 forslag til bedre formuleringer>"],
+  "dimension_scores": {"autoritet": 0-100, "klarhet": 0-100, "troverdighet": 0-100, "trygghet": 0-100, "fremdrift": 0-100},
+  "featured_dimension": "autoritet|klarhet|troverdighet|trygghet|fremdrift",
+  "pondus_score": 0-100
+}
+
+Regler: transcript skal gjengi samtalen som replikker — bruk teksten ordrett der den er sitert, parafraser forsiktig der den er referert (marker parafraser som speaker "Notat"). dimension_scores skal reflektere selgerens prestasjon i samtalen. featured_dimension = dimensjonen med mest læringsverdi. Ikke finn på fakta som ikke står i notatene.
+
+Rå notater:
+${raw.slice(0, 12_000)}`;
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 3000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      );
+      const text = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return res.status(502).json({ error: "ai_svar_uparsbart" });
+      const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+      return res.json({ structured: parsed });
+    } catch (err) {
+      console.warn("[leadbook-examples] structure failed:", (err as Error).message);
+      return res.status(500).json({ error: "structure_failed" });
     }
   });
 
