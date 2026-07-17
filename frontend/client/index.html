@@ -395,6 +395,13 @@
       // Sett til '' for å deaktivere. Per-host som GA/GTM-pattern over.
       var CREATORHUB_TIKTOK_PIXEL_CODE = '';
       var ROLE_ROOM_TIKTOK_PIXEL_CODE = '';
+      // Meta Pixel (Facebook/Instagram-annonsering) — dataset-ID fra Events
+      // Manager (business.facebook.com/events_manager2). Tom streng = lastes
+      // ikke. NB: gates på MARKEDSFØRINGS-samtykke (ikke analytics) siden
+      // pixelen brukes til annonsemåling/remarketing.
+      var LEADGRID_META_PIXEL_ID = '';
+      var CREATORHUB_META_PIXEL_ID = '';
+      var ROLE_ROOM_META_PIXEL_ID = '';
       var analyticsConfig = resolveAnalyticsConfig();
       var analyticsBootstrapState = {
         tagManagerLoaded: false,
@@ -406,6 +413,8 @@
         clarityLoaded: false,
         tiktokRequested: false,
         tiktokLoaded: false,
+        metaPixelRequested: false,
+        metaPixelLoaded: false,
       };
 
       function resolveAnalyticsConfig() {
@@ -419,6 +428,7 @@
             tagManagerId: LEADGRID_GOOGLE_TAG_MANAGER_ID,
             clarityProjectId: LEADGRID_CLARITY_PROJECT_ID,
             tiktokPixelCode: LEADGRID_TIKTOK_PIXEL_CODE,
+            metaPixelId: LEADGRID_META_PIXEL_ID,
           };
         }
         return {
@@ -427,6 +437,7 @@
           tagManagerId: isRoleRoomHost ? ROLE_ROOM_GOOGLE_TAG_MANAGER_ID : CREATORHUB_GOOGLE_TAG_MANAGER_ID,
           clarityProjectId: isRoleRoomHost ? ROLE_ROOM_CLARITY_PROJECT_ID : CREATORHUB_CLARITY_PROJECT_ID,
           tiktokPixelCode: isRoleRoomHost ? ROLE_ROOM_TIKTOK_PIXEL_CODE : CREATORHUB_TIKTOK_PIXEL_CODE,
+          metaPixelId: isRoleRoomHost ? ROLE_ROOM_META_PIXEL_ID : CREATORHUB_META_PIXEL_ID,
         };
       }
 
@@ -463,6 +474,10 @@
 
       function hasAnalyticsConsent(consentSettings) {
         return !!(consentSettings && consentSettings.analytics);
+      }
+
+      function hasMarketingConsent(consentSettings) {
+        return !!(consentSettings && consentSettings.marketing);
       }
 
       function applyAnalyticsConsent(consentSettings) {
@@ -615,6 +630,40 @@
         return true;
       }
 
+      function ensureMetaPixelLoaded(consentSettings) {
+        // Meta Pixel (Facebook/Instagram) — annonsemåling/remarketing.
+        // Gates på MARKEDSFØRINGS-samtykke (strengere enn analytics) og
+        // per-host dataset-ID (tom = deaktivert). Localhost skippes.
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasMarketingConsent(consentSettings) ||
+          !analyticsConfig.metaPixelId
+        ) {
+          return false;
+        }
+        if (analyticsBootstrapState.metaPixelLoaded || analyticsBootstrapState.metaPixelRequested) {
+          return true;
+        }
+        analyticsBootstrapState.metaPixelRequested = true;
+        (function (f, b, e, v, n, t, s) {
+          if (f.fbq) return;
+          n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+          if (!f._fbq) f._fbq = n;
+          n.push = n; n.loaded = true; n.version = '2.0'; n.queue = [];
+          t = b.createElement(e); t.async = true; t.src = v;
+          t.onload = function () { analyticsBootstrapState.metaPixelLoaded = true; };
+          t.onerror = function () { analyticsBootstrapState.metaPixelRequested = false; };
+          s = b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t, s);
+        })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+        window.fbq('init', analyticsConfig.metaPixelId);
+        window.fbq('track', 'PageView');
+        return true;
+      }
+
       function ensureGoogleAnalyticsLoaded(consentSettings) {
         var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         var isOnline = navigator.onLine !== false;
@@ -668,6 +717,7 @@
             ensureClarityLoaded(consentSettings);
             ensureTiktokPixelLoaded(consentSettings);
           }
+          ensureMetaPixelLoaded(consentSettings);
           return true;
         };
         window.__creatorhubLoadAnalytics = function (consentSettings) {
@@ -675,6 +725,7 @@
           ensureGoogleTagManagerLoaded(resolvedConsent);
           ensureClarityLoaded(resolvedConsent);
           ensureTiktokPixelLoaded(resolvedConsent);
+          ensureMetaPixelLoaded(resolvedConsent);
           return ensureGoogleAnalyticsLoaded(resolvedConsent);
         };
 
@@ -685,6 +736,10 @@
           ensureGoogleAnalyticsLoaded(storedConsent);
           ensureClarityLoaded(storedConsent);
           ensureTiktokPixelLoaded(storedConsent);
+        }
+
+        if (!isLocalhost && isOnline && hasMarketingConsent(storedConsent)) {
+          ensureMetaPixelLoaded(storedConsent);
         }
 
         if (isOnline) {
