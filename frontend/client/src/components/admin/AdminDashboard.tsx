@@ -4255,16 +4255,24 @@ export default function AdminDashboard({
             </Box>
           )}
 
-          <AdminErrorBoundary
-            key={currentTab.id}
-            fallback={
-              <Alert severity="error">
-                Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
-              </Alert>
-            }
-          >
-            {renderCurrentTabContent()}
-          </AdminErrorBoundary>
+          {/* Shell-nivå dark-tema: sikrer at ALLE faner arver admin-mørkt tema
+              (hvit tekst på #0a0f1a) selv om det enkelte panelet ikke wrapper
+              seg selv i adminDarkTheme. Uten dette arver uwrappede paneler
+              app-ens lyse creatorHubTheme → mørk tekst på mørk bakgrunn =
+              usynlig. Paneler som allerede wrapper seg dobbelt-wrapper trygt
+              (indre ThemeProvider vinner). */}
+          <AdminSectionThemeProvider theme={adminDarkTheme}>
+            <AdminErrorBoundary
+              key={currentTab.id}
+              fallback={
+                <Alert severity="error">
+                  Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
+                </Alert>
+              }
+            >
+              {renderCurrentTabContent()}
+            </AdminErrorBoundary>
+          </AdminSectionThemeProvider>
         </Container>
       </Box>
 
