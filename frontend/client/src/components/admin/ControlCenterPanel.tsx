@@ -188,6 +188,32 @@ interface AiMarginResponse {
   topConsumers: OrgAiSpend[];
 }
 
+interface OrgOverageRow {
+  organizationId: string;
+  orgName: string | null;
+  planId: string | null;
+  includedCostNok: number;
+  actualCostNok: number;
+  overageCostNok: number;
+  overageChargeNok: number;
+  markup: number;
+  stripeCustomerId: string | null;
+  needsStripeLink: boolean;
+  calls: number;
+}
+
+interface AiOverageResponse {
+  periodMonth: string;
+  usdToNok: number;
+  markup: number;
+  orgsProcessed: number;
+  orgsWithOverage: number;
+  totalOverageChargeNok: number;
+  orgsMissingStripeLink: number;
+  rows: OrgOverageRow[];
+  computedAt: string;
+}
+
 // ─── Hjelpere ──────────────────────────────────────────────────────────────
 
 const POLL_MS = 45_000;
@@ -221,6 +247,7 @@ const SUBTABS = [
   { id: 'incidents', label: 'Hendelser' },
   { id: 'health', label: 'Helse' },
   { id: 'ai-margin', label: 'AI-margin' },
+  { id: 'ai-overage', label: 'AI-overage' },
   { id: 'deploys', label: 'Deploys' },
   { id: 'logs', label: 'Logg' },
 ] as const;
@@ -326,6 +353,19 @@ const ControlCenterPanel: React.FC = () => {
     enabled: subTab === 'ai-margin',
   });
 
+  const aiOverage = useQuery<AiOverageResponse>({
+    queryKey: ['/api/control-center/ai-overage'],
+    queryFn: () => apiRequest('/api/control-center/ai-overage'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'ai-overage',
+  });
+
+  const overageCompute = useMutation({
+    mutationFn: () =>
+      apiRequest('/api/control-center/ai-overage/compute', { method: 'POST', body: {} }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['/api/control-center/ai-overage'] }),
+  });
+
   const incidentAction = useMutation({
     mutationFn: (args: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) =>
       apiRequest(
@@ -352,7 +392,7 @@ const ControlCenterPanel: React.FC = () => {
         </Box>
         <Button
           size="small" startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); void health.refetch(); void aiMargin.refetch(); }}
+          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); void health.refetch(); void aiMargin.refetch(); void aiOverage.refetch(); }}
           sx={{ textTransform: 'none' }}
         >
           Oppdater
@@ -388,6 +428,13 @@ const ControlCenterPanel: React.FC = () => {
       )}
       {subTab === 'health' && <HealthSection health={health} />}
       {subTab === 'ai-margin' && <AiMarginSection aiMargin={aiMargin} />}
+      {subTab === 'ai-overage' && (
+        <AiOverageSection
+          aiOverage={aiOverage}
+          onCompute={() => overageCompute.mutate()}
+          computing={overageCompute.isPending}
+        />
+      )}
       {subTab === 'deploys' && <DeploysSection deploys={deploys} />}
       {subTab === 'logs' && <LogsSection logs={logs} />}
     </Box>
@@ -783,6 +830,90 @@ const AiMarginSection: React.FC<{ aiMargin: ReturnType<typeof useQuery<AiMarginR
       <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
         Fase A (kun synlighet): faktisk AI-kost fra <code>ai_usage_log</code>, USD→NOK ≈ {summary.usdToNok} (env <code>AI_USD_TO_NOK</code>).
         Ingen håndhevelse/fakturering enda — Fase B = per-plan tak, Fase C = Stripe metered-overage. Sist oppdatert {relTime(summary.generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
+
+const AiOverageSection: React.FC<{
+  aiOverage: ReturnType<typeof useQuery<AiOverageResponse>>;
+  onCompute: () => void;
+  computing: boolean;
+}> = ({ aiOverage, onCompute, computing }) => {
+  if (aiOverage.isLoading) return <Loading />;
+  if (aiOverage.isError || !aiOverage.data) return <ErrorLine msg="Kunne ikke hente AI-overage." />;
+
+  const d = aiOverage.data;
+  const nok = (n: number) => `${Math.round(n).toLocaleString('nb-NO')} kr`;
+  const nok2 = (n: number) => `${n.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr`;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard
+          label={`Overage ${d.periodMonth.slice(0, 7)}`}
+          value={nok(d.totalOverageChargeNok)}
+          hint={`${d.orgsWithOverage} av ${d.orgsProcessed} orgs over budsjett · markup ×${d.markup}`}
+          accent={d.totalOverageChargeNok > 0 ? '#f5a623' : '#3dd68c'}
+        />
+        <KpiCard
+          label="Mangler Stripe-kobling"
+          value={String(d.orgsMissingStripeLink)}
+          hint="Overskridelse, men ingen stripe_customer_id (kan ikke faktureres i Fase C)"
+          accent={d.orgsMissingStripeLink > 0 ? '#e5484d' : '#3dd68c'}
+        />
+        <Button
+          size="small" variant="outlined" onClick={onCompute} disabled={computing}
+          sx={{ textTransform: 'none', alignSelf: 'center' }}
+        >
+          {computing ? 'Beregner…' : 'Beregn på nytt'}
+        </Button>
+      </Stack>
+
+      {d.rows.length === 0 ? (
+        <Alert severity="info">
+          Ingen akkumulering for måneden enda. Trykk «Beregn på nytt» for å aggregere <code>ai_usage_log</code> per org
+          (krever at mig <code>333_ai_overage_accrual.sql</code> er kjørt).
+        </Alert>
+      ) : (
+        <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ color: 'text.secondary' }}>Organisasjon</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Plan</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">Inkludert</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">Faktisk</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">Overage (fakt.)</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {d.rows.map((o, i) => (
+              <TableRow key={o.organizationId ?? `row-${i}`}>
+                <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{o.orgName ?? '(ukjent org)'}</TableCell>
+                <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>{o.planId ?? '—'}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>{nok2(o.includedCostNok)}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>{nok2(o.actualCostNok)}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 12, fontWeight: 700, color: o.overageChargeNok > 0 ? '#f5a623' : '#fff' }}>
+                  {o.overageChargeNok > 0 ? nok2(o.overageChargeNok) : '—'}
+                </TableCell>
+                <TableCell>
+                  {o.needsStripeLink
+                    ? <Chip size="small" label="Mangler Stripe" sx={{ height: 18, fontSize: 10, bgcolor: '#e5484d', color: '#fff' }} />
+                    : o.overageChargeNok > 0
+                      ? <Chip size="small" label="Klar for Fase C" sx={{ height: 18, fontSize: 10, bgcolor: '#2f6f4f', color: '#fff' }} />
+                      : <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>Innenfor</Typography>}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Fase B (regnskap, ingen fakturering): inkludert AI-budsjett per plan (env <code>AI_INCLUDED_BUDGET_NOK_*</code>),
+        overskridelse × markup {d.markup} (env <code>AI_OVERAGE_MARKUP</code>), USD→NOK ≈ {d.usdToNok}. Kunder blokkeres aldri.
+        Fase C rapporterer «Klar for Fase C»-radene til Stripe metered — bak eksplisitt bekreftelse. Sist beregnet {relTime(d.computedAt)}.
       </Typography>
     </Box>
   );

@@ -40,8 +40,32 @@ import {
   type HealthService,
 } from "./control-center-health-client.js";
 import { computeAiMargin } from "./ai-margin-service.js";
+import {
+  computeMonthlyAiOverage,
+  readAiOverageAccrual,
+  type AiOverageResult,
+} from "./ai-overage-service.js";
+import { overageMarkup } from "./ai-plan-budgets.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
+
+/** Tomt overage-svar (mig 333 ikke kjørt / ingen data) — samme form som tjenesten. */
+function emptyOverageResult(month?: string): AiOverageResult {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return {
+    periodMonth: month ? `${month}-01` : `${y}-${m}-01`,
+    usdToNok: Number(process.env.AI_USD_TO_NOK) || 10.5,
+    markup: overageMarkup(),
+    orgsProcessed: 0,
+    orgsWithOverage: 0,
+    totalOverageChargeNok: 0,
+    orgsMissingStripeLink: 0,
+    rows: [],
+    computedAt: new Date().toISOString(),
+  };
+}
 
 interface Deps {
   app: Express;
@@ -548,6 +572,41 @@ export function setupControlCenterRoutes(deps: Deps): void {
         },
         topConsumers: [],
       });
+    }
+  });
+
+  // ── GET /api/control-center/ai-overage ─────────────────────────────
+  // Fase B: LES akkumulerte overage-rader for en måned (default inneværende).
+  // READ-ONLY — beregner ikke på nytt, skriver ikke til Stripe. `?month=YYYY-MM`.
+  app.get("/api/control-center/ai-overage", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const month = typeof req.query.month === "string" ? req.query.month : undefined;
+    try {
+      const report = await readAiOverageAccrual(pool, { month });
+      return res.json(report);
+    } catch (err) {
+      // ai_overage_accrual finnes ikke enda (mig 333 ikke kjørt) → tomt, ikke 500.
+      console.warn("[control-center/ai-overage] read failed:", (err as Error).message);
+      return res.json(emptyOverageResult(month));
+    }
+  });
+
+  // ── POST /api/control-center/ai-overage/compute ────────────────────
+  // Fase B: (re)beregn og UPSERT akkumulering for en måned. Aggregerer
+  // ai_usage_log per org, løser plan/Stripe-kunde, fyller ai_overage_accrual.
+  // BELASTER IKKE Stripe og blokkerer ingen kall — kun regnskap. `{month?}`.
+  app.post("/api/control-center/ai-overage/compute", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const month =
+      typeof req.body?.month === "string" ? req.body.month : undefined;
+    try {
+      const report = await computeMonthlyAiOverage(pool, { month });
+      return res.json(report);
+    } catch (err) {
+      console.warn("[control-center/ai-overage/compute] failed:", (err as Error).message);
+      return res.status(500).json({ error: "compute_failed", message: (err as Error).message });
     }
   });
 
