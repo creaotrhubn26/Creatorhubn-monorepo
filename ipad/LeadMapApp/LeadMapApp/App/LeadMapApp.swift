@@ -55,11 +55,32 @@ struct LeadMapApp: App {
                 // window, Catalyst sekundær-vinduer) opprettet etter første
                 // onAppear ville ellers mangle override → lyse kart-fliser.
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Self.forceDarkWindows() }
+                    if phase == .active {
+                        Self.forceDarkWindows()
+                        sendPresenceCheckin()
+                    }
                 }
         }
     }
     @Environment(\.scenePhase) private var scenePhase
+
+    /// «Sist aktiv i Leadgrid» (2026-07-18): puls ved app-aktivering i ekte
+    /// modus — driver utstyrsregisterets serienr → innehaver → posisjon-
+    /// kobling (appen kan ikke lese serienummer; tildelingen er broen).
+    /// Posisjon sendes KUN når appen allerede har en fix (ingen ny
+    /// tillatelses-prompt). Fire-and-forget — feiler stille.
+    private func sendPresenceCheckin() {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api else { return }
+        let coord = KartLocationManager.shared.currentCoordinate
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? ""
+        let model = UIDevice.current.model + " (" + UIDevice.current.systemVersion + ")"
+        Task.detached(priority: .utility) {
+            try? await api.presenceCheckin(
+                lat: coord?.latitude, lng: coord?.longitude,
+                deviceModel: model, appVersion: version)
+        }
+    }
 
     /// Tvinger `overrideUserInterfaceStyle = .dark` på alle tilkoblede
     /// vinduer så MapKit-flisene alltid er mørke, uansett system-appearance.

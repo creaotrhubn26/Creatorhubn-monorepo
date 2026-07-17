@@ -11,6 +11,7 @@
 // Hele flaten er entitlement-gated via .gated(.utstyrsregister).
 
 import SwiftUI
+import UIKit   // 2026-07-18: UIApplication.open for «Vis posisjon» (Apple Maps)
 
 // MARK: - Kind/status-metadata (deles med «Mitt utstyr» i MinProfil)
 
@@ -282,6 +283,12 @@ struct UtstyrsregisterSheet: View {
                         .foregroundStyle(TBrand.purpleLight)
                         .lineLimit(1)
                 }
+                // 2026-07-18: «Sist aktiv i Leadgrid» — innehaverens siste
+                // app-innsjekk (backend joiner presence på assigned_user_id).
+                // Vises kun på utleverte rader og kun når data finnes.
+                if item.status == "utlevert" {
+                    presenceLine(item)
+                }
             }
 
             Spacer(minLength: 8)
@@ -305,6 +312,80 @@ struct UtstyrsregisterSheet: View {
     private func assignedDateSuffix(_ item: APIClient.EquipmentDTO) -> String {
         guard let at = item.assignedAt, at.count >= 10 else { return "" }
         return " · \(at.prefix(10))"
+    }
+
+    // MARK: Presence — «Sist aktiv i Leadgrid» (2026-07-18)
+
+    /// ISO-parsere: backend kan sende med/uten brøkdels-sekunder.
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+
+    /// Norsk relativ tid («for 2 timer siden»).
+    private static let relFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.unitsStyle = .short
+        return f
+    }()
+
+    private static func parseISO(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+    }
+
+    /// «Sist aktiv for 2 t siden (iPhone 15 Pro)» — nil når presence mangler.
+    private func lastSeenText(_ item: APIClient.EquipmentDTO) -> String? {
+        guard let raw = item.lastSeenAt, let date = Self.parseISO(raw) else { return nil }
+        var s = "Sist aktiv \(Self.relFormatter.localizedString(for: date, relativeTo: Date()))"
+        if let m = item.lastDeviceModel, !m.isEmpty { s += " (\(m))" }
+        return s
+    }
+
+    /// Presence-linje under «til <navn>»: relativ tid + valgfri
+    /// «Vis posisjon»-knapp (Apple Maps på siste kjente koordinat).
+    @ViewBuilder
+    private func presenceLine(_ item: APIClient.EquipmentDTO) -> some View {
+        let text = lastSeenText(item)
+        let harPos = item.lastLat != nil && item.lastLng != nil
+        if text != nil || harPos {
+            HStack(spacing: 6) {
+                if let text {
+                    Text(text)
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(TBrand.textSecondary)
+                        .lineLimit(1)
+                }
+                if harPos {
+                    Button {
+                        openPosition(item)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "location.fill")
+                                .font(.appScaled(size: 8, weight: .bold))
+                            Text("Vis posisjon")
+                                .font(.appScaled(size: 9, weight: .bold))
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .foregroundStyle(TBrand.blue)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(TBrand.blue.opacity(0.14), in: Capsule())
+                        .overlay(Capsule().stroke(TBrand.blue.opacity(0.35), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    /// Åpner Apple Maps på innehaverens siste kjente posisjon.
+    private func openPosition(_ item: APIClient.EquipmentDTO) {
+        guard let lat = item.lastLat, let lng = item.lastLng else { return }
+        let q = item.label.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Utstyr"
+        guard let url = URL(string: "https://maps.apple.com/?ll=\(lat),\(lng)&q=\(q)") else { return }
+        UIApplication.shared.open(url)
     }
 
     private func statusChip(_ item: APIClient.EquipmentDTO) -> some View {
@@ -479,12 +560,17 @@ struct UtstyrsregisterSheet: View {
 
     /// Demo-rader — én per kind. EquipmentDTO har kun Decodable-init
     /// (lenient dekoding), så mock bygges via JSON i stedet for memberwise.
+    /// 2026-07-18: to av radene har mock-presence (last_seen_at relativt til
+    /// nå + Oslo-koordinat) så «Sist aktiv»/«Vis posisjon»-flyten kan demo-es.
     private static func demoRows() -> [APIClient.EquipmentDTO] {
+        let iso = ISO8601DateFormatter()
+        let toTimerSiden = iso.string(from: Date().addingTimeInterval(-2 * 3600))
+        let iGaar = iso.string(from: Date().addingTimeInterval(-26 * 3600))
         let json = """
         [
-          {"id":"demo-1","kind":"nettbrett","label":"iPad Pro 11\\"","serial_number":"DMPXK2LF4","status":"utlevert","assigned_user_id":"demo-u1","assigned_user_name":"Kari Nordmann","assigned_at":"2026-07-02T09:15:00Z","note":""},
+          {"id":"demo-1","kind":"nettbrett","label":"iPad Pro 11\\"","serial_number":"DMPXK2LF4","status":"utlevert","assigned_user_id":"demo-u1","assigned_user_name":"Kari Nordmann","assigned_at":"2026-07-02T09:15:00Z","note":"","last_seen_at":"\(toTimerSiden)","last_lat":59.9139,"last_lng":10.7522,"last_device_model":"iPad Pro 11\\""},
           {"id":"demo-2","kind":"telefon","label":"iPhone 15","serial_number":"F2LX93QJN","status":"tilgjengelig","assigned_user_name":"","note":""},
-          {"id":"demo-3","kind":"laptop","label":"MacBook Air 13","serial_number":"C02G84KQ","status":"utlevert","assigned_user_id":"demo-u2","assigned_user_name":"Ola Magnussen","assigned_at":"2026-06-20T12:00:00Z","note":""},
+          {"id":"demo-3","kind":"laptop","label":"MacBook Air 13","serial_number":"C02G84KQ","status":"utlevert","assigned_user_id":"demo-u2","assigned_user_name":"Ola Magnussen","assigned_at":"2026-06-20T12:00:00Z","note":"","last_seen_at":"\(iGaar)","last_device_model":"MacBook Air 13"},
           {"id":"demo-4","kind":"klaer","label":"Softshell-jakke m/ logo","size":"L","status":"tilgjengelig","assigned_user_name":"","note":""},
           {"id":"demo-5","kind":"id_kort","label":"ID-kort selger","status":"tapt","assigned_user_name":"","note":"Meldt tapt av Henrik"}
         ]

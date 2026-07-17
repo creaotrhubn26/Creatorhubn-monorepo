@@ -679,6 +679,13 @@ actor APIClient {
         let assignedUserName: String
         let assignedAt: String?
         let note: String
+        /// «Sist aktiv i Leadgrid» (2026-07-18): innehaverens siste app-
+        /// innsjekk — serienr → innehaver → posisjon (appen kan ikke lese
+        /// serienummer; koblingen går via tildelingen).
+        var lastSeenAt: String? = nil
+        var lastLat: Double? = nil
+        var lastLng: Double? = nil
+        var lastDeviceModel: String? = nil
 
         enum CodingKeys: String, CodingKey {
             case id, kind, label, size, status, note
@@ -686,6 +693,10 @@ actor APIClient {
             case assignedUserId = "assigned_user_id"
             case assignedUserName = "assigned_user_name"
             case assignedAt = "assigned_at"
+            case lastSeenAt = "last_seen_at"
+            case lastLat = "last_lat"
+            case lastLng = "last_lng"
+            case lastDeviceModel = "last_device_model"
         }
 
         init(from decoder: Decoder) throws {
@@ -700,6 +711,10 @@ actor APIClient {
             assignedUserName = (try? c.decode(String.self, forKey: .assignedUserName)) ?? ""
             assignedAt = try? c.decodeIfPresent(String.self, forKey: .assignedAt)
             note = (try? c.decode(String.self, forKey: .note)) ?? ""
+            lastSeenAt = try? c.decodeIfPresent(String.self, forKey: .lastSeenAt)
+            lastLat = try? c.decodeIfPresent(Double.self, forKey: .lastLat)
+            lastLng = try? c.decodeIfPresent(Double.self, forKey: .lastLng)
+            lastDeviceModel = try? c.decodeIfPresent(String.self, forKey: .lastDeviceModel)
         }
     }
 
@@ -768,6 +783,20 @@ actor APIClient {
     func fetchEquipmentEvents(id: String) async throws -> [EquipmentEventDTO] {
         let r: EquipmentEventsResponse = try await get("/api/leadgrid/equipment/\(id)/events")
         return r.events
+    }
+
+    /// «Sist aktiv»-puls — kalles ved app-aktivering i ekte modus.
+    /// Posisjon sendes kun når appen alt har den (ingen ny tillatelse).
+    func presenceCheckin(
+        lat: Double?, lng: Double?, deviceModel: String, appVersion: String
+    ) async throws {
+        struct Resp: Codable { let ok: Bool? }
+        var body: [String: Any] = [
+            "device_model": deviceModel,
+            "app_version": appVersion,
+        ]
+        if let lat, let lng { body["lat"] = lat; body["lng"] = lng }
+        let _: Resp = try await post("/api/leadgrid/presence/checkin", body: body)
     }
 
     // MARK: - Tettsteder (SSB tettbygde strøk, 2026-07-17)
