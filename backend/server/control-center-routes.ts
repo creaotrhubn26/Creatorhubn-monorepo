@@ -34,6 +34,11 @@ import {
   fetchAllDeploys,
   getDeployProviderStatus,
 } from "./control-center-deploys-client.js";
+import {
+  runHealthChecks,
+  overallStatus,
+  type HealthService,
+} from "./control-center-health-client.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -428,6 +433,88 @@ export function setupControlCenterRoutes(deps: Deps): void {
         anyConfigured: false,
         generatedAt: new Date().toISOString(),
       });
+    }
+  });
+
+  // ── GET /api/control-center/health ─────────────────────────────────
+  // Fase 3: health-pings. Kjører aktive prober mot indre tjenester (KUN
+  // LESE/PROBE), lagrer hvert sample, og regner oppetid (30d) + p95-svartid
+  // fra FAKTISKE registrerte samples. Én treg/nede tjeneste feller aldri de
+  // andre. Ingen mutasjon av tjeneste-tilstand.
+  app.get("/api/control-center/health", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const checks = await runHealthChecks(pool);
+
+      // Persister samples (best-effort — skal ikke felle svaret).
+      try {
+        const values: string[] = [];
+        const params: unknown[] = [];
+        checks.forEach((c, i) => {
+          const b = i * 4;
+          values.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`);
+          params.push(c.service, c.status, c.latencyMs, c.detail);
+        });
+        await pool.query(
+          `INSERT INTO control_center_health_checks (service, status, latency_ms, detail)
+           VALUES ${values.join(", ")}`,
+          params,
+        );
+      } catch (persistErr) {
+        console.warn("[control-center/health] persist feilet:", (persistErr as Error).message);
+      }
+
+      // Oppetid (andel ikke-nede) + p95 fra samples siste 30 dager, pr. tjeneste.
+      const stats = new Map<HealthService, { uptime30d: number | null; p95Ms: number | null; sampleCount: number }>();
+      try {
+        const agg = await pool.query<{
+          service: HealthService;
+          samples: string;
+          up_like: string;
+          p95: string | null;
+        }>(
+          `SELECT service,
+                  COUNT(*)::bigint AS samples,
+                  COUNT(*) FILTER (WHERE status IN ('up','degraded'))::bigint AS up_like,
+                  percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)
+                    FILTER (WHERE latency_ms IS NOT NULL AND status IN ('up','degraded')) AS p95
+           FROM control_center_health_checks
+           WHERE checked_at >= now() - interval '30 days'
+             AND status IN ('up','degraded','down')
+           GROUP BY service`,
+        );
+        for (const r of agg.rows) {
+          const samples = Number(r.samples);
+          const upLike = Number(r.up_like);
+          stats.set(r.service, {
+            uptime30d: samples > 0 ? Math.round((upLike / samples) * 1000) / 10 : null,
+            p95Ms: r.p95 != null ? Math.round(Number(r.p95)) : null,
+            sampleCount: samples,
+          });
+        }
+      } catch (aggErr) {
+        console.warn("[control-center/health] aggregat feilet:", (aggErr as Error).message);
+      }
+
+      const services = checks.map((c) => {
+        const st = stats.get(c.service);
+        return {
+          ...c,
+          uptime30d: st?.uptime30d ?? null,
+          p95Ms: st?.p95Ms ?? null,
+          sampleCount: st?.sampleCount ?? 0,
+        };
+      });
+
+      return res.json({
+        services,
+        overall: overallStatus(checks),
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn("[control-center/health] failed:", (err as Error).message);
+      return res.json({ services: [], overall: "unknown", generatedAt: new Date().toISOString() });
     }
   });
 
