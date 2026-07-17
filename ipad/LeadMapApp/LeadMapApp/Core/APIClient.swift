@@ -592,6 +592,72 @@ actor APIClient {
         return r.structured
     }
 
+    /// AI-kostnadsoversikt (kun ledere). cost_usd kommer som streng fra
+    /// pg NUMERIC — lenient decoding.
+    struct AIUsageBucketDTO: Codable {
+        let calls: Int
+        let costUsd: Double
+
+        enum CodingKeys: String, CodingKey {
+            case calls
+            case costUsd = "cost_usd"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            calls = (try? c.decode(Int.self, forKey: .calls)) ?? 0
+            if let d = try? c.decode(Double.self, forKey: .costUsd) {
+                costUsd = d
+            } else if let s = try? c.decode(String.self, forKey: .costUsd) {
+                costUsd = Double(s) ?? 0
+            } else {
+                costUsd = 0
+            }
+        }
+    }
+
+    struct AIUsageUserDTO: Codable, Identifiable {
+        let userName: String
+        let calls: Int
+        let costUsd: Double
+        var id: String { userName }
+
+        enum CodingKeys: String, CodingKey {
+            case userName = "user_name"
+            case calls
+            case costUsd = "cost_usd"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            userName = (try? c.decode(String.self, forKey: .userName)) ?? ""
+            calls = (try? c.decode(Int.self, forKey: .calls)) ?? 0
+            if let d = try? c.decode(Double.self, forKey: .costUsd) {
+                costUsd = d
+            } else if let s = try? c.decode(String.self, forKey: .costUsd) {
+                costUsd = Double(s) ?? 0
+            } else {
+                costUsd = 0
+            }
+        }
+    }
+
+    struct AIUsageResponse: Codable {
+        let total: AIUsageBucketDTO
+        let thisMonth: AIUsageBucketDTO
+        let byUser: [AIUsageUserDTO]
+
+        enum CodingKeys: String, CodingKey {
+            case total
+            case thisMonth = "this_month"
+            case byUser = "by_user"
+        }
+    }
+
+    func fetchLeadbookAIUsage() async throws -> AIUsageResponse {
+        try await get("/api/leadgrid/leadbook/examples/ai-usage")
+    }
+
     /// Visnings-registrering («Ukens samtale»-distribusjonen) — kalles når
     /// detail-sheeten åpnes i ekte modus. Fire-and-forget-vennlig.
     func recordLeadbookExampleView(exampleId: String) async throws {

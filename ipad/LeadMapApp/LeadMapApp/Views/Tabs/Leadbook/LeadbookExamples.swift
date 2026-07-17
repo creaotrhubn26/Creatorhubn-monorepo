@@ -3321,6 +3321,11 @@ struct LeadbookCreateExampleSheet: View {
 
     // 2026-07-17: AI-strukturering — lim inn rå notater, AI fyller feltene.
     // Score-forslagene holdes i state og sendes med i create-payloaden.
+    // Featuren er default AV: hele AI-kortet finnes KUN når backend eksplisitt
+    // har åpnet .leadbookAIStrukturering — ingen lås-overlay eller AI-referanse
+    // ellers (kostnadsbærende flate).
+    @ObservedObject private var entitlements = EntitlementStore.shared
+    @State private var showAIUsage = false
     @State private var isStructuring = false
     @State private var aiApplied = false
     @State private var aiToast: String?
@@ -3377,7 +3382,11 @@ struct LeadbookCreateExampleSheet: View {
                                hint: "Én-to setninger om hva som skjedde og hvorfor det er lærerikt.")
                         // 2026-07-17: AI-strukturering — senker terskelen for å
                         // legge inn eksempler (rå notater → utfylte felter).
-                        aiStructureCard
+                        // Default AV: kortet finnes bare når featuren er
+                        // eksplisitt påskrudd i entitlement-matrisen.
+                        if entitlements.isExplicitlyEnabled(.leadbookAIStrukturering) {
+                            aiStructureCard
+                        }
                         editor("Transkript", text: $transcriptText, minHeight: 160,
                                hint: "Én replikk per linje: «Selger: …» / «Kunde: …». Linjer uten kolon blir notater.")
                         editor("Nøkkel-lærdommer", text: $learningsText, minHeight: 90,
@@ -3484,10 +3493,25 @@ struct LeadbookCreateExampleSheet: View {
                         .foregroundStyle(.white)
                 }
             }
+            // 2026-07-17: kostnadsoversikt — create-sheeten er allerede
+            // canEdit-gated (kun ledere kommer hit), så knappen er leder-only.
+            Button { showAIUsage = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chart.bar").font(.appScaled(size: 10, weight: .bold))
+                    Text("Se AI-bruk").font(.appScaled(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(LBrand.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Se AI-bruk og kostnader")
         }
         .padding(12)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.purple.opacity(0.25), lineWidth: 1))
+        .sheet(isPresented: $showAIUsage) {
+            LeadbookAIUsageSheet()
+                .presentationDragIndicator(.visible)
+        }
     }
 
     @MainActor
@@ -3976,5 +4000,159 @@ struct LeadbookFeedbackInboxSheet: View {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
         isSendingReply = false
+    }
+}
+
+// MARK: - LeadbookAIUsageSheet — AI-kostnadsoversikt for ledere (2026-07-17)
+
+/// Kompakt oversikt over AI-struktureringskall og estimert kostnad (USD),
+/// totalt + denne måneden + per bruker. Åpnes fra AI-kortet i create-sheeten
+/// (som allerede er canEdit-gated) — og kun når AI-featuren er eksplisitt på.
+struct LeadbookAIUsageSheet: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var usage: APIClient.AIUsageResponse?
+    @State private var isLoading = true
+    @State private var loadError: String?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                Group {
+                    if isLoading {
+                        VStack(spacing: 10) {
+                            ProgressView().tint(LBrand.purpleLight)
+                            Text("Henter AI-bruk…")
+                                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+                        }
+                    } else if loadError != nil {
+                        VStack(spacing: 10) {
+                            Image(systemName: "wifi.exclamationmark")
+                                .font(.appScaled(size: 30)).foregroundStyle(LBrand.orange)
+                            Text("Kunne ikke hente AI-bruk")
+                                .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+                            Button {
+                                Task { await load() }
+                            } label: {
+                                Text("Prøv igjen")
+                                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(LBrand.purpleLight)
+                                    .padding(.horizontal, 14).padding(.vertical, 8)
+                                    .background(LBrand.purple.opacity(0.18), in: Capsule())
+                                    .overlay(Capsule().stroke(LBrand.purple.opacity(0.4), lineWidth: 1))
+                            }.buttonStyle(.plain)
+                        }
+                    } else if let usage, usage.total.calls == 0 {
+                        VStack(spacing: 10) {
+                            Image(systemName: "sparkles")
+                                .font(.appScaled(size: 30)).foregroundStyle(LBrand.textTertiary)
+                            Text("Ingen AI-kall enda")
+                                .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+                            Text("Bruk «Strukturer med AI» i opprettelses-skjemaet, så dukker forbruket opp her.")
+                                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 30)
+                        }
+                    } else if let usage {
+                        content(usage)
+                    }
+                }
+            }
+            .navigationTitle("AI-bruk")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
+                }
+            }
+            .task { await load() }
+        }
+    }
+
+    private func content(_ u: APIClient.AIUsageResponse) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                // Stat-bokser: denne måneden + totalt
+                HStack(spacing: 10) {
+                    statBox(label: "DENNE MÅNEDEN", bucket: u.thisMonth, tint: LBrand.purpleLight)
+                    statBox(label: "TOTALT", bucket: u.total, tint: LBrand.blue)
+                }
+                Text("Estimat fra offisiell prisliste; faktureres via Stripe-meter når aktivert")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(LBrand.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !u.byUser.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "person.2.fill").foregroundStyle(LBrand.purpleLight)
+                            Text("PER BRUKER").font(.appScaled(size: 10, weight: .black))
+                                .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                        }
+                        ForEach(u.byUser) { row in
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle().fill(LBrand.purple.opacity(0.22))
+                                    Text(LeadbookFeedbackFormat.initials(row.userName))
+                                        .font(.appScaled(size: 9, weight: .black))
+                                        .foregroundStyle(LBrand.purpleLight)
+                                }
+                                .frame(width: 26, height: 26)
+                                Text(row.userName.isEmpty ? "Ukjent bruker" : row.userName)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(row.calls) kall")
+                                    .font(.appScaled(size: 11, design: .monospaced))
+                                    .foregroundStyle(LBrand.textSecondary)
+                                Text(String(format: "$%.2f", row.costUsd))
+                                    .font(.appScaled(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(LBrand.green)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                        }
+                    }
+                }
+                Color.clear.frame(height: 12)
+            }
+            .padding(DeviceIdiom.isPhone ? 14 : 18)
+        }
+    }
+
+    private func statBox(label: String, bucket: APIClient.AIUsageBucketDTO, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.appScaled(size: 9, weight: .black))
+                .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+            Text("\(bucket.calls) kall")
+                .font(.appScaled(size: 16, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+            Text(String(format: "$%.2f", bucket.costUsd))
+                .font(.appScaled(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(tint.opacity(0.25), lineWidth: 1))
+    }
+
+    @MainActor
+    private func load() async {
+        guard let api = appState.api else {
+            isLoading = false
+            loadError = "Ikke innlogget"
+            return
+        }
+        isLoading = true
+        loadError = nil
+        do {
+            usage = try await api.fetchLeadbookAIUsage()
+        } catch {
+            loadError = "Kunne ikke hente AI-bruk"
+        }
+        isLoading = false
     }
 }

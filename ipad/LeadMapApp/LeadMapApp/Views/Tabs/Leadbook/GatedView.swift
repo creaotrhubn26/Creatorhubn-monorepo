@@ -83,6 +83,18 @@ final class EntitlementStore: ObservableObject {
         }
     }
 
+    /// Default-AV-features (2026-07-17): synlig KUN når backend eksplisitt
+    /// har åpnet nøkkelen i matrisen — manglende nøkkel betyr SKJULT, ikke
+    /// åpen (motsatt av access()-defaulten). Brukes for kostnadsbærende
+    /// AI-flater som ikke skal etterlate noen referanse når de er av.
+    func isExplicitlyEnabled(_ feature: LeadgridFeature) -> Bool {
+        guard let state = entitlements[feature]?.state else { return false }
+        switch state {
+        case .included, .trial, .addOn: return true
+        case .locked: return false
+        }
+    }
+
     func limit(_ feature: LeadgridFeature) -> (used: Int, limit: Int)? {
         guard let ent = entitlements[feature], let max = ent.monthlyLimit else { return nil }
         return (ent.currentUsage, max)

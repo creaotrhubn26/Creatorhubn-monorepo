@@ -94,6 +94,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // Tettsted-tildeling (2026-07-17) — SSB tettbygde strøk under kommunenivå;
     // teamleder fordeler tettsteder til selgere i «Tildel område».
     case omradeTildeling = "Områder · Tettsted-tildeling"
+    // AI-strukturering av eksempler (2026-07-17) — Claude-kall er kostnads-
+    // bærende → egen nøkkel, styrbar per plan uavhengig av Eksempler-fanen.
+    case leadbookAIStrukturering = "Leadbook · AI-strukturering"
 
     var id: String { rawValue }
 
@@ -150,6 +153,8 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridKvalitet: return "checkmark.seal.fill"
         // Områder
         case .omradeTildeling: return "map.circle.fill"
+        // AI
+        case .leadbookAIStrukturering: return "sparkles"
         }
     }
 
@@ -157,7 +162,8 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter: return .kjerne
         case .analyse, .team, .salgsledelse, .omradeTildeling: return .analyseTeam
-        case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler, .leadbookInnsikt: return .leadbook
+        case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler,
+             .leadbookInnsikt, .leadbookAIStrukturering: return .leadbook
         case .varsler, .tilganger, .integrasjoner, .fakturering: return .admin
         case .teamExportCSV, .teamExportPDF, .teamImportExcel, .teamShareReport,
              .teamMarkAllRead, .teamCustomDashboard: return .rapportExport
