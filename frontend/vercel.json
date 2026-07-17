@@ -98,6 +98,26 @@
       "destination": "https://creatorhub-backend-rtbl.onrender.com/api/theroleroom-sitemap.xml"
     },
     {
+      "source": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        }
+      ],
+      "destination": "/leadgrid-robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        }
+      ],
+      "destination": "/leadgrid-sitemap.xml"
+    },
+    {
       "source": "/cdn/(.*)",
       "destination": "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/$1"
     },
