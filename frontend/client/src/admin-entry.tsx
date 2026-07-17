@@ -2,7 +2,7 @@ import * as React from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { CssBaseline } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
-import { Route, Switch } from 'wouter';
+import { Redirect, Route, Switch } from 'wouter';
 import { queryClient } from './lib/queryClient';
 import { creatorHubTheme } from './theme/creatorHubTheme';
 import { DemoModeProvider } from './contexts/DemoModeContext';
@@ -64,6 +64,15 @@ const AdminBootstrapApp = () => (
                          * dashbordet redirigerte til login.
                          */}
                         <Route path="/login" component={LoginPageSimple} />
+                        {/*
+                         * Sikkerhetsnett: post-login-ruting på hoved-hosten peker
+                         * mot /workspace (prosjektvelger) og /dashboard for skaper-
+                         * brukere. Havner en slik landing på admin-hosten (der de
+                         * rutene ikke finnes i dette bundlet) → 404. Send dem til
+                         * /admin i stedet, så admin-hosten aldri blir en blindvei.
+                         */}
+                        <Route path="/workspace"><Redirect to="/admin" /></Route>
+                        <Route path="/dashboard"><Redirect to="/admin" /></Route>
                         <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard} />
                         <Route path="/equipment-admin" component={EquipmentAdminPage} />
                         <Route path="/photo-venues-admin" component={PhotoVenuesAdminPage} />
