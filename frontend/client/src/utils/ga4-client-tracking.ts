@@ -28,9 +28,48 @@ function getGA4MeasurementId(): string {
 // ============================================================================
 
 /**
+ * Meta Pixel-bro: utvalgte konverteringshendelser videresendes som Metas
+ * standardhendelser. `window.fbq` finnes KUN når markedsførings-samtykke
+ * har lastet pixelen (loaderne i index.html/theroleroom.html) — broen er
+ * dermed samtykke-sikker uten egen consent-sjekk her. Rene visnings-/
+ * klikk-hendelser videresendes bevisst IKKE (PageView dekkes av loaderen).
+ */
+const META_STANDARD_EVENT_MAP: Record<string, string> = {
+  purchase: 'Purchase',
+  subscription_purchased: 'Subscribe',
+  begin_checkout: 'InitiateCheckout',
+  onboarding_complete: 'CompleteRegistration',
+  leadgrid_signup_completed: 'CompleteRegistration',
+  leadgrid_book_demo_clicked: 'Lead',
+  book_demo_submitted: 'Lead',
+  agency_lead_submitted: 'Lead',
+};
+
+function forwardToMetaPixel(eventName: string, params?: Record<string, unknown>) {
+  const metaEvent = META_STANDARD_EVENT_MAP[eventName];
+  if (!metaEvent || typeof window === 'undefined') return;
+  const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq;
+  if (typeof fbq !== 'function') return;
+
+  const metaParams: Record<string, unknown> = {};
+  const value = params?.value ?? params?.amount ?? params?.price;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    metaParams.value = value;
+    metaParams.currency = typeof params?.currency === 'string' ? params.currency : 'NOK';
+  }
+  try {
+    fbq('track', metaEvent, metaParams);
+  } catch {
+    // Pixel-feil skal aldri velte GA4-sporingen.
+  }
+}
+
+/**
  * Track custom event
  */
 export function trackEvent(eventName: string, params?: Record<string, unknown>) {
+  forwardToMetaPixel(eventName, params);
+
   if (!isGA4Available()) return;
 
   const gtag = window.gtag;
@@ -40,7 +79,7 @@ export function trackEvent(eventName: string, params?: Record<string, unknown>) 
     ...params,
     platform: getAnalyticsPlatformName(),
   });
-  
+
   console.log(`📊 GA4 Client: ${eventName}`, params);
 }
 
