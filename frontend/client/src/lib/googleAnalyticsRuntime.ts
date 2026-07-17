@@ -25,7 +25,12 @@ const DEFAULT_CREATORHUB_GA_MEASUREMENT_ID = "G-6E5MJT8REW";
 const DEFAULT_ROLE_ROOM_GA_MEASUREMENT_ID = "G-9T7K5TJVFX";
 const DEFAULT_LEADGRID_GA_MEASUREMENT_ID = "G-3MS91ZHVKS";
 const DEFAULT_LEADGRID_GOOGLE_TAG_MANAGER_ID = "GTM-W8QZL75L";
-const DEFAULT_GOOGLE_TAG_MANAGER_ID = "GTM-MFWW7X83";
+const DEFAULT_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = "GTM-TNWTVHSP";
+// «creatorhubn.com»-containeren i Daniels GTM-konto. Erstattet
+// GTM-MFWW7X83 18.07.2026 — den var publisert men TOM (verifisert i
+// servert gtm.js: null tags/pixels) og eies av en konto utenfor vår
+// GTM-oversikt.
+const DEFAULT_GOOGLE_TAG_MANAGER_ID = "GTM-KC38RPNZ";
 
 function resolveConfiguredMeasurementId(
   value: string | undefined,
@@ -69,7 +74,7 @@ export const CREATORHUB_GOOGLE_TAG_MANAGER_ID = resolveConfiguredMeasurementId(
 export const ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = resolveConfiguredMeasurementId(
   import.meta.env.VITE_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID ??
     import.meta.env.VITE_GOOGLE_TAG_MANAGER_ID,
-  DEFAULT_GOOGLE_TAG_MANAGER_ID,
+  DEFAULT_ROLE_ROOM_GOOGLE_TAG_MANAGER_ID,
 );
 
 const ROLE_ROOM_HOSTS = new Set([
