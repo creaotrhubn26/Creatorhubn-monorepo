@@ -3319,8 +3319,22 @@ struct LeadbookCreateExampleSheet: View {
     @State private var isSaving = false
     @State private var errorText: String?
 
+    // 2026-07-17: AI-strukturering — lim inn rå notater, AI fyller feltene.
+    // Score-forslagene holdes i state og sendes med i create-payloaden.
+    @State private var isStructuring = false
+    @State private var aiApplied = false
+    @State private var aiToast: String?
+    @State private var aiToastError = false
+    @State private var aiDimensionScores: [String: Int]?
+    @State private var aiFeaturedDimension: String?
+    @State private var aiPondusScore: Int?
+
     private var canSave: Bool {
-        !title.trimmingCharacters(in: .whitespaces).isEmpty && !isSaving
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && !isSaving && !isStructuring
+    }
+
+    private var canStructure: Bool {
+        transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 40 && !isStructuring
     }
 
     var body: some View {
@@ -3361,6 +3375,9 @@ struct LeadbookCreateExampleSheet: View {
                         sectionLabel("INNHOLD", icon: "text.alignleft", tint: LBrand.green)
                         editor("Sammendrag", text: $summary, minHeight: 70,
                                hint: "Én-to setninger om hva som skjedde og hvorfor det er lærerikt.")
+                        // 2026-07-17: AI-strukturering — senker terskelen for å
+                        // legge inn eksempler (rå notater → utfylte felter).
+                        aiStructureCard
                         editor("Transkript", text: $transcriptText, minHeight: 160,
                                hint: "Én replikk per linje: «Selger: …» / «Kunde: …». Linjer uten kolon blir notater.")
                         editor("Nøkkel-lærdommer", text: $learningsText, minHeight: 90,
@@ -3375,6 +3392,8 @@ struct LeadbookCreateExampleSheet: View {
                         Color.clear.frame(height: 12)
                     }
                     .padding(16)
+                    // 2026-07-17: lås feltene mens AI-en strukturerer
+                    .disabled(isStructuring)
                 }
             }
             .navigationTitle("Nytt eksempel")
@@ -3406,7 +3425,127 @@ struct LeadbookCreateExampleSheet: View {
                     .disabled(!canSave)
                 }
             }
+            // 2026-07-17: AI-toast (suksess grønn / feil rød)
+            .overlay(alignment: .top) {
+                if let t = aiToast {
+                    Label(t, systemImage: aiToastError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(aiToastError ? LBrand.red : LBrand.green, in: Capsule())
+                        .padding(.top, 6)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: aiToast)
         }
+    }
+
+    // MARK: AI-strukturering (2026-07-17)
+
+    private var aiStructureCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles").foregroundStyle(LBrand.purpleLight)
+                Text("AI-STRUKTURERING")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.purpleLight).tracking(0.8)
+                Spacer()
+                Button { Task { await structureWithAI() } } label: {
+                    HStack(spacing: 5) {
+                        if isStructuring {
+                            ProgressView().tint(.white).scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "sparkles").font(.appScaled(size: 11, weight: .bold))
+                        }
+                        Text(isStructuring ? "Strukturerer…" : "Strukturer med AI")
+                            .font(.appScaled(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 13).padding(.vertical, 7)
+                    .background(
+                        LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: Capsule()
+                    )
+                    .opacity(canStructure ? 1 : 0.45)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canStructure)
+            }
+            Text("Lim inn rå notater eller referat i transkript-feltet under — AI-en fyller ut feltene, du redigerer før lagring.")
+                .font(.appScaled(size: 11))
+                .foregroundStyle(LBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if aiApplied {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(LBrand.green)
+                    Text("AI-forslag lagt inn — sjekk og juster")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .padding(12)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.purple.opacity(0.25), lineWidth: 1))
+    }
+
+    @MainActor
+    private func structureWithAI() async {
+        guard let api = appState.api else {
+            showAIToast("AI-strukturering feilet — prøv igjen", error: true)
+            return
+        }
+        let raw = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard raw.count >= 40, !isStructuring else { return }
+        isStructuring = true
+        do {
+            let s = try await api.structureLeadbookExample(rawText: raw)
+            applyAISuggestions(s)
+            aiApplied = true
+            showAIToast("AI-forslag lagt inn — sjekk og juster", error: false)
+        } catch APIError.serverError(503, _) {
+            // Feltene røres ALDRI ved feil.
+            showAIToast("AI ikke konfigurert på serveren", error: true)
+        } catch {
+            showAIToast("AI-strukturering feilet — prøv igjen", error: true)
+        }
+        isStructuring = false
+    }
+
+    /// Fyller skjemafeltene med AI-forslagene. Tekstfelter brukeren allerede
+    /// har fylt overskrives IKKE (unntatt transkriptet, som erstattes med
+    /// strukturert «Speaker: text»-form så eksisterende parsing gjenbrukes).
+    private func applyAISuggestions(_ s: APIClient.StructuredExampleDTO) {
+        if title.trimmingCharacters(in: .whitespaces).isEmpty,
+           let t = s.title, !t.isEmpty { title = t }
+        if summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let sm = s.summary, !sm.isEmpty { summary = sm }
+        if let o = s.outcome {
+            switch o.lowercased() {
+            case "won": outcome = .won
+            case "lost": outcome = .lost
+            case "ongoing": outcome = .ongoing
+            default: break
+            }
+        }
+        if let lines = s.transcript, !lines.isEmpty {
+            transcriptText = lines.map { "\($0.speaker): \($0.text)" }.joined(separator: "\n")
+        }
+        if learningsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let kl = s.keyLearnings, !kl.isEmpty {
+            learningsText = kl.joined(separator: "\n")
+        }
+        // Score-forslag → payloaden (ikke redigerbare felter i sheeten)
+        aiDimensionScores = s.dimensionScores
+        aiFeaturedDimension = s.featuredDimension
+        aiPondusScore = s.pondusScore
+    }
+
+    private func showAIToast(_ text: String, error: Bool) {
+        aiToastError = error
+        aiToast = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { aiToast = nil }
     }
 
     // MARK: Lagring
@@ -3454,6 +3593,10 @@ struct LeadbookCreateExampleSheet: View {
         if let v = Int(dealValue.filter(\.isNumber)), v > 0 {
             body["deal_value_nok"] = v
         }
+        // 2026-07-17: AI-forslag (fra «Strukturer med AI») følger med payloaden
+        if let ds = aiDimensionScores, !ds.isEmpty { body["dimension_scores"] = ds }
+        if let fd = aiFeaturedDimension, !fd.isEmpty { body["featured_dimension"] = fd }
+        if let ps = aiPondusScore { body["pondus_score"] = ps }
 
         do {
             _ = try await api.createLeadbookExample(body)

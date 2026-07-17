@@ -964,10 +964,44 @@ struct AssignAreaSheet: View {
     }
 
     /// Bekreft tildelingen. Kommune-modus persisterer på teamet (lokal
-    /// store + backend-push via upsert); tettsted-modus oppretter ekte
-    /// lead_territories-rad (2026-07-17); existing/draw er fortsatt
-    /// visuelle konsepter uten backend-modell.
+    /// store + backend-push via upsert); tettsted- og tegne-modus oppretter
+    /// ekte lead_territories-rader (2026-07-17); existing er fortsatt
+    /// visuelt konsept.
     private func confirm() {
+        // «Tegn nytt» wiret 2026-07-17: tegne-UI-et og createTerritory
+        // fantes begge — de var bare aldri koblet. Selger-id løses via
+        // navn-match mot team-members; uten treff lagres området utildelt
+        // (ærlig toast) i stedet for å late som.
+        if mode == .draw, drawnPoints.count >= 3 {
+            if DemoModeManager.isActiveNonisolated {
+                TeamStubActions.toast("Område tegnet (demo — lagres ikke)")
+            } else if let api = appState.api {
+                let memberName = selectedMember?.name
+                let dto = TeamLiveStore.shared.memberDTOs.first { $0.name == memberName }
+                let orgId = appState.activeOrganizationId ?? ""
+                let name = "Tegnet område: \(memberName ?? "utildelt")"
+                let points = drawnPoints
+                Task {
+                    do {
+                        _ = try await api.createTerritory(
+                            organizationId: orgId,
+                            name: name,
+                            assignedUserId: dto?.userId,
+                            polygon: points
+                        )
+                        if dto != nil {
+                            TeamStubActions.toast("Området tildelt \(memberName ?? "")")
+                        } else {
+                            TeamStubActions.toast("Området lagret (utildelt — velg selger i Team-fanen)")
+                        }
+                    } catch {
+                        TeamStubActions.toast("Kunne ikke lagre området — prøv igjen")
+                    }
+                }
+            }
+            dismiss()
+            return
+        }
         if mode == .catalog, let k = selectedKommune, var team = selectedTeam {
             team.areaKommunenummer = k.nummer
             team.areaKommuneNavn = k.navn

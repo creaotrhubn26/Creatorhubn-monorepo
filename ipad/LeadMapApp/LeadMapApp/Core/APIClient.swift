@@ -562,6 +562,36 @@ actor APIClient {
             body: ["body": text])
     }
 
+    /// LLM-strukturering (2026-07-17): rå notater → forslag til eksempel-
+    /// felter. Kun forslag — lederen redigerer før lagring.
+    struct StructuredExampleDTO: Codable {
+        let title: String?
+        let summary: String?
+        let outcome: String?
+        let transcript: [LeadbookTranscriptLineDTO]?
+        let keyLearnings: [String]?
+        let alternativePhrasings: [String]?
+        let dimensionScores: [String: Int]?
+        let featuredDimension: String?
+        let pondusScore: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case title, summary, outcome, transcript
+            case keyLearnings = "key_learnings"
+            case alternativePhrasings = "alternative_phrasings"
+            case dimensionScores = "dimension_scores"
+            case featuredDimension = "featured_dimension"
+            case pondusScore = "pondus_score"
+        }
+    }
+
+    func structureLeadbookExample(rawText: String) async throws -> StructuredExampleDTO {
+        struct Resp: Codable { let structured: StructuredExampleDTO }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/examples/structure", body: ["raw_text": rawText])
+        return r.structured
+    }
+
     /// Visnings-registrering («Ukens samtale»-distribusjonen) — kalles når
     /// detail-sheeten åpnes i ekte modus. Fire-and-forget-vennlig.
     func recordLeadbookExampleView(exampleId: String) async throws {
