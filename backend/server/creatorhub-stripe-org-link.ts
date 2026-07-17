@@ -19,6 +19,25 @@
 
 import type { Pool } from "pg";
 
+/**
+ * Gjenkjenn SYNTETISKE QA-/seed-checkout-records (ikke ekte kunder). Disse ble
+ * seedet for demo/QA og har `userId="guest"` (ingen `users`-rad) + oppdiktede
+ * `cus_creatorhub_*`/`cs_creatorhub_*`-id-er (ekte Stripe-kunde-id-er inneholder
+ * aldri "creatorhub"). Uten dette klassifiseres de som `no_org` og forurenser
+ * «mangler Stripe-kobling»-tellingen selv om det ikke finnes noen ekte kunde å
+ * fakturere. Vi hopper over dem eksplisitt.
+ */
+export function isSyntheticStripeIdentity(
+  userId: string | null | undefined,
+  stripeCustomerId: string | null | undefined,
+): boolean {
+  const uid = (userId ?? "").trim().toLowerCase();
+  const cust = (stripeCustomerId ?? "").trim().toLowerCase();
+  if (!uid || uid === "guest" || uid === "anonymous") return true;
+  if (cust.includes("creatorhub") || cust.includes("_qa") || cust.includes("test")) return true;
+  return false;
+}
+
 export type OrgStripeLinkReason =
   | "linked"        // vi satte stripe_customer_id på org-en
   | "already_set"   // org-en hadde allerede SAMME kunde-id
@@ -26,6 +45,7 @@ export type OrgStripeLinkReason =
   | "no_org"        // fant ingen org for brukeren
   | "no_customer"   // mangler stripeCustomerId
   | "no_user"       // mangler userId
+  | "synthetic"     // syntetisk QA-/seed-record — ekte kunde finnes ikke
   | "error";
 
 export interface OrgStripeLinkResult {
@@ -47,6 +67,10 @@ export async function linkOrgStripeCustomer(
   const stripeCustomerId = (args.stripeCustomerId ?? "").trim();
   if (!userId) return { linked: false, organizationId: null, reason: "no_user" };
   if (!stripeCustomerId) return { linked: false, organizationId: null, reason: "no_customer" };
+  // Syntetiske QA-/seed-records: aldri en ekte org/kunde å koble.
+  if (isSyntheticStripeIdentity(userId, stripeCustomerId)) {
+    return { linked: false, organizationId: null, reason: "synthetic" };
+  }
 
   try {
     const orgRes = await pool.query<{ org_id: string | null }>(
@@ -97,6 +121,8 @@ export interface OrgStripeBackfillSummary {
   alreadySet: number;
   conflict: number;
   noOrg: number;
+  /** Syntetiske QA-/seed-records som ble hoppet over (ingen ekte kunde). */
+  synthetic: number;
   skipped: number;
   errors: number;
   /** Konflikt-detaljer for manuell oppfølging (org hadde en annen kunde-id). */
@@ -119,7 +145,7 @@ export async function backfillOrgStripeCustomers(
 ): Promise<OrgStripeBackfillSummary> {
   const summary: OrgStripeBackfillSummary = {
     processed: 0, linked: 0, alreadySet: 0, conflict: 0,
-    noOrg: 0, skipped: 0, errors: 0, conflicts: [],
+    noOrg: 0, synthetic: 0, skipped: 0, errors: 0, conflicts: [],
   };
 
   for (const rec of records) {
@@ -127,6 +153,11 @@ export async function backfillOrgStripeCustomers(
     const stripeCustomerId = (rec.stripeCustomerId ?? "").trim();
     if (!rec.paymentCompleted || !userId || !stripeCustomerId) {
       summary.skipped += 1;
+      continue;
+    }
+    // Syntetiske QA-/seed-records teller for seg selv, ikke som ekte kunder.
+    if (isSyntheticStripeIdentity(userId, stripeCustomerId)) {
+      summary.synthetic += 1;
       continue;
     }
     summary.processed += 1;
@@ -141,6 +172,7 @@ export async function backfillOrgStripeCustomers(
         }
         break;
       case "no_org": summary.noOrg += 1; break;
+      case "synthetic": summary.synthetic += 1; break;
       case "error": summary.errors += 1; break;
       default: summary.skipped += 1; break;
     }
