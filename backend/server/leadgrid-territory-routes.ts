@@ -31,6 +31,11 @@ import {
   type TerritoryRow,
   type BreachKind,
 } from "./leadgrid-territory-service.js";
+import { fetchTettstederForKommune } from "./leadgrid-tettsted-service.js";
+import {
+  assertAnyEntitled,
+  LEADGRID_OMRADE_FEATURE_KEYS,
+} from "./leadgrid-entitlement-guard.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -119,6 +124,40 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
   const permView = requireLeadMapPermission("territories.view", common);
   const permManage = requireLeadMapPermission("territories.manage", common);
   const permBreaches = requireLeadMapPermission("territories.view_breaches", common);
+
+  // ─── GET /api/leadgrid/territories/tettsteder?kommune=NNNN ────────
+  // SSB-tettsteder («tettbygde strøk») innenfor en kommune — katalogen
+  // bak «Tildel område → Tettsted» (teamleder tildeler tettsted til
+  // selger; tildelingen selv går via POST /territories m/ geometri).
+  // RBAC: territories.manage (kun ledere skal se fordelings-katalogen).
+  // Entitlement: omradeTildeling (feature-matrisen, tilleggstjeneste).
+  app.get(
+    "/api/leadgrid/territories/tettsteder",
+    permManage,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+      const entitled = await assertAnyEntitled(
+        pool, session.userId, LEADGRID_OMRADE_FEATURE_KEYS, res,
+      );
+      if (!entitled) return;
+
+      const kommune = typeof req.query.kommune === "string" ? req.query.kommune.trim() : "";
+      if (!/^\d{4}$/.test(kommune)) {
+        return res.status(400).json({ error: "ugyldig_kommunenummer" });
+      }
+      try {
+        const tettsteder = await fetchTettstederForKommune(kommune);
+        if (!tettsteder) {
+          return res.status(502).json({ error: "tettsted_oppslag_feilet" });
+        }
+        return res.json({ kommunenummer: kommune, aargang: 2025, tettsteder });
+      } catch (err) {
+        console.warn("[leadgrid-territory] tettsteder failed:", (err as Error).message);
+        return res.status(500).json({ error: "tettsteder_failed" });
+      }
+    },
+  );
 
   // ─── GET /api/leadgrid/territories ────────────────────────────────
   app.get("/api/leadgrid/territories", permView, async (req: Request, res: Response) => {
