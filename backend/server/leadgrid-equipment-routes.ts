@@ -142,6 +142,10 @@ export function registerLeadgridEquipmentRoutes(deps: EquipmentRoutesDeps): void
   }
 
   // ── GET /api/leadgrid/equipment — hele registeret (ledere) ────────
+  // «Sist aktiv i Leadgrid» (2026-07-18): utleverte rader berikes med
+  // innehaverens siste app-innsjekk (tid + posisjon) fra leadgrid_presence.
+  // Serienr → innehaver → posisjon: appen kan ikke lese serienummer
+  // (Apple-sperre), men registeret vet hvem som har utstyret.
   app.get("/api/leadgrid/equipment", async (req, res) => {
     const g = await guard(req, res);
     if (!g) return;
@@ -150,10 +154,15 @@ export function registerLeadgridEquipmentRoutes(deps: EquipmentRoutesDeps): void
     }
     try {
       const r = await pool.query(
-        `SELECT * FROM leadgrid_equipment
-          WHERE organization_id = $1 AND status <> 'kassert'
-          ORDER BY CASE status WHEN 'utlevert' THEN 0 WHEN 'tilgjengelig' THEN 1 ELSE 2 END,
-                   kind, label
+        `SELECT q.*, p.last_seen_at, p.lat AS last_lat, p.lng AS last_lng,
+                p.device_model AS last_device_model
+           FROM leadgrid_equipment q
+           LEFT JOIN leadgrid_presence p
+             ON p.organization_id = q.organization_id
+            AND p.user_id = q.assigned_user_id
+          WHERE q.organization_id = $1 AND q.status <> 'kassert'
+          ORDER BY CASE q.status WHEN 'utlevert' THEN 0 WHEN 'tilgjengelig' THEN 1 ELSE 2 END,
+                   q.kind, q.label
           LIMIT 500`,
         [g.orgId],
       );
@@ -161,6 +170,42 @@ export function registerLeadgridEquipmentRoutes(deps: EquipmentRoutesDeps): void
     } catch (err) {
       console.warn("[equipment] list failed:", (err as Error).message);
       return res.status(500).json({ error: "list_failed" });
+    }
+  });
+
+  // ── POST /api/leadgrid/presence/checkin — appens «sist aktiv»-puls ─
+  // Kalles ved app-aktivering (ekte modus). Posisjon er valgfri (kun når
+  // brukeren alt har gitt appen posisjonstillatelse). KUN siste punkt
+  // lagres (upsert) — ingen historikk.
+  app.post("/api/leadgrid/presence/checkin", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!orgId) return res.status(400).json({ error: "ingen_organisasjon" });
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const lat = Number(b.lat);
+    const lng = Number(b.lng);
+    const hasPos = Number.isFinite(lat) && Number.isFinite(lng)
+      && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    try {
+      await pool.query(
+        `INSERT INTO leadgrid_presence
+           (organization_id, user_id, last_seen_at, lat, lng, device_model, app_version)
+         VALUES ($1, $2, now(), $3, $4, $5, $6)
+         ON CONFLICT (organization_id, user_id)
+         DO UPDATE SET last_seen_at = now(),
+                       lat = COALESCE(EXCLUDED.lat, leadgrid_presence.lat),
+                       lng = COALESCE(EXCLUDED.lng, leadgrid_presence.lng),
+                       device_model = EXCLUDED.device_model,
+                       app_version = EXCLUDED.app_version`,
+        [orgId, session.userId,
+         hasPos ? lat : null, hasPos ? lng : null,
+         str(b.device_model).slice(0, 60), str(b.app_version).slice(0, 30)],
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      console.warn("[equipment] checkin failed:", (err as Error).message);
+      return res.status(500).json({ error: "checkin_failed" });
     }
   });
 
