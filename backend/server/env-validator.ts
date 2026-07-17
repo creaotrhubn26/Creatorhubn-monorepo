@@ -101,6 +101,8 @@ const OPTIONAL: EnvVar[] = [
   { name: "R2_ACCESS_KEY_ID", description: "Cloudflare R2 for storage (avatar, storyboard-bilder)." },
   { name: "R2_SECRET_ACCESS_KEY", description: "Hører sammen med R2_ACCESS_KEY_ID." },
   { name: "FIKEN_TOKEN", description: "Norsk regnskap-integrasjon." },
+  { name: "AI_USD_TO_NOK", description: "USD→NOK-kurs for å vise AI-kost i kroner i Control Center AI-margin (Fase A). Default 10.5." },
+  { name: "AI_MARGIN_ALERT_NOK", description: "Terskel (NOK/mnd AI-kost per org) som flagger margin-risiko i Control Center AI-margin (Fase A). Default 500." },
 ];
 
 // ─────────────────────────────────────────────────────────
