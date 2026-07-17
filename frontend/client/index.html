@@ -355,6 +355,7 @@
       };
 
       var ROLE_ROOM_ANALYTICS_HOSTS = ['theroleroom.com', 'www.theroleroom.com'];
+      var LEADGRID_ANALYTICS_HOSTS = ['leadgrid.no', 'www.leadgrid.no', 'leadgrid.theroleroom.com'];
       function resolveStaticAnalyticsValue(rawValue, fallback) {
         if (typeof rawValue !== 'string') {
           return fallback;
@@ -379,6 +380,14 @@
       var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = 'GTM-TNWTVHSP';
       var CREATORHUB_GA_MEASUREMENT_ID = 'G-6E5MJT8REW';
       var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+      // Leadgrid: egen GA4-property + GTM-container (opprettet 18.07.2026,
+      // container 'leadgrid.no' under Creatorhub Norge-kontoen, v1 publisert).
+      // Egen Clarity/TikTok finnes ikke ennå — tom streng = lastes ikke
+      // (ensure*Loaded-guardene sjekker falsy ID).
+      var LEADGRID_GA_MEASUREMENT_ID = 'G-3MS91ZHVKS';
+      var LEADGRID_GOOGLE_TAG_MANAGER_ID = 'GTM-W8QZL75L';
+      var LEADGRID_CLARITY_PROJECT_ID = '';
+      var LEADGRID_TIKTOK_PIXEL_CODE = '';
       var CREATORHUB_CLARITY_PROJECT_ID = 'wqg9kj1vxt';
       var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
       // TikTok Pixel — kommer fra TikTok Business UI etter at Daniel oppretter
@@ -402,6 +411,16 @@
       function resolveAnalyticsConfig() {
         var hostname = (window.location.hostname || '').trim().toLowerCase();
         var isRoleRoomHost = ROLE_ROOM_ANALYTICS_HOSTS.indexOf(hostname) >= 0;
+        var isLeadgridHost = LEADGRID_ANALYTICS_HOSTS.indexOf(hostname) >= 0;
+        if (isLeadgridHost) {
+          return {
+            site: 'leadgrid',
+            measurementId: LEADGRID_GA_MEASUREMENT_ID,
+            tagManagerId: LEADGRID_GOOGLE_TAG_MANAGER_ID,
+            clarityProjectId: LEADGRID_CLARITY_PROJECT_ID,
+            tiktokPixelCode: LEADGRID_TIKTOK_PIXEL_CODE,
+          };
+        }
         return {
           site: isRoleRoomHost ? 'role-room' : 'creatorhub',
           measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
