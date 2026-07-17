@@ -9,6 +9,7 @@
  * Sub-faner:
  *   - Oversikt     — feilrate-KPI + kilde-status + observability-uttrekk
  *   - Hendelser    — Sentry unresolved + error_log unresolved, med ack-layer
+ *   - Deploys      — Render + GitHub Actions + Vercel deploy-tidslinje (read-only)
  *   - Logg         — error_log (backend-feil)
  *
  * Auth: super_admin (håndhevet server-side). apiRequest legger på Bearer +
@@ -28,6 +29,7 @@ import {
   PersonAddAlt1 as AssignIcon,
   DoneAll as AckIcon,
   OpenInNew as OpenIcon,
+  RocketLaunch as DeployIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -113,6 +115,30 @@ interface LogsResponse {
   data: LoggedError[];
 }
 
+type DeployProvider = 'render' | 'github' | 'vercel';
+type DeployStatus = 'live' | 'building' | 'failed' | 'canceled' | 'superseded' | 'unknown';
+
+interface DeployRecord {
+  provider: DeployProvider;
+  id: string;
+  status: DeployStatus;
+  rawStatus: string;
+  title: string;
+  branch: string | null;
+  commit: string | null;
+  url: string | null;
+  author: string | null;
+  createdAt: string | null;
+  finishedAt: string | null;
+}
+
+interface DeploysResponse {
+  providers: { render: boolean; github: boolean; vercel: boolean };
+  deploys: DeployRecord[];
+  anyConfigured: boolean;
+  generatedAt: string;
+}
+
 // ─── Hjelpere ──────────────────────────────────────────────────────────────
 
 const POLL_MS = 45_000;
@@ -144,9 +170,25 @@ function levelColor(level: string | null): string {
 const SUBTABS = [
   { id: 'overview', label: 'Oversikt' },
   { id: 'incidents', label: 'Hendelser' },
+  { id: 'deploys', label: 'Deploys' },
   { id: 'logs', label: 'Logg' },
 ] as const;
 type SubTabId = (typeof SUBTABS)[number]['id'];
+
+const DEPLOY_STATUS_META: Record<DeployStatus, { label: string; color: string }> = {
+  live: { label: 'Live', color: '#3dd68c' },
+  building: { label: 'Bygger', color: '#4c6ef5' },
+  failed: { label: 'Feilet', color: '#e5484d' },
+  canceled: { label: 'Avbrutt', color: '#8b8b8b' },
+  superseded: { label: 'Erstattet', color: '#6b6b6b' },
+  unknown: { label: 'Ukjent', color: '#8b8b8b' },
+};
+
+const DEPLOY_PROVIDER_LABEL: Record<DeployProvider, string> = {
+  render: 'Render',
+  github: 'GitHub',
+  vercel: 'Vercel',
+};
 
 // ─── KPI-kort ──────────────────────────────────────────────────────────────
 
@@ -194,6 +236,13 @@ const ControlCenterPanel: React.FC = () => {
     enabled: subTab === 'logs',
   });
 
+  const deploys = useQuery<DeploysResponse>({
+    queryKey: ['/api/control-center/deploys'],
+    queryFn: () => apiRequest('/api/control-center/deploys?limit=15'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'deploys',
+  });
+
   const incidentAction = useMutation({
     mutationFn: (args: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) =>
       apiRequest(
@@ -220,7 +269,7 @@ const ControlCenterPanel: React.FC = () => {
         </Box>
         <Button
           size="small" startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); }}
+          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); }}
           sx={{ textTransform: 'none' }}
         >
           Oppdater
@@ -254,6 +303,7 @@ const ControlCenterPanel: React.FC = () => {
       {subTab === 'incidents' && (
         <IncidentsSection inc={inc} onAction={(a) => incidentAction.mutate(a)} pending={incidentAction.isPending} />
       )}
+      {subTab === 'deploys' && <DeploysSection deploys={deploys} />}
       {subTab === 'logs' && <LogsSection logs={logs} />}
     </Box>
   );
@@ -505,6 +555,106 @@ const LogsSection: React.FC<{ logs: ReturnType<typeof useQuery<LogsResponse>> }>
         ))}
       </TableBody>
     </Table>
+  );
+};
+
+// ─── Deploys ─────────────────────────────────────────────────────────────────
+
+const DeploysSection: React.FC<{ deploys: ReturnType<typeof useQuery<DeploysResponse>> }> = ({ deploys }) => {
+  if (deploys.isLoading) return <Loading />;
+  if (deploys.isError || !deploys.data) return <ErrorLine msg="Kunne ikke hente deploys." />;
+
+  const { providers, deploys: rows, anyConfigured, generatedAt } = deploys.data;
+
+  if (!anyConfigured) {
+    return (
+      <Alert severity="info" icon={<DeployIcon fontSize="small" />}>
+        Ingen deploy-provider er koblet. Sett <code>RENDER_API_KEY</code>+<code>RENDER_SERVICE_ID</code>,{' '}
+        <code>GITHUB_DEPLOY_TOKEN</code>+<code>GITHUB_REPO</code> og/eller{' '}
+        <code>VERCEL_API_TOKEN</code>+<code>VERCEL_PROJECT_ID</code> i backend-env for å vise deploy-tidslinjen.
+      </Alert>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      {/* Provider-status-chips */}
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        {(Object.keys(providers) as DeployProvider[]).map((p) => (
+          <Chip
+            key={p}
+            size="small"
+            label={`${DEPLOY_PROVIDER_LABEL[p]}: ${providers[p] ? 'koblet' : 'ikke koblet'}`}
+            sx={{
+              height: 20, fontSize: 10.5,
+              bgcolor: providers[p] ? 'rgba(61,214,140,0.15)' : 'rgba(255,255,255,0.05)',
+              color: providers[p] ? '#3dd68c' : 'text.disabled',
+            }}
+          />
+        ))}
+      </Stack>
+
+      {rows.length === 0 ? (
+        <Typography sx={{ fontSize: 13, color: 'text.disabled', py: 4, textAlign: 'center' }}>
+          Ingen deploys funnet hos de koblede providerne.
+        </Typography>
+      ) : (
+        <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ color: 'text.secondary' }}>Provider</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Deploy</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Gren</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Startet</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right" />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((d) => {
+              const meta = DEPLOY_STATUS_META[d.status] ?? DEPLOY_STATUS_META.unknown;
+              return (
+                <TableRow key={`${d.provider}:${d.id}`}>
+                  <TableCell>
+                    <Chip size="small" label={DEPLOY_PROVIDER_LABEL[d.provider]} sx={{ height: 18, fontSize: 10 }} />
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 360 }}>
+                    <Typography sx={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {d.title}
+                    </Typography>
+                    <Typography sx={{ fontSize: 10.5, color: 'text.disabled' }}>
+                      {d.commit ? `${d.commit}` : ''}{d.commit && d.author ? ' · ' : ''}{d.author ?? ''}
+                    </Typography>
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 11.5, color: 'text.secondary', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.branch ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={d.rawStatus}>
+                      <Chip size="small" label={meta.label} sx={{ height: 18, fontSize: 10, bgcolor: meta.color, color: '#fff' }} />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>{relTime(d.createdAt)}</TableCell>
+                  <TableCell align="right">
+                    {d.url && (
+                      <Tooltip title="Åpne hos provider">
+                        <a href={d.url} target="_blank" rel="noreferrer" style={{ color: '#4c6ef5', display: 'inline-flex' }}>
+                          <OpenIcon sx={{ fontSize: 15 }} />
+                        </a>
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Kun lesing · trigge/rollback kommer i en senere fase. Sist oppdatert {relTime(generatedAt)}.
+      </Typography>
+    </Box>
   );
 };
 
