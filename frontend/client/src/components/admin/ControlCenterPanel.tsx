@@ -9,6 +9,7 @@
  * Sub-faner:
  *   - Oversikt     — feilrate-KPI + kilde-status + observability-uttrekk
  *   - Hendelser    — Sentry unresolved + error_log unresolved, med ack-layer
+ *   - Helse        — aktive health-prober (API/DB/betaling/frontend/storage…) + oppetid/p95 (Fase 3)
  *   - Deploys      — Render + GitHub Actions + Vercel deploy-tidslinje (read-only)
  *   - Logg         — error_log (backend-feil)
  *
@@ -139,6 +140,26 @@ interface DeploysResponse {
   generatedAt: string;
 }
 
+type HealthService = 'api' | 'database' | 'payments' | 'frontend' | 'uploads' | 'realtime' | 'workers';
+type HealthStatus = 'up' | 'degraded' | 'down' | 'not_configured' | 'unknown';
+
+interface HealthServiceRecord {
+  service: HealthService;
+  status: HealthStatus;
+  latencyMs: number | null;
+  detail: string;
+  checkedAt: string;
+  uptime30d: number | null;
+  p95Ms: number | null;
+  sampleCount: number;
+}
+
+interface HealthResponse {
+  services: HealthServiceRecord[];
+  overall: HealthStatus;
+  generatedAt: string;
+}
+
 // ─── Hjelpere ──────────────────────────────────────────────────────────────
 
 const POLL_MS = 45_000;
@@ -170,10 +191,29 @@ function levelColor(level: string | null): string {
 const SUBTABS = [
   { id: 'overview', label: 'Oversikt' },
   { id: 'incidents', label: 'Hendelser' },
+  { id: 'health', label: 'Helse' },
   { id: 'deploys', label: 'Deploys' },
   { id: 'logs', label: 'Logg' },
 ] as const;
 type SubTabId = (typeof SUBTABS)[number]['id'];
+
+const HEALTH_STATUS_META: Record<HealthStatus, { label: string; color: string }> = {
+  up: { label: 'Oppe', color: '#3dd68c' },
+  degraded: { label: 'Treg', color: '#f5a623' },
+  down: { label: 'Nede', color: '#e5484d' },
+  not_configured: { label: 'Ikke koblet', color: '#6b6b6b' },
+  unknown: { label: 'Ukjent', color: '#8b8b8b' },
+};
+
+const HEALTH_SERVICE_LABEL: Record<HealthService, string> = {
+  api: 'API',
+  database: 'Database',
+  payments: 'Betaling',
+  frontend: 'Frontend',
+  uploads: 'Lagring (B2/R2)',
+  realtime: 'Realtime',
+  workers: 'Workers',
+};
 
 const DEPLOY_STATUS_META: Record<DeployStatus, { label: string; color: string }> = {
   live: { label: 'Live', color: '#3dd68c' },
@@ -243,6 +283,13 @@ const ControlCenterPanel: React.FC = () => {
     enabled: subTab === 'deploys',
   });
 
+  const health = useQuery<HealthResponse>({
+    queryKey: ['/api/control-center/health'],
+    queryFn: () => apiRequest('/api/control-center/health'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'health',
+  });
+
   const incidentAction = useMutation({
     mutationFn: (args: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) =>
       apiRequest(
@@ -269,7 +316,7 @@ const ControlCenterPanel: React.FC = () => {
         </Box>
         <Button
           size="small" startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); }}
+          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); void health.refetch(); }}
           sx={{ textTransform: 'none' }}
         >
           Oppdater
@@ -303,6 +350,7 @@ const ControlCenterPanel: React.FC = () => {
       {subTab === 'incidents' && (
         <IncidentsSection inc={inc} onAction={(a) => incidentAction.mutate(a)} pending={incidentAction.isPending} />
       )}
+      {subTab === 'health' && <HealthSection health={health} />}
       {subTab === 'deploys' && <DeploysSection deploys={deploys} />}
       {subTab === 'logs' && <LogsSection logs={logs} />}
     </Box>
@@ -559,6 +607,78 @@ const LogsSection: React.FC<{ logs: ReturnType<typeof useQuery<LogsResponse>> }>
 };
 
 // ─── Deploys ─────────────────────────────────────────────────────────────────
+
+// ─── Helse ─────────────────────────────────────────────────────────────────
+
+const HealthSection: React.FC<{ health: ReturnType<typeof useQuery<HealthResponse>> }> = ({ health }) => {
+  if (health.isLoading) return <Loading />;
+  if (health.isError || !health.data) return <ErrorLine msg="Kunne ikke hente helse-status." />;
+
+  const { services, overall, generatedAt } = health.data;
+  const overallMeta = HEALTH_STATUS_META[overall] ?? HEALTH_STATUS_META.unknown;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard
+          label="Totalstatus"
+          value={overallMeta.label}
+          hint="Verste av koblede tjenester"
+          accent={overallMeta.color}
+        />
+        <KpiCard
+          label="Oppe nå"
+          value={`${services.filter((s) => s.status === 'up' || s.status === 'degraded').length}/${services.filter((s) => s.status !== 'not_configured').length}`}
+          hint="Svarende tjenester"
+        />
+      </Stack>
+
+      <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ color: 'text.secondary' }}>Tjeneste</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Svartid</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Oppetid 30d</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">p95</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Detalj</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {services.map((s) => {
+            const meta = HEALTH_STATUS_META[s.status] ?? HEALTH_STATUS_META.unknown;
+            return (
+              <TableRow key={s.service}>
+                <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{HEALTH_SERVICE_LABEL[s.service]}</TableCell>
+                <TableCell>
+                  <Chip size="small" label={meta.label} sx={{ height: 18, fontSize: 10, bgcolor: meta.color, color: '#fff' }} />
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  {s.latencyMs != null ? `${s.latencyMs} ms` : '—'}
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  <Tooltip title={`${s.sampleCount} samples`}>
+                    <span>{s.uptime30d != null ? `${s.uptime30d}%` : '—'}</span>
+                  </Tooltip>
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  {s.p95Ms != null ? `${s.p95Ms} ms` : '—'}
+                </TableCell>
+                <TableCell sx={{ fontSize: 11, color: 'text.disabled', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.detail}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Aktive prober (kun lesing) · oppetid/p95 er basert på registrerte samples (akkumuleres mens cockpiten er åpen), ikke syntetisk 24/7. Sist sjekket {relTime(generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
 
 const DeploysSection: React.FC<{ deploys: ReturnType<typeof useQuery<DeploysResponse>> }> = ({ deploys }) => {
   if (deploys.isLoading) return <Loading />;
