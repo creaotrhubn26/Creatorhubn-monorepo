@@ -5034,6 +5034,12 @@ struct ProfilePopover: View {
     @Environment(AppState.self) private var appState
     @State private var pinGuideOpen = false
     @State private var aboutOpen = false
+    @State private var abonnementOpen = false
+
+    /// Abonnements-oversikten er org-ledelsens domene.
+    private var canSeeAbonnement: Bool {
+        ["admin", "salgssjef"].contains(appState.roleInOrg ?? "") || appState.isSuperAdmin
+    }
 
     /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
     private var appVersion: String {
@@ -5098,6 +5104,15 @@ struct ProfilePopover: View {
                                 }?.name)
                         }
                         .buttonStyle(.plain)
+                        // Abonnement (2026-07-17): plan + funksjoner + fakturaer
+                        // + Stripe-portal — org-ledelsens eget overblikk.
+                        if canSeeAbonnement {
+                            Button { abonnementOpen = true } label: {
+                                row(icon: "creditcard.fill", color: Brand.green,
+                                    label: "Abonnement")
+                            }
+                            .buttonStyle(.plain)
+                        }
                         if let onOpenSuperAdmin {
                             Button(action: onOpenSuperAdmin) {
                                 row(icon: "crown.fill", color: Brand.yellow,
@@ -5178,6 +5193,9 @@ struct ProfilePopover: View {
         }
         .sheet(isPresented: $aboutOpen) {
             AboutLeadgridSheet()
+        }
+        .sheet(isPresented: $abonnementOpen) {
+            AbonnementSheet()
         }
     }
 
