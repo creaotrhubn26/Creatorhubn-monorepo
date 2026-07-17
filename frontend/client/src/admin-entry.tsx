@@ -37,6 +37,19 @@ const AdminBootstrapApp = () => (
                   <ProjectProvider>
                     <GlobalChatProvider>
                       <Switch>
+                        {/*
+                         * Rot-ruten «/» rendrer admin-dashbordet. Dette bootstrap-
+                         * treet lastes kun på (a) path-baserte /admin-ruter på
+                         * hoved-hosten, eller (b) HELE den admin-dedikerte hosten
+                         * (admin.creatorhubn.com) fra roten — se main.tsx
+                         * isAdminDedicatedHost. På hoved-hosten treffer «/» aldri
+                         * dette treet (der booter App), så ruten er kun aktiv på
+                         * admin-hosten. Uten den fikk admin.creatorhubn.com/ 404
+                         * «Siden ikke funnet» (NotFound-catch-all).
+                         */}
+                        <Route path="/">
+                          {() => <AdminDashboard />}
+                        </Route>
                         <Route path="/admin">
                           {() => <AdminDashboard />}
                         </Route>
