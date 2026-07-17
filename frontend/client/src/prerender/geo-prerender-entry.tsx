@@ -38,6 +38,10 @@ import LeadgridPricingPage from '../pages/leadgrid-pricing';
 import LeadgridPersonvern from '../pages/leadgrid-personvern';
 import LeadgridSkaffeLeadsGuidePage from '../pages/leadgrid-skaffe-leads-guide';
 import LeadgridFeltsalgSalgsteamPage from '../pages/leadgrid-feltsalg-salgsteam';
+import LeadgridAkademiPage from '../pages/leadgrid-akademi';
+import LeadgridAkademiSamarbeidPage from '../pages/leadgrid-akademi-samarbeid-salg-marked';
+import LeadgridAkademiVelgeCrmPage from '../pages/leadgrid-akademi-velge-crm-feltsalg';
+import { AKADEMI_ARTICLES } from '../components/leadgrid/akademiConfig';
 
 export interface PrerenderedPage {
   key: string;
@@ -68,6 +72,12 @@ const LEADGRID_SITE: SiteMeta = {
   siteName: 'Leadgrid',
   ogImage: 'https://leadgrid.no/leadgrid/backdrop1.png',
   favicon: '/leadgrid/logo.png',
+};
+
+/** Komponent per akademi-artikkel (nøkler fra akademiConfig). */
+const AKADEMI_COMPONENTS: Record<string, () => ReactElement> = {
+  'samarbeid-salg-marked': () => <LeadgridAkademiSamarbeidPage />,
+  'velge-crm-feltsalg': () => <LeadgridAkademiVelgeCrmPage />,
 };
 
 /**
@@ -122,6 +132,24 @@ const LEADGRID_PAGES: Array<{
       'Personvernerklæring for Leadgrid: hvilke data vi behandler, behandlingsgrunnlag, datalagring i EU/EØS og dine rettigheter etter GDPR.',
     element: () => <LeadgridPersonvern />,
   },
+  // ── Leadgrid Akademi (titler/beskrivelser fra akademiConfig — én kilde) ──
+  {
+    key: 'akademi',
+    path: '/akademi',
+    title: 'Leadgrid Akademi — lær håndverket bak B2B-salg og leadgenerering',
+    description:
+      'Redaksjonelt læringstilbud om B2B-salg, leadgenerering og feltsalg for norske bedrifter. Faktabaserte artikler med navngitte kilder — fritt tilgjengelig.',
+    element: () => <LeadgridAkademiPage />,
+  },
+  ...AKADEMI_ARTICLES.filter((a) => a.published && a.source === 'akademi').map((a) => {
+    const element = AKADEMI_COMPONENTS[a.key];
+    if (!element) {
+      // Ny artikkel i akademiConfig uten komponent-mapping her → feil builden
+      // (fanges av run-geo-prerender.mjs) i stedet for å prerendre feil side.
+      throw new Error(`geo-prerender: mangler komponent-mapping for akademi-artikkel '${a.key}'`);
+    }
+    return { key: `akademi-${a.key}`, path: a.path, title: a.title, description: a.description, element };
+  }),
 ];
 
 function escapeHtml(value: string): string {

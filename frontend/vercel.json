@@ -118,6 +118,51 @@
       "destination": "/leadgrid-sitemap.xml"
     },
     {
+      "source": "/akademi",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/akademi.html"
+    },
+    {
+      "source": "/akademi/samarbeid-salg-marked",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/akademi-samarbeid-salg-marked.html"
+    },
+    {
+      "source": "/akademi/velge-crm-feltsalg",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/akademi-velge-crm-feltsalg.html"
+    },
+    {
       "source": "/",
       "has": [
         {
