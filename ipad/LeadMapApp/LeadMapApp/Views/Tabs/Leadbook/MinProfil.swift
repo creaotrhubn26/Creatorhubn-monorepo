@@ -16,6 +16,11 @@ struct MinProfilSheet: View {
 
     // Ekte profil-data (GET/PATCH /me/profile) + handlinger som før var døde.
     @State private var myProfile: MyProfile?
+    // 2026-07-17: «Mitt utstyr» — utstyr utlevert til meg fra org-ens
+    // utstyrsregister (GET /equipment/mine). Kun i ekte modus — profilen
+    // holdes ærlig, så seksjonen skjules helt i demo.
+    @State private var myEquipment: [APIClient.EquipmentDTO] = []
+    @State private var equipmentLoaded = false
     @State private var showEditProfile = false
     @State private var showLogoutConfirm = false
     @State private var photoItem: PhotosPickerItem?
@@ -79,6 +84,11 @@ struct MinProfilSheet: View {
                         // achievementsCard fjernet 2026-07-17: badges var hardkodet
                         // mock («4 av 12») — kommer tilbake når det finnes en ekte
                         // achievements-kilde i backend.
+                        // 2026-07-17: «Mitt utstyr» — kun i ekte modus (demo har
+                        // ingen ekte utleveringer, og profilen skal være ærlig).
+                        if !DemoModeManager.isActiveNonisolated {
+                            myEquipmentCard
+                        }
                         actionsRow
                         Color.clear.frame(height: 20)
                     }
@@ -103,6 +113,15 @@ struct MinProfilSheet: View {
                 autoDetectFaceIfNeeded()
             }
             .task { myProfile = try? await appState.api?.fetchMyProfile().profile }
+            // 2026-07-17: Mitt utstyr — hentes kun i ekte modus.
+            .task {
+                guard !DemoModeManager.isActiveNonisolated, let api = appState.api else {
+                    equipmentLoaded = true
+                    return
+                }
+                myEquipment = (try? await api.fetchMyEquipment()) ?? []
+                equipmentLoaded = true
+            }
             .onChange(of: focalOffset) { _, _ in persistFocal() }
             .onChange(of: focalScale) { _, _ in persistFocal() }
             .onChange(of: photoItem) { _, item in
@@ -389,6 +408,68 @@ struct MinProfilSheet: View {
             }
             Spacer()
         }
+    }
+
+    // MARK: Mitt utstyr (2026-07-17) — utlevert org-utstyr, lesevisning.
+    // Ingen handlinger i v1: innlevering går via leder (Utstyrsregisteret).
+
+    private var myEquipmentCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("MITT UTSTYR").font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+            if !equipmentLoaded {
+                HStack(spacing: 8) {
+                    ProgressView().tint(LBrand.purpleLight)
+                    Text("Laster utstyr …")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            } else if myEquipment.isEmpty {
+                Text("Ingen utstyr utlevert")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(LBrand.textSecondary)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(myEquipment) { item in myEquipmentRow(item) }
+                }
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func myEquipmentRow(_ item: APIClient.EquipmentDTO) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(LBrand.purpleLight.opacity(0.22))
+                Image(systemName: UtstyrKind.icon(item.kind))
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(LBrand.purpleLight)
+            }
+            .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.label)
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(myEquipmentSubtitle(item))
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LBrand.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+    }
+
+    private func myEquipmentSubtitle(_ item: APIClient.EquipmentDTO) -> String {
+        var parts: [String] = []
+        if let s = item.serialNumber, !s.isEmpty { parts.append("SN \(s)") }
+        if let at = item.assignedAt, at.count >= 10 {
+            parts.append("utlevert \(at.prefix(10))")
+        }
+        return parts.isEmpty ? UtstyrKind.label(item.kind) : parts.joined(separator: " · ")
     }
 
     private var actionsRow: some View {

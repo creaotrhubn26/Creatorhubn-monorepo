@@ -666,6 +666,110 @@ actor APIClient {
             "/api/leadgrid/leadbook/examples/\(exampleId)/view", body: [:])
     }
 
+    // MARK: - Utstyrsregister (2026-07-17)
+
+    struct EquipmentDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let kind: String            // nettbrett|telefon|laptop|klaer|id_kort|annet
+        let label: String
+        let serialNumber: String?
+        let size: String?
+        let status: String          // tilgjengelig|utlevert|tapt|defekt|kassert
+        let assignedUserId: String?
+        let assignedUserName: String
+        let assignedAt: String?
+        let note: String
+
+        enum CodingKeys: String, CodingKey {
+            case id, kind, label, size, status, note
+            case serialNumber = "serial_number"
+            case assignedUserId = "assigned_user_id"
+            case assignedUserName = "assigned_user_name"
+            case assignedAt = "assigned_at"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            kind = (try? c.decode(String.self, forKey: .kind)) ?? "annet"
+            label = (try? c.decode(String.self, forKey: .label)) ?? ""
+            serialNumber = try? c.decodeIfPresent(String.self, forKey: .serialNumber)
+            size = try? c.decodeIfPresent(String.self, forKey: .size)
+            status = (try? c.decode(String.self, forKey: .status)) ?? "tilgjengelig"
+            assignedUserId = try? c.decodeIfPresent(String.self, forKey: .assignedUserId)
+            assignedUserName = (try? c.decode(String.self, forKey: .assignedUserName)) ?? ""
+            assignedAt = try? c.decodeIfPresent(String.self, forKey: .assignedAt)
+            note = (try? c.decode(String.self, forKey: .note)) ?? ""
+        }
+    }
+
+    struct EquipmentEventDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let event: String
+        let subjectUserName: String
+        let actorName: String
+        let note: String
+        let createdAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, event, note
+            case subjectUserName = "subject_user_name"
+            case actorName = "actor_name"
+            case createdAt = "created_at"
+        }
+    }
+
+    private struct EquipmentListResponse: Codable { let equipment: [EquipmentDTO] }
+    private struct EquipmentEventsResponse: Codable { let events: [EquipmentEventDTO] }
+    private struct EquipmentAck: Codable { let ok: Bool?; let id: String? }
+
+    /// Hele registeret (kun ledere — backend håndhever).
+    func fetchEquipment() async throws -> [EquipmentDTO] {
+        let r: EquipmentListResponse = try await get("/api/leadgrid/equipment")
+        return r.equipment
+    }
+
+    /// «Mitt utstyr» — det som er utlevert til innlogget bruker.
+    func fetchMyEquipment() async throws -> [EquipmentDTO] {
+        let r: EquipmentListResponse = try await get("/api/leadgrid/equipment/mine")
+        return r.equipment
+    }
+
+    func createEquipment(
+        kind: String, label: String, serialNumber: String?,
+        size: String?, note: String
+    ) async throws -> String {
+        var body: [String: Any] = ["kind": kind, "label": label, "note": note]
+        if let s = serialNumber, !s.isEmpty { body["serial_number"] = s }
+        if let s = size, !s.isEmpty { body["size"] = s }
+        let r: EquipmentAck = try await post("/api/leadgrid/equipment", body: body)
+        guard let id = r.id else { throw APIError.invalidResponse }
+        return id
+    }
+
+    /// Status-endring (tapt/defekt/tilgjengelig/kassert) el. felt-redigering.
+    func updateEquipment(id: String, _ fields: [String: Any]) async throws {
+        try await patch("/api/leadgrid/equipment/\(id)", body: fields)
+    }
+
+    /// Utlever til medlem — mottakeren varsles (in-app + push) av backend.
+    func assignEquipment(id: String, userId: String, userName: String) async throws {
+        let _: EquipmentAck = try await post(
+            "/api/leadgrid/equipment/\(id)/assign",
+            body: ["user_id": userId, "user_name": userName])
+    }
+
+    /// Innlever — lov for leder ELLER innehaveren selv.
+    func returnEquipment(id: String) async throws {
+        let _: EquipmentAck = try await post(
+            "/api/leadgrid/equipment/\(id)/return", body: [:])
+    }
+
+    func fetchEquipmentEvents(id: String) async throws -> [EquipmentEventDTO] {
+        let r: EquipmentEventsResponse = try await get("/api/leadgrid/equipment/\(id)/events")
+        return r.events
+    }
+
     // MARK: - Tettsteder (SSB tettbygde strøk, 2026-07-17)
 
     /// Geometrien er alltid MultiPolygon fra backend ([lng,lat],

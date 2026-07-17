@@ -97,6 +97,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // AI-strukturering av eksempler (2026-07-17) — Claude-kall er kostnads-
     // bærende → egen nøkkel, styrbar per plan uavhengig av Eksempler-fanen.
     case leadbookAIStrukturering = "Leadbook · AI-strukturering"
+    // Utstyrsregister (2026-07-17) — org-eid utstyr utlevert til medlemmer
+    // (nettbrett/telefon/laptop/klær/ID-kort) m/ hendelseslogg.
+    case utstyrsregister = "Utstyr · Organisasjonsutstyr"
 
     var id: String { rawValue }
 
@@ -155,13 +158,16 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .omradeTildeling: return "map.circle.fill"
         // AI
         case .leadbookAIStrukturering: return "sparkles"
+        // Utstyr
+        case .utstyrsregister: return "shippingbox.fill"
         }
     }
 
     var group: Group {
         switch self {
         case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter: return .kjerne
-        case .analyse, .team, .salgsledelse, .omradeTildeling: return .analyseTeam
+        case .analyse, .team, .salgsledelse, .omradeTildeling,
+             .utstyrsregister: return .analyseTeam
         case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler,
              .leadbookInnsikt, .leadbookAIStrukturering: return .leadbook
         case .varsler, .tilganger, .integrasjoner, .fakturering: return .admin
