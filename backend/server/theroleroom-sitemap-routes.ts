@@ -20,7 +20,7 @@ interface SitemapDeps {
   pool: Pool;
 }
 
-const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> = [
+export const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> = [
   { loc: "/", priority: 1.0, changefreq: "weekly" },
   { loc: "/talentportal", priority: 0.9, changefreq: "weekly" },
   { loc: "/utdanningsinstitusjon", priority: 0.8, changefreq: "monthly" },
@@ -39,10 +39,11 @@ const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> 
   { loc: "/innholdsproduksjon-studie", priority: 0.8, changefreq: "monthly" },
   { loc: "/dansestudio", priority: 0.8, changefreq: "monthly" },
   { loc: "/presse", priority: 0.5, changefreq: "monthly" },
-  // GEO/AI-pillar-sider
+  // GEO/AI-pillar-sider — MÅ speile publiserte sider i
+  // frontend/client/src/components/admin/content-marketing/marketingPagesConfig.ts
+  // (kun published: true). Synk håndheves av theroleroom-sitemap-routes.test.ts.
   { loc: "/casting-svindel-tegn", priority: 0.9, changefreq: "monthly" },
   { loc: "/barn-samtykke-film", priority: 0.9, changefreq: "monthly" },
-  { loc: "/casting-rapport-2026", priority: 0.95, changefreq: "monthly" },
   { loc: "/vart-syn", priority: 0.85, changefreq: "monthly" },
   { loc: "/selvtape-tips", priority: 0.85, changefreq: "monthly" },
   { loc: "/bak-castingen", priority: 0.85, changefreq: "monthly" },
@@ -58,6 +59,8 @@ const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> 
   { loc: "/produksjons-os", priority: 0.95, changefreq: "monthly" },
   { loc: "/innholdsprodusent-norge", priority: 0.9, changefreq: "monthly" },
   { loc: "/dansestudio-norge", priority: 0.9, changefreq: "monthly" },
+  { loc: "/verktoy-for-filmutdanninger", priority: 0.9, changefreq: "monthly" },
+  { loc: "/norsk-casting-prosess", priority: 0.95, changefreq: "monthly" },
   // Brief-arkiv-indeks
   { loc: "/brief", priority: 0.9, changefreq: "weekly" },
   // Juridisk
