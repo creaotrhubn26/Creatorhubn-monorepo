@@ -39,6 +39,7 @@ import {
   overallStatus,
   type HealthService,
 } from "./control-center-health-client.js";
+import { computeAiMargin } from "./ai-margin-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -515,6 +516,38 @@ export function setupControlCenterRoutes(deps: Deps): void {
     } catch (err) {
       console.warn("[control-center/health] failed:", (err as Error).message);
       return res.json({ services: [], overall: "unknown", generatedAt: new Date().toISOString() });
+    }
+  });
+
+  // ── GET /api/control-center/ai-margin ──────────────────────────────
+  // Fase A av «soft-cap + overage»: READ-ONLY synlighet i faktisk AI-kost
+  // per org (fra ai_usage_log.cost_usd), så vi ser hvem som spiser marginen
+  // FØR vi bygger enforcement + Stripe metered-overage. Ingen mutasjon.
+  app.get("/api/control-center/ai-margin", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const windowDays = Number(req.query.windowDays);
+    const limit = Number(req.query.limit);
+    try {
+      const report = await computeAiMargin(pool, {
+        windowDays: Number.isFinite(windowDays) ? windowDays : undefined,
+        limit: Number.isFinite(limit) ? limit : undefined,
+      });
+      return res.json(report);
+    } catch (err) {
+      // ai_usage_log finnes ikke enda / annen feil → tomt, ikke 500.
+      console.warn("[control-center/ai-margin] failed:", (err as Error).message);
+      return res.json({
+        summary: {
+          windowDays: Number.isFinite(windowDays) ? windowDays : 30,
+          usdToNok: Number(process.env.AI_USD_TO_NOK) || 10.5,
+          alertThresholdNok: Number(process.env.AI_MARGIN_ALERT_NOK) || 500,
+          totalCostUsd: 0, totalCostNok: 0, totalCalls: 0,
+          distinctOrgs: 0, orgsAtRisk: 0, unattributedCostNok: 0,
+          generatedAt: new Date().toISOString(),
+        },
+        topConsumers: [],
+      });
     }
   });
 

@@ -160,6 +160,34 @@ interface HealthResponse {
   generatedAt: string;
 }
 
+interface OrgAiSpend {
+  organizationId: string | null;
+  orgName: string | null;
+  planKey: string | null;
+  costUsd: number;
+  costNok: number;
+  calls: number;
+  atRisk: boolean;
+}
+
+interface AiMarginSummary {
+  windowDays: number;
+  usdToNok: number;
+  alertThresholdNok: number;
+  totalCostUsd: number;
+  totalCostNok: number;
+  totalCalls: number;
+  distinctOrgs: number;
+  orgsAtRisk: number;
+  unattributedCostNok: number;
+  generatedAt: string;
+}
+
+interface AiMarginResponse {
+  summary: AiMarginSummary;
+  topConsumers: OrgAiSpend[];
+}
+
 // ─── Hjelpere ──────────────────────────────────────────────────────────────
 
 const POLL_MS = 45_000;
@@ -192,6 +220,7 @@ const SUBTABS = [
   { id: 'overview', label: 'Oversikt' },
   { id: 'incidents', label: 'Hendelser' },
   { id: 'health', label: 'Helse' },
+  { id: 'ai-margin', label: 'AI-margin' },
   { id: 'deploys', label: 'Deploys' },
   { id: 'logs', label: 'Logg' },
 ] as const;
@@ -290,6 +319,13 @@ const ControlCenterPanel: React.FC = () => {
     enabled: subTab === 'health',
   });
 
+  const aiMargin = useQuery<AiMarginResponse>({
+    queryKey: ['/api/control-center/ai-margin'],
+    queryFn: () => apiRequest('/api/control-center/ai-margin?windowDays=30&limit=25'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'ai-margin',
+  });
+
   const incidentAction = useMutation({
     mutationFn: (args: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) =>
       apiRequest(
@@ -316,7 +352,7 @@ const ControlCenterPanel: React.FC = () => {
         </Box>
         <Button
           size="small" startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); void health.refetch(); }}
+          onClick={() => { void obs.refetch(); void inc.refetch(); void logs.refetch(); void deploys.refetch(); void health.refetch(); void aiMargin.refetch(); }}
           sx={{ textTransform: 'none' }}
         >
           Oppdater
@@ -351,6 +387,7 @@ const ControlCenterPanel: React.FC = () => {
         <IncidentsSection inc={inc} onAction={(a) => incidentAction.mutate(a)} pending={incidentAction.isPending} />
       )}
       {subTab === 'health' && <HealthSection health={health} />}
+      {subTab === 'ai-margin' && <AiMarginSection aiMargin={aiMargin} />}
       {subTab === 'deploys' && <DeploysSection deploys={deploys} />}
       {subTab === 'logs' && <LogsSection logs={logs} />}
     </Box>
@@ -675,6 +712,77 @@ const HealthSection: React.FC<{ health: ReturnType<typeof useQuery<HealthRespons
 
       <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
         Aktive prober (kun lesing) · oppetid/p95 er basert på registrerte samples (akkumuleres mens cockpiten er åpen), ikke syntetisk 24/7. Sist sjekket {relTime(generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
+
+const AiMarginSection: React.FC<{ aiMargin: ReturnType<typeof useQuery<AiMarginResponse>> }> = ({ aiMargin }) => {
+  if (aiMargin.isLoading) return <Loading />;
+  if (aiMargin.isError || !aiMargin.data) return <ErrorLine msg="Kunne ikke hente AI-margin." />;
+
+  const { summary, topConsumers } = aiMargin.data;
+  const nok = (n: number) => `${Math.round(n).toLocaleString('nb-NO')} kr`;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard
+          label={`AI-kost ${summary.windowDays}d`}
+          value={nok(summary.totalCostNok)}
+          hint={`${summary.totalCalls.toLocaleString('nb-NO')} kall · ${summary.distinctOrgs} orgs`}
+        />
+        <KpiCard
+          label="Orgs i margin-risiko"
+          value={String(summary.orgsAtRisk)}
+          hint={`≥ ${nok(summary.alertThresholdNok)}/mnd AI-kost`}
+          accent={summary.orgsAtRisk > 0 ? '#e5484d' : '#3dd68c'}
+        />
+        <KpiCard
+          label="Uattribuert"
+          value={nok(summary.unattributedCostNok)}
+          hint="Kall uten org (multi-org / ikke-backfillet)"
+        />
+      </Stack>
+
+      {topConsumers.length === 0 ? (
+        <Alert severity="info">Ingen AI-kost registrert i vinduet enda (eller <code>ai_usage_log</code> ikke migrert).</Alert>
+      ) : (
+        <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ color: 'text.secondary' }}>Organisasjon</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Plan</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">AI-kost {summary.windowDays}d</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">Kall</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Flagg</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {topConsumers.map((o, i) => (
+              <TableRow key={o.organizationId ?? `row-${i}`}>
+                <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{o.orgName ?? '(ukjent org)'}</TableCell>
+                <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>{o.planKey ?? '—'}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 12, fontWeight: 700, color: o.atRisk ? '#e5484d' : '#fff' }}>
+                  {nok(o.costNok)}
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  {o.calls.toLocaleString('nb-NO')}
+                </TableCell>
+                <TableCell>
+                  {o.atRisk
+                    ? <Chip size="small" label="Margin-risiko" sx={{ height: 18, fontSize: 10, bgcolor: '#e5484d', color: '#fff' }} />
+                    : <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>OK</Typography>}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Fase A (kun synlighet): faktisk AI-kost fra <code>ai_usage_log</code>, USD→NOK ≈ {summary.usdToNok} (env <code>AI_USD_TO_NOK</code>).
+        Ingen håndhevelse/fakturering enda — Fase B = per-plan tak, Fase C = Stripe metered-overage. Sist oppdatert {relTime(summary.generatedAt)}.
       </Typography>
     </Box>
   );
