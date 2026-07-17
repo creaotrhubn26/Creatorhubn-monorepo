@@ -15,6 +15,7 @@ import { ProjectProvider } from './contexts/ProjectContext';
 import GlobalChatProvider from '@/components/chat/GlobalChatProvider';
 import { Toaster } from '@/components/ui/toaster';
 import NotFound from '@/pages/not-found';
+import LoginPageSimple from '@/pages/LoginPageSimple';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import VisualCMSAdminDashboard from '@/components/admin/VisualCMSAdminDashboard';
 import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
@@ -53,6 +54,16 @@ const AdminBootstrapApp = () => (
                         <Route path="/admin">
                           {() => <AdminDashboard />}
                         </Route>
+                        {/*
+                         * Admin-dashbordets auth-guard redirigerer uinnloggede til
+                         * /login?redirect=/admin. På den admin-dedikerte hosten er
+                         * admin-entry eneste bundle, så /login MÅ finnes her (på
+                         * hoved-hosten eier App denne ruten). LoginPageSimple leser
+                         * redirect-paramet og går til /admin etter innlogging. Uten
+                         * denne ruten fikk admin.creatorhubn.com 404 rett etter at
+                         * dashbordet redirigerte til login.
+                         */}
+                        <Route path="/login" component={LoginPageSimple} />
                         <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard} />
                         <Route path="/equipment-admin" component={EquipmentAdminPage} />
                         <Route path="/photo-venues-admin" component={PhotoVenuesAdminPage} />
