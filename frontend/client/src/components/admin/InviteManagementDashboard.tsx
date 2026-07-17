@@ -181,8 +181,52 @@ export default function InviteManagementDashboard() {
     refetchInterval: 30000
 });
 
-  const invitations = Array.isArray(inviteData?.invitations) ? inviteData.invitations : [];
-  const stats = inviteData?.stats || {};
+  // Backend (`mapInviteRow`) serialiserer med andre feltnavn enn tabellen leser
+  // (business/firstName/lastName/email/organizationNumber/requestDate/proffAnalysis).
+  // Normaliser til camelCase-formen komponenten forventer — leser den nye formen
+  // først, faller tilbake til backend-navnene (robust begge veier).
+  const invitations = useMemo(() => {
+    const raw = Array.isArray(inviteData?.invitations) ? inviteData.invitations : [];
+    return raw.map((r: any) => {
+      const contactName =
+        r.contactName ?? [r.firstName, r.lastName].filter(Boolean).join(' ').trim();
+      const proff = r.redFlagAnalysis ?? r.proffAnalysis ?? null;
+      const riskLevel = r.proffRiskLevel ?? proff?.riskLevel ?? null;
+      const redFlagAnalysis =
+        riskLevel || proff
+          ? {
+              riskLevel: riskLevel ?? 'unknown',
+              score: r.proffRiskScore ?? proff?.riskScore ?? proff?.score ?? 0,
+              flags: Array.isArray(proff?.flags) ? proff.flags : [],
+            }
+          : null;
+      return {
+        ...r,
+        businessName: r.businessName ?? r.business ?? '',
+        contactName,
+        contactEmail: r.contactEmail ?? r.email ?? '',
+        orgNumber: r.orgNumber ?? r.organizationNumber ?? '',
+        createdAt: r.createdAt ?? r.requestDate ?? null,
+        redFlagAnalysis,
+      };
+    });
+  }, [inviteData]);
+
+  // KPI-kortene leser totalRequests/pendingReview/conversionRate; backend sender
+  // total/pending/approved/rejected (uten conversionRate) → utled fra listen.
+  const stats = useMemo(() => {
+    const total = invitations.length;
+    const pending = invitations.filter((i: any) => i.status === 'pending').length;
+    const approved = invitations.filter((i: any) => i.status === 'approved').length;
+    const rejected = invitations.filter((i: any) => i.status === 'rejected').length;
+    return {
+      totalRequests: total,
+      pendingReview: pending,
+      approved,
+      rejected,
+      conversionRate: total > 0 ? (approved / total) * 100 : 0,
+    };
+  }, [invitations]);
 
   // Update invite status mutation
   const updateStatusMutation = useMutation({
@@ -269,6 +313,14 @@ export default function InviteManagementDashboard() {
 
   const getProfessionLabel = (profession: string) => {
     return getProfessionDisplayName(profession);
+  };
+
+  // Trygg dato-formattering — unngår at «Invalid Date» rendres i tabellen når
+  // feltet mangler eller ikke lar seg parse.
+  const formatInviteDate = (value?: string | number | Date | null) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('nb-NO');
   };
 
   // User journey status helpers
@@ -529,20 +581,24 @@ export default function InviteManagementDashboard() {
                 <TableCell>
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                      {invite.businessName}
+                      {invite.businessName || '—'}
                     </Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      {invite.orgNumber}
-                    </Typography>
+                    {invite.orgNumber && (
+                      <Typography variant="caption" color="textSecondary">
+                        {invite.orgNumber}
+                      </Typography>
+                    )}
                   </Box>
                 </TableCell>
 
                 <TableCell>
                   <Box>
-                    <Typography variant="body2">{invite.contactName}</Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      {invite.contactEmail}
-                    </Typography>
+                    <Typography variant="body2">{invite.contactName || '—'}</Typography>
+                    {invite.contactEmail && (
+                      <Typography variant="caption" color="textSecondary">
+                        {invite.contactEmail}
+                      </Typography>
+                    )}
                   </Box>
                 </TableCell>
 
@@ -620,7 +676,7 @@ export default function InviteManagementDashboard() {
 
                 <TableCell>
                   <Typography variant="body2">
-                    {new Date(invite.createdAt).toLocaleDateString('nb-NO')}
+                    {formatInviteDate(invite.createdAt)}
                   </Typography>
                 </TableCell>
 
