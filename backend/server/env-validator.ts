@@ -103,6 +103,11 @@ const OPTIONAL: EnvVar[] = [
   { name: "FIKEN_TOKEN", description: "Norsk regnskap-integrasjon." },
   { name: "AI_USD_TO_NOK", description: "USD→NOK-kurs for å vise AI-kost i kroner i Control Center AI-margin (Fase A). Default 10.5." },
   { name: "AI_MARGIN_ALERT_NOK", description: "Terskel (NOK/mnd AI-kost per org) som flagger margin-risiko i Control Center AI-margin (Fase A). Default 500." },
+  { name: "AI_OVERAGE_MARKUP", description: "Markup ganget på AI-overskridelse (leverandørkost over inkludert budsjett) for å få fakturabeløp (Fase B/C). Default 1.4." },
+  { name: "AI_INCLUDED_BUDGET_NOK_BASIC", description: "Inkludert AI-budsjett (NOK leverandørkost/mnd) for Basic-planen (soft-cap Fase B). Default 30." },
+  { name: "AI_INCLUDED_BUDGET_NOK_PROFESSIONAL", description: "Inkludert AI-budsjett (NOK leverandørkost/mnd) for Professional-planen (soft-cap Fase B). Default 75." },
+  { name: "AI_INCLUDED_BUDGET_NOK_PREMIUM", description: "Inkludert AI-budsjett (NOK leverandørkost/mnd) for Premium-planen (soft-cap Fase B). Default 210." },
+  { name: "AI_INCLUDED_BUDGET_NOK_ENTERPRISE", description: "Inkludert AI-budsjett (NOK leverandørkost/mnd) for Enterprise-planen (soft-cap Fase B). Default 840." },
 ];
 
 // ─────────────────────────────────────────────────────────
