@@ -858,6 +858,7 @@ import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
 import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
 import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
+import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
@@ -66523,6 +66524,10 @@ registerLeadgridQualityRoutes({ app, pool, requireUserSession });
 // m/ dialog og visningstall (mig 0379-0382). Fylles fra Kvalitet-flagget
 // eller manuelt av leder.
 registerLeadgridLeadbookExamplesRoutes({ app, pool, requireUserSession });
+
+// Utstyrsregister — org-eid utstyr (nettbrett/telefon/laptop/klær/ID-kort)
+// m/ tildeling, varsling og hendelseslogg (mig 0385).
+registerLeadgridEquipmentRoutes({ app, pool, requireUserSession });
 
 // «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
 registerLeadgridSignupInterestRoutes({ app, pool });
