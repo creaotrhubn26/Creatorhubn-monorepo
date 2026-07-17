@@ -118,6 +118,81 @@
       "destination": "/leadgrid-sitemap.xml"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/landing.html"
+    },
+    {
+      "source": "/priser",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/priser.html"
+    },
+    {
+      "source": "/skaffe-leads-guide",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/skaffe-leads-guide.html"
+    },
+    {
+      "source": "/feltsalg-for-salgsteam",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/feltsalg-for-salgsteam.html"
+    },
+    {
+      "source": "/personvern",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/personvern.html"
+    },
+    {
       "source": "/cdn/(.*)",
       "destination": "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/$1"
     },

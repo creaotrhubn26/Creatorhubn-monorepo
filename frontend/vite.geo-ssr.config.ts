@@ -11,10 +11,20 @@
  *   node scripts/run-geo-prerender.mjs
  */
 
+import path from 'node:path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: './client',
+  resolve: {
+    alias: {
+      // Speiler customPathResolver i hoved-configen for @/-imports
+      // (Leadgrid-sidene bruker @/components, @/utils, @/hooks).
+      '@': path.resolve(__dirname, 'client/src'),
+      '@shared': path.resolve(__dirname, 'shared'),
+      '@assets': path.resolve(__dirname, 'client/src/assets'),
+    },
+  },
   build: {
     ssr: 'src/prerender/geo-prerender-entry.tsx',
     outDir: 'dist-geo',
