@@ -46,6 +46,7 @@ import {
   type AiOverageResult,
 } from "./ai-overage-service.js";
 import { overageMarkup } from "./ai-plan-budgets.js";
+import { billAiOverage } from "./ai-overage-billing.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -607,6 +608,27 @@ export function setupControlCenterRoutes(deps: Deps): void {
     } catch (err) {
       console.warn("[control-center/ai-overage/compute] failed:", (err as Error).message);
       return res.status(500).json({ error: "compute_failed", message: (err as Error).message });
+    }
+  });
+
+  // ── POST /api/control-center/ai-overage/bill ───────────────────────
+  // Fase C: DEN ENESTE ruten som flytter penger. Rapporterer ufakturerte
+  // ai_overage_accrual-rader som Stripe metered-events + setter billed_at.
+  // Dobbel sikkerhet: ekte fakturering krever BÅDE env AI_OVERAGE_BILLING_ENABLED
+  // ="true" OG body {dryRun:false}. Ellers = dry-run (viser hva som VILLE blitt
+  // fakturert, ingen Stripe-kall, ingen billed_at). `{month?, dryRun?}`.
+  app.post("/api/control-center/ai-overage/bill", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const month = typeof req.body?.month === "string" ? req.body.month : undefined;
+    // Default TRYGT: dry-run med mindre kaller EKSPLISITT sender dryRun:false.
+    const dryRun = req.body?.dryRun !== false;
+    try {
+      const result = await billAiOverage(pool, { month, dryRun });
+      return res.json(result);
+    } catch (err) {
+      console.warn("[control-center/ai-overage/bill] failed:", (err as Error).message);
+      return res.status(500).json({ error: "bill_failed", message: (err as Error).message });
     }
   });
 

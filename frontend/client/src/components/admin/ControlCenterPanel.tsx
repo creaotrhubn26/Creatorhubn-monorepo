@@ -214,6 +214,32 @@ interface AiOverageResponse {
   computedAt: string;
 }
 
+interface AiBillRow {
+  organizationId: string;
+  orgName: string | null;
+  periodMonth: string;
+  overageChargeNok: number;
+  meterValue: number;
+  stripeCustomerId: string;
+  reported: boolean;
+  error?: string;
+}
+
+interface AiBillResponse {
+  enabled: boolean;
+  dryRun: boolean;
+  meterEventName: string;
+  meterUnit: 'nok' | 'oere';
+  stripeConfigured: boolean;
+  periodMonth: string | null;
+  candidates: number;
+  reported: number;
+  errors: number;
+  totalChargeNok: number;
+  rows: AiBillRow[];
+  ranAt: string;
+}
+
 // ─── Hjelpere ──────────────────────────────────────────────────────────────
 
 const POLL_MS = 45_000;
@@ -366,6 +392,16 @@ const ControlCenterPanel: React.FC = () => {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['/api/control-center/ai-overage'] }),
   });
 
+  const [billResult, setBillResult] = useState<AiBillResponse | null>(null);
+  const overageBill = useMutation<AiBillResponse, Error, { dryRun: boolean }>({
+    mutationFn: (vars) =>
+      apiRequest('/api/control-center/ai-overage/bill', { method: 'POST', body: { dryRun: vars.dryRun } }),
+    onSuccess: (data) => {
+      setBillResult(data);
+      if (!data.dryRun) void qc.invalidateQueries({ queryKey: ['/api/control-center/ai-overage'] });
+    },
+  });
+
   const incidentAction = useMutation({
     mutationFn: (args: { incidentId: string; action: 'ack' | 'resolve' | 'reopen' | 'assign'; assignedTo?: string }) =>
       apiRequest(
@@ -433,6 +469,9 @@ const ControlCenterPanel: React.FC = () => {
           aiOverage={aiOverage}
           onCompute={() => overageCompute.mutate()}
           computing={overageCompute.isPending}
+          billResult={billResult}
+          onBill={(dryRun) => overageBill.mutate({ dryRun })}
+          billing={overageBill.isPending}
         />
       )}
       {subTab === 'deploys' && <DeploysSection deploys={deploys} />}
@@ -839,7 +878,10 @@ const AiOverageSection: React.FC<{
   aiOverage: ReturnType<typeof useQuery<AiOverageResponse>>;
   onCompute: () => void;
   computing: boolean;
-}> = ({ aiOverage, onCompute, computing }) => {
+  billResult: AiBillResponse | null;
+  onBill: (dryRun: boolean) => void;
+  billing: boolean;
+}> = ({ aiOverage, onCompute, computing, billResult, onBill, billing }) => {
   if (aiOverage.isLoading) return <Loading />;
   if (aiOverage.isError || !aiOverage.data) return <ErrorLine msg="Kunne ikke hente AI-overage." />;
 
@@ -909,6 +951,87 @@ const AiOverageSection: React.FC<{
           </TableBody>
         </Table>
       )}
+
+      {/* ── Fase C: Stripe metered-fakturering (den ENESTE delen som flytter penger) ── */}
+      <Box sx={{ display: 'grid', gap: 1.5, p: 2, borderRadius: 2, border: '1px solid rgba(245,166,35,0.28)', bgcolor: 'rgba(245,166,35,0.05)' }}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Fase C — fakturér overage til Stripe</Typography>
+          <Chip
+            size="small"
+            label={billResult ? (billResult.enabled ? 'Fakturering PÅ' : 'Kun dry-run (env av)') : 'Ukjent status'}
+            sx={{ height: 18, fontSize: 10, bgcolor: billResult?.enabled ? '#2f6f4f' : '#555', color: '#fff' }}
+          />
+        </Stack>
+        <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>
+          Rapporterer «Klar for Fase C»-radene som Stripe <code>billing/meter_events</code> og markerer dem <code>billed_at</code> (idempotent).
+          Ekte fakturering krever <b>både</b> <code>AI_OVERAGE_BILLING_ENABLED=true</code> i backend-env <b>og</b> at du trykker «Fakturer nå».
+          Uten env-flagget er alt dry-run uansett. Kjør alltid forhåndsvisning først.
+        </Typography>
+        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+          <Button
+            size="small" variant="outlined" onClick={() => onBill(true)} disabled={billing}
+            sx={{ textTransform: 'none' }}
+          >
+            {billing ? 'Kjører…' : 'Forhåndsvis (dry-run)'}
+          </Button>
+          <Button
+            size="small" variant="contained" color="warning" disabled={billing}
+            onClick={() => {
+              if (window.confirm('Fakturere alle ufakturerte overage-rader til Stripe nå? Dette flytter penger og markerer radene billed_at. Kjør forhåndsvisning først hvis du er usikker.')) {
+                onBill(false);
+              }
+            }}
+            sx={{ textTransform: 'none' }}
+          >
+            {billing ? 'Fakturerer…' : 'Fakturer nå'}
+          </Button>
+        </Stack>
+
+        {billResult && (
+          <Box sx={{ display: 'grid', gap: 1 }}>
+            <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+              <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                {billResult.dryRun ? 'Dry-run' : 'Ekte fakturering'} · meter <code>{billResult.meterEventName}</code> ({billResult.meterUnit}) ·
+                Stripe {billResult.stripeConfigured ? 'konfigurert' : 'IKKE konfigurert'}
+              </Typography>
+              <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                {billResult.candidates} kandidater · {billResult.reported} rapportert · {billResult.errors} feil ·
+                sum {nok2(billResult.totalChargeNok)} · {relTime(billResult.ranAt)}
+              </Typography>
+            </Stack>
+            {billResult.rows.length > 0 && (
+              <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ color: 'text.secondary' }}>Organisasjon</TableCell>
+                    <TableCell sx={{ color: 'text.secondary' }}>Måned</TableCell>
+                    <TableCell sx={{ color: 'text.secondary' }} align="right">Beløp</TableCell>
+                    <TableCell sx={{ color: 'text.secondary' }} align="right">Meter-verdi</TableCell>
+                    <TableCell sx={{ color: 'text.secondary' }}>Resultat</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {billResult.rows.map((r, i) => (
+                    <TableRow key={r.organizationId ?? `bill-${i}`}>
+                      <TableCell sx={{ fontSize: 12, fontWeight: 600 }}>{r.orgName ?? '(ukjent org)'}</TableCell>
+                      <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>{r.periodMonth.slice(0, 7)}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: 12, fontWeight: 700, color: '#f5a623' }}>{nok2(r.overageChargeNok)}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>{r.meterValue}</TableCell>
+                      <TableCell>
+                        {r.error
+                          ? <Chip size="small" label={r.error.slice(0, 40)} sx={{ height: 18, fontSize: 10, bgcolor: '#e5484d', color: '#fff' }} />
+                          : r.reported
+                            ? <Chip size="small" label="Rapportert" sx={{ height: 18, fontSize: 10, bgcolor: '#2f6f4f', color: '#fff' }} />
+                            : <Chip size="small" label="Forhåndsvist" sx={{ height: 18, fontSize: 10, bgcolor: '#555', color: '#fff' }} />}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Box>
+        )}
+      </Box>
 
       <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
         Fase B (regnskap, ingen fakturering): inkludert AI-budsjett per plan (env <code>AI_INCLUDED_BUDGET_NOK_*</code>),
