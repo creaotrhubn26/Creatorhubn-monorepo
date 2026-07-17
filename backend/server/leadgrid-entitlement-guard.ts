@@ -142,3 +142,8 @@ export const LEADGRID_GO_FEATURE_KEYS = [
 
 /** Kvalitet-avdelingen (tilleggstjeneste) — salgsverifisering m/ samtale-maler. */
 export const LEADGRID_KVALITET_FEATURE_KEYS = ["leadgridKvalitet"];
+
+/** Tettsted-tildeling (SSB tettbygde strøk under kommunenivå) — katalogen
+ *  som driver «Tildel område → Tettsted» på iPad. Nøkkelen matcher
+ *  LeadgridFeature.omradeTildeling (Swift-casenavn = stabil API-nøkkel). */
+export const LEADGRID_OMRADE_FEATURE_KEYS = ["omradeTildeling"];
