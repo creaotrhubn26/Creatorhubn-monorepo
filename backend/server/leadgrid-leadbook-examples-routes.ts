@@ -25,11 +25,54 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
-import { assertAnyEntitled } from "./leadgrid-entitlement-guard.js";
+import {
+  assertAnyEntitled,
+  LEADBOOK_AI_STRUKTUR_FEATURE_KEYS,
+} from "./leadgrid-entitlement-guard.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Fakturering av AI-kall — samme løype som leadgrid-overage-billing.ts:
+// daglig cron → Stripe meter-events → billed_at-stempel. Krever at meteret
+// (event_name under) + pris er satt opp i Stripe før verdien faktureres.
+const AI_CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
+const AI_METER_EVENT_NAME = process.env.STRIPE_LEADGRID_AI_METER_EVENT_NAME
+  ?? "leadgrid_ai_structure_call";
+const AI_STRIPE_KEY = process.env.CREATORHUB_STRIPE_SECRET_KEY
+  ?? process.env.STRIPE_SECRET_KEY
+  ?? "";
+
+async function reportAIMeterEvent(
+  identifier: string, stripeCustomerId: string, valueUnits: number,
+  timestampUnix: number,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!AI_STRIPE_KEY) return { ok: false, error: "Stripe ikke konfigurert" };
+  try {
+    const body = new URLSearchParams();
+    body.set("event_name", AI_METER_EVENT_NAME);
+    body.set("identifier", identifier);
+    body.set("timestamp", String(timestampUnix));
+    body.set("payload[stripe_customer_id]", stripeCustomerId);
+    body.set("payload[value]", String(valueUnits));
+    const r = await fetch("https://api.stripe.com/v1/billing/meter_events", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${AI_STRIPE_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      return { ok: false, error: `Stripe ${r.status}: ${t.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
 
 type SessionUser = {
   userId: string;
@@ -199,6 +242,28 @@ export function registerLeadgridLeadbookExamplesRoutes(
     if (g.role == null || !WRITE_ROLES.has(g.role)) {
       return res.status(403).json({ error: "krever_leder_rolle" });
     }
+    // Egen feature-matrise-nøkkel (2026-07-17), DEFAULT AV: standard-
+    // semantikken er fail-open (ingen rad = åpen), men AI-kall koster
+    // penger — her kreves EKSPLISITT åpning i SuperAdmin-matrisen.
+    // Appen skjuler all AI-UI når nøkkelen mangler/er låst.
+    try {
+      const aiRow = await pool.query<{ state: string }>(
+        `SELECT state FROM leadgrid_org_entitlements
+          WHERE organization_id = $1 AND feature_key = $2 LIMIT 1`,
+        [g.orgId, LEADBOOK_AI_STRUKTUR_FEATURE_KEYS[0]],
+      );
+      const aiState = aiRow.rows[0]?.state ?? null;
+      if (aiState == null || aiState === "locked") {
+        return res.status(403).json({
+          error: "entitlement_locked",
+          features: LEADBOOK_AI_STRUKTUR_FEATURE_KEYS,
+        });
+      }
+    } catch (e) {
+      // Fail-CLOSED for kostnadsbærende AI (motsatt av guard-ens fail-open).
+      console.warn("[leadbook-examples] ai-entitlement-sjekk feilet:", (e as Error).message);
+      return res.status(503).json({ error: "entitlement_utilgjengelig" });
+    }
     const raw = str((req.body ?? {}).raw_text).trim();
     if (raw.length < 40) {
       return res.status(400).json({ error: "for_kort_tekst" });
@@ -237,6 +302,29 @@ ${raw.slice(0, 12_000)}`;
         .filter((c): c is { type: "text"; text: string } => c.type === "text")
         .map((c) => c.text)
         .join("");
+
+      // Kostnadssporing (2026-07-17, Daniel: «oversikt over kostnader hvis
+      // den er aktivert»): token-forbruk fra API-responsen + estimat fra
+      // offisiell prisliste (claude-sonnet-4-6: $3/M input, $15/M output).
+      // Best effort — logging velter aldri svaret.
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null
+          ? (inTok * 3 + outTok * 15) / 1_000_000
+          : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'structure',$5,$6,$7,$8,$9)`,
+          [randomUUID(), g.orgId, g.session.userId, g.session.name ?? "",
+           "claude-sonnet-4-6", raw.length, inTok, outTok, cost],
+        );
+      } catch (e) {
+        console.warn("[leadbook-examples] ai-usage-logg feilet:", (e as Error).message);
+      }
+
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) return res.status(502).json({ error: "ai_svar_uparsbart" });
       const parsed = JSON.parse(match[0]) as Record<string, unknown>;
@@ -244,6 +332,112 @@ ${raw.slice(0, 12_000)}`;
     } catch (err) {
       console.warn("[leadbook-examples] structure failed:", (err as Error).message);
       return res.status(500).json({ error: "structure_failed" });
+    }
+  });
+
+  // ── GET /api/leadgrid/leadbook/examples/ai-usage ──────────────────
+  // Kostnadsoversikt for AI-struktureringen (kun ledere): totalt + denne
+  // måneden + per bruker. cost_usd er estimat fra offisiell prisliste.
+  app.get("/api/leadgrid/leadbook/examples/ai-usage", async (req, res) => {
+    const g = await guard(req, res);
+    if (!g) return;
+    if (g.role == null || !WRITE_ROLES.has(g.role)) {
+      return res.status(403).json({ error: "krever_leder_rolle" });
+    }
+    try {
+      const totals = await pool.query<{
+        calls: number; input_tokens: number; output_tokens: number; cost_usd: string;
+      }>(
+        `SELECT COUNT(*)::int AS calls,
+                COALESCE(SUM(input_tokens),0)::int AS input_tokens,
+                COALESCE(SUM(output_tokens),0)::int AS output_tokens,
+                COALESCE(SUM(cost_usd),0) AS cost_usd
+           FROM leadbook_ai_usage WHERE organization_id = $1`,
+        [g.orgId],
+      );
+      const month = await pool.query<{
+        calls: number; cost_usd: string;
+      }>(
+        `SELECT COUNT(*)::int AS calls, COALESCE(SUM(cost_usd),0) AS cost_usd
+           FROM leadbook_ai_usage
+          WHERE organization_id = $1
+            AND created_at >= date_trunc('month', now())`,
+        [g.orgId],
+      );
+      const byUser = await pool.query<{
+        user_name: string; calls: number; cost_usd: string;
+      }>(
+        `SELECT user_name, COUNT(*)::int AS calls,
+                COALESCE(SUM(cost_usd),0) AS cost_usd
+           FROM leadbook_ai_usage
+          WHERE organization_id = $1
+          GROUP BY user_name
+          ORDER BY SUM(cost_usd) DESC NULLS LAST
+          LIMIT 25`,
+        [g.orgId],
+      );
+      return res.json({
+        total: totals.rows[0],
+        this_month: month.rows[0],
+        by_user: byUser.rows,
+      });
+    } catch (err) {
+      console.warn("[leadbook-examples] ai-usage failed:", (err as Error).message);
+      return res.status(500).json({ error: "ai_usage_failed" });
+    }
+  });
+
+  // ── POST /api/leadgrid/leadbook/ai-usage/bill ─────────────────────
+  // Cron (x-cron-trigger-token, samme som overage-billing): aggregér
+  // ufakturerte AI-kall ELDRE ENN i dag per (org, dag) → Stripe meter-
+  // event → stemple radene billed_at. Idempotent via Stripe-identifier
+  // `lg_ai_<org>_<dag>`.
+  app.post("/api/leadgrid/leadbook/ai-usage/bill", async (req, res) => {
+    const t = req.headers["x-cron-trigger-token"] as string | undefined;
+    if (!t || !AI_CRON_TOKEN || t !== AI_CRON_TOKEN) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const results = { groups: 0, reported: 0, errors: 0 };
+    try {
+      const unbilled = await pool.query<{
+        organization_id: string; day: string; calls: number;
+        stripe_customer_id: string | null;
+      }>(
+        `SELECT u.organization_id, u.created_at::date::text AS day,
+                COUNT(*)::int AS calls, org.stripe_customer_id
+           FROM leadbook_ai_usage u
+           JOIN organizations org ON org.id::text = u.organization_id
+          WHERE u.billed_at IS NULL
+            AND u.created_at < date_trunc('day', now())
+            AND org.stripe_customer_id IS NOT NULL
+          GROUP BY u.organization_id, u.created_at::date, org.stripe_customer_id
+          ORDER BY day ASC
+          LIMIT 100`,
+      );
+      results.groups = unbilled.rows.length;
+      for (const row of unbilled.rows) {
+        const identifier = `lg_ai_${row.organization_id}_${row.day}`;
+        const timestamp = Math.floor(new Date(row.day).getTime() / 1000);
+        const r = await reportAIMeterEvent(
+          identifier, row.stripe_customer_id!, row.calls, timestamp,
+        );
+        if (r.ok) {
+          await pool.query(
+            `UPDATE leadbook_ai_usage SET billed_at = now()
+              WHERE organization_id = $1 AND billed_at IS NULL
+                AND created_at::date = $2::date`,
+            [row.organization_id, row.day],
+          );
+          results.reported++;
+        } else {
+          results.errors++;
+          console.error(`[leadbook-ai-bill] meter feilet for ${identifier}: ${r.error}`);
+        }
+      }
+      return res.json({ ok: true, ...results });
+    } catch (err) {
+      console.error("[leadbook-ai-bill]", (err as Error).message);
+      return res.status(500).json({ error: "bill_failed" });
     }
   });
 

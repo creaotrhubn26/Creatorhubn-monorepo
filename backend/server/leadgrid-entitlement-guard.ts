@@ -147,3 +147,7 @@ export const LEADGRID_KVALITET_FEATURE_KEYS = ["leadgridKvalitet"];
  *  som driver «Tildel område → Tettsted» på iPad. Nøkkelen matcher
  *  LeadgridFeature.omradeTildeling (Swift-casenavn = stabil API-nøkkel). */
 export const LEADGRID_OMRADE_FEATURE_KEYS = ["omradeTildeling"];
+
+/** AI-strukturering av Leadbook-eksempler (Claude-kall = kostnadsbærende) —
+ *  egen nøkkel så den kan styres per plan uavhengig av Eksempler-fanen. */
+export const LEADBOOK_AI_STRUKTUR_FEATURE_KEYS = ["leadbookAIStrukturering"];
