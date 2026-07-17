@@ -120,7 +120,9 @@ struct KPIDetailSheet: View {
                     trendChart
                     breakdownCard
                     topLeadsCard
-                    suggestedActions
+                    // suggestedActions fjernet 2026-07-17: var døde knapper —
+                    // hele kortet besto av handlings-CTAer («Filtrér…»,
+                    // «Eksporter…», «Ring…») uten flater å utføre dem.
                     Color.clear.frame(height: 16)
                 }
                 .padding(20)
@@ -133,23 +135,9 @@ struct KPIDetailSheet: View {
                     Button("Lukk") { dismiss() }
                         .foregroundStyle(KpBrand.purpleLight)
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button { } label: { Label("I dag", systemImage: "calendar") }
-                        Button { } label: { Label("Denne uken", systemImage: "calendar") }
-                        Button { } label: { Label("Denne måneden", systemImage: "calendar") }
-                        Button { } label: { Label("Dette kvartalet", systemImage: "calendar") }
-                        Button { } label: { Label("I år", systemImage: "calendar") }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text("Q2 2026")
-                                .font(.appScaled(size: 12, weight: .semibold))
-                            Image(systemName: "chevron.down")
-                                .font(.appScaled(size: 9))
-                        }
-                        .foregroundStyle(KpBrand.purpleLight)
-                    }
-                }
+                // Periode-filtermenyen («I dag»/«Denne uken»/…) fjernet
+                // 2026-07-17: var døde knapper — sheeten har ingen
+                // periode-parameterisert datakilde å filtrere.
             }
             .toolbarBackground(KpBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -405,52 +393,39 @@ struct KPIDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("Top 5 leads", icon: "list.star")
             VStack(spacing: 8) {
+                // 2026-07-17: rad-knappene var døde (ingen lead-detaljflate
+                // herfra) — innholdet beholdt som ikke-klikkbar visning,
+                // chevron fjernet så raden ikke lover navigasjon.
                 ForEach(topLeads, id: \.0) { (name, category, value) in
-                    Button { } label: {
-                        HStack(spacing: 10) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(kind.color.opacity(0.20))
-                                Image(systemName: "building.2.fill")
-                                    .font(.appScaled(size: 13, weight: .semibold))
-                                    .foregroundStyle(kind.color)
-                            }
-                            .frame(width: 34, height: 34)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(name)
-                                    .font(.appScaled(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                Text(category)
-                                    .font(.appScaled(size: 10))
-                                    .foregroundStyle(KpBrand.textSecondary)
-                            }
-                            Spacer()
-                            Text(value)
-                                .font(.appScaled(size: 12, weight: .bold))
-                                .foregroundStyle(KpBrand.green)
-                                .monospacedDigit()
-                            Image(systemName: "chevron.right")
-                                .font(.appScaled(size: 11, weight: .bold))
-                                .foregroundStyle(KpBrand.textTertiary)
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(kind.color.opacity(0.20))
+                            Image(systemName: "building.2.fill")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(kind.color)
                         }
-                        .padding(9)
-                        .background(KpBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                        .frame(width: 34, height: 34)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name)
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(category)
+                                .font(.appScaled(size: 10))
+                                .foregroundStyle(KpBrand.textSecondary)
+                        }
+                        Spacer()
+                        Text(value)
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(KpBrand.green)
+                            .monospacedDigit()
                     }
-                    .buttonStyle(.plain)
+                    .padding(9)
+                    .background(KpBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 }
             }
-            Button { } label: {
-                HStack {
-                    Text("Se alle (\(kind.value))")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right")
-                        .font(.appScaled(size: 10, weight: .semibold))
-                }
-                .foregroundStyle(KpBrand.purpleLight)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 4)
-            }
-            .buttonStyle(.plain)
+            // «Se alle»-knappen fjernet 2026-07-17: var død knapp — ingen
+            // filtrert leads-liste å navigere til fra sheeten.
         }
         .padding(16)
         .background(KpBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -502,76 +477,9 @@ struct KPIDetailSheet: View {
         }
     }
 
-    // MARK: Foreslåtte handlinger
-
-    private var suggestedActions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Foreslåtte handlinger", icon: "lightbulb.fill")
-            VStack(spacing: 6) {
-                ForEach(suggestionsForKind, id: \.0) { (icon, title, sub) in
-                    Button { } label: {
-                        HStack(spacing: 10) {
-                            ZStack {
-                                Circle().fill(KpBrand.purple.opacity(0.20))
-                                Image(systemName: icon)
-                                    .font(.appScaled(size: 12, weight: .semibold))
-                                    .foregroundStyle(KpBrand.purpleLight)
-                            }
-                            .frame(width: 32, height: 32)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(title)
-                                    .font(.appScaled(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                Text(sub)
-                                    .font(.appScaled(size: 10))
-                                    .foregroundStyle(KpBrand.textSecondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.appScaled(size: 10, weight: .bold))
-                                .foregroundStyle(KpBrand.textTertiary)
-                        }
-                        .padding(9)
-                        .background(KpBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .background(KpBrand.card, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(KpBrand.stroke, lineWidth: 1))
-    }
-
-    private var suggestionsForKind: [(String, String, String)] {
-        switch kind {
-        case .totalLeads:
-            return [
-                ("magnifyingglass", "Filtrér på 'Hot lead'", "142 leads venter på handling"),
-                ("chart.bar", "Eksporter kvartalsrapport", "PDF med pipeline + topp 20"),
-            ]
-        case .newLeads:
-            return [
-                ("link", "Kjør ny URL-research", "URL → AI auto-fyller felter"),
-                ("doc.text", "Importer CSV", "Last opp 100+ leads samtidig"),
-            ]
-        case .contacted:
-            return [
-                ("phone.fill", "Ring 12 ikke-kontaktede", "Score 70+ uten første kontakt"),
-                ("envelope.fill", "Lag e-post-kampanje", "Send til 38 varme leads"),
-            ]
-        case .meetingsBooked:
-            return [
-                ("calendar.badge.plus", "Bulk-book demo-uka", "10 prospects, AI foreslår tider"),
-                ("video.fill", "Send Google Meet-lenker", "23 møter mangler lenke"),
-            ]
-        case .won:
-            return [
-                ("trophy.fill", "Be om referanse", "Send mail til vinnere siste 30 dager"),
-                ("chart.pie.fill", "Analyser vinnermønster", "AI finner felles trekk"),
-            ]
-        }
-    }
+    // «Foreslåtte handlinger»-kortet fjernet 2026-07-17: var døde knapper —
+    // alle radene var CTAer uten mål-flate (filtrering/eksport/kampanje
+    // finnes ikke fra denne sheeten).
 
     // MARK: Helper
 

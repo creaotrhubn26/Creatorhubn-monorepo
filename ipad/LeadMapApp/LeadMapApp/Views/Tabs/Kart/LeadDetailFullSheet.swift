@@ -25,6 +25,22 @@ private enum LdBrand {
 
 struct LeadDetailFullSheet: View {
     let lead: MapLeadMock
+    @Environment(AppState.self) private var appState
+    @State private var showScheduleMeeting = false
+    @State private var showAssign = false
+
+    // Ekte kontakt m/ demo-fallback (MapLeadMock.phoneOrDemo/emailOrDemo):
+    // ekte modus uten data skjuler handlingen i stedet for å late som.
+    private var leadPhone: String? { lead.phoneOrDemo }
+    private var leadEmail: String? { lead.emailOrDemo }
+
+    private func call(_ phone: String) {
+        let clean = phone.replacingOccurrences(of: " ", with: "")
+        if let url = URL(string: "tel://\(clean)") { UIApplication.shared.open(url) }
+    }
+    private func mail(_ email: String) {
+        if let url = URL(string: "mailto:\(email)") { UIApplication.shared.open(url) }
+    }
     @Environment(\.dismiss) private var dismiss
     @State private var selectedSection: Section = .overview
 
@@ -98,12 +114,18 @@ struct LeadDetailFullSheet: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button("Send e-post",       systemImage: "envelope") {}
-                        Button("Ring",               systemImage: "phone") {}
-                        Button("Planlegg møte",      systemImage: "calendar") {}
-                        Button("Tilordne selger",    systemImage: "person.crop.circle") {}
-                        Divider()
-                        Button("Arkiver",            systemImage: "archivebox", role: .destructive) {}
+                        if let phone = leadPhone {
+                            Button("Ring", systemImage: "phone") { call(phone) }
+                        }
+                        if let email = leadEmail {
+                            Button("Send e-post", systemImage: "envelope") { mail(email) }
+                        }
+                        Button("Planlegg møte", systemImage: "calendar") { showScheduleMeeting = true }
+                        if ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "") {
+                            Button("Tilordne selger", systemImage: "person.crop.circle") { showAssign = true }
+                        }
+                        // «Arkiver» forblir fjernet: arkiverings-API har ingen
+                        // app-flate enda (backend har archived_at — egen jobb).
                     } label: {
                         ZStack {
                             Circle().fill(LdBrand.cardHi)
@@ -118,6 +140,37 @@ struct LeadDetailFullSheet: View {
             }
             .toolbarBackground(LdBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .sheet(isPresented: $showScheduleMeeting) {
+                ScheduleMeetingSheet(lead: lead)
+            }
+            .sheet(isPresented: $showAssign) {
+                AssignToTeamMemberSheet(
+                    leadId: lead.id,
+                    leadName: lead.name,
+                    leadAddress: lead.address,
+                    leadScore: lead.aiScore,
+                    leadCoordinate: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon),
+                    members: assignableMembers(),
+                    onAssign: { assignment in
+                        // Samme API-kall som Oversikts tildelingsflyt.
+                        if let api = appState.api {
+                            let payload = LeadAssignmentPayload(
+                                leadId: assignment.leadId.hasPrefix("lead-") ? nil : assignment.leadId,
+                                leadName: assignment.leadName,
+                                leadLat: assignment.leadCoordinate.latitude,
+                                leadLng: assignment.leadCoordinate.longitude,
+                                assigneeUserId: assignment.assigneeUserId,
+                                assigneeRole: assignment.assigneeRole.rawValue,
+                                priority: assignment.priority.rawValue,
+                                message: assignment.message
+                            )
+                            Task { try? await api.createLeadAssignment(payload) }
+                        }
+                        showAssign = false
+                    },
+                    onCancel: { showAssign = false }
+                )
+            }
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .macCatalystSheetSize(minWidth: 960, minHeight: 760)
@@ -158,9 +211,13 @@ struct LeadDetailFullSheet: View {
             Spacer()
 
             HStack(spacing: 8) {
-                heroAction(icon: "phone.fill", label: "Ring", color: LdBrand.green)
-                heroAction(icon: "envelope.fill", label: "E-post", color: LdBrand.blue)
-                heroAction(icon: "calendar", label: "Møte", color: LdBrand.purple)
+                if let phone = leadPhone {
+                    heroAction(icon: "phone.fill", label: "Ring", color: LdBrand.green) { call(phone) }
+                }
+                if let email = leadEmail {
+                    heroAction(icon: "envelope.fill", label: "E-post", color: LdBrand.blue) { mail(email) }
+                }
+                heroAction(icon: "calendar", label: "Møte", color: LdBrand.purple) { showScheduleMeeting = true }
             }
         }
         .padding(18)
@@ -183,8 +240,30 @@ struct LeadDetailFullSheet: View {
         .background(LdBrand.cardHi, in: Capsule())
     }
 
-    private func heroAction(icon: String, label: String, color: Color) -> some View {
-        Button {} label: {
+    /// Medlemmer for tildeling — ekte fra TeamLiveStore (samme mapping som
+    /// Oversikt). I demo-modus er lista tom her; demo-tildelingsflyten
+    /// demonstreres fra Oversikt-fanen.
+    private func assignableMembers() -> [AssignableTeamMember] {
+        TeamLiveStore.shared.memberDTOs.map { dto in
+            let initials = dto.name.split(separator: " ")
+                .prefix(2).compactMap { $0.first }.map(String.init).joined()
+            return AssignableTeamMember(
+                userId: dto.userId,
+                name: dto.name,
+                email: dto.email,
+                title: dto.title,
+                role: .seller,
+                distanceKm: nil,
+                weeklyWon: dto.won,
+                isAvailable: nil,
+                avatarInitials: initials.isEmpty ? "?" : initials
+            )
+        }
+    }
+
+    private func heroAction(icon: String, label: String, color: Color,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             VStack(spacing: 4) {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
@@ -216,16 +295,34 @@ struct LeadDetailFullSheet: View {
 
     // MARK: KPI-rad
 
+    @ViewBuilder
     private var kpiRow: some View {
-        HStack(spacing: 10) {
-            kpiCard(title: "Estimert verdi", value: "420K", subtitle: "NOK",
-                    icon: "chart.line.uptrend.xyaxis", color: LdBrand.green)
-            kpiCard(title: "Sannsynlighet", value: "65 %", subtitle: "vekt. forecast",
-                    icon: "percent", color: LdBrand.purpleLight)
-            kpiCard(title: "Forventet close", value: "12. juni", subtitle: "om 14 dager",
-                    icon: "calendar.badge.clock", color: LdBrand.yellow)
-            kpiCard(title: "Lead-score", value: "82", subtitle: "/ 100",
-                    icon: "flame.fill", color: LdBrand.red)
+        if DemoModeManager.isActiveNonisolated {
+            HStack(spacing: 10) {
+                kpiCard(title: "Estimert verdi", value: "420K", subtitle: "NOK",
+                        icon: "chart.line.uptrend.xyaxis", color: LdBrand.green)
+                kpiCard(title: "Sannsynlighet", value: "65 %", subtitle: "vekt. forecast",
+                        icon: "percent", color: LdBrand.purpleLight)
+                kpiCard(title: "Forventet close", value: "12. juni", subtitle: "om 14 dager",
+                        icon: "calendar.badge.clock", color: LdBrand.yellow)
+                kpiCard(title: "Lead-score", value: "82", subtitle: "/ 100",
+                        icon: "flame.fill", color: LdBrand.red)
+            }
+        } else {
+            // Ekte modus: kun felter som faktisk finnes på leaden.
+            HStack(spacing: 10) {
+                kpiCard(title: "Estimert verdi",
+                        value: lead.estimatedValue.map { "\(Int($0 / 1_000))K" } ?? "—",
+                        subtitle: "NOK", icon: "chart.line.uptrend.xyaxis", color: LdBrand.green)
+                kpiCard(title: "Lead-score",
+                        value: lead.aiScore.map { "\($0)" } ?? "—",
+                        subtitle: "/ 100", icon: "flame.fill", color: LdBrand.red)
+                kpiCard(title: "Avstand",
+                        value: String(format: "%.1f km", lead.kmAway),
+                        subtitle: "fra deg", icon: "location.fill", color: LdBrand.purpleLight)
+                kpiCard(title: "Status", value: lead.status.label, subtitle: "pipeline",
+                        icon: "chart.bar.fill", color: LdBrand.yellow)
+            }
         }
     }
 
@@ -310,12 +407,25 @@ struct LeadDetailFullSheet: View {
 
             sectionCard(title: "Kontakter", icon: "person.2.fill") {
                 VStack(spacing: 8) {
-                    contactRow(name: "Anders Johansen", role: "Daglig leder",
-                               phone: "+47 911 22 333", email: "anders@nordicelektro.no",
-                               primary: true, initials: "AJ", color: LdBrand.purpleLight)
-                    contactRow(name: "Kari Olsen", role: "Innkjøpssjef",
-                               phone: "+47 922 33 444", email: "kari@nordicelektro.no",
-                               primary: false, initials: "KO", color: LdBrand.green)
+                    if DemoModeManager.isActiveNonisolated {
+                        contactRow(name: "Anders Johansen", role: "Daglig leder",
+                                   phone: "+47 911 22 333", email: "anders@nordicelektro.no",
+                                   primary: true, initials: "AJ", color: LdBrand.purpleLight)
+                        contactRow(name: "Kari Olsen", role: "Innkjøpssjef",
+                                   phone: "+47 922 33 444", email: "kari@nordicelektro.no",
+                                   primary: false, initials: "KO", color: LdBrand.green)
+                    } else if lead.phone != nil || lead.email != nil {
+                        contactRow(name: lead.name, role: "Registrert kontakt",
+                                   phone: lead.phone ?? "", email: lead.email ?? "",
+                                   primary: true,
+                                   initials: String(lead.name.prefix(2)).uppercased(),
+                                   color: LdBrand.purpleLight)
+                    } else {
+                        Text("Ingen kontaktinfo registrert på leaden.")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(LdBrand.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
 
@@ -391,16 +501,17 @@ struct LeadDetailFullSheet: View {
             }
             Spacer()
             HStack(spacing: 6) {
-                actionMini("phone", color: LdBrand.green)
-                actionMini("envelope", color: LdBrand.blue)
+                if !phone.isEmpty { actionMini("phone", color: LdBrand.green) { call(phone) } }
+                if !email.isEmpty { actionMini("envelope", color: LdBrand.blue) { mail(email) } }
             }
         }
         .padding(10)
         .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private func actionMini(_ icon: String, color: Color) -> some View {
-        Button {} label: {
+    private func actionMini(_ icon: String, color: Color,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             ZStack {
                 Circle().fill(color.opacity(0.20))
                 Image(systemName: icon)

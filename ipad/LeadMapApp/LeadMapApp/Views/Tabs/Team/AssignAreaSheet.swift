@@ -40,15 +40,38 @@ struct AssignAreaSheet: View {
 
     enum Mode: String, CaseIterable, Hashable {
         case catalog = "Kommune"
+        case tettsted = "Tettsted"
         case existing = "Eksisterende"
         case draw = "Tegn nytt"
         var icon: String {
             switch self {
             case .catalog:  return "list.bullet.rectangle.fill"
+            case .tettsted: return "building.2.fill"
             case .existing: return "arrow.left.arrow.right"
             case .draw:     return "pencil.tip"
             }
         }
+    }
+
+    // ─── Tettsted-modus (2026-07-17): SSB tettbygde strøk under kommune-
+    // nivå. Teamleder/salgssjef tildeler tettsted til SELGER — lagres som
+    // ekte lead_territories-rad (polygon) via POST /territories, så
+    // matching/dekning/brudd-logg virker uten ny logikk.
+    @State private var tettsteder: [APIClient.TettstedDTO] = []
+    @State private var loadingTettsteder = false
+    @State private var tettstedFeil: String?
+    @State private var selectedTettsted: APIClient.TettstedDTO?
+    @State private var selectedSelgerDTO: SalesTeamMemberDTO?
+
+    /// Tettsted-fordeling er leder-domene (samme katalog som Salgsledelse-
+    /// vakten); backend håndhever i tillegg territories.manage + entitlement.
+    private var isLeder: Bool {
+        ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+    }
+
+    /// Moduser synlige for innlogget rolle — selgere ser ikke Tettsted.
+    private var availableModes: [Mode] {
+        isLeder ? Mode.allCases : Mode.allCases.filter { $0 != .tettsted }
     }
 
     /// Kommuner filtrert på søk. Uten søk vises hele katalogen (~357);
@@ -71,6 +94,9 @@ struct AssignAreaSheet: View {
     private var canConfirm: Bool {
         switch mode {
         case .catalog:  return selectedKommune != nil && selectedTeam != nil
+        case .tettsted:
+            return selectedTettsted != nil
+                && (DemoModeManager.isActiveNonisolated || selectedSelgerDTO != nil)
         case .existing: return selectedMember != nil && selectedExistingTerritory != nil
         case .draw:     return selectedMember != nil && drawnPoints.count >= 3
         }
@@ -84,12 +110,15 @@ struct AssignAreaSheet: View {
                     Group {
                         switch mode {
                         case .catalog:  catalogSection
+                        case .tettsted: tettstedSection.gated(.omradeTildeling)
                         case .existing: existingSection
                         case .draw:     drawSection
                         }
                     }
                     if mode == .catalog {
                         teamPicker
+                    } else if mode == .tettsted {
+                        tettstedSelgerPicker
                     } else {
                         memberPicker
                         if selectedMember != nil { notifyCard; handoffCard }
@@ -125,7 +154,7 @@ struct AssignAreaSheet: View {
 
     private var modePicker: some View {
         HStack(spacing: 5) {
-            ForEach(Mode.allCases, id: \.self) { m in
+            ForEach(availableModes, id: \.self) { m in
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) { mode = m }
                 } label: {
@@ -640,6 +669,245 @@ struct AssignAreaSheet: View {
         }
     }
 
+    // MARK: Tettsted-modus
+
+    @ViewBuilder
+    private var tettstedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Tildel tettsted til selger",
+                         subtitle: "SSBs offisielle tettbygde strøk — finere fordeling innenfor teamets kommune")
+            if let k = selectedKommune {
+                // Valgt kommune-header m/ bytt-knapp
+                HStack(spacing: 10) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.appScaled(size: 15, weight: .semibold))
+                        .foregroundStyle(TBrand.purpleLight)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(k.navn)
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Kommune \(k.nummer)")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(TBrand.textSecondary)
+                    }
+                    Spacer()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedKommune = nil
+                            selectedTettsted = nil
+                            tettsteder = []
+                            tettstedFeil = nil
+                        }
+                    } label: {
+                        Text("Bytt")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(TBrand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
+
+                if loadingTettsteder {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(TBrand.purpleLight)
+                        Text("Henter tettsteder fra SSB …")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(TBrand.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                } else if let feil = tettstedFeil {
+                    Text(feil)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                } else if tettsteder.isEmpty {
+                    Text("Ingen tettsteder registrert i \(k.navn)")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                } else {
+                    LazyVStack(spacing: 6) {
+                        ForEach(tettsteder) { t in tettstedRow(t) }
+                    }
+                }
+            } else {
+                // Steg 1: velg kommune (gjenbruker katalog-søket)
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(TBrand.textSecondary)
+                    TextField("Søk kommune eller kommunenummer", text: $kommuneSearch)
+                        .font(.appScaled(size: 13))
+                        .foregroundStyle(.white)
+                        .autocorrectionDisabled()
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
+                LazyVStack(spacing: 6) {
+                    ForEach(filtrerteKommuner) { k in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { selectedKommune = k }
+                            Task { await loadTettsteder(for: k) }
+                        } label: {
+                            HStack {
+                                Text(k.navn)
+                                    .font(.appScaled(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Text(k.nummer)
+                                    .font(.appScaled(size: 11))
+                                    .foregroundStyle(TBrand.textTertiary)
+                                    .monospacedDigit()
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 11)
+                            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func tettstedRow(_ t: APIClient.TettstedDTO) -> some View {
+        let isSelected = selectedTettsted?.tettNr == t.tettNr
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { selectedTettsted = t }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(TBrand.purple.opacity(isSelected ? 0.35 : 0.16))
+                    Image(systemName: "building.2.fill")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(TBrand.purpleLight)
+                }
+                .frame(width: 32, height: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(t.navn)
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    if let bef = t.befolkning {
+                        Text("\(bef.formatted(.number.grouping(.automatic))) innbyggere")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(TBrand.textSecondary)
+                    }
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.appScaled(size: 15, weight: .bold))
+                        .foregroundStyle(TBrand.purpleLight)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(
+                isSelected ? TBrand.purple.opacity(0.14) : TBrand.card,
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? TBrand.purple.opacity(0.5) : TBrand.stroke, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Selger-picker for tettsted-modus: EKTE teammedlemmer (team-members-
+    /// endepunktet) med backend-bruker-id — tildelingen trenger id-en.
+    /// Demo-modus viser hint i stedet for å late som den tildeler.
+    @ViewBuilder
+    private var tettstedSelgerPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Velg selger",
+                         subtitle: "Tettstedet legges som selgerens område — matching, dekning og brudd-logg følger automatisk")
+            if DemoModeManager.isActiveNonisolated {
+                Text("Demo-modus: tildelingen lagres ikke. Skru av demo for ekte fordeling.")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(TBrand.orange)
+            } else if TeamLiveStore.shared.memberDTOs.isEmpty {
+                Text("Ingen teammedlemmer lastet enda — åpne Team-fanen først, eller sjekk nettverket.")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+            } else {
+                LazyVStack(spacing: 6) {
+                    ForEach(TeamLiveStore.shared.memberDTOs) { dto in
+                        let isSel = selectedSelgerDTO?.userId == dto.userId
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { selectedSelgerDTO = dto }
+                        } label: {
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle().fill(TBrand.purple.opacity(0.25))
+                                    Text(dto.name.split(separator: " ").prefix(2)
+                                        .map { String($0.prefix(1)) }.joined().uppercased())
+                                        .font(.appScaled(size: 11, weight: .bold))
+                                        .foregroundStyle(TBrand.purpleLight)
+                                }
+                                .frame(width: 32, height: 32)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(dto.name)
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                        .foregroundStyle(.white)
+                                    Text(dto.title ?? "Selger")
+                                        .font(.appScaled(size: 10))
+                                        .foregroundStyle(TBrand.textSecondary)
+                                }
+                                Spacer()
+                                if isSel {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.appScaled(size: 15, weight: .bold))
+                                        .foregroundStyle(TBrand.purpleLight)
+                                }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .background(
+                                isSel ? TBrand.purple.opacity(0.14) : TBrand.card,
+                                in: RoundedRectangle(cornerRadius: 10)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(isSel ? TBrand.purple.opacity(0.5) : TBrand.stroke, lineWidth: 1)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .task {
+            // Attach er idempotent — sørger for at teamlisten finnes selv om
+            // Team-fanen ikke er besøkt i økten.
+            guard !DemoModeManager.isActiveNonisolated else { return }
+            if let api = appState.api {
+                TeamLiveStore.shared.attach(api: api, appState: appState)
+            }
+        }
+    }
+
+    private func loadTettsteder(for kommune: KartverketService.KommuneInfo) async {
+        guard let api = appState.api else { return }
+        loadingTettsteder = true
+        tettstedFeil = nil
+        do {
+            tettsteder = try await api.fetchTettsteder(kommunenummer: kommune.nummer)
+        } catch {
+            // 403 = entitlement/rolle; ellers nettverk/oppstrøm.
+            tettstedFeil = "Fikk ikke hentet tettsteder — sjekk tilgang (feature-matrisen) eller nettverk."
+            tettsteder = []
+        }
+        loadingTettsteder = false
+    }
+
     // MARK: Confirm-bar
 
     private var confirmBar: some View {
@@ -674,10 +942,17 @@ struct AssignAreaSheet: View {
             if let k = selectedKommune { return "Tildel \(k.navn) til \(team.name)" }
             return "Velg kommune"
         }
+        if mode == .tettsted {
+            guard let t = selectedTettsted else { return "Velg tettsted" }
+            if DemoModeManager.isActiveNonisolated { return "Tildel \(t.navn) (demo)" }
+            guard let s = selectedSelgerDTO else { return "Velg selger" }
+            let first = s.name.split(separator: " ").first.map(String.init) ?? s.name
+            return "Tildel \(t.navn) til \(first)"
+        }
         guard let m = selectedMember else { return "Velg medlem først" }
         let first = m.name.split(separator: " ").first.map(String.init) ?? m.name
         switch mode {
-        case .catalog:
+        case .catalog, .tettsted:
             return "Velg kommune"
         case .existing:
             if let t = selectedExistingTerritory { return "Overfør \(t.areaName) til \(first)" }
@@ -689,7 +964,8 @@ struct AssignAreaSheet: View {
     }
 
     /// Bekreft tildelingen. Kommune-modus persisterer på teamet (lokal
-    /// store + backend-push via upsert); de andre modiene er fortsatt
+    /// store + backend-push via upsert); tettsted-modus oppretter ekte
+    /// lead_territories-rad (2026-07-17); existing/draw er fortsatt
     /// visuelle konsepter uten backend-modell.
     private func confirm() {
         if mode == .catalog, let k = selectedKommune, var team = selectedTeam {
@@ -697,6 +973,25 @@ struct AssignAreaSheet: View {
             team.areaKommuneNavn = k.navn
             LeadgridSalesTeamStore.shared.upsert(team)
             TeamStubActions.toast("\(k.navn) tildelt \(team.name)")
+        }
+        if mode == .tettsted, let t = selectedTettsted {
+            if DemoModeManager.isActiveNonisolated {
+                TeamStubActions.toast("\(t.navn) tildelt (demo — lagres ikke)")
+            } else if let dto = selectedSelgerDTO, let api = appState.api {
+                let orgId = appState.activeOrganizationId ?? ""
+                Task {
+                    do {
+                        _ = try await api.createTettstedTerritory(
+                            organizationId: orgId,
+                            tettsted: t,
+                            assignedUserId: dto.userId
+                        )
+                        TeamStubActions.toast("Tettstedet \(t.navn) tildelt \(dto.name)")
+                    } catch {
+                        TeamStubActions.toast("Kunne ikke tildele \(t.navn) — prøv igjen")
+                    }
+                }
+            }
         }
         dismiss()
     }

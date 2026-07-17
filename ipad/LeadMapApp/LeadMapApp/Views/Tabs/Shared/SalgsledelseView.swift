@@ -5,10 +5,9 @@
 // premie-katalog og fulfillment. Mock-sellers KUN i demo-modus — ellers
 // ekte leaderboard fra TeamLiveStore (`/sales-leadership/team-members`).
 //
-// TODO Pakke 10.x — role-gate:
-//   - Sjekk `appState.userRole == "sales_manager"` FØR fanen mountes
-//   - Bruk `LeadgridRole` / `AccessLevel` fra TeamAccessControl (RBAC)
-//   - Hvis ikke salgssjef: skjul tab-en i MainTabView + MainSidebarView
+// Role-gate (2026-07-17): fanen er skjult i sidebar/Mer for ikke-ledere,
+// OG vaktes her i viewet (forsvar uansett inngang: deep-link, persistert
+// valg, keyboard-shortcut). Entitlement-gated via .gated(.salgsledelse).
 
 import SwiftUI
 
@@ -68,14 +67,29 @@ struct SalgsledelseView: View {
     /// vår egen stack og lar den ytre eie navigasjonen.
     var embeddedInStack = false
 
+    /// Salgsledelse er leder-domene (provisjon/premier/konkurranser).
+    private var isLeder: Bool {
+        ["admin", "salgssjef"].contains(appState.roleInOrg ?? "")
+    }
+
     var body: some View {
         Group {
-            if embeddedInStack {
+            if !isLeder {
+                // Rolle-vakt: selgere skal aldri se provisjonsgrunnlag/premier.
+                ContentUnavailableView(
+                    "Krever salgssjef-rolle",
+                    systemImage: "lock.shield",
+                    description: Text("Salgsledelse er tilgjengelig for administratorer og salgssjefer.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(LBrand.bg.ignoresSafeArea())
+            } else if embeddedInStack {
                 inner
             } else {
                 NavigationStack { inner }
             }
         }
+        .gated(.salgsledelse)   // entitlement-laget (feature-matrisen)
         // Ekte team-data når demo er AV — attach er idempotent (samme
         // mønster som TeamView) og fyller memberDTOs → sellers re-evalueres.
         .task {

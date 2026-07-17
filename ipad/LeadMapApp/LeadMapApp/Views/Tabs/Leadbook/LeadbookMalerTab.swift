@@ -17,7 +17,6 @@ struct LeadbookMalerView: View {
     @State private var editingTemplate: LeadbookTemplate?
     @State private var testingTemplate: LeadbookTemplate?
     @State private var showNewTemplate = false
-    @State private var showImport = false
     @State private var favorited: Bool = true
     /// Brukerredigeringer per mal-id — på tvers av session
     @State private var editedSteps: [UUID: [EditableStep]] = [:]
@@ -152,26 +151,9 @@ struct LeadbookMalerView: View {
             if !DeviceIdiom.isPhone { Spacer(minLength: 12) }
             ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Button { showImport = true; flashToast("Importer-modal kommer") } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.down").font(.appScaled(size: 11, weight: .bold))
-                        Text("Importer").font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                }.buttonStyle(.plain)
-                Button { flashToast("Eksporterer alle maler som CSV…") } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11, weight: .bold))
-                        Text("Eksporter").font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                }.buttonStyle(.plain)
+                // «Importer» + «Eksporter» fjernet 2026-07-17: var døde
+                // knapper — showImport hadde ingen sheet bak seg og eksport
+                // var kun en toast uten CSV-flate.
                 Button { showNewTemplate = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
@@ -214,17 +196,8 @@ struct LeadbookMalerView: View {
                     .lineLimit(2)
             }
             Spacer()
-            Button {
-                flashToast("Espen-tips: åpne malen og test den i Test-modus")
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "play.fill").font(.appScaled(size: 11, weight: .bold))
-                    Text("Se råd").font(.appScaled(size: 12, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(LBrand.green, in: Capsule())
-            }.buttonStyle(.plain)
+            // «Se råd» fjernet 2026-07-17: var død knapp — kun toast,
+            // rådet står allerede i banner-teksten.
         }
         .padding(12)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -459,16 +432,14 @@ struct LeadbookMalerView: View {
                         Button { editingTemplate = t } label: { Label("Rediger", systemImage: "pencil") }
                         Button { testingTemplate = t } label: { Label("Test-modus", systemImage: "play.circle.fill") }
                         Button { selected = t; LeadbookLiveStore.shared.logUsage(t); flashToast("\(t.name) er valgt") } label: { Label("Bruk mal", systemImage: "play.fill") }
-                        Button { flashToast("Duplisert som «\(t.name) (kopi)»") } label: { Label("Dupliser", systemImage: "doc.on.doc") }
+                        // «Dupliser» fjernet 2026-07-17: var død knapp — kun
+                        // toast, ingen kopi ble opprettet.
                         Button {
                             UIPasteboard.general.string = "leadgrid://leadbook/\(t.id.uuidString.prefix(8))"
                             flashToast("Lenke kopiert")
                         } label: { Label("Kopier lenke", systemImage: "link") }
-                        Divider()
-                        Button {} label: { Label("Eksporter PDF", systemImage: "square.and.arrow.up") }
-                        Button(role: .destructive) { flashToast("«\(t.name)» arkivert") } label: {
-                            Label("Arkiver", systemImage: "archivebox")
-                        }
+                        // «Eksporter PDF» (tom closure) + «Arkiver» (kun
+                        // toast) fjernet 2026-07-17: var døde knapper.
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.appScaled(size: 14, weight: .bold))

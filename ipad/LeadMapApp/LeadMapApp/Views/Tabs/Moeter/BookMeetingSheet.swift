@@ -290,16 +290,8 @@ struct BookMeetingSheet: View {
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(BBrand.cardHi, in: Capsule())
                     Spacer()
-                    Button {} label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.appScaled(size: 11, weight: .bold))
-                            Text("Ny lead")
-                                .font(.appScaled(size: 11, weight: .semibold))
-                        }
-                        .foregroundStyle(BBrand.purpleLight)
-                    }
-                    .buttonStyle(.plain)
+                    // «Ny lead»-knapp fjernet 2026-07-17: var død — lead-
+                    // opprettelse skjer i Kart/Leads-fanen.
                 }
                 searchBar
                 filterRow
@@ -522,17 +514,10 @@ struct BookMeetingSheet: View {
             Text("Ingen leads matcher")
                 .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
-            Text("Prøv annet søk — eller lag ny lead")
+            Text("Prøv et annet søk — nye leads opprettes i Kart-fanen")
                 .font(.appScaled(size: 10))
                 .foregroundStyle(BBrand.textSecondary)
-            Button {} label: {
-                Text("+ Lag ny lead")
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(BBrand.purpleLight)
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(BBrand.purple.opacity(0.18), in: Capsule())
-                    .overlay(Capsule().stroke(BBrand.purple.opacity(0.4), lineWidth: 1))
-            }
+            // «+ Lag ny lead»-knapp fjernet 2026-07-17: var død (tom closure).
             .buttonStyle(.plain)
             .padding(.top, 4)
         }
@@ -664,18 +649,8 @@ struct BookMeetingSheet: View {
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "sparkles")
-                            .font(.appScaled(size: 9, weight: .bold))
-                        Text("AI-forslag")
-                            .font(.appScaled(size: 10, weight: .semibold))
-                    }
-                    .foregroundStyle(BBrand.purpleLight)
-                    .padding(.horizontal, 7).padding(.vertical, 4)
-                    .background(BBrand.purple.opacity(0.18), in: Capsule())
-                }
-                .buttonStyle(.plain)
+                // «AI-forslag»-knapp fjernet 2026-07-17: var død — agenda-
+                // generering har ingen backend-flate enda.
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $agenda)

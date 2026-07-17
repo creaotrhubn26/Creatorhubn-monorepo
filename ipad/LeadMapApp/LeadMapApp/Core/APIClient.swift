@@ -343,6 +343,295 @@ actor APIClient {
         return resp.id
     }
 
+    // MARK: - Leadbook Eksempler (org-egne salgssamtaler, 2026-07-17)
+
+    /// pg serialiserer BIGINT/NUMERIC som streng — decode begge deler.
+    private static func lenientInt(
+        _ c: KeyedDecodingContainer<LeadbookExampleDTO.CodingKeys>,
+        _ key: LeadbookExampleDTO.CodingKeys
+    ) -> Int? {
+        if let n = try? c.decodeIfPresent(Int.self, forKey: key) { return n }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Int(s) }
+        return nil
+    }
+
+    /// Svar i tråden under en tilbakemelding (dialog-utvidelsen 2026-07-17).
+    struct LeadbookFeedbackReplyDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let authorName: String
+        let authorRole: String       // selger | admin | salgssjef | teamleder | kvalitet
+        let body: String
+        let createdAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, body
+            case authorName = "author_name"
+            case authorRole = "author_role"
+            case createdAt = "created_at"
+        }
+    }
+
+    struct LeadbookExampleFeedbackDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let authorName: String
+        let authorRole: String
+        let dimension: String?
+        let body: String
+        let createdAt: String?
+        /// Valgfritt anker: replikk-indeks i transkriptet + evt. sekunder.
+        var transcriptIndex: Int? = nil
+        var atSec: Int? = nil
+        /// Lest-kvittering: satt når eksempelets selger har sett den.
+        var readAt: String? = nil
+        var replies: [LeadbookFeedbackReplyDTO] = []
+        /// Kun satt i «Mine tilbakemeldinger»-responsen.
+        var exampleTitle: String? = nil
+        var exampleId: String? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case authorName = "author_name"
+            case authorRole = "author_role"
+            case dimension, body, replies
+            case createdAt = "created_at"
+            case transcriptIndex = "transcript_index"
+            case atSec = "at_sec"
+            case readAt = "read_at"
+            case exampleTitle = "example_title"
+            case exampleId = "example_id"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            authorName = (try? c.decode(String.self, forKey: .authorName)) ?? ""
+            authorRole = (try? c.decode(String.self, forKey: .authorRole)) ?? ""
+            dimension = try? c.decodeIfPresent(String.self, forKey: .dimension)
+            body = (try? c.decode(String.self, forKey: .body)) ?? ""
+            createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
+            transcriptIndex = (try? c.decodeIfPresent(Int.self, forKey: .transcriptIndex)) ?? nil
+            atSec = (try? c.decodeIfPresent(Int.self, forKey: .atSec)) ?? nil
+            readAt = try? c.decodeIfPresent(String.self, forKey: .readAt)
+            replies = (try? c.decode([LeadbookFeedbackReplyDTO].self, forKey: .replies)) ?? []
+            exampleTitle = try? c.decodeIfPresent(String.self, forKey: .exampleTitle)
+            exampleId = try? c.decodeIfPresent(String.self, forKey: .exampleId)
+        }
+    }
+
+    struct LeadbookTranscriptLineDTO: Codable, Hashable {
+        let speaker: String
+        let text: String
+        let atSec: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case speaker, text
+            case atSec = "at_sec"
+        }
+    }
+
+    struct LeadbookExampleDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let status: String              // draft | published
+        let title: String
+        let customerLabel: String
+        let industry: String
+        let outcome: String             // won | lost | ongoing
+        let channel: String
+        let durationSec: Int?
+        let sellerName: String
+        let pondusScore: Int?
+        let featuredDimension: String?
+        let dimensionScores: [String: Int]
+        let keyLearnings: [String]
+        let alternativePhrasings: [String]
+        let transcript: [LeadbookTranscriptLineDTO]
+        let dealValueNok: Int?
+        let summary: String
+        let createdByName: String
+        var feedback: [LeadbookExampleFeedbackDTO]
+        /// Visningstall (kun i responsen for ledere — «hva brukes faktisk»).
+        var viewsTotal: Int? = nil
+        var viewersCount: Int? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case id, status, title, industry, outcome, channel, summary
+            case customerLabel = "customer_label"
+            case durationSec = "duration_sec"
+            case sellerName = "seller_name"
+            case pondusScore = "pondus_score"
+            case featuredDimension = "featured_dimension"
+            case dimensionScores = "dimension_scores"
+            case keyLearnings = "key_learnings"
+            case alternativePhrasings = "alternative_phrasings"
+            case transcript
+            case dealValueNok = "deal_value_nok"
+            case createdByName = "created_by_name"
+            case feedback
+            case viewsTotal = "views_total"
+            case viewersCount = "viewers_count"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            status = (try? c.decode(String.self, forKey: .status)) ?? "draft"
+            title = (try? c.decode(String.self, forKey: .title)) ?? ""
+            customerLabel = (try? c.decode(String.self, forKey: .customerLabel)) ?? ""
+            industry = (try? c.decode(String.self, forKey: .industry)) ?? ""
+            outcome = (try? c.decode(String.self, forKey: .outcome)) ?? "won"
+            channel = (try? c.decode(String.self, forKey: .channel)) ?? "telephone"
+            durationSec = APIClient.lenientInt(c, .durationSec)
+            sellerName = (try? c.decode(String.self, forKey: .sellerName)) ?? ""
+            pondusScore = APIClient.lenientInt(c, .pondusScore)
+            featuredDimension = try? c.decodeIfPresent(String.self, forKey: .featuredDimension)
+            dimensionScores = (try? c.decode([String: Int].self, forKey: .dimensionScores)) ?? [:]
+            keyLearnings = (try? c.decode([String].self, forKey: .keyLearnings)) ?? []
+            alternativePhrasings = (try? c.decode([String].self, forKey: .alternativePhrasings)) ?? []
+            transcript = (try? c.decode([LeadbookTranscriptLineDTO].self, forKey: .transcript)) ?? []
+            dealValueNok = APIClient.lenientInt(c, .dealValueNok)
+            summary = (try? c.decode(String.self, forKey: .summary)) ?? ""
+            createdByName = (try? c.decode(String.self, forKey: .createdByName)) ?? ""
+            feedback = (try? c.decode([LeadbookExampleFeedbackDTO].self, forKey: .feedback)) ?? []
+            viewsTotal = APIClient.lenientInt(c, .viewsTotal)
+            viewersCount = APIClient.lenientInt(c, .viewersCount)
+        }
+    }
+
+    struct LeadbookExamplesResponse: Codable {
+        let examples: [LeadbookExampleDTO]
+        let canEdit: Bool
+        let canGiveFeedback: Bool
+    }
+
+    func fetchLeadbookExamples() async throws -> LeadbookExamplesResponse {
+        try await get("/api/leadgrid/leadbook/examples")
+    }
+
+    /// Opprett eksempel (leder). `transcript` = [{speaker, text, at_sec}].
+    func createLeadbookExample(_ body: [String: Any]) async throws -> String {
+        struct Resp: Codable { let id: String }
+        let r: Resp = try await post("/api/leadgrid/leadbook/examples", body: body)
+        return r.id
+    }
+
+    func updateLeadbookExample(id: String, _ fields: [String: Any]) async throws {
+        try await patch("/api/leadgrid/leadbook/examples/\(id)", body: fields)
+    }
+
+    /// `transcriptIndex`/`atSec` ankrer tilbakemeldingen til en konkret
+    /// replikk/tidspunkt (valgfritt). Backend varsler selgeren (in-app +
+    /// push) via notification-pipelinen.
+    func addLeadbookExampleFeedback(
+        exampleId: String, body text: String, dimension: String?,
+        transcriptIndex: Int? = nil, atSec: Int? = nil
+    ) async throws {
+        struct Resp: Codable { let id: String }
+        var payload: [String: Any] = ["body": text]
+        if let d = dimension { payload["dimension"] = d }
+        if let i = transcriptIndex { payload["transcript_index"] = i }
+        if let s = atSec { payload["at_sec"] = s }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/examples/\(exampleId)/feedback", body: payload)
+    }
+
+    // Dialog-utvidelsen (2026-07-17): lest-kvittering + svar + samleflate.
+
+    struct MyLeadbookFeedbackResponse: Codable {
+        let feedback: [LeadbookExampleFeedbackDTO]
+        let unread: Int
+    }
+
+    /// «Mine tilbakemeldinger» — all tilbakemelding på innlogget selgers
+    /// eksempler, m/ eksempel-kontekst, svar-tråd og ulest-teller.
+    func fetchMyLeadbookFeedback() async throws -> MyLeadbookFeedbackResponse {
+        try await get("/api/leadgrid/leadbook/feedback/mine")
+    }
+
+    /// Lest-kvittering — kun eksempelets selger (backend håndhever).
+    func markLeadbookFeedbackRead(feedbackId: String) async throws {
+        struct Resp: Codable { let ok: Bool? }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/feedback/\(feedbackId)/read", body: [:])
+    }
+
+    /// Svar i tråden (selger eller leder). Motparten varsles av backend.
+    func replyToLeadbookFeedback(feedbackId: String, body text: String) async throws {
+        struct Resp: Codable { let id: String }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies",
+            body: ["body": text])
+    }
+
+    /// Visnings-registrering («Ukens samtale»-distribusjonen) — kalles når
+    /// detail-sheeten åpnes i ekte modus. Fire-and-forget-vennlig.
+    func recordLeadbookExampleView(exampleId: String) async throws {
+        struct Resp: Codable { let ok: Bool? }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/examples/\(exampleId)/view", body: [:])
+    }
+
+    // MARK: - Tettsteder (SSB tettbygde strøk, 2026-07-17)
+
+    /// Geometrien er alltid MultiPolygon fra backend ([lng,lat],
+    /// Douglas-Peucker-forenklet server-side).
+    struct TettstedGeometry: Codable, Hashable {
+        let type: String
+        let coordinates: [[[[Double]]]]
+    }
+
+    struct TettstedDTO: Codable, Identifiable, Hashable {
+        let tettNr: String
+        let navn: String
+        let befolkning: Int?
+        let befolkningstetthet: Double?
+        let centerLat: Double
+        let centerLng: Double
+        let geometry: TettstedGeometry
+        var id: String { tettNr }
+
+        enum CodingKeys: String, CodingKey {
+            case tettNr = "tett_nr"
+            case navn, befolkning, befolkningstetthet
+            case centerLat = "center_lat"
+            case centerLng = "center_lng"
+            case geometry
+        }
+    }
+
+    private struct TettstederResponse: Codable {
+        let tettsteder: [TettstedDTO]
+    }
+
+    /// SSB-tettsteder innenfor en kommune (leder-katalog for tildeling).
+    /// Backend krever territories.manage + omradeTildeling-entitlement.
+    func fetchTettsteder(kommunenummer: String) async throws -> [TettstedDTO] {
+        let resp: TettstederResponse = try await get(
+            "/api/leadgrid/territories/tettsteder?kommune=\(kommunenummer)")
+        return resp.tettsteder
+    }
+
+    /// Tildel et tettsted til en selger: oppretter en lead_territories-rad
+    /// med tettstedets polygon. Bevisst UTEN municipalities — det ville
+    /// utvidet matchingen til hele kommunen (admin-enhet-matching er OR).
+    func createTettstedTerritory(
+        organizationId: String,
+        tettsted: TettstedDTO,
+        assignedUserId: String
+    ) async throws -> String {
+        let body: [String: Any] = [
+            "organization_id": organizationId,
+            "name": "Tettsted: \(tettsted.navn)",
+            "assigned_user_id": assignedUserId,
+            "geometry": [
+                "type": "MultiPolygon",
+                "coordinates": tettsted.geometry.coordinates,
+            ] as [String: Any],
+        ]
+        let resp: CreateTerritoryResponse = try await post(
+            "/api/leadgrid/territories", body: body)
+        return resp.id
+    }
+
     // MARK: - Smart dagsrute
 
     /// Planlegg dagens rute blant selgerens in-grid leads.

@@ -106,6 +106,9 @@ struct UpcomingMeetingMini: Identifiable, Hashable {
     let trafficStatus: String
     let agenda: String         // én-linjes formål
     let prepStatus: PrepStatus // hvor klar er forberedelsen?
+    /// Ekte start-tidspunkt (backend-møter). Mock-rader har nil — de vises
+    /// kun i demo-modus der kalenderen bruker seed-tellinger uansett.
+    var date: Date? = nil
 
     enum PrepStatus: String, Hashable {
         case ready = "Klar"
@@ -395,7 +398,8 @@ extension UpcomingMeetingMini {
             driveDistanceKm: 0,
             trafficStatus: "",
             agenda: event.nextAction ?? "Møte med \(event.leadName)",
-            prepStatus: event.nextAction == nil ? .notStarted : .partial
+            prepStatus: event.nextAction == nil ? .notStarted : .partial,
+            date: start
         )
     }
 }
@@ -1167,12 +1171,8 @@ struct MeetingsView: View {
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
-                    Text("Rediger")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(MtBrand.purpleLight)
-                }
-                .buttonStyle(.plain)
+                // «Rediger»-knapp fjernet 2026-07-17: var død (tom closure) —
+                // prep-editor har ingen flate enda.
             }
             if MeetingsData.prep.isEmpty {
                 Text("Ingen forberedelser registrert enda")
@@ -1253,6 +1253,20 @@ struct MeetingDetailEmptyState: View {
             Rectangle().fill(MtBrand.stroke).frame(width: 1),
             alignment: .leading
         )
+    }
+}
+
+/// Favoritt-persistering pr møte-id (UserDefaults). Backend-møter har stabil
+/// uuid avledet fra event-id, så favoritten overlever re-mapping og relaunch.
+enum MeetingFavorites {
+    private static let key = "meetings.favorites"
+    static func isFavorite(_ id: UUID) -> Bool {
+        (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(id.uuidString)
+    }
+    static func set(_ id: UUID, favorite: Bool) {
+        var ids = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        if favorite { ids.insert(id.uuidString) } else { ids.remove(id.uuidString) }
+        UserDefaults.standard.set(Array(ids), forKey: key)
     }
 }
 
@@ -1349,6 +1363,7 @@ struct MeetingDetailSidebar: View {
                             .foregroundStyle(.white)
                         Button {
                             favorited.toggle()
+                            MeetingFavorites.set(meeting.id, favorite: favorited)
                             flashToast(favorited ? "Markert som favoritt" : "Favoritt fjernet")
                         } label: {
                             Image(systemName: favorited ? "star.fill" : "star")
@@ -1356,6 +1371,7 @@ struct MeetingDetailSidebar: View {
                                 .foregroundStyle(favorited ? MtBrand.yellow : MtBrand.textTertiary)
                         }
                         .buttonStyle(.plain)
+                        .task(id: meeting.id) { favorited = MeetingFavorites.isFavorite(meeting.id) }
                     }
                 }
                 Spacer()
@@ -1451,7 +1467,7 @@ struct MeetingDetailSidebar: View {
                 ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "calendar").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Tirsdag 20. mai 2025")
+                    Text("Tirsdag 20. mai 2026")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("\(meeting.startTime) – \(meeting.endTime)")
@@ -1827,16 +1843,8 @@ struct MeetingDetailSidebar: View {
                     Text("Del nøkkelpunkter og avtal neste steg.")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(MtBrand.textSecondary)
-                    Button { flashToast("Oppgave opprettet i innboks") } label: {
-                        Text("Opprett oppgave")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                            .foregroundStyle(MtBrand.purpleLight)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(MtBrand.purple.opacity(0.20), in: Capsule())
-                            .overlay(Capsule().stroke(MtBrand.purple.opacity(0.4), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 3)
+                    // «Opprett oppgave»-knapp fjernet 2026-07-17: toasten løy
+                    // («Oppgave opprettet i innboks») — ingen oppgave-innboks finnes.
                 }
             }
         }

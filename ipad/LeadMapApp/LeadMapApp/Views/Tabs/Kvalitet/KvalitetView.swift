@@ -19,6 +19,8 @@ struct KvalitetView: View {
     @State private var items: [SalesVerification] = []
     @State private var counts: [String: Int] = [:]
     @State private var templates: [VerificationTemplate] = []
+    @State private var sellerStats: [QualitySellerStat] = []
+    @State private var reasonStats: [QualityReasonStat] = []
     @State private var loading = false
     @State private var loadFailed = false
     @State private var active: SalesVerification?
@@ -75,6 +77,9 @@ struct KvalitetView: View {
                 VStack(spacing: 14) {
                     AnyView(kpiRow)
                     AnyView(queueCard)
+                    if !sellerStats.isEmpty {
+                        AnyView(QualityStatsCard(sellers: sellerStats, reasons: reasonStats))
+                    }
                     Color.clear.frame(height: 24)
                 }
                 .padding(16)
@@ -198,13 +203,96 @@ struct KvalitetView: View {
         loading = true; loadFailed = false
         async let q = QualityService.shared.queue(using: appState.api)
         async let t = QualityService.shared.templates(using: appState.api)
+        async let s = QualityService.shared.stats(using: appState.api)
         if let result = await q {
             items = result.items; counts = result.counts
         } else {
             loadFailed = true
         }
         templates = await t
+        if let stats = await s {
+            sellerStats = stats.sellers.filter { $0.total > 0 }
+            reasonStats = stats.reasons
+        }
         loading = false
+    }
+}
+
+// MARK: - Kvalitetsstats (salgssjef-innsikt: kvalitetsgrad per selger + årsaker)
+
+struct QualityStatsCard: View {
+    let sellers: [QualitySellerStat]
+    let reasons: [QualityReasonStat]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "chart.bar.fill").foregroundStyle(NavPOIBrand.green)
+                Text("Kvalitet per selger").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                Text("Verifisert av ferdigbehandlede").font(.appScaled(size: 9))
+                    .foregroundStyle(NavPOIBrand.textSecondary)
+            }
+            ForEach(sellers) { sellerRow($0) }
+
+            if !reasons.isEmpty {
+                Divider().overlay(NavPOIBrand.stroke)
+                Text("Underkjenningsårsaker").font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(NavPOIBrand.textSecondary)
+                ForEach(reasons) { reasonRow($0) }
+            }
+        }
+        .padding(14)
+        .background(NavPOIBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(NavPOIBrand.green.opacity(0.3), lineWidth: 1))
+    }
+
+    private func sellerRow(_ s: QualitySellerStat) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.sellerName ?? "Ukjent selger")
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                Text("\(s.verified) verifisert · \(s.rejected) underkjent · \(s.pending) venter")
+                    .font(.appScaled(size: 9)).foregroundStyle(NavPOIBrand.textSecondary)
+            }
+            Spacer()
+            if let rate = s.qualityRate {
+                let pct = Int((rate * 100).rounded())
+                let tint: Color = rate >= 0.9 ? NavPOIBrand.green
+                    : rate >= 0.7 ? NavPOIBrand.orange : NavPOIBrand.red
+                Text("\(pct) %")
+                    .font(.appScaled(size: 14, weight: .black, design: .rounded))
+                    .foregroundStyle(tint).monospacedDigit()
+                ZStack(alignment: .leading) {
+                    Capsule().fill(NavPOIBrand.cardHi).frame(width: 74, height: 7)
+                    Capsule().fill(tint).frame(width: max(5, 74 * rate), height: 7)
+                }
+            } else {
+                Text("—").font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(NavPOIBrand.textSecondary)
+            }
+        }
+        .padding(10)
+        .background(NavPOIBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+    }
+
+    private func reasonRow(_ r: QualityReasonStat) -> some View {
+        HStack(spacing: 8) {
+            Text(QualityReason(rawValue: r.reasonCode)?.label ?? r.reasonCode)
+                .font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(.white)
+            // Pondus-kobling: årsaken peker på en trenbar dimensjon → coach der.
+            if let dim = QualityReason(rawValue: r.reasonCode)?.pondusDimension {
+                Text("Pondus: \(dim)")
+                    .font(.appScaled(size: 8, weight: .bold)).foregroundStyle(NavPOIBrand.purpleLight)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(NavPOIBrand.purple.opacity(0.15), in: Capsule())
+            }
+            Spacer()
+            Text("\(r.count)")
+                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(NavPOIBrand.red).monospacedDigit()
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -222,6 +310,7 @@ struct VerificationCallView: View {
     @State private var generalNote = ""
     @State private var callOutcome = "reached"
     @State private var showRejectReasons = false
+    @State private var flagAsExample = false
     @State private var submitting = false
     @State private var errorMsg: String?
 
@@ -424,6 +513,19 @@ struct VerificationCallView: View {
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(NavPOIBrand.orange)
             }
+            // «Flagg som eksempel» (2026-07-17): samtalen var lærerik →
+            // backend oppretter draft i Leadbook-eksempel-køen som salgssjef
+            // kuraterer og publiserer i Eksempler-fanen.
+            Toggle(isOn: $flagAsExample) {
+                Label("Flagg som eksempel til Leadbook",
+                      systemImage: "star.bubble.fill")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .tint(NavPOIBrand.purpleLight)
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(NavPOIBrand.card, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(NavPOIBrand.stroke, lineWidth: 1))
             Button { Task { await submit(status: "verified", reason: nil) } } label: {
                 verdictLabel("Verifisert — alt stemmer", "checkmark.seal.fill", NavPOIBrand.green)
             }
@@ -463,7 +565,8 @@ struct VerificationCallView: View {
         }
         let body = QualityService.VerdictBody(
             status: status, answers: answers, reasonCode: reason,
-            note: generalNote, callOutcome: callOutcome, templateId: template?.id)
+            note: generalNote, callOutcome: callOutcome, templateId: template?.id,
+            flagAsExample: flagAsExample ? true : nil)
         if let err = await QualityService.shared.submitVerdict(
             id: verification.id, body, using: appState.api) {
             errorMsg = "Kunne ikke lagre verdikt (\(err))."

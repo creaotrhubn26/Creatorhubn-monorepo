@@ -89,18 +89,9 @@ struct PondusEcosystemSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Se status på alle enheter", systemImage: "checkmark.shield.fill") }
-                        Button {} label: { Label("Eksporter QR-koder", systemImage: "qrcode") }
-                        Divider()
-                        Button {} label: { Label("Hjelp", systemImage: "questionmark.circle") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.appScaled(size: 16, weight: .semibold))
-                            .foregroundStyle(LBrand.purpleLight)
-                    }
-                }
+                // Ellipsis-menyen («Se status på alle enheter» / «Eksporter
+                // QR-koder» / «Hjelp») fjernet 2026-07-17: var døde knapper —
+                // tomme closures uten mål-flater.
             }
             .overlay(alignment: .top) {
                 if let t = connectToast {
@@ -368,14 +359,8 @@ struct PondusEcosystemSheet: View {
                 Text(c.action).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
-            Button {
-                connectToast = "Lagt til i Shortcuts-appen"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { connectToast = nil }
-            } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.appScaled(size: 18))
-                    .foregroundStyle(LBrand.purpleLight)
-            }.buttonStyle(.plain)
+            // «+»-knappen (Legg til i Shortcuts) fjernet 2026-07-17: var død
+            // knapp — kun toast, ingen Shortcuts-donasjon bak.
         }
         .padding(12)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
@@ -441,31 +426,8 @@ struct PondusEcosystemSheet: View {
                 .font(.appScaled(size: 11))
                 .foregroundStyle(LBrand.textSecondary)
                 .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                if !i.connected {
-                    connectToast = "\(i.name) tilkoblet"
-                } else {
-                    connectToast = "\(i.name)-innstillinger åpnet"
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { connectToast = nil }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: i.connected ? "gearshape.fill" : "plus.circle.fill")
-                        .font(.appScaled(size: 10, weight: .bold))
-                    Text(i.connected ? "Innstillinger" : "Koble til")
-                        .font(.appScaled(size: 11, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 11).padding(.vertical, 6)
-                .background(
-                    i.connected ? AnyShapeStyle(LBrand.cardHi)
-                                : AnyShapeStyle(LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                                              startPoint: .leading, endPoint: .trailing)),
-                    in: Capsule()
-                )
-                .overlay(Capsule().stroke(i.connected ? LBrand.stroke : .clear, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
+            // «Koble til»/«Innstillinger» fjernet 2026-07-17: var død knapp —
+            // kun toast, ingen faktisk tilkobling/innstillings-flate.
         }
         .padding(12)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
@@ -493,24 +455,8 @@ struct PondusEcosystemSheet: View {
             Text(subtitle)
                 .font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
-            Button {
-                connectToast = ctaTitle
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { connectToast = nil }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: statusOK ? "arrow.up.right.square.fill" : "arrow.down.circle.fill")
-                        .font(.appScaled(size: 12, weight: .bold))
-                    Text(ctaTitle).font(.appScaled(size: 13, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(
-                    LinearGradient(colors: [tint, tint.opacity(0.7)],
-                                   startPoint: .leading, endPoint: .trailing),
-                    in: Capsule()
-                )
-                .shadow(color: tint.opacity(0.45), radius: 6, y: 2)
-            }.buttonStyle(.plain)
+            // Hero-CTA («Åpne …»/«Last ned …») fjernet 2026-07-17: var død
+            // knapp — kun toast, ingen app-/nedlastings-flate bak.
         }
     }
 

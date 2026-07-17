@@ -61,6 +61,18 @@ final class QualityService {
         return (r.verifications, r.counts)
     }
 
+    private struct StatsResponse: Decodable {
+        let sellers: [QualitySellerStat]
+        let reasons: [QualityReasonStat]
+    }
+
+    /// Kvalitetsgrad per selger + årsaksfordeling. Nil ved 403/feil.
+    func stats(using api: APIClient?) async -> (sellers: [QualitySellerStat], reasons: [QualityReasonStat])? {
+        guard let api else { return nil }
+        guard let r: StatsResponse = try? await api._get("/api/leadgrid/quality/stats") else { return nil }
+        return (r.sellers, r.reasons)
+    }
+
     struct VerdictBody: Encodable {
         var status: String                    // verified | rejected | needs_followup
         var answers: [VerificationAnswer]
@@ -68,6 +80,9 @@ final class QualityService {
         var note: String
         var callOutcome: String?              // reached | no_answer | callback
         var templateId: String?
+        /// «Flagg som eksempel» (2026-07-17): samtalen var verdt å lære av →
+        /// backend oppretter draft i Leadbook-eksempel-køen (mig 0379).
+        var flagAsExample: Bool?
     }
 
     /// Fell verdikt. Returnerer nil ved suksess, ellers feilkode.
@@ -123,6 +138,29 @@ struct SalesVerification: Decodable, Identifiable, Hashable {
     let verifiedAt: String?
 }
 
+struct QualitySellerStat: Decodable, Identifiable, Hashable {
+    let sellerUserId: String?
+    let sellerName: String?
+    let total: Int
+    let verified: Int
+    let rejected: Int
+    let pending: Int
+    let followup: Int
+    var id: String { sellerUserId ?? sellerName ?? "ukjent" }
+    /// Andel verifisert av FERDIGBEHANDLEDE (pending teller ikke mot noen).
+    var qualityRate: Double? {
+        let decided = verified + rejected
+        guard decided > 0 else { return nil }
+        return Double(verified) / Double(decided)
+    }
+}
+
+struct QualityReasonStat: Decodable, Identifiable, Hashable {
+    let reasonCode: String
+    let count: Int
+    var id: String { reasonCode }
+}
+
 enum QualityReason: String, CaseIterable {
     case feilPris = "feil_pris"
     case kundeAngret = "kunde_angret"
@@ -139,6 +177,18 @@ enum QualityReason: String, CaseIterable {
         case .feilinformertKunde: return "Feilinformert kunde"
         case .ikkeKontakt: return "Fikk ikke kontakt"
         case .annet: return "Annet"
+        }
+    }
+
+    /// Pondus-kobling: hvilken av de fem dimensjonene årsaken sier noe om.
+    /// Brukes som coaching-hint i stats — underkjenninger er ekte data for
+    /// dimensjonene Pondus-akademiet trener.
+    var pondusDimension: String? {
+        switch self {
+        case .feilinformertKunde, .mangelfullDokumentasjon: return "Troverdighet"
+        case .feilPris: return "Klarhet"
+        case .kundeAngret: return "Trygghet"
+        case .ikkeKontakt, .annet: return nil
         }
     }
 }

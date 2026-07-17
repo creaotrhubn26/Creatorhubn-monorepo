@@ -357,24 +357,35 @@ struct NavigateSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             sectionLabel("Ekstra", icon: "ellipsis.circle")
             VStack(spacing: 6) {
-                extraRow(icon: "plus.rectangle.on.rectangle",
-                         label: "Legg til i dagsrute",
-                         sub: "Inkluder denne leaden i rute-planlegger",
-                         color: NvBrand.purpleLight)
-                extraRow(icon: "square.and.arrow.up",
-                         label: "Del lokasjon",
-                         sub: "Send til kollega via Meldinger/e-post",
-                         color: NvBrand.green)
+                // «Legg til i dagsrute» fjernet 2026-07-17: var død knapp —
+                // rute-planleggeren har ikke innlegg-API enda.
+                ShareLink(item: URL(string: "https://maps.apple.com/?ll=\(lead.lat),\(lead.lon)&q=\(lead.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Lead")")!) {
+                    extraRowLabel(icon: "square.and.arrow.up",
+                                  label: "Del lokasjon",
+                                  sub: "Send til kollega via Meldinger/e-post",
+                                  color: NvBrand.green)
+                }
+                .buttonStyle(.plain)
                 extraRow(icon: "doc.on.doc",
                          label: "Kopier adresse",
                          sub: "Til utklippstavlen",
-                         color: NvBrand.yellow)
+                         color: NvBrand.yellow) {
+                    UIPasteboard.general.string = lead.address
+                }
             }
         }
     }
 
-    private func extraRow(icon: String, label: String, sub: String, color: Color) -> some View {
-        Button {} label: {
+    private func extraRow(icon: String, label: String, sub: String, color: Color,
+                          action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            extraRowLabel(icon: icon, label: label, sub: sub, color: color)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func extraRowLabel(icon: String, label: String, sub: String, color: Color) -> some View {
+        Group {
             HStack(spacing: 12) {
                 ZStack {
                     Circle().fill(color.opacity(0.22))

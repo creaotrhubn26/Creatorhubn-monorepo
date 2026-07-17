@@ -873,7 +873,8 @@ private struct LeadsInAreaCard: View {
                     assignToTeamLead = lead
                 }
             },
-            canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
+            // Rolle-bundet: kun leder-roller kan tildele til andre.
+            canAssignToOthers: ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
         )
     }
 
@@ -4243,7 +4244,17 @@ struct TopSellersSheet: View {
         )
     }
 
+    @ViewBuilder
     private func trendBadge(_ trend: Int) -> some View {
+        // Ekte modus har ingen rank-historikk (trend alltid 0) — en grå minus
+        // ville påstått «uendret» uten datagrunnlag. Vis badge kun når det
+        // finnes en reell trend, eller i demo (der 0 = ekte «uendret»).
+        if trend != 0 || DemoModeManager.isActiveNonisolated {
+            trendBadgeContent(trend)
+        }
+    }
+
+    private func trendBadgeContent(_ trend: Int) -> some View {
         let color: Color = trend > 0 ? Brand.green : (trend < 0 ? Brand.red : Brand.textTertiary)
         let icon: String = trend > 0 ? "arrow.up" : (trend < 0 ? "arrow.down" : "minus")
         return HStack(spacing: 2) {
@@ -5021,6 +5032,8 @@ struct ProfilePopover: View {
     /// eier root-switchen (Leadbook).
     var onOpenSuperAdmin: (() -> Void)? = nil
     @Environment(AppState.self) private var appState
+    @State private var pinGuideOpen = false
+    @State private var aboutOpen = false
 
     /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
     private var appVersion: String {
@@ -5102,8 +5115,9 @@ struct ProfilePopover: View {
                             row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
                         }
                         .buttonStyle(.plain)
-                        row(icon: "moon.fill", color: Brand.purpleLight, label: "Mørk modus",
-                            toggle: .constant(true))
+                        // «Mørk modus»-toggle fjernet 2026-07-17: var fake
+                        // (.constant(true)) — appen er låst til mørk via
+                        // preferredColorScheme(.dark); ingen lys modus å bytte til.
                         Button {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
                                 UIApplication.shared.open(url)
@@ -5122,9 +5136,17 @@ struct ProfilePopover: View {
                             row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
                         }
                         .buttonStyle(.plain)
-                        row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
-                        row(icon: "info.circle.fill", color: Brand.textSecondary,
-                            label: "Om Leadgrid", trailing: appVersion)
+                        // Pin-guiden fantes alt som flate (Mer-fanen) — raden
+                        // var bare aldri wiret hit.
+                        Button { pinGuideOpen = true } label: {
+                            row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
+                        }
+                        .buttonStyle(.plain)
+                        Button { aboutOpen = true } label: {
+                            row(icon: "info.circle.fill", color: Brand.textSecondary,
+                                label: "Om Leadgrid", trailing: appVersion)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -5150,6 +5172,13 @@ struct ProfilePopover: View {
             .buttonStyle(.plain)
         }
         .background(Brand.card)
+        .sheet(isPresented: $pinGuideOpen) {
+            // Sheet-rot → egen NavigationStack er trygt (ikke nestet i push).
+            NavigationStack { PinGuideView() }
+        }
+        .sheet(isPresented: $aboutOpen) {
+            AboutLeadgridSheet()
+        }
     }
 
     private var profileHeader: some View {
@@ -5242,6 +5271,129 @@ struct ProfilePopover: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - AboutLeadgridSheet («Om Leadgrid» fra ProfilePopover)
+//
+// Ekte om-flate (Daniel-feedback 2026-07-17: raden skal navigere, ikke bare
+// vise versjonsnummer). Alt innhold leses fra bundelen eller er statiske
+// fakta — ingen mock.
+
+struct AboutLeadgridSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var version: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+    }
+    private var buildNumber: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "—"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    // Merkevare-hode
+                    VStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(LinearGradient(colors: [Brand.purple, Brand.purpleLight],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                            Image(systemName: "map.fill")
+                                .font(.appScaled(size: 34, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 84, height: 84)
+                        .shadow(color: Brand.purple.opacity(0.45), radius: 14, y: 4)
+                        Text("Leadgrid")
+                            .font(.appScaled(size: 24, weight: .black))
+                            .foregroundStyle(.white)
+                        Text("Feltsalg, leads og ruter — samlet på ett kart.")
+                            .font(.appScaled(size: 13))
+                            .foregroundStyle(Brand.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 10)
+
+                    // Versjonsinfo (fra bundelen)
+                    VStack(spacing: 0) {
+                        infoRow(label: "Versjon", value: version)
+                        Divider().background(Brand.stroke)
+                        infoRow(label: "Bygg", value: buildNumber)
+                    }
+                    .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
+
+                    // Lenker
+                    VStack(spacing: 0) {
+                        linkRow(icon: "globe", label: "leadgrid.no",
+                                url: "https://leadgrid.no")
+                        Divider().background(Brand.stroke)
+                        linkRow(icon: "hand.raised.fill", label: "Personvern",
+                                url: "https://leadgrid.no/personvern")
+                        Divider().background(Brand.stroke)
+                        linkRow(icon: "envelope.fill", label: "Kontakt support",
+                                url: "mailto:support@creatorhubn.com?subject=Leadgrid%20support")
+                    }
+                    .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
+
+                    Text("© 2026 Creatorhub AS")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(Brand.textTertiary)
+                        .padding(.bottom, 10)
+                }
+                .padding(.horizontal, 18)
+            }
+            .background(Brand.bg.ignoresSafeArea())
+            .navigationTitle("Om Leadgrid")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Ferdig") { dismiss() }
+                        .foregroundStyle(Brand.purpleLight)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.appScaled(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+            Spacer()
+            Text(value)
+                .font(.appScaled(size: 13))
+                .foregroundStyle(Brand.textSecondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+    }
+
+    private func linkRow(icon: String, label: String, url: String) -> some View {
+        Button {
+            if let u = URL(string: url) { UIApplication.shared.open(u) }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.purpleLight)
+                    .frame(width: 22)
+                Text(label)
+                    .font(.appScaled(size: 13, weight: .medium))
+                    .foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(Brand.textTertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -6005,6 +6157,7 @@ struct SalesLeadershipSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .catalog
     @State private var newContestOpen: Bool = false
+    @State private var rankingOpen: Bool = false   // «Se rangering»/«Se alle selgere» → TopSellersSheet
 
     enum Tab: String, CaseIterable {
         case commission = "Provisjon"
@@ -6475,6 +6628,9 @@ struct SalesLeadershipSheet: View {
             .toolbarBackground(Brand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $rankingOpen) {
+                TopSellersSheet(currentUserName: currentUserName)
+            }
             .sheet(isPresented: $newContestOpen) {
                 NewContestSheet(
                     template: contestPrefilledTemplate,
@@ -6868,7 +7024,9 @@ struct SalesLeadershipSheet: View {
                 .padding(8)
                 .background(Brand.card, in: RoundedRectangle(cornerRadius: 8))
             }
-            Button {} label: {
+            Button {
+                spiffs.append(SpiffRule(trigger: "Ny spiff-regel", amountNok: 1_000))
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
                         .font(.appScaled(size: 11))
@@ -7061,7 +7219,10 @@ struct SalesLeadershipSheet: View {
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
+                Button {
+                    tiers.append(CommissionTier(category: "Ny kategori", basePct: 5.0,
+                                                bonusPct: 8.0, color: Brand.purpleLight))
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
                             .font(.appScaled(size: 10, weight: .bold))
@@ -7455,7 +7616,7 @@ struct SalesLeadershipSheet: View {
                     .buttonStyle(.plain)
                     .padding(.leading, 8)
                 } else {
-                    Button {} label: {
+                    Button { rankingOpen = true } label: {
                         Text("Se rangering")
                             .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
@@ -7699,7 +7860,7 @@ struct SalesLeadershipSheet: View {
                     individualGoalRow(s)
                 }
             }
-            Button {} label: {
+            Button { rankingOpen = true } label: {
                 HStack {
                     Spacer()
                     Text("Se alle \(sellers.count) selgere")
@@ -7721,9 +7882,11 @@ struct SalesLeadershipSheet: View {
     }
 
     private func individualGoalRow(_ s: TopSellersSheet.Seller) -> some View {
-        // Mock: individuelt mål = total verdi / 0.5 (skal nå 50% mer)
-        let goal = s.totalValue * 1.5
-        let progress = min(1.0, s.totalValue / goal)
+        // Demo: mock-mål = 150 % av total. EKTE: ingen mål-kilde finnes enda →
+        // vis fremdrift uten fabrikert mål (progress skjules via goal = 0).
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let goal = isDemo ? s.totalValue * 1.5 : 0
+        let progress = goal > 0 ? min(1.0, s.totalValue / goal) : 0
         return HStack(spacing: 12) {
             ZStack {
                 Circle().fill(s.avatarColor.opacity(0.3))
@@ -7739,21 +7902,31 @@ struct SalesLeadershipSheet: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer()
-                    Text(String(format: "%.0f %%", progress * 100))
-                        .font(.appScaled(size: 11, weight: .bold))
-                        .foregroundStyle(progress >= 1.0 ? Brand.green : Brand.yellow)
-                        .monospacedDigit()
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Brand.stroke)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(s.avatarColor)
-                            .frame(width: geo.size.width * CGFloat(progress))
+                    if goal > 0 {
+                        Text(String(format: "%.0f %%", progress * 100))
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(progress >= 1.0 ? Brand.green : Brand.yellow)
+                            .monospacedDigit()
+                    } else {
+                        // Ekte modus uten mål-kilde: vis faktisk verdi, ikke falsk prosent.
+                        Text("\(Int(s.totalValue / 1_000))k kr")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.green)
+                            .monospacedDigit()
                     }
                 }
-                .frame(height: 5)
+                if goal > 0 {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Brand.stroke)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(s.avatarColor)
+                                .frame(width: geo.size.width * CGFloat(progress))
+                        }
+                    }
+                    .frame(height: 5)
+                }
             }
         }
         .padding(10)

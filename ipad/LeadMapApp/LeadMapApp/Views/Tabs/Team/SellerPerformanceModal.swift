@@ -100,7 +100,8 @@ struct SellerPerformanceModal: View {
                         Button { TeamStubActions.toast("Eksporter rapport") } label: { Label("Eksporter rapport", systemImage: "doc.fill") }
                         Button { TeamStubActions.toast("Send til selger") } label: { Label("Send til selger", systemImage: "envelope.fill") }
                         Button { TeamStubActions.performGated(.teamCompareToPrevious, actionName: "Sammenlign m/ team") } label: { Label("Sammenlign m/ team", systemImage: "chart.bar.xaxis") }
-                        Button(role: .destructive) {} label: { Label("Endre territorium", systemImage: "mappin.and.ellipse") }
+                        // «Endre territorium» fjernet 2026-07-17: var død knapp — territorium
+                        // endres via Team-fanens Tildel område-flyt.
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .foregroundStyle(TBrand.purpleLight)

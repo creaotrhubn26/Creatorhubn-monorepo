@@ -223,8 +223,21 @@ struct LeadgridTabHeader<Extra: View>: View {
         }
     }
 
+    /// Ekte rolle fra org-medlemskapet (var hardkodet «Salgssjef» for alle
+    /// ikke-superadmins frem til 2026-07-17). Samme katalog-mapping som
+    /// LeaderboardView/OrgSettingsView.
     private var roleLabel: String {
-        state.isSuperAdmin ? "Leadgrid-admin" : "Salgssjef"
+        if state.isSuperAdmin { return "Leadgrid-admin" }
+        switch state.roleInOrg ?? "" {
+        case "admin": return "Admin"
+        case "salgssjef": return "Salgssjef"
+        case "teamleder": return "Teamleder"
+        case "salgskonsulent": return "Salgskonsulent"
+        case "promotor": return "Promotør"
+        case "kvalitet": return "Kvalitet"
+        case "": return "Selger"
+        default: return (state.roleInOrg ?? "").capitalized
+        }
     }
 
     /// SuperAdmin-raden vises kun for Leadgrid-ansatte OG når fanen har

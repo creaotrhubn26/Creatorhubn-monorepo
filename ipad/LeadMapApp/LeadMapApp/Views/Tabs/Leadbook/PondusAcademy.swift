@@ -372,8 +372,9 @@ struct PondusAkademiSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
-                        Button {} label: { Label("Last ned for offline", systemImage: "arrow.down.circle") }
-                        Button {} label: { Label("Del Akademi-lenke", systemImage: "square.and.arrow.up") }
+                        // «Last ned for offline» + «Del Akademi-lenke» fjernet
+                        // 2026-07-17: var døde knapper — ingen offline-/dele-
+                        // flate for Akademi-innhold.
                         Button { showTranscript.toggle() } label: {
                             Label(showTranscript ? "Skjul transkript" : "Vis transkript", systemImage: "text.quote")
                         }
@@ -733,14 +734,8 @@ struct PondusAkademiSheet: View {
                     .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
-                Button {} label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up").font(.appScaled(size: 10, weight: .bold))
-                        Text("Eksporter")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(LBrand.purpleLight)
-                }.buttonStyle(.plain)
+                // «Eksporter»-knappen fjernet 2026-07-17: var død knapp —
+                // ingen eksport-flate for transkript.
             }
             Text(current.transcriptSnippet)
                 .font(.appScaled(size: 13, design: .serif))

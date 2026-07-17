@@ -328,7 +328,9 @@ struct LogNoteSheet: View {
                     meetingCard
                     categoryRow
                     noteEditor
-                    aiCard
+                    // aiCard («Spille inn + transkribere») fjernet 2026-07-17:
+                    // var død knapp — transkribering finnes i Leadbook (LiveTranscription),
+                    // kobles hit når flyten er klar.
                     pinToggle
                     Color.clear.frame(height: 90)
                 }
@@ -364,7 +366,7 @@ struct LogNoteSheet: View {
                 Text(meeting.company)
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Tirsdag 20. mai · \(meeting.startTime)-\(meeting.endTime)")
+                Text("\(meeting.startTime)–\(meeting.endTime)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(SBrand.textSecondary)
             }
@@ -428,39 +430,6 @@ struct LogNoteSheet: View {
                 }
             }
         }
-    }
-
-    private var aiCard: some View {
-        Button {} label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(LinearGradient(
-                        colors: [SBrand.purple, SBrand.purpleLight],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    Image(systemName: "mic.fill")
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 38, height: 38)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Spille inn + transkribere")
-                        .font(.appScaled(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text("AI lager automatisk strukturert notat etterpå")
-                        .font(.appScaled(size: 10))
-                        .foregroundStyle(SBrand.textSecondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(SBrand.textTertiary)
-            }
-            .padding(12)
-            .background(SBrand.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(SBrand.purple.opacity(0.30), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 
     private var pinToggle: some View {
@@ -615,9 +584,12 @@ struct LeadDetailStub: View {
 
     private var statsRow: some View {
         HStack(spacing: 10) {
-            statBox(label: "Forventet verdi", value: "650K", color: SBrand.green)
-            statBox(label: "Sannsynlighet", value: "65 %",   color: SBrand.purpleLight)
-            statBox(label: "Lead-score",     value: "\(meeting.leadScore)",  color: SBrand.yellow)
+            // «650K» og «65 %» var hardkodet mock — verdi hentes nå fra møtet,
+            // og sannsynlighet er fjernet (ingen kilde).
+            statBox(label: "Forventet verdi",
+                    value: meeting.valueNok > 0 ? "\(meeting.valueNok / 1000)K" : "—",
+                    color: SBrand.green)
+            statBox(label: "Lead-score", value: "\(meeting.leadScore)", color: SBrand.yellow)
         }
     }
 
@@ -645,7 +617,8 @@ struct LeadDetailStub: View {
             HStack(spacing: 11) {
                 ZStack {
                     Circle().fill(SBrand.purple.opacity(0.25))
-                    Text("JE")
+                    Text(meeting.contactName.split(separator: " ").prefix(2)
+                            .compactMap { $0.first }.map(String.init).joined().uppercased())
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(SBrand.purpleLight)
                 }

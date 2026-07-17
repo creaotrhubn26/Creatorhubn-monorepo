@@ -83,6 +83,21 @@ struct MapLeadMock: Identifiable, Hashable {
     let lastActivity: String?
     let lat: Double
     let lon: Double
+    // Ekte felter fra LeadModel (adapteren fyller; mock-rader har nil).
+    var phone: String? = nil
+    var email: String? = nil
+    var estimatedValue: Double? = nil
+    var aiScore: Int? = nil
+
+    /// Kontakt m/ demo-fallback: ekte lead-data vinner; demo-modus får
+    /// visningsverdier så flyten kan demonstreres; ekte modus uten data → nil
+    /// (handlingen skjules — ærlig i stedet for å ringe et påfunnet nummer).
+    var phoneOrDemo: String? {
+        phone ?? (DemoModeManager.isActiveNonisolated ? "+47 911 22 333" : nil)
+    }
+    var emailOrDemo: String? {
+        email ?? (DemoModeManager.isActiveNonisolated ? "post@nordicelektro.no" : nil)
+    }
 
     enum PinStatus: String, Hashable, CaseIterable {
         case hot, warm, new, customer, meeting, followup
@@ -359,7 +374,11 @@ enum KartPreviewData {
             status: pin,
             lastActivity: last,
             lat: lm.latitude,
-            lon: lm.longitude
+            lon: lm.longitude,
+            phone: lm.phone,
+            email: lm.email,
+            estimatedValue: lm.estimatedValue,
+            aiScore: lm.aiOpportunityScore
         )
     }
 
@@ -448,7 +467,6 @@ struct KartView: View {
     @State private var showStatusChange: Bool = false
     @State private var showAssignSeller: Bool = false
     @State private var showNoteEditor: Bool = false
-    @State private var showArchiveConfirm: Bool = false
     @State private var camera: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 59.918, longitude: 10.762),
         span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.13)
@@ -496,6 +514,8 @@ struct KartView: View {
     /// har valgt en pin/rad (selectedLead init-es med mock-placeholder
     /// som ellers ville lekke). Demo beholder pre-valgt lead.
     @State private var hasSelectedLead: Bool = false
+    /// iPhone: «Leads i området» som draggbart halv-sheet over kartet.
+    @State private var areaListOpen: Bool = false
     /// Auto-senter kun én gang per fane-liv.
     @State private var didAutoCenter: Bool = false
     // MARK: - Live navigasjons-modus
@@ -995,7 +1015,33 @@ struct KartView: View {
         // Leadgrid Go — kjørebok (auto-loggede turer + formåls-bekreftelse).
         .sheet(isPresented: $navShowKjorebok) { KjorebokView() }
         .sheet(isPresented: $openLeadFullSheet) {
-            LeadDetailFullSheet(lead: selectedLead)
+            // iPhone (2026-07-17): draggbart bottom-sheet med detents —
+            // halvveis-posisjonen lar kartet være synlig og interaktivt bak
+            // (Apple Maps-mønsteret). iPad beholder fullt sheet.
+            if DeviceIdiom.isPhone {
+                LeadDetailFullSheet(lead: selectedLead)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                    .presentationDragIndicator(.visible)
+            } else {
+                LeadDetailFullSheet(lead: selectedLead)
+            }
+        }
+        // «Leads i området» som egen HUD-flate på iPhone (2026-07-17):
+        // listen bor under kartet på compact — hit kommer den som draggbart
+        // halv-sheet; tap på en rad zoomer kartet bak.
+        .sheet(isPresented: $areaListOpen) {
+            ScrollView {
+                leadsInAreaCard
+                    .padding(.horizontal, 14)
+                    .padding(.top, 18)
+                    .padding(.bottom, 24)
+            }
+            .background(KrBrand.bg.ignoresSafeArea())
+            .presentationDetents([.medium, .large])
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $scheduleMeetingOpen) {
             ScheduleMeetingSheet(lead: selectedLead)
@@ -1056,9 +1102,36 @@ struct KartView: View {
             LeadAssignSellerSheet(
                 companyName: selectedLead.name,
                 companyColor: selectedLead.status.color,
-                currentSellerName: "Lars Kristensen"
+                // 2026-07-17: var hardkodet «Lars Kristensen» — eier spores
+                // ikke på kart-modellen, så raden utelates ærlig.
+                currentSellerName: nil
             ) { newSeller in
-                showToast("Tildelt \(newSeller.name)")
+                // 2026-07-17: var toast-fasade — nå ekte tildeling via
+                // /lead-assignments (demo-valg uten userId forblir toast).
+                if let userId = newSeller.userId, let api = appState.api,
+                   !DemoModeManager.isActiveNonisolated {
+                    let payload = LeadAssignmentPayload(
+                        leadId: selectedLead.id,
+                        leadName: selectedLead.name,
+                        leadLat: selectedLead.lat,
+                        leadLng: selectedLead.lon,
+                        assigneeUserId: userId,
+                        assigneeRole: "seller",
+                        priority: "normal",
+                        message: ""
+                    )
+                    Task {
+                        do {
+                            try await api.createLeadAssignment(payload)
+                            showToast("Tildelt \(newSeller.name)")
+                            await appState.refreshLeads()
+                        } catch {
+                            showToast("Kunne ikke tildele")
+                        }
+                    }
+                } else {
+                    showToast("Tildelt \(newSeller.name)")
+                }
             }
         }
         .sheet(isPresented: $showNoteEditor) {
@@ -1066,21 +1139,19 @@ struct KartView: View {
                 companyName: selectedLead.name,
                 companyColor: selectedLead.status.color
             ) { note, category, pinned in
+                // 2026-07-17: var toast-fasade — lagres nå i samme lokale
+                // notat-lager som Leads-fanen (nøkkel = lead-id; for ekte
+                // leads er det crm-uuiden → notatet synes begge steder).
+                if !DemoModeManager.isActiveNonisolated {
+                    LeadLocalNotes.add(body: note, pinned: pinned,
+                                       author: appState.displayName,
+                                       to: selectedLead.id)
+                }
                 showToast("Notat lagret\(pinned ? " (festet)" : "")")
             }
         }
-        .confirmationDialog(
-            "Arkivere \(selectedLead.name)?",
-            isPresented: $showArchiveConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Arkiver", role: .destructive) {
-                showToast("\(selectedLead.name) arkivert")
-            }
-            Button("Avbryt", role: .cancel) { }
-        } message: {
-            Text("Lead-en flyttes til arkiv. Du kan hente den tilbake fra Filter → Vis arkiverte.")
-        }
+        // Arkiv-dialogen fjernet 2026-07-17: «Arkiver» var toast-fasade uten
+        // API — dialogen lot som leaden ble flyttet til arkiv.
         .sheet(isPresented: $mapStyleSheetOpen) {
             LayersSheet(
                 selectedStyle: $mapStyle,
@@ -1232,11 +1303,15 @@ struct KartView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    VStack(spacing: 12) {
-                        AnyView(leadsInAreaCard)
-                        Spacer(minLength: 0)
+                    // iPhone (2026-07-17): listen bor nå i halv-sheeten
+                    // (liste-FAB på kartet) — ikke dupliser under kartet.
+                    if !DeviceIdiom.isPhone {
+                        VStack(spacing: 12) {
+                            AnyView(leadsInAreaCard)
+                            Spacer(minLength: 0)
+                        }
+                        .kartColumnWidth(300)
                     }
-                    .kartColumnWidth(300)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -1535,6 +1610,14 @@ struct KartView: View {
                 mapFABButton(icon: "mappin.and.ellipse", action: dropPinAtCenter)
                     .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+
+                // iPhone: «Leads i området» som halv-sheet — listen bor
+                // ellers under kartet og krever scroll (2026-07-17).
+                if DeviceIdiom.isPhone {
+                    mapFABButton(icon: "list.bullet", action: { areaListOpen = true })
+                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                }
             }
             .fixedSize()
             .padding(14)
@@ -1602,12 +1685,89 @@ struct KartView: View {
                     .allowsHitTesting(true)
             }
             #endif
+
+            // Mobil lead-HUD (2026-07-17, Daniel-feedback): på iPhone ligger
+            // detail-panelet UNDER kartet (krever scroll) — vis derfor et
+            // kompakt handlingskort over kartet når en pin er valgt, samme
+            // mønster som Apple Maps. iPad har side-panelet synlig og
+            // trenger det ikke.
+            if DeviceIdiom.isPhone && hasSelectedLead && !navModeActive && !measureMode {
+                AnyView(phoneLeadHUD)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(true)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(KrBrand.stroke, lineWidth: 1)
         )
+    }
+
+    // MARK: Mobil lead-HUD
+
+    /// Kompakt kort over kartet på iPhone: navn/status/avstand + Naviger,
+    /// Ring (når nummer finnes) og «Detaljer» (åpner LeadDetailFullSheet).
+    private var phoneLeadHUD: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(selectedLead.status.color.opacity(0.22))
+                Image(systemName: selectedLead.status.icon)
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(selectedLead.status.color)
+            }
+            .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selectedLead.name)
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("\(String(format: "%.1f", selectedLead.kmAway)) km · \(selectedLead.status.label)")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            if let phone = selectedLead.phoneOrDemo {
+                Button { makeCall(phone) } label: {
+                    hudIcon("phone.fill")
+                }
+                .buttonStyle(.plain)
+            }
+            Button { startNavigation(to: selectedLead) } label: {
+                hudIcon("location.fill")
+            }
+            .buttonStyle(.plain)
+            Button { openLeadFullSheet = true } label: {
+                Text("Detaljer")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(
+                        LinearGradient(colors: [KrBrand.purple, KrBrand.purpleLight],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: Capsule()
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(KrBrand.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(KrBrand.stroke, lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+    }
+
+    private func hudIcon(_ name: String) -> some View {
+        ZStack {
+            Circle().fill(KrBrand.purple.opacity(0.20))
+            Image(systemName: name)
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(KrBrand.purpleLight)
+        }
+        .frame(width: 34, height: 34)
     }
 
     private func mapFAB(icon: String) -> some View {
@@ -2465,7 +2625,7 @@ struct KartView: View {
                 }
             }
 
-            Button { showToast("Åpner full leads-liste") } label: {
+            Button { appState.selectedSidebarItem = .leads } label: {
                 HStack(spacing: 5) {
                     Text("Se alle leads i området")
                         .font(.appScaled(size: 12, weight: .semibold))
@@ -3134,12 +3294,8 @@ struct KartView: View {
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
-                    Text("Se alle")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(KrBrand.purpleLight)
-                }
-                .buttonStyle(.plain)
+                // «Se alle»-knapp fjernet 2026-07-17: var død (tom closure) og
+                // full aktivitetsliste har ingen flate enda.
             }
             if KartPreviewData.activities.isEmpty {
                 Text("Ingen aktiviteter registrert enda")
@@ -3202,7 +3358,8 @@ struct KartView: View {
             }
             Spacer()
             Button {
-                showToast("Åpner «Legg til lead»")
+                // 2026-07-17: var toast-only — åpner nå faktisk sheeten.
+                addLeadOpen = true
             } label: {
                 Text("+ Legg til lead")
                     .font(.appScaled(size: 12, weight: .semibold))
@@ -3323,18 +3480,22 @@ struct KartView: View {
                         Button { navigateTo(selectedLead) } label: {
                             Label("Naviger i Apple Maps", systemImage: "map.fill")
                         }
-                        Button { makeCall("+47 911 22 333") } label: {
-                            Label("Ring kontakt", systemImage: "phone.fill")
+                        if let phone = selectedLead.phoneOrDemo {
+                            Button { makeCall(phone) } label: {
+                                Label("Ring kontakt", systemImage: "phone.fill")
+                            }
                         }
-                        Button { sendEmail("post@nordicelektro.no", subject: "Oppfølging — \(selectedLead.name)") } label: {
-                            Label("Send e-post", systemImage: "envelope.fill")
-                        }
-                        Button {
-                            sendDelayNotice(to: "post@nordicelektro.no",
-                                            etaMin: navModeActive ? navETAMinutes : nil,
-                                            reason: navDelayReason)
-                        } label: {
-                            Label("Meld forsinkelse til møtet", systemImage: "clock.badge.exclamationmark.fill")
+                        if let mail = selectedLead.emailOrDemo {
+                            Button { sendEmail(mail, subject: "Oppfølging — \(selectedLead.name)") } label: {
+                                Label("Send e-post", systemImage: "envelope.fill")
+                            }
+                            Button {
+                                sendDelayNotice(to: mail,
+                                                etaMin: navModeActive ? navETAMinutes : nil,
+                                                reason: navDelayReason)
+                            } label: {
+                                Label("Meld forsinkelse til møtet", systemImage: "clock.badge.exclamationmark.fill")
+                            }
                         }
                         Divider()
                         Button { showStatusChange = true } label: {
@@ -3343,10 +3504,8 @@ struct KartView: View {
                         Button { showAssignSeller = true } label: {
                             Label("Tildel selger", systemImage: "person.crop.circle.fill")
                         }
-                        Divider()
-                        Button(role: .destructive) { showArchiveConfirm = true } label: {
-                            Label("Arkiver lead", systemImage: "archivebox")
-                        }
+                        // «Arkiver lead» fjernet 2026-07-17: bekreftelses-
+                        // dialogen var toast-fasade uten API.
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.appScaled(size: 12, weight: .bold))
@@ -3360,9 +3519,13 @@ struct KartView: View {
                 // Metadata-grid 2x2 (mer kompakt) — 4-kolonne på Mac
                 LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12),
                           alignment: .leading, spacing: 8) {
-                    metaItem(label: "Bransje",  value: "Elektro")
-                    metaItem(label: "Ansatt",   value: "25-50")
-                    metaItem(label: "Omsetning", value: "10-20 mill.")
+                    if DemoModeManager.isActiveNonisolated {
+                        // Demo-visningsdata — ekte bransje/ansatte/omsetning har
+                        // ingen kilde i LeadModel enda.
+                        metaItem(label: "Bransje",  value: "Elektro")
+                        metaItem(label: "Ansatt",   value: "25-50")
+                        metaItem(label: "Omsetning", value: "10-20 mill.")
+                    }
                     metaItem(label: "Sist aktivitet", value: selectedLead.lastActivity ?? "—")
                 }
 
@@ -3595,8 +3758,12 @@ struct KartView: View {
                 }
                 Spacer()
                 HStack(spacing: 6) {
-                    actionIcon("phone") { makeCall("+47 911 22 333") }
-                    actionIcon("envelope") { sendEmail("anders@nordicelektro.no") }
+                    if let phone = selectedLead.phoneOrDemo {
+                        actionIcon("phone") { makeCall(phone) }
+                    }
+                    if let mail = selectedLead.emailOrDemo {
+                        actionIcon("envelope") { sendEmail(mail) }
+                    }
                 }
             }
 
@@ -3765,15 +3932,9 @@ struct KartView: View {
         }
     }
 
+    // 2026-07-17: den simulerte nedlastingen («✓ lastet ned»-toast uten fil)
+    // fjernet — filene er demo-mock, raden er ren datavisning nå.
     private func fileRow(_ f: FileItemMock) -> some View {
-        // Pakke 10.1: simulert nedlasting med progress-toast. I prod byttes
-        // dette til URLSession-download-task med .progress-observation.
-        Button {
-            showToast("↓ Laster ned \(f.name)…")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-                showToast("✓ \(f.name) lastet ned")
-            }
-        } label: {
             HStack(spacing: 9) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 7)
@@ -3801,15 +3962,10 @@ struct KartView: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "arrow.down.circle")
-                    .font(.appScaled(size: 14, weight: .semibold))
-                    .foregroundStyle(KrBrand.purpleLight)
             }
             .padding(9)
             .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 
     private func actionIcon(_ name: String, action: @escaping () -> Void) -> some View {

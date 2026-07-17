@@ -268,6 +268,7 @@ struct LeadbookView: View {
     @State private var selectedTemplate: LeadbookTemplate = LeadbookData.firstOrPlaceholder
     @State private var selectedStep: Int = 1
     @State private var showNewTemplate = false
+    @State private var showNewObjection = false
     @State private var showLibrary = false
     @State private var showPerformance = false
     @State private var showVersions = false
@@ -383,6 +384,9 @@ struct LeadbookView: View {
             selectPondusTemplate(id: templateId, name: templateName)
         }
         .sheet(isPresented: $showNewTemplate) { NewTemplateSheet() }
+        // 2026-07-17: wiret «Ny innvending» i +-menyen til eksisterende
+        // NewObjectionSheet (var død knapp).
+        .sheet(isPresented: $showNewObjection) { NewObjectionSheet() }
         .sheet(isPresented: $showLibrary) {
             TemplateLibraryModal(selected: $selectedTemplate)
         }
@@ -577,15 +581,16 @@ struct LeadbookView: View {
     private func newButton(isCompact: Bool) -> some View {
         Menu {
             Button { showNewTemplate = true } label: { Label("Ny mal", systemImage: "doc.badge.plus") }
-            Button {} label: { Label("Ny innvending", systemImage: "shield.fill") }
+            // 2026-07-17: wiret til NewObjectionSheet (var død knapp).
+            Button { showNewObjection = true } label: { Label("Ny innvending", systemImage: "shield.fill") }
             Divider()
             // Innganger som tidligere lå i fanens egen avatar-meny
             // (SharedProfileAvatar) — bevart her etter at headeren ble
             // unifisert med Oversikt (delt LeadgridTabHeader).
             Button { showMinProfil = true } label: { Label("Min Pondus-profil", systemImage: "person.circle") }
             Button { showEcosystem = true } label: { Label("Pondus overalt", systemImage: "applewatch") }
-            Divider()
-            Button {} label: { Label("Tilpass Leadbook", systemImage: "slider.horizontal.3") }
+            // «Tilpass Leadbook» fjernet 2026-07-17: var død knapp — ingen
+            // tilpasnings-flate finnes.
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "plus").font(.appScaled(size: 12, weight: .bold))
@@ -719,16 +724,8 @@ struct LeadbookView: View {
             Text(subtitle).font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
-            Button {} label: {
-                Text("Få beskjed når klar")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(
-                        LinearGradient(colors: [LBrand.purple, LBrand.purpleLight], startPoint: .leading, endPoint: .trailing),
-                        in: Capsule()
-                    )
-            }.buttonStyle(.plain)
+            // «Få beskjed når klar» fjernet 2026-07-17: var død knapp —
+            // ingen varslings-flate for kommende innhold.
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 70)

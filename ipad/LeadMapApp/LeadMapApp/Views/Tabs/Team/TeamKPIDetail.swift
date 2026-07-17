@@ -168,7 +168,7 @@ struct TeamKPIDetailSheet: View {
                     .textCase(.uppercase)
                     .tracking(0.5)
                 HStack(alignment: .firstTextBaseline, spacing: 9) {
-                    Text(kpi.bigValue)
+                    Text(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue)
                         .font(.appScaled(size: 30, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
@@ -544,7 +544,7 @@ struct SetKPIGoalSheet: View {
                 Text(kpi.rawValue)
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Nåværende: \(kpi.bigValue) \(kpi.trend)")
+                Text("Nåværende: \(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue) \(kpi.trend)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
@@ -779,7 +779,7 @@ struct CreateKPIAlertSheet: View {
                 Text("Varsle når \(kpi.rawValue)")
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Nåværende: \(kpi.bigValue)")
+                Text("Nåværende: \(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
@@ -1188,7 +1188,7 @@ struct ShareKPIReportSheet: View {
                 Text("Del \(kpi.rawValue)-rapport")
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Innhold: \(kpi.bigValue) \(kpi.trend) for \(period.lowercased())")
+                Text("Innhold: \(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue) \(kpi.trend) for \(period.lowercased())")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }

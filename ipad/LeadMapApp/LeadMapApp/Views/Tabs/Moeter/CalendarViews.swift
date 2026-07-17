@@ -417,14 +417,44 @@ struct MonthCalendarView: View {
     let meetings: [Meeting]
     let upcoming: [UpcomingMeetingMini]
     var onBookMeeting: (Int) -> Void = { _ in }
-    @State private var selectedDay: Int? = 20
+
+    /// Første dag i måneden som vises. Chevronene blar ±1 måned; starter på
+    /// inneværende måned (var hardkodet «Mai 2026» før 2026-07-17).
+    @State private var displayedMonth: Date = {
+        let cal = Calendar.current
+        return cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
+    }()
+    @State private var selectedDay: Int?
 
     private let weekdayLabels = ["M", "T", "O", "T", "F", "L", "S"]
-    private let monthName = "Mai 2026"
-    // Mock: mai 2026 starter på onsdag → første rad: _ _ 1 2 3 4 5
-    private let firstWeekdayOffset = 2   // 0=man, 2=ons
-    private let daysInMonth = 31
-    private let today = 20
+
+    private var cal: Calendar {
+        var c = Calendar(identifier: .iso8601)   // mandag først, matcher M T O T F L S
+        c.locale = Locale(identifier: "nb_NO")
+        return c
+    }
+
+    private var monthName: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "MMMM yyyy"
+        return df.string(from: displayedMonth).capitalized
+    }
+
+    /// 0=man … 6=søn for månedens 1. dag.
+    private var firstWeekdayOffset: Int {
+        (cal.component(.weekday, from: displayedMonth) + 5) % 7
+    }
+
+    private var daysInMonth: Int {
+        cal.range(of: .day, in: .month, for: displayedMonth)?.count ?? 30
+    }
+
+    /// Dagens dato-tall når vist måned ER inneværende — ellers nil (ingen ring).
+    private var today: Int? {
+        cal.isDate(displayedMonth, equalTo: Date(), toGranularity: .month)
+            ? cal.component(.day, from: Date()) : nil
+    }
 
     private var weeks: [[Int?]] {
         var cells: [Int?] = Array(repeating: nil, count: firstWeekdayOffset)
@@ -433,21 +463,31 @@ struct MonthCalendarView: View {
         return stride(from: 0, to: cells.count, by: 7).map { Array(cells[$0..<min($0+7, cells.count)]) }
     }
 
-    // Count events pr dag (mock: 20=5, 21=2, 22=2, 23=1, ellers 0-1)
+    /// Ekte møter (dato-bærende) i vist måned, gruppert pr dag.
+    private var realMeetingsByDay: [Int: [UpcomingMeetingMini]] {
+        Dictionary(grouping: upcoming.filter { u in
+            guard let d = u.date else { return false }
+            return cal.isDate(d, equalTo: displayedMonth, toGranularity: .month)
+        }) { cal.component(.day, from: $0.date ?? Date()) }
+    }
+
     private func eventCount(_ day: Int) -> Int {
-        if day == today { return meetings.count }
-        if day == 21 { return 2 }
-        if day == 22 { return 2 }
-        if day == 23 { return 1 }
-        if [6, 13, 27].contains(day) { return 1 }
-        if [8, 15].contains(day) { return 3 }
-        if [16].contains(day) { return 2 }
-        return 0
+        if DemoModeManager.isActiveNonisolated {
+            // Demo-seed: dagens dato får agenda-listen, faste dager får dots.
+            if day == today { return meetings.count }
+            if [21, 22, 16].contains(day) { return 2 }
+            if [6, 13, 23, 27].contains(day) { return 1 }
+            if [8, 15].contains(day) { return 3 }
+            return 0
+        }
+        return realMeetingsByDay[day]?.count ?? 0
     }
 
     private func eventValue(_ day: Int) -> Int {
-        let c = eventCount(day)
-        return c * 250_000  // mock kr/møte
+        if DemoModeManager.isActiveNonisolated {
+            return eventCount(day) * 250_000  // demo-seed kr/møte
+        }
+        return realMeetingsByDay[day]?.reduce(0) { $0 + $1.valueNok } ?? 0
     }
 
     var body: some View {
@@ -461,11 +501,12 @@ struct MonthCalendarView: View {
             }
             if let d = selectedDay { dayDetailFooter(d) }
         }
+        .onAppear { if selectedDay == nil { selectedDay = today } }
     }
 
     private var monthHeader: some View {
         HStack {
-            Button {} label: {
+            Button { shiftMonth(-1) } label: {
                 Image(systemName: "chevron.left")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(CBrand.purpleLight)
@@ -478,7 +519,7 @@ struct MonthCalendarView: View {
                 .font(.appScaled(size: 14, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
-            Button {} label: {
+            Button { shiftMonth(1) } label: {
                 Image(systemName: "chevron.right")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(CBrand.purpleLight)
@@ -486,6 +527,14 @@ struct MonthCalendarView: View {
                     .background(CBrand.cardHi, in: Circle())
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private func shiftMonth(_ delta: Int) {
+        guard let next = cal.date(byAdding: .month, value: delta, to: displayedMonth) else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            displayedMonth = next
+            selectedDay = today   // dagens dato når vi lander på inneværende, ellers ingen
         }
     }
 
@@ -561,6 +610,14 @@ struct MonthCalendarView: View {
         .buttonStyle(.plain)
     }
 
+    /// «juli»-delen av footer-datoen, følger vist måned.
+    private var shortMonth: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "MMM"
+        return df.string(from: displayedMonth).replacingOccurrences(of: ".", with: "")
+    }
+
     private func eventDotColor(day: Int, index: Int) -> Color {
         if day == today {
             let colors: [Color] = [CBrand.purpleLight, CBrand.blue, CBrand.green, CBrand.orange, CBrand.red]
@@ -583,7 +640,7 @@ struct MonthCalendarView: View {
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
-                Text(day == today ? "I dag · 20. mai" : "\(day). mai")
+                Text(day == today ? "I dag · \(day). \(shortMonth)" : "\(day). \(shortMonth)")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text(count == 0 ? "Ingen møter" : "\(count) møte\(count == 1 ? "" : "r") · NOK \(value/1000)k forventet")

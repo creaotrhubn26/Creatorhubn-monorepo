@@ -534,8 +534,10 @@ struct PhoneMerTab: View {
                            title: "Team", subtitle: "Områder, pipeline og aktivitet")
                     merRow(.leadbook, icon: "book.pages.fill", color: .purple,
                            title: "Leadbook", subtitle: "Maler, Pondus og innsikt")
-                    merRow(.salgsledelse, icon: "rosette", color: .orange,
-                           title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
+                    if ["admin", "salgssjef"].contains(state.roleInOrg ?? "") {
+                        merRow(.salgsledelse, icon: "rosette", color: .orange,
+                               title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
+                    }
                     merRow(.leadgridGo, icon: "car.circle.fill", color: .green,
                            title: "Leadgrid Go", subtitle: "Elektronisk kjørebok og kjøretøy")
                     merRow(.kvalitet, icon: "checkmark.seal.fill", color: .teal,
@@ -877,7 +879,13 @@ struct MainSidebarView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             Section("Hovedfaner") {
-                ForEach(SidebarItem.allCases) { item in
+                // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
+                // vakter i tillegg selv mot deep-link/persistert valg).
+                let visibleItems = SidebarItem.allCases.filter { item in
+                    item != .salgsledelse
+                        || ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
+                }
+                ForEach(visibleItems) { item in
                     sidebarRow(
                         item,
                         badge: item == .leads ? state.leadgridUnreadCount : 0,

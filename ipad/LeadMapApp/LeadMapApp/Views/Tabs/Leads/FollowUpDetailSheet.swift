@@ -25,7 +25,6 @@ private enum FuBrand {
 struct FollowUpDetailSheet: View {
     let lead: LeadRow
     @Environment(\.dismiss) private var dismiss
-    @State private var snoozeMenuOpen: Bool = false
     @State private var logActivityOpen: Bool = false
     @State private var meetingOpen: Bool = false
     @State private var smsOpen: Bool = false
@@ -80,7 +79,9 @@ struct FollowUpDetailSheet: View {
                     agendaCard
                     previousActivityCard
                     aiSuggestionCard
-                    dangerZone
+                    // dangerZone («Slett oppfølging») fjernet 2026-07-17: var
+                    // død knapp — destruktiv handling uten bekreftelses-flyt
+                    // eller API.
                     Color.clear.frame(height: 100)
                 }
                 .padding(20)
@@ -93,17 +94,9 @@ struct FollowUpDetailSheet: View {
                     Button("Lukk") { dismiss() }
                         .foregroundStyle(FuBrand.purpleLight)
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button { } label: { Label("Rediger oppfølging", systemImage: "pencil") }
-                        Button { } label: { Label("Tilordne til annen selger", systemImage: "person.crop.circle.fill") }
-                        Button { } label: { Label("Del lenke", systemImage: "square.and.arrow.up") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.appScaled(size: 18))
-                            .foregroundStyle(FuBrand.purpleLight)
-                    }
-                }
+                // Ellipsis-menyen («Rediger oppfølging» / «Tilordne til annen
+                // selger» / «Del lenke») fjernet 2026-07-17: var døde knapper —
+                // ingen rediger-/tilordne-/lenke-flate for oppfølginger her.
             }
             .toolbarBackground(FuBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -338,12 +331,8 @@ struct FollowUpDetailSheet: View {
                         .foregroundStyle(FuBrand.textSecondary)
                 }
                 Spacer()
-                Button { } label: {
-                    Image(systemName: "arrow.right.circle")
-                        .font(.appScaled(size: 14))
-                        .foregroundStyle(FuBrand.purpleLight)
-                }
-                .buttonStyle(.plain)
+                // Pil-knappen («åpne aktivitet») fjernet 2026-07-17: var død
+                // knapp — ingen aktivitets-detaljflate å navigere til.
             }
             .padding(10)
             .background(FuBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
@@ -380,55 +369,13 @@ struct FollowUpDetailSheet: View {
         )
     }
 
-    // MARK: Danger zone
-
-    private var dangerZone: some View {
-        Button { } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash.fill")
-                    .font(.appScaled(size: 11, weight: .semibold))
-                Text("Slett oppfølging")
-                    .font(.appScaled(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(FuBrand.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
-            .background(FuBrand.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(FuBrand.red.opacity(0.30), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: Action-bar bunn
 
     private var actionBar: some View {
         HStack(spacing: 8) {
-            Menu {
-                Button { } label: { Label("Utsett 30 min",  systemImage: "clock") }
-                Button { } label: { Label("Utsett 1 time",   systemImage: "clock") }
-                Button { } label: { Label("Utsett til i morgen", systemImage: "calendar") }
-                Button { } label: { Label("Utsett 3 dager",  systemImage: "calendar") }
-                Button { } label: { Label("Utsett 1 uke",    systemImage: "calendar") }
-                Divider()
-                Button { } label: { Label("Velg dato/tid…",  systemImage: "calendar.badge.clock") }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                    Text("Utsett")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.appScaled(size: 9))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 13)
-                .background(FuBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
-                .overlay(RoundedRectangle(cornerRadius: 11).stroke(FuBrand.stroke, lineWidth: 1))
-            }
-
+            // «Utsett»-menyen (30 min/1 time/i morgen/3 dager/1 uke/velg
+            // dato) fjernet 2026-07-17: var døde knapper — ingen snooze-API
+            // for oppfølginger.
             Button { logActivityOpen = true } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")

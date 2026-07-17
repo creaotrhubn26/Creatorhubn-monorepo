@@ -91,6 +91,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     case leadgridGoDashboard = "Leadgrid Go · Team-dashbord"
     // Kvalitet-avdelingen — tilleggstjeneste (salgsverifisering). Gate GRUPPEN.
     case leadgridKvalitet = "Kvalitet · Salgsverifisering"
+    // Tettsted-tildeling (2026-07-17) — SSB tettbygde strøk under kommunenivå;
+    // teamleder fordeler tettsteder til selgere i «Tildel område».
+    case omradeTildeling = "Områder · Tettsted-tildeling"
 
     var id: String { rawValue }
 
@@ -145,13 +148,15 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridGoDashboard: return "chart.bar.doc.horizontal.fill"
         // Kvalitet
         case .leadgridKvalitet: return "checkmark.seal.fill"
+        // Områder
+        case .omradeTildeling: return "map.circle.fill"
         }
     }
 
     var group: Group {
         switch self {
         case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter: return .kjerne
-        case .analyse, .team, .salgsledelse: return .analyseTeam
+        case .analyse, .team, .salgsledelse, .omradeTildeling: return .analyseTeam
         case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler, .leadbookInnsikt: return .leadbook
         case .varsler, .tilganger, .integrasjoner, .fakturering: return .admin
         case .teamExportCSV, .teamExportPDF, .teamImportExcel, .teamShareReport,

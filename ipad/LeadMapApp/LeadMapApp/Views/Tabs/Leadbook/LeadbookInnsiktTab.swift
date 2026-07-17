@@ -122,18 +122,8 @@ struct LeadbookInnsiktView: View {
                     .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 }
-                Button {
-                    flash("Ukerapport sendt til team")
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "paperplane.fill").font(.appScaled(size: 11, weight: .bold))
-                        Text("Send rapport").font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                }.buttonStyle(.plain)
+                // «Send rapport» fjernet 2026-07-17: var død knapp — kun
+                // toast, ingen rapport-utsendelse bak.
                 Button { showFullReport = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
@@ -178,29 +168,9 @@ struct LeadbookInnsiktView: View {
                     .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(3)
-                HStack(spacing: 8) {
-                    Button {
-                        flash("Mester-mønster delt med teamet")
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "person.3.fill").font(.appScaled(size: 11, weight: .bold))
-                            Text("Rull ut til team").font(.appScaled(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(LBrand.green, in: Capsule())
-                    }.buttonStyle(.plain)
-                    Button {} label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "play.fill").font(.appScaled(size: 10, weight: .bold))
-                            Text("Hør Maria's samtale").font(.appScaled(size: 12, weight: .semibold))
-                        }
-                        .foregroundStyle(LBrand.purpleLight)
-                        .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(LBrand.purple.opacity(0.18), in: Capsule())
-                        .overlay(Capsule().stroke(LBrand.purple.opacity(0.4), lineWidth: 1))
-                    }.buttonStyle(.plain)
-                }
+                // «Rull ut til team» + «Hør Maria's samtale» fjernet
+                // 2026-07-17: var døde knapper — kun toast/tom closure,
+                // ingen utrullings- eller avspillings-flate.
             }
             Spacer(minLength: 0)
         }
@@ -483,12 +453,8 @@ struct LeadbookInnsiktView: View {
                         .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
-                Button {} label: {
-                    HStack(spacing: 4) {
-                        Text("Se alle").font(.appScaled(size: 11, weight: .semibold))
-                        Image(systemName: "arrow.up.right").font(.appScaled(size: 9, weight: .bold))
-                    }.foregroundStyle(LBrand.purpleLight)
-                }.buttonStyle(.plain)
+                // «Se alle» fjernet 2026-07-17: var død knapp — ingen full
+                // leaderboard-flate å navigere til.
             }
             VStack(spacing: 8) {
                 ForEach(Array(leaderboard.enumerated()), id: \.element.id) { idx, seller in
@@ -737,21 +703,8 @@ struct FullInsiktReportSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
-                            Text("Eksporter PDF").font(.appScaled(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(
-                            LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                           startPoint: .leading, endPoint: .trailing),
-                            in: Capsule()
-                        )
-                    }.buttonStyle(.plain)
-                }
+                // «Eksporter PDF» fjernet 2026-07-17: var død knapp —
+                // rapporten er placeholder uten PDF-eksport.
             }
         }
     }

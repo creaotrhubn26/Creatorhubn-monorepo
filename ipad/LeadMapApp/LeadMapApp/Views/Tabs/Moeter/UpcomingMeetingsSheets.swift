@@ -68,10 +68,9 @@ struct UpcomingMeetingDetailSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
+                        // Reschedule/Inviter/Avlys fjernet 2026-07-17: var døde
+                        // knapper — møte-mutasjon har ingen backend-flate enda.
                         Button { showLogNote = true } label: { Label("Logg notat", systemImage: "square.and.pencil") }
-                        Button {} label: { Label("Reschedule", systemImage: "calendar.badge.clock") }
-                        Button {} label: { Label("Inviter andre", systemImage: "person.badge.plus") }
-                        Button(role: .destructive) {} label: { Label("Avlys", systemImage: "xmark.circle.fill") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .foregroundStyle(UBrand.purpleLight)
@@ -308,8 +307,8 @@ struct UpcomingMeetingDetailSheet: View {
                         .foregroundStyle(UBrand.textSecondary)
                 }
                 Spacer()
-                iconCircleBtn(icon: "phone.fill", color: UBrand.green)
-                iconCircleBtn(icon: "envelope.fill", color: UBrand.blue)
+                // Ring/e-post-ikoner fjernet 2026-07-17: var døde — møtemodellen
+                // har ingen kontaktinfo-felter å ringe/maile enda.
             }
         }
         .padding(14)
@@ -355,14 +354,8 @@ struct UpcomingMeetingDetailSheet: View {
                     .foregroundStyle(UBrand.textSecondary)
             }
             Spacer()
-            Button {} label: {
-                Text("Åpne")
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(upcoming.prepStatus.color, in: Capsule())
-            }
-            .buttonStyle(.plain)
+            // «Åpne»-knapp fjernet 2026-07-17: var død — full prep-modal
+            // åpnes fra Møter-fanens hovedliste, ikke herfra.
         }
         .padding(12)
         .background(UBrand.card, in: RoundedRectangle(cornerRadius: 12))
@@ -555,16 +548,8 @@ struct AllUpcomingMeetingsSheet: View {
                     Button("Lukk") { dismiss() }
                         .foregroundStyle(UBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Eksporter til kalender", systemImage: "calendar.badge.plus") }
-                        Button {} label: { Label("Send som e-post", systemImage: "envelope") }
-                        Button {} label: { Label("Last ned som PDF", systemImage: "doc.fill") }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(UBrand.purpleLight)
-                    }
-                }
+                // Eksport-meny fjernet 2026-07-17: alle tre valgene var døde
+                // (kalender/e-post/PDF har ingen implementasjon enda).
             }
             .toolbarBackground(UBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

@@ -1105,7 +1105,6 @@ struct StakeholderDetailSheet: View {
                     hero
                     statsRow
                     notesCard
-                    actionsCard
                     Color.clear.frame(height: 16)
                 }
                 .padding(20)
@@ -1198,13 +1197,8 @@ struct StakeholderDetailSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(PBrand.stroke, lineWidth: 1))
     }
 
-    private var actionsCard: some View {
-        HStack(spacing: 9) {
-            actionBtn(label: "Ring", icon: "phone.fill", color: PBrand.green)
-            actionBtn(label: "E-post", icon: "envelope.fill", color: PBrand.blue)
-            actionBtn(label: "Notat", icon: "square.and.pencil", color: PBrand.purpleLight)
-        }
-    }
+    // actionsCard (Ring/E-post/Notat) fjernet 2026-07-17: alle tre var døde
+    // knapper — prep-modellen har ingen kontaktinfo å handle på enda.
 
     private func actionBtn(label: String, icon: String, color: Color) -> some View {
         Button {} label: {
@@ -1247,16 +1241,7 @@ struct PrepInsightsModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Del med team", systemImage: "person.2.fill") }
-                        Button {} label: { Label("Kopier som notat", systemImage: "doc.on.doc") }
-                        Button {} label: { Label("Skriv ut møteforberedelse", systemImage: "printer.fill") }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(PBrand.purpleLight)
-                    }
-                }
+                // Del-meny fjernet 2026-07-17: alle tre valgene var døde.
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -1390,12 +1375,7 @@ struct PrepStakeholdersModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
-                        Image(systemName: "person.badge.plus")
-                            .foregroundStyle(PBrand.purpleLight)
-                    }
-                }
+                // «Legg til person»-knapp fjernet 2026-07-17: var død.
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -1458,18 +1438,7 @@ struct PrepChecklistModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Sortér etter prioritet", systemImage: "flame.fill") }
-                        Button {} label: { Label("Sortér etter tid", systemImage: "clock.fill") }
-                        Button {} label: { Label("Skjul fullførte", systemImage: "eye.slash.fill") }
-                        Divider()
-                        Button {} label: { Label("Tøm sjekkliste", systemImage: "trash") }
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .foregroundStyle(PBrand.purpleLight)
-                    }
-                }
+                // Sortér-meny fjernet 2026-07-17: alle fire valgene var døde.
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
