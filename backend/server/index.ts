@@ -637,6 +637,10 @@ import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-
 import { registerLeadMapCampaignRoutes } from "./market-intelligence/lead-map-campaign-routes.js";
 import { registerSuperAdminEmergencyLoginRoutes } from "./super-admin-emergency-login-routes.js";
 import {
+  linkOrgStripeCustomer,
+  backfillOrgStripeCustomers,
+} from "./creatorhub-stripe-org-link.js";
+import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
 } from "./customer-success-service.js";
@@ -1600,7 +1604,19 @@ app.post(
           // still work end-to-end.
           const agentResult = await handleAgentCheckoutSessionCompleted(pool, session);
           if (!agentResult.matched) {
-            await syncCreatorHubStripeCheckoutSession(session);
+            const chRecord = await syncCreatorHubStripeCheckoutSession(session);
+            // Persister org→Stripe-kunde-koblingen (Fase C-forutsetning): plattform-
+            // checkout lagrer den ellers kun i KV. Ikke-destruktiv + fire-and-forget.
+            if (chRecord?.paymentCompleted && chRecord.stripeCustomerId) {
+              try {
+                await linkOrgStripeCustomer(pool, {
+                  userId: chRecord.userId,
+                  stripeCustomerId: chRecord.stripeCustomerId,
+                });
+              } catch (linkErr) {
+                console.warn("[creatorhub-stripe-org-link] webhook link failed:", (linkErr as Error).message);
+              }
+            }
           }
           break;
         }
@@ -27712,6 +27728,35 @@ async function syncCreatorHubStripeCheckoutSession(
     stripeCustomerId: record.stripeCustomerId,
   });
 }
+
+// ── POST /api/superadmin/creatorhub/backfill-org-stripe-links ──────────────
+// Engangs (idempotent) backfill av organizations.stripe_customer_id fra
+// eksisterende plattform-checkout-records i KV. Fase C-forutsetning: uten denne
+// koblingen kan ikke AI-overage faktureres for kunder som abonnerte FØR
+// webhook-hooken ble lagt til. Ikke-destruktiv (rører aldri en org som allerede
+// har en kunde-id) og skriver ALDRI til Stripe. Kun super_admin.
+app.post("/api/superadmin/creatorhub/backfill-org-stripe-links", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
+    return res.status(403).json({ error: "Krever super-admin" });
+  }
+  try {
+    const entries = await compatStoreListByPrefix<CreatorHubStripeCheckoutSessionRecord>(
+      CREATORHUB_STRIPE_CHECKOUT_RECORD_PREFIX,
+    );
+    const records = entries.map((e) => ({
+      userId: e.value?.userId,
+      stripeCustomerId: e.value?.stripeCustomerId,
+      paymentCompleted: e.value?.paymentCompleted,
+    }));
+    const summary = await backfillOrgStripeCustomers(pool, records);
+    return res.json({ scannedRecords: entries.length, ...summary });
+  } catch (err) {
+    console.warn("[creatorhub-stripe-org-link] backfill failed:", (err as Error).message);
+    return res.status(500).json({ error: "backfill_failed", message: (err as Error).message });
+  }
+});
 
 function getStripeInvoicePaymentIntent(
   invoice: Stripe.Invoice,
