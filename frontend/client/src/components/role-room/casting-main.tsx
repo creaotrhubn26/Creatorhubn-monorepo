@@ -26,6 +26,9 @@ import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
 import LeadgridDealsPage from '@/pages/leadgrid-deals';
 import LeadgridSkaffeLeadsGuidePage from '@/pages/leadgrid-skaffe-leads-guide';
 import LeadgridFeltsalgSalgsteamPage from '@/pages/leadgrid-feltsalg-salgsteam';
+import LeadgridAkademiPage from '@/pages/leadgrid-akademi';
+import LeadgridAkademiSamarbeidPage from '@/pages/leadgrid-akademi-samarbeid-salg-marked';
+import LeadgridAkademiVelgeCrmPage from '@/pages/leadgrid-akademi-velge-crm-feltsalg';
 import BlogIndexPage from '@/pages/blog-index';
 import BlogPostPage from '@/pages/blog-post';
 import AgencyLandingPage from '@/pages/agency-landing';
@@ -283,6 +286,18 @@ function CastingStandaloneAppContent() {
   if (leadgridPath === '/leadgrid/feltsalg-for-salgsteam'
       || leadgridPath === '/leadgrid/feltsalg-for-salgsteam/') {
     return <LeadgridFeltsalgSalgsteamPage />;
+  }
+  // Leadgrid Akademi — redaksjonelt læringstilbud (doc 13). Offentlig.
+  if (leadgridPath === '/leadgrid/akademi' || leadgridPath === '/leadgrid/akademi/') {
+    return <LeadgridAkademiPage />;
+  }
+  if (leadgridPath === '/leadgrid/akademi/samarbeid-salg-marked'
+      || leadgridPath === '/leadgrid/akademi/samarbeid-salg-marked/') {
+    return <LeadgridAkademiSamarbeidPage />;
+  }
+  if (leadgridPath === '/leadgrid/akademi/velge-crm-feltsalg'
+      || leadgridPath === '/leadgrid/akademi/velge-crm-feltsalg/') {
+    return <LeadgridAkademiVelgeCrmPage />;
   }
 
   if (leadgridPath === '/leadgrid' || leadgridPath === '/leadgrid/') {
