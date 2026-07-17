@@ -1950,6 +1950,11 @@ async function ensureFirmwareUpdatesCompatibilityColumns(): Promise<void> {
 const KNOWN_ORIGINS = new Set([
   'https://creatorhubn.com',
   'https://www.creatorhubn.com',
+  // Admin-dedikert host (Control Center-cockpit). Serveres av samme Vercel-
+  // prosjekt (same-origin /api/*-rewrite), men enkelte klient-kall bruker
+  // hardkodet backend-URL → CORS-subjekt. Uten denne CORS-blokkeres bl.a.
+  // /api/auth/user på admin.creatorhubn.com (innlogging feiler).
+  'https://admin.creatorhubn.com',
   'https://theroleroom.com',
   'https://www.theroleroom.com',
   'http://localhost:5001',
