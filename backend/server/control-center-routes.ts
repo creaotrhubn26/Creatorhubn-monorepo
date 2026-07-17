@@ -30,6 +30,10 @@ import {
   isSentryReadConfigured,
   type SentryIssue,
 } from "./control-center-sentry-client.js";
+import {
+  fetchAllDeploys,
+  getDeployProviderStatus,
+} from "./control-center-deploys-client.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -396,6 +400,34 @@ export function setupControlCenterRoutes(deps: Deps): void {
     } catch (err) {
       console.error("[control-center] reopen feilet:", err);
       return res.status(500).json({ error: "Kunne ikke gjenåpne hendelse" });
+    }
+  });
+
+  // ── GET /api/control-center/deploys ────────────────────────────────
+  // Fase 2: deploy-innsikt. Read-only aggregat av Render + GitHub Actions
+  // + Vercel siste deploys. Hver provider uavhengig gated (mangler token →
+  // tom liste, ingen 500). Ingen provider-WRITE (trigge/rollback = Fase 4).
+  app.get("/api/control-center/deploys", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const limit = Number(req.query.limit);
+    try {
+      const result = await fetchAllDeploys(
+        Number.isFinite(limit) && limit > 0 ? Math.min(limit, 50) : 15,
+      );
+      return res.json({
+        ...result,
+        anyConfigured: result.providers.render || result.providers.github || result.providers.vercel,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn("[control-center/deploys] failed:", (err as Error).message);
+      return res.json({
+        providers: getDeployProviderStatus(),
+        deploys: [],
+        anyConfigured: false,
+        generatedAt: new Date().toISOString(),
+      });
     }
   });
 
