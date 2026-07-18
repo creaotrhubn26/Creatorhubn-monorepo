@@ -24,6 +24,7 @@ import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
+import { buildInfographicUrl, emailImgTag } from "./infographic-share.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -433,6 +434,23 @@ function buildReportEmailHtml(opts: {
   wonCount: string; lostCount: string; totalWonKr: string; winRatePct: string;
   filename: string;
 }): string {
+  // Merkevaret KPI-infographic (kpi-grid) generert fra rapport-tallene via delings-primitiven.
+  // Vises som visuell banner øverst; KPI-tabellen under er tekst-fallback (e-post-bilder blokkeres ofte).
+  const backendBase = (process.env.BACKEND_BASE_URL || "https://creatorhub-backend-rtbl.onrender.com").replace(/\/+$/, "");
+  const infoUrl = buildInfographicUrl({
+    base: backendBase, tpl: "kpi-grid", ws: "leadgrid", accent: opts.primaryColor,
+    data: {
+      label: "Ukens salgs-rapport",
+      cards: [
+        { value: opts.wonCount, label: "Vunnet" },
+        { value: opts.lostCount, label: "Tapt" },
+        { value: opts.totalWonKr, label: "Sum vunnet" },
+        { value: opts.winRatePct, label: "Win-rate" },
+      ],
+    },
+    w: 1200, h: 720,
+  });
+  const infoImg = emailImgTag(infoUrl, { width: 552, alt: `Salgs-rapport: ${opts.wonCount} vunnet · ${opts.winRatePct} win-rate` });
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f8;
 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f4f4f8;">
@@ -452,6 +470,9 @@ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
         ${opts.orgName}
       </h1>
       <div style="color:#888;font-size:12px;margin-top:4px;">${opts.periodLabel}</div>
+    </td></tr>
+    <tr><td style="padding:16px 24px 0 24px;">
+      ${infoImg}
     </td></tr>
     <tr><td style="padding:16px 24px;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
