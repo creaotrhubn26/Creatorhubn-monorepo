@@ -1,0 +1,42 @@
+name: Leadgrid AI usage billing
+
+# Kjører daglig 05:15 UTC (kvarteret etter API-overage). Aggregerer
+# gårsdagens AI-struktureringskall per org og sender Stripe meter-events
+# (leadgrid_ai_structure_call, 5 kr/kall). Markerer rader som billed.
+
+on:
+  schedule:
+    - cron: '15 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-ai-usage-billing
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Bill AI usage
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/leadbook/ai-usage/bill")
+          BODY=$(echo "$RESP" | head -n -1)
+          CODE=$(echo "$RESP" | tail -n 1)
+          echo "HTTP $CODE"
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::AI-usage-billing feilet (HTTP $CODE)"
+            exit 1
+          fi
