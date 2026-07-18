@@ -452,6 +452,45 @@ export default function RoleRoomAgentDialog({
       setGa4SetupBusy(false);
     }
   };
+  // GSC via API (to-fase): pending-svar bærer metataggen som må i <head>
+  // før verifisering kan fullføres — deretter klikkes knappen igjen.
+  const [gscSetupBusy, setGscSetupBusy] = useState(false);
+  const [gscSetupOutcome, setGscSetupOutcome] = useState<{ ok: boolean; text: string; metaTag?: string | null } | null>(null);
+  const runGscApiSetup = async (domain: string) => {
+    setGscSetupBusy(true);
+    setGscSetupOutcome(null);
+    try {
+      const r = await fetch('/api/role-room/agent/gsc-setup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || !body?.success) {
+        setGscSetupOutcome({ ok: false, text: body?.error ?? `GSC-oppsett feilet (${r.status}).` });
+        return;
+      }
+      if (body.verification === 'pending') {
+        setGscSetupOutcome({
+          ok: true,
+          text: 'Domenet er ikke verifisert ennå: legg metataggen under i <head>, deploy, og klikk knappen igjen.',
+          metaTag: body.verificationMetaTag,
+        });
+        return;
+      }
+      const parts = [
+        body.verification === 'verified_now' ? 'Domenet verifisert' : 'Allerede verifisert',
+        body.siteAdded ? 'lagt til i Search Console' : null,
+        body.sitemapSubmitted ? `sitemap meldt inn (${body.sitemapUrl})` : null,
+      ].filter(Boolean);
+      setGscSetupOutcome({ ok: true, text: `${parts.join(' · ')}.` });
+    } catch (e) {
+      setGscSetupOutcome({ ok: false, text: String(e) });
+    } finally {
+      setGscSetupBusy(false);
+    }
+  };
   // Derived saved-state — survives reopen, clears only when a new result object arrives.
   const projectCreatedFromResult = !!result && createdResultRef === result;
   const resultAppliedToProject = !!result && appliedResultRef === result;
@@ -1759,6 +1798,32 @@ export default function RoleRoomAgentDialog({
                     {ga4SetupOutcome && (
                       <Alert severity={ga4SetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
                         {ga4SetupOutcome.text}
+                      </Alert>
+                    )}
+                    {(() => {
+                      const gscCap = result.siteSetupAudit?.capabilities.find((c) => c.key === 'gsc');
+                      if (gscCap?.status === 'implemented') return null;
+                      return (
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Button size="small" variant="outlined" disabled={gscSetupBusy}
+                            onClick={() => void runGscApiSetup(result.siteSetupAudit!.url)}
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#bfdbfe', borderColor: 'rgba(59,130,246,0.4)' }}>
+                            {gscSetupBusy ? 'Setter opp GSC…' : 'Verifiser i Search Console + meld inn sitemap (via API)'}
+                          </Button>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
+                            To-fase hvis domenet ikke er verifisert: du får metataggen først.
+                          </Typography>
+                        </Stack>
+                      );
+                    })()}
+                    {gscSetupOutcome && (
+                      <Alert severity={gscSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
+                        {gscSetupOutcome.text}
+                        {gscSetupOutcome.metaTag ? (
+                          <Box component="pre" sx={{ m: 0, mt: 0.5, p: 0.75, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.6)', fontSize: '0.72rem', overflowX: 'auto', fontFamily: 'monospace' }}>
+                            {gscSetupOutcome.metaTag}
+                          </Box>
+                        ) : null}
                       </Alert>
                     )}
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
