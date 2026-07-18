@@ -20,6 +20,7 @@ import { SOCIAL_TEMPLATE_IDS } from './infographicSocialTemplates';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import CampaignDirectorView from './CampaignDirectorView';
+import { materializePost } from './campaignDirector';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -1557,7 +1558,17 @@ export function InfographicStudioView(
           brand={{ accent, ink: '#1f2d4a', logo: logo || undefined }}
           brandName={project?.name || 'Merkevare'}
           onClose={() => setShowCampaign(false)}
-          onUsePosts={(c) => { setShowCampaign(false); setMsg(`Kampanje klar: ${c.posts.length} innlegg — materialisering til scener kommer i neste fase.`); }}
+          onUsePosts={(c) => {
+            // Materialiser hver post → en on-brand scene (riktig sosial-mal per pilar),
+            // sekvensielt i tid. Erstatter scenene (som batch-fra-data), rediger + Send to Resolve.
+            const built = c.posts.map((p, i) => {
+              const m = materializePost(p, project?.name || 'Merkevare');
+              const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === m.tplId) || INFOGRAPHIC_TEMPLATES[0];
+              return { ...newScene(t.id, i * effDur(scene, t)), values: m.values, accent, logo };
+            });
+            setScenes(built); setSel(0); setShowCampaign(false);
+            setMsg(`Kampanje materialisert: ${built.length} on-brand scener — rediger + Send to Resolve.`);
+          }}
         />
       )}
       {/* flexWrap: header-knappene (Preview/Spill alt/New Scene/Send to Resolve) tvang

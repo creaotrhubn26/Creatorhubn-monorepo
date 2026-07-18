@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 // Unngå å laste Tauri via claudeProxyService — vi tester kun den rene logikken.
 vi.mock('../../services/claudeProxyService.js', () => ({ claudeProxyService: { send: async () => '' } }));
 
-import { extractJson, normalizePosts, computePillarMix } from './campaignDirector.js';
+import { extractJson, normalizePosts, computePillarMix, materializePost, type CampaignPost } from './campaignDirector.js';
+
+const mkPost = (over: Partial<CampaignPost> = {}): CampaignPost => ({
+  angle: 'A', pillar: 'proof', platform: 'tiktok', format: '9:16', week: 1,
+  kpi: { label: 'Vekst', value: '+248 %' }, hooks: [{ text: 'Hook', lever: 'L' }],
+  caption: 'cap', hashtags: ['#a'], cta: 'Book', ...over,
+});
 
 describe('extractJson', () => {
   it('parser array med fence + etterfølgende prosa', () => {
@@ -45,6 +51,29 @@ describe('normalizePosts — kvalitets-vokter', () => {
   });
   it('ikke-array → tomt', () => {
     expect(normalizePosts(null, 4)).toEqual([]);
+  });
+});
+
+describe('materializePost — pilar → mal + verdier', () => {
+  it('proof → social-stat med kicker/value/label', () => {
+    const m = materializePost(mkPost({ pillar: 'proof' }));
+    expect(m.tplId).toBe('social-stat');
+    expect(m.values.value).toBe('+248 %');
+    expect(m.values.kicker).toBe('Vekst');
+  });
+  it('offer → social-announce med cta', () => {
+    const m = materializePost(mkPost({ pillar: 'offer', cta: 'Book demo →' }));
+    expect(m.tplId).toBe('social-announce');
+    expect(m.values.cta).toBe('Book demo →');
+  });
+  it('social_proof → social-quote med brandName som author', () => {
+    const m = materializePost(mkPost({ pillar: 'social_proof', caption: 'Beste valg' }), 'Dentum');
+    expect(m.tplId).toBe('social-quote');
+    expect(m.values.quote).toBe('Beste valg');
+    expect(m.values.author).toBe('Dentum');
+  });
+  it('education → social-tips', () => {
+    expect(materializePost(mkPost({ pillar: 'education' })).tplId).toBe('social-tips');
   });
 });
 

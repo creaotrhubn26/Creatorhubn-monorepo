@@ -148,6 +148,25 @@ export function campaignPostBrandCfg(brand: InfographicBrand): { accent: string;
   return { accent: brand.accent, ink: brand.ink, logo: brand.logo };
 }
 
+export interface MaterializedPost { tplId: string; values: Record<string, string> }
+
+/** Pilar → riktig sosial-mal + felt-verdier. Ren mapping (testbar); UI-en lager
+ *  en scene fra dette og påfører brand (aksent/logo). Ukjente felt-nøkler
+ *  ignoreres av malen, så over-setting er trygt. */
+export function materializePost(p: CampaignPost, brandName = 'Merkevare'): MaterializedPost {
+  const hook = (p.hooks[0]?.text || p.angle || p.kpi.label).replace(/^«|»$/g, '');
+  switch (p.pillar) {
+    case 'offer':
+      return { tplId: 'social-announce', values: { kicker: 'TILBUD', title: p.angle || hook, subtitle: p.caption || hook, cta: p.cta || 'Book nå →' } };
+    case 'social_proof':
+      return { tplId: 'social-quote', values: { quote: p.caption || hook, author: brandName, role: '' } };
+    case 'education':
+      return { tplId: 'social-tips', values: { title: p.angle || hook, t1: hook, t2: p.caption, t3: p.cta } };
+    default: // proof, story → stort tall
+      return { tplId: 'social-stat', values: { kicker: p.kpi.label, value: p.kpi.value, label: p.angle || hook, support: p.caption } };
+  }
+}
+
 export interface DeriveCampaignParams {
   /** Bevis-tekst fra nettside-analysen (Product Brain / one-pager). ENESTE tall-kilde. */
   evidenceText: string;
