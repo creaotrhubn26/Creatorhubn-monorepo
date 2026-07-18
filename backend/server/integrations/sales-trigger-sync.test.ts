@@ -34,6 +34,39 @@ describe("mapTedNotices (struktur verifisert mot API 2026-07-13)", () => {
       publishedAt: "2016-09-21",
     });
   });
+
+  it("klassifiserer can-* som tildeling, ikke åpent anbud (496990-2026, 17.07.2026)", () => {
+    // Reelt tilfelle: kontrakt signert 15.07 ble servert som «vurder om
+    // dere kan levere» fordi notice-type aldri ble hentet.
+    const out = mapTedNotices(
+      [
+        {
+          "publication-number": "496990-2026",
+          "notice-title": { eng: ["Framework agreement for digital recruitment campaigns"] },
+          "publication-date": "2026-07-17+00:00",
+          "notice-type": "can-standard",
+          "buyer-name": { eng: ["Jernbanedirektoratet"] },
+        },
+        {
+          "publication-number": "111111-2026",
+          "notice-title": { nor: ["Rammeavtale fototjenester"] },
+          "publication-date": "2026-07-16+00:00",
+          "notice-type": "cn-standard",
+          "deadline-receipt-tender-date-lot": ["2026-08-20+00:00"],
+        },
+        {
+          "publication-number": "222222-2026",
+          "notice-title": { nor: ["Markedsdialog videoproduksjon"] },
+          "notice-type": "pin-buyer",
+        },
+      ],
+      "The Role Room — casting og produksjon",
+    );
+    expect(out.map((e) => e.kind)).toEqual(["award", "tender", "tender"]);
+    expect(out[0].raw).toMatchObject({ buyerName: "Jernbanedirektoratet", noticeType: "can-standard" });
+    expect(out[1].raw).toMatchObject({ deadline: "2026-08-20", requirements: ["rammeavtale"] });
+    expect(out[2].raw).toMatchObject({ isRfi: true });
+  });
 });
 
 describe("mapGdeltArticles", () => {
@@ -82,7 +115,7 @@ describe("sales-trigger-detektoren", () => {
     const out = await detector.run(pool, "org-1");
     expect(out).toHaveLength(2);
     expect(out[0].severity).toBe("important");
-    expect(out[0].dedupeKey).toBe("trigger|ted|327903-2016");
+    expect(out[0].dedupeKey).toBe("trigger|ted|327903-2016|tender");
     expect(out[0].evidence[0].value).toContain("ted.europa.eu");
     expect(out[1].severity).toBe("notable");
   });
