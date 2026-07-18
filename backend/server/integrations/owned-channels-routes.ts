@@ -29,6 +29,7 @@ import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { buildRetenderWindows, buildTenderBoard, type BoardTenderRow } from "./tender-board.js";
+import { runSiteSetupAudit } from "./site-setup-audit.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
 import { butlerChat, type ChatMessage } from "./butler-chat.js";
@@ -279,6 +280,29 @@ export function registerOwnedChannelsRoutes({
       [orgId, JSON.stringify(parsed.data.capabilities), parsed.data.notes ?? null],
     );
     return res.json({ saved: true });
+  });
+
+  // F1 «audit_site_setup» (doc 14): uautentisert sjekk av hva et
+  // klient-domene allerede har av analytics-/GEO-oppsett. Read-only mot
+  // målet; SSRF-vernet ligger i validateAuditUrl + redirect-revalidering.
+  app.post("/api/integrations/site-audit", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const url = (req.body as Record<string, unknown> | undefined)?.url;
+    if (typeof url !== "string" || url.length < 4 || url.length > 500) {
+      return res.status(400).json({ error: "url_kreves" });
+    }
+    try {
+      const result = await runSiteSetupAudit(url);
+      if ("error" in result) return res.status(400).json({ error: result.error });
+      return res.json(result);
+    } catch (err) {
+      console.error("[site-audit] failed", err);
+      return res.status(500).json({ error: "audit_failed" });
+    }
   });
 
   // Anbuds-arbeidsflaten: dedupede anbud m/ triage-status, fit og
