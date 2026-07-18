@@ -390,7 +390,24 @@ actor APIClient {
 
     // MARK: - Visittkort-skanner (PR #642)
 
-    func createLeadFromCard(extracted: ExtractedBusinessCard) async throws {
+    /// BRREG-koblingen backend gjorde i skann-øyeblikket (PR #1564):
+    /// «linked» = org.nr sikkert koblet (berikelse kjører i bakgrunnen),
+    /// «suggestion» = vagt navnetreff — lagt som forslag i notes.
+    struct FromCardBrregLink: Decodable {
+        let status: String
+        let orgNr: String
+        let matchedName: String?
+        let via: String?
+    }
+
+    struct FromCardResponse: Decodable {
+        let ok: Bool
+        let id: String
+        let brreg: FromCardBrregLink?
+    }
+
+    @discardableResult
+    func createLeadFromCard(extracted: ExtractedBusinessCard) async throws -> FromCardResponse {
         var body: [String: Any] = ["name": extracted.name]
         if !extracted.company.isEmpty { body["company"] = extracted.company }
         if !extracted.title.isEmpty { body["title"] = extracted.title }
@@ -398,7 +415,7 @@ actor APIClient {
         if !extracted.phone.isEmpty { body["phone"] = extracted.phone }
         if !extracted.website.isEmpty { body["website"] = extracted.website }
         if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
-        try await post("/api/admin-room/lead-map/leads/from-card", body: body)
+        return try await post("/api/admin-room/lead-map/leads/from-card", body: body)
     }
 
     // MARK: - Drop-pin lead-create (PR feat/leadmap-ipad-center-fab-droppin)

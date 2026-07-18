@@ -1097,12 +1097,39 @@ export function setupRoleRoomAgentCoreRoutes(
           needsReauth: outcome.needsReauth ?? false,
         });
       }
+      // Autoregistrer som KPI-datakilde (vault-gjennomgangens punkt):
+      // GA4-connectoren leser google_analytics/property_id herfra — uten
+      // dette måtte produsenten legge inn ID-en manuelt i Datakilder-fanen
+      // rett etter at agenten opprettet den. Best effort, velter aldri.
+      if (projectId && outcome.result.propertyId) {
+        const numericPropertyId = outcome.result.propertyId.replace(/^properties\//, "");
+        const { upsertKpiSourceConfig } = await import("./role-room-kpi-source-config.js");
+        await upsertKpiSourceConfig(pool, {
+          projectId,
+          platform: "google_analytics",
+          configKey: "property_id",
+          configValue: numericPropertyId,
+          displayLabel: `${domain} (opprettet av agenten)` ,
+          setByUserId: session.userId,
+        }).catch(() => null);
+        if (outcome.result.measurementId) {
+          await upsertKpiSourceConfig(pool, {
+            projectId,
+            platform: "google_analytics",
+            configKey: "measurement_id",
+            configValue: outcome.result.measurementId,
+            displayLabel: domain,
+            setByUserId: session.userId,
+          }).catch(() => null);
+        }
+      }
       return res.json({
         success: true,
         ...outcome.result,
         connectionSource: source,
         usedGoogleEmail: row.google_email ?? null,
         ownershipNote: ownershipNote(source, row.google_email ?? null),
+        kpiSourceRegistered: Boolean(projectId && outcome.result.propertyId),
       });
     } catch (err) {
       console.error("[ga4-setup] failed", err);
