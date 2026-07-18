@@ -762,6 +762,13 @@ export function setupRoleRoomAgentCoreRoutes(
       }
 
       let websiteInsights = forceRefresh ? null : await readResearchCache<Awaited<ReturnType<typeof fetchWebsiteInsights>>>(projectId, "website");
+      // Skjema-versjonering uten migrasjon: cache skrevet FØR site-auditen
+      // (doc 14 F1) mangler siteSetupAudit-feltet helt (ferske skriv har
+      // audit-objekt eller eksplisitt null). 24t-TTL-en ville ellers skjult
+      // auditen et døgn etter deploy — behandles som miss og hentes ferskt.
+      if (websiteInsights && websiteInsights.siteSetupAudit === undefined) {
+        websiteInsights = null;
+      }
       if (websiteInsights) {
         cacheHits.push("website");
       } else {
