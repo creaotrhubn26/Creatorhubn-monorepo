@@ -4636,6 +4636,11 @@ export default function AdminRoom() {
         minHeight: '100vh',
         background:
           'radial-gradient(1100px 700px at 15% -10%, rgba(124,58,237,0.14), transparent 60%), linear-gradient(180deg, #0b1120 0%, #0a0807 100%)',
+        // Body har lys-temaets tekstfarge (#262626); theme-default
+        // Typography (uten color-prop) ARVER den og ble usynlig på mørk
+        // grunn («Min dag», «Vunnet / Tapt»). Lys arvefarge her gir alle
+        // faner lesbar default-tekst; eksplisitte farger vinner fortsatt.
+        color: '#e2e8f0',
       }}
     >
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
