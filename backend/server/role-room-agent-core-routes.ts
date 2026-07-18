@@ -66,7 +66,8 @@ import { ensureFreshGoogleAccessToken } from "./google-oauth-shared.js";
 import { runGa4Setup } from "./role-room-agent-ga4-setup.js";
 import { runGscSetup } from "./role-room-agent-gsc-setup.js";
 import { runMetaPixelSetup } from "./role-room-agent-meta-pixel-setup.js";
-import { getLatestContractScan, scanContract } from "./role-room-agent-contract-scan.js";
+import multer from "multer";
+import { getLatestContractScan, MAX_PDF_BYTES, scanContract, transcribeContractPdf } from "./role-room-agent-contract-scan.js";
 import {
   validateResearchResult,
   detectMaterialChanges,
@@ -1250,6 +1251,52 @@ export function setupRoleRoomAgentCoreRoutes(
       return res.status(500).json({ success: false, error: "contract_scan_failed" });
     }
   });
+
+  // v2: PDF-opplasting → vision-transkripsjon. Returnerer TEKSTEN (ikke
+  // skann-resultat): produsenten ser/retter transkripsjonen i UI-et før
+  // det vanlige tekst-skannet kjøres — verbatim-vakten beholder en kilde.
+  const contractPdfUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_PDF_BYTES },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype === "application/pdf") return cb(null, true);
+      cb(new Error("Kun PDF støttes."));
+    },
+  });
+  app.post(
+    "/api/role-room/agent/contract-scan/extract-pdf",
+    (req, res, next) => contractPdfUpload.single("file")(req, res, (err) => {
+      if (err) return res.status(400).json({ success: false, error: String(err.message ?? err) });
+      next();
+    }),
+    async (req, res) => {
+      const featureId = "role-room-agent-producer";
+      if (!isCompatAdminFeatureEnabled(featureId)) {
+        return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+      }
+      const session = requireAdminSession(req, res);
+      if (!session) return;
+      const projectId = readString((req.body as Record<string, unknown> | undefined)?.projectId);
+      const file = (req as unknown as { file?: { buffer: Buffer } }).file;
+      if (!projectId || !file?.buffer) {
+        return res.status(400).json({ success: false, error: "projectId og PDF-fil er påkrevd." });
+      }
+      try {
+        const outcome = await transcribeContractPdf(pool, {
+          projectId,
+          pdfBase64: file.buffer.toString("base64"),
+          userLabel: session.email ?? session.userId,
+        });
+        if (!outcome.ok) {
+          return res.status(outcome.status).json({ success: false, error: outcome.error });
+        }
+        return res.json({ success: true, text: outcome.text });
+      } catch (err) {
+        console.error("[contract-scan/extract-pdf] failed", err);
+        return res.status(500).json({ success: false, error: "pdf_extract_failed" });
+      }
+    },
+  );
 
   app.get("/api/role-room/agent/contract-scan/:projectId", async (req, res) => {
     const session = requireAdminSession(req, res);
