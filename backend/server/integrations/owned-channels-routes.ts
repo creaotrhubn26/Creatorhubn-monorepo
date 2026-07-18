@@ -30,6 +30,7 @@ import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { buildRetenderWindows, buildTenderBoard, type BoardTenderRow } from "./tender-board.js";
 import { runSiteSetupAudit } from "./site-setup-audit.js";
+import { bootstrapInputSchema, renderAnalyticsBootstrap } from "./analytics-bootstrap.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
 import { butlerChat, type ChatMessage } from "./butler-chat.js";
@@ -280,6 +281,24 @@ export function registerOwnedChannelsRoutes({
       [orgId, JSON.stringify(parsed.data.capabilities), parsed.data.notes ?? null],
     );
     return res.json({ saved: true });
+  });
+
+  // F2+F3 (doc 14): event-plan (deterministisk katalog) + consent-gatet
+  // analytics-bootstrap-snippet. Ren generering — ingen eksterne kall.
+  app.post("/api/integrations/analytics-bootstrap", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const parsed = bootstrapInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "ugyldig_input",
+        details: parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`),
+      });
+    }
+    return res.json(renderAnalyticsBootstrap(parsed.data));
   });
 
   // F1 «audit_site_setup» (doc 14): uautentisert sjekk av hva et

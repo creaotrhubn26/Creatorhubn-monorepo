@@ -51,6 +51,7 @@ import MorningBriefCard from "./MorningBriefCard";
 import ButlerChatPanel from "./ButlerChatPanel";
 import InsightsFeedPanel from "./InsightsFeedPanel";
 import SiteSetupAuditPanel from "./SiteSetupAuditPanel";
+import AnalyticsSetupPanel from "./AnalyticsSetupPanel";
 import OpportunityScorePanel from "./OpportunityScorePanel";
 import GrantWorkspacePanel from "./GrantWorkspacePanel";
 import SocialQueuePanel from "./SocialQueuePanel";
@@ -146,6 +147,8 @@ function MarketIntelligenceSectionInner({
           <ProspectsPanel />
 
           <SiteSetupAuditPanel />
+
+          <AnalyticsSetupPanel />
 
           <BrandKitPanel
             projectId={projectId}
