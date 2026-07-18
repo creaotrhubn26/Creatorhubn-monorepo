@@ -31,6 +31,8 @@ import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { buildRetenderWindows, buildTenderBoard, type BoardTenderRow } from "./tender-board.js";
 import { runSiteSetupAudit } from "./site-setup-audit.js";
 import { bootstrapInputSchema, renderAnalyticsBootstrap } from "./analytics-bootstrap.js";
+import { getSetupGuide, SETUP_GUIDES, tailorSetupGuides } from "./setup-guides.js";
+import { buildIndexNowPayload, submitIndexNow } from "./indexnow.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
 import { butlerChat, type ChatMessage } from "./butler-chat.js";
@@ -299,6 +301,81 @@ export function registerOwnedChannelsRoutes({
       });
     }
     return res.json(renderAnalyticsBootstrap(parsed.data));
+  });
+
+  // F4 (doc 14): guidede sjekklister for stegene som krever klientens egen
+  // innlogging. Ren data — deterministisk fasit fra eget oppsett.
+  app.get("/api/integrations/setup-guides", (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const platform = typeof req.query.platform === "string" ? req.query.platform : null;
+    if (platform) {
+      const guide = getSetupGuide(platform);
+      if (!guide) return res.status(404).json({ error: "ukjent_plattform" });
+      return res.json({ guides: [guide] });
+    }
+    return res.json({ guides: SETUP_GUIDES });
+  });
+
+  // F4 skreddersydd (doc 14): kjør F1-auditen på domenet og kryss guidene
+  // med observasjonene — «trengs / fiks / verifiser / sjekk i kontoen»
+  // per plattform, med domenet flettet inn i stegene.
+  app.post("/api/integrations/setup-guides/tailored", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const url = (req.body as Record<string, unknown> | undefined)?.url;
+    if (typeof url !== "string" || url.length < 4 || url.length > 500) {
+      return res.status(400).json({ error: "url_kreves" });
+    }
+    try {
+      const result = await runSiteSetupAudit(url);
+      if ("error" in result) return res.status(400).json({ error: result.error });
+      return res.json({
+        guides: tailorSetupGuides(url, result.audit.capabilities),
+        audit: result.audit,
+      });
+    } catch (err) {
+      console.error("[setup-guides/tailored] failed", err);
+      return res.status(500).json({ error: "tailor_failed" });
+    }
+  });
+
+  // F6 (doc 14): IndexNow-innmelding — eneste søke-innmelding uten OAuth.
+  // Ekstern effekt → alltid bak eksplisitt brukerhandling i UI.
+  app.post("/api/integrations/indexnow/submit", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (
+      typeof body.host !== "string" || typeof body.key !== "string" ||
+      !Array.isArray(body.urls) || !body.urls.every((u): u is string => typeof u === "string")
+    ) {
+      return res.status(400).json({ error: "host_key_og_urls_kreves" });
+    }
+    const built = buildIndexNowPayload({ host: body.host, key: body.key, urls: body.urls });
+    if (!built.ok) return res.status(400).json({ error: built.error });
+    try {
+      const result = await submitIndexNow(built.payload);
+      return res.status(result.ok ? 200 : 502).json({
+        submitted: result.ok,
+        status: result.status,
+        detail: result.detail,
+        urlCount: built.payload.urlList.length,
+        keyLocation: built.payload.keyLocation,
+      });
+    } catch (err) {
+      console.error("[indexnow] failed", err);
+      return res.status(500).json({ error: "submit_failed" });
+    }
   });
 
   // F1 «audit_site_setup» (doc 14): uautentisert sjekk av hva et
