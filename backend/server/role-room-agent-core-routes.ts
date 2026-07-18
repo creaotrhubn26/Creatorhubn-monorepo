@@ -62,6 +62,8 @@ import {
   reviewOverrideProposal,
 } from "./role-room-agent-learning.js";
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
+import { ensureFreshGoogleAccessToken } from "./google-oauth-shared.js";
+import { runGa4Setup } from "./role-room-agent-ga4-setup.js";
 import {
   validateResearchResult,
   detectMaterialChanges,
@@ -992,5 +994,72 @@ export function setupRoleRoomAgentCoreRoutes(
       return res.status(404).json({ success: false, error: "Fant ikke override eller kunne ikke oppdatere." });
     }
     return res.json({ success: true, id, decision });
+  });
+
+  // ── OAuth-fasen (doc 14): GA4-oppsett via Admin API ────────────────
+  // «Systemet setter opp alt»-veien: bruker produsentens eksisterende
+  // Google-kobling (analytics.edit fra scope-utvidelsen) — ingen browser-
+  // styring, ingen passord. Knappen i UI ER bekreftelsen; endepunktet
+  // returnerer nøyaktig hva som ble opprettet vs gjenbrukt.
+  app.post("/api/role-room/agent/ga4-setup", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const domain = readString(body.domain);
+    const goalsRaw = Array.isArray(body.goals) ? body.goals : [];
+    const goals = goalsRaw.filter(
+      (g): g is "lead" | "booking" | "purchase" | "signup" | "newsletter" =>
+        typeof g === "string" && ["lead", "booking", "purchase", "signup", "newsletter"].includes(g),
+    );
+    if (!domain) {
+      return res.status(400).json({ success: false, error: "domain er påkrevd." });
+    }
+
+    try {
+      const connection = await pool.query<import("./google-oauth-shared.js").GoogleConnectionRow>(
+        `SELECT * FROM role_room_google_connections
+          WHERE user_id = $1 AND oauth_app = 'role_room'
+          ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST
+          LIMIT 1`,
+        [session.userId],
+      );
+      const row = connection.rows[0];
+      if (!row) {
+        return res.status(409).json({
+          success: false,
+          error: "Ingen Google-kobling — koble til Google i Kontotilgang først.",
+          needsConnect: true,
+        });
+      }
+      let accessToken: string;
+      try {
+        const fresh = await ensureFreshGoogleAccessToken(pool, row);
+        accessToken = fresh.accessToken;
+      } catch {
+        return res.status(409).json({
+          success: false,
+          error: "Google-koblingen må fornyes (utløpt eller mangler tilganger) — koble til på nytt.",
+          needsReauth: true,
+        });
+      }
+
+      const outcome = await runGa4Setup({ accessToken, domain, goals });
+      if (!outcome.ok) {
+        return res.status(outcome.needsReauth ? 409 : 422).json({
+          success: false,
+          error: outcome.error,
+          needsReauth: outcome.needsReauth ?? false,
+        });
+      }
+      return res.json({ success: true, ...outcome.result });
+    } catch (err) {
+      console.error("[ga4-setup] failed", err);
+      return res.status(500).json({ success: false, error: "ga4_setup_failed" });
+    }
   });
 }
