@@ -53,6 +53,8 @@ export const ROLE_ROOM_AGENT_SYSTEM_PROMPT = `Du er "The Role Room Agent" — en
 - audit_site_setup — foreslå en teknisk audit av klientens nettsted (analytics/GEO: GA4, GTM, Meta Pixel, Clarity, consent, sitemap, robots, AI-bot-serving). Auditen er read-only mot nettstedet og kjøres av plattformen etter bekreftelse; du gjetter ALDRI på resultatet selv.
 - generate_event_plan — foreslå en event-plan (GA4-events, key events, Meta-bro) ut fra klientens forretningsmål. Deterministisk katalog — plattformen genererer planen; du velger målene ut fra briefen og begrunner dem.
 - generate_analytics_bootstrap — foreslå generering av consent-gatet analytics-snippet (GA4/GTM/Clarity/Meta Pixel) med klientens IDer. Plattformen genererer koden etter bekreftelse; du skriver ALDRI sporingskode selv, og du ber aldri om passord — kun offentlige måle-IDer.
+- guide_platform_setup — foreslå skreddersydd sjekkliste for oppsett som krever klientens egen innlogging (GSC/GA4/GTM/Meta Pixel/Clarity/Bing). Plattformen krysser guiden med site-auditen av klientens domene; stegene gjøres av klienten selv — du ber ALDRI om innloggingsdetaljer.
+- submit_indexnow — foreslå IndexNow-innmelding av URL-er til Bing/ChatGPT-indeksen. Ekstern innsending — skjer kun etter eksplisitt bekreftelse, og krever at nøkkelfilen allerede er deployet på klientens domene.
 
 Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.
 
@@ -265,6 +267,42 @@ export const ROLE_ROOM_AGENT_TOOLS = [
       },
     },
   },
+  {
+    name: 'guide_platform_setup',
+    description:
+      'Foreslå skreddersydd oppsett-sjekkliste (doc 14 F4) for en plattform som krever klientens egen innlogging. Plattformen henter guiden krysset med site-auditen av klientens domene (POST /api/integrations/setup-guides/tailored). Be ALDRI om innloggingsdetaljer — stegene utføres av klienten i egne kontoer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        platform: {
+          type: 'string',
+          enum: ['gsc', 'ga4', 'gtm', 'meta_pixel', 'clarity', 'bing', 'alle'],
+          description: 'Hvilken plattform guiden gjelder — «alle» gir hele den prioriterte planen.',
+        },
+        website_url: { type: 'string', description: 'Klientens domene — guiden skreddersys mot site-auditen av dette.' },
+        reason: { type: 'string', description: 'Hvorfor dette oppsettet trengs nå (1 setning).' },
+      },
+      required: ['platform', 'website_url'],
+    },
+  },
+  {
+    name: 'submit_indexnow',
+    description:
+      'Foreslå IndexNow-innmelding av URL-er (doc 14 F6) til Bing/ChatGPT-søkeindeksen. EKSTERN EFFEKT: innsendingen skjer kun etter eksplisitt brukerbekreftelse, og forutsetter at nøkkelfilen er deployet på klientens domene (https://<host>/<key>.txt).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        host: { type: 'string', description: 'Domenet URL-ene tilhører.' },
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'HTTPS-URL-er på samme host, maks 100.',
+        },
+        reason: { type: 'string', description: 'Hva som er nytt/endret som gjør innmelding riktig nå.' },
+      },
+      required: ['host', 'urls'],
+    },
+  },
 ];
 
 export type RoleRoomAgentToolName =
@@ -276,6 +314,8 @@ export type RoleRoomAgentToolName =
   | 'generate_community_post'
   | 'audit_site_setup'
   | 'generate_event_plan'
-  | 'generate_analytics_bootstrap';
+  | 'generate_analytics_bootstrap'
+  | 'guide_platform_setup'
+  | 'submit_indexnow';
 
 export const ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS = 1200;

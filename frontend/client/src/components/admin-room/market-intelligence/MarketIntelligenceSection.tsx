@@ -52,6 +52,8 @@ import ButlerChatPanel from "./ButlerChatPanel";
 import InsightsFeedPanel from "./InsightsFeedPanel";
 import SiteSetupAuditPanel from "./SiteSetupAuditPanel";
 import AnalyticsSetupPanel from "./AnalyticsSetupPanel";
+import SetupGuidesPanel from "./SetupGuidesPanel";
+import IndexNowPanel from "./IndexNowPanel";
 import OpportunityScorePanel from "./OpportunityScorePanel";
 import GrantWorkspacePanel from "./GrantWorkspacePanel";
 import SocialQueuePanel from "./SocialQueuePanel";
@@ -149,6 +151,10 @@ function MarketIntelligenceSectionInner({
           <SiteSetupAuditPanel />
 
           <AnalyticsSetupPanel />
+
+          <SetupGuidesPanel />
+
+          <IndexNowPanel />
 
           <BrandKitPanel
             projectId={projectId}
