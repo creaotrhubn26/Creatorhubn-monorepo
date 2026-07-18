@@ -28,6 +28,7 @@ import { runMediaWatch } from "./media-watch.js";
 import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
+import { buildRetenderWindows, buildTenderBoard, type BoardTenderRow } from "./tender-board.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
 import { composeOutreach } from "./outreach-composer.js";
 import { butlerChat, type ChatMessage } from "./butler-chat.js";
@@ -280,7 +281,64 @@ export function registerOwnedChannelsRoutes({
     return res.json({ saved: true });
   });
 
-  // Bud-sporing per anbud (fase 4-fasit): interested|bid|won|lost.
+  // Anbuds-arbeidsflaten: dedupede anbud m/ triage-status, fit og
+  // radar over forventede re-utlysningsvinduer. Ren lesing — all logikk
+  // ligger enhetstestet i tender-board.ts.
+  app.get("/api/integrations/tenders/board", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
+    try {
+      const [tenderRes, awardRes, profileRes] = await Promise.all([
+        // Aktive vinduer + nylig avgjorte kort (vunnet/tapt beholdes så
+        // tavlen viser fasit, ikke bare køen).
+        pool.query<BoardTenderRow>(
+          `SELECT source, event_id, kind, title, url, published_at::text, matched_topic, raw
+             FROM trigger_events
+            WHERE organization_id = $1::uuid AND kind = 'tender'
+              AND created_at > now() - interval '90 days'
+            ORDER BY (raw->>'deadline') NULLS LAST, published_at DESC
+            LIMIT 120`,
+          [orgId],
+        ),
+        // Tildelinger = prisbibliotek + radar (2-års-vinduet gjør 1 år
+        // gamle tildelinger relevante — hent bredt).
+        pool.query<BoardTenderRow>(
+          `SELECT source, event_id, kind, title, url, published_at::text, matched_topic, raw
+             FROM trigger_events
+            WHERE organization_id = $1::uuid AND kind = 'award'
+              AND created_at > now() - interval '400 days'
+            ORDER BY published_at DESC LIMIT 60`,
+          [orgId],
+        ),
+        pool.query<{ capabilities: Record<string, boolean> }>(
+          `SELECT capabilities FROM supplier_profile WHERE organization_id = $1::uuid`,
+          [orgId],
+        ),
+      ]);
+      const capabilities = profileRes.rows[0]?.capabilities ?? null;
+      return res.json({
+        tenders: buildTenderBoard(tenderRes.rows, capabilities),
+        retenderWindows: buildRetenderWindows(awardRes.rows),
+        profileAnswered: capabilities !== null,
+        notes: {
+          dedup:
+            "Kort kan være slått sammen: samme kilde ved nær identisk tittel, på tvers av kilder kun ved samme oppdragsgiver publisert ≤ 14 dager fra hverandre. Kildelenkene står på kortet — verifiser før tilbud.",
+          radar:
+            "Re-utlysningsvinduer er ESTIMAT (tildeling + 2 år, bransjenorm) — faktisk varighet står i konkurransegrunnlaget.",
+        },
+      });
+    } catch (err) {
+      console.error("[tender-board] failed", err);
+      return res.status(500).json({ error: "board_failed" });
+    }
+  });
+
+  // Bud-sporing per anbud (fase 4-fasit): interested|bid|won|lost|dropped.
   app.patch("/api/integrations/tenders/bid-status", async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "ikke_innlogget" });
@@ -290,7 +348,7 @@ export function registerOwnedChannelsRoutes({
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     if (!UUID_PATTERN.test(orgId)) return res.status(409).json({ error: "ingen_organisasjon" });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const valid = new Set(["interested", "bid", "won", "lost"]);
+    const valid = new Set(["new", "interested", "bid", "won", "lost", "dropped"]);
     if (
       typeof body.source !== "string" || typeof body.eventId !== "string" ||
       typeof body.bidStatus !== "string" || !valid.has(body.bidStatus)

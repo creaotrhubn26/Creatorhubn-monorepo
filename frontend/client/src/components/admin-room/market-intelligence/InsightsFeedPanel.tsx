@@ -54,10 +54,39 @@ const SEVERITY_STYLE: Record<string, { bg: string; fg: string; label: string }> 
   info: { bg: "#94a3b822", fg: "#94a3b8", label: "Info" },
 };
 
+/** Kategorisering for filter-chipene — detektor der den er entydig,
+ *  tittel-prefiks der sales-trigger-detektoren samler flere hendelsestyper.
+ *  Prefiksene ER kontrakten fra insight-engine (title-byggingen). */
+type FeedCategory = "anbud" | "tildelinger" | "risiko" | "vinduer" | "annet";
+const FEED_FILTERS: Array<{ key: FeedCategory | "alle"; label: string }> = [
+  { key: "alle", label: "Alle" },
+  { key: "anbud", label: "Anbud" },
+  { key: "tildelinger", label: "Tildelinger" },
+  { key: "risiko", label: "Risiko" },
+  { key: "vinduer", label: "Vinduer" },
+  { key: "annet", label: "Annet" },
+];
+
+function categorize(ins: { detector: string; title: string }): FeedCategory {
+  if (ins.detector === "retender-radar") return "vinduer";
+  if (ins.title.startsWith("RISIKO:")) return "risiko";
+  if (
+    ins.detector === "tender-deadline" ||
+    ins.title.startsWith("Anbud (") ||
+    ins.title.startsWith("Markedsdialog/RFI")
+  ) return "anbud";
+  if (ins.title.startsWith("Tildeling (") || ins.title.startsWith("KONKURRENT VANT")) {
+    return "tildelinger";
+  }
+  return "annet";
+}
+
 /** trigger|<source>|<eventId> eller deadline|<source>|<eventId> → anbudsreferanse. */
 function tenderRefFromDedupeKey(key?: string): { source: string; eventId: string } | null {
   if (!key) return null;
-  const m = /^(?:trigger|deadline)\|([^|]+)\|(.+)$/.exec(key);
+  // Nøkkelen kan ha kind-suffiks (trigger|<source>|<eventId>|<kind>) —
+  // eventId er segmentet FØR et evt. siste pipe-ledd, aldri inkludert det.
+  const m = /^(?:trigger|deadline)\|([^|]+)\|([^|]+)/.exec(key);
   if (!m) return null;
   if (!["doffin", "ted"].includes(m[1])) return null;
   return { source: m[1], eventId: m[2] };
@@ -71,6 +100,7 @@ interface Brief {
 
 export default function InsightsFeedPanel() {
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [filter, setFilter] = useState<FeedCategory | "alle">("alle");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -170,6 +200,30 @@ export default function InsightsFeedPanel() {
           </Button>
         </Stack>
 
+        {insights.length > 0 && (
+          <Stack direction="row" spacing={0.75} sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+            {FEED_FILTERS.map((f) => {
+              const count =
+                f.key === "alle"
+                  ? insights.length
+                  : insights.filter((i) => categorize(i) === f.key).length;
+              if (f.key !== "alle" && count === 0) return null;
+              const active = filter === f.key;
+              return (
+                <Chip key={f.key} size="small" clickable
+                  label={`${f.label} ${count}`}
+                  onClick={() => setFilter(active ? "alle" : f.key)}
+                  sx={{
+                    fontSize: 11, fontWeight: active ? 700 : 500,
+                    bgcolor: active ? "#f59e0b2e" : "rgba(148,163,184,0.12)",
+                    color: active ? "#f59e0b" : "text.secondary",
+                    border: active ? "1px solid #f59e0b66" : "1px solid transparent",
+                  }} />
+              );
+            })}
+          </Stack>
+        )}
+
         <PanelStateContainer
           state={toLoadingState({ loading, error })}
           error={error}
@@ -178,7 +232,15 @@ export default function InsightsFeedPanel() {
           empty="Ingen vesentlige endringer siden sist — detektorene melder kun det som krysser tersklene."
         >
           <Stack spacing={1.5}>
-            {insights.map((ins) => {
+            {filter !== "alle" &&
+              insights.every((ins) => categorize(ins) !== filter) && (
+                <Typography variant="caption" color="text.disabled">
+                  Ingen igjen i dette filteret — <Box component="span" sx={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setFilter("alle")}>vis alle</Box>.
+                </Typography>
+              )}
+            {insights
+              .filter((ins) => filter === "alle" || categorize(ins) === filter)
+              .map((ins) => {
               const style = SEVERITY_STYLE[ins.severity] ?? SEVERITY_STYLE.info;
               const isOpen = expanded === ins.id;
               return (
