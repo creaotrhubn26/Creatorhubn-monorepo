@@ -79,6 +79,12 @@ import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+// Mockup-chrome (realistisk plattform-UI i format-forhåndsvisningen):
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import ReplyIcon from '@mui/icons-material/Reply';
 import TuneIcon from '@mui/icons-material/Tune';
 import RepeatIcon from '@mui/icons-material/Repeat';
 
@@ -650,9 +656,101 @@ const PLATFORMS: SocialPlatform[] = [
 // sosialt forhold, frosset ved sluttbildet (p=1) — akkurat slik render-en
 // legger #wrap inn i lerretet. Tegner plattformens UI-soner, oppdager kollisjon
 // (advarer når innholdet havner under UI), enhets-mockup + anbefaling. Klikkbar.
+// Realistisk plattform-UI-chrome oppå format-forhåndsvisningen: i stedet for bare
+// røde faresoner tegner vi det FAKTISKE TikTok/IG/YouTube-grensesnittet rundt
+// infographic-en, så man ser hvordan den ser ut i ekte app-kontekst. `hot(label)`
+// gir rød ring på et element når innholdet faktisk kolliderer med den sonen.
+function PlatformChrome({ id, hot }: { id: string; hot: (label: string) => boolean }) {
+  const shell: React.CSSProperties = { position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none', color: '#fff' };
+  const ring = (on: boolean): React.CSSProperties => (on ? { boxShadow: '0 0 0 2px rgba(240,104,95,.95)', borderRadius: 10 } : {});
+  const ico: React.CSSProperties = { fontSize: 15, color: '#fff' };
+  const railBtn = (icon: React.ReactNode, txt: string) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+      <div style={{ width: 26, height: 26, borderRadius: 13, background: 'rgba(255,255,255,.18)', display: 'grid', placeItems: 'center' }}>{icon}</div>
+      <span style={{ fontSize: 7.5, fontWeight: 600 }}>{txt}</span>
+    </div>
+  );
+
+  if (id === 'tiktok' || id === 'reels') {
+    const isTk = id === 'tiktok';
+    return (
+      <div style={shell}>
+        {isTk && (
+          <div style={{ position: 'absolute', top: '2%', left: 0, right: 0, display: 'flex', gap: 12, justifyContent: 'center', fontSize: 9, fontWeight: 600, ...ring(hot('Faner')) }}>
+            <span style={{ opacity: .6 }}>Følger</span>
+            <span style={{ borderBottom: '1.5px solid #fff', paddingBottom: 1 }}>For deg</span>
+          </div>
+        )}
+        <div style={{ position: 'absolute', right: '3%', bottom: '15%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 11, ...ring(hot('Handlinger')) }}>
+          <div style={{ position: 'relative', width: 28, height: 28, borderRadius: 14, background: 'linear-gradient(135deg,#ff8c5d,#a855f7)', border: '1.5px solid #fff' }}>
+            <span style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%)', width: 12, height: 12, borderRadius: 6, background: '#ff4060', color: '#fff', fontSize: 10, lineHeight: '12px', textAlign: 'center', fontWeight: 700 }}>+</span>
+          </div>
+          {railBtn(<FavoriteIcon style={ico} />, '12,4t')}
+          {railBtn(<ChatBubbleOutlineIcon style={ico} />, '843')}
+          {isTk && railBtn(<BookmarkBorderIcon style={ico} />, '1,1t')}
+          {railBtn(isTk ? <ReplyIcon style={{ ...ico, transform: 'scaleX(-1)' }} /> : <SendIcon style={ico} />, 'Del')}
+          {isTk && <div style={{ width: 26, height: 26, borderRadius: 13, background: 'conic-gradient(#333,#111,#333)', border: '3px solid #0a0a0a' }} />}
+        </div>
+        <div style={{ position: 'absolute', left: '4%', right: '24%', bottom: '4%', ...ring(hot(isTk ? 'Caption · musikk' : 'Caption · lyd')) }}>
+          <div style={{ fontSize: 10, fontWeight: 700 }}>@dentum.no</div>
+          <div style={{ fontSize: 8.5, lineHeight: 1.3, marginTop: 2, opacity: .95, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>3 av 4 pasienter fullfører digital innsjekk 📈</div>
+          <div style={{ fontSize: 8, marginTop: 3, display: 'flex', alignItems: 'center', gap: 3, opacity: .9 }}><MusicNoteIcon style={{ fontSize: 10 }} /> Original lyd — dentum.no</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (id === 'stories') {
+    return (
+      <div style={shell}>
+        <div style={{ position: 'absolute', top: '2.5%', left: '4%', right: '4%', ...ring(hot('Profil · linjer')) }}>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[1, 0.35, 0, 0].map((f, i) => (
+              <div key={i} style={{ flex: 1, height: 2.5, borderRadius: 2, background: 'rgba(255,255,255,.35)', overflow: 'hidden' }}>
+                <div style={{ width: `${f * 100}%`, height: '100%', background: '#fff' }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6 }}>
+            <div style={{ width: 20, height: 20, borderRadius: 10, background: 'linear-gradient(135deg,#ff8c5d,#a855f7)', border: '1.5px solid #fff' }} />
+            <span style={{ fontSize: 9, fontWeight: 700 }}>dentum.no</span>
+            <span style={{ fontSize: 8, opacity: .7 }}>2t</span>
+          </div>
+        </div>
+        <div style={{ position: 'absolute', left: '4%', right: '4%', bottom: '3.5%', display: 'flex', alignItems: 'center', gap: 6, ...ring(hot('Send melding')) }}>
+          <div style={{ flex: 1, height: 22, borderRadius: 11, border: '1.5px solid rgba(255,255,255,.6)', display: 'flex', alignItems: 'center', paddingLeft: 9, fontSize: 8.5, opacity: .8 }}>Send melding</div>
+          <FavoriteBorderIcon style={{ fontSize: 15 }} />
+          <SendIcon style={{ fontSize: 15 }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (id === 'youtube') {
+    return (
+      <div style={shell}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '22%', background: 'linear-gradient(to top, rgba(0,0,0,.55), transparent)', ...ring(hot('Kontroller')) }}>
+          <div style={{ position: 'absolute', left: '3%', right: '3%', bottom: '32%', height: 2.5, borderRadius: 2, background: 'rgba(255,255,255,.3)' }}>
+            <div style={{ width: '38%', height: '100%', background: '#ff0033', borderRadius: 2, position: 'relative' }}>
+              <div style={{ position: 'absolute', right: -4, top: -3, width: 8, height: 8, borderRadius: 4, background: '#ff0033' }} />
+            </div>
+          </div>
+          <div style={{ position: 'absolute', left: '3%', bottom: '7%', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <PlayArrowIcon style={{ fontSize: 16 }} />
+            <span style={{ fontSize: 8.5, opacity: .95 }}>1:24 / 3:40</span>
+          </div>
+          <FullscreenIcon style={{ position: 'absolute', right: '3%', bottom: '7%', fontSize: 15 }} />
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function FormatPreview(
-  { srcDoc, aspect, label, sub, bg, active, mockup, advice, zones, onClick }:
-  { srcDoc: string; aspect: number; label: string; sub: string; bg: string; active: boolean; mockup: boolean; advice: string; zones: UiZone[]; onClick: () => void },
+  { srcDoc, aspect, label, sub, bg, active, mockup, advice, zones, platform, onClick }:
+  { srcDoc: string; aspect: number; label: string; sub: string; bg: string; active: boolean; mockup: boolean; advice: string; zones: UiZone[]; platform: string; onClick: () => void },
 ) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [warn, setWarn] = useState<string[]>([]);
@@ -688,16 +786,18 @@ function FormatPreview(
     <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', height: '100%', aspectRatio: String(aspect), background: bg ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', borderRadius: mockup && device === 'phone' ? 26 : 6 }}>
       {bg && <img src={bg} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />}
       <iframe ref={ref} title={label} srcDoc={srcDoc} onLoad={() => { window.setTimeout(fit, 200); window.setTimeout(fit, 800); }} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />
-      {/* Plattformens UI-soner (der TikTok/IG/YT legger egne elementer). Rød tint
-          + label; sterkere når infographic-en faktisk kolliderer. */}
-      {zones.map((z, i) => {
-        const collides = warn.includes(z.label);
-        return (
-          <div key={i} style={{ position: 'absolute', left: `${z.x * 100}%`, top: `${z.y * 100}%`, width: `${z.w * 100}%`, height: `${z.h * 100}%`, zIndex: 2, background: collides ? 'rgba(240,104,95,.30)' : 'rgba(240,104,95,.12)', border: `1px ${collides ? 'solid' : 'dashed'} rgba(240,104,95,${collides ? 0.9 : 0.5})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 8, color: 'rgba(255,220,215,.9)', fontWeight: 600, textAlign: 'center', lineHeight: 1 }}>{z.label}</span>
-          </div>
-        );
-      })}
+      {/* Mockup PÅ → realistisk plattform-chrome (ekte TikTok/IG/YT-UI, rød ring
+          der innholdet kolliderer). Mockup AV → analytiske safe-soner (rå bokser). */}
+      {mockup
+        ? <PlatformChrome id={platform} hot={(label) => warn.includes(label)} />
+        : zones.map((z, i) => {
+            const collides = warn.includes(z.label);
+            return (
+              <div key={i} style={{ position: 'absolute', left: `${z.x * 100}%`, top: `${z.y * 100}%`, width: `${z.w * 100}%`, height: `${z.h * 100}%`, zIndex: 2, background: collides ? 'rgba(240,104,95,.30)' : 'rgba(240,104,95,.12)', border: `1px ${collides ? 'solid' : 'dashed'} rgba(240,104,95,${collides ? 0.9 : 0.5})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 8, color: 'rgba(255,220,215,.9)', fontWeight: 600, textAlign: 'center', lineHeight: 1 }}>{z.label}</span>
+              </div>
+            );
+          })}
       {/* Enhets-chrome oppå skjermen. */}
       {mockup && device === 'phone' && <>
         <div style={{ position: 'absolute', top: 7, left: '50%', transform: 'translateX(-50%)', width: '34%', height: 12, borderRadius: 8, background: '#05070c', zIndex: 4 }} />
@@ -1907,7 +2007,7 @@ export function InfographicStudioView(
                 <div style={{ display: 'flex', gap: 18, height: '100%', justifyContent: 'flex-start', alignItems: 'center', overflowX: 'auto', padding: '0 4px' }}>
                   {PLATFORMS.map((pf) => (
                     <FormatPreview key={pf.id} srcDoc={formatSrcDoc} aspect={pf.aspect} label={pf.name} sub={pf.sub} bg={bgImage}
-                      active={fmt === pf.fmt} mockup={mockup} advice={placementAdviceFor(tpl.id, pf.aspect)} zones={pf.zones}
+                      active={fmt === pf.fmt} mockup={mockup} advice={placementAdviceFor(tpl.id, pf.aspect)} zones={pf.zones} platform={pf.id}
                       onClick={() => { setFmt(pf.fmt); setMultiPreview(false); }} />
                   ))}
                 </div>
