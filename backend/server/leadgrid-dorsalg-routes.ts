@@ -15,7 +15,7 @@ import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 import { randomBytes } from "crypto";
 import { sendEmail } from "./casting-reminder-sender.js";
 
-const GYLDIGE_STATUSER = new Set(["vunnet", "avslatt"]);
+const GYLDIGE_STATUSER = new Set(["vunnet", "avslatt", "ikke_hjemme"]);
 const LEADER_ROLES = new Set(["admin", "salgssjef"]);
 
 export function registerLeadgridDorsalgRoutes(deps: {
@@ -622,6 +622,7 @@ export function registerLeadgridDorsalgRoutes(deps: {
         `SELECT
            COUNT(*) FILTER (WHERE status = 'vunnet')::int  AS vunnet,
            COUNT(*) FILTER (WHERE status = 'avslatt')::int AS avslatt,
+           COUNT(*) FILTER (WHERE status = 'ikke_hjemme')::int AS ikke_hjemme,
            COUNT(*) FILTER (WHERE updated_at >= date_trunc('day', now()))::int AS i_dag,
            COUNT(*) FILTER (WHERE status = 'vunnet'
                               AND updated_at >= date_trunc('day', now()))::int AS vunnet_i_dag,
@@ -706,6 +707,7 @@ export function registerLeadgridDorsalgRoutes(deps: {
         perProdukt,
         vunnet: t.vunnet ?? 0,
         avslatt: t.avslatt ?? 0,
+        ikkeHjemme: t.ikke_hjemme ?? 0,
         iDag: t.i_dag ?? 0,
         vunnetIDag: t.vunnet_i_dag ?? 0,
         denneUka: t.denne_uka ?? 0,
