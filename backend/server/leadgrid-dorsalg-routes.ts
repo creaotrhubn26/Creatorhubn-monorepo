@@ -102,6 +102,72 @@ export function registerLeadgridDorsalgRoutes(deps: {
     }
   });
 
+  // GET /api/leadgrid/dorsalg/stats — dørsalg-oversikt for org-en:
+  // totaler, i dag, denne uka, per selger + siste vunnede dører.
+  app.get("/api/leadgrid/dorsalg/stats", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const totals = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'vunnet')::int  AS vunnet,
+           COUNT(*) FILTER (WHERE status = 'avslatt')::int AS avslatt,
+           COUNT(*) FILTER (WHERE updated_at >= date_trunc('day', now()))::int AS i_dag,
+           COUNT(*) FILTER (WHERE status = 'vunnet'
+                              AND updated_at >= date_trunc('day', now()))::int AS vunnet_i_dag,
+           COUNT(*) FILTER (WHERE updated_at >= date_trunc('week', now()))::int AS denne_uka
+         FROM leadgrid_dorsalg_status
+        WHERE org_id = $1`,
+        [orgId],
+      );
+      const perSelger = await pool.query(
+        `SELECT
+           COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                    u.username, s.set_by) AS navn,
+           COUNT(*) FILTER (WHERE s.status = 'vunnet')::int  AS vunnet,
+           COUNT(*) FILTER (WHERE s.status = 'avslatt')::int AS avslatt
+         FROM leadgrid_dorsalg_status s
+         LEFT JOIN users u ON u.id = s.set_by
+        WHERE s.org_id = $1 AND s.set_by IS NOT NULL
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 20`,
+        [orgId],
+      );
+      const sisteVunnet = await pool.query(
+        `SELECT adressetekst, postnummer, poststed, updated_at
+           FROM leadgrid_dorsalg_status
+          WHERE org_id = $1 AND status = 'vunnet'
+          ORDER BY updated_at DESC
+          LIMIT 8`,
+        [orgId],
+      );
+      const t = totals.rows[0] ?? {};
+      return res.json({
+        vunnet: t.vunnet ?? 0,
+        avslatt: t.avslatt ?? 0,
+        iDag: t.i_dag ?? 0,
+        vunnetIDag: t.vunnet_i_dag ?? 0,
+        denneUka: t.denne_uka ?? 0,
+        perSelger: perSelger.rows.map((r) => ({
+          navn: r.navn as string,
+          vunnet: r.vunnet as number,
+          avslatt: r.avslatt as number,
+        })),
+        sisteVunnet: sisteVunnet.rows.map((r) => ({
+          adressetekst: r.adressetekst as string,
+          postnummer: r.postnummer as string,
+          poststed: r.poststed as string,
+          settAt: (r.updated_at as Date).toISOString().replace(/\.\d{3}Z$/, "Z"),
+        })),
+      });
+    } catch (err) {
+      console.error("[leadgrid-dorsalg] stats feilet:", (err as Error).message);
+      return res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   // DELETE /api/leadgrid/dorsalg/status/:adresseId — fjern status (angre).
   app.delete("/api/leadgrid/dorsalg/status/:adresseId", async (req, res) => {
     const session = requireUserSession(req, res);
