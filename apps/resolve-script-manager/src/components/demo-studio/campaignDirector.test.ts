@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 // Unngå å laste Tauri via claudeProxyService — vi tester kun den rene logikken.
 vi.mock('../../services/claudeProxyService.js', () => ({ claudeProxyService: { send: async () => '' } }));
 
-import { extractJson, normalizePosts, computePillarMix, materializePost, scheduleCampaign, type CampaignPost } from './campaignDirector.js';
+import { extractJson, normalizePosts, computePillarMix, materializePost, scheduleCampaign, omniChannelUrl, OMNI_CHANNELS, type CampaignPost } from './campaignDirector.js';
 
 const mkPost = (over: Partial<CampaignPost> = {}): CampaignPost => ({
   angle: 'A', pillar: 'proof', platform: 'tiktok', format: '9:16', week: 1,
@@ -90,6 +90,30 @@ describe('scheduleCampaign — kalender', () => {
     const d0 = new Date(s[0].scheduledAt!.slice(0, 10));
     const d1 = new Date(s[1].scheduledAt!.slice(0, 10));
     expect((d1.getTime() - d0.getTime()) / 86400000).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe('omniChannelUrl — render.png-URL per kanal', () => {
+  const og = OMNI_CHANNELS.find((c) => c.id === 'og')!;
+  it('bygger render.png-URL m/ tpl=auto, dims og base64url-data', () => {
+    const url = new URL(omniChannelUrl(mkPost(), og, '#a855f7'));
+    expect(url.pathname).toBe('/api/infographics/render.png');
+    expect(url.searchParams.get('tpl')).toBe('auto');
+    expect(url.searchParams.get('w')).toBe('1200');
+    expect(url.searchParams.get('h')).toBe('630');
+    expect(url.searchParams.get('accent')).toBe('#a855f7');
+    const d = JSON.parse(Buffer.from(url.searchParams.get('d')!, 'base64url').toString('utf8'));
+    expect(d).toEqual({ value: '+248 %', label: 'Vekst', accent: '#a855f7' });
+  });
+  it('dropper ugyldig accent (ingen accent-param, ikke i data)', () => {
+    const url = new URL(omniChannelUrl(mkPost(), og, 'lilla'));
+    expect(url.searchParams.get('accent')).toBeNull();
+    const d = JSON.parse(Buffer.from(url.searchParams.get('d')!, 'base64url').toString('utf8'));
+    expect(d.accent).toBeUndefined();
+  });
+  it('5 kanaler med ulike dims', () => {
+    expect(OMNI_CHANNELS).toHaveLength(5);
+    expect(new URL(omniChannelUrl(mkPost(), OMNI_CHANNELS.find((c) => c.id === 'story')!, '#fff')).searchParams.get('h')).toBe('1920');
   });
 });
 

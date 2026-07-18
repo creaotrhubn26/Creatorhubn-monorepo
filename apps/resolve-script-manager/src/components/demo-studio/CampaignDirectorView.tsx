@@ -20,7 +20,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import type { InfographicBrand } from './infographicStudio.js';
 import { enqueueCampaign } from '../../services/campaignQueueService.js';
 import {
-  deriveCampaign, computePillarMix, scheduleCampaign,
+  deriveCampaign, computePillarMix, scheduleCampaign, omniChannelUrl, OMNI_CHANNELS,
   GOAL_LABELS, PILLAR_LABELS, PLATFORM_LABELS,
   type Campaign, type CampaignGoal, type CampaignPost, type ContentPillar, type PostPlatform,
 } from './campaignDirector.js';
@@ -79,6 +79,10 @@ export default function CampaignDirectorView(
     if (!campaign) return;
     const today = new Date().toISOString().slice(0, 10);
     setCampaign({ ...campaign, posts: scheduleCampaign(campaign.posts, weeks, today) });
+  };
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyOmni = (p: CampaignPost, ch: (typeof OMNI_CHANNELS)[number]) => {
+    try { void navigator.clipboard?.writeText(omniChannelUrl(p, ch, a)); setCopied(`${sel}:${ch.id}`); window.setTimeout(() => setCopied(null), 1500); } catch { /* utklippstavle utilgjengelig */ }
   };
   const sendToQueue = async () => {
     if (!campaign || queueing) return;
@@ -210,6 +214,16 @@ export default function CampaignDirectorView(
                 {selected.hashtags.length > 0 && <div style={{ fontSize: 10.5, color: a, marginTop: 5 }}>{selected.hashtags.join(' ')}</div>}
                 {selected.cta && <div style={{ fontSize: 11, color: C.soft, marginTop: 6 }}><b>CTA:</b> {selected.cta}</div>}
                 {selected.scheduledAt && <div style={{ fontSize: 11, color: a, marginTop: 6 }}>📅 Planlagt: {selected.scheduledAt}</div>}
+                <div style={{ marginTop: 10, borderTop: `1px solid ${C.line}`, paddingTop: 9 }}>
+                  <div style={{ fontSize: 10, color: C.soft, marginBottom: 5 }}>🔗 Omni-kanal — én vinkel → kopier bilde-URL (render.png) for hver kanal</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {OMNI_CHANNELS.map((ch) => (
+                      <span key={ch.id} onClick={() => copyOmni(selected, ch)} style={{ ...chip(copied === `${sel}:${ch.id}`), fontSize: 10.5 }}>
+                        {copied === `${sel}:${ch.id}` ? '✓ Kopiert' : ch.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

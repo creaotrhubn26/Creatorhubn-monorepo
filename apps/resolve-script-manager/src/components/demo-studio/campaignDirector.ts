@@ -178,6 +178,37 @@ export function scheduleCampaign(posts: CampaignPost[], weeks: number, startISO:
   return out;
 }
 
+// ── Omni-kanal: én vinkel → render.png-URL-er for alle kanaler ──
+// Gjenbruker den LIVE, offentlige render.png-motoren (samme som OG-preview #1536).
+// Standard-base = backend-en som serverer /api/infographics/render.png.
+export const RENDER_BASE = 'https://creatorhub-backend-rtbl.onrender.com';
+
+export interface OmniChannel { id: string; label: string; w: number; h: number }
+export const OMNI_CHANNELS: OmniChannel[] = [
+  { id: 'og', label: 'OG-preview', w: 1200, h: 630 },
+  { id: 'email', label: 'E-post-header', w: 1200, h: 400 },
+  { id: 'story', label: 'Story 9:16', w: 1080, h: 1920 },
+  { id: 'square', label: 'Feed 1:1', w: 1080, h: 1080 },
+  { id: 'wide', label: 'Wide 16:9', w: 1920, h: 1080 },
+];
+
+/** base64url (kryss-miljø: browser btoa + node-fallback). */
+function b64url(s: string): string {
+  const b64 = typeof btoa !== 'undefined'
+    ? btoa(unescape(encodeURIComponent(s)))
+    : Buffer.from(s, 'utf8').toString('base64');
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Bygg en validert render.png-URL for én posts KPI i én kanal-dimensjon. */
+export function omniChannelUrl(post: CampaignPost, ch: OmniChannel, accent: string, base = RENDER_BASE): string {
+  const data: Record<string, unknown> = { value: post.kpi.value, label: post.kpi.label };
+  if (/^#[0-9a-fA-F]{3,8}$/.test(accent)) data.accent = accent;
+  const p = new URLSearchParams({ tpl: 'auto', w: String(ch.w), h: String(ch.h), d: b64url(JSON.stringify(data)) });
+  if (/^#[0-9a-fA-F]{3,8}$/.test(accent)) p.set('accent', accent);
+  return `${base.replace(/\/+$/, '')}/api/infographics/render.png?${p.toString()}`;
+}
+
 export interface MaterializedPost { tplId: string; values: Record<string, string> }
 
 /** Pilar → riktig sosial-mal + felt-verdier. Ren mapping (testbar); UI-en lager
