@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import {
   Alert, Box, Card, CardContent, Chip, CircularProgress, Stack, Typography,
   Button, Divider, Link as MuiLink, TextField, MenuItem, Tabs, Tab,
@@ -313,6 +314,22 @@ function CampaignActionsPanel({ onAction }: { onAction: () => void }) {
   );
 }
 
+/**
+ * Scoped mørkt MUI-tema for cockpiten. Flere paneler (LeadMapMyDayPanel,
+ * WonLostDashboard m.fl.) bruker theme-defaults (text.primary, Card-bakgrunn)
+ * og arvet appens LYSE tema — usynlige titler og hvite kort på det mørke
+ * AdminRoom-lerretet. Temaet scopes her (ikke i komponentene) fordi de samme
+ * panelene også brukes i lyse kontekster i Leadgrid-appen.
+ */
+const cockpitDarkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: { main: '#7c3aed' },
+    background: { default: '#0b1120', paper: 'rgba(15,23,42,0.72)' },
+    text: { primary: '#e2e8f0', secondary: 'rgba(203,213,225,0.68)' },
+  },
+});
+
 const COCKPIT_TABS = [
   { value: 'oversikt', label: 'Oversikt' },
   { value: 'innhold', label: 'Innhold & kampanjer' },
@@ -395,6 +412,7 @@ export default function MarketingCockpitTab() {
   }, [data]);
 
   return (
+    <ThemeProvider theme={cockpitDarkTheme}>
     <Stack spacing={2} data-testid="marketing-cockpit-root">
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>Marketing Cockpit — The Role Room</Typography>
@@ -721,5 +739,6 @@ export default function MarketingCockpitTab() {
         />
       )}
     </Stack>
+    </ThemeProvider>
   );
 }
