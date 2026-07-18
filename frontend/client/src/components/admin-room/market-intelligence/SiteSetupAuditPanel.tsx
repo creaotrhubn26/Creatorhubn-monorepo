@@ -29,6 +29,7 @@ interface AuditCapability {
 interface SiteSetupAudit {
   url: string;
   fetchedAt: string;
+  techStack?: { key: string; label: string; category: string; evidence: string[] } | null;
   capabilities: AuditCapability[];
   limitations: string[];
 }
@@ -141,9 +142,17 @@ export default function SiteSetupAuditPanel() {
 
         {audit && (
           <Stack spacing={1}>
-            <Typography variant="caption" color="text.secondary">
-              {audit.url} · {new Date(audit.fetchedAt).toLocaleString("nb-NO")}
-            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Typography variant="caption" color="text.secondary">
+                {audit.url} · {new Date(audit.fetchedAt).toLocaleString("nb-NO")}
+              </Typography>
+              {audit.techStack && audit.techStack.key !== "unknown" && (
+                <Tooltip title={`Signaler: ${audit.techStack.evidence.join(" · ")}`}>
+                  <Chip size="small" label={`Bygget med: ${audit.techStack.label}`}
+                    sx={{ bgcolor: "rgba(96,165,250,0.14)", color: "#93c5fd", fontWeight: 700, fontSize: 10, height: 18 }} />
+                </Tooltip>
+              )}
+            </Stack>
             {audit.capabilities.map((c) => {
               const st = STATUS_STYLE[c.status];
               return (

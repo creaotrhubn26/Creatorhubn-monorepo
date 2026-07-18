@@ -1862,9 +1862,16 @@ export default function RoleRoomAgentDialog({
                 >
                   <Stack spacing={1}>
                     <Box>
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
-                        Nettsted-oppsett — analytics & GEO
-                      </Typography>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
+                          Nettsted-oppsett — analytics & GEO
+                        </Typography>
+                        {result.siteSetupAudit?.techStack && result.siteSetupAudit.techStack.key !== 'unknown' && (
+                          <Chip size="small"
+                            label={`Bygget med: ${result.siteSetupAudit.techStack.label}`}
+                            sx={{ bgcolor: 'rgba(96,165,250,0.16)', color: '#93c5fd', fontWeight: 700, fontSize: '0.7rem' }} />
+                        )}
+                      </Stack>
                       <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>
                         Skannet direkte fra kundens nettside. «Ikke observerbart» kan bety
                         korrekt samtykke-gating — det er ikke det samme som at det mangler.

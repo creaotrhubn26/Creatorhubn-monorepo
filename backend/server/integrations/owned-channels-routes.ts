@@ -33,6 +33,7 @@ import { defaultAuditFetcher, runSiteSetupAudit, validateAuditUrl } from "./site
 import { buildGeoPrerenderPlan, detectPlatform } from "./geo-prerender-plan.js";
 import { externalFetch } from "../external-api.js";
 import { bootstrapInputSchema, buildEventPlan, renderAnalyticsBootstrap } from "./analytics-bootstrap.js";
+import { buildInstallInstructions, stackFromKey } from "./tech-stack-detect.js";
 import { getSetupGuide, SETUP_GUIDES, tailorSetupGuides } from "./setup-guides.js";
 import { buildIndexNowPayload, submitIndexNow } from "./indexnow.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
@@ -314,7 +315,16 @@ export function registerOwnedChannelsRoutes({
         notes: ["Legg inn måle-IDer (GA4/GTM/Clarity/Pixel) for å generere selve snippeten."],
       });
     }
-    return res.json(renderAnalyticsBootstrap(parsed.data));
+    const rendered = renderAnalyticsBootstrap(parsed.data);
+    const platformKey = typeof (req.body as Record<string, unknown>)?.platformKey === "string"
+      ? String((req.body as Record<string, unknown>).platformKey)
+      : null;
+    return res.json({
+      ...rendered,
+      installInstructions: platformKey
+        ? buildInstallInstructions(stackFromKey(platformKey), { snippet: rendered.snippet })
+        : null,
+    });
   });
 
   // F4 (doc 14): guidede sjekklister for stegene som krever klientens egen

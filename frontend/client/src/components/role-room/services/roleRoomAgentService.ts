@@ -449,6 +449,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
   siteSetupAudit?: {
     url: string;
     fetchedAt: string;
+    techStack?: { key: string; label: string; category: string; evidence: string[] } | null;
     capabilities: Array<{
       key: string;
       label: string;
