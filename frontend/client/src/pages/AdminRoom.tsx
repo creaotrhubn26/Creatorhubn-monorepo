@@ -4627,6 +4627,17 @@ export default function AdminRoom() {
   else if (tab === 'migrations') content = <MigrationsTab />;
 
   return (
+    <Box
+      sx={{
+        // AdminRoom er gjennomgående mørk-tema-stylet (hvit header,
+        // gjennomskinnelige mørke paneler, lys tab-tekst), men rendres i
+        // SPA-en på lys body — uten eget lerret ble alt grått og utvasket.
+        // Dette mørke lerretet gir tokens riktig grunn uansett host-tema.
+        minHeight: '100vh',
+        background:
+          'radial-gradient(1100px 700px at 15% -10%, rgba(124,58,237,0.14), transparent 60%), linear-gradient(180deg, #0b1120 0%, #0a0807 100%)',
+      }}
+    >
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
       <style>{`
         @media print {
@@ -4687,5 +4698,6 @@ export default function AdminRoom() {
         <Box>{content}</Box>
       </Stack>
     </Container>
+    </Box>
   );
 }
