@@ -28,6 +28,8 @@ import {
 } from 'express';
 import type { Pool } from 'pg';
 import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
+import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
+import { enqueueCampaignPosts } from './post-agent-campaign-enqueue.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
 import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
@@ -177,6 +179,8 @@ function generatePairingCode(): string {
   return `${pick(3)}-${pick(3)}`;
 }
 
+const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function createPostAgentRouter(
   pool: Pool,
   activeSessions?: Map<string, SessionData>,
@@ -199,6 +203,21 @@ export function createPostAgentRouter(
       userId: (req as AuthedRequest).userId,
       anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     });
+  });
+
+  // ---- Kampanje-regissør → sosial-køen ----
+
+  router.post('/campaign/enqueue', postAgentAuth, async (req: Request, res: Response) => {
+    try {
+      const orgId = await resolveOrgIdForUser(pool, (req as AuthedRequest).userId);
+      if (!ORG_UUID_RE.test(orgId)) { res.status(409).json({ error: 'ingen_organisasjon' }); return; }
+      const result = await enqueueCampaignPosts(pool, orgId, req.body);
+      if (result.created === 0) { res.status(422).json({ error: 'ingen_gyldige_poster', ...result }); return; }
+      res.json(result); // { created, skipped } — postene ligger som draft i køen for godkjenning
+    } catch (err) {
+      console.error('[post-agent] campaign enqueue failed', err);
+      res.status(500).json({ error: 'enqueue_failed' });
+    }
   });
 
   // ---- Pairing flow ----
