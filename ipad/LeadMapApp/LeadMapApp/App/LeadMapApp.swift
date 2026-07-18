@@ -42,6 +42,9 @@ struct LeadMapApp: App {
                 .macCatalystMinFrame()
                 .onAppear {
                     NotificationAppDelegate.appStateRef = appState
+                    // Krasjrapportering (2026-07-18): MetricKit-abonnement —
+                    // iOS leverer krasj/heng-diagnostikk ved neste oppstart.
+                    CrashReporterService.shared.start()
                     // Flush eventuell buffret Pondus-deep-link fra en Intent
                     // som kjørte før scene-init var ferdig.
                     AppStateBridge.shared.flushPendingDeepLinks()
@@ -58,6 +61,10 @@ struct LeadMapApp: App {
                     if phase == .active {
                         Self.forceDarkWindows()
                         sendPresenceCheckin()
+                        // Flush bufrede krasjrapporter når API-klient finnes.
+                        if let api = appState.api {
+                            CrashReporterService.shared.flush(api: api)
+                        }
                     }
                 }
         }

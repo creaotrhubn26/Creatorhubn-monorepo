@@ -666,6 +666,22 @@ actor APIClient {
             "/api/leadgrid/leadbook/examples/\(exampleId)/view", body: [:])
     }
 
+    // MARK: - Krasjrapportering (MetricKit, 2026-07-18)
+
+    /// Batch-post av bufrede MetricKit-diagnostikker. Tar pre-enkodet
+    /// JSON (`Data` er Sendable — [[String: Any]] er det ikke, og ville
+    /// sprengt task-isolasjonen hos calleren); dekodes her, innenfor
+    /// samme isolasjonsregion som post-kallet. Returnerer antall lagret.
+    func submitCrashReports(encoded: [Data]) async throws -> Int {
+        let reports = encoded.compactMap {
+            (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+        }
+        struct Resp: Codable { let stored: Int }
+        let r: Resp = try await post(
+            "/api/leadgrid/crash-reports", body: ["reports": reports])
+        return r.stored
+    }
+
     // MARK: - Utstyrsregister (2026-07-17)
 
     struct EquipmentDTO: Codable, Identifiable, Hashable {
