@@ -14,6 +14,8 @@
  * nøkkelfilen deres er deployet.
  */
 
+import { roleRoomAgentDefaultHeaders } from "./roleRoomAgentService";
+
 export interface SetupToolUse {
   name: string;
   input: Record<string, unknown>;
@@ -23,13 +25,13 @@ export interface SetupToolUse {
 const OWN_INDEXNOW_KEY = "a9ac5c44b95de2e87781907267a60f07";
 const OWN_HOSTS = new Set(["theroleroom.com", "www.theroleroom.com", "leadgrid.no", "www.leadgrid.no", "creatorhubn.com", "www.creatorhubn.com"]);
 
-const jsonHeaders = { "Content-Type": "application/json" };
+const jsonHeaders = (): Record<string, string> => ({ "Content-Type": "application/json", ...roleRoomAgentDefaultHeaders() });
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: any }> {
   const r = await fetch(path, {
     method: "POST",
     credentials: "include",
-    headers: jsonHeaders,
+    headers: jsonHeaders(),
     body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => null);
