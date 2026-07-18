@@ -21,6 +21,7 @@ RUN apt-get update \
     darktable \
     ffmpeg \
     fonts-liberation \
+    fonts-noto-color-emoji \
     g++ \
     git \
     imagemagick \

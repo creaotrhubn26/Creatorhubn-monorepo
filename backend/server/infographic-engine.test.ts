@@ -135,3 +135,27 @@ describe("assembleHtml — selvstendig, portabel artefakt", () => {
     expect(assembleHtml(TPL, {}, { autoplaySec: 3, loop: true })).toContain("requestAnimationFrame");
   });
 });
+
+describe("fidelity — emoji, lange verdier og tom data håndteres trygt", () => {
+  it("emoji i data bevares round-trip gjennom cfgJson (rendres m/ Noto-emoji-fonten i Docker)", () => {
+    const obj = { label: "Vekst 🚀📈", value: "100% ✅" };
+    expect(JSON.parse(cfgJson(obj))).toEqual(obj);
+  });
+
+  it("veldig lang verdi krasjer ikke detectCategory (overflow håndteres av FIT-skalering)", () => {
+    const long = "x".repeat(5000);
+    expect(() => detectCategory({ value: long })).not.toThrow();
+    expect(detectCategory({ value: long })).toBe("single");
+  });
+
+  it("assembleHtml med TOM data gir fortsatt gyldig, selvstendig artefakt", () => {
+    const out = assembleHtml(`<div id="wrap">{__CFG__.value}</div>`, {});
+    expect(out).toContain("window.__CFG__={}");
+    expect(out).toContain("__igFit");        // FIT til stede → skalerer uansett innhold
+    expect(out).toContain("setProgress");    // driver til stede
+  });
+
+  it("æøå bevares i data (Inter latin-subset dekker dem)", () => {
+    expect(JSON.parse(cfgJson({ t: "Fullføringsgrad på Østlandet" }))).toEqual({ t: "Fullføringsgrad på Østlandet" });
+  });
+});
