@@ -105,6 +105,8 @@ type RoleRoomAgentDialogProps = {
     extraContext: string;
   }) => Promise<void> | void;
   onApply: (result: RoleRoomAgentProducerBootstrapResult) => Promise<void> | void;
+  /** Deep-link fra needsConnect/needsReauth-utfall til Kontotilgang. */
+  onOpenAccountAccess?: () => void;
   onCreateProject?: (result: RoleRoomAgentProducerBootstrapResult) => Promise<void> | void;
   /** Live progress (#2) — pass through from the parent's useResearchProgress
    *  hook. When status === 'streaming' the dialog renders the per-stage
@@ -250,6 +252,7 @@ export default function RoleRoomAgentDialog({
   notice,
   onGenerate,
   onApply,
+  onOpenAccountAccess,
   onCreateProject,
   progressStages,
   progressStatus,
@@ -426,7 +429,7 @@ export default function RoleRoomAgentDialog({
   // Google-kobling. Knappen ER bekreftelsen; resultatet viser hva som
   // faktisk ble opprettet vs gjenbrukt.
   const [ga4SetupBusy, setGa4SetupBusy] = useState(false);
-  const [ga4SetupOutcome, setGa4SetupOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  const [ga4SetupOutcome, setGa4SetupOutcome] = useState<{ ok: boolean; text: string; needsAccess?: boolean } | null>(null);
   const runGa4ApiSetup = async (domain: string) => {
     setGa4SetupBusy(true);
     setGa4SetupOutcome(null);
@@ -439,7 +442,7 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
-        setGa4SetupOutcome({ ok: false, text: body?.error ?? `GA4-oppsett feilet (${r.status}).` });
+        setGa4SetupOutcome({ ok: false, text: body?.error ?? `GA4-oppsett feilet (${r.status}).`, needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
         return;
       }
       const parts = [
@@ -458,7 +461,7 @@ export default function RoleRoomAgentDialog({
   // GSC via API (to-fase): pending-svar bærer metataggen som må i <head>
   // før verifisering kan fullføres — deretter klikkes knappen igjen.
   const [gscSetupBusy, setGscSetupBusy] = useState(false);
-  const [gscSetupOutcome, setGscSetupOutcome] = useState<{ ok: boolean; text: string; metaTag?: string | null } | null>(null);
+  const [gscSetupOutcome, setGscSetupOutcome] = useState<{ ok: boolean; text: string; metaTag?: string | null; needsAccess?: boolean } | null>(null);
   const runGscApiSetup = async (domain: string) => {
     setGscSetupBusy(true);
     setGscSetupOutcome(null);
@@ -471,7 +474,7 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
-        setGscSetupOutcome({ ok: false, text: body?.error ?? `GSC-oppsett feilet (${r.status}).` });
+        setGscSetupOutcome({ ok: false, text: body?.error ?? `GSC-oppsett feilet (${r.status}).`, needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
         return;
       }
       if (body.verification === 'pending') {
@@ -527,7 +530,7 @@ export default function RoleRoomAgentDialog({
   // Meta Pixel via Marketing API på prosjektets Meta-kobling. Pixelen
   // KOBLES, aldri aktiveres — annonse-start er en separat beslutning.
   const [pixelSetupBusy, setPixelSetupBusy] = useState(false);
-  const [pixelSetupOutcome, setPixelSetupOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pixelSetupOutcome, setPixelSetupOutcome] = useState<{ ok: boolean; text: string; needsAccess?: boolean } | null>(null);
   const runMetaPixelApiSetup = async (domain: string) => {
     setPixelSetupBusy(true);
     setPixelSetupOutcome(null);
@@ -540,7 +543,7 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
-        setPixelSetupOutcome({ ok: false, text: body?.error ?? `Pixel-oppsett feilet (${r.status}).` });
+        setPixelSetupOutcome({ ok: false, text: body?.error ?? `Pixel-oppsett feilet (${r.status}).`, needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
         return;
       }
       const parts = [
@@ -1894,7 +1897,13 @@ export default function RoleRoomAgentDialog({
                       );
                     })()}
                     {ga4SetupOutcome && (
-                      <Alert severity={ga4SetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
+                      <Alert severity={ga4SetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}
+                        action={ga4SetupOutcome.needsAccess && onOpenAccountAccess ? (
+                          <Button size="small" color="inherit" onClick={onOpenAccountAccess}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}>
+                            Åpne Kontotilgang
+                          </Button>
+                        ) : undefined}>
                         {ga4SetupOutcome.text}
                       </Alert>
                     )}
@@ -1915,7 +1924,13 @@ export default function RoleRoomAgentDialog({
                       );
                     })()}
                     {gscSetupOutcome && (
-                      <Alert severity={gscSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
+                      <Alert severity={gscSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}
+                        action={gscSetupOutcome.needsAccess && onOpenAccountAccess ? (
+                          <Button size="small" color="inherit" onClick={onOpenAccountAccess}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}>
+                            Åpne Kontotilgang
+                          </Button>
+                        ) : undefined}>
                         {gscSetupOutcome.text}
                         {gscSetupOutcome.metaTag ? (
                           <Box component="pre" sx={{ m: 0, mt: 0.5, p: 0.75, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.6)', fontSize: '0.72rem', overflowX: 'auto', fontFamily: 'monospace' }}>
@@ -1941,7 +1956,13 @@ export default function RoleRoomAgentDialog({
                       );
                     })()}
                     {pixelSetupOutcome && (
-                      <Alert severity={pixelSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
+                      <Alert severity={pixelSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}
+                        action={pixelSetupOutcome.needsAccess && onOpenAccountAccess ? (
+                          <Button size="small" color="inherit" onClick={onOpenAccountAccess}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}>
+                            Åpne Kontotilgang
+                          </Button>
+                        ) : undefined}>
                         {pixelSetupOutcome.text}
                       </Alert>
                     )}

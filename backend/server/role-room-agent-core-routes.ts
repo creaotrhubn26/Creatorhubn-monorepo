@@ -1222,6 +1222,60 @@ export function setupRoleRoomAgentCoreRoutes(
     }
   });
 
+  // ── Koblingsstatus for Kontotilgang (eierskap + Meta-verifisering) ──
+  // Google: HVEM sin konto er bundet til prosjektet (binding-først, som
+  // ga4/gsc-oppsettet bruker) — eierskap skal aldri være implisitt.
+  // Meta: VERIFISER at prosjektets kobling faktisk virker (Graph /me),
+  // i stedet for selvattestering med «Bekreft koblet»-knappen.
+  app.get("/api/role-room/agent/connection-status/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId ?? "");
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+
+    const google: { connected: boolean; source: "project" | "self" | null; email: string | null } = {
+      connected: false, source: null, email: null,
+    };
+    try {
+      const { row, source } = await resolveProjectGoogleConnection(projectId, session.userId);
+      if (row) {
+        google.connected = true;
+        google.source = source;
+        google.email = row.google_email ?? null;
+      }
+    } catch {
+      // status er best effort
+    }
+
+    const meta: { connected: boolean; verified: boolean; name: string | null } = {
+      connected: false, verified: false, name: null,
+    };
+    try {
+      const conn = await pool.query<{ access_token: string | null }>(
+        `SELECT access_token FROM role_room_instagram_connections
+          WHERE project_id = $1 ORDER BY connected_at DESC LIMIT 1`,
+        [projectId],
+      );
+      const token = conn.rows[0]?.access_token ?? null;
+      if (token) {
+        meta.connected = true;
+        const verify = await fetch(
+          `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${encodeURIComponent(token)}`,
+          { signal: AbortSignal.timeout(8000) },
+        );
+        if (verify.ok) {
+          const body = (await verify.json().catch(() => null)) as { name?: string } | null;
+          meta.verified = true;
+          meta.name = body?.name ?? null;
+        }
+      }
+    } catch {
+      // verified forblir false — ærlig «kunne ikke verifisere»
+    }
+
+    return res.json({ success: true, google, meta });
+  });
+
   // ── Kontrakt-skann: signert avtale → økonomisk oppsett ─────────────
   // LLM-ekstraksjon med deterministisk verbatim-vakt (hallusinerte beløp
   // droppes) + mangler-sjekkliste. On-demand — koster tokens.

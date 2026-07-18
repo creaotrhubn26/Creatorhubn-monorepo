@@ -100,6 +100,7 @@ import {
   type ProducerTimelineItem,
 } from '../../services/producerWorkflowService';
 import roleRoomAgentService, {
+  roleRoomAgentDefaultHeaders,
   type RoleRoomAgentAccess,
   type RoleRoomAgentBrandColor,
   type RoleRoomAgentProducerBootstrapResult,
@@ -2639,6 +2640,29 @@ export default function ProducerMediaPanel({
     void loadLinkedInAccessStatus();
   }, [activeWorkspace, loadLinkedInAccessStatus, showWorkspaceOperations]);
 
+  // Koblingsstatus for Kontotilgang (eierskap + verifisert Meta) — samme
+  // binding-først-logikk som agentens GA4/GSC-oppsett bygger på.
+  const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
+    google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
+    meta: { connected: boolean; verified: boolean; name: string | null };
+  } | null>(null);
+  useEffect(() => {
+    if (activeWorkspace !== 'accounts' || !projectId) return;
+    let cancelled = false;
+    void fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+      credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
+    })
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled && body?.success) {
+          setAgentConnectionStatus({ google: body.google, meta: body.meta });
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activeWorkspace, projectId]);
+
   useEffect(() => () => {
     linkedInAccessRequestRef.current += 1;
   }, []);
@@ -3600,11 +3624,35 @@ export default function ProducerMediaPanel({
   }, [persistPlanningDraft, planningDraft]);
 
   const handleConfirmAccountAccessConnected = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    // Meta kan VERIFISERES (Graph /me på prosjektets kobling) — gjør det i
+    // stedet for selvattestering. Øvrige plattformer mangler verifiserings-
+    // API her og beholder manuell bekreftelse (ærlig begrensning).
+    if (platform === 'meta' && projectId) {
+      try {
+        const r = await fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+          credentials: 'include',
+          headers: roleRoomAgentDefaultHeaders(),
+        });
+        const body = await r.json().catch(() => null);
+        if (!body?.meta?.verified) {
+          setAccessVaultError(
+            body?.meta?.connected
+              ? 'Meta-koblingen finnes, men svarer ikke (utløpt token?) — koble til på nytt før bekreftelse.'
+              : 'Fant ingen fungerende Meta-kobling på prosjektet — fullfør invite/OAuth-flyten først.',
+          );
+          return;
+        }
+        setAgentConnectionStatus((cur) => (cur ? { ...cur, meta: body.meta } : cur));
+      } catch {
+        setAccessVaultError('Kunne ikke verifisere Meta-koblingen akkurat nå — prøv igjen.');
+        return;
+      }
+    }
     await persistAccountAccessEntry(platform, (entry) => ({
       ...entry,
       status: 'connected',
     }));
-  }, [persistAccountAccessEntry]);
+  }, [persistAccountAccessEntry, projectId]);
 
   const handleSaveAccessVaultSecret = useCallback(async (
     entry: ProducerProjectPlanning['accountAccess']['entries'][number],
@@ -12386,7 +12434,13 @@ export default function ProducerMediaPanel({
                   const isLinkedInEntry = entry.platform === 'linkedin';
                   const linkedAccountReview = accountAccessReviewByPlatform.get(entry.platform) ?? null;
                   const platformFlow = ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG[entry.platform];
-                  const googleConnectionDetail = '';
+                  const googleConnectionDetail = isGoogleEntry && agentConnectionStatus
+                    ? (agentConnectionStatus.google.connected
+                      ? (agentConnectionStatus.google.source === 'project'
+                        ? `Prosjektets kobling: ${agentConnectionStatus.google.email ?? 'ukjent konto'} — klient-eid oppsett (GA4/GSC lander her).`
+                        : `Din Google-konto (${agentConnectionStatus.google.email ?? 'ukjent'}) — oppsett lander hos deg. Koble klientens konto på prosjektet for klient-eierskap.`)
+                      : 'Ingen Google-kobling på prosjektet ennå — GA4-/Search Console-oppsettet i agenten krever den.')
+                    : '';
                   const linkedInConnectionDetail = isLinkedInEntry
                     ? readFirstNonEmptyString(
                       linkedInAccessStatus?.connection?.linkedInName && linkedInAccessStatus?.connection?.linkedInEmail
@@ -16642,6 +16696,18 @@ export default function ProducerMediaPanel({
         notice={roleRoomAgentNotice}
         onGenerate={handleGenerateRoleRoomAgent}
         onApply={handleApplyRoleRoomAgent}
+        onOpenAccountAccess={() => {
+          setRoleRoomAgentDialogOpen(false);
+          const sectionWithAccounts = workspaceSections.find(
+            (section) => flattenProducerWorkspacePages(section).some((page) => page.surface === 'accounts'),
+          );
+          if (!sectionWithAccounts) return;
+          const accountsPage = flattenProducerWorkspacePages(sectionWithAccounts).find(
+            (page) => page.surface === 'accounts',
+          );
+          setActiveSectionId(sectionWithAccounts.id);
+          if (accountsPage) setActivePageId(accountsPage.id);
+        }}
         onCreateProject={handleCreateProjectFromRoleRoomAgent}
         progressStages={researchProgress.stages}
         progressStatus={researchProgress.status}
