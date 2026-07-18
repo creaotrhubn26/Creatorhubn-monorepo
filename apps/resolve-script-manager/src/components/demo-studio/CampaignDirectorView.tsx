@@ -18,6 +18,7 @@ import SendIcon from '@mui/icons-material/Send';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 import type { InfographicBrand } from './infographicStudio.js';
+import { enqueueCampaign } from '../../services/campaignQueueService.js';
 import {
   deriveCampaign, computePillarMix, scheduleCampaign,
   GOAL_LABELS, PILLAR_LABELS, PLATFORM_LABELS,
@@ -72,10 +73,26 @@ export default function CampaignDirectorView(
   };
 
   const scheduled = posts.some((p) => p.scheduledAt);
+  const [queueMsg, setQueueMsg] = useState<string | null>(null);
+  const [queueing, setQueueing] = useState(false);
   const schedule = () => {
     if (!campaign) return;
     const today = new Date().toISOString().slice(0, 10);
     setCampaign({ ...campaign, posts: scheduleCampaign(campaign.posts, weeks, today) });
+  };
+  const sendToQueue = async () => {
+    if (!campaign || queueing) return;
+    setQueueing(true); setQueueMsg(null);
+    try {
+      const payload = campaign.posts.map((p) => ({
+        platform: p.platform,
+        body: [p.caption || p.hooks[0]?.text, p.hashtags.join(' '), p.cta].filter(Boolean).join('\n\n'),
+        facts: [{ label: p.kpi.label, value: p.kpi.value }],
+      }));
+      const r = await enqueueCampaign(payload);
+      setQueueMsg(`✓ ${r.created} lagt i køen som utkast${r.skipped ? ` · ${r.skipped} hoppet over (TikTok/YouTube støttes ikke i køen)` : ''} — godkjenn + publiser i sosial-køen.`);
+    } catch (e) { setQueueMsg('⚠ ' + (e as Error).message); }
+    finally { setQueueing(false); }
   };
 
   const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, padding: '8px 14px', borderRadius: 9, border: `1px solid ${C.line}`, color: '#c4d0e4', background: C.panel2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };
@@ -202,8 +219,9 @@ export default function CampaignDirectorView(
         <div style={{ display: 'flex', gap: 9, marginTop: 18, flexWrap: 'wrap' }}>
           <span onClick={() => onUsePosts?.(campaign)} style={{ ...btn, background: a, borderColor: a, color: '#fff' }}><FileDownloadIcon style={{ fontSize: 16 }} /> Bruk kampanjen ({posts.length})</span>
           <span onClick={schedule} style={{ ...btn, ...(scheduled ? { borderColor: a, color: a } : {}) }}><CalendarMonthIcon style={{ fontSize: 16 }} /> {scheduled ? 'Planlagt ✓ — planlegg på nytt' : `Planlegg (${weeks} uker)`}</span>
-          <span title={scheduled ? 'Publiser til sosial-køen på planlagte tidspunkt' : 'Planlegg først'} style={{ ...btn, opacity: scheduled ? 1 : 0.5 }}><SendIcon style={{ fontSize: 16 }} /> Send til sosial-kø</span>
+          <span onClick={() => scheduled && sendToQueue()} title={scheduled ? 'Legg postene i sosial-køen som utkast' : 'Planlegg først'} style={{ ...btn, opacity: scheduled && !queueing ? 1 : 0.5 }}><SendIcon style={{ fontSize: 16 }} /> {queueing ? 'Sender…' : 'Send til sosial-kø'}</span>
         </div>
+        {queueMsg && <div style={{ marginTop: 10, fontSize: 12, color: queueMsg.startsWith('✓') ? '#4fc76b' : '#f0a89f' }}>{queueMsg}</div>}
       </>)}
     </div>
   );
