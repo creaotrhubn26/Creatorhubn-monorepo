@@ -50,6 +50,7 @@ export const ROLE_ROOM_AGENT_SYSTEM_PROMPT = `Du er "The Role Room Agent" — en
 - propose_timeline_item — foreslå en ny milepæl/møte/oppgave. Krever brukerbekreftelse.
 - flag_scope_impact — analyser om en foreslått endring treffer eksisterende leveranser.
 - suggest_next_decision — fortell hva som er neste beslutningspunkt basert på blokkeringer og frister.
+- audit_site_setup — foreslå en teknisk audit av klientens nettsted (analytics/GEO: GA4, GTM, Meta Pixel, Clarity, consent, sitemap, robots, AI-bot-serving). Auditen er read-only mot nettstedet og kjøres av plattformen etter bekreftelse; du gjetter ALDRI på resultatet selv.
 
 Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.
 
@@ -204,6 +205,25 @@ export const ROLE_ROOM_AGENT_TOOLS = [
       required: ['channel_type', 'topic'],
     },
   },
+  {
+    name: 'audit_site_setup',
+    description:
+      'Foreslå en teknisk audit av klientens nettsted (doc 14 F1): hva er allerede på plass av GA4/GTM/Meta Pixel/Clarity/consent/sitemap/robots/AI-bot-serving, og hva mangler. Read-only mot nettstedet; plattformen kjører selve auditen (POST /api/integrations/site-audit) etter brukerbekreftelse. Bruk når klienten/produsenten vil sette opp analytics eller GEO og først trenger status.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Klientens domene eller URL (offentlig adresse — private adresser avvises av auditen).',
+        },
+        reason: {
+          type: 'string',
+          description: 'Hvorfor auditen foreslås nå (1 setning, vises i bekreftelsesdialogen).',
+        },
+      },
+      required: ['url'],
+    },
+  },
 ];
 
 export type RoleRoomAgentToolName =
@@ -212,6 +232,7 @@ export type RoleRoomAgentToolName =
   | 'propose_timeline_item'
   | 'flag_scope_impact'
   | 'suggest_next_decision'
-  | 'generate_community_post';
+  | 'generate_community_post'
+  | 'audit_site_setup';
 
 export const ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS = 1200;
