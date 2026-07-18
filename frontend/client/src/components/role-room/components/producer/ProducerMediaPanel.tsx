@@ -3135,10 +3135,13 @@ export default function ProducerMediaPanel({
         updatedAt: now,
       };
 
-      const savedIntake = await producerWorkflowService.updateClientIntake(projectId, nextIntake);
-      await persistPlanningDraft(nextPlanning, nextProject);
-
-      const existingStoryLogic = await storyLogicService.getStoryLogic(projectId);
+      // Tre uavhengige rundturer i parallell (intake-skriv, planning-skriv,
+      // story-logic-les) — «Lagrer…» gikk fra 4 sekvensielle til 2 bølger.
+      const [savedIntake, , existingStoryLogic] = await Promise.all([
+        producerWorkflowService.updateClientIntake(projectId, nextIntake),
+        persistPlanningDraft(nextPlanning, nextProject),
+        storyLogicService.getStoryLogic(projectId),
+      ]);
       const existingStoryLogicRecord = asRecord(existingStoryLogic);
       const storyLogicDraftRecord = asRecord(result.storyLogicDraft);
       const existingLocks = asRecord(existingStoryLogicRecord.locks);

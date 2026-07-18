@@ -67,6 +67,7 @@ import { buildClassificationFeedbackEdits } from '../../utils/roleRoomAgentFeedb
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import { executeSetupAgentTool } from '../../services/roleRoomSetupToolExecutor';
 import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
+import { ContractScanSection } from './ContractScanSection';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
 import { DailyBriefCard } from './DailyBriefCard';
@@ -493,6 +494,36 @@ export default function RoleRoomAgentDialog({
       setGscSetupBusy(false);
     }
   };
+  // Delvis refresh (kun sosiale kontoer): re-skanner kundens nettsted
+  // med forceRefresh (24t-cachen bypasses) uten å kjøre full research.
+  const [socialRefreshBusy, setSocialRefreshBusy] = useState(false);
+  const refreshSocialCandidates = async () => {
+    if (!result) return;
+    setSocialRefreshBusy(true);
+    try {
+      const r = await fetch('/api/role-room/agent/producer-bootstrap/refresh-section', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({
+          projectId,
+          section: 'social',
+          forceRefresh: true,
+          websiteUrl: result.companyProfile?.websiteUrl ?? websiteUrl ?? undefined,
+          companyName: result.companyProfile?.companyName ?? undefined,
+        }),
+      });
+      const body = await r.json().catch(() => null);
+      if (r.ok && body?.success && Array.isArray(body.socialProfileCandidates)) {
+        setResult({ ...result, socialProfileCandidates: body.socialProfileCandidates });
+      }
+    } catch {
+      // stille — blokken beholder forrige liste
+    } finally {
+      setSocialRefreshBusy(false);
+    }
+  };
+
   // Meta Pixel via Marketing API på prosjektets Meta-kobling. Pixelen
   // KOBLES, aldri aktiveres — annonse-start er en separat beslutning.
   const [pixelSetupBusy, setPixelSetupBusy] = useState(false);
@@ -1708,11 +1739,18 @@ export default function RoleRoomAgentDialog({
                           Kontoene er forslag basert på kundens nettside og strukturert data. Bekreft før publisering eller tilgangsforespørsel.
                         </Typography>
                       </Box>
-                      <Chip
-                        size="small"
-                        label={`${usableSocialProfileCandidates.length}/${socialProfileCandidates.length} klare for bruk`}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                      />
+                      <Stack direction="row" spacing={0.8} alignItems="center">
+                        <Chip
+                          size="small"
+                          label={`${usableSocialProfileCandidates.length}/${socialProfileCandidates.length} klare for bruk`}
+                          sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                        />
+                        <Button size="small" variant="outlined" disabled={socialRefreshBusy}
+                          onClick={() => void refreshSocialCandidates()}
+                          sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem' }}>
+                          {socialRefreshBusy ? 'Skanner…' : 'Oppdater fra nettsiden'}
+                        </Button>
+                      </Stack>
                     </Stack>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
                       {socialProfileCandidates.map((profile) => (
@@ -1939,6 +1977,12 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Box>
               ) : null}
+
+              {/* Kontrakt-skann: signert avtale -> okonomisk oppsett (eget skann,
+                  uavhengig av research-resultatet — trenger kun prosjektet). */}
+              <Box sx={{ display: showResearchSection('marked') ? undefined : 'none' }}>
+                <ContractScanSection projectId={projectId} />
+              </Box>
 
               {competitorAnalysis ? (
                 <Box

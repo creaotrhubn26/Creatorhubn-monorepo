@@ -66,6 +66,7 @@ import { ensureFreshGoogleAccessToken } from "./google-oauth-shared.js";
 import { runGa4Setup } from "./role-room-agent-ga4-setup.js";
 import { runGscSetup } from "./role-room-agent-gsc-setup.js";
 import { runMetaPixelSetup } from "./role-room-agent-meta-pixel-setup.js";
+import { getLatestContractScan, scanContract } from "./role-room-agent-contract-scan.js";
 import {
   validateResearchResult,
   detectMaterialChanges,
@@ -1218,5 +1219,42 @@ export function setupRoleRoomAgentCoreRoutes(
       console.error("[meta-pixel-setup] failed", err);
       return res.status(500).json({ success: false, error: "meta_pixel_setup_failed" });
     }
+  });
+
+  // ── Kontrakt-skann: signert avtale → økonomisk oppsett ─────────────
+  // LLM-ekstraksjon med deterministisk verbatim-vakt (hallusinerte beløp
+  // droppes) + mangler-sjekkliste. On-demand — koster tokens.
+  app.post("/api/role-room/agent/contract-scan", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const projectId = readString(body.projectId);
+    const contractText = typeof body.contractText === "string" ? body.contractText : "";
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    try {
+      const outcome = await scanContract(pool, {
+        projectId,
+        contractText,
+        userLabel: session.email ?? session.userId,
+      });
+      if (!outcome.ok) {
+        return res.status(outcome.status).json({ success: false, error: outcome.error });
+      }
+      return res.json({ success: true, scan: outcome.result });
+    } catch (err) {
+      console.error("[contract-scan] failed", err);
+      return res.status(500).json({ success: false, error: "contract_scan_failed" });
+    }
+  });
+
+  app.get("/api/role-room/agent/contract-scan/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const scan = await getLatestContractScan(pool, String(req.params.projectId));
+    return res.json({ success: true, scan });
   });
 }
