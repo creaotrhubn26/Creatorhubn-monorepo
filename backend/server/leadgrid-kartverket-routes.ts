@@ -379,7 +379,7 @@ export function registerLeadgridAdresseRoutes(deps: {
       const upstream = await fetch(
         "https://ws.geonorge.no/adresser/v1/punktsok" +
         `?lat=${lat}&lon=${lon}&radius=${radius}` +
-        `&treffPerSide=200&side=${side}&asciiKompatibel=true`,
+        `&treffPerSide=1000&side=${side}&asciiKompatibel=true`,
         { headers: { Accept: "application/json" } },
       );
       if (!upstream.ok) {

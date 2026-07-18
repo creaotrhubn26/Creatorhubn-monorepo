@@ -851,6 +851,7 @@ import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-route
 import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
+import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
@@ -66518,6 +66519,10 @@ registerLeadgridKartverketRoutes({ app, requireUserSession });
 // Dørsalg-modus: husstandsadresser fra Kartverket (EGEN modus — blandes
 // aldri med bedrifts-leads; ren proxy, ingen lagring).
 registerLeadgridAdresseRoutes({ app, requireUserSession });
+
+// Dørsalg-modus: husstands-status vunnet/avslått per org (mig 0397).
+// Utfallet på døra er org-data — adressene selv lagres fortsatt aldri.
+registerLeadgridDorsalgRoutes({ app, pool, requireUserSession });
 
 // Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
 // alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
