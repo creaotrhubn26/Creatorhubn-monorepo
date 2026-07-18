@@ -23,8 +23,32 @@ struct KjorebokView: View {
     @State private var reportMsg: String?
     @State private var shareItem: ShareItem?
 
-    private var monthTrips: [Trip] { store.trips(inMonth: month) }
-    private var summary: (km: Double, amount: Double, tolls: Double) { store.businessSummary(inMonth: month) }
+    // Demo-turer (2026-07-18): kjøreboka fylles av EKTE kjøring — i demo-
+    // modus (salgsmøter!) ville den vært tom. In-memory demo-liste;
+    // bekreft-formål muterer kun denne — aldri TripStore/backend.
+    @State private var demoTrips: [Trip] = []
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    private var monthTrips: [Trip] {
+        if isDemo {
+            let cal = Calendar.current
+            return demoTrips.filter { cal.isDate($0.startDate, equalTo: month, toGranularity: .month) }
+        }
+        return store.trips(inMonth: month)
+    }
+    private var summary: (km: Double, amount: Double, tolls: Double) {
+        if isDemo {
+            let biz = monthTrips.filter { $0.purpose.isBusiness }
+            return (km: biz.reduce(0) { $0 + $1.distanceKm },
+                    amount: biz.reduce(0) { $0 + ($1.mileageAmount ?? 0) },
+                    tolls: biz.reduce(0) { $0 + ($1.tollAmount ?? 0) })
+        }
+        return store.businessSummary(inMonth: month)
+    }
+    private var unconfirmedCount: Int {
+        isDemo ? demoTrips.filter { $0.purpose == .unconfirmed }.count
+               : store.unconfirmedCount
+    }
 
     private var monthLabel: String {
         let f = DateFormatter(); f.locale = Locale(identifier: "nb_NO"); f.dateFormat = "MMMM yyyy"
@@ -38,7 +62,7 @@ struct KjorebokView: View {
                     autoTripCard
                     monthPicker
                     summaryCard
-                    if store.unconfirmedCount > 0 { unconfirmedBanner }
+                    if unconfirmedCount > 0 { unconfirmedBanner }
                     if monthTrips.isEmpty { emptyState }
                     else { ForEach(monthTrips) { tripRow($0) } }
                     exportBar
@@ -59,6 +83,11 @@ struct KjorebokView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .task {
+            // Demo: seed in-memory-turer, aldri backend-synk.
+            if isDemo {
+                if demoTrips.isEmpty { demoTrips = GoDemoData.trips() }
+                return
+            }
             // Synk mot backend (durabel lagring på tvers av enheter).
             syncing = true
             if let server = await TripService.shared.sync(store.trips, using: appState.api) {
@@ -70,16 +99,26 @@ struct KjorebokView: View {
     }
 
     private func confirmPurpose(_ p: TripPurpose, for t: Trip) {
+        // Demo: muter kun in-memory-listen — «bekreft formål»-øyeblikket
+        // kan demonstreres uten å røre ekte kjørebok eller backend.
+        if isDemo {
+            if let idx = demoTrips.firstIndex(where: { $0.id == t.id }) {
+                demoTrips[idx].purpose = p
+            }
+            return
+        }
         store.setPurpose(p, for: t.id)
         Task { await TripService.shared.setPurpose(p, id: t.id, using: appState.api) }
     }
 
     private func exportPDF() {
-        let s = store.businessSummary(inMonth: month)
+        // Bruker demo-aware monthTrips/summary — PDF-eksporten fungerer
+        // dermed også i demo (lokalt generert, ingen backend).
+        let s = summary
         let v = appState.vehicleProfile
         guard let url = KjorebokPDF.generate(
             monthLabel: monthLabel,
-            trips: store.trips(inMonth: month),
+            trips: monthTrips,
             driverName: appState.displayName,
             vehicleName: v.displayName,
             vehiclePlate: v.plate,
@@ -89,6 +128,19 @@ struct KjorebokView: View {
     }
 
     private func exportCSV() {
+        // Demo: generer CSV lokalt fra demo-turene (backend kjenner dem ikke).
+        if isDemo {
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd HH:mm"
+            let rows = ["Dato;Fra;Til;Km;Formål;Godtgjørelse;Bom"] + monthTrips.map { t in
+                "\(df.string(from: t.startDate));\(t.startPlace);\(t.endPlace);" +
+                String(format: "%.1f", t.distanceKm) + ";\(t.purpose.label);" +
+                "\(Int(t.mileageAmount ?? 0));\(Int(t.tollAmount ?? 0))"
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("kjorebok.csv")
+            try? rows.joined(separator: "\n").data(using: .utf8)?.write(to: url)
+            shareItem = ShareItem(url: url)
+            return
+        }
         exporting = true
         Task {
             defer { exporting = false }
@@ -165,7 +217,7 @@ struct KjorebokView: View {
     private var unconfirmedBanner: some View {
         HStack(spacing: 9) {
             Image(systemName: "exclamationmark.circle.fill").foregroundStyle(NavPOIBrand.orange)
-            Text("\(store.unconfirmedCount) tur\(store.unconfirmedCount == 1 ? "" : "er") mangler formål")
+            Text("\(unconfirmedCount) tur\(unconfirmedCount == 1 ? "" : "er") mangler formål")
                 .font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
             Spacer()
         }
@@ -265,7 +317,7 @@ struct KjorebokView: View {
                 .background(LinearGradient(colors: [NavPOIBrand.purple, NavPOIBrand.purpleLight],
                                            startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 12))
             }
-            .disabled(exporting || store.trips.isEmpty)
+            .disabled(exporting || (isDemo ? monthTrips.isEmpty : store.trips.isEmpty))
 
             Button { sendReport() } label: {
                 HStack(spacing: 6) {
@@ -278,7 +330,7 @@ struct KjorebokView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(NavPOIBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .disabled(sendingReport || store.trips.isEmpty)
+            .disabled(sendingReport || (isDemo ? monthTrips.isEmpty : store.trips.isEmpty))
 
             if let m = reportMsg {
                 Text(m).font(.appScaled(size: 10, weight: .semibold)).foregroundStyle(NavPOIBrand.green)
@@ -289,6 +341,7 @@ struct KjorebokView: View {
     }
 
     private func sendReport() {
+        if isDemo { reportMsg = "Demo-modus — rapport sendes ikke"; return }
         sendingReport = true
         reportMsg = nil
         Task {

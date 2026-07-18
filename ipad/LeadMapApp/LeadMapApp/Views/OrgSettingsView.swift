@@ -278,6 +278,7 @@ private func roleLabel(_ key: String) -> String {
     case "teamleder": return "Teamleder"
     case "salgskonsulent": return "Salgskonsulent"
     case "promotor": return "Promotør"
+    case "kvalitet": return "Kvalitet"
     case "member": return "Medlem"
     case "viewer": return "Leser"
     default: return key

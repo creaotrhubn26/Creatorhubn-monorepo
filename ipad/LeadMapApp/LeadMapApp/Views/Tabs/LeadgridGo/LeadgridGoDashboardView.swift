@@ -33,8 +33,25 @@ struct LeadgridGoDashboardView: View {
         return r == "admin" || r == "salgssjef"
     }
 
+    // Demo-modus: dashboardet speiler GoDemoData (som kjøreboka) — ellers
+    // ville «Min kjørebok»/team-oversikten stått tomme i en salgsdemo.
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
     private var thisMonth: (km: Double, amount: Double, tolls: Double) {
-        store.businessSummary(inMonth: Date())
+        if isDemo {
+            let biz = GoDemoData.trips().filter { $0.purpose.isBusiness }
+            return (km: biz.reduce(0) { $0 + $1.distanceKm },
+                    amount: biz.reduce(0) { $0 + ($1.mileageAmount ?? 0) },
+                    tolls: biz.reduce(0) { $0 + ($1.tollAmount ?? 0) })
+        }
+        return store.businessSummary(inMonth: Date())
+    }
+    private var myUnconfirmed: Int {
+        isDemo ? GoDemoData.trips().filter { $0.purpose == .unconfirmed }.count
+               : store.unconfirmedCount
+    }
+    private var myMonthTripCount: Int {
+        isDemo ? GoDemoData.trips().count : store.trips(inMonth: Date()).count
     }
 
     var body: some View {
@@ -102,6 +119,7 @@ struct LeadgridGoDashboardView: View {
     }
 
     private func loadTeam() async {
+        if isDemo { team = GoDemoData.team(); return }
         guard isGoAdmin else { return }
         loadingTeam = true
         team = await TripService.shared.teamOverview(using: appState.api)
@@ -202,15 +220,15 @@ struct LeadgridGoDashboardView: View {
                 Image(systemName: "book.closed.fill").foregroundStyle(NavPOIBrand.purpleLight)
                 Text("Min kjørebok").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
                 Spacer()
-                if store.unconfirmedCount > 0 {
-                    Text("\(store.unconfirmedCount) ubekreftet").font(.appScaled(size: 9, weight: .bold)).foregroundStyle(.white)
+                if myUnconfirmed > 0 {
+                    Text("\(myUnconfirmed) ubekreftet").font(.appScaled(size: 9, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 3).background(NavPOIBrand.orange, in: Capsule())
                 }
             }
             HStack(spacing: 10) {
                 goTile("\(Int(thisMonth.km)) km", "Yrkeskjøring", NavPOIBrand.green)
                 goTile("\(Int(thisMonth.amount)) kr", "Godtgjørelse", NavPOIBrand.green)
-                goTile("\(store.trips(inMonth: Date()).count)", "Turer", NavPOIBrand.purpleLight)
+                goTile("\(myMonthTripCount)", "Turer", NavPOIBrand.purpleLight)
             }
             // Min bil / firma bil
             Button { showVehicle = true } label: {

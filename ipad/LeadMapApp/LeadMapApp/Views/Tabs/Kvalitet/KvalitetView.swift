@@ -200,6 +200,16 @@ struct KvalitetView: View {
     }
 
     private func reload() async {
+        // Demo-modus: kø/KPI/stats fra in-memory demo-store — Kvalitet fylles
+        // ellers kun av EKTE vunnede salg og ville stått tom i en salgsdemo.
+        if DemoModeManager.isActiveNonisolated {
+            let d = KvalitetDemoStore.shared
+            items = d.items; counts = d.counts
+            templates = d.templates
+            sellerStats = d.sellerStats; reasonStats = d.reasonStats
+            loading = false; loadFailed = false
+            return
+        }
         loading = true; loadFailed = false
         async let q = QualityService.shared.queue(using: appState.api)
         async let t = QualityService.shared.templates(using: appState.api)
@@ -556,6 +566,13 @@ struct VerificationCallView: View {
     private var hasDeviations: Bool { results.values.contains("avvik") }
 
     private func submit(status: String, reason: String?) async {
+        // Demo: verdiktet muterer kun demo-storen (aldri backend) — køen og
+        // KPI-tallene oppdateres live når vi lukker og relaster.
+        if DemoModeManager.isActiveNonisolated {
+            KvalitetDemoStore.shared.apply(id: verification.id, status: status, reason: reason)
+            onDone()
+            return
+        }
         submitting = true; errorMsg = nil
         defer { submitting = false }
         let answers: [VerificationAnswer] = (template?.questions ?? []).compactMap { q in

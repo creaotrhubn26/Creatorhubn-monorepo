@@ -192,3 +192,109 @@ enum QualityReason: String, CaseIterable {
         }
     }
 }
+
+// MARK: - Demo-data (Kvalitet)
+
+/// In-memory demo-kø for demo-modus (salgsmøter): Kvalitet fylles ellers kun
+/// av EKTE vunnede salg og ville stått tom. Verdikt muterer kun denne listen —
+/// aldri backend — så «ring kunden → verdikt»-flyten kan demonstreres live og
+/// KPI-tallene flytter seg underveis. Kundenavnene speiler demo-leadsene og
+/// selgerne speiler demo-teamet.
+@MainActor
+final class KvalitetDemoStore {
+    static let shared = KvalitetDemoStore()
+
+    private(set) var items: [SalesVerification]
+    let templates: [VerificationTemplate]
+
+    private init() {
+        let iso = ISO8601DateFormatter()
+        func daysAgo(_ d: Int) -> String {
+            iso.string(from: Calendar.current.date(byAdding: .day, value: -d, to: Date()) ?? Date())
+        }
+        func sale(
+            _ id: String, _ customer: String, _ phone: String?, _ seller: String,
+            _ amount: Double, _ wonDaysAgo: Int, _ status: String,
+            reason: String? = nil, verifiedBy: String? = nil
+        ) -> SalesVerification {
+            SalesVerification(
+                id: id, customerId: "demo-c-\(id)", customerName: customer,
+                customerPhone: phone, sellerUserId: "demo-s-\(seller)",
+                sellerName: seller, dealAmount: amount, dealCurrency: "kr",
+                wonAt: daysAgo(wonDaysAgo), status: status, reasonCode: reason,
+                note: nil, callOutcome: status == "needs_followup" ? "no_answer" : nil,
+                verifiedByName: verifiedBy,
+                verifiedAt: verifiedBy != nil ? daysAgo(max(0, wonDaysAgo - 1)) : nil
+            )
+        }
+        items = [
+            sale("demo-v1", "Sandvika Service AS", "+47 22 77 88 99", "Espen Berg",     280_000, 0, "pending"),
+            sale("demo-v2", "Holy Crust AS",       "+47 22 41 52 63", "Marit Johansen", 240_000, 1, "pending"),
+            sale("demo-v3", "Frogner Tannlege",    "+47 22 66 77 88", "Lars Erik Moen", 210_000, 1, "pending"),
+            sale("demo-v4", "Vesuvio Pizzeria",    "+47 22 44 55 66", "Helena Dahl",     75_000, 2, "needs_followup"),
+            sale("demo-v5", "Nordic Elektro AS",   "+47 22 12 34 56", "Espen Berg",     350_000, 4, "verified", verifiedBy: "Aaron Nilsen"),
+            sale("demo-v6", "Grünerløkka Café",    nil,               "Lars Erik Moen",  45_000, 5, "rejected",
+                 reason: "kunde_angret", verifiedBy: "Aaron Nilsen"),
+        ]
+        templates = [
+            VerificationTemplate(
+                id: "demo-mal-1",
+                name: "Standard velkomstsamtale",
+                productName: "Strømavtale Bedrift",
+                introScript: "Hei, du snakker med kvalitetsavdelingen. Gratulerer med ny avtale! Jeg ringer bare for å ønske velkommen og bekrefte at alt stemmer — det tar to minutter.",
+                questions: [
+                    TemplateQuestion(id: "q1", question: "Stemmer det at dere har inngått avtale med oss?",
+                                     checkHint: "Kunden skal bekrefte uten å nøle — nøling = mulig feilinformering."),
+                    TemplateQuestion(id: "q2", question: "Fikk du oppgitt totalprisen, inkludert alle gebyrer?",
+                                     checkHint: "Sammenlign med beløpet i salgsdataene."),
+                    TemplateQuestion(id: "q3", question: "Er du kjent med angreretten på 14 dager?",
+                                     checkHint: "Lovpålagt — mangler denne er salget mangelfullt dokumentert."),
+                    TemplateQuestion(id: "q4", question: "Har du fått avtalen skriftlig på e-post?",
+                                     checkHint: "Be kunden sjekke innboksen mens dere snakker."),
+                ],
+                outroScript: "Tusen takk for tiden din — velkommen som kunde! Du hører fra oss ved oppstart.",
+                isActive: true
+            ),
+        ]
+    }
+
+    var counts: [String: Int] {
+        Dictionary(grouping: items, by: \.status).mapValues(\.count)
+    }
+
+    /// Historikk-baserte stats (litt større tall enn køen — køen er «denne uka»).
+    var sellerStats: [QualitySellerStat] {
+        func stat(_ name: String, _ total: Int, _ verified: Int, _ rejected: Int,
+                  _ pending: Int, _ followup: Int) -> QualitySellerStat {
+            QualitySellerStat(sellerUserId: "demo-s-\(name)", sellerName: name,
+                              total: total, verified: verified, rejected: rejected,
+                              pending: pending, followup: followup)
+        }
+        return [
+            stat("Espen Berg",     14, 11, 1, 2, 0),
+            stat("Marit Johansen", 11,  9, 0, 1, 1),
+            stat("Lars Erik Moen", 12,  8, 2, 1, 1),
+            stat("Helena Dahl",     8,  6, 0, 1, 1),
+        ]
+    }
+
+    var reasonStats: [QualityReasonStat] {
+        [QualityReasonStat(reasonCode: "kunde_angret", count: 2),
+         QualityReasonStat(reasonCode: "feil_pris", count: 1)]
+    }
+
+    /// Demo-verdikt: bytt status på raden (structen er all-let → rebuild).
+    func apply(id: String, status: String, reason: String?) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let v = items[i]
+        items[i] = SalesVerification(
+            id: v.id, customerId: v.customerId, customerName: v.customerName,
+            customerPhone: v.customerPhone, sellerUserId: v.sellerUserId,
+            sellerName: v.sellerName, dealAmount: v.dealAmount,
+            dealCurrency: v.dealCurrency, wonAt: v.wonAt, status: status,
+            reasonCode: reason, note: v.note, callOutcome: v.callOutcome,
+            verifiedByName: "Deg (demo)",
+            verifiedAt: ISO8601DateFormatter().string(from: Date())
+        )
+    }
+}
