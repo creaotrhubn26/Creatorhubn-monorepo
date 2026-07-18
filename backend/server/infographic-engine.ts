@@ -95,7 +95,9 @@ function looksLikePercent(v: unknown): boolean {
   if (typeof v !== 'string') return false;
   const s = v.trim();
   if (s.endsWith('%')) return true;
-  const n = parseFloat(s.replace(',', '.'));
+  // Number() (STRENGT) framfor parseFloat: «1 247» (tusenskille-mellomrom) → NaN, ikke 1.
+  // parseFloat leste «1» → n≤1 → tall som «1 247 CV-er» ble feilklassifisert som prosent (donut).
+  const n = Number(s.replace(',', '.'));
   return Number.isFinite(n) && n > 0 && n <= 1;
 }
 
