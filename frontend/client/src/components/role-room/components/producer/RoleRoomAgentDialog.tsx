@@ -515,7 +515,7 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (r.ok && body?.success && Array.isArray(body.socialProfileCandidates)) {
-        setResult({ ...result, socialProfileCandidates: body.socialProfileCandidates });
+        setSocialCandidatesOverride(body.socialProfileCandidates);
       }
     } catch {
       // stille — blokken beholder forrige liste
@@ -623,7 +623,13 @@ export default function RoleRoomAgentDialog({
     [result],
   );
   const agreementSuggestions = result?.agreementSuggestions ?? [];
-  const socialProfileCandidates = result?.socialProfileCandidates ?? [];
+  // Delvis refresh kan oppdatere kandidatlisten uten ny bootstrap —
+  // result er avledet fra prop, så oppdateringen bor i en lokal override
+  // som nullstilles når et nytt research-resultat kommer inn.
+  const [socialCandidatesOverride, setSocialCandidatesOverride] =
+    useState<RoleRoomAgentProducerBootstrapResult['socialProfileCandidates'] | null>(null);
+  useEffect(() => { setSocialCandidatesOverride(null); }, [initialResult]);
+  const socialProfileCandidates = socialCandidatesOverride ?? result?.socialProfileCandidates ?? [];
   const [accessRequestPlatform, setAccessRequestPlatform] = useState<{
     platform: 'youtube' | 'instagram' | 'facebook_page' | 'linkedin' | 'tiktok' | 'x' | 'threads' | 'pinterest';
     label: string;
