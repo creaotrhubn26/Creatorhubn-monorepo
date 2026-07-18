@@ -58,12 +58,26 @@ const ICON_FONT_FACE = (() => {
 })();
 const ICON_FONT_STYLE = `<style data-cfg-fonts="__ICON_FONT__">html,body{background:transparent!important}${ICON_FONT_FACE}</style>`;
 
-/** Injiser de bundlede fontene i en mal-HTML — sist i <head> så de lokale
- *  @font-face-reglene VINNER over malens egne Google Fonts-CDN-lenker (som
- *  ellers feiler offline). Aksent-display-fonter (Poppins o.l.) beholdes fra
- *  CDN og degraderer grasiøst til fallback offline. */
+/** Fjern eksterne <link>-tagger (Google Fonts-CDN o.l.). KRITISK i WKWebView:
+ *  en parser-innsatt <script> som følger et ENNÅ-VENTENDE stylesheet blir BLOKKERT
+ *  til stylesheet-et er lastet (HTML-spec). Malenes setProgress-IIFE + den påhengte
+ *  FIT_SCRIPT ligger ETTER disse CDN-lenkene i dokumentet, så på et tregt/blokkert
+ *  nett (captive portal, brannmur som stopper Google, kald cache) kjørte de ALDRI
+ *  i det vinduet brukeren interagerte → previewWin().setProgress udefinert → Preview/
+ *  «Spill alt» ble no-op, og window.__igFitTo udefinert → #wrap forble usentrert
+ *  (oppe-til-venstre). De bundlede @font-face-reglene dekker Inter + Material Icons
+ *  Outlined; display-fonter (Poppins/Space Grotesk) degraderer til fallback. */
+function stripExternalFontLinks(html: string): string {
+  return html.replace(/<link\b[^>]*\bhref\s*=\s*["']https?:\/\/[^"'>]*["'][^>]*>/gi, '');
+}
+
+/** Injiser de bundlede fontene i en mal-HTML — sist i <head>. Fjerner FØRST malens
+ *  eksterne CDN-lenker (se stripExternalFontLinks — de blokkerte setProgress/FIT
+ *  i WKWebView), og lar de bundlede @font-face-reglene overta. Display-fonter
+ *  degraderer grasiøst til fallback. */
 function injectBundledFonts(html: string): string {
   if (html.includes('__CFG_FONTS__')) return html; // allerede injisert
+  html = stripExternalFontLinks(html);
   // WKWebView maler iframe-DOKUMENTETS rot (html) hvitt når bare `body` er
   // transparent → i preview vises overlay-en på hvit i stedet for den mørke
   // canvasen. Tving html+body transparent. (Render bruker omitBackground →
@@ -82,10 +96,12 @@ export function htmlForTemplate(tpl: InfographicTemplate): string {
  *  (system-font-fallback holder i en liten thumbnail; unngår ~1 MB font-CSS
  *  per gallerikort). */
 export function rawTemplateHtml(tpl: InfographicTemplate): string {
-  const html = tpl.html || INFOGRAPHIC_HTML;
+  let html = tpl.html || INFOGRAPHIC_HTML;
   if (html.includes('__ICON_FONT__') || html.includes('__CFG_FONTS__')) return html;
-  // Injiser KUN ikon-fonten (ikke hele bundelen) så ikon-ligaturer i miniatyren
-  // rendres som glypher, ikke rå tekst. Inter faller grasiøst til system-sans.
+  // Fjern eksterne CDN-font-lenker (blokkerer setProgress/FIT i WKWebView, se
+  // stripExternalFontLinks) og injiser KUN ikon-fonten så ikon-ligaturer i
+  // miniatyren rendres som glypher, ikke rå tekst. Inter faller til system-sans.
+  html = stripExternalFontLinks(html);
   return html.includes('</head>') ? html.replace('</head>', ICON_FONT_STYLE + '</head>') : ICON_FONT_STYLE + html;
 }
 
