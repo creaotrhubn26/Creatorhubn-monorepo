@@ -512,6 +512,23 @@ export function setupLeadMapRoutes(deps: Deps): void {
       }
 
       try {
+        // BRREG-kobling FØR insert: org.nr fra OCR-teksten (mod11-validert,
+        // sikrest) eller navnesøk på FIRMANAVNET m/ match-vakt. Person-
+        // navnet brukes aldri — enrichLeadWithBrreg søker på lead.name,
+        // som på kort-leads er kontaktpersonen, derfor må org.nr settes her.
+        const { resolveOrgNrForCard, enrichLeadWithBrreg } = await import("./lead-brreg-service.js");
+        const brregLink = await resolveOrgNrForCard({
+          company: body.company ?? null,
+          rawText: body.raw_text ?? null,
+        }).catch(() => ({ status: "no_match" as const }));
+
+        let notes = buildNotes(body);
+        if (brregLink.status === "suggestion") {
+          // Vagt navnetreff kobles aldri automatisk — men forslaget er
+          // verdt å se for selgeren.
+          notes += `\n---\nBRREG-forslag (ikke koblet automatisk): ${brregLink.matchedName} (org.nr ${brregLink.orgNr}) — bekreft i lead-kortet.`;
+        }
+
         const r = await pool.query<{ id: string }>(
           `INSERT INTO crm_customers (
              id, name, company,
@@ -519,12 +536,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
              lead_status, lead_source,
              owner_user_id, assigned_user_id,
              assigned_at, assigned_by_user_id,
-             project_id, notes,
+             project_id, notes, enrichment_org_nr,
              created_at, updated_at
            ) VALUES (
              gen_random_uuid(), $1, $2, $3, $4, $5,
              'unvisited', 'business_card_scan',
-             $6::text, $6::text, NOW(), $6::text, $7, $8,
+             $6::text, $6::text, NOW(), $6::text, $7, $8, $9,
              NOW(), NOW()
            ) RETURNING id::text`,
           [
@@ -535,7 +552,8 @@ export function setupLeadMapRoutes(deps: Deps): void {
             body.website?.trim() ?? null,
             session.userId,
             body.project_id ?? null,
-            buildNotes(body),
+            notes,
+            brregLink.status === "linked" ? brregLink.orgNr : null,
           ],
         );
         // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
@@ -544,6 +562,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
         // også fyre lead.created (welcome/intro-workflows) — samme
         // mønster som pin-drop-ruten. Fire-and-forget.
         const cardLeadId = r.rows[0].id;
+        // Full berikelse (adresse, NACE, daglig leder, regnskap) i bakgrunnen
+        // når org.nr er sikkert koblet — pipeline hopper over navnesøket.
+        if (brregLink.status === "linked") {
+          void enrichLeadWithBrreg(pool, {
+            leadId: cardLeadId,
+            workspaceOwnerUserId: session.userId,
+          }).catch((err) => {
+            console.warn("[from-card] BRREG-berikelse feilet:", String(err).slice(0, 120));
+          });
+        }
         void (async () => {
           try {
             const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
@@ -561,7 +589,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
             console.warn("[lead-map] from-card lead.created feilet:", (err as Error).message);
           }
         })();
-        return res.json({ ok: true, id: cardLeadId });
+        return res.json({
+          ok: true,
+          id: cardLeadId,
+          // iOS-appen kan vise koblingen med en gang («Fant: X AS, org.nr …»)
+          brreg: brregLink.status === "no_match" ? null : brregLink,
+        });
       } catch (err) {
         return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
