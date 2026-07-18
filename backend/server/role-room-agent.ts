@@ -2526,7 +2526,10 @@ export async function fetchWebsiteInsights(
   brregCompany: RoleRoomAgentBrregCompany | null = null,
 ): Promise<RoleRoomAgentWebsiteInsights> {
   if (!websiteUrl) {
-    return { selectedPageSnippets: [], socialProfileCandidates: [] };
+    // siteSetupAudit settes eksplisitt til null (ikke utelates): cache-laget
+    // bruker feltets FRAVÆR som «pre-audit-format» — uten null her ville
+    // nettsted-løse prosjekter vært evig cache-miss.
+    return { selectedPageSnippets: [], socialProfileCandidates: [], siteSetupAudit: null };
   }
 
   // F1-audit (doc 14) kjøres parallelt med hovedskanningen — den gjør egne,
