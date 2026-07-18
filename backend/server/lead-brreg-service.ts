@@ -141,6 +141,56 @@ async function findOrgNumberByName(name: string): Promise<{ orgNr: string; navn:
 }
 
 /**
+ * Org.nr fra fritekst (visittkort-OCR): 9 sifre m/ gyldig mod11-
+ * kontrollsiffer. Kort har ofte org.nr trykket — det er den sikreste
+ * koblingen som finnes, sikrere enn ethvert navnesøk.
+ */
+export function extractOrgNrFromText(text: string): string | null {
+  const candidates = text.match(/\b\d{3}[ .]?\d{3}[ .]?\d{3}\b/g) ?? [];
+  for (const raw of candidates) {
+    const digits = raw.replace(/[^\d]/g, "");
+    if (digits.length !== 9) continue;
+    const weights = [3, 2, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((acc, w, i) => acc + w * Number(digits[i]), 0);
+    const remainder = sum % 11;
+    const control = remainder === 0 ? 0 : 11 - remainder;
+    if (control !== 10 && control === Number(digits[8])) return digits;
+  }
+  return null;
+}
+
+/**
+ * Resolv org.nr for et skannet visittkort (iPad #182 → berikelse):
+ *   1. Gyldig org.nr i OCR-teksten → bruk det (sikrest).
+ *   2. Ellers: BRREG-navnesøk på FIRMANAVNET (aldri personnavnet) med
+ *      samme match-vakt som nattjobben — vagt treff kobles aldri
+ *      automatisk, det rapporteres som forslag i stedet.
+ */
+export async function resolveOrgNrForCard(input: {
+  company: string | null;
+  rawText: string | null;
+}): Promise<
+  | { status: "linked"; orgNr: string; via: "ocr_orgnr" | "name_match"; matchedName: string | null }
+  | { status: "suggestion"; orgNr: string; matchedName: string }
+  | { status: "no_match" }
+> {
+  const fromText = input.rawText ? extractOrgNrFromText(input.rawText) : null;
+  if (fromText) {
+    const unit = await getCompanyByOrgNr(fromText).catch(() => null);
+    if (unit) return { status: "linked", orgNr: fromText, via: "ocr_orgnr", matchedName: unit.navn ?? null };
+    // Org.nr besto mod11 men finnes ikke i registeret — ikke koble.
+  }
+  const company = input.company?.trim();
+  if (!company || company.length < 3) return { status: "no_match" };
+  const hit = await findOrgNumberByName(company).catch(() => null);
+  if (!hit) return { status: "no_match" };
+  if (namesMatchForAutoLink(company, hit.navn)) {
+    return { status: "linked", orgNr: hit.orgNr, via: "name_match", matchedName: hit.navn };
+  }
+  return { status: "suggestion", orgNr: hit.orgNr, matchedName: hit.navn };
+}
+
+/**
  * Match-vakt for AUTOMATISK kobling: normaliserte navn (uten org-form-
  * suffiks) må inneholde hverandre. «Foto Hansen» ↔ «FOTO HANSEN AS» er
  * ok; «Hansen» ↔ «Hansen Bygg og Anlegg AS» er det ikke (for kort/vagt).
