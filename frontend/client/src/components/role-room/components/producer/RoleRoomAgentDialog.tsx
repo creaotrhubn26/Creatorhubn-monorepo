@@ -66,6 +66,7 @@ import roleRoomAgentService, {
 import { buildClassificationFeedbackEdits } from '../../utils/roleRoomAgentFeedbackEdits';
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import { executeSetupAgentTool } from '../../services/roleRoomSetupToolExecutor';
+import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
 import { DailyBriefCard } from './DailyBriefCard';
@@ -432,7 +433,7 @@ export default function RoleRoomAgentDialog({
       const r = await fetch('/api/role-room/agent/ga4-setup', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({ projectId, domain, goals: ['lead', 'booking'] }),
       });
       const body = await r.json().catch(() => null);
@@ -464,7 +465,7 @@ export default function RoleRoomAgentDialog({
       const r = await fetch('/api/role-room/agent/gsc-setup', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({ projectId, domain }),
       });
       const body = await r.json().catch(() => null);
@@ -503,7 +504,7 @@ export default function RoleRoomAgentDialog({
       const r = await fetch('/api/role-room/agent/meta-pixel-setup', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({ projectId, domain }),
       });
       const body = await r.json().catch(() => null);
