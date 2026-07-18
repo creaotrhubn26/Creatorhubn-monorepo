@@ -25,8 +25,10 @@ import {
 import {
   buildMarketingSetup,
   deriveGeoScope,
+  groundMarketingSetupWithAudit,
   type MarketingSetup,
 } from "./role-room-agent-marketing-setup.js";
+import { runSiteSetupAudit, type SiteSetupAudit } from "./integrations/site-setup-audit.js";
 import {
   resolveNaceChannelPriorityOverride,
   type NaceBusinessModelOverride,
@@ -249,6 +251,10 @@ export type RoleRoomAgentWebsiteInsights = {
   probableHeroImageUrl?: string | null;
   socialProfileCandidates?: RoleRoomAgentSocialProfileCandidate[];
   selectedPageSnippets: RoleRoomAgentWebsitePageSnippet[];
+  /** Site-audit (doc 14 F1): hva nettstedet allerede har av analytics/GEO —
+   *  grunnfester marketingSetup.adTech i observasjon i stedet for antakelse.
+   *  Null når nettsted mangler eller auditen feilet. */
+  siteSetupAudit?: SiteSetupAudit | null;
   /** Norwegian 9-digit organization number scraped from the website's
    *  footer / "Om oss" / impressum-style copy. Validated with mod-11
    *  checksum, so this is the actual legal entity behind the brand —
@@ -604,6 +610,9 @@ export type RoleRoomAgentNormalizedPayload = {
    *  Persisted so downstream (marketing-plan generation, cockpit) can ground
    *  on it instead of re-inventing channels. Null only on legacy cached runs. */
   marketingSetup?: MarketingSetup | null;
+  /** Site-audit-resultatet (doc 14 F1) som adTech-grunnfestingen bygget på —
+   *  persistert så innholdsprodusenten ser observasjonene, ikke bare rådene. */
+  siteSetupAudit?: SiteSetupAudit | null;
   merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
@@ -2520,6 +2529,12 @@ export async function fetchWebsiteInsights(
     return { selectedPageSnippets: [], socialProfileCandidates: [] };
   }
 
+  // F1-audit (doc 14) kjøres parallelt med hovedskanningen — den gjør egne,
+  // SSRF-validerte kall (bot-UA-diff, robots, sitemap) og feiler aldri hardt.
+  const siteAuditPromise: Promise<SiteSetupAudit | null> = runSiteSetupAudit(websiteUrl)
+    .then((r) => ("audit" in r ? r.audit : null))
+    .catch(() => null);
+
   try {
     const response = await fetch(websiteUrl, {
       headers: {
@@ -2530,7 +2545,12 @@ export async function fetchWebsiteInsights(
     });
 
     if (!response.ok) {
-      return { finalUrl: websiteUrl, selectedPageSnippets: [], socialProfileCandidates: [] };
+      return {
+        finalUrl: websiteUrl,
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+        siteSetupAudit: await siteAuditPromise,
+      };
     }
 
     const html = await response.text();
@@ -2682,9 +2702,15 @@ export async function fetchWebsiteInsights(
       // in Brreg, not the brand "Holy Crust"). Bootstrap uses this when
       // the user didn't supply an explicit organizationNumber.
       extractedOrgNumber: extractOrgNumberFromHtml(html),
+      siteSetupAudit: await siteAuditPromise,
     };
   } catch {
-    return { finalUrl: websiteUrl, selectedPageSnippets: [], socialProfileCandidates: [] };
+    return {
+      finalUrl: websiteUrl,
+      selectedPageSnippets: [],
+      socialProfileCandidates: [],
+      siteSetupAudit: await siteAuditPromise,
+    };
   }
 }
 
@@ -4784,16 +4810,21 @@ function buildFallbackBootstrap(
   // Computed here so it's part of the persisted payload and downstream
   // marketing-plan generation grounds on it. hasVerifiedLocalPresence gates
   // local vs national scope.
-  const fallbackMarketingSetup = buildMarketingSetup(
-    classification,
-    deriveGeoScope(
+  const fallbackMarketingSetup = groundMarketingSetupWithAudit(
+    buildMarketingSetup(
       classification,
-      Boolean(
-        businessSignals?.location ||
-          (brregCompany?.lookupStatus === "verified" && hasText(brregCompany.businessAddress)),
+      deriveGeoScope(
+        classification,
+        Boolean(
+          businessSignals?.location ||
+            (brregCompany?.lookupStatus === "verified" && hasText(brregCompany.businessAddress)),
+        ),
       ),
+      resolveNaceChannelPriorityOverride(brregCompany?.industryCode?.code, learnedChannelPriorityOverrides),
     ),
-    resolveNaceChannelPriorityOverride(brregCompany?.industryCode?.code, learnedChannelPriorityOverrides),
+    // F1-audit: ad-tech-rådene forankres i hva nettstedet faktisk har
+    // (pixel finnes/fyrer før samtykke, GA4 på plass, GEO/sitemap-hull).
+    websiteInsights.siteSetupAudit?.capabilities ?? null,
   );
   const socialProfileCandidates = websiteInsights.socialProfileCandidates ?? [];
   const verifiedSocialProfiles = socialProfileCandidates.filter((candidate) => candidate.status === "verified" || candidate.status === "likely");
@@ -4852,6 +4883,7 @@ function buildFallbackBootstrap(
     competitorAnalysis,
     localPresencePlan,
     marketingSetup: fallbackMarketingSetup,
+    siteSetupAudit: websiteInsights.siteSetupAudit ?? null,
     merchSuppliers: merchSuppliers ?? null,
     companyProfile: {
       companyName,
@@ -5299,6 +5331,7 @@ function normalizeBootstrapPayload(
     competitorAnalysis: fallback.competitorAnalysis,
     localPresencePlan: fallback.localPresencePlan,
     marketingSetup: fallback.marketingSetup,
+    siteSetupAudit: fallback.siteSetupAudit,
     merchSuppliers: fallback.merchSuppliers,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {

@@ -125,6 +125,62 @@ export function buildMarketingSetup(
   return setup;
 }
 
+/** Strukturelt subset av site-auditens capabilities (doc 14 F1) — modulen
+ *  holdes avhengighetsfri, så typen speiles her i stedet for å importeres. */
+export interface AuditCapabilityLite {
+  key: string;
+  status: string; // implemented | partial | missing | unknown
+}
+
+/**
+ * Grunnfest ad-tech-anbefalingene i hva site-auditen (F1) faktisk
+ * observerte på kundens nettsted — generiske råd («sett opp Meta Pixel»)
+ * blir observasjons-forankret («finnes allerede — verifiser
+ * consent-gating» / «ikke observert — sett opp consent-gatet»).
+ * Deterministisk og uten LLM, som resten av motoren. Null/tom audit
+ * returnerer oppsettet uendret.
+ */
+export function groundMarketingSetupWithAudit(
+  setup: MarketingSetup,
+  capabilities: readonly AuditCapabilityLite[] | null | undefined,
+): MarketingSetup {
+  if (!capabilities || capabilities.length === 0) return setup;
+  const status = (key: string): string | null =>
+    capabilities.find((c) => c.key === key)?.status ?? null;
+
+  const adTech = setup.adTech.map((item) => {
+    if (/meta pixel/i.test(item)) {
+      const pixel = status("meta_pixel");
+      // «partial» fra auditen = pixel funnet i initial HTML → fyrer før
+      // samtykke (GDPR-funn); «unknown» = ikke observert (kan være gatet).
+      if (pixel === "partial") {
+        return `${item} — pixel FINNES allerede på nettstedet, men fyrer før samtykke: gate på marketing-samtykke`;
+      }
+      if (pixel === "unknown" || pixel === "missing") {
+        return `${item} — ikke observert på nettstedet: sett opp consent-gatet (event-plan + snippet)`;
+      }
+    }
+    return item;
+  });
+
+  const additions: string[] = [];
+  if (status("ga4") === "implemented") {
+    additions.push("GA4 er allerede på nettstedet — koble event-planen på eksisterende oppsett i stedet for å installere på nytt");
+  }
+  if (status("bot_serving") === "missing") {
+    additions.push("GEO: nettstedet serverer tynt/likt innhold til AI-boter — prerender viktigste sider før innholdssatsingen");
+  }
+  if (status("sitemap") === "missing") {
+    additions.push("Sitemap mangler — generer og deklarer i robots.txt (forutsetning for Google- og AI-indeksering)");
+  }
+
+  return {
+    ...setup,
+    adTech: [...adTech, ...additions],
+    rationale: `${setup.rationale} Ad-tech er grunnfestet i site-audit av kundens nettsted (F1).`,
+  };
+}
+
 function buildBaseMarketingSetup(
   classification: MarketingClassificationInput,
   geoScope: MarketingGeoScope,
