@@ -115,7 +115,7 @@ describe("sales-trigger-detektoren", () => {
     const out = await detector.run(pool, "org-1");
     expect(out).toHaveLength(2);
     expect(out[0].severity).toBe("important");
-    expect(out[0].dedupeKey).toBe("trigger|ted|327903-2016");
+    expect(out[0].dedupeKey).toBe("trigger|ted|327903-2016|tender");
     expect(out[0].evidence[0].value).toContain("ted.europa.eu");
     expect(out[1].severity).toBe("notable");
   });

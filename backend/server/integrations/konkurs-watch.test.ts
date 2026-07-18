@@ -31,6 +31,6 @@ describe("sales-trigger-detektoren håndterer 'risk'", () => {
     expect(insight.severity).toBe("critical");
     expect(insight.title).toBe("RISIKO: Kunde AS er KONKURS");
     expect(insight.explanation).toContain("registerfakta");
-    expect(insight.dedupeKey).toBe("trigger|brreg|999888777|bankrupt");
+    expect(insight.dedupeKey).toBe("trigger|brreg|999888777|bankrupt|risk");
   });
 });

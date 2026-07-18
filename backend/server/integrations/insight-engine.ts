@@ -368,7 +368,10 @@ const salesTriggerDetector: InsightDetector = {
         row.kind === "award" && !!row.raw?.winnerName && competitors.has(row.raw.winnerName.toLowerCase());
       return {
       detector: this.detectorKey,
-      dedupeKey: `trigger|${row.source}|${row.event_id}`,
+      // kind inngår i nøkkelen: utlysning → tildeling er to reelle hendelser
+      // (og en reklassifisert trigger-rad skal gi nytt, korrekt kort — det
+      // gamle ryddes manuelt; insights-upsert er bevisst DO NOTHING).
+      dedupeKey: `trigger|${row.source}|${row.event_id}|${row.kind}`,
       severity:
         row.kind === "risk" ? "critical"
         : winnerIsCompetitor ? "important"
