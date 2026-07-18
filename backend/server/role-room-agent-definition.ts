@@ -51,6 +51,8 @@ export const ROLE_ROOM_AGENT_SYSTEM_PROMPT = `Du er "The Role Room Agent" — en
 - flag_scope_impact — analyser om en foreslått endring treffer eksisterende leveranser.
 - suggest_next_decision — fortell hva som er neste beslutningspunkt basert på blokkeringer og frister.
 - audit_site_setup — foreslå en teknisk audit av klientens nettsted (analytics/GEO: GA4, GTM, Meta Pixel, Clarity, consent, sitemap, robots, AI-bot-serving). Auditen er read-only mot nettstedet og kjøres av plattformen etter bekreftelse; du gjetter ALDRI på resultatet selv.
+- generate_event_plan — foreslå en event-plan (GA4-events, key events, Meta-bro) ut fra klientens forretningsmål. Deterministisk katalog — plattformen genererer planen; du velger målene ut fra briefen og begrunner dem.
+- generate_analytics_bootstrap — foreslå generering av consent-gatet analytics-snippet (GA4/GTM/Clarity/Meta Pixel) med klientens IDer. Plattformen genererer koden etter bekreftelse; du skriver ALDRI sporingskode selv, og du ber aldri om passord — kun offentlige måle-IDer.
 
 Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.
 
@@ -224,6 +226,45 @@ export const ROLE_ROOM_AGENT_TOOLS = [
       required: ['url'],
     },
   },
+  {
+    name: 'generate_event_plan',
+    description:
+      'Foreslå event-plan for klientens måloppsett (doc 14 F3): velg forretningsmål ut fra briefen, plattformen genererer deterministisk GA4-events, key-event-anbefaling og Meta-standardevent-bro. Bruk FØR generate_analytics_bootstrap.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        goals: {
+          type: 'array',
+          items: { type: 'string', enum: ['lead', 'booking', 'purchase', 'signup', 'newsletter'] },
+          description: 'Forretningsmål utledet av briefen (projectGoal/deliverables).',
+        },
+        rationale: {
+          type: 'string',
+          description: 'Hvorfor disse målene — siter brief-feltet (f.eks. brief.projectGoal).',
+        },
+      },
+      required: ['goals', 'rationale'],
+    },
+  },
+  {
+    name: 'generate_analytics_bootstrap',
+    description:
+      'Foreslå generering av consent-gatet analytics-snippet (doc 14 F2) med klientens offentlige måle-IDer. Plattformen genererer koden (POST /api/integrations/analytics-bootstrap) etter bekreftelse. Spør ALDRI om passord eller tokens — kun måle-IDer (G-…, GTM-…, pixel-tall, Clarity-ID).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ga4_measurement_id: { type: 'string', description: 'G-… (valgfri)' },
+        gtm_id: { type: 'string', description: 'GTM-… (valgfri)' },
+        clarity_project_id: { type: 'string', description: 'Clarity-prosjekt-ID (valgfri)' },
+        meta_pixel_id: { type: 'string', description: 'Pixel-ID, kun sifre (valgfri)' },
+        goals: {
+          type: 'array',
+          items: { type: 'string', enum: ['lead', 'booking', 'purchase', 'signup', 'newsletter'] },
+          description: 'Mål fra event-planen — styrer Meta-broen i snippeten.',
+        },
+      },
+    },
+  },
 ];
 
 export type RoleRoomAgentToolName =
@@ -233,6 +274,8 @@ export type RoleRoomAgentToolName =
   | 'flag_scope_impact'
   | 'suggest_next_decision'
   | 'generate_community_post'
-  | 'audit_site_setup';
+  | 'audit_site_setup'
+  | 'generate_event_plan'
+  | 'generate_analytics_bootstrap';
 
 export const ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS = 1200;
