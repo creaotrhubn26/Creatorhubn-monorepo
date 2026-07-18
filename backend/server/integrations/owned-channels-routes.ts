@@ -788,7 +788,10 @@ export function registerOwnedChannelsRoutes({
       if (typeof body.verifiedMemberId !== "string" || !body.verifiedMemberId) {
         return res.status(400).json({ error: "verifisering_kreves_foer_publisering" });
       }
-      const result = await publishViaDispatcher(pool, orgId, req.params.id, session.userId, body.verifiedMemberId);
+      const result = await publishViaDispatcher(
+        pool, orgId, req.params.id, session.userId, body.verifiedMemberId,
+        body.attachInfographic === true, // opt-in: fest kpi-grid-grafikk fra faktagrunnlaget
+      );
       if ("error" in result) return res.status(result.status).json({ error: result.error });
       return res.json(result);
     } catch (err) {
