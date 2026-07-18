@@ -54,7 +54,10 @@ export interface CampaignPost {
   hashtags: string[];
   cta: string;
   scheduledAt?: string;                // «YYYY-MM-DD HH:MM» når planlagt (fase 3)
+  liveSource?: string;                 // evergreen: bind KPI til en live render.png-connector-nøkkel
 }
+
+const SOURCE_RE = /^[A-Za-z0-9_-]{1,60}$/;
 export interface Campaign {
   goal: CampaignGoal;
   weeks: number;
@@ -200,12 +203,20 @@ function b64url(s: string): string {
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** Bygg en validert render.png-URL for én posts KPI i én kanal-dimensjon. */
+/** Bygg en validert render.png-URL for én posts KPI i én kanal-dimensjon.
+ *  Evergreen: har posten en gyldig `liveSource`, bruker vi `source=` så render.png
+ *  henter FERSK verdi fra connectoren hver gang (self-updating) i stedet for `d=`. */
 export function omniChannelUrl(post: CampaignPost, ch: OmniChannel, accent: string, base = RENDER_BASE): string {
-  const data: Record<string, unknown> = { value: post.kpi.value, label: post.kpi.label };
-  if (/^#[0-9a-fA-F]{3,8}$/.test(accent)) data.accent = accent;
-  const p = new URLSearchParams({ tpl: 'auto', w: String(ch.w), h: String(ch.h), d: b64url(JSON.stringify(data)) });
-  if (/^#[0-9a-fA-F]{3,8}$/.test(accent)) p.set('accent', accent);
+  const hasAccent = /^#[0-9a-fA-F]{3,8}$/.test(accent);
+  const p = new URLSearchParams({ tpl: 'auto', w: String(ch.w), h: String(ch.h) });
+  if (post.liveSource && SOURCE_RE.test(post.liveSource)) {
+    p.set('source', post.liveSource); // evergreen — fersk verdi fra DB-connector
+  } else {
+    const data: Record<string, unknown> = { value: post.kpi.value, label: post.kpi.label };
+    if (hasAccent) data.accent = accent;
+    p.set('d', b64url(JSON.stringify(data)));
+  }
+  if (hasAccent) p.set('accent', accent);
   return `${base.replace(/\/+$/, '')}/api/infographics/render.png?${p.toString()}`;
 }
 
@@ -238,7 +249,20 @@ export interface DeriveCampaignParams {
   count?: number;         // antall innlegg (default 15)
   weeks?: number;         // sesong-lengde (default 4)
   platforms?: PostPlatform[]; // plattform-miks (default alle)
+  /** Auto-pilot: bias neste bølge mot det som presterte (bygg med emphasisNote). */
+  emphasis?: string;
   signal?: AbortSignal;
+}
+
+/** Auto-pilot-signal: bygg en «vekt disse tyngre»-note fra vinner-poster.
+ *  Signalet er manuelt nå (du markerer vinnere); samme note mates automatisk
+ *  når publiserings-/ytelses-data er live. */
+export function emphasisNote(winners: CampaignPost[]): string {
+  if (!winners.length) return '';
+  const pillars = [...new Set(winners.map((w) => PILLAR_LABELS[w.pillar]))];
+  const platforms = [...new Set(winners.map((w) => PLATFORM_LABELS[w.platform]))];
+  const angles = winners.map((w) => w.angle).slice(0, 6);
+  return `Disse vinklene presterte — vekt lignende TYNGRE: pilarer [${pillars.join(', ')}], plattformer [${platforms.join(', ')}], vinkler «${angles.join('», «')}».`;
 }
 
 /** Generer en mål-drevet kampanje fra nettside-bevis. */
@@ -253,7 +277,7 @@ export async function deriveCampaign(params: DeriveCampaignParams): Promise<Camp
 MÅL: ${GOAL_LABELS[params.goal]} — ${GOAL_GUIDE[params.goal]}
 MERKEVARE-STEMME (captions skal høres slik ut): ${params.brandVoice || 'tydelig, varm, konkret, norsk'}
 TILLATTE PLATTFORMER: ${platforms.map((p) => PLATFORM_LABELS[p]).join(', ')}
-
+${params.emphasis ? `\nAUTO-PILOT — PRIORITER (basert på hva som presterte): ${params.emphasis}\n` : ''}
 BEVIS (bruk KUN tall herfra — ikke dikt opp noe):
 ${params.evidenceText.slice(0, 3500)}
 

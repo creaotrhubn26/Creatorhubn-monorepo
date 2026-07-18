@@ -20,7 +20,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import type { InfographicBrand } from './infographicStudio.js';
 import { enqueueCampaign } from '../../services/campaignQueueService.js';
 import {
-  deriveCampaign, computePillarMix, scheduleCampaign, omniChannelUrl, OMNI_CHANNELS,
+  deriveCampaign, computePillarMix, scheduleCampaign, omniChannelUrl, OMNI_CHANNELS, emphasisNote,
   GOAL_LABELS, PILLAR_LABELS, PLATFORM_LABELS,
   type Campaign, type CampaignGoal, type CampaignPost, type ContentPillar, type PostPlatform,
 } from './campaignDirector.js';
@@ -50,10 +50,10 @@ export default function CampaignDirectorView(
   const posts = campaign?.posts ?? [];
   const selected = posts[sel] ?? null;
 
-  const generate = async (regen = false) => {
+  const generate = async (regen = false, emphasis?: string) => {
     setBusy(true); setErr(null);
     try {
-      const fresh = await deriveCampaign({ evidenceText, brandName, goal, count, weeks });
+      const fresh = await deriveCampaign({ evidenceText, brandName, goal, count, weeks, emphasis });
       if (regen && campaign) {
         // Behold låste poster; fyll resten med ferske (uten fakta-duplikater).
         const keep = campaign.posts.filter((p) => locked.has(factKey(p)));
@@ -80,6 +80,23 @@ export default function CampaignDirectorView(
     const today = new Date().toISOString().slice(0, 10);
     setCampaign({ ...campaign, posts: scheduleCampaign(campaign.posts, weeks, today) });
   };
+  // Auto-pilot: manuelt vinner-signal → neste bølge biased mot det som presterte.
+  const [winners, setWinners] = useState<Set<string>>(new Set());
+  const toggleWinner = (p: CampaignPost) => {
+    setWinners((prev) => { const n = new Set(prev); const k = factKey(p); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  };
+  const nextWave = () => {
+    const wp = posts.filter((p) => winners.has(factKey(p)));
+    void generate(false, emphasisNote(wp));
+  };
+  // Evergreen: bind selektert posts KPI til en live render.png-connector-nøkkel.
+  const setLiveSource = (idx: number, src: string) => {
+    if (!campaign) return;
+    const next = campaign.posts.slice();
+    next[idx] = { ...next[idx], liveSource: src.trim() || undefined };
+    setCampaign({ ...campaign, posts: next });
+  };
+
   const [copied, setCopied] = useState<string | null>(null);
   const copyOmni = (p: CampaignPost, ch: (typeof OMNI_CHANNELS)[number]) => {
     try { void navigator.clipboard?.writeText(omniChannelUrl(p, ch, a)); setCopied(`${sel}:${ch.id}`); window.setTimeout(() => setCopied(null), 1500); } catch { /* utklippstavle utilgjengelig */ }
@@ -132,6 +149,7 @@ export default function CampaignDirectorView(
           <AutoAwesomeIcon style={{ fontSize: 16 }} /> {busy ? 'Genererer…' : campaign ? 'Generer på nytt' : 'Generer kampanje'}
         </span>
         {campaign && <span onClick={() => !busy && generate(true)} style={{ ...btn, opacity: busy ? 0.6 : 1 }}><RefreshIcon style={{ fontSize: 16 }} /> Regenerer (behold låste)</span>}
+        {campaign && winners.size > 0 && <span onClick={() => !busy && nextWave()} title="Auto-pilot: generer en ny bølge biased mot vinner-vinklene" style={{ ...btn, borderColor: '#f6bd3b', color: '#f6bd3b', opacity: busy ? 0.6 : 1 }}>★ Neste bølge ({winners.size} vinnere)</span>}
       </div>
 
       {err && <div style={{ padding: 12, borderRadius: 10, background: '#3a1518', border: '1px solid #7a2b30', color: '#f0a89f', fontSize: 12.5, marginBottom: 16 }}>{err}</div>}
@@ -200,8 +218,11 @@ export default function CampaignDirectorView(
               <div style={panel}>
                 <div style={{ ...ptitle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>✦ Post {sel + 1} · {PLATFORM_LABELS[selected.platform]} · {selected.format}</span>
-                  <span onClick={() => toggleLock(selected)} title="Lås fra regenerering" style={{ cursor: 'pointer', color: locked.has(factKey(selected)) ? a : C.faint }}>
-                    {locked.has(factKey(selected)) ? <LockOutlinedIcon style={{ fontSize: 16 }} /> : <LockOpenOutlinedIcon style={{ fontSize: 16 }} />}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span onClick={() => toggleWinner(selected)} title="Marker som vinner → biaser neste bølge (auto-pilot)" style={{ cursor: 'pointer', color: winners.has(factKey(selected)) ? '#f6bd3b' : C.faint }}>{winners.has(factKey(selected)) ? '★' : '☆'}</span>
+                    <span onClick={() => toggleLock(selected)} title="Lås fra regenerering" style={{ cursor: 'pointer', color: locked.has(factKey(selected)) ? a : C.faint }}>
+                      {locked.has(factKey(selected)) ? <LockOutlinedIcon style={{ fontSize: 16 }} /> : <LockOpenOutlinedIcon style={{ fontSize: 16 }} />}
+                    </span>
                   </span>
                 </div>
                 {selected.hooks.map((h, i) => (
@@ -214,6 +235,12 @@ export default function CampaignDirectorView(
                 {selected.hashtags.length > 0 && <div style={{ fontSize: 10.5, color: a, marginTop: 5 }}>{selected.hashtags.join(' ')}</div>}
                 {selected.cta && <div style={{ fontSize: 11, color: C.soft, marginTop: 6 }}><b>CTA:</b> {selected.cta}</div>}
                 {selected.scheduledAt && <div style={{ fontSize: 11, color: a, marginTop: 6 }}>📅 Planlagt: {selected.scheduledAt}</div>}
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, color: C.soft, whiteSpace: 'nowrap' }}>♻ Evergreen:</span>
+                  <input value={selected.liveSource ?? ''} onChange={(e) => setLiveSource(sel, e.target.value)} placeholder="live-kilde-nøkkel → self-updating tall"
+                    style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '4px 8px', borderRadius: 6, border: `1px solid ${C.line}`, background: C.bg, color: C.ink, colorScheme: 'dark' }} />
+                  {selected.liveSource && <span style={{ fontSize: 9.5, color: '#4fc76b', whiteSpace: 'nowrap' }}>✓ live</span>}
+                </div>
                 <div style={{ marginTop: 10, borderTop: `1px solid ${C.line}`, paddingTop: 9 }}>
                   <div style={{ fontSize: 10, color: C.soft, marginBottom: 5 }}>🔗 Omni-kanal — én vinkel → kopier bilde-URL (render.png) for hver kanal</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

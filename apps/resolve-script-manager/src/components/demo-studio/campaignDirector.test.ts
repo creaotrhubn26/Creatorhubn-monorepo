@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 // Unngå å laste Tauri via claudeProxyService — vi tester kun den rene logikken.
 vi.mock('../../services/claudeProxyService.js', () => ({ claudeProxyService: { send: async () => '' } }));
 
-import { extractJson, normalizePosts, computePillarMix, materializePost, scheduleCampaign, omniChannelUrl, OMNI_CHANNELS, type CampaignPost } from './campaignDirector.js';
+import { extractJson, normalizePosts, computePillarMix, materializePost, scheduleCampaign, omniChannelUrl, OMNI_CHANNELS, emphasisNote, type CampaignPost } from './campaignDirector.js';
 
 const mkPost = (over: Partial<CampaignPost> = {}): CampaignPost => ({
   angle: 'A', pillar: 'proof', platform: 'tiktok', format: '9:16', week: 1,
@@ -114,6 +114,31 @@ describe('omniChannelUrl — render.png-URL per kanal', () => {
   it('5 kanaler med ulike dims', () => {
     expect(OMNI_CHANNELS).toHaveLength(5);
     expect(new URL(omniChannelUrl(mkPost(), OMNI_CHANNELS.find((c) => c.id === 'story')!, '#fff')).searchParams.get('h')).toBe('1920');
+  });
+  it('evergreen: liveSource → source= (ikke d=), self-updating', () => {
+    const url = new URL(omniChannelUrl(mkPost({ liveSource: 'agency_leads' }), og, '#a855f7'));
+    expect(url.searchParams.get('source')).toBe('agency_leads');
+    expect(url.searchParams.get('d')).toBeNull();
+  });
+  it('ugyldig liveSource ignoreres → faller til d=', () => {
+    const url = new URL(omniChannelUrl(mkPost({ liveSource: 'bad key!' }), og, '#a855f7'));
+    expect(url.searchParams.get('source')).toBeNull();
+    expect(url.searchParams.get('d')).not.toBeNull();
+  });
+});
+
+describe('emphasisNote — auto-pilot vinner-signal', () => {
+  it('bygger note fra vinnere (pilarer/plattformer/vinkler)', () => {
+    const note = emphasisNote([
+      mkPost({ pillar: 'proof', platform: 'tiktok', angle: 'Rask innsjekk' }),
+      mkPost({ pillar: 'story', platform: 'reels', angle: 'Kundehistorie', kpi: { label: 'B', value: '2' } }),
+    ]);
+    expect(note).toContain('Bevis');
+    expect(note).toContain('TikTok');
+    expect(note).toContain('Rask innsjekk');
+  });
+  it('ingen vinnere → tom streng', () => {
+    expect(emphasisNote([])).toBe('');
   });
 });
 
