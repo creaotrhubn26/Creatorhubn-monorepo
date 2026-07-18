@@ -254,6 +254,78 @@ export async function scanContract(
   return { ok: true, result };
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// v2: PDF → transkripsjon (vision) → tekst-skannet over
+// ─────────────────────────────────────────────────────────────────────
+
+/** Signerte PDF-er (Adobe Sign o.l.) er ofte bilde-baserte — tekstlaget
+ *  inneholder bare signatur-sporet. Claude leser sidene visuelt og
+ *  transkriberer avtaleteksten VERBATIM; deretter kjøres det vanlige
+ *  tekst-skannet på transkripsjonen, så verbatim-vakten fortsatt har en
+ *  kilde å verifisere beløp/datoer mot — og produsenten kan lese og
+ *  rette teksten før skann. */
+export const MAX_PDF_BYTES = 15 * 1024 * 1024;
+
+const TRANSCRIBE_SYSTEM = `Du transkriberer en SIGNERT norsk kontrakt fra PDF.
+
+Regler:
+- Gjengi avtaleteksten ORDRETT, i lesbar rekkefølge, som ren tekst.
+- Tall, beløp, datoer og organisasjonsnumre skal gjengis NØYAKTIG som de står.
+- Ta med signaturfeltene (hvem, tittel, sted/dato), men DROPP e-signerings-
+  loggen/audit-sporet (IP-adresser, transaksjons-ID-er, tidsstempler fra
+  signeringsverktøyet).
+- Ikke oppsummer, ikke tolk, ikke legg til noe som ikke står der.`;
+
+export async function transcribeContractPdf(
+  pool: Pool,
+  opts: { projectId: string; pdfBase64: string; userLabel: string },
+): Promise<{ ok: true; text: string } | { ok: false; error: string; status: number }> {
+  const approxBytes = Math.floor(opts.pdfBase64.length * 0.75);
+  if (approxBytes < 1_000) return { ok: false, error: "pdf_er_tom_eller_korrupt", status: 422 };
+  if (approxBytes > MAX_PDF_BYTES) return { ok: false, error: "pdf_er_for_stor_maks_15mb", status: 413 };
+
+  const anthropic = getAnthropic();
+  if (!anthropic) return { ok: false, error: "anthropic_ikke_konfigurert", status: 503 };
+
+  const response = await anthropic.messages.create({
+    model: SCAN_MODEL,
+    max_tokens: 8000,
+    system: TRANSCRIBE_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: opts.pdfBase64 },
+          },
+          { type: "text", text: "Transkriber avtaleteksten." },
+        ],
+      },
+    ],
+  });
+  if (response.usage) {
+    await recordAiUsage(pool, {
+      organizationId: opts.projectId,
+      provider: "anthropic",
+      operation: "contract-pdf-transcribe",
+      calls: 1,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }).catch(() => undefined);
+  }
+
+  const text = response.content
+    .filter((c): c is Anthropic.TextBlock => c.type === "text")
+    .map((c) => c.text)
+    .join("\n")
+    .trim();
+  if (text.length < 200) {
+    return { ok: false, error: "transkripsjonen_ble_for_tynn_sjekk_pdfen", status: 422 };
+  }
+  return { ok: true, text };
+}
+
 export async function getLatestContractScan(
   pool: Pool,
   projectId: string,

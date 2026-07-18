@@ -70,6 +70,39 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
     };
   }, [projectId]);
 
+  // v2: PDF-opplasting → vision-transkripsjon fyller tekstfeltet.
+  // Produsenten leser/retter teksten før selve skannet kjøres —
+  // verbatim-vakten beholder dermed en kilde å verifisere mot.
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const uploadPdf = async (file: File) => {
+    if (!projectId) return;
+    setPdfBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('projectId', projectId);
+      const r = await fetch('/api/role-room/agent/contract-scan/extract-pdf', {
+        method: 'POST',
+        credentials: 'include',
+        headers: roleRoomAgentDefaultHeaders(),
+        body: form,
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || !body?.success) {
+        setError(body?.error === 'pdf_er_for_stor_maks_15mb'
+          ? 'PDF-en er for stor (maks 15 MB).'
+          : `PDF-lesing feilet (${body?.error ?? r.status}).`);
+        return;
+      }
+      setContractText(String(body.text ?? ''));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const runScan = async () => {
     if (!projectId) return;
     setBusy(true);
@@ -124,8 +157,24 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
           maskinelt mot teksten — hull i det økonomiske oppsettet listes som
           avklaringspunkter, aldri gjetting.
         </Typography>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <Button component="label" size="small" variant="outlined" disabled={pdfBusy}
+            sx={{ textTransform: 'none', fontWeight: 700 }}>
+            {pdfBusy ? 'Leser PDF…' : 'Last opp signert PDF'}
+            <input hidden type="file" accept="application/pdf"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void uploadPdf(f);
+              }} />
+          </Button>
+          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
+            Bilde-baserte PDF-er (Adobe Sign o.l.) leses visuelt — les over
+            transkripsjonen før skann.
+          </Typography>
+        </Stack>
         <TextField multiline minRows={4} maxRows={10} fullWidth size="small"
-          placeholder="Lim inn kontraktteksten her …"
+          placeholder="Lim inn kontraktteksten her — eller last opp PDF over …"
           value={contractText} onChange={(e) => setContractText(e.target.value)} sx={{ mb: 1 }} />
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: scan ? 1.5 : 0 }}>
           <Button variant="contained" size="small" onClick={() => void runScan()}
