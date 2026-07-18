@@ -111,6 +111,7 @@ const OPTIONAL: EnvVar[] = [
   { name: "AI_OVERAGE_BILLING_ENABLED", description: "Master-bryter for Fase C: må være \"true\" for at AI-overage faktisk rapporteres til Stripe. Alt annet = dry-run (ingen fakturering)." },
   { name: "STRIPE_AI_OVERAGE_METER_EVENT_NAME", description: "Stripe Meter event_name for AI-overage metered billing (Fase C). Default \"ai_overage\" — må matche meteren i Stripe-dashbord." },
   { name: "AI_OVERAGE_METER_UNIT", description: "Enhet for Stripe meter-value: \"nok\" (default, 1 enhet=1 kr) eller \"oere\" (1 enhet=1 øre). Må matche meter-prisen i Stripe." },
+  { name: "CREATORHUB_AI_OVERAGE_PRICE_ID", description: "Stripe usage-based price (knyttet til creatorhub_ai_overage-meteren) som legges som metered-linje på nye plattform-abonnement. 0 kr til bruk rapporteres. Uten env = ingen linje." },
 ];
 
 // ─────────────────────────────────────────────────────────

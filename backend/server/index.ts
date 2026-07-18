@@ -23653,6 +23653,13 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
                 },
               },
             },
+        // AI-overage metered-linje (Fase C). Metered-priser tar IKKE `quantity`.
+        // Legger 0 kr på abonnementet fram til bruk rapporteres — og bruk
+        // rapporteres kun når AI_OVERAGE_BILLING_ENABLED="true" (dobbelt-gated).
+        // Uten env satt = ingen linje (bakoverkompatibelt).
+        ...(creatorHubAiOveragePriceId()
+          ? [{ price: creatorHubAiOveragePriceId() as string }]
+          : []),
       ],
       metadata: {
         ch_user_id: userId,
@@ -26525,6 +26532,17 @@ function getCreatorHubStripeWebhookSecret() {
   return normalizeMailConfigValue(
     process.env.CREATORHUB_STRIPE_WEBHOOK_SECRET,
   );
+}
+
+/**
+ * Price-ID for den metered AI-overage-linjen (Fase C). Settes via env
+ * `CREATORHUB_AI_OVERAGE_PRICE_ID` (Stripe usage-based price knyttet til
+ * `creatorhub_ai_overage`-meteren). Når satt, legges den som ekstra
+ * subscription-linje på nye plattform-checkouts — 0 kr fram til bruk
+ * rapporteres. Uten env = ingen linje (bakoverkompatibelt).
+ */
+function creatorHubAiOveragePriceId(): string | null {
+  return normalizeMailConfigValue(process.env.CREATORHUB_AI_OVERAGE_PRICE_ID) || null;
 }
 
 function getCreatorHubStripePriceId(
