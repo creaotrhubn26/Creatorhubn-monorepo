@@ -395,6 +395,28 @@ export function registerLeadgridQualityRoutes(deps: {
         }
       }
 
+      // Dørsalg-kobling (mig 0400): verifisert dørsalg = kontrolløren fikk
+      // kunden på tråden → salget flippes til telefon_bekreftet (med mindre
+      // det alt er BankID-signert). Best effort — velter aldri verdiktet.
+      if (status === "verified") {
+        try {
+          await pool.query(
+            `UPDATE leadgrid_dorsalg_sales ds SET
+               verifisering = CASE WHEN ds.verifisering IN ('uverifisert', 'kunde_bekreftet')
+                                   THEN 'telefon_bekreftet' ELSE ds.verifisering END,
+               updated_at = now()
+             FROM leadgrid_sales_verifications v
+            WHERE v.id = $1 AND v.organization_id = $2
+              AND v.customer_id LIKE 'dorsalg:%'
+              AND ds.org_id = v.organization_id
+              AND ds.adresse_id = SUBSTRING(v.customer_id FROM 9)`,
+            [id, s.orgId],
+          );
+        } catch (dsErr) {
+          console.warn("[leadgrid-quality] dorsalg-flip failed:", (dsErr as Error).message);
+        }
+      }
+
       return res.json({ ok: true });
     } catch (err) {
       console.warn("[leadgrid-quality] verdict failed:", (err as Error).message);

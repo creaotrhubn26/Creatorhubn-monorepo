@@ -12,6 +12,8 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import { randomBytes } from "crypto";
+import { sendEmail } from "./casting-reminder-sender.js";
 
 const GYLDIGE_STATUSER = new Set(["vunnet", "avslatt"]);
 const LEADER_ROLES = new Set(["admin", "salgssjef"]);
@@ -53,7 +55,8 @@ export function registerLeadgridDorsalgRoutes(deps: {
     try {
       const orgId = await resolveOrgIdForUser(pool, session.userId);
       const r = await pool.query(
-        `SELECT id, navn, farge, aktiv, verdi_per_vunnet
+        `SELECT id, navn, farge, aktiv, verdi_per_vunnet,
+                bidrag, samtykke_tekst, signering_url
            FROM leadgrid_dorsalg_products
           WHERE org_id = $1
           ORDER BY sort, navn`,
@@ -69,6 +72,9 @@ export function registerLeadgridDorsalgRoutes(deps: {
           farge: row.farge as string,
           aktiv: row.aktiv as boolean,
           verdiPerVunnet: row.verdi_per_vunnet != null ? Number(row.verdi_per_vunnet) : null,
+          bidrag: (row.bidrag ?? []) as Array<{ belop: number; label: string }>,
+          samtykkeTekst: (row.samtykke_tekst as string) ?? "",
+          signeringUrl: (row.signering_url as string | null) ?? null,
         })),
       });
     } catch (err) {
@@ -112,6 +118,8 @@ export function registerLeadgridDorsalgRoutes(deps: {
     const id = String(req.params.id ?? "").trim();
     const b = (req.body ?? {}) as {
       navn?: string; farge?: string; aktiv?: boolean; verdiPerVunnet?: number | null;
+      bidrag?: Array<{ belop?: number; label?: string }>;
+      samtykkeTekst?: string; signeringUrl?: string | null; leveranseEpost?: string | null;
     };
     try {
       const orgId = await resolveOrgIdForUser(pool, session.userId);
@@ -124,6 +132,10 @@ export function registerLeadgridDorsalgRoutes(deps: {
            farge = COALESCE(NULLIF($4, ''), farge),
            aktiv = COALESCE($5, aktiv),
            verdi_per_vunnet = CASE WHEN $6::boolean THEN $7 ELSE verdi_per_vunnet END,
+           bidrag = CASE WHEN $8::boolean THEN $9::jsonb ELSE bidrag END,
+           samtykke_tekst = CASE WHEN $10::boolean THEN $11 ELSE samtykke_tekst END,
+           signering_url = CASE WHEN $12::boolean THEN $13 ELSE signering_url END,
+           leveranse_epost = CASE WHEN $14::boolean THEN $15 ELSE leveranse_epost END,
            updated_at = now()
          WHERE id = $1::uuid AND org_id = $2`,
         [
@@ -133,6 +145,19 @@ export function registerLeadgridDorsalgRoutes(deps: {
           typeof b.aktiv === "boolean" ? b.aktiv : null,
           "verdiPerVunnet" in b,
           Number.isFinite(b.verdiPerVunnet) ? b.verdiPerVunnet : null,
+          "bidrag" in b,
+          JSON.stringify(Array.isArray(b.bidrag)
+            ? b.bidrag
+                .filter((x) => Number.isFinite(x?.belop))
+                .slice(0, 20)
+                .map((x) => ({ belop: Number(x.belop), label: String(x.label ?? "").slice(0, 60) }))
+            : []),
+          "samtykkeTekst" in b,
+          String(b.samtykkeTekst ?? "").slice(0, 4000),
+          "signeringUrl" in b,
+          b.signeringUrl ? String(b.signeringUrl).slice(0, 500) : null,
+          "leveranseEpost" in b,
+          b.leveranseEpost ? String(b.leveranseEpost).slice(0, 200) : null,
         ],
       );
       return res.json({ ok: true });
@@ -364,6 +389,224 @@ export function registerLeadgridDorsalgRoutes(deps: {
       return res.json({ ok: true });
     } catch (err) {
       console.error("[leadgrid-dorsalg] upsert feilet:", (err as Error).message);
+      return res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  // ─── Salg (mig 0400): «Registrer salg» på døra ────────────────────
+  // Grandma-prinsippet: ALDRI betalingsdata i appen. Verifisering:
+  // uverifisert → kunde_bekreftet (e-postlenke) → telefon_bekreftet
+  // (Kvalitet-samtalen) → bankid_signert (oppdragsgivers signering).
+
+  // POST /api/leadgrid/dorsalg/sales — registrer avtalen + grønn pin +
+  // Kvalitet-rad m/ EKTE kundedata + velkomst-e-post (best effort).
+  app.post("/api/leadgrid/dorsalg/sales", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const b = (req.body ?? {}) as {
+      adresseId?: string; adressetekst?: string; postnummer?: string; poststed?: string;
+      lat?: number; lon?: number;
+      productId?: string; bidragBelop?: number; bidragLabel?: string;
+      kundeNavn?: string; kundeTelefon?: string; kundeEpost?: string;
+      ringBekreftet?: boolean; samtykkeTekst?: string;
+    };
+    const adresseId = String(b.adresseId ?? "").trim();
+    const kundeNavn = String(b.kundeNavn ?? "").trim();
+    if (!adresseId || adresseId.length > 300) {
+      return res.status(400).json({ error: "ugyldig_adresse_id" });
+    }
+    if (!kundeNavn || kundeNavn.length > 200) {
+      return res.status(400).json({ error: "ugyldig_kundenavn" });
+    }
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      // Produkt: må tilhøre org + callerens tilgang.
+      let productId: string | null = null;
+      let productNavn: string | null = null;
+      if (b.productId) {
+        const pr = await pool.query(
+          `SELECT id, navn FROM leadgrid_dorsalg_products
+            WHERE id = $1::uuid AND org_id = $2 AND aktiv = true`,
+          [String(b.productId), orgId],
+        );
+        if (pr.rows.length === 0) return res.status(400).json({ error: "ugyldig_produkt" });
+        const access = await productAccess(orgId, session.userId);
+        if (access && !access.has(String(pr.rows[0].id))) {
+          return res.status(403).json({ error: "produkt_ikke_tildelt" });
+        }
+        productId = String(pr.rows[0].id);
+        productNavn = pr.rows[0].navn as string;
+      }
+      const kundeTelefon = String(b.kundeTelefon ?? "").replace(/[^+\d\s]/g, "").slice(0, 20);
+      const kundeEpost = b.kundeEpost
+        ? String(b.kundeEpost).trim().toLowerCase().slice(0, 200)
+        : null;
+      const confirmToken = randomBytes(24).toString("base64url");
+      const ins = await pool.query(
+        `INSERT INTO leadgrid_dorsalg_sales
+           (org_id, adresse_id, adressetekst, postnummer, poststed,
+            product_id, product_navn, bidrag_belop, bidrag_label,
+            kunde_navn, kunde_telefon, kunde_epost, samtykke_tekst,
+            ring_bekreftet_at, confirm_token, seller_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         RETURNING id`,
+        [
+          orgId, adresseId,
+          String(b.adressetekst ?? "").slice(0, 200),
+          String(b.postnummer ?? "").slice(0, 10),
+          String(b.poststed ?? "").slice(0, 100),
+          productId, productNavn,
+          Number.isFinite(b.bidragBelop) ? b.bidragBelop : null,
+          b.bidragLabel ? String(b.bidragLabel).slice(0, 60) : null,
+          kundeNavn, kundeTelefon, kundeEpost,
+          String(b.samtykkeTekst ?? "").slice(0, 4000),
+          b.ringBekreftet ? new Date().toISOString() : null,
+          confirmToken, session.userId,
+        ],
+      );
+      const saleId = String(ins.rows[0]?.id);
+      // Pin-status: vunnet m/ produkt (samme upsert som status-endepunktet).
+      await pool.query(
+        `INSERT INTO leadgrid_dorsalg_status
+           (org_id, adresse_id, adressetekst, postnummer, poststed,
+            lat, lon, status, set_by, product_id, product_navn, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'vunnet',$8,$9::uuid,$10, now())
+         ON CONFLICT (org_id, adresse_id) DO UPDATE SET
+           status = 'vunnet', set_by = EXCLUDED.set_by,
+           lat = COALESCE(EXCLUDED.lat, leadgrid_dorsalg_status.lat),
+           lon = COALESCE(EXCLUDED.lon, leadgrid_dorsalg_status.lon),
+           product_id = EXCLUDED.product_id,
+           product_navn = EXCLUDED.product_navn, updated_at = now()`,
+        [
+          orgId, adresseId,
+          String(b.adressetekst ?? "").slice(0, 200),
+          String(b.postnummer ?? "").slice(0, 10),
+          String(b.poststed ?? "").slice(0, 100),
+          Number.isFinite(b.lat) ? b.lat : null,
+          Number.isFinite(b.lon) ? b.lon : null,
+          session.userId, productId, productNavn,
+        ],
+      );
+      // Kvalitet-rad m/ EKTE kundedata (navn + telefon å ringe).
+      try {
+        await pool.query(
+          `INSERT INTO leadgrid_sales_verifications
+             (id, organization_id, customer_id, customer_name, customer_phone,
+              seller_user_id, seller_name, deal_amount, deal_currency, note, won_at)
+           SELECT gen_random_uuid(), $1, $2, $3, $4, $5,
+                  COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                           u.username, $5),
+                  $6, 'kr', $7, now()
+             FROM (SELECT 1) one
+             LEFT JOIN users u ON u.id = $5
+           ON CONFLICT (organization_id, customer_id) DO UPDATE SET
+             customer_name = EXCLUDED.customer_name,
+             customer_phone = EXCLUDED.customer_phone,
+             deal_amount = EXCLUDED.deal_amount,
+             note = EXCLUDED.note,
+             updated_at = now()`,
+          [
+            orgId, `dorsalg:${adresseId}`, kundeNavn, kundeTelefon || null,
+            session.userId,
+            Number.isFinite(b.bidragBelop) ? b.bidragBelop : null,
+            [productNavn ? `Produkt: ${productNavn}` : "",
+             `Adresse: ${String(b.adressetekst ?? "")}, ${String(b.postnummer ?? "")} ${String(b.poststed ?? "")}`,
+             `Salg-id: ${saleId}`].filter(Boolean).join("\n"),
+          ],
+        );
+      } catch (e) {
+        console.warn("[leadgrid-dorsalg] kvalitet-rad hoppet over:", (e as Error).message);
+      }
+      // Velkomst-e-post m/ bekreftelseslenke — best effort, grandma-vennlig
+      // (stor knapp, rolig språk, ingen betalingsdata).
+      if (kundeEpost) {
+        const base = process.env.PUBLIC_API_BASE_URL
+          || "https://creatorhub-backend-rtbl.onrender.com";
+        const confirmUrl = `${base}/api/leadgrid/dorsalg/confirm/${confirmToken}`;
+        const bidrag = Number.isFinite(b.bidragBelop)
+          ? `${b.bidragBelop} kr/mnd${b.bidragLabel ? ` (${b.bidragLabel})` : ""}` : "";
+        sendEmail({
+          to: kundeEpost,
+          fromName: productNavn ? `${productNavn} via Leadgrid` : "Leadgrid",
+          subject: productNavn ? `Velkommen — din avtale med ${productNavn}` : "Velkommen — din avtale",
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;font-size:17px;line-height:1.6">
+            <h2 style="color:#5b21b6">Takk, ${kundeNavn.split(" ")[0]}!</h2>
+            <p>Du har i dag sagt ja til å støtte <b>${productNavn ?? "organisasjonen"}</b>${bidrag ? ` med <b>${bidrag}</b>` : ""}.</p>
+            <p><b>Viktig å vite:</b> Ingen betaling er gjort på døra, og du oppgir aldri kontonummer til selgeren. Betalingsavtalen setter du opp direkte med organisasjonen. Du har 14 dagers angrerett, og du blir ringt av oss for en velkomstsamtale.</p>
+            <p style="margin:28px 0"><a href="${confirmUrl}" style="background:#7c3aed;color:#fff;padding:16px 28px;border-radius:10px;text-decoration:none;font-size:18px;font-weight:bold">Bekreft avtalen</a></p>
+            <p style="color:#666;font-size:14px">Var ikke dette deg? Se bort fra denne e-posten — da skjer ingenting.</p>
+          </div>`,
+          text: `Takk! Du har sagt ja til å støtte ${productNavn ?? "organisasjonen"}${bidrag ? ` med ${bidrag}` : ""}. Ingen betaling er gjort på døra. Bekreft avtalen: ${confirmUrl}`,
+        }).catch((e: Error) => console.warn("[leadgrid-dorsalg] velkomst-epost feilet:", e.message));
+      }
+      return res.json({ ok: true, id: saleId });
+    } catch (err) {
+      console.error("[leadgrid-dorsalg] salg feilet:", (err as Error).message);
+      return res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  // GET /api/leadgrid/dorsalg/confirm/:token — OFFENTLIG kunde-bekreftelse
+  // (lenken i velkomst-e-posten). Vennlig HTML, ingen sesjon.
+  app.get("/api/leadgrid/dorsalg/confirm/:token", async (req, res) => {
+    const token = String(req.params.token ?? "").trim();
+    if (!token || token.length > 100) return res.status(400).send("Ugyldig lenke.");
+    try {
+      const r = await pool.query(
+        `UPDATE leadgrid_dorsalg_sales SET
+           verifisering = CASE WHEN verifisering = 'uverifisert'
+                               THEN 'kunde_bekreftet' ELSE verifisering END,
+           kunde_bekreftet_at = COALESCE(kunde_bekreftet_at, now()),
+           updated_at = now()
+         WHERE confirm_token = $1
+         RETURNING product_navn, kunde_navn`,
+        [token],
+      );
+      if (r.rows.length === 0) {
+        return res.status(404).send("<html><body style=\"font-family:sans-serif;text-align:center;padding:60px 20px\"><h2>Fant ikke avtalen</h2><p>Lenken kan være utløpt.</p></body></html>");
+      }
+      const navn = (r.rows[0].kunde_navn as string).split(" ")[0];
+      const produkt = (r.rows[0].product_navn as string | null) ?? "organisasjonen";
+      return res.send(`<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family:sans-serif;text-align:center;padding:60px 20px;font-size:19px;line-height:1.6"><div style="font-size:56px">💜</div><h2 style="color:#5b21b6">Takk, ${navn} — avtalen er bekreftet!</h2><p>Din støtte til <b>${produkt}</b> er registrert. Du blir kontaktet for en velkomstsamtale, og betalingsavtalen setter du opp direkte med organisasjonen.</p><p style="color:#666;font-size:15px">Du kan lukke denne siden.</p></body></html>`);
+    } catch (err) {
+      console.error("[leadgrid-dorsalg] confirm feilet:", (err as Error).message);
+      return res.status(500).send("Noe gikk galt — prøv lenken igjen senere.");
+    }
+  });
+
+  // GET /api/leadgrid/dorsalg/sales — org-ens registrerte salg.
+  app.get("/api/leadgrid/dorsalg/sales", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const r = await pool.query(
+        `SELECT id, adresse_id, adressetekst, postnummer, poststed,
+                product_navn, bidrag_belop, bidrag_label, kunde_navn,
+                verifisering, created_at
+           FROM leadgrid_dorsalg_sales
+          WHERE org_id = $1
+          ORDER BY created_at DESC
+          LIMIT 500`,
+        [orgId],
+      );
+      return res.json({
+        sales: r.rows.map((row) => ({
+          id: String(row.id),
+          adresseId: row.adresse_id as string,
+          adressetekst: row.adressetekst as string,
+          postnummer: row.postnummer as string,
+          poststed: row.poststed as string,
+          productNavn: (row.product_navn as string | null) ?? null,
+          bidragBelop: row.bidrag_belop != null ? Number(row.bidrag_belop) : null,
+          bidragLabel: (row.bidrag_label as string | null) ?? null,
+          kundeNavn: row.kunde_navn as string,
+          verifisering: row.verifisering as string,
+          createdAt: (row.created_at as Date).toISOString().replace(/\.\d{3}Z$/, "Z"),
+        })),
+      });
+    } catch (err) {
+      console.error("[leadgrid-dorsalg] sales-list feilet:", (err as Error).message);
       return res.status(500).json({ error: "internal_error" });
     }
   });
