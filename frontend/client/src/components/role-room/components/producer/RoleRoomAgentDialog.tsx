@@ -491,6 +491,40 @@ export default function RoleRoomAgentDialog({
       setGscSetupBusy(false);
     }
   };
+  // Meta Pixel via Marketing API på prosjektets Meta-kobling. Pixelen
+  // KOBLES, aldri aktiveres — annonse-start er en separat beslutning.
+  const [pixelSetupBusy, setPixelSetupBusy] = useState(false);
+  const [pixelSetupOutcome, setPixelSetupOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  const runMetaPixelApiSetup = async (domain: string) => {
+    setPixelSetupBusy(true);
+    setPixelSetupOutcome(null);
+    try {
+      const r = await fetch('/api/role-room/agent/meta-pixel-setup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, domain }),
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || !body?.success) {
+        setPixelSetupOutcome({ ok: false, text: body?.error ?? `Pixel-oppsett feilet (${r.status}).` });
+        return;
+      }
+      const parts = [
+        body.pixelCreated ? 'Pixel opprettet' : 'Gjenbrukte eksisterende pixel',
+        `ID ${body.pixelId}`,
+        body.adAccountName ? `konto: ${body.adAccountName}` : null,
+      ].filter(Boolean);
+      setPixelSetupOutcome({
+        ok: true,
+        text: `${parts.join(' · ')}. Pixelen er KOBLET, ikke aktivert for annonser — lim ID-en inn i snippet-generatoren (marketing-samtykke-gating følger med).`,
+      });
+    } catch (e) {
+      setPixelSetupOutcome({ ok: false, text: String(e) });
+    } finally {
+      setPixelSetupBusy(false);
+    }
+  };
   // Derived saved-state — survives reopen, clears only when a new result object arrives.
   const projectCreatedFromResult = !!result && createdResultRef === result;
   const resultAppliedToProject = !!result && appliedResultRef === result;
@@ -1824,6 +1858,27 @@ export default function RoleRoomAgentDialog({
                             {gscSetupOutcome.metaTag}
                           </Box>
                         ) : null}
+                      </Alert>
+                    )}
+                    {(() => {
+                      const pixelCap = result.siteSetupAudit?.capabilities.find((c) => c.key === 'meta_pixel');
+                      if (pixelCap?.status === 'implemented') return null;
+                      return (
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Button size="small" variant="outlined" disabled={pixelSetupBusy}
+                            onClick={() => void runMetaPixelApiSetup(result.siteSetupAudit!.url)}
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#f0abfc', borderColor: 'rgba(168,85,247,0.4)' }}>
+                            {pixelSetupBusy ? 'Setter opp pixel…' : 'Opprett Meta Pixel (via Meta-koblingen)'}
+                          </Button>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
+                            Kobles, aktiveres ikke — annonser er en separat beslutning.
+                          </Typography>
+                        </Stack>
+                      );
+                    })()}
+                    {pixelSetupOutcome && (
+                      <Alert severity={pixelSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
+                        {pixelSetupOutcome.text}
                       </Alert>
                     )}
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>

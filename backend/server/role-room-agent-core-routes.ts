@@ -65,6 +65,7 @@ import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth-shared.js";
 import { runGa4Setup } from "./role-room-agent-ga4-setup.js";
 import { runGscSetup } from "./role-room-agent-gsc-setup.js";
+import { runMetaPixelSetup } from "./role-room-agent-meta-pixel-setup.js";
 import {
   validateResearchResult,
   detectMaterialChanges,
@@ -1122,6 +1123,57 @@ export function setupRoleRoomAgentCoreRoutes(
     } catch (err) {
       console.error("[gsc-setup] failed", err);
       return res.status(500).json({ success: false, error: "gsc_setup_failed" });
+    }
+  });
+
+  // ── OAuth-fasen (doc 14): Meta Pixel via Marketing API ─────────────
+  // Bruker prosjektets eksisterende Meta-kobling (ads_management er
+  // allerede i scopene). Pixelen KOBLES, aldri aktiveres — annonse-
+  // aktivering er en separat beslutning (doc 14 §1.4).
+  app.post("/api/role-room/agent/meta-pixel-setup", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const projectId = readString(body.projectId);
+    const domain = readString(body.domain);
+    if (!projectId || !domain) {
+      return res.status(400).json({ success: false, error: "projectId og domain er påkrevd." });
+    }
+
+    try {
+      const connection = await pool.query<{ access_token: string | null }>(
+        `SELECT access_token FROM role_room_instagram_connections
+          WHERE project_id = $1
+          ORDER BY connected_at DESC
+          LIMIT 1`,
+        [projectId],
+      );
+      const accessToken = connection.rows[0]?.access_token ?? null;
+      if (!accessToken) {
+        return res.status(409).json({
+          success: false,
+          error: "Ingen Meta-kobling på prosjektet — koble til Meta/Instagram i Kontotilgang først.",
+          needsConnect: true,
+        });
+      }
+
+      const outcome = await runMetaPixelSetup({ accessToken, domain });
+      if (!outcome.ok) {
+        return res.status(outcome.needsReauth ? 409 : 422).json({
+          success: false,
+          error: outcome.error,
+          needsReauth: outcome.needsReauth ?? false,
+        });
+      }
+      return res.json({ success: true, ...outcome.result });
+    } catch (err) {
+      console.error("[meta-pixel-setup] failed", err);
+      return res.status(500).json({ success: false, error: "meta_pixel_setup_failed" });
     }
   });
 }
