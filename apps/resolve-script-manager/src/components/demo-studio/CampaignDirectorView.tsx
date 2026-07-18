@@ -15,10 +15,11 @@ import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SendIcon from '@mui/icons-material/Send';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 import type { InfographicBrand } from './infographicStudio.js';
 import {
-  deriveCampaign, computePillarMix,
+  deriveCampaign, computePillarMix, scheduleCampaign,
   GOAL_LABELS, PILLAR_LABELS, PLATFORM_LABELS,
   type Campaign, type CampaignGoal, type CampaignPost, type ContentPillar, type PostPlatform,
 } from './campaignDirector.js';
@@ -68,6 +69,13 @@ export default function CampaignDirectorView(
 
   const toggleLock = (p: CampaignPost) => {
     setLocked((prev) => { const n = new Set(prev); const k = factKey(p); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  };
+
+  const scheduled = posts.some((p) => p.scheduledAt);
+  const schedule = () => {
+    if (!campaign) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setCampaign({ ...campaign, posts: scheduleCampaign(campaign.posts, weeks, today) });
   };
 
   const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, padding: '8px 14px', borderRadius: 9, border: `1px solid ${C.line}`, color: '#c4d0e4', background: C.panel2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };
@@ -142,6 +150,7 @@ export default function CampaignDirectorView(
                   <span style={{ position: 'absolute', top: 5, left: 5, fontSize: 7, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(0,0,0,.55)', color: '#fff' }}>{PLATFORM_LABELS[p.platform]}</span>
                   {VIDEO[p.platform] && <PlayArrowIcon style={{ position: 'absolute', top: 4, right: 4, fontSize: 13, color: '#fff', background: 'rgba(0,0,0,.5)', borderRadius: 7 }} />}
                   {locked.has(factKey(p)) && <LockOutlinedIcon style={{ position: 'absolute', bottom: 5, right: 5, fontSize: 12, color: a }} />}
+                  {p.scheduledAt && <span style={{ position: 'absolute', bottom: 5, left: 5, fontSize: 7, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: 'rgba(0,0,0,.55)', color: '#fff' }}>📅 {p.scheduledAt.slice(5, 10)}</span>}
                   <div style={{ color: a, fontSize: 7, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase' }}>{p.kpi.label}</div>
                   <div style={{ color: '#fff', fontSize: 26, fontWeight: 800, letterSpacing: '-1px', lineHeight: 0.95, marginTop: 2 }}>{p.kpi.value}</div>
                 </div>
@@ -183,15 +192,17 @@ export default function CampaignDirectorView(
                 {selected.caption && <div style={{ fontSize: 11.5, color: '#c4d0e4', lineHeight: 1.45, marginTop: 6 }}>{selected.caption}</div>}
                 {selected.hashtags.length > 0 && <div style={{ fontSize: 10.5, color: a, marginTop: 5 }}>{selected.hashtags.join(' ')}</div>}
                 {selected.cta && <div style={{ fontSize: 11, color: C.soft, marginTop: 6 }}><b>CTA:</b> {selected.cta}</div>}
+                {selected.scheduledAt && <div style={{ fontSize: 11, color: a, marginTop: 6 }}>📅 Planlagt: {selected.scheduledAt}</div>}
               </div>
             )}
           </div>
         </div>
 
         {/* bulk-handlinger */}
-        <div style={{ display: 'flex', gap: 9, marginTop: 18 }}>
+        <div style={{ display: 'flex', gap: 9, marginTop: 18, flexWrap: 'wrap' }}>
           <span onClick={() => onUsePosts?.(campaign)} style={{ ...btn, background: a, borderColor: a, color: '#fff' }}><FileDownloadIcon style={{ fontSize: 16 }} /> Bruk kampanjen ({posts.length})</span>
-          <span style={btn}><SendIcon style={{ fontSize: 16 }} /> Send til sosial-kø</span>
+          <span onClick={schedule} style={{ ...btn, ...(scheduled ? { borderColor: a, color: a } : {}) }}><CalendarMonthIcon style={{ fontSize: 16 }} /> {scheduled ? 'Planlagt ✓ — planlegg på nytt' : `Planlegg (${weeks} uker)`}</span>
+          <span title={scheduled ? 'Publiser til sosial-køen på planlagte tidspunkt' : 'Planlegg først'} style={{ ...btn, opacity: scheduled ? 1 : 0.5 }}><SendIcon style={{ fontSize: 16 }} /> Send til sosial-kø</span>
         </div>
       </>)}
     </div>

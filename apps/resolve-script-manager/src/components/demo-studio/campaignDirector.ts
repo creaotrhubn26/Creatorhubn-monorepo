@@ -53,6 +53,7 @@ export interface CampaignPost {
   caption: string;
   hashtags: string[];
   cta: string;
+  scheduledAt?: string;                // «YYYY-MM-DD HH:MM» når planlagt (fase 3)
 }
 export interface Campaign {
   goal: CampaignGoal;
@@ -146,6 +147,35 @@ export function computePillarMix(posts: CampaignPost[]): Campaign['pillarMix'] {
 /** Visuell brand-config for en post (påføres når den materialiseres til scene). */
 export function campaignPostBrandCfg(brand: InfographicBrand): { accent: string; ink: string; logo?: string } {
   return { accent: brand.accent, ink: brand.ink, logo: brand.logo };
+}
+
+// Plattform-smarte publiseringstidspunkt (grove bransje-heuristikker).
+const PLATFORM_TIME: Record<PostPlatform, string> = {
+  tiktok: '18:00', reels: '19:00', stories: '12:00', feed: '12:00', youtube: '17:00', linkedin: '08:00',
+};
+
+/** Ren planlegging: spre postene utover ukene (jevnt innad i uken) med
+ *  plattform-smart tidspunkt. `startISO` = «YYYY-MM-DD». Deterministisk/testbar. */
+export function scheduleCampaign(posts: CampaignPost[], weeks: number, startISO: string): CampaignPost[] {
+  const start = new Date(`${startISO}T00:00:00Z`);
+  const byWeek = new Map<number, CampaignPost[]>();
+  for (const p of posts) {
+    const w = Math.min(Math.max(1, p.week), weeks);
+    const list = byWeek.get(w) ?? [];
+    list.push(p); byWeek.set(w, list);
+  }
+  const out: CampaignPost[] = [];
+  for (let w = 1; w <= weeks; w++) {
+    const wp = byWeek.get(w) ?? [];
+    wp.forEach((p, i) => {
+      // Jevn spredning innad i uken (dag 0..6).
+      const dayInWeek = Math.max(0, Math.min(6, Math.round(((i + 1) / (wp.length + 1)) * 7) - 1));
+      const d = new Date(start);
+      d.setUTCDate(d.getUTCDate() + (w - 1) * 7 + dayInWeek);
+      out.push({ ...p, scheduledAt: `${d.toISOString().slice(0, 10)} ${PLATFORM_TIME[p.platform]}` });
+    });
+  }
+  return out;
 }
 
 export interface MaterializedPost { tplId: string; values: Record<string, string> }

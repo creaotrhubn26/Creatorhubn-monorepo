@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 // Unngå å laste Tauri via claudeProxyService — vi tester kun den rene logikken.
 vi.mock('../../services/claudeProxyService.js', () => ({ claudeProxyService: { send: async () => '' } }));
 
-import { extractJson, normalizePosts, computePillarMix, materializePost, type CampaignPost } from './campaignDirector.js';
+import { extractJson, normalizePosts, computePillarMix, materializePost, scheduleCampaign, type CampaignPost } from './campaignDirector.js';
 
 const mkPost = (over: Partial<CampaignPost> = {}): CampaignPost => ({
   angle: 'A', pillar: 'proof', platform: 'tiktok', format: '9:16', week: 1,
@@ -74,6 +74,22 @@ describe('materializePost — pilar → mal + verdier', () => {
   });
   it('education → social-tips', () => {
     expect(materializePost(mkPost({ pillar: 'education' })).tplId).toBe('social-tips');
+  });
+});
+
+describe('scheduleCampaign — kalender', () => {
+  it('setter scheduledAt m/ plattform-tid og sprer over uker', () => {
+    const posts = [
+      mkPost({ platform: 'linkedin', week: 1 }),
+      mkPost({ platform: 'tiktok', week: 2, kpi: { label: 'B', value: '2' } }),
+    ];
+    const s = scheduleCampaign(posts, 2, '2026-07-20');
+    expect(s[0].scheduledAt).toMatch(/^2026-07-\d\d 08:00$/);       // uke 1, LinkedIn 08:00
+    expect(s[1].scheduledAt).toMatch(/^2026-07-\d\d 18:00$/);       // uke 2, TikTok 18:00
+    // uke 2-posten er minst 7 dager etter uke 1
+    const d0 = new Date(s[0].scheduledAt!.slice(0, 10));
+    const d1 = new Date(s[1].scheduledAt!.slice(0, 10));
+    expect((d1.getTime() - d0.getTime()) / 86400000).toBeGreaterThanOrEqual(7);
   });
 });
 
