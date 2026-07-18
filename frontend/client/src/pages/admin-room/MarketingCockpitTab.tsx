@@ -39,6 +39,8 @@ import LeadMapMyDayPanel from './LeadMapMyDayPanel';
 import LeadMapLeaderboardPanel from './LeadMapLeaderboardPanel';
 import LeadMapNotificationBell from './LeadMapNotificationBell';
 import MarketIntelligenceSection from '../../components/admin-room/market-intelligence/MarketIntelligenceSection';
+import TenderBoardPanel from '../../components/admin-room/market-intelligence/TenderBoardPanel';
+import TenderIntelPanel from '../../components/admin-room/market-intelligence/TenderIntelPanel';
 import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
 import PostDraftsPanel from './PostDraftsPanel';
@@ -336,6 +338,7 @@ const COCKPIT_TABS = [
   { value: 'konkurrenter', label: 'Konkurrenter' },
   { value: 'b2b', label: 'B2B & kunder' },
   { value: 'leads', label: 'Leads & territorier' },
+  { value: 'anbud', label: 'Anbud' },
   { value: 'mi', label: 'Markedsintelligens' },
 ] as const;
 type CockpitTab = (typeof COCKPIT_TABS)[number]['value'];
@@ -730,6 +733,15 @@ export default function MarketingCockpitTab() {
         <TerritoryGridManager />
         <TerritoryCoveragePanel />
         <TerritoryManagerDashboard />
+      </>)}
+
+      {cockpitTab === 'anbud' && (<>
+        <Divider textAlign="left">
+          <Chip label="ANBUD — TRIAGE / FRISTER / RADAR" size="small"
+            sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <TenderBoardPanel />
+        <TenderIntelPanel />
       </>)}
 
       {cockpitTab === 'mi' && (

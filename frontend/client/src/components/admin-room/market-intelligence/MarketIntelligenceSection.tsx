@@ -51,7 +51,6 @@ import MorningBriefCard from "./MorningBriefCard";
 import ButlerChatPanel from "./ButlerChatPanel";
 import InsightsFeedPanel from "./InsightsFeedPanel";
 import OpportunityScorePanel from "./OpportunityScorePanel";
-import TenderIntelPanel from "./TenderIntelPanel";
 import GrantWorkspacePanel from "./GrantWorkspacePanel";
 import SocialQueuePanel from "./SocialQueuePanel";
 import ProspectsPanel from "./ProspectsPanel";
@@ -137,7 +136,7 @@ function MarketIntelligenceSectionInner({
 
           <OpportunityScorePanel />
 
-          <TenderIntelPanel />
+          {/* Anbud (tavle, frister, radar, kravbilde) bor i cockpit-fanen «Anbud» */}
 
           <GrantWorkspacePanel />
 
