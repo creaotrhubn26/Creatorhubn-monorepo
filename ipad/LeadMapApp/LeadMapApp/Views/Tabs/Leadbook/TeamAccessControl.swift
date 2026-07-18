@@ -100,6 +100,10 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // Utstyrsregister (2026-07-17) — org-eid utstyr utlevert til medlemmer
     // (nettbrett/telefon/laptop/klær/ID-kort) m/ hendelseslogg.
     case utstyrsregister = "Utstyr · Organisasjonsutstyr"
+    // Dørsalg-modus (2026-07-18) — husstandsadresser som egen kartflate for
+    // org-er som hovedsakelig driver dørsalg. DEFAULT AV (isExplicitlyEnabled-
+    // mønsteret): B2B-org-er ser aldri modusen; blandes aldri med bedrifts-CRM.
+    case dorsalgModus = "Dørsalg · Husstandsmodus"
 
     var id: String { rawValue }
 
@@ -160,12 +164,15 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadbookAIStrukturering: return "sparkles"
         // Utstyr
         case .utstyrsregister: return "shippingbox.fill"
+        // Dørsalg
+        case .dorsalgModus: return "door.left.hand.open"
         }
     }
 
     var group: Group {
         switch self {
-        case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter: return .kjerne
+        case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter,
+             .dorsalgModus: return .kjerne
         case .analyse, .team, .salgsledelse, .omradeTildeling,
              .utstyrsregister: return .analyseTeam
         case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler,

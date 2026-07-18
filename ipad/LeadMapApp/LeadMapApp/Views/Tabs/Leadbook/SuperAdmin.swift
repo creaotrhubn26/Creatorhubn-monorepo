@@ -857,6 +857,64 @@ struct OrgDetailSheet: View {
         }
     }
 
+    // MARK: Org-profil-presets (2026-07-18)
+
+    /// Dørsalg-profil = husstandsmodusen eksplisitt PÅ + Leads (bedrifts-
+    /// CRM) låst. Resten av matrisen defineres ikke av profilen.
+    private var erDorsalgProfil: Bool {
+        let dorsalg = org.entitlements.first { $0.feature == .dorsalgModus }?.state
+        let leads = org.entitlements.first { $0.feature == .leads }?.state
+        return dorsalg == .included && leads == .locked
+    }
+
+    private func applyOrgProfile(dorsalg: Bool) {
+        var ents = org.entitlements
+        func set(_ feature: LeadgridFeature, _ state: EntitlementState) {
+            if let idx = ents.firstIndex(where: { $0.feature == feature }) {
+                ents[idx].state = state
+            } else {
+                ents.append(Entitlement(feature: feature, state: state,
+                                        monthlyLimit: nil, currentUsage: 0,
+                                        trialEndsAt: nil, addOnPriceMonthly: nil))
+            }
+        }
+        if dorsalg {
+            set(.dorsalgModus, .included)   // husstandsmodusen på kartet
+            set(.leads, .locked)            // bedrifts-CRM-et stenges
+        } else {
+            set(.dorsalgModus, .locked)     // ingen dørsalg-referanse
+            set(.leads, .included)
+        }
+        org.entitlements = ents
+        saveEntitlements(ents)
+        flash(dorsalg ? "Org-profil satt: Dørsalg" : "Org-profil satt: B2B",
+              isError: false)
+    }
+
+    private func orgProfileButton(
+        title: String, icon: String, tint: Color, active: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold))
+                Text(title).font(.appScaled(size: 12, weight: .bold))
+                if active {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.appScaled(size: 11, weight: .bold))
+                }
+            }
+            .foregroundStyle(active ? .white : LBrand.textSecondary)
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(
+                active ? AnyShapeStyle(tint.opacity(0.85)) : AnyShapeStyle(LBrand.cardHi),
+                in: Capsule()
+            )
+            .overlay(Capsule().stroke(active ? tint : LBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     /// Ekte modus: PUT hele matrisen. Demo: kun lokal state.
     private func saveEntitlements(_ updated: [Entitlement]) {
         guard let sid = org.serverId, let api = appState.api,
@@ -1182,6 +1240,34 @@ struct OrgDetailSheet: View {
                         in: Capsule()
                     )
                 }.buttonStyle(.plain)
+            }
+            // Org-profil-presets (2026-07-18, Daniel: «hvordan kan man gi
+            // denne type organisasjon denne type tilgang? for kun dette?»):
+            // ett klikk setter pakken for org-TYPEN. Dørsalg = husstands-
+            // modusen PÅ + bedrifts-CRM-et (Leads) AV; resten av plattformen
+            // (Kvalitet/Pondus/Team/Salgsledelse/utstyr/Go) er like relevant
+            // for dørsalg og røres ikke. B2B = motsatt (dagens default).
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ORG-PROFIL")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                HStack(spacing: 8) {
+                    orgProfileButton(
+                        title: "B2B (standard)", icon: "building.2.fill",
+                        tint: LBrand.blue,
+                        active: !erDorsalgProfil
+                    ) { applyOrgProfile(dorsalg: false) }
+                    orgProfileButton(
+                        title: "Dørsalg", icon: "door.left.hand.open",
+                        tint: LBrand.purpleLight,
+                        active: erDorsalgProfil
+                    ) { applyOrgProfile(dorsalg: true) }
+                }
+                Text(erDorsalgProfil
+                     ? "Husstandsmodus på kartet er PÅ og bedrifts-CRM-et (Leads) er stengt."
+                     : "Bedrifts-CRM-et er åpent; dørsalg-modusen vises ikke for org-en.")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(LBrand.textTertiary)
             }
             // Summary per state
             HStack(spacing: 8) {

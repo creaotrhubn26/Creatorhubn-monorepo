@@ -486,10 +486,15 @@ struct MainTabView: View {
                     .tabItem { Label("Kart", systemImage: "map.fill") }
                     .tag(1)
 
-                LeadsView()
-                    .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
-                    .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
-                    .tag(2)
+                // Leads (bedrifts-CRM) finnes ikke i opplevelsen for
+                // dørsalg-profil-orger (2026-07-18) — skjules helt, ikke
+                // lås-skjerm. Tag-ene er stabile så øvrige faner beholdes.
+                if EntitlementStore.shared.canUse(.leads) {
+                    LeadsView()
+                        .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
+                        .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                        .tag(2)
+                }
 
                 MeetingsView()
                     .tabItem { Label("Møter", systemImage: "calendar") }
@@ -909,9 +914,17 @@ struct MainSidebarView: View {
             Section("Hovedfaner") {
                 // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
                 // vakter i tillegg selv mot deep-link/persistert valg).
+                // Leads (bedrifts-CRM) skjules HELT for dørsalg-profil-orger
+                // (2026-07-18): en låst kjernefane skal ikke finnes i
+                // opplevelsen, ikke vises med lås-skjerm.
                 let visibleItems = SidebarItem.allCases.filter { item in
-                    item != .salgsledelse
-                        || ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
+                    if item == .salgsledelse {
+                        return ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
+                    }
+                    if item == .leads {
+                        return EntitlementStore.shared.canUse(.leads)
+                    }
+                    return true
                 }
                 ForEach(visibleItems) { item in
                     sidebarRow(

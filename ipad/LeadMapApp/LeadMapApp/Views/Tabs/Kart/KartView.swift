@@ -677,6 +677,9 @@ struct KartView: View {
     #endif
     private var showDetailPanel: Bool {
         guard !kartLeads.isEmpty else { return false }
+        // 2026-07-18: dørsalg-modus er en egen verden — bedrifts-lead-panelet
+        // under kartet skjules helt.
+        guard !dorsalgModus else { return false }
         #if DEBUG
         if cinematicHideCard { return false }
         #endif
@@ -786,6 +789,52 @@ struct KartView: View {
     @State private var measureMode: Bool = false
     @State private var measurePointA: CLLocationCoordinate2D?
     @State private var measurePointB: CLLocationCoordinate2D?
+
+    // MARK: - Dørsalg-modus (2026-07-18)
+    // Husstandsadresser fra Kartverket som EGEN kartflate for dørsalg-org-er.
+    // Blandes ALDRI med bedrifts-leads (lead-pins skjules i modusen) og
+    // adressene skrives ALDRI til CRM — kun visning + Naviger.
+    @State private var dorsalgModus = false
+    @State private var dorsalgAdresser: [KartverketService.AdressePunkt] = []
+    @State private var dorsalgLaster = false
+    /// Totalt antall adresser Kartverket rapporterte for siste henting.
+    @State private var dorsalgTotal: Int = 0
+    /// Forrige hente-senter — re-fetch først når kartet har flyttet > 300 m.
+    @State private var dorsalgFetchSenter: CLLocationCoordinate2D? = nil
+    /// Valgt adresse-dot → kompakt callout nederst på kartet.
+    @State private var dorsalgValgt: KartverketService.AdressePunkt? = nil
+    /// Debounce: pågående hente-task kanselleres ved ny kartbevegelse.
+    @State private var dorsalgFetchTask: Task<Void, Never>? = nil
+
+    /// Org-gated + demo-gated synlighet (Daniel-regel 3, 2026-07-18):
+    /// default AV — B2B-org-er skal ikke se noen referanse til modusen.
+    /// Demo-modus får den også (pitch-demo).
+    private var visDorsalgToggle: Bool {
+        DemoModeManager.isActiveNonisolated
+            || EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
+    }
+
+    /// Kartspenn-grense for adresse-henting (~3 km) — over dette vises
+    /// «Zoom inn»-chippen i stedet for å hente tusenvis av adresser.
+    private var dorsalgZoomOK: Bool {
+        currentRegion.span.latitudeDelta < 0.03
+    }
+
+    /// Dots som faktisk renderes: tom utenfor modusen (holder Map-builderen
+    /// flat — ingen ekstra buildEither-dybde, jf. AnyView-terskel-noten i
+    /// body). Ved > 400 synlige: de 400 nærmeste kartsenteret.
+    private var dorsalgSynligeAdresser: [KartverketService.AdressePunkt] {
+        guard dorsalgModus else { return [] }
+        guard dorsalgAdresser.count > 400 else { return dorsalgAdresser }
+        let c = currentRegion.center
+        // Billig grad-avstand (kvadrert) — godt nok til rangering.
+        func d2(_ a: KartverketService.AdressePunkt) -> Double {
+            let dLat = a.lat - c.latitude
+            let dLon = (a.lon - c.longitude) * cos(c.latitude * .pi / 180)
+            return dLat * dLat + dLon * dLon
+        }
+        return Array(dorsalgAdresser.sorted { d2($0) < d2($1) }.prefix(400))
+    }
 
     enum MapStyleChoice: String, CaseIterable, Hashable {
         case standardDark = "Standard"
@@ -1517,12 +1566,15 @@ struct KartView: View {
                         }
                     }
                 }
-                ForEach(KartPreviewData.clusters) { c in
+                // 2026-07-18 dørsalg: bedrifts-pins/clusters gates på DATA-nivå
+                // (tom liste i dørsalg-modus) i stedet for `if` — holder
+                // MapContentBuilder-dybden flat (jf. AnyView-terskel-noten).
+                ForEach(dorsalgModus ? [] : KartPreviewData.clusters) { c in
                     Annotation("", coordinate: CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon)) {
                         ClusterPin(count: c.count, color: c.color)
                     }
                 }
-                ForEach(kartLeads) { lead in
+                ForEach(dorsalgModus ? [] : kartLeads) { lead in
                     Annotation("", coordinate: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon)) {
                         Button {
                             if measureMode {
@@ -1535,6 +1587,16 @@ struct KartView: View {
                                 .overlay(measureRingFor(lead))
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+
+                // 2026-07-18 dørsalg: husstandsadresse-dots (Kartverket).
+                // Tom liste utenfor modusen — kun visning + Naviger, aldri CRM.
+                ForEach(dorsalgSynligeAdresser) { adr in
+                    Annotation("", coordinate: CLLocationCoordinate2D(latitude: adr.lat, longitude: adr.lon)) {
+                        DorsalgAdresseDot(valgt: dorsalgValgt?.id == adr.id) {
+                            withAnimation(.easeOut(duration: 0.2)) { dorsalgValgt = adr }
+                        }
                     }
                 }
 
@@ -1568,6 +1630,9 @@ struct KartView: View {
             .mapControls { }
             .onMapCameraChange(frequency: .continuous) { ctx in
                 currentRegion = ctx.region
+                // 2026-07-18 dørsalg: hent adresser når senteret har flyttet
+                // seg > 300 m (debounced m/ Task-cancel — billig no-op ellers).
+                dorsalgMaybeFetch()
             }
             .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1621,6 +1686,24 @@ struct KartView: View {
             }
             .fixedSize()
             .padding(14)
+
+            // 2026-07-18 dørsalg: modus-velger topp-senter over kartflaten.
+            // Org-gated (visDorsalgToggle) og skjult i nav-/måle-modus.
+            if visDorsalgToggle && !navModeActive && !measureMode {
+                AnyView(dorsalgModeVelger)
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .allowsHitTesting(true)
+            }
+
+            // 2026-07-18 dørsalg: status-chips + adresse-callout nederst.
+            if dorsalgModus && !navModeActive {
+                AnyView(dorsalgBunnOverlay)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(true)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
 
             // Mål-banner øverst-til-venstre når i mål-modus
             if measureMode {
@@ -1691,7 +1774,7 @@ struct KartView: View {
             // kompakt handlingskort over kartet når en pin er valgt, samme
             // mønster som Apple Maps. iPad har side-panelet synlig og
             // trenger det ikke.
-            if DeviceIdiom.isPhone && hasSelectedLead && !navModeActive && !measureMode {
+            if DeviceIdiom.isPhone && hasSelectedLead && !navModeActive && !measureMode && !dorsalgModus {
                 AnyView(phoneLeadHUD)
                     .padding(10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -1769,6 +1852,261 @@ struct KartView: View {
         }
         .frame(width: 34, height: 34)
     }
+
+    // MARK: - Dørsalg-modus (2026-07-18)
+
+    /// Kapsel-toggle topp-senter: «Bedrifter» | «Dørsalg». To adskilte
+    /// verdener på samme kart — bytte animeres.
+    private var dorsalgModeVelger: some View {
+        HStack(spacing: 0) {
+            dorsalgSegment("Bedrifter", icon: "building.2.fill", aktiv: !dorsalgModus) {
+                setDorsalgModus(false)
+            }
+            dorsalgSegment("Dørsalg", icon: "door.left.hand.open", aktiv: dorsalgModus) {
+                setDorsalgModus(true)
+            }
+        }
+        .padding(3)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(KrBrand.card.opacity(0.65), in: Capsule())
+        .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+        .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+    }
+
+    private func dorsalgSegment(_ label: String, icon: String, aktiv: Bool,
+                                action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.appScaled(size: 11, weight: .semibold))
+                Text(label)
+                    .font(.appScaled(size: 12, weight: .bold))
+            }
+            .foregroundStyle(aktiv ? .white : KrBrand.textSecondary)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(
+                aktiv
+                    ? AnyShapeStyle(LinearGradient(colors: [KrBrand.purple, KrBrand.purpleLight],
+                                                   startPoint: .leading, endPoint: .trailing))
+                    : AnyShapeStyle(Color.clear),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+        .macCatalystHover()
+    }
+
+    /// Bytt modus (animeres). Ut av dørsalg → rydd valgt/task; inn → hent.
+    private func setDorsalgModus(_ on: Bool) {
+        guard dorsalgModus != on else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            dorsalgModus = on
+            dorsalgValgt = nil
+        }
+        if on {
+            dorsalgMaybeFetch(force: true)
+        } else {
+            dorsalgFetchTask?.cancel()
+            dorsalgFetchTask = nil
+            dorsalgLaster = false
+        }
+    }
+
+    /// Status-chips + adresse-callout nederst på kartet i dørsalg-modus.
+    @ViewBuilder
+    private var dorsalgBunnOverlay: some View {
+        VStack(spacing: 8) {
+            if !dorsalgZoomOK {
+                dorsalgChip(icon: "plus.magnifyingglass", text: "Zoom inn for å se adresser")
+            } else if dorsalgLaster {
+                dorsalgChip(icon: "antenna.radiowaves.left.and.right",
+                            text: "Henter adresser fra Kartverket…")
+            } else if dorsalgAdresser.count > 400 {
+                // Ærlig cap-chip: vi rendrer kun de 400 nærmeste senteret.
+                dorsalgChip(icon: "circle.grid.2x2.fill",
+                            text: "Viser 400 av \(max(dorsalgTotal, dorsalgAdresser.count)) adresser")
+            } else if !dorsalgAdresser.isEmpty {
+                dorsalgChip(icon: "house.fill",
+                            text: "\(dorsalgAdresser.count) adresser i området")
+            }
+            if let adr = dorsalgValgt {
+                dorsalgCallout(adr)
+            }
+        }
+        .frame(maxWidth: 480)
+    }
+
+    private func dorsalgChip(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .foregroundStyle(KrBrand.purpleLight)
+            Text(text)
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(KrBrand.card.opacity(0.6), in: Capsule())
+        .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    /// Kompakt callout for en valgt husstandsadresse: adresse + postnr/sted
+    /// + «Naviger» + X. KUN navigasjon — adressen lagres aldri i CRM.
+    private func dorsalgCallout(_ adr: KartverketService.AdressePunkt) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(KrBrand.purpleLight.opacity(0.22))
+                Image(systemName: "house.fill")
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(KrBrand.purpleLight)
+            }
+            .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(adr.adressetekst)
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("\(adr.postnummer) \(adr.poststed)")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Button { dorsalgNaviger(til: adr) } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "location.fill")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                    Text("Naviger")
+                        .font(.appScaled(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(
+                    LinearGradient(colors: [KrBrand.purple, KrBrand.purpleLight],
+                                   startPoint: .leading, endPoint: .trailing),
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { dorsalgValgt = nil }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .frame(width: 30, height: 30)
+                    .background(KrBrand.card.opacity(0.8), in: Circle())
+                    .overlay(Circle().stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(KrBrand.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(KrBrand.stroke, lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+    }
+
+    /// Naviger til husstandsadresse: konstruer en flyktig MapLeadMock KUN
+    /// for nav-motoren (startNavigation). Ingen lagring, ingen CRM.
+    private func dorsalgNaviger(til adr: KartverketService.AdressePunkt) {
+        let dest = MapLeadMock(
+            name: adr.adressetekst,
+            address: "\(adr.adressetekst), \(adr.postnummer) \(adr.poststed)",
+            kmAway: 0,
+            status: .new,
+            lastActivity: nil,
+            lat: adr.lat, lon: adr.lon
+        )
+        withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: dest) }
+    }
+
+    /// Debounced henting: no-op utenfor modusen, ved for stort kartspenn
+    /// (chip sier «Zoom inn») eller når senteret er < 300 m fra forrige hent.
+    private func dorsalgMaybeFetch(force: Bool = false) {
+        guard dorsalgModus else { return }
+        guard dorsalgZoomOK else { return }
+        let senter = currentRegion.center
+        if !force, let forrige = dorsalgFetchSenter,
+           metersBetween(forrige, senter) < 300 { return }
+        dorsalgFetchTask?.cancel()
+        // Synlig radius i meter (halve lat-spennet), klampet til Kartverkets
+        // 2000 m-maks og et 250 m-gulv så tett zoom fortsatt gir et nabolag.
+        let radius = min(2000, max(250, Int(currentRegion.span.latitudeDelta * 111_000 / 2)))
+        dorsalgFetchTask = Task {
+            // Debounce småbevegelser — kanselleres av neste kamera-tick.
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            await dorsalgFetch(senter: senter, radius: radius)
+        }
+    }
+
+    /// Hent side 0 (+ side 1–4 når total > 200, maks ~1000 adresser).
+    private func dorsalgFetch(senter: CLLocationCoordinate2D, radius: Int) async {
+        guard let api = appState.api else {
+            // Demo uten backend: 25 statiske adresser rundt Oslo sentrum så
+            // pitchen kan vises uten innlogget API.
+            if DemoModeManager.isActiveNonisolated {
+                dorsalgAdresser = Self.dorsalgDemoAdresser
+                dorsalgTotal = Self.dorsalgDemoAdresser.count
+                dorsalgFetchSenter = senter
+            }
+            return
+        }
+        dorsalgLaster = true
+        let (side0, total) = await KartverketService.shared.fetchAdresser(
+            lat: senter.latitude, lon: senter.longitude,
+            radius: radius, side: 0, using: api)
+        guard !Task.isCancelled else { dorsalgLaster = false; return }
+        var alle = side0
+        if total > 200 {
+            let sisteSide = min(4, (total - 1) / 200)
+            for side in 1...sisteSide {
+                let (mer, _) = await KartverketService.shared.fetchAdresser(
+                    lat: senter.latitude, lon: senter.longitude,
+                    radius: radius, side: side, using: api)
+                guard !Task.isCancelled else { dorsalgLaster = false; return }
+                alle += mer
+            }
+        }
+        // Dedup på id (adressetekst|postnr) — sidene kan overlappe ved
+        // at Kartverket re-sorterer mellom kall.
+        var sett = Set<String>()
+        dorsalgAdresser = alle.filter { sett.insert($0.id).inserted }
+        dorsalgTotal = max(total, dorsalgAdresser.count)
+        dorsalgFetchSenter = senter
+        dorsalgLaster = false
+    }
+
+    /// 25 statiske demo-adresser rundt Oslo sentrum (kun demo uten API).
+    private static let dorsalgDemoAdresser: [KartverketService.AdressePunkt] = [
+        .init(adressetekst: "Karl Johans gate 12", postnummer: "0154", poststed: "Oslo", lat: 59.9115, lon: 10.7454),
+        .init(adressetekst: "Storgata 8",          postnummer: "0155", poststed: "Oslo", lat: 59.9132, lon: 10.7488),
+        .init(adressetekst: "Storgata 21",         postnummer: "0184", poststed: "Oslo", lat: 59.9146, lon: 10.7530),
+        .init(adressetekst: "Torggata 15",         postnummer: "0181", poststed: "Oslo", lat: 59.9158, lon: 10.7509),
+        .init(adressetekst: "Torggata 30",         postnummer: "0183", poststed: "Oslo", lat: 59.9172, lon: 10.7521),
+        .init(adressetekst: "Grensen 5",           postnummer: "0159", poststed: "Oslo", lat: 59.9139, lon: 10.7412),
+        .init(adressetekst: "Akersgata 32",        postnummer: "0180", poststed: "Oslo", lat: 59.9151, lon: 10.7443),
+        .init(adressetekst: "Møllergata 24",       postnummer: "0179", poststed: "Oslo", lat: 59.9163, lon: 10.7478),
+        .init(adressetekst: "Youngs gate 7",       postnummer: "0181", poststed: "Oslo", lat: 59.9155, lon: 10.7495),
+        .init(adressetekst: "Calmeyers gate 6",    postnummer: "0183", poststed: "Oslo", lat: 59.9178, lon: 10.7539),
+        .init(adressetekst: "Hausmanns gate 19",   postnummer: "0182", poststed: "Oslo", lat: 59.9186, lon: 10.7554),
+        .init(adressetekst: "Osterhaus' gate 11",  postnummer: "0183", poststed: "Oslo", lat: 59.9180, lon: 10.7518),
+        .init(adressetekst: "Bernt Ankers gate 4", postnummer: "0183", poststed: "Oslo", lat: 59.9167, lon: 10.7506),
+        .init(adressetekst: "Pløens gate 2",       postnummer: "0181", poststed: "Oslo", lat: 59.9150, lon: 10.7487),
+        .init(adressetekst: "Skippergata 22",      postnummer: "0154", poststed: "Oslo", lat: 59.9105, lon: 10.7448),
+        .init(adressetekst: "Dronningens gate 15", postnummer: "0152", poststed: "Oslo", lat: 59.9098, lon: 10.7422),
+        .init(adressetekst: "Prinsens gate 10",    postnummer: "0152", poststed: "Oslo", lat: 59.9091, lon: 10.7405),
+        .init(adressetekst: "Tollbugata 8",        postnummer: "0152", poststed: "Oslo", lat: 59.9084, lon: 10.7419),
+        .init(adressetekst: "Kirkegata 20",        postnummer: "0153", poststed: "Oslo", lat: 59.9102, lon: 10.7401),
+        .init(adressetekst: "Nedre Slottsgate 13", postnummer: "0157", poststed: "Oslo", lat: 59.9110, lon: 10.7389),
+        .init(adressetekst: "Øvre Slottsgate 18",  postnummer: "0157", poststed: "Oslo", lat: 59.9121, lon: 10.7395),
+        .init(adressetekst: "Rosenkrantz' gate 9", postnummer: "0159", poststed: "Oslo", lat: 59.9130, lon: 10.7378),
+        .init(adressetekst: "Kristian IVs gate 6", postnummer: "0164", poststed: "Oslo", lat: 59.9142, lon: 10.7385),
+        .init(adressetekst: "Pilestredet 17",      postnummer: "0164", poststed: "Oslo", lat: 59.9160, lon: 10.7392),
+        .init(adressetekst: "St. Olavs gate 4",    postnummer: "0165", poststed: "Oslo", lat: 59.9171, lon: 10.7406),
+    ]
 
     private func mapFAB(icon: String) -> some View {
         Image(systemName: icon)
@@ -4080,6 +4418,30 @@ fileprivate struct DroppedPin: View {
                 .foregroundStyle(.white)
         }
         .onAppear { pulse = true }
+    }
+}
+
+// MARK: - Dørsalg adresse-dot (2026-07-18)
+
+/// Liten husstands-dot i dørsalg-modus: 9 pt sirkel (KrBrand.purpleLight
+/// m/ hvit kant), valgt = litt større m/ glød. Tap-flaten er 26 pt så
+/// den er treffbar med finger uten at kartet ser overlesset ut.
+fileprivate struct DorsalgAdresseDot: View {
+    let valgt: Bool
+    let onTap: () -> Void
+    var body: some View {
+        Button(action: onTap) {
+            Circle()
+                .fill(KrBrand.purpleLight)
+                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                .frame(width: valgt ? 13 : 9, height: valgt ? 13 : 9)
+                .shadow(color: valgt ? KrBrand.purpleLight.opacity(0.8) : .black.opacity(0.3),
+                        radius: valgt ? 6 : 2)
+                .frame(width: 26, height: 26)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.15), value: valgt)
     }
 }
 

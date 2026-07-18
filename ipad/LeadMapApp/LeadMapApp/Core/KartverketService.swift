@@ -129,6 +129,37 @@ final class KartverketService {
         return dto.kommuner
     }
 
+    // MARK: - Dørsalg-modus: husstandsadresser (2026-07-18)
+    // EGEN modus for dørsalg-org-er (feature-nøkkel `dorsalgModus`) —
+    // blandes ALDRI med bedrifts-leads; adressene skrives aldri til CRM.
+
+    struct AdressePunkt: Decodable, Sendable, Identifiable, Hashable {
+        let adressetekst: String
+        let postnummer: String
+        let poststed: String
+        let lat: Double
+        let lon: Double
+        var id: String { "\(adressetekst)|\(postnummer)" }
+    }
+
+    private struct AdresseResponse: Decodable {
+        let total: Int
+        let adresser: [AdressePunkt]
+    }
+
+    /// Alle husstandsadresser innen radius (backend-proxy mot Kartverkets
+    /// punktsøk, maks 2000 m, 200 per side). ([], 0) ved feil.
+    func fetchAdresser(
+        lat: Double, lon: Double, radius: Int, side: Int = 0,
+        using api: APIClient
+    ) async -> (adresser: [AdressePunkt], total: Int) {
+        guard let r: AdresseResponse = try? await api._get(
+            "/api/leadgrid/kartverket/adresser/punkt" +
+            "?lat=\(lat)&lon=\(lon)&radius=\(radius)&side=\(side)"
+        ) else { return ([], 0) }
+        return (r.adresser, r.total)
+    }
+
     // MARK: - Apple CLGeocoder fallback
 
     private func fetchFromApple(lat: Double, lon: Double) async -> ReverseResult? {
