@@ -33,11 +33,33 @@ interface PlannedEvent {
   params: string[];
 }
 
+interface InstallInstructions {
+  channel: string;
+  title: string;
+  steps: string[];
+  builderPrompt: string | null;
+}
+
 interface BootstrapResult {
-  snippet: string;
+  snippet: string | null;
   eventPlan: PlannedEvent[];
   notes: string[];
+  installInstructions?: InstallInstructions | null;
 }
+
+const PLATFORMS: Array<{ key: string; label: string }> = [
+  { key: "", label: "Plattform (valgfritt)" },
+  { key: "lovable", label: "Lovable" },
+  { key: "bolt", label: "Bolt.new" },
+  { key: "webflow", label: "Webflow" },
+  { key: "wix", label: "Wix" },
+  { key: "squarespace", label: "Squarespace" },
+  { key: "shopify", label: "Shopify" },
+  { key: "framer", label: "Framer" },
+  { key: "wordpress", label: "WordPress" },
+  { key: "nextjs", label: "Next.js" },
+  { key: "vite_spa", label: "Vite/React SPA" },
+];
 
 function authHeaders(): Record<string, string> {
   const token =
@@ -47,6 +69,8 @@ function authHeaders(): Record<string, string> {
 
 export default function AnalyticsSetupPanel() {
   const [ids, setIds] = useState({ ga4: "", gtm: "", clarity: "", pixel: "" });
+  const [platformKey, setPlatformKey] = useState("");
+  const [promptCopied, setPromptCopied] = useState(false);
   const [goals, setGoals] = useState<string[]>(["lead"]);
   const [result, setResult] = useState<BootstrapResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,6 +88,7 @@ export default function AnalyticsSetupPanel() {
       if (ids.gtm.trim()) body.gtmId = ids.gtm.trim();
       if (ids.clarity.trim()) body.clarityProjectId = ids.clarity.trim();
       if (ids.pixel.trim()) body.metaPixelId = ids.pixel.trim();
+      if (platformKey) body.platformKey = platformKey;
       const r = await fetch("/api/integrations/analytics-bootstrap", {
         method: "POST",
         credentials: "include",
@@ -84,7 +109,7 @@ export default function AnalyticsSetupPanel() {
   };
 
   const copy = async () => {
-    if (!result) return;
+    if (!result?.snippet) return;
     try {
       await navigator.clipboard.writeText(result.snippet);
       setCopied(true);
@@ -131,6 +156,13 @@ export default function AnalyticsSetupPanel() {
             onChange={(e) => setIds((c) => ({ ...c, clarity: e.target.value }))} sx={{ width: 140 }} />
           <TextField size="small" label="Meta Pixel (sifre)" value={ids.pixel}
             onChange={(e) => setIds((c) => ({ ...c, pixel: e.target.value }))} sx={{ width: 170 }} />
+          <TextField select size="small" value={platformKey}
+            onChange={(e) => setPlatformKey(e.target.value)} sx={{ width: 190 }}
+            SelectProps={{ native: true }}>
+            {PLATFORMS.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+          </TextField>
           <Button variant="contained" onClick={() => void generate()}
             disabled={loading || !hasAnyId}>
             {loading ? "Genererer…" : "Generer"}
@@ -178,6 +210,7 @@ export default function AnalyticsSetupPanel() {
               </Box>
             )}
 
+            {result.snippet && (
             <Box>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700 }}>
@@ -196,6 +229,7 @@ export default function AnalyticsSetupPanel() {
                 {result.snippet}
               </Box>
             </Box>
+            )}
 
             <Box>
               <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.25 }}>
@@ -207,6 +241,40 @@ export default function AnalyticsSetupPanel() {
                 </Typography>
               ))}
             </Box>
+
+            {result.installInstructions && (
+              <Box sx={{ border: "1px solid rgba(96,165,250,0.3)", borderRadius: 1.5, p: 1.25 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5, color: "#93c5fd" }}>
+                  {result.installInstructions.title}
+                </Typography>
+                <Box component="ol" sx={{ m: 0, pl: 2.5, mb: result.installInstructions.builderPrompt ? 1 : 0 }}>
+                  {result.installInstructions.steps.map((st, i) => (
+                    <Typography key={i} component="li" variant="caption" color="text.secondary" sx={{ display: "list-item" }}>
+                      {st}
+                    </Typography>
+                  ))}
+                </Box>
+                {result.installInstructions.builderPrompt && (
+                  <>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>Builder-prompt (snippet innbakt)</Typography>
+                      <Button size="small" startIcon={<CopyIcon />}
+                        onClick={() => void navigator.clipboard.writeText(result.installInstructions!.builderPrompt!).then(() => setPromptCopied(true)).catch(() => setPromptCopied(false))}>
+                        {promptCopied ? "Kopiert ✓" : "Kopier prompt"}
+                      </Button>
+                    </Stack>
+                    <Box component="pre" sx={{
+                      m: 0, p: 1.25, borderRadius: 1.5, maxHeight: 200, overflow: "auto",
+                      bgcolor: "rgba(2,6,23,0.6)", border: "1px solid rgba(148,163,184,0.2)",
+                      fontSize: "0.7rem", lineHeight: 1.45, fontFamily: "monospace",
+                      whiteSpace: "pre-wrap", color: "#cbd5e1",
+                    }}>
+                      {result.installInstructions.builderPrompt}
+                    </Box>
+                  </>
+                )}
+              </Box>
+            )}
           </Stack>
         )}
       </CardContent>

@@ -18,6 +18,7 @@
  */
 
 import { externalFetch } from "../external-api.js";
+import { detectTechStack, type TechStack } from "./tech-stack-detect.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // URL-validering (SSRF-vern)
@@ -206,6 +207,8 @@ export interface AuditCapability {
 export interface SiteSetupAudit {
   url: string;
   fetchedAt: string;
+  /** Byggeplattformen siden ser ut til å være laget med (evidensbasert). */
+  techStack: TechStack;
   capabilities: AuditCapability[];
   /** Redelighet: hva auditen IKKE kan se utenfra. */
   limitations: string[];
@@ -214,6 +217,7 @@ export interface SiteSetupAudit {
 export function buildAuditReport(input: {
   url: string;
   fetchedAt: string;
+  techStack: TechStack;
   tags: AnalyticsTags;
   robots: RobotsInfo;
   sitemap: { status: number | null; locCount: number; hasLastmod: boolean };
@@ -328,6 +332,7 @@ export function buildAuditReport(input: {
   return {
     url: input.url,
     fetchedAt: input.fetchedAt,
+    techStack: input.techStack,
     capabilities: caps,
     limitations: [
       "Consent-gatet oppsett er usynlig i initial HTML — «unknown» betyr ikke observerbart, ikke fraværende.",
@@ -399,6 +404,7 @@ export async function runSiteSetupAudit(
   const audit = buildAuditReport({
     url: pageUrl,
     fetchedAt: new Date().toISOString(),
+    techStack: detectTechStack(human?.text ?? ""),
     tags: parseAnalyticsTags(human?.text ?? ""),
     robots,
     sitemap: {
