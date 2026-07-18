@@ -2642,6 +2642,10 @@ export default function ProducerMediaPanel({
 
   // Koblingsstatus for Kontotilgang (eierskap + verifisert Meta) — samme
   // binding-først-logikk som agentens GA4/GSC-oppsett bygger på.
+  // Chip-støy-grepet fra vault-gjennomgangen: sekundær-info (delt med /
+  // 2FA / utløp) ligger bak en detalj-toggle per kort — én tydelig
+  // status synlig, resten ett klikk unna.
+  const [expandedAccessDetails, setExpandedAccessDetails] = useState<Record<string, boolean>>({});
   const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
     google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
     meta: { connected: boolean; verified: boolean; name: string | null };
@@ -12753,22 +12757,43 @@ export default function ProducerMediaPanel({
                         </>
                       ) : null}
 
-                      <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
-                        <Chip
+                      <Stack direction="row" spacing={0.55} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
+                        {!entry.expiresAt ? (
+                          <Chip
+                            size="small"
+                            label="Ingen utløp satt"
+                            sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                          />
+                        ) : null}
+                        <Button
                           size="small"
-                          label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={entry.expiresAt ? `Utløper ${formatTimestamp(entry.expiresAt)}` : 'Ingen utløp satt'}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
+                          variant="text"
+                          onClick={() => setExpandedAccessDetails((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 28, fontSize: '0.74rem' }}
+                        >
+                          {expandedAccessDetails[entry.platform] ? 'Skjul detaljer' : 'Detaljer'}
+                        </Button>
+                        {expandedAccessDetails[entry.platform] ? (
+                          <>
+                            <Chip
+                              size="small"
+                              label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
+                              sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                            />
+                            <Chip
+                              size="small"
+                              label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
+                              sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                            />
+                            {entry.expiresAt ? (
+                              <Chip
+                                size="small"
+                                label={`Utløper ${formatTimestamp(entry.expiresAt)}`}
+                                sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                              />
+                            ) : null}
+                          </>
+                        ) : null}
                       </Stack>
 
                       <Box
@@ -12829,18 +12854,34 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                           helperText="For eksempel Klienteier, Innholdsprodusent, Editor, SoMe-ansvarlig."
                         />
-                        <TextField
-                          label="Utløper"
-                          type="datetime-local"
-                          value={toDateTimeLocalValue(entry.expiresAt)}
-                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
-                            ...current,
-                            expiresAt: fromDateTimeLocalValue(event.target.value),
-                          }))}
-                          fullWidth
-                          disabled={!canEditClientInput}
-                          InputLabelProps={{ shrink: true }}
-                        />
+                        <Box>
+                          <TextField
+                            label="Utløper"
+                            type="datetime-local"
+                            value={toDateTimeLocalValue(entry.expiresAt)}
+                            onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                              ...current,
+                              expiresAt: fromDateTimeLocalValue(event.target.value),
+                            }))}
+                            fullWidth
+                            disabled={!canEditClientInput}
+                            InputLabelProps={{ shrink: true }}
+                            helperText={entry.expiresAt ? undefined : 'Evigvarende delegert tilgang er risikoen vaulten skal fjerne.'}
+                          />
+                          {!entry.expiresAt && canEditClientInput ? (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+                              }))}
+                              sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', mt: 0.25 }}
+                            >
+                              Sett 90 dager (anbefalt)
+                            </Button>
+                          ) : null}
+                        </Box>
                       </Box>
 
                       <Stack

@@ -93,6 +93,9 @@ struct BusinessCardScannerView: View {
     @StateObject private var coordinator = ScannerCoordinator()
     @State private var saving = false
     @State private var error: String?
+    /// «Fant: X AS (org.nr …)» fra BRREG-koblingen — vises et øyeblikk
+    /// etter lagring så selgeren ser at leaden ble beriket.
+    @State private var brregMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -169,6 +172,13 @@ struct BusinessCardScannerView: View {
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                 }
+                if let brregMsg = brregMessage {
+                    Label(brregMsg, systemImage: "checkmark.seal.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal)
+                }
                 if let err = error {
                     Text(err).foregroundStyle(.red).font(.caption)
                 }
@@ -214,9 +224,16 @@ struct BusinessCardScannerView: View {
         saving = true; error = nil
         defer { saving = false }
         do {
-            try await api.createLeadFromCard(extracted: extracted)
+            let response = try await api.createLeadFromCard(extracted: extracted)
             // Refresh workload for å vise nylig opprettet
             await state.refreshAll()
+            if let brreg = response.brreg {
+                brregMessage = brreg.status == "linked"
+                    ? "Fant i Brønnøysund: \(brreg.matchedName ?? "ukjent navn") (org.nr \(brreg.orgNr)) — leaden berikes automatisk."
+                    : "BRREG-forslag: \(brreg.matchedName ?? "?") (org.nr \(brreg.orgNr)) — bekreft i lead-kortet."
+                // La selgeren rekke å lese koblingen før arket lukkes.
+                try? await Task.sleep(nanoseconds: 2_200_000_000)
+            }
             dismiss()
         } catch {
             self.error = "Lagring feilet: \(error.localizedDescription)"
