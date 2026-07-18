@@ -17,6 +17,7 @@ import type { SolutionKey } from "./grant-application.js";
 import { addExperiment } from "./geo-experiments.js";
 import { dispatchPublish } from "../social-publisher.js";
 import { verifyLinkedInIdentity } from "../social-publisher-linkedin.js";
+import { buildFactsInfographicDataUrl } from "./social-queue-infographic.js";
 
 export type PostStatus = "draft" | "approved" | "published" | "failed" | "rejected";
 
@@ -108,6 +109,8 @@ export async function publishViaDispatcher(
   userId: string,
   /** Broens kvittering: klienten MÅ sende memberId fra fersk verifisering. */
   verifiedMemberId: string,
+  /** Opt-in: fest et merkevaret kpi-grid-bilde bygd fra postens faktagrunnlag. Default av. */
+  attachInfographic = false,
 ): Promise<{ ok: true; permalink: string | null } | { error: string; status: number }> {
   // Verifiser PÅ NYTT server-side — klient-påstand er ikke nok
   const identity = await verifyLinkedInIdentity(pool, userId);
@@ -117,8 +120,8 @@ export async function publishViaDispatcher(
   if (identity.memberId !== verifiedMemberId) {
     return { error: "verifisert_identitet_matcher_ikke", status: 409 };
   }
-  const current = await pool.query<{ status: PostStatus; platform: string; body: string }>(
-    `SELECT status, platform, body FROM social_intel_posts
+  const current = await pool.query<{ status: PostStatus; platform: string; body: string; facts: unknown }>(
+    `SELECT status, platform, body, facts FROM social_intel_posts
       WHERE id = $1::uuid AND organization_id = $2::uuid`,
     [postId, organizationId],
   );
@@ -129,12 +132,16 @@ export async function publishViaDispatcher(
     return { error: "dispatcher_publisering_stotter_forelopig_kun_linkedin", status: 400 };
   }
 
+  // Opt-in grafikk: feiler bygget (for tynt faktagrunnlag / render nede) → null → tekst-post som før.
+  const imageDataUrl = attachInfographic ? await buildFactsInfographicDataUrl(pool, post.facts) : null;
+
   const result = await dispatchPublish("linkedin", {
     connectionId: userId, // LinkedIn: connectionId = userId (én kobling per bruker)
     userId,
     projectId: "market-intelligence",
-    mediaKind: "text",
-    caption: post.body,
+    ...(imageDataUrl
+      ? { mediaKind: "image" as const, imageUrl: imageDataUrl, caption: post.body }
+      : { mediaKind: "text" as const, caption: post.body }),
   });
 
   if (!result.ok) {
