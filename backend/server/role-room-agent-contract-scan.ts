@@ -111,6 +111,13 @@ export function enforceVerbatim(
         amount: checked(t.amount, `betalingsplan «${t.label}»`),
       })),
       deadlines: economics.deadlines.filter((d) => {
+        // En «frist» uten ett eneste siffer er ikke en frist (fanget i
+        // medside-testen: en output-vakts [BLOCKED]-markør slapp gjennom
+        // fordi verbatim-sjekken godtar korte/sifferløse verdier).
+        if (digitsOf(d).length === 0) {
+          rejected.push(`frist uten dato: «${d}»`);
+          return false;
+        }
         if (valueAppearsInText(d, contractText)) return true;
         rejected.push(`frist: «${d}»`);
         return false;

@@ -92,3 +92,14 @@ describe("findMissingPoints (sjekkliste for komplett økonomisk oppsett)", () =>
     expect(missing.some((m) => m.includes("Forfall/utløsere"))).toBe(true);
   });
 });
+
+describe("frist uten sifre (medside-funnet)", () => {
+  it("digit-løse «frister» (f.eks. blokkerings-markører) forkastes", () => {
+    const { economics, rejected } = enforceVerbatim(
+      baseEconomics({ deadlines: ["15.09.2026", "[BLOCKED: JWT token]"] }),
+      KONTRAKT,
+    );
+    expect(economics.deadlines).toEqual(["15.09.2026"]);
+    expect(rejected.some((r) => r.includes("frist uten dato"))).toBe(true);
+  });
+});
