@@ -32,7 +32,7 @@ import { buildRetenderWindows, buildTenderBoard, type BoardTenderRow } from "./t
 import { defaultAuditFetcher, runSiteSetupAudit, validateAuditUrl } from "./site-setup-audit.js";
 import { buildGeoPrerenderPlan, detectPlatform } from "./geo-prerender-plan.js";
 import { externalFetch } from "../external-api.js";
-import { bootstrapInputSchema, renderAnalyticsBootstrap } from "./analytics-bootstrap.js";
+import { bootstrapInputSchema, buildEventPlan, renderAnalyticsBootstrap } from "./analytics-bootstrap.js";
 import { getSetupGuide, SETUP_GUIDES, tailorSetupGuides } from "./setup-guides.js";
 import { buildIndexNowPayload, submitIndexNow } from "./indexnow.js";
 import { supplierProfileSchema } from "./supplier-profile.js";
@@ -300,6 +300,18 @@ export function registerOwnedChannelsRoutes({
       return res.status(400).json({
         error: "ugyldig_input",
         details: parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`),
+      });
+    }
+    const hasIds = Boolean(
+      parsed.data.ga4MeasurementId || parsed.data.gtmId ||
+      parsed.data.clarityProjectId || parsed.data.metaPixelId,
+    );
+    if (!hasIds) {
+      // Ren event-plan (F3 alene) — snippet uten IDer er meningsløs.
+      return res.json({
+        snippet: null,
+        eventPlan: buildEventPlan(parsed.data.goals),
+        notes: ["Legg inn måle-IDer (GA4/GTM/Clarity/Pixel) for å generere selve snippeten."],
       });
     }
     return res.json(renderAnalyticsBootstrap(parsed.data));
