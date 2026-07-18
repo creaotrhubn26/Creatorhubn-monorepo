@@ -19,6 +19,7 @@ import { syncCollective, modelSteps, modelWeights, fetchInsight, type Collective
 import { SOCIAL_TEMPLATE_IDS } from './infographicSocialTemplates';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
+import CampaignDirectorView from './CampaignDirectorView';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -919,6 +920,7 @@ export function InfographicStudioView(
   const [fmt, setFmt] = useState<'native' | '9:16' | '4:5' | '1:1' | '16:9'>('native');
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
+  const [showCampaign, setShowCampaign] = useState(false);
   // Enhets-mockup (iPhone/feed/nettleser) i side-ved-side-visningen.
   const [mockup, setMockup] = useState(true);
   // «Innsikt»: aggregert bevis fra backend på at modellen lærer i drift.
@@ -1548,7 +1550,16 @@ export function InfographicStudioView(
   const tabBtn = (active: boolean): React.CSSProperties => ({ flex: 1, padding: '7px 0', textAlign: 'center', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderBottom: `2px solid ${active ? D.accent : 'transparent'}` });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {showCampaign && (
+        <CampaignDirectorView
+          evidenceText={[project?.name, liveUrl, dataText, ...scenes.map((s) => Object.values(s.values).join(' · '))].filter(Boolean).join('\n')}
+          brand={{ accent, ink: '#1f2d4a', logo: logo || undefined }}
+          brandName={project?.name || 'Merkevare'}
+          onClose={() => setShowCampaign(false)}
+          onUsePosts={(c) => { setShowCampaign(false); setMsg(`Kampanje klar: ${c.posts.length} innlegg — materialisering til scener kommer i neste fase.`); }}
+        />
+      )}
       {/* flexWrap: header-knappene (Preview/Spill alt/New Scene/Send to Resolve) tvang
           ellers studioet bredere enn smale vinduer → høyre Data-panel ble klippet. Wrap
           lar knappene bryte til ny linje i stedet, og minWidth:0 lar studioet krympe. */}
@@ -1567,6 +1578,7 @@ export function InfographicStudioView(
         <button style={topBtn} onClick={() => play()} title="Spill den valgte scenen"><PlayArrowIcon style={{ fontSize: 16 }} /> Preview</button>
         <button style={topBtn} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill HELE sekvensen (alle scener i tid)">{playingAll ? <><PauseIcon style={{ fontSize: 16 }} /> Stopp</> : <><SlideshowIcon style={{ fontSize: 16 }} /> Spill alt</>}</button>
         <button style={topBtn} onClick={addScene}><AddIcon style={{ fontSize: 16 }} /> New Scene</button>
+        <button style={topBtn} onClick={() => setShowCampaign(true)} title="Kampanje-regissør — mål-drevet, on-brand kampanje fra nettside-bevis"><CampaignIcon style={{ fontSize: 16 }} /> Kampanje</button>
         {busy ? (
           <button style={{ ...topBtn, background: '#7a2530', border: 'none' }} onClick={() => { cancelRef.current = true; }} title="Avbryt etter gjeldende scene">
             <CloseIcon style={{ fontSize: 15 }} /> Avbryt{renderProgress ? ` (${renderProgress.done}/${renderProgress.total})` : ''}
