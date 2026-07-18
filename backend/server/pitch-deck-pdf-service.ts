@@ -35,6 +35,10 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { buildInfographicUrl, ogImageTags } from "./infographic-share.js";
+
+// Backend-base for absolutte URL-er i OG-taggene (crawlere trenger absolutt).
+const BACKEND_BASE = (process.env.BACKEND_BASE_URL || "https://creatorhub-backend-rtbl.onrender.com").replace(/\/+$/, "");
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -100,17 +104,41 @@ function renderSlideHtml(slide: SlidePayload, idx: number, total: number): strin
   `;
 }
 
-function renderDeckHtml(args: {
+export function renderDeckHtml(args: {
   deckName: string;
   orgName: string;
   slides: SlidePayload[];
   viewToken: string;
 }): string {
+  // Rik lenke-preview: når kunden limer delelenken i e-post/Slack/LinkedIn, viser vi et
+  // merkevaret cover-kort rendret av infographic-motoren (render.png, offentlig + cachet).
+  const ogImageUrl = buildInfographicUrl({
+    base: BACKEND_BASE,
+    tpl: "/embed/templates/deck-cover.html",
+    data: {
+      title: args.deckName,
+      org: args.orgName,
+      meta: `${args.slides.length} ${args.slides.length === 1 ? "slide" : "slides"}`,
+      brand: "Pitch",
+    },
+    w: 1200, h: 630,
+  });
+  const ogDesc = args.orgName ? `${args.orgName} · Pitch-deck` : "Pitch-deck";
+  const ogTags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:title" content="${escapeHtml(args.deckName)}" />`,
+    `<meta property="og:description" content="${escapeHtml(ogDesc)}" />`,
+    `<meta name="twitter:title" content="${escapeHtml(args.deckName)}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(ogDesc)}" />`,
+    ogImageTags(ogImageUrl, { alt: args.deckName }),
+  ].join("\n");
   return `<!doctype html>
 <html lang="nb">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(args.deckName)}</title>
+${ogTags}
 <style>
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; }
