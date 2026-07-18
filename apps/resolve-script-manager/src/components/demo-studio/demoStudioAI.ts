@@ -1242,6 +1242,20 @@ Svar med KUN ett JSON-objekt: { "beats": [ { "index": 0, "kind": "stat", "phrase
     : [];
 }
 
+/** Trekk ut ett <svg>…</svg> fra en modell-respons — robust mot markdown-fence, forklarende
+ *  tekst rundt, og AVKUTTET output (maxTokens): reparerer manglende slutt-tag. Ren + testbar. */
+export function extractSvg(raw: string): string | null {
+  let s = String(raw || '').trim();
+  s = s.replace(/^```[a-zA-Z]*\s*/, '').replace(/\s*```\s*$/, ''); // fjern kodefence
+  const start = s.search(/<svg[\s>]/i);
+  if (start === -1) return null;
+  s = s.slice(start);
+  const end = s.toLowerCase().lastIndexOf('</svg>');
+  if (end !== -1) return s.slice(0, end + 6);
+  // <svg finnes men ingen slutt-tag → modellen ble avkuttet. Reparer ved å lukke elementet.
+  return s.replace(/\s*<[^>]*$/, '') + '</svg>';
+}
+
 /** Kontekstuell infographic: Claude designer en branded SVG fra produktets data. */
 export type InfographicKind = 'overview' | 'features' | 'comparison' | 'funnel';
 export const INFOGRAPHIC_LABELS: Record<InfographicKind, string> = {
@@ -1284,9 +1298,22 @@ Krav:
     messages: [{ role: 'user', content: user }],
     maxTokens: 4000,
   });
-  const m = raw.match(/<svg[\s\S]*<\/svg>/i);
-  if (!m) throw new Error('Klarte ikke å tolke SVG fra AI');
-  return m[0];
+  let svg = extractSvg(raw);
+  if (!svg) {
+    // ÉN retry med korrigerende påminnelse — modeller returnerer av og til forklaring/markdown.
+    const raw2 = await claudeProxyService.send({
+      systemPrompt: 'Du svarer med kun ett komplett <svg>-element. Ingen forklaring, ingen markdown-fence.',
+      messages: [
+        { role: 'user', content: user },
+        { role: 'assistant', content: raw.slice(0, 300) },
+        { role: 'user', content: 'Svaret manglet et gyldig <svg>-element. Returner KUN ett komplett <svg …>…</svg>, ingenting annet.' },
+      ],
+      maxTokens: 4000,
+    });
+    svg = extractSvg(raw2);
+  }
+  if (!svg) throw new Error('AI returnerte ikke et gyldig SVG etter to forsøk — prøv «Ny variant».');
+  return svg;
 }
 
 /** En målrettet variant-spesifikasjon (per persona / kanal / vinkel). */

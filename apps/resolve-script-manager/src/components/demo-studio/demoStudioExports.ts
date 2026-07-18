@@ -374,9 +374,11 @@ function esc(s: string): string {
 
 /**
  * Fjern potensielt utrygt innhold fra en AI-generert SVG før den settes inn
- * med dangerouslySetInnerHTML / synkes til sky: <script>, <foreignObject>
- * (kan bære HTML/JS), inline event-handlere (on*=…) og javascript:-URI-er.
- * Bevarer <image href> (logo) og all vanlig tegne-markup.
+ * med dangerouslySetInnerHTML / synkes til sky: <script>/<iframe>/<object>/
+ * <embed>/<link>/<meta>/<base>, inline event-handlere (on*=…), javascript:-URI-er
+ * og farlige style-verdier (javascript:/expression()).
+ * <foreignObject> BEHOLDES (wrappet tekst) men innholdet saniteres rekursivt i
+ * DOM-stien. Bevarer <image href> (logo) og all vanlig tegne-markup.
  */
 export function sanitizeSvg(svg: string): string {
   // DOM-basert sanitering (robust i WKWebView) — regex alene var omgåelig
@@ -386,14 +388,18 @@ export function sanitizeSvg(svg: string): string {
       const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
       const root = doc.documentElement;
       if (root && !doc.querySelector('parsererror') && root.nodeName.toLowerCase() !== 'parsererror') {
+        // <foreignObject> BEHOLDES (wrappet tekst-layout) men innholdet saniteres rekursivt
+        // under. Blokker i stedet aktivt farlige embed-elementer (også inne i foreignObject-HTML).
+        const BLOCK = new Set(['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base']);
         const walk = (el: Element): void => {
           const tag = el.tagName.toLowerCase();
-          if (tag === 'script' || tag === 'foreignobject') { el.remove(); return; }
+          if (BLOCK.has(tag)) { el.remove(); return; }
           for (const attr of Array.from(el.attributes)) {
             const n = attr.name.toLowerCase();
             const v = attr.value.replace(/\s+/g, '').toLowerCase();
             if (n.startsWith('on')) el.removeAttribute(attr.name);
             else if ((n === 'href' || n.endsWith(':href') || n === 'src') && v.startsWith('javascript:')) el.removeAttribute(attr.name);
+            else if (n === 'style' && /(javascript:|expression\()/.test(v)) el.removeAttribute(attr.name);
           }
           Array.from(el.children).forEach((c) => walk(c));
         };
