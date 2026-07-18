@@ -52,6 +52,7 @@ import ClientEconomyPanel from './components/producer/ClientEconomyPanel';
 import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { useRoleRoomBrand } from './hooks/useRoleRoomBrand';
+import { executeSetupAgentTool } from './services/roleRoomSetupToolExecutor';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
 import { roleRoomAnalytics } from './services/roleRoomAnalytics';
@@ -1523,6 +1524,21 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
       }
 
       try {
+        // Oppsett-verktøyene (doc 14 F1–F6) deler executor med
+        // Research-fanens knapper — null = ikke et oppsett-verktøy.
+        const setupResult = await executeSetupAgentTool(
+          { name: tool.name, input: (tool.input ?? {}) as Record<string, unknown> },
+          projectId,
+        );
+        if (setupResult !== null) {
+          void logAgentToolResult({
+            projectId,
+            toolName: tool.name,
+            toolUseId: tool.id,
+            status: 'ok',
+          });
+          return setupResult;
+        }
         switch (tool.name) {
           case 'draft_review_request': {
             const input = validation.data as {

@@ -115,8 +115,10 @@ export const bootstrapInputSchema = z
     goals: z.array(z.enum(BUSINESS_GOALS)).default([]),
   })
   .strict()
-  .refine((v) => v.ga4MeasurementId || v.gtmId || v.clarityProjectId || v.metaPixelId, {
-    message: "minst_en_id_kreves",
+  // Minst én ID (snippet) ELLER minst ett mål (ren event-plan, F3 alene —
+  // chat-verktøyet generate_event_plan trenger planen uten IDer).
+  .refine((v) => v.ga4MeasurementId || v.gtmId || v.clarityProjectId || v.metaPixelId || v.goals.length > 0, {
+    message: "minst_en_id_eller_mal_kreves",
   });
 
 export type BootstrapInput = z.infer<typeof bootstrapInputSchema>;

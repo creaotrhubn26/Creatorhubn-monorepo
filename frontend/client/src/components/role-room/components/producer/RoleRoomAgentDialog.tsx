@@ -65,6 +65,7 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import { buildClassificationFeedbackEdits } from '../../utils/roleRoomAgentFeedbackEdits';
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
+import { executeSetupAgentTool } from '../../services/roleRoomSetupToolExecutor';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
 import { DailyBriefCard } from './DailyBriefCard';
@@ -432,7 +433,7 @@ export default function RoleRoomAgentDialog({
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, goals: ['lead', 'booking'] }),
+        body: JSON.stringify({ projectId, domain, goals: ['lead', 'booking'] }),
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
@@ -445,7 +446,7 @@ export default function RoleRoomAgentDialog({
         body.retentionSet ? 'datalagring 14 mnd' : null,
         body.keyEvents?.length ? `${body.keyEvents.length} key events` : null,
       ].filter(Boolean);
-      setGa4SetupOutcome({ ok: true, text: `${parts.join(' · ')}. Lim måle-ID-en inn i snippet-generatoren.` });
+      setGa4SetupOutcome({ ok: true, text: `${parts.join(' · ')}. ${body.ownershipNote ?? ''} Lim måle-ID-en inn i snippet-generatoren.` });
     } catch (e) {
       setGa4SetupOutcome({ ok: false, text: String(e) });
     } finally {
@@ -464,7 +465,7 @@ export default function RoleRoomAgentDialog({
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain }),
+        body: JSON.stringify({ projectId, domain }),
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
@@ -484,7 +485,7 @@ export default function RoleRoomAgentDialog({
         body.siteAdded ? 'lagt til i Search Console' : null,
         body.sitemapSubmitted ? `sitemap meldt inn (${body.sitemapUrl})` : null,
       ].filter(Boolean);
-      setGscSetupOutcome({ ok: true, text: `${parts.join(' · ')}.` });
+      setGscSetupOutcome({ ok: true, text: `${parts.join(' · ')}. ${body.ownershipNote ?? ''}` });
     } catch (e) {
       setGscSetupOutcome({ ok: false, text: String(e) });
     } finally {
@@ -1119,6 +1120,17 @@ export default function RoleRoomAgentDialog({
               currentUserId={currentUserId}
               context={{
                 briefSummary: initialExtraContext ?? undefined,
+              }}
+              onConfirmToolUse={async (tool) => {
+                // Oppsett-verktøyene (doc 14) deler executor med
+                // Research-fanens knapper. Andre forslag hører hjemme i
+                // prosjekt-arbeidsflaten — si det ærlig i stedet for stille nei.
+                const result = await executeSetupAgentTool(
+                  { name: tool.name, input: (tool.input ?? {}) as Record<string, unknown> },
+                  projectId,
+                );
+                if (result !== null) return result;
+                return 'Denne handlingen bekreftes i prosjekt-arbeidsflaten (dashbordet), ikke her.';
               }}
             />
           </Box>

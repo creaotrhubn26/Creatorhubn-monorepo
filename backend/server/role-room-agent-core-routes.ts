@@ -998,11 +998,54 @@ export function setupRoleRoomAgentCoreRoutes(
     return res.json({ success: true, id, decision });
   });
 
+  // ── Klient-eierskapsmodellen (doc 14): binding-først kobling ───────
+  // Prosjektets Google-binding (connected_user_id) peker på hvem sin
+  // Google-konto oppsettet lander i. Er KLIENTENS konto koblet på
+  // prosjektet, eier klienten GA4/GSC fra dag én; ellers faller vi
+  // tilbake til produsentens egen kobling — og svaret sier eksplisitt
+  // hvilken konto som ble brukt, så eierskapet aldri er implisitt.
+  type GoogleConnRow = import("./google-oauth-shared.js").GoogleConnectionRow;
+  const resolveProjectGoogleConnection = async (
+    projectId: string | null,
+    sessionUserId: string,
+  ): Promise<{ row: GoogleConnRow | null; source: "project" | "self" }> => {
+    const byUser = async (userId: string): Promise<GoogleConnRow | null> => {
+      const r = await pool.query<GoogleConnRow>(
+        `SELECT * FROM role_room_google_connections
+          WHERE user_id = $1 AND oauth_app = 'role_room'
+          ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST
+          LIMIT 1`,
+        [userId],
+      );
+      return r.rows[0] ?? null;
+    };
+    if (projectId) {
+      try {
+        const binding = await pool.query<{ connected_user_id: string | null }>(
+          `SELECT connected_user_id FROM role_room_google_project_bindings
+            WHERE project_id = $1 LIMIT 1`,
+          [projectId],
+        );
+        const boundUserId = binding.rows[0]?.connected_user_id;
+        if (boundUserId && boundUserId !== sessionUserId) {
+          const row = await byUser(boundUserId);
+          if (row) return { row, source: "project" };
+        }
+      } catch {
+        // binding-tabellen kan mangle i enkelte miljøer — fall tilbake
+      }
+    }
+    return { row: await byUser(sessionUserId), source: "self" };
+  };
+  const ownershipNote = (source: "project" | "self", email: string | null): string =>
+    source === "project"
+      ? `Oppsettet landet i prosjektets tilkoblede Google-konto (${email ?? "ukjent"}) — klient-eid.`
+      : `OBS: oppsettet landet i DIN Google-konto (${email ?? "ukjent"}). For klient-eierskap: koble klientens Google på prosjektet i Kontotilgang og kjør igjen.`;
+
   // ── OAuth-fasen (doc 14): GA4-oppsett via Admin API ────────────────
-  // «Systemet setter opp alt»-veien: bruker produsentens eksisterende
-  // Google-kobling (analytics.edit fra scope-utvidelsen) — ingen browser-
-  // styring, ingen passord. Knappen i UI ER bekreftelsen; endepunktet
-  // returnerer nøyaktig hva som ble opprettet vs gjenbrukt.
+  // «Systemet setter opp alt»-veien: binding-først kobling (over) —
+  // ingen browser-styring, ingen passord. Knappen i UI ER bekreftelsen;
+  // endepunktet returnerer nøyaktig hva som ble opprettet vs gjenbrukt.
   app.post("/api/role-room/agent/ga4-setup", async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
@@ -1021,20 +1064,14 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!domain) {
       return res.status(400).json({ success: false, error: "domain er påkrevd." });
     }
+    const projectId = readString(body.projectId);
 
     try {
-      const connection = await pool.query<import("./google-oauth-shared.js").GoogleConnectionRow>(
-        `SELECT * FROM role_room_google_connections
-          WHERE user_id = $1 AND oauth_app = 'role_room'
-          ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST
-          LIMIT 1`,
-        [session.userId],
-      );
-      const row = connection.rows[0];
+      const { row, source } = await resolveProjectGoogleConnection(projectId, session.userId);
       if (!row) {
         return res.status(409).json({
           success: false,
-          error: "Ingen Google-kobling — koble til Google i Kontotilgang først.",
+          error: "Ingen Google-kobling — koble til Google i Kontotilgang først (klientens konto gir klient-eierskap).",
           needsConnect: true,
         });
       }
@@ -1058,7 +1095,13 @@ export function setupRoleRoomAgentCoreRoutes(
           needsReauth: outcome.needsReauth ?? false,
         });
       }
-      return res.json({ success: true, ...outcome.result });
+      return res.json({
+        success: true,
+        ...outcome.result,
+        connectionSource: source,
+        usedGoogleEmail: row.google_email ?? null,
+        ownershipNote: ownershipNote(source, row.google_email ?? null),
+      });
     } catch (err) {
       console.error("[ga4-setup] failed", err);
       return res.status(500).json({ success: false, error: "ga4_setup_failed" });
@@ -1082,20 +1125,14 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!domain) {
       return res.status(400).json({ success: false, error: "domain er påkrevd." });
     }
+    const projectId = readString(body.projectId);
 
     try {
-      const connection = await pool.query<import("./google-oauth-shared.js").GoogleConnectionRow>(
-        `SELECT * FROM role_room_google_connections
-          WHERE user_id = $1 AND oauth_app = 'role_room'
-          ORDER BY last_used_at DESC NULLS LAST, updated_at DESC NULLS LAST
-          LIMIT 1`,
-        [session.userId],
-      );
-      const row = connection.rows[0];
+      const { row, source } = await resolveProjectGoogleConnection(projectId, session.userId);
       if (!row) {
         return res.status(409).json({
           success: false,
-          error: "Ingen Google-kobling — koble til Google i Kontotilgang først.",
+          error: "Ingen Google-kobling — koble til Google i Kontotilgang først (klientens konto gir klient-eierskap).",
           needsConnect: true,
         });
       }
@@ -1119,7 +1156,13 @@ export function setupRoleRoomAgentCoreRoutes(
           needsReauth: outcome.needsReauth ?? false,
         });
       }
-      return res.json({ success: true, ...outcome.result });
+      return res.json({
+        success: true,
+        ...outcome.result,
+        connectionSource: source,
+        usedGoogleEmail: row.google_email ?? null,
+        ownershipNote: ownershipNote(source, row.google_email ?? null),
+      });
     } catch (err) {
       console.error("[gsc-setup] failed", err);
       return res.status(500).json({ success: false, error: "gsc_setup_failed" });
