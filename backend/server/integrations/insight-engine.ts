@@ -443,7 +443,8 @@ const retenderRadarDetector: InsightDetector = {
               raw->>'buyerName' AS buyer
          FROM trigger_events
         WHERE organization_id = $1::uuid AND kind = 'award'
-          AND title ILIKE '%rammeavtale%' AND published_at IS NOT NULL
+          AND (title ILIKE '%rammeavtale%' OR title ILIKE '%framework agreement%')
+          AND published_at IS NOT NULL
         ORDER BY published_at DESC LIMIT 15`,
       [organizationId],
     );

@@ -119,6 +119,9 @@ interface TedNotice {
   "publication-number"?: string;
   "notice-title"?: Record<string, string | string[]>;
   "publication-date"?: string;
+  "notice-type"?: string;
+  "buyer-name"?: Record<string, string | string[]>;
+  "deadline-receipt-tender-date-lot"?: string[];
   links?: { html?: Record<string, string>; pdf?: Record<string, string> };
 }
 
@@ -136,14 +139,32 @@ export function mapTedNotices(notices: TedNotice[], topic: string): TriggerEvent
     const title =
       firstText(titles.nor) ?? firstText(titles.eng) ?? firstText(Object.values(titles)[0]);
     if (!title) continue;
+    // eForms notice-type skiller utlysning fra resultat: can-* og veat er
+    // tildelinger — ikke salgsvindu, men mat for re-utlysningsradaren.
+    // (Fanget 17.07: can-standard ble servert som «vurder om dere kan
+    // levere» på en kontrakt signert to dager før.) pin-only/pin-buyer er
+    // planlegging: kravene formes NÅ — speiler Doffin-mapperens RFI-gren.
+    const type = n["notice-type"] ?? "";
+    const isAward = type.startsWith("can-") || type === "veat";
+    const isRfi = type === "pin-only" || type === "pin-buyer";
+    const buyers = n["buyer-name"] ?? {};
+    const buyerName =
+      firstText(buyers.nor) ?? firstText(buyers.eng) ?? firstText(Object.values(buyers)[0]);
     out.push({
       source: "ted",
       eventId: id,
-      kind: "tender",
+      kind: isAward ? "award" : "tender",
       title,
       url: `https://ted.europa.eu/en/notice/${id}`,
       publishedAt: n["publication-date"]?.slice(0, 10) ?? null,
       matchedTopic: topic,
+      raw: {
+        deadline: n["deadline-receipt-tender-date-lot"]?.[0]?.slice(0, 10) ?? null,
+        buyerName,
+        noticeType: type || null,
+        requirements: extractTenderRequirements(title),
+        ...(isRfi ? { isRfi: true } : {}),
+      },
     });
   }
   return out;
@@ -196,7 +217,14 @@ async function fetchTedTenders(cpv: string, topic: string): Promise<TriggerEvent
         // så fransk «dans» traff vintervedlikehold (kvalitetsrunden 13.07).
         // SORT BY må stå i spørrestrengen — eget sort-felt avvises av API-et.
         query: `place-of-performance IN (NOR) AND classification-cpv IN (${cpv}) SORT BY publication-date DESC`,
-        fields: ["publication-number", "notice-title", "publication-date"],
+        fields: [
+          "publication-number",
+          "notice-title",
+          "publication-date",
+          "notice-type",
+          "buyer-name",
+          "deadline-receipt-tender-date-lot",
+        ],
         limit: 10,
       }),
     },
@@ -341,7 +369,9 @@ export async function syncSalesTriggers(pool: Pool): Promise<TriggerSyncResult> 
       `INSERT INTO trigger_events
          (organization_id, source, event_id, kind, title, url, published_at, matched_topic, raw)
        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-       ON CONFLICT (organization_id, source, event_id) DO NOTHING`,
+       ON CONFLICT (organization_id, source, event_id) DO UPDATE
+         SET kind = EXCLUDED.kind, raw = EXCLUDED.raw
+       WHERE trigger_events.kind IS DISTINCT FROM EXCLUDED.kind`,
       [orgId, e.source, e.eventId, e.kind, e.title.slice(0, 500), e.url, e.publishedAt, e.matchedTopic, JSON.stringify(e.raw ?? {})],
     );
     inserted += r.rowCount ?? 0;
