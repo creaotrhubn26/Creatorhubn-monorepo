@@ -1683,6 +1683,76 @@ export default function RoleRoomAgentDialog({
                 </Alert>
               ) : null}
 
+              {/* Site-audit (doc 14 F1): hva kundens nettsted allerede har av
+                  analytics/GEO — observasjonene bak adTech-rådene i
+                  marketingSetup. «unknown» = ikke observerbart utenfra
+                  (consent-gatet oppsett er usynlig i initial HTML). */}
+              {result?.siteSetupAudit?.capabilities?.length ? (
+                <Box
+                  sx={{
+                    display: showResearchSection('kanaler') ? undefined : 'none',
+                    p: 1.2,
+                    borderRadius: 3,
+                    border: '1px solid rgba(74,222,128,0.2)',
+                    bgcolor: 'rgba(15,23,42,0.46)',
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Box>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
+                        Nettsted-oppsett — analytics & GEO
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>
+                        Skannet direkte fra kundens nettside. «Ikke observerbart» kan bety
+                        korrekt samtykke-gating — det er ikke det samme som at det mangler.
+                      </Typography>
+                    </Box>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
+                      {result.siteSetupAudit.capabilities.map((cap) => {
+                        const capStyle = cap.status === 'implemented'
+                          ? { fg: '#bbf7d0', bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.26)', label: 'På plass' }
+                          : cap.status === 'partial'
+                            ? { fg: '#fde68a', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)', label: 'Delvis' }
+                            : cap.status === 'missing'
+                              ? { fg: '#fecaca', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)', label: 'Mangler' }
+                              : { fg: 'rgba(226,232,240,0.7)', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.2)', label: 'Ikke observerbart' };
+                        return (
+                          <Box
+                            key={cap.key}
+                            sx={{
+                              flex: '1 1 220px',
+                              minWidth: 0,
+                              p: 1,
+                              borderRadius: 2.4,
+                              border: `1px solid ${capStyle.border}`,
+                              bgcolor: 'rgba(15,23,42,0.52)',
+                            }}
+                          >
+                            <Stack spacing={0.5}>
+                              <Stack direction="row" spacing={0.7} alignItems="center" justifyContent="space-between">
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.88rem' }}>
+                                  {cap.label}
+                                </Typography>
+                                <Chip size="small" label={capStyle.label}
+                                  sx={{ bgcolor: capStyle.bg, color: capStyle.fg, fontWeight: 700, fontSize: '0.7rem' }} />
+                              </Stack>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem', lineHeight: 1.45 }}>
+                                {cap.details}
+                              </Typography>
+                              {cap.recommendation ? (
+                                <Typography sx={{ color: '#fde68a', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                                  → {cap.recommendation}
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  </Stack>
+                </Box>
+              ) : null}
+
               {competitorAnalysis ? (
                 <Box
                   sx={{
