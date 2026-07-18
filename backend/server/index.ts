@@ -850,7 +850,7 @@ import { registerLeadgridAcademyRoutes } from "./leadgrid-academy-routes";
 import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
 import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
-import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
+import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
@@ -66514,6 +66514,10 @@ registerRoutesAdherenceRoutes({ app, pool, requireUserSession });
 // gratis-API-ene med 60s in-memory-cache. Brukes av MePinActionsSheet
 // (adresse i HUD) + Team-fanen (ekte kommunegrenser).
 registerLeadgridKartverketRoutes({ app, requireUserSession });
+
+// Dørsalg-modus: husstandsadresser fra Kartverket (EGEN modus — blandes
+// aldri med bedrifts-leads; ren proxy, ingen lagring).
+registerLeadgridAdresseRoutes({ app, requireUserSession });
 
 // Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
 // alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
