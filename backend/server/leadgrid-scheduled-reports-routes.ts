@@ -25,6 +25,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
 import { buildInfographicUrl, emailImgTag } from "./infographic-share.js";
+import { renderInfographicToBuffer } from "./infographic-render.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -283,8 +284,26 @@ async function getOrgBranding(pool: Pool, orgId: string) {
 
 /** Render PDF KPI-rapport til Buffer (samme template som /export-summary). */
 async function renderSummaryPdfToBuffer(
-  summary: SummaryData, branding: any, periodLabel: string,
+  pool: Pool, summary: SummaryData, branding: any, periodLabel: string,
 ): Promise<Buffer> {
+  // Merkevaret KPI-infographic som visuell topp-banner (best-effort — feiler den, hoppes den
+  // over og PDF-en genereres uansett). Samme render-motor som render.png, gir PNG-buffer.
+  let infoPng: Buffer | null = null;
+  try {
+    infoPng = await renderInfographicToBuffer(pool, {
+      tpl: "kpi-grid", ws: "leadgrid", accent: branding.primary_color,
+      data: {
+        label: "Salgs-rapport",
+        cards: [
+          { value: summary.won_count, label: "Vunnet" },
+          { value: summary.lost_count, label: "Tapt" },
+          { value: `${(Number(summary.total_won_oere) / 100).toLocaleString("no-NO")} kr`, label: "Sum vunnet" },
+          { value: `${Math.round((summary.win_rate || 0) * 100)} %`, label: "Win-rate" },
+        ],
+      },
+      width: 1200, height: 520,
+    });
+  } catch { /* infographic er valgfri pynt */ }
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: "A4" });
     const chunks: Buffer[] = [];
@@ -302,6 +321,10 @@ async function renderSummaryPdfToBuffer(
        .moveTo(50, 150).lineTo(545, 150).stroke();
 
     let y = 170;
+    if (infoPng) {
+      // Visuell topp-banner (samme KPI-er som en polert grafikk); tekst-kortene under gir presise, selekterbare tall.
+      try { doc.image(infoPng, 50, y, { width: 495 }); y += Math.round((495 * 520) / 1200) + 14; } catch { /* hopp over banneret */ }
+    }
     const kpis = [
       { label: "Vunnet", value: summary.won_count, color: "#16a34a" },
       { label: "Tapt", value: summary.lost_count, color: "#dc2626" },
@@ -777,7 +800,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
           if (sub.report_type === "summary" || sub.report_type === "both") {
             summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter);
-            const pdf = await renderSummaryPdfToBuffer(summary, branding, periodLabel);
+            const pdf = await renderSummaryPdfToBuffer(pool, summary, branding, periodLabel);
             attachments.push({
               filename: `salgs-rapport-${datedSuffix}.pdf`,
               content: pdf,
