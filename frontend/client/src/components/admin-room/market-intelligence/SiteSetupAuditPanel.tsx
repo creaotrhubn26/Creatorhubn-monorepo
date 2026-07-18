@@ -46,11 +46,45 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+interface GeoPlan {
+  domain: string;
+  platform: string;
+  situation: string;
+  actions: string[];
+  pagesToPrerender: string[];
+  robotsLines: string[];
+  servingRecipe: string;
+  jsonLdTemplate: string;
+  notes: string[];
+}
+
 export default function SiteSetupAuditPanel() {
   const [url, setUrl] = useState("");
   const [audit, setAudit] = useState<SiteSetupAudit | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<GeoPlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+
+  const loadPlan = async () => {
+    setPlanLoading(true);
+    setPlan(null);
+    try {
+      const r = await fetch("/api/integrations/geo-prerender-plan", {
+        method: "POST",
+        credentials: "include",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const body = await r.json().catch(() => null);
+      if (r.ok && body?.plan) setPlan(body.plan as GeoPlan);
+      else setError(`GEO-plan feilet (${body?.error ?? r.status}).`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setPlanLoading(false);
+    }
+  };
 
   const run = async () => {
     setLoading(true);
@@ -140,6 +174,56 @@ export default function SiteSetupAuditPanel() {
                 Hva auditen ikke kan se utenfra (hold over)
               </Typography>
             </Tooltip>
+
+            {audit.capabilities.some((c) => c.key === "bot_serving" && c.status !== "implemented") && (
+              <Button size="small" variant="outlined" onClick={() => void loadPlan()}
+                disabled={planLoading} sx={{ alignSelf: "flex-start" }}>
+                {planLoading ? "Lager GEO-plan…" : "Lag GEO-plan (prerendering for AI-boter)"}
+              </Button>
+            )}
+
+            {plan && (
+              <Stack spacing={1} sx={{ border: "1px solid rgba(74,222,128,0.25)", borderRadius: 1.5, p: 1.25 }}>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  GEO-plan for {plan.domain}
+                  <Chip size="small" label={`plattform: ${plan.platform}`}
+                    sx={{ ml: 1, bgcolor: "rgba(148,163,184,0.14)", fontSize: 10, height: 18 }} />
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{plan.situation}</Typography>
+                <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
+                  {plan.actions.map((a, i) => (
+                    <Typography key={i} component="li" variant="caption" sx={{ display: "list-item", color: "text.primary" }}>
+                      {a}
+                    </Typography>
+                  ))}
+                </Box>
+                {plan.pagesToPrerender.length > 0 && (
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>Prioriterte sider ({plan.pagesToPrerender.length})</Typography>
+                    {plan.pagesToPrerender.slice(0, 8).map((p) => (
+                      <Typography key={p} variant="caption" color="text.secondary" sx={{ display: "block", fontFamily: "monospace" }}>{p}</Typography>
+                    ))}
+                  </Box>
+                )}
+                {[
+                  ["robots.txt-linjer", plan.robotsLines.join("\n")],
+                  [`Serving-oppskrift (${plan.platform})`, plan.servingRecipe],
+                  ["JSON-LD-mal", plan.jsonLdTemplate],
+                ].map(([label, content]) => (
+                  <Box key={label}>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>{label}</Typography>
+                    <Box component="pre" sx={{
+                      m: 0, p: 1, borderRadius: 1, maxHeight: 180, overflow: "auto",
+                      bgcolor: "rgba(2,6,23,0.6)", border: "1px solid rgba(148,163,184,0.2)",
+                      fontSize: "0.68rem", fontFamily: "monospace", whiteSpace: "pre-wrap", color: "#cbd5e1",
+                    }}>{content}</Box>
+                  </Box>
+                ))}
+                {plan.notes.map((n, i) => (
+                  <Typography key={i} variant="caption" color="text.disabled">• {n}</Typography>
+                ))}
+              </Stack>
+            )}
           </Stack>
         )}
       </CardContent>

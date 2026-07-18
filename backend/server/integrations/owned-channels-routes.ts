@@ -29,7 +29,9 @@ import { syncProspectSegments } from "./prospect-segment-sync.js";
 import { runAutoEnrichment } from "./auto-enrichment.js";
 import { generateTenderStrategyBrief } from "./tender-strategy.js";
 import { buildRetenderWindows, buildTenderBoard, type BoardTenderRow } from "./tender-board.js";
-import { runSiteSetupAudit } from "./site-setup-audit.js";
+import { defaultAuditFetcher, runSiteSetupAudit, validateAuditUrl } from "./site-setup-audit.js";
+import { buildGeoPrerenderPlan, detectPlatform } from "./geo-prerender-plan.js";
+import { externalFetch } from "../external-api.js";
 import { bootstrapInputSchema, renderAnalyticsBootstrap } from "./analytics-bootstrap.js";
 import { getSetupGuide, SETUP_GUIDES, tailorSetupGuides } from "./setup-guides.js";
 import { buildIndexNowPayload, submitIndexNow } from "./indexnow.js";
@@ -343,6 +345,50 @@ export function registerOwnedChannelsRoutes({
     } catch (err) {
       console.error("[setup-guides/tailored] failed", err);
       return res.status(500).json({ error: "tailor_failed" });
+    }
+  });
+
+  // F5 (doc 14): GEO-prerender-plan — F1-audit + sitemap-sider + plattform-
+  // deteksjon → konkret, deterministisk plan (robots, serving-oppskrift,
+  // JSON-LD, prioriterte sider).
+  app.post("/api/integrations/geo-prerender-plan", async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "ikke_innlogget" });
+    if (session.role !== "admin" && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "krever_admin" });
+    }
+    const url = (req.body as Record<string, unknown> | undefined)?.url;
+    if (typeof url !== "string" || url.length < 4 || url.length > 500) {
+      return res.status(400).json({ error: "url_kreves" });
+    }
+    const check = validateAuditUrl(url);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+    try {
+      const audit = await runSiteSetupAudit(url);
+      if ("error" in audit) return res.status(400).json({ error: audit.error });
+
+      // Sitemap-locs (auditen teller dem bare) + plattform fra headere.
+      const origin = check.url.origin;
+      const [sitemapRes, headRes] = await Promise.all([
+        defaultAuditFetcher(`${origin}/sitemap.xml`, "Mozilla/5.0 (compatible; TheRoleRoomPlan/1.0)"),
+        externalFetch(check.url, { method: "HEAD", timeoutMs: 10_000 }).catch(() => null),
+      ]);
+      const sitemapPages = sitemapRes && sitemapRes.status === 200
+        ? [...sitemapRes.text.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]).slice(0, 200)
+        : [];
+      const headers: Record<string, string> = {};
+      headRes?.headers?.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+
+      const plan = buildGeoPrerenderPlan({
+        domain: url,
+        capabilities: audit.audit.capabilities,
+        sitemapPages,
+        platform: detectPlatform(headers),
+      });
+      return res.json({ plan, audit: audit.audit });
+    } catch (err) {
+      console.error("[geo-prerender-plan] failed", err);
+      return res.status(500).json({ error: "plan_failed" });
     }
   });
 

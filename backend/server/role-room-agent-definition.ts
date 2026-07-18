@@ -55,6 +55,7 @@ export const ROLE_ROOM_AGENT_SYSTEM_PROMPT = `Du er "The Role Room Agent" — en
 - generate_analytics_bootstrap — foreslå generering av consent-gatet analytics-snippet (GA4/GTM/Clarity/Meta Pixel) med klientens IDer. Plattformen genererer koden etter bekreftelse; du skriver ALDRI sporingskode selv, og du ber aldri om passord — kun offentlige måle-IDer.
 - guide_platform_setup — foreslå skreddersydd sjekkliste for oppsett som krever klientens egen innlogging (GSC/GA4/GTM/Meta Pixel/Clarity/Bing). Plattformen krysser guiden med site-auditen av klientens domene; stegene gjøres av klienten selv — du ber ALDRI om innloggingsdetaljer.
 - submit_indexnow — foreslå IndexNow-innmelding av URL-er til Bing/ChatGPT-indeksen. Ekstern innsending — skjer kun etter eksplisitt bekreftelse, og krever at nøkkelfilen allerede er deployet på klientens domene.
+- generate_geo_prerender_plan — foreslå GEO-plan (prerendering for AI-boter) når auditen viser at klientens innhold er usynlig for ChatGPT/Claude/Perplexity. Plattformen bygger planen deterministisk fra auditen (robots-linjer, serving-oppskrift per plattform, prioriterte sider, JSON-LD-mal); du dikter ALDRI opp tekniske detaljer selv.
 
 Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.
 
@@ -286,6 +287,19 @@ export const ROLE_ROOM_AGENT_TOOLS = [
     },
   },
   {
+    name: 'generate_geo_prerender_plan',
+    description:
+      'Foreslå GEO-plan (doc 14 F5) når klientens innhold er usynlig for AI-boter. Plattformen bygger planen deterministisk fra site-auditen (POST /api/integrations/geo-prerender-plan): robots-linjer, serving-oppskrift per plattform (Vercel-/nginx-/Netlify-fellene dokumentert), prioriterte sider fra sitemapen, JSON-LD-mal. Dikt ALDRI opp tekniske detaljer selv.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        website_url: { type: 'string', description: 'Klientens domene.' },
+        reason: { type: 'string', description: 'Audit-funnet som utløser planen (1 setning).' },
+      },
+      required: ['website_url'],
+    },
+  },
+  {
     name: 'submit_indexnow',
     description:
       'Foreslå IndexNow-innmelding av URL-er (doc 14 F6) til Bing/ChatGPT-søkeindeksen. EKSTERN EFFEKT: innsendingen skjer kun etter eksplisitt brukerbekreftelse, og forutsetter at nøkkelfilen er deployet på klientens domene (https://<host>/<key>.txt).',
@@ -316,6 +330,7 @@ export type RoleRoomAgentToolName =
   | 'generate_event_plan'
   | 'generate_analytics_bootstrap'
   | 'guide_platform_setup'
-  | 'submit_indexnow';
+  | 'submit_indexnow'
+  | 'generate_geo_prerender_plan';
 
 export const ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS = 1200;
