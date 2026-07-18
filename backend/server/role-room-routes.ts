@@ -939,6 +939,13 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
   // Search Console — clicks/impressions/CTR/position per query.
   'https://www.googleapis.com/auth/webmasters.readonly',
+  // ── Oppsett-scopes (doc 14, OAuth-fasen) ───────────────────────────
+  // GA4 Admin API — opprette property/stream, sette retention, key events.
+  'https://www.googleapis.com/auth/analytics.edit',
+  // Search Console skrive: melde inn sitemaps programmatisk.
+  'https://www.googleapis.com/auth/webmasters',
+  // Site Verification API — verifisere domener (metatag/fil) for GSC.
+  'https://www.googleapis.com/auth/siteverification',
   // YouTube Analytics — channel + video performance metrics.
   'https://www.googleapis.com/auth/yt-analytics.readonly',
   'https://www.googleapis.com/auth/yt-analytics-monetary.readonly',

@@ -419,6 +419,39 @@ export default function RoleRoomAgentDialog({
   const flowIndex = tabFlow.indexOf(activeTab);
   const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
     researchSection === 'alle' || researchSection === s;
+  // OAuth-fasen (doc 14): GA4-oppsett via Admin API på produsentens
+  // Google-kobling. Knappen ER bekreftelsen; resultatet viser hva som
+  // faktisk ble opprettet vs gjenbrukt.
+  const [ga4SetupBusy, setGa4SetupBusy] = useState(false);
+  const [ga4SetupOutcome, setGa4SetupOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  const runGa4ApiSetup = async (domain: string) => {
+    setGa4SetupBusy(true);
+    setGa4SetupOutcome(null);
+    try {
+      const r = await fetch('/api/role-room/agent/ga4-setup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, goals: ['lead', 'booking'] }),
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || !body?.success) {
+        setGa4SetupOutcome({ ok: false, text: body?.error ?? `GA4-oppsett feilet (${r.status}).` });
+        return;
+      }
+      const parts = [
+        body.propertyCreated ? 'Property opprettet' : 'Gjenbrukte eksisterende property',
+        body.measurementId ? `måle-ID ${body.measurementId}` : null,
+        body.retentionSet ? 'datalagring 14 mnd' : null,
+        body.keyEvents?.length ? `${body.keyEvents.length} key events` : null,
+      ].filter(Boolean);
+      setGa4SetupOutcome({ ok: true, text: `${parts.join(' · ')}. Lim måle-ID-en inn i snippet-generatoren.` });
+    } catch (e) {
+      setGa4SetupOutcome({ ok: false, text: String(e) });
+    } finally {
+      setGa4SetupBusy(false);
+    }
+  };
   // Derived saved-state — survives reopen, clears only when a new result object arrives.
   const projectCreatedFromResult = !!result && createdResultRef === result;
   const resultAppliedToProject = !!result && appliedResultRef === result;
@@ -1707,6 +1740,27 @@ export default function RoleRoomAgentDialog({
                         korrekt samtykke-gating — det er ikke det samme som at det mangler.
                       </Typography>
                     </Box>
+                    {(() => {
+                      const ga4Cap = result.siteSetupAudit?.capabilities.find((c) => c.key === 'ga4');
+                      if (ga4Cap?.status === 'implemented') return null;
+                      return (
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Button size="small" variant="outlined" disabled={ga4SetupBusy}
+                            onClick={() => void runGa4ApiSetup(result.siteSetupAudit!.url)}
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#bbf7d0', borderColor: 'rgba(16,185,129,0.4)' }}>
+                            {ga4SetupBusy ? 'Setter opp GA4…' : 'Sett opp GA4 automatisk (via Google-koblingen)'}
+                          </Button>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
+                            Oppretter property/målestrøm via API — ingen passord, kun eksisterende Google-tilgang.
+                          </Typography>
+                        </Stack>
+                      );
+                    })()}
+                    {ga4SetupOutcome && (
+                      <Alert severity={ga4SetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}>
+                        {ga4SetupOutcome.text}
+                      </Alert>
+                    )}
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
                       {result.siteSetupAudit.capabilities.map((cap) => {
                         const capStyle = cap.status === 'implemented'
