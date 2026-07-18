@@ -1,0 +1,55 @@
+<style>
+  #wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:52px 60px;width:max-content;
+    font-family:Inter,"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+    background:#fff;border-radius:28px;box-shadow:0 28px 70px rgba(20,40,80,.12);opacity:0;transform:scale(.94)}
+  .ring{position:relative;width:260px;height:260px}
+  .ring svg{transform:rotate(-90deg)}
+  .track{fill:none;stroke:#eef2f8;stroke-width:22}
+  .arc{fill:none;stroke:var(--a,#2f6df0);stroke-width:22;stroke-linecap:round}
+  .ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .pct{font-size:66px;font-weight:800;color:#1f2d4a;letter-spacing:-2px;line-height:1}
+  .sub{font-size:15px;color:#8a97a6;font-weight:600;margin-top:2px}
+  .lbl{font-size:21px;color:#5b6b7d;font-weight:500;opacity:0}
+</style>
+<div id="wrap">
+  <div class="ring">
+    <svg width="260" height="260" viewBox="0 0 260 260">
+      <circle class="track" cx="130" cy="130" r="108"></circle>
+      <circle class="arc" id="arc" cx="130" cy="130" r="108"></circle>
+    </svg>
+    <div class="ctr">
+      <div class="pct" id="pct">0%</div>
+      <div class="sub" id="sub"></div>
+    </div>
+  </div>
+  <div class="lbl" data-d="0.45"></div>
+</div>
+<script>
+  var CFG = window.__CFG__ || {};
+  document.documentElement.style.setProperty('--a', CFG.accent || '#2f6df0');
+  // Verdi → andel 0..1. Godtar «80%», 0.8, 80 (>1 antas prosent-tall).
+  var raw = CFG.value != null ? CFG.value : ((CFG.cards && CFG.cards[0] && CFG.cards[0].value));
+  var frac = 0, showPct = true;
+  (function () {
+    if (typeof raw === 'number') { frac = raw > 1 ? raw / 100 : raw; }
+    else if (typeof raw === 'string') {
+      var s = raw.trim();
+      if (s.slice(-1) === '%') frac = parseFloat(s) / 100;
+      else { var n = Number(s.replace(',', '.')); if (isFinite(n)) frac = n > 1 ? n / 100 : n; }
+    }
+    if (!(frac >= 0)) frac = 0; if (frac > 1) frac = 1;
+  })();
+  document.querySelector('.lbl').textContent = CFG.label || '';
+  var C = 2 * Math.PI * 108, arc = document.getElementById('arc');
+  arc.style.strokeDasharray = C; arc.style.strokeDashoffset = C;
+  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+  window.setProgress = function (p) {
+    var w = document.getElementById('wrap'); var e = ease(Math.min(1, p / .3));
+    if (w) { w.style.opacity = e; w.style.transform = 'scale(' + (0.94 + 0.06 * e) + ')'; }
+    var fp = ease(Math.max(0, Math.min(1, (p - .1) / .75)));
+    arc.style.strokeDashoffset = C * (1 - frac * fp);
+    document.getElementById('pct').textContent = Math.round(frac * fp * 100) + '%';
+    document.querySelectorAll('[data-d]').forEach(function (el) { el.style.opacity = ease(Math.max(0, Math.min(1, (p - (+el.dataset.d)) / 0.5))); });
+  };
+  window.setProgress(0);
+</script>
