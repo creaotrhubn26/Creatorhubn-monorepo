@@ -95,6 +95,44 @@ export function registerLeadgridDorsalgRoutes(deps: {
           session.userId,
         ],
       );
+      // Vunnet dør → Kvalitet-køen (Daniel 2026-07-18: angrerett på døra —
+      // kontrolløren ringer og verifiserer dørsalget). Idempotent via unik
+      // (organization_id, customer_id); customer_id = "dorsalg:<adresse_id>".
+      // Best effort: Kvalitet-tabellen kan mangle hvis org-en aldri har
+      // åpnet Kvalitet (lazy ensureSchema der) — da hopper vi stille over.
+      const kvalitetKundeId = `dorsalg:${adresseId}`;
+      const adresseNavn = [
+        String(b.adressetekst ?? "").slice(0, 200),
+        `${String(b.postnummer ?? "").slice(0, 10)} ${String(b.poststed ?? "").slice(0, 100)}`.trim(),
+      ].filter(Boolean).join(", ");
+      try {
+        if (status === "vunnet") {
+          await pool.query(
+            `INSERT INTO leadgrid_sales_verifications
+               (id, organization_id, customer_id, customer_name,
+                seller_user_id, seller_name, won_at)
+             SELECT gen_random_uuid(), $1, $2, $3, $4,
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                             u.username, $4),
+                    now()
+               FROM (SELECT 1) one
+               LEFT JOIN users u ON u.id = $4
+             ON CONFLICT (organization_id, customer_id) DO NOTHING`,
+            [orgId, kvalitetKundeId, adresseNavn, session.userId],
+          );
+        } else {
+          // Avslått/omgjort: fjern KUN ubehandlede dørsalg-rader — ferdig
+          // verifisert historikk røres aldri.
+          await pool.query(
+            `DELETE FROM leadgrid_sales_verifications
+              WHERE organization_id = $1 AND customer_id = $2
+                AND status = 'pending'`,
+            [orgId, kvalitetKundeId],
+          );
+        }
+      } catch (e) {
+        console.warn("[leadgrid-dorsalg] kvalitet-kobling hoppet over:", (e as Error).message);
+      }
       return res.json({ ok: true });
     } catch (err) {
       console.error("[leadgrid-dorsalg] upsert feilet:", (err as Error).message);
@@ -143,13 +181,31 @@ export function registerLeadgridDorsalgRoutes(deps: {
           LIMIT 8`,
         [orgId],
       );
+      // Callerens egne tall — driver «Min profil»-KPI-ene for dørsalg.
+      const meg = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'vunnet')::int  AS vunnet,
+           COUNT(*) FILTER (WHERE status = 'avslatt')::int AS avslatt,
+           COUNT(*) FILTER (WHERE updated_at >= date_trunc('day', now()))::int AS i_dag,
+           COUNT(*) FILTER (WHERE updated_at >= date_trunc('week', now()))::int AS denne_uka
+         FROM leadgrid_dorsalg_status
+        WHERE org_id = $1 AND set_by = $2`,
+        [orgId, session.userId],
+      );
       const t = totals.rows[0] ?? {};
+      const m = meg.rows[0] ?? {};
       return res.json({
         vunnet: t.vunnet ?? 0,
         avslatt: t.avslatt ?? 0,
         iDag: t.i_dag ?? 0,
         vunnetIDag: t.vunnet_i_dag ?? 0,
         denneUka: t.denne_uka ?? 0,
+        meg: {
+          vunnet: m.vunnet ?? 0,
+          avslatt: m.avslatt ?? 0,
+          iDag: m.i_dag ?? 0,
+          denneUka: m.denne_uka ?? 0,
+        },
         perSelger: perSelger.rows.map((r) => ({
           navn: r.navn as string,
           vunnet: r.vunnet as number,
@@ -176,6 +232,19 @@ export function registerLeadgridDorsalgRoutes(deps: {
     if (!adresseId) return res.status(400).json({ error: "ugyldig_adresse_id" });
     try {
       const orgId = await resolveOrgIdForUser(pool, session.userId);
+      // Angret vunnet: fjern KUN ubehandlet dørsalg-rad fra Kvalitet-køen
+      // (verifisert historikk røres aldri). Best effort — tabellen kan
+      // mangle hvis Kvalitet aldri er åpnet.
+      try {
+        await pool.query(
+          `DELETE FROM leadgrid_sales_verifications
+            WHERE organization_id = $1 AND customer_id = $2
+              AND status = 'pending'`,
+          [orgId, `dorsalg:${adresseId}`],
+        );
+      } catch (e) {
+        console.warn("[leadgrid-dorsalg] kvalitet-opprydding hoppet over:", (e as Error).message);
+      }
       await pool.query(
         `DELETE FROM leadgrid_dorsalg_status
           WHERE org_id = $1 AND adresse_id = $2`,
