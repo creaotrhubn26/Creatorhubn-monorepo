@@ -933,7 +933,14 @@ export default function App() {
           >
             {showMediaPool ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
-          <span className="footer-version">{appVersion ? `v${appVersion}` : ""}</span>
+          <button
+            className="footer-version"
+            onClick={() => void import("@tauri-apps/api/event").then(({ emit }) => emit("menu://check-updates"))}
+            title="Se etter oppdateringer"
+            style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}
+          >
+            {appVersion ? `v${appVersion} ↻` : "Se etter oppdateringer"}
+          </button>
         </span>
       </footer>
 

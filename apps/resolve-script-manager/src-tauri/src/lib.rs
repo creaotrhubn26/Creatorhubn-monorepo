@@ -942,7 +942,10 @@ pub fn run() {
             // Forward menu events to frontend as "menu://<id>" events
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().0.as_str();
-                let event_name = format!("menu://{}", id.trim_start_matches("menu_"));
+                // Frontend lytter på bindestrek-navn (menu://check-updates); meny-
+                // id-ene bruker understrek (menu_check_updates) → konverter, ellers
+                // matcher ikke event-navnet og meny-klikk gjør ingenting.
+                let event_name = format!("menu://{}", id.trim_start_matches("menu_").replace('_', "-"));
                 if let Err(err) = app_handle.emit(&event_name, ()) {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
                 }
