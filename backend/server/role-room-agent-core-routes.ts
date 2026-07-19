@@ -1284,6 +1284,57 @@ export function setupRoleRoomAgentCoreRoutes(
     }
   });
 
+  // ── Økonomisk ramme for strategi: budsjett + påslag + kontrakt ─────
+  // En Google Ads-/betalt-anbefaling er verdiløs uten taket. Samler det
+  // agenten trenger for å holde seg innenfor: inneværende periodes
+  // budsjett-cap (klienten setter det), påslags-raten (annonsekostnad
+  // faktureres m/ påslag — hver Ads-krone har fakturakonsekvens), og
+  // kontraktens betalingsmodell fra det siste kontrakt-skannet.
+  app.get("/api/role-room/agent/economy-context/:projectId", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId ?? "");
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    try {
+      const now = new Date();
+      const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const [{ getBudget }, { MANAGEMENT_FEE_RATE }] = await Promise.all([
+        import("./role-room-ads-budget.js"),
+        import("./role-room-ads-shared.js"),
+      ]);
+      const budgetRow = await getBudget(pool, projectId, period).catch(() => null);
+      const scan = await getLatestContractScan(pool, projectId).catch(() => null);
+      const contract = scan
+        ? {
+            supplier: scan.economics.supplier,
+            client: scan.economics.client,
+            totalAmount: scan.economics.totalAmount,
+            currency: scan.economics.currency,
+            invoicing: scan.economics.invoicing,
+            paymentTerms: scan.economics.paymentTerms.map((t) => ({ label: t.label, amount: t.amount, trigger: t.trigger })),
+            scannedAt: scan.scannedAt,
+            missingPoints: scan.missingPoints,
+          }
+        : null;
+      return res.json({
+        success: true,
+        period,
+        budget: budgetRow
+          ? { maxSpendNok: budgetRow.maxSpendNok, autoPauseOnCap: budgetRow.autoPauseOnCap ?? false }
+          : null,
+        markupRate: MANAGEMENT_FEE_RATE,
+        contract,
+      });
+    } catch (err) {
+      console.error("[economy-context] failed", err);
+      return res.status(500).json({ success: false, error: "economy_context_failed" });
+    }
+  });
+
   // ── OAuth-fasen (doc 14): Meta Pixel via Marketing API ─────────────
   // Bruker prosjektets eksisterende Meta-kobling (ads_management er
   // allerede i scopene). Pixelen KOBLES, aldri aktiveres — annonse-

@@ -342,6 +342,42 @@ export default function RoleRoomAgentDialog({
               `- ${e.ga4Event}${e.metaEvent ? ` ↔ ${e.metaEvent}` : ''}${e.keyEvent ? ' (key event)' : ''}`).join('\n');
         }
       } catch { /* best effort */ }
+      // Økonomisk ramme: budsjett-tak + påslag + kontraktens betalingsmodell.
+      // En Google Ads-anbefaling MÅ holdes innenfor dette — påslaget gjør at
+      // hver annonsekrone har direkte fakturakonsekvens for klienten.
+      let economyBlock = '';
+      try {
+        const r = await fetch(`/api/role-room/agent/economy-context/${encodeURIComponent(projectId)}`, {
+          credentials: 'include',
+          headers: roleRoomAgentDefaultHeaders(),
+        });
+        const body = await r.json().catch(() => null);
+        if (body?.success) {
+          const parts: string[] = [];
+          if (body.budget) {
+            parts.push(`- Budsjett-tak for ${body.period}: ${Number(body.budget.maxSpendNok).toLocaleString('nb-NO')} kr annonsekostnad${body.budget.autoPauseOnCap ? ' (auto-pause ved tak)' : ''}. Hold ALLE betalt-anbefalinger innenfor dette.`);
+          } else {
+            parts.push(`- Ingen budsjett-tak satt for ${body.period} ennå — foreslå et forsvarlig startbudsjett og be klienten sette rammen i Økonomi før annonser skrus på.`);
+          }
+          if (typeof body.markupRate === 'number') {
+            parts.push(`- Påslag på annonsekostnad: ${Math.round(body.markupRate * 100)} %. Hver krone i Ads-budsjett faktureres klienten med dette påslaget — vær eksplisitt om totalkostnaden, ikke bare medieforbruket.`);
+          }
+          if (body.contract) {
+            const c = body.contract;
+            const cl: string[] = [];
+            if (c.supplier || c.client) cl.push(`avtale ${c.supplier ?? '?'} ↔ ${c.client ?? '?'}`);
+            if (c.totalAmount) cl.push(`ramme ${c.totalAmount}${c.currency ? ' ' + c.currency : ''}`);
+            if (c.invoicing) cl.push(`fakturering: ${c.invoicing}`);
+            parts.push(`- Signert kontrakt (skannet ${String(c.scannedAt).slice(0, 10)}): ${cl.join('; ') || 'betalingsmodell registrert'}. Betalt-strategien MÅ være i tråd med denne — ikke foreslå noe som bryter avtalens økonomiske rammer.`);
+            if (Array.isArray(c.missingPoints) && c.missingPoints.length > 0) {
+              parts.push(`  (Kontrakt-hull å ta høyde for: ${c.missingPoints.slice(0, 3).join('; ')}.)`);
+            }
+          } else {
+            parts.push('- Ingen signert kontrakt skannet inn ennå — flagg at det økonomiske rammeverket bør bekreftes før betalt annonsering settes i gang.');
+          }
+          economyBlock = '\nØkonomisk ramme (budsjett + påslag + kontrakt):\n' + parts.join('\n');
+        }
+      } catch { /* best effort */ }
       const directive = [
         '\n\n=== SYNLIGHETSSTRATEGI (alle koblinger registrert) ===',
         'Alle kontokoblinger er på plass. Lag en komplett synlighetsstrategi for hele bedriften:',
@@ -349,8 +385,10 @@ export default function RoleRoomAgentDialog({
         '2. Søk og innhold: innholdsplan bygget på de faktiske søkedataene under — styrk det som allerede fungerer, dekk gapene.',
         '3. GEO/AI-synlighet: hvordan bedriften blir synlig i ChatGPT, Perplexity og Bing (struktur, pillar-innhold, siterbarhet).',
         '4. Kanalstrategi: Instagram/Facebook/YouTube/LinkedIn med publiseringsrytme og eventer knyttet til målene.',
+        '5. Betalt søk (Google Ads): kampanjestruktur og budord bygget på de FAKTISKE søkedataene under (by på det som allerede konverterer organisk, fyll hull der posisjonen er svak). GA4-key-eventene importeres som konverteringer. Holdes STRENGT innenfor den økonomiske rammen under — respekter budsjett-tak, påslag og kontrakt.',
         gscBlock,
         eventBlock,
+        economyBlock,
       ].filter(Boolean).join('\n');
       const composed = extraContext.includes('=== SYNLIGHETSSTRATEGI')
         ? extraContext
@@ -1351,7 +1389,7 @@ export default function RoleRoomAgentDialog({
                       Alle koblinger registrert ✓
                     </Typography>
                     <Typography sx={{ color: 'rgba(204,251,241,0.78)', fontSize: '0.76rem', flex: 1, minWidth: 200 }}>
-                      Agenten kan nå bygge hele synlighetsstrategien på ekte data: eventoppsett, søk/innhold, GEO/AI-synlighet og kanalplan.
+                      Agenten kan nå bygge hele synlighetsstrategien på ekte data: eventoppsett, søk/innhold, GEO/AI-synlighet, kanalplan og Google Ads — holdt innenfor budsjett, påslag og kontrakt.
                     </Typography>
                     <Button
                       size="small"
