@@ -777,7 +777,7 @@ function DeviceComposition() {
           cardinal rule som ellers: aldri tegnede liksom-UI-er. */}
       <Box
         component="img"
-        src="/leadgrid/hero/macbook.png"
+        src="/leadgrid/hero/macbook.webp"
         alt="Leadgrid Salgsledelse på MacBook"
         sx={{
           position: 'relative',
@@ -789,7 +789,7 @@ function DeviceComposition() {
       />
       <Box
         component="img"
-        src="/leadgrid/hero/ipad.png"
+        src="/leadgrid/hero/ipad.webp"
         alt="Leadgrid-kartet på iPad"
         sx={{
           position: 'absolute',
@@ -803,7 +803,7 @@ function DeviceComposition() {
       />
       <Box
         component="img"
-        src="/leadgrid/hero/iphone.png"
+        src="/leadgrid/hero/iphone.webp"
         alt="Dagens agenda i Leadgrid på iPhone"
         sx={{
           position: 'absolute',
