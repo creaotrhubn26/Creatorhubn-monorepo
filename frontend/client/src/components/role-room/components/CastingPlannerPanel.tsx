@@ -3389,11 +3389,15 @@ type RoleRoomProjectWorkspaceState = {
       // ETTER seed-effekten og overskriver lastRealProjectId med null fra
       // siste lagrede tom-state. Daniels TROLL-deep-link havnet i tom-state
       // selv om URL var korrekt og DB hadde 8 roller/8 kandidater klar.
+      // 2026-07-19: OG omvendt — når URL-en HAR ?project=, skal den vinne
+      // over stored (reprodusert: navigasjon til ?project=medside ble
+      // kastet til sist lagrede prosjekt). Prioritet: URL > stored > null.
+      const urlProjectParam = sp.get('project');
       const existing = persistedWorkspaceStateRef.current;
       persistedWorkspaceStateRef.current = {
         ...stored,
-        lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
-        projectId: stored.projectId ?? existing?.projectId ?? null,
+        lastRealProjectId: urlProjectParam ?? stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
+        projectId: urlProjectParam ?? stored.projectId ?? existing?.projectId ?? null,
       };
       // 2026-07-19: Eksplisitte URL-params VINNER over lagret tilstand.
       // Før overstyrte restore både ?tab= og ?surface= — en delelenke til
