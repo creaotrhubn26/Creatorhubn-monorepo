@@ -2590,6 +2590,18 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     let cancelled = false;
 
+    // Klient-portalen autentiserer med invitasjons-Bearer-token, ikke en
+    // medlems-sesjon. `GET /api/casting/manuscripts` krever medlems-sesjon
+    // (requireUserSession) og svarer 401 for klienter. Manuskript er dessuten
+    // et produsent-/medlems-konsept som ikke vises i klient-flaten — så vi
+    // hopper over lasten helt og unngår støyende 401-er.
+    if (isClientPortalView || isClientReviewerMode) {
+      setManuscripts([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const loadManuscripts = async () => {
       try {
         const nextManuscripts = await manuscriptService.getManuscripts(projectId);
@@ -2609,7 +2621,7 @@ export default function ProducerMediaPanel({
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, isClientPortalView, isClientReviewerMode]);
 
   const loadLinkedInAccessStatus = useCallback(async () => {
     const requestId = ++linkedInAccessRequestRef.current;
