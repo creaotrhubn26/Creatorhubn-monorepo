@@ -110,13 +110,15 @@ const SCENES: Scene[] = [
     align: 'left', landscape: true,
   },
   {
-    id: 'kvalitet', kind: 'device', image: '/leadgrid/app/kvalitet.webp',
+    id: 'kvalitet', kind: 'device', image: '/leadgrid/app/tour-kvalitet-poster.webp',
+    video: '/leadgrid/app/tour-kvalitet.mp4',
     eyebrow: 'Kvalitet', title: 'Hvert salg verifiseres.',
     body: 'Egen verifiseringskø med samtale-maler og kvalitetsgrad per selger. Kunden bekrefter — organisasjonen kan stole på tallene.',
     align: 'right', landscape: true,
   },
   {
-    id: 'go', kind: 'device', image: '/leadgrid/app/kjorebok.webp',
+    id: 'go', kind: 'device', image: '/leadgrid/app/tour-kjorebok-poster.webp',
+    video: '/leadgrid/app/tour-kjorebok.mp4',
     eyebrow: 'Leadgrid Go', title: 'Kjøreboka skriver seg selv.',
     body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport — for hele flåten.',
     align: 'left', landscape: true,
