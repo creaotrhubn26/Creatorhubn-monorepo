@@ -846,7 +846,7 @@ const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform,
   google: {
     primaryLabel: 'Google Workspace',
     primaryHref: '',
-    primaryDescription: 'Drive, Kalender og Meet brukes automatisk som del av prosjektflyten.',
+    primaryDescription: 'Én Google-kobling dekker både prosjektflyten (Drive, Kalender, Meet) og agentens analytics-oppsett (GA4, Search Console, Site Verification).',
   },
   meta: {
     primaryLabel: 'Åpne Meta Business',
@@ -2661,26 +2661,70 @@ export default function ProducerMediaPanel({
   // 2FA / utløp) ligger bak en detalj-toggle per kort — én tydelig
   // status synlig, resten ett klikk unna.
   const [expandedAccessDetails, setExpandedAccessDetails] = useState<Record<string, boolean>>({});
+  // Kontokortene er kompakte som standard: header m/ status leses på ett
+  // blikk, redigeringsdelen (metode/status, felter, notater, sikker deling,
+  // 2FA) foldes ut per kort. Før sto alle fem kortene fullt utfoldet
+  // samtidig — en vegg av felter uten lesbar samlet status.
+  const [expandedAccountCards, setExpandedAccountCards] = useState<Record<string, boolean>>({});
   const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
     google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
     meta: { connected: boolean; verified: boolean; name: string | null };
   } | null>(null);
+  const loadAgentConnectionStatus = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const r = await fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+        credentials: 'include',
+        headers: roleRoomAgentDefaultHeaders(),
+      });
+      const body = await r.json();
+      if (body?.success) {
+        setAgentConnectionStatus({ google: body.google, meta: body.meta });
+      }
+    } catch {
+      // Stille — statusen er berikelse, ikke blokkerende.
+    }
+  }, [projectId]);
   useEffect(() => {
-    if (activeWorkspace !== 'accounts' || !projectId) return;
-    let cancelled = false;
-    void fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
-      credentials: 'include',
-      headers: roleRoomAgentDefaultHeaders(),
-    })
-      .then((r) => r.json())
-      .then((body) => {
-        if (!cancelled && body?.success) {
-          setAgentConnectionStatus({ google: body.google, meta: body.meta });
-        }
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [activeWorkspace, projectId]);
+    if (activeWorkspace !== 'accounts') return;
+    void loadAgentConnectionStatus();
+  }, [activeWorkspace, loadAgentConnectionStatus]);
+  // «Koble til Google»-knappen på Google-kortet: starter OAuth i eget
+  // vindu (mode 'link' = kobler innlogget produsent). Samtykket skjer hos
+  // Google; når vinduet lukkes re-leses koblingsstatusen.
+  const [googleOauthStarting, setGoogleOauthStarting] = useState(false);
+  const handleStartGoogleOauthLink = useCallback(async () => {
+    setGoogleOauthStarting(true);
+    try {
+      const r = await fetch('/api/role-room/google/oauth/start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({
+          mode: 'link',
+          projectId,
+          browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+          returnPath: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined,
+        }),
+      });
+      const body = await r.json();
+      if (body?.authorizationUrl && typeof window !== 'undefined') {
+        const popup = window.open(body.authorizationUrl, '_blank', 'width=620,height=760');
+        const poll = window.setInterval(() => {
+          if (!popup || popup.closed) {
+            window.clearInterval(poll);
+            void loadAgentConnectionStatus();
+          }
+        }, 1200);
+      } else {
+        setError(body?.error ?? 'Kunne ikke starte Google-koblingen.');
+      }
+    } catch {
+      setError('Kunne ikke starte Google-koblingen.');
+    } finally {
+      setGoogleOauthStarting(false);
+    }
+  }, [loadAgentConnectionStatus, projectId]);
 
   useEffect(() => () => {
     linkedInAccessRequestRef.current += 1;
@@ -12439,6 +12483,54 @@ export default function ProducerMediaPanel({
               ) : null}
 
               {accountAccessVaultTab === 'accounts' ? (
+              <>
+              <Stack
+                direction="row"
+                spacing={0.55}
+                flexWrap="wrap"
+                useFlexGap
+                alignItems="center"
+                sx={{ mb: 0.9 }}
+              >
+                {([
+                  ['connected', 'koblet', 'rgba(34,197,94,0.16)', '#bbf7d0'],
+                  ['invite_sent', 'invite sendt', 'rgba(56,189,248,0.16)', '#dbeafe'],
+                  ['client_action', 'venter på klient', 'rgba(245,158,11,0.18)', '#fde68a'],
+                  ['not_started', 'ikke startet', 'rgba(148,163,184,0.16)', '#e2e8f0'],
+                ] as const).map(([statusKey, label, bg, fg]) => {
+                  const count = effectiveAccountEntries.filter((e) => e.platform !== 'google' && e.status === statusKey).length;
+                  if (count === 0) return null;
+                  return (
+                    <Chip
+                      key={statusKey}
+                      size="small"
+                      label={`${count} ${label}`}
+                      sx={{ bgcolor: bg, color: fg, fontWeight: 700 }}
+                    />
+                  );
+                })}
+                {effectiveAccountEntries.some((e) => !e.expiresAt) ? (
+                  <Chip
+                    size="small"
+                    label={`${effectiveAccountEntries.filter((e) => !e.expiresAt).length} uten utløpsdato`}
+                    sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                  />
+                ) : null}
+                <Box sx={{ flex: 1 }} />
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    const anyOpen = effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]);
+                    setExpandedAccountCards(anyOpen
+                      ? {}
+                      : Object.fromEntries(effectiveAccountEntries.map((e) => [e.platform, true])));
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28 }}
+                >
+                  {effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]) ? 'Lukk alle' : 'Åpne alle'}
+                </Button>
+              </Stack>
               <Box
                 sx={{
                   display: 'grid',
@@ -12527,6 +12619,13 @@ export default function ProducerMediaPanel({
                               label={isRequired ? 'Nødvendig i dette prosjektet' : 'Valgfri plattform'}
                               sx={{ bgcolor: isRequired ? 'rgba(20,184,166,0.16)' : 'rgba(148,163,184,0.1)', color: isRequired ? '#ccfbf1' : '#cbd5e1' }}
                             />
+                            {!entry.expiresAt && !expandedAccountCards[entry.platform] ? (
+                              <Chip
+                                size="small"
+                                label="Ingen utløp satt"
+                                sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                              />
+                            ) : null}
                             {isLinkedInEntry && linkedInAccessStatus?.state === 'connected' ? (
                               <Chip
                                 size="small"
@@ -12557,7 +12656,32 @@ export default function ProducerMediaPanel({
                             )}
                           </Typography>
                         </Box>
-                        {isLinkedInEntry ? (
+                        {isGoogleEntry ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.google.connected ? (
+                              <Chip
+                                size="small"
+                                label={`Koblet: ${agentConnectionStatus.google.email ?? 'ukjent konto'}`}
+                                sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.google.connected ? 'outlined' : 'contained'}
+                                onClick={() => { void handleStartGoogleOauthLink(); }}
+                                disabled={googleOauthStarting}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {googleOauthStarting
+                                  ? 'Starter...'
+                                  : agentConnectionStatus?.google.connected
+                                    ? 'Koble til på nytt'
+                                    : 'Koble til Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : isLinkedInEntry ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
                             <Tooltip title="Oppdater LinkedIn-status">
                               <span>
@@ -12614,6 +12738,26 @@ export default function ProducerMediaPanel({
                           </Stack>
                         ) : null}
                       </Stack>
+
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="text"
+                        onClick={() => setExpandedAccountCards((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          fontSize: '0.76rem',
+                          minHeight: 30,
+                          mb: expandedAccountCards[entry.platform] ? 0.6 : 0,
+                          justifyContent: 'flex-start',
+                          color: 'rgba(165,243,252,0.85)',
+                        }}
+                      >
+                        {expandedAccountCards[entry.platform] ? '▾ Skjul redigering' : '▸ Rediger tilgang og detaljer'}
+                      </Button>
+                      <Collapse in={Boolean(expandedAccountCards[entry.platform])} unmountOnExit>
+                      <Box>
 
                       {!isGoogleEntry ? (
                         <>
@@ -13166,10 +13310,13 @@ export default function ProducerMediaPanel({
                           <ToggleButton value="unknown" disabled={!canEditClientInput}>Ikke bekreftet</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
+                      </Box>
+                      </Collapse>
                     </Box>
                   );
                 })}
               </Box>
+              </>
               ) : null}
 
               {accountAccessVaultTab === 'accounts' ? (
