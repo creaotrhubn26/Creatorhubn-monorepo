@@ -14,14 +14,29 @@
  * Assets: /leadgrid/scenes/*.png (fal.ai) + /leadgrid/app/*.png (ekte app).
  */
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   motion,
   useScroll,
   useTransform,
   useSpring,
+  useReducedMotion,
   type MotionValue,
 } from 'framer-motion';
+
+/** Smal skjerm (telefon): enhet øverst + tekst nederst i stedet for
+ *  side-om-side — callouten overlappet enheten under ~700px. */
+function useIsNarrow() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+  return narrow;
+}
 
 const P = {
   bg: '#05010f',
@@ -49,67 +64,67 @@ interface Scene {
 // ── Manus: rekkefølgen du flyr gjennom ────────────────────────────────
 const SCENES: Scene[] = [
   {
-    id: 'intro', kind: 'cinematic', image: '/leadgrid/scenes/field-intro-1.png',
+    id: 'intro', kind: 'cinematic', image: '/leadgrid/scenes/field-intro-1.webp',
     eyebrow: 'Leadgrid', title: 'Feltet ditt er et grid.',
     body: 'Hver dør en mulighet. Leadgrid gjør nabolaget til et levende rutenett av leads — og du beveger deg gjennom det.',
     align: 'left',
   },
   {
-    id: 'kart', kind: 'device', image: '/leadgrid/app/kart.png',
+    id: 'kart', kind: 'device', image: '/leadgrid/app/kart.webp',
     eyebrow: 'Kartet', title: 'Se hele territoriet.',
     body: 'Alle leads på kartet, farget etter temperatur. Trykk en pin — hele historikken folder seg ut.',
     align: 'left',
   },
   {
-    id: 'leads', kind: 'device', image: '/leadgrid/app/leads.png',
+    id: 'leads', kind: 'device', image: '/leadgrid/app/leads.webp',
     eyebrow: 'Leads', title: '1 248 leads. Rangert av seg selv.',
     body: 'Lead-score løfter de varmeste øverst, med eier, verdi og neste steg klart.',
     align: 'right',
   },
   {
-    id: 'moter', kind: 'device', image: '/leadgrid/app/moter.png',
+    id: 'moter', kind: 'device', image: '/leadgrid/app/moter.webp',
     eyebrow: 'Møter', title: 'Dagen er planlagt for deg.',
     body: 'Agenda, kjørerute og AI-innsikt for hvert møte — klart før du går ut døra.',
     align: 'left',
   },
   {
-    id: 'watch', kind: 'cinematic', image: '/leadgrid/scenes/watch-glance.png',
+    id: 'watch', kind: 'cinematic', image: '/leadgrid/scenes/watch-glance.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg — rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
     align: 'right',
   },
   {
-    id: 'dorsalg', kind: 'device', image: '/leadgrid/app/dorsalg.png',
+    id: 'dorsalg', kind: 'device', image: '/leadgrid/app/dorsalg.webp',
     eyebrow: 'Dørsalg & verving', title: 'Hver dør. Én farge.',
     body: 'Dørsalg-modus henter alle adressene i området og fargelegger dem etter utfall — vunnet, ikke hjemme, avslått. Registrer salget på døra, ferdig.',
     align: 'left', landscape: true,
   },
   {
-    id: 'kvalitet', kind: 'device', image: '/leadgrid/app/kvalitet.png',
+    id: 'kvalitet', kind: 'device', image: '/leadgrid/app/kvalitet.webp',
     eyebrow: 'Kvalitet', title: 'Hvert salg verifiseres.',
     body: 'Egen verifiseringskø med samtale-maler og kvalitetsgrad per selger. Kunden bekrefter — organisasjonen kan stole på tallene.',
     align: 'right', landscape: true,
   },
   {
-    id: 'go', kind: 'device', image: '/leadgrid/app/kjorebok.png',
+    id: 'go', kind: 'device', image: '/leadgrid/app/kjorebok.webp',
     eyebrow: 'Leadgrid Go', title: 'Kjøreboka skriver seg selv.',
     body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport — for hele flåten.',
     align: 'left', landscape: true,
   },
   {
-    id: 'team', kind: 'device', image: '/leadgrid/app/team.png',
+    id: 'team', kind: 'device', image: '/leadgrid/app/team.webp',
     eyebrow: 'Team', title: 'Hver selger sin sone.',
     body: 'Territorie-grid med geofence. Ingen tråkker i hverandres felt — og lederen ser alt.',
     align: 'left',
   },
   {
-    id: 'leadbook', kind: 'device', image: '/leadgrid/app/leadbook.png',
+    id: 'leadbook', kind: 'device', image: '/leadgrid/app/leadbook.webp',
     eyebrow: 'Leadbook', title: 'Vinn med Pondus.',
     body: 'Manus som lukker — første kontakt, innvendinger, beslutningstaker — bygget inn i appen.',
     align: 'right',
   },
   {
-    id: 'oversikt', kind: 'device', image: '/leadgrid/app/oversikt.png',
+    id: 'oversikt', kind: 'device', image: '/leadgrid/app/oversikt.webp',
     eyebrow: 'Momentum', title: 'Se teamet vokse. Live.',
     body: '51 leads, +18 % denne uka. Momentum og prognoser oppdateres mens dere jobber.',
     align: 'left',
@@ -124,12 +139,17 @@ export default function LeadgridExperience({
   onStartFree?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const narrow = useIsNarrow();
+  const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ['start start', 'end end'],
   });
   // Myk demping så scroll-koblede transformasjoner ikke rykker.
-  const smooth = useSpring(scrollYProgress, { stiffness: 120, damping: 30, mass: 0.4 });
+  // prefers-reduced-motion: rå progress uten fjæring — scenene følger
+  // scrollen direkte i stedet for å svinge etter.
+  const spring = useSpring(scrollYProgress, { stiffness: 120, damping: 30, mass: 0.4 });
+  const smooth = reduced ? scrollYProgress : spring;
 
   return (
     <section
@@ -154,11 +174,17 @@ export default function LeadgridExperience({
 
         {/* Scenene — hver toner inn/ut i sitt scroll-vindu */}
         {SCENES.map((s, i) => (
-          <SceneLayer key={s.id} scene={s} index={i} progress={smooth} />
+          <SceneLayer
+            key={s.id} scene={s} index={i} progress={smooth}
+            narrow={narrow} reduced={!!reduced}
+          />
         ))}
 
         {/* Avsluttende CTA-scene */}
         <CtaLayer progress={smooth} onStartFree={onStartFree} />
+
+        {/* Scene-prikker: hvor i reisen du er + hopp (skjules på telefon) */}
+        {!narrow && <ProgressDots progress={smooth} sectionRef={ref} />}
 
         {/* Scroll-hint (kun helt i starten) */}
         <ScrollHint progress={smooth} />
@@ -195,9 +221,10 @@ function GridField({ progress }: { progress: MotionValue<number> }) {
 
 // ── Én scene ──────────────────────────────────────────────────────────
 function SceneLayer({
-  scene, index, progress,
+  scene, index, progress, narrow, reduced,
 }: {
   scene: Scene; index: number; progress: MotionValue<number>;
+  narrow: boolean; reduced: boolean;
 }) {
   // Scroll-vinduet for denne scenen (litt overlapp for myk krysstoning).
   const unit = 1 / (N + 1);
@@ -232,10 +259,13 @@ function SceneLayer({
       ) : (
         <DeviceVisual
           image={scene.image} scale={scale} y={y} align={scene.align}
-          landscape={scene.landscape}
+          landscape={scene.landscape} narrow={narrow} reduced={reduced}
         />
       )}
-      <Callout scene={scene} progress={progress} start={start} mid={mid} end={end} pad={pad} />
+      <Callout
+        scene={scene} progress={progress} start={start} mid={mid} end={end}
+        pad={pad} narrow={narrow}
+      />
     </motion.div>
   );
 }
@@ -265,14 +295,16 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
 
 // ── Ekte app-skjerm i 3D-tiltet iPad ──────────────────────────────────
 function DeviceVisual({
-  image, scale, y, align, landscape,
+  image, scale, y, align, landscape, narrow, reduced,
 }: {
   image: string; scale: MotionValue<number>; y: MotionValue<number>;
   align?: 'left' | 'center' | 'right'; landscape?: boolean;
+  narrow?: boolean; reduced?: boolean;
 }) {
   // iPaden lener seg motsatt av tekst-siden for dybde.
   const rotateY = align === 'right' ? 9 : align === 'left' ? -9 : 0;
-  const shiftX = align === 'right' ? '-16%' : align === 'left' ? '16%' : '0%';
+  const shiftX = narrow ? '0%'
+    : align === 'right' ? '-16%' : align === 'left' ? '16%' : '0%';
 
   return (
     <motion.div
@@ -280,7 +312,12 @@ function DeviceVisual({
         position: 'relative', scale, y, x: shiftX,
         transformStyle: 'preserve-3d', rotateY, rotateX: 4,
         // Liggende iPad trenger mer bredde for samme visuelle vekt.
-        width: landscape ? 'min(58vw, 720px)' : 'min(46vw, 540px)',
+        // Smal skjerm: enheten sentreres og løftes så callouten (nederst)
+        // ikke overlapper.
+        width: narrow
+          ? (landscape ? 'min(88vw, 460px)' : 'min(58vw, 320px)')
+          : (landscape ? 'min(58vw, 720px)' : 'min(46vw, 540px)'),
+        marginBottom: narrow ? '32vh' : 0,
       }}
     >
       {/* glød bak enheten */}
@@ -314,7 +351,9 @@ function DeviceVisual({
             width: 18, height: 18, borderRadius: '50%',
             background: P.magenta, boxShadow: `0 0 0 0 ${P.magenta}`,
           }}
-          animate={{ boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 22px ${P.magenta}00`] }}
+          animate={reduced ? undefined : {
+            boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 22px ${P.magenta}00`],
+          }}
           transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
         />
       </div>
@@ -324,10 +363,10 @@ function DeviceVisual({
 
 // ── Tekst-callout per scene ───────────────────────────────────────────
 function Callout({
-  scene, progress, start, mid, end, pad,
+  scene, progress, start, mid, end, pad, narrow,
 }: {
   scene: Scene; progress: MotionValue<number>;
-  start: number; mid: number; end: number; pad: number;
+  start: number; mid: number; end: number; pad: number; narrow?: boolean;
 }) {
   const opacity = useTransform(
     progress, [start, start + pad * 0.7, end - pad * 0.7, end], [0, 1, 1, 0],
@@ -342,11 +381,14 @@ function Callout({
         // Side-avstanden ligger i left/right, IKKE i padding: border-box
         // (CssBaseline) trakk 2x6vw fra maxWidth, og på brede skjermer ble
         // tekstkolonnen ~60px smal - ett ord per linje.
-        maxWidth: 'min(84vw, 520px)',
-        left: align === 'left' ? '6vw' : undefined,
-        right: align === 'right' ? '6vw' : undefined,
-        textAlign: align === 'center' ? 'center' : 'left',
-        top: '50%', transform: 'translateY(-50%)',
+        // Smal skjerm: tekst nederst over full bredde (enheten står øverst).
+        maxWidth: narrow ? undefined : 'min(84vw, 520px)',
+        left: narrow ? '6vw' : align === 'left' ? '6vw' : undefined,
+        right: narrow ? '6vw' : align === 'right' ? '6vw' : undefined,
+        textAlign: align === 'center' && !narrow ? 'center' : 'left',
+        top: narrow ? 'auto' : '50%',
+        bottom: narrow ? '7vh' : undefined,
+        transform: narrow ? undefined : 'translateY(-50%)',
       }}
     >
       {scene.eyebrow && (
@@ -382,6 +424,71 @@ function Callout({
         {scene.body}
       </p>
     </motion.div>
+  );
+}
+
+// ── Scene-prikker: fremdrift + hopp til scene ─────────────────────────
+function ProgressDots({
+  progress, sectionRef,
+}: {
+  progress: MotionValue<number>;
+  sectionRef: RefObject<HTMLDivElement | null>;
+}) {
+  const jumpTo = (i: number) => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const mid = ((i + 0.5) / (N + 1)) * (el.offsetHeight - window.innerHeight);
+    window.scrollTo({ top: el.offsetTop + mid, behavior: 'smooth' });
+  };
+
+  return (
+    <div
+      aria-label="Scener"
+      style={{
+        position: 'absolute', right: 22, top: '50%',
+        transform: 'translateY(-50%)',
+        display: 'flex', flexDirection: 'column', gap: 10,
+        zIndex: 5,
+      }}
+    >
+      {SCENES.map((s, i) => (
+        <Dot key={s.id} index={i} label={s.eyebrow ?? s.title} progress={progress} onJump={jumpTo} />
+      ))}
+      <Dot index={N} label="Start gratis" progress={progress} onJump={jumpTo} />
+    </div>
+  );
+}
+
+function Dot({
+  index, label, progress, onJump,
+}: {
+  index: number; label: string; progress: MotionValue<number>;
+  onJump: (i: number) => void;
+}) {
+  const unit = 1 / (N + 1);
+  const start = index * unit;
+  const end = start + unit;
+  const active = useTransform(
+    progress,
+    [start - unit * 0.5, start, end, end + unit * 0.5],
+    [0, 1, 1, 0],
+  );
+  const scale = useTransform(active, [0, 1], [1, 1.6]);
+  const opacity = useTransform(active, [0, 1], [0.3, 1]);
+
+  return (
+    <motion.button
+      type="button"
+      aria-label={`Gå til ${label}`}
+      title={label}
+      onClick={() => onJump(index)}
+      style={{
+        width: 9, height: 9, borderRadius: '50%',
+        border: 'none', padding: 0, cursor: 'pointer',
+        background: P.accentBright, scale, opacity,
+        pointerEvents: 'auto',
+      }}
+    />
   );
 }
 
