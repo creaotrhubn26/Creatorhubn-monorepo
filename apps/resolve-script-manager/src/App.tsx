@@ -1195,6 +1195,12 @@ export default function App() {
           version={updateInfo.version}
           notes={updateInfo.notes}
           onDownload={updateInfo.runDownload}
+          onRelaunch={async () => {
+            // Krever tauri-plugin-process (registrert i lib.rs) + process-
+            // tillatelse i capabilities. relaunch() avslutter og starter appen.
+            const { relaunch } = await import("@tauri-apps/plugin-process");
+            await relaunch();
+          }}
           onDismiss={() => setUpdateInfo(null)}
         />
       )}
