@@ -476,6 +476,9 @@ async fn ad_film_regenerate_shot(
     };
 
     let mut cmd = std::process::Command::new(&python_bin);
+    // Hindre .pyc-skriving inn i den signerte bundelen (bryter kode-signaturen
+    // → Gatekeeper «damaged»). Samme grunn som i python::spawn_python.
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
     cmd.arg(&script)
         .arg("--spec")
         .arg(&spec_path)
