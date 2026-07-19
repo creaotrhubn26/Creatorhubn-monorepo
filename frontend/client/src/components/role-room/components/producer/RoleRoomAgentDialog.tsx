@@ -293,6 +293,38 @@ export default function RoleRoomAgentDialog({
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [open, projectId]);
+  // Økonomi-kontekst (klientens budsjett-tak + faktisk forbruk + påslag +
+  // kontrakt): hentes ved åpning så budsjettvakten kan vises FØR generering.
+  const [economyCtx, setEconomyCtx] = useState<{
+    period: string;
+    budget: {
+      maxSpendNok: number;
+      autoPauseOnCap: boolean;
+      actualSpendNok: number;
+      effectiveCapNok: number;
+      remainingNok: number;
+      isOverBudget: boolean;
+      isNearBudget: boolean;
+    } | null;
+    markupRate: number;
+    contract: { supplier: string | null; client: string | null; totalAmount: string | null; scannedAt: string } | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!open || !projectId) return;
+    let cancelled = false;
+    void fetch(`/api/role-room/agent/economy-context/${encodeURIComponent(projectId)}`, {
+      credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
+    })
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled && body?.success) {
+          setEconomyCtx({ period: body.period, budget: body.budget, markupRate: body.markupRate, contract: body.contract });
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [open, projectId]);
   // GSC-innsikt: ekte topp-søkeord (90 dager) fra Search Console når man
   // er koblet riktig — grunnlaget for datadrevet strategi, ikke gjetting.
   const [gscInsights, setGscInsights] = useState<{
@@ -355,9 +387,17 @@ export default function RoleRoomAgentDialog({
         if (body?.success) {
           const parts: string[] = [];
           if (body.budget) {
-            parts.push(`- Budsjett-tak for ${body.period}: ${Number(body.budget.maxSpendNok).toLocaleString('nb-NO')} kr annonsekostnad${body.budget.autoPauseOnCap ? ' (auto-pause ved tak)' : ''}. Hold ALLE betalt-anbefalinger innenfor dette.`);
+            const b = body.budget;
+            const cap = Number(b.effectiveCapNok ?? b.maxSpendNok).toLocaleString('nb-NO');
+            const spent = Number(b.actualSpendNok ?? 0).toLocaleString('nb-NO');
+            const remaining = Math.max(0, Number(b.remainingNok ?? b.maxSpendNok));
+            if (b.isOverBudget) {
+              parts.push(`- HARD BUDSJETTVAKT: Budsjett-taket for ${body.period} (${cap} kr) er ALLEREDE NÅDD (brukt ${spent} kr). Du kan IKKE anbefale mer betalt annonsering denne perioden — foreslå kun organiske/GEO-tiltak, og be klienten heve rammen i Økonomi hvis mer Ads ønskes.`);
+            } else {
+              parts.push(`- HARD BUDSJETTVAKT for ${body.period}: tak ${cap} kr, brukt ${spent} kr, GJENSTÅR ${remaining.toLocaleString('nb-NO')} kr. Foreslått Google Ads-forbruk for resten av perioden MÅ være ≤ ${remaining.toLocaleString('nb-NO')} kr — overskrid det aldri. Oppgi konkret månedsbeløp og vis at det ligger under taket.${b.autoPauseOnCap ? ' (Auto-pause er PÅ: kampanjer stanser automatisk ved taket.)' : ''}`);
+            }
           } else {
-            parts.push(`- Ingen budsjett-tak satt for ${body.period} ennå — foreslå et forsvarlig startbudsjett og be klienten sette rammen i Økonomi før annonser skrus på.`);
+            parts.push(`- HARD BUDSJETTVAKT: Ingen budsjett-tak satt for ${body.period}. Ikke oppgi et konkret Ads-forbruk — foreslå et forsvarlig startbudsjett som et FORSLAG, og gjør det klart at klienten må sette rammen i Økonomi før annonser skrus på.`);
           }
           if (typeof body.markupRate === 'number') {
             parts.push(`- Påslag på annonsekostnad: ${Math.round(body.markupRate * 100)} %. Hver krone i Ads-budsjett faktureres klienten med dette påslaget — vær eksplisitt om totalkostnaden, ikke bare medieforbruket.`);
@@ -1391,6 +1431,36 @@ export default function RoleRoomAgentDialog({
                     <Typography sx={{ color: 'rgba(204,251,241,0.78)', fontSize: '0.76rem', flex: 1, minWidth: 200 }}>
                       Agenten kan nå bygge hele synlighetsstrategien på ekte data: eventoppsett, søk/innhold, GEO/AI-synlighet, kanalplan og Google Ads — holdt innenfor budsjett, påslag og kontrakt.
                     </Typography>
+                    {/* Synlig budsjettvakt: klientens FAKTISKE tak fra Økonomi,
+                        faktisk forbruk og gjenstående ramme — før generering. */}
+                    {economyCtx ? (
+                      <Chip
+                        size="small"
+                        label={economyCtx.budget
+                          ? (economyCtx.budget.isOverBudget
+                            ? `Budsjett brukt opp (${Number(economyCtx.budget.effectiveCapNok).toLocaleString('nb-NO')} kr) — ingen ny Ads`
+                            : `Ads-ramme igjen: ${Math.max(0, Number(economyCtx.budget.remainingNok)).toLocaleString('nb-NO')} kr av ${Number(economyCtx.budget.effectiveCapNok).toLocaleString('nb-NO')} kr`)
+                          : 'Ingen budsjett satt i Økonomi'}
+                        sx={{
+                          bgcolor: !economyCtx.budget
+                            ? 'rgba(148,163,184,0.16)'
+                            : economyCtx.budget.isOverBudget
+                              ? 'rgba(239,68,68,0.18)'
+                              : economyCtx.budget.isNearBudget
+                                ? 'rgba(245,158,11,0.18)'
+                                : 'rgba(34,197,94,0.16)',
+                          color: !economyCtx.budget
+                            ? '#cbd5e1'
+                            : economyCtx.budget.isOverBudget
+                              ? '#fecaca'
+                              : economyCtx.budget.isNearBudget
+                                ? '#fde68a'
+                                : '#bbf7d0',
+                          fontWeight: 700,
+                          fontSize: '0.7rem',
+                        }}
+                      />
+                    ) : null}
                     <Button
                       size="small"
                       variant="contained"

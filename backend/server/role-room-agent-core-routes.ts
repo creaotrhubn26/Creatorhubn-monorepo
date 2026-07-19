@@ -1302,11 +1302,24 @@ export function setupRoleRoomAgentCoreRoutes(
     try {
       const now = new Date();
       const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-      const [{ getBudget }, { MANAGEMENT_FEE_RATE }] = await Promise.all([
+      const [{ getBudget, computeBudgetStatus }, { MANAGEMENT_FEE_RATE }, { sumSpendForProjectPeriod }] = await Promise.all([
         import("./role-room-ads-budget.js"),
         import("./role-room-ads-shared.js"),
+        import("./role-room-ads-db.js"),
       ]);
       const budgetRow = await getBudget(pool, projectId, period).catch(() => null);
+      // Faktisk forbruk hittil i perioden — «gjenstår» = tak − brukt, ikke
+      // hele taket. Det er DET beløpet en ny Ads-anbefaling må holdes under.
+      const actualSpendNok = await sumSpendForProjectPeriod(pool, projectId, period).catch(() => 0);
+      const budgetStatus = budgetRow
+        ? computeBudgetStatus({
+            hasBudget: true,
+            maxSpendNok: budgetRow.maxSpendNok,
+            approvedOverageNok: budgetRow.approvedOverageNok,
+            actualSpendNok,
+            overageRequestedNok: budgetRow.overageRequestedNok,
+          })
+        : null;
       const scan = await getLatestContractScan(pool, projectId).catch(() => null);
       const contract = scan
         ? {
@@ -1324,7 +1337,16 @@ export function setupRoleRoomAgentCoreRoutes(
         success: true,
         period,
         budget: budgetRow
-          ? { maxSpendNok: budgetRow.maxSpendNok, autoPauseOnCap: budgetRow.autoPauseOnCap ?? false }
+          ? {
+              maxSpendNok: budgetRow.maxSpendNok,
+              autoPauseOnCap: budgetRow.autoPauseOnCap ?? false,
+              // Hard budsjettvakt: gjenstående ramme og om taket alt er nådd.
+              actualSpendNok: budgetStatus?.actualSpendNok ?? 0,
+              effectiveCapNok: budgetStatus?.effectiveCapNok ?? budgetRow.maxSpendNok,
+              remainingNok: budgetStatus?.remainingNok ?? budgetRow.maxSpendNok,
+              isOverBudget: budgetStatus?.isOverBudget ?? false,
+              isNearBudget: budgetStatus?.isNearBudget ?? false,
+            }
           : null,
         markupRate: MANAGEMENT_FEE_RATE,
         contract,
