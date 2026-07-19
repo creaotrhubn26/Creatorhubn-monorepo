@@ -30,6 +30,7 @@ import type { Pool } from 'pg';
 import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
 import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
 import { enqueueCampaignPosts } from './post-agent-campaign-enqueue.js';
+import { fetchUpdateManifest } from './post-agent-update-manifest.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
 import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
@@ -203,6 +204,14 @@ export function createPostAgentRouter(
       userId: (req as AuthedRequest).userId,
       anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     });
+  });
+
+  // ---- Robust updater-manifest (PUBLIC — updateren sender ingen bearer) ----
+
+  router.get('/update/:key', async (req: Request, res: Response) => {
+    const result = await fetchUpdateManifest(req.params.key, process.env.POST_AGENT_LATEST_VERSION);
+    if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
+    res.type('application/json').setHeader('Cache-Control', 'public, max-age=120').send(result.body);
   });
 
   // ---- Kampanje-regissør → sosial-køen ----
