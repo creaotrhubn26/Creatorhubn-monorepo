@@ -372,7 +372,7 @@ export const ACTION_MATCH_LABELS: Record<ActionMatch, string> = {
   match: 'Match', warning: 'Warning', unverified: 'Ikke verifisert',
 };
 export const ACTION_MATCH_COLORS: Record<ActionMatch, string> = {
-  match: '#10b981', warning: '#f59e0b', unverified: '#9a9186',
+  match: '#10b981', warning: '#f59e0b', unverified: '#9a94a8',
 };
 
 function normalizeSelector(s: string): string {

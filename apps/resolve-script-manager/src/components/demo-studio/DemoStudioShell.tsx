@@ -1874,7 +1874,7 @@ function VisualBeatsModal({ beats, scenes, brandColor, onClose, onApply, onGoto 
             {beats.map((b, i) => (
               <div key={i} style={{ display: 'flex', gap: 14, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
                 {/* PREVIEW av uthevingen på en mock-skjerm */}
-                <div style={{ position: 'relative', width: 150, height: 95, flexShrink: 0, background: 'linear-gradient(135deg,#2f2a26,#544b43)', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ position: 'relative', width: 150, height: 95, flexShrink: 0, background: 'linear-gradient(135deg,#241d42,#4a4266)', borderRadius: 8, overflow: 'hidden' }}>
                   {b.kind === 'stat' ? (
                     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
                       <div style={{ background: accent, color: '#fff', fontWeight: 800, fontSize: 18, padding: '6px 12px', borderRadius: 8, textAlign: 'center', maxWidth: '88%' }}>{b.overlay}</div>
