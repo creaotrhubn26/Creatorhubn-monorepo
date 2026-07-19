@@ -302,6 +302,65 @@ export default function RoleRoomAgentDialog({
   } | null>(null);
   const [gscInsightsBusy, setGscInsightsBusy] = useState(false);
   const [gscInsightsError, setGscInsightsError] = useState<string | null>(null);
+  // «Alle koblinger registrert → synlighetsstrategi»: når systemet ser at
+  // Google + Meta er riktig koblet, kan hele strategien genereres i ett
+  // klikk — eventoppsett (F3-katalogen), søk/innhold på ekte GSC-data,
+  // GEO/AI-synlighet og kanalplan. Data hentes best-effort og legges i
+  // strategigrunnlaget før vanlig generering kjøres.
+  const [visibilityStrategyBusy, setVisibilityStrategyBusy] = useState(false);
+  const runVisibilityStrategy = async () => {
+    setVisibilityStrategyBusy(true);
+    try {
+      const domain = (websiteUrl || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      let gscBlock = '';
+      if (domain && connStatus?.google.connected) {
+        try {
+          const r = await fetch(
+            `/api/role-room/agent/gsc-insights/${encodeURIComponent(projectId)}?domain=${encodeURIComponent(domain)}`,
+            { credentials: 'include', headers: roleRoomAgentDefaultHeaders() },
+          );
+          const body = await r.json().catch(() => null);
+          if (body?.success && Array.isArray(body.rows) && body.rows.length > 0) {
+            gscBlock = `\nEkte Search Console-data (${body.period.from} – ${body.period.to}) for ${body.siteUrl}:\n`
+              + body.rows.slice(0, 10).map((x: { query: string; clicks: number; impressions: number; position: number }) =>
+                `- «${x.query}»: ${x.clicks} klikk, ${x.impressions} visninger, snittposisjon ${Number(x.position).toFixed(1)}`).join('\n');
+          }
+        } catch { /* best effort */ }
+      }
+      let eventBlock = '';
+      try {
+        const r = await fetch('/api/integrations/analytics-bootstrap', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+          body: JSON.stringify({ goals: ['lead', 'booking'] }),
+        });
+        const body = await r.json().catch(() => null);
+        if (Array.isArray(body?.eventPlan) && body.eventPlan.length > 0) {
+          eventBlock = '\nAnbefalt event-oppsett (GA4 ↔ Meta, deterministisk katalog):\n'
+            + body.eventPlan.map((e: { ga4Event: string; metaEvent?: string | null; keyEvent?: boolean }) =>
+              `- ${e.ga4Event}${e.metaEvent ? ` ↔ ${e.metaEvent}` : ''}${e.keyEvent ? ' (key event)' : ''}`).join('\n');
+        }
+      } catch { /* best effort */ }
+      const directive = [
+        '\n\n=== SYNLIGHETSSTRATEGI (alle koblinger registrert) ===',
+        'Alle kontokoblinger er på plass. Lag en komplett synlighetsstrategi for hele bedriften:',
+        '1. Event-/målestrategi: konkret GA4- og Meta-pixel-eventoppsett (bruk event-planen under) og hvilke KPI-er som følges opp.',
+        '2. Søk og innhold: innholdsplan bygget på de faktiske søkedataene under — styrk det som allerede fungerer, dekk gapene.',
+        '3. GEO/AI-synlighet: hvordan bedriften blir synlig i ChatGPT, Perplexity og Bing (struktur, pillar-innhold, siterbarhet).',
+        '4. Kanalstrategi: Instagram/Facebook/YouTube/LinkedIn med publiseringsrytme og eventer knyttet til målene.',
+        gscBlock,
+        eventBlock,
+      ].filter(Boolean).join('\n');
+      const composed = extraContext.includes('=== SYNLIGHETSSTRATEGI')
+        ? extraContext
+        : extraContext + directive;
+      setExtraContext(composed);
+      void onGenerate({ projectId, projectName, websiteUrl, organizationNumber, companyName, extraContext: composed });
+    } finally {
+      setVisibilityStrategyBusy(false);
+    }
+  };
   const fetchGscInsights = async (domain: string) => {
     setGscInsightsBusy(true);
     setGscInsightsError(null);
@@ -1264,6 +1323,54 @@ export default function RoleRoomAgentDialog({
                 </Button>
               ) : null}
             </Stack>
+            {(() => {
+              // Full kobling registrert → tilby hele synlighetsstrategien.
+              // Delvis kobling → si ærlig hva som mangler for å låse den opp.
+              const googleOk = connStatus.google.connected && connStatus.manages?.gscError !== 'needs_reauth';
+              const metaOk = connStatus.meta.connected && connStatus.meta.verified;
+              const missing: string[] = [];
+              if (!googleOk) missing.push(connStatus.google.connected ? 'Google trenger ny innlogging' : 'Google-kobling');
+              if (!metaOk) missing.push(connStatus.meta.connected ? 'Meta-verifisering' : 'Meta-kobling');
+              if (missing.length === 0) {
+                return (
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    flexWrap="wrap"
+                    useFlexGap
+                    sx={{
+                      mt: 0.7,
+                      p: 0.95,
+                      borderRadius: 2.5,
+                      border: '1px solid rgba(74,222,128,0.28)',
+                      bgcolor: 'rgba(15,118,110,0.14)',
+                    }}
+                  >
+                    <Typography sx={{ color: '#bbf7d0', fontWeight: 800, fontSize: '0.82rem' }}>
+                      Alle koblinger registrert ✓
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.78)', fontSize: '0.76rem', flex: 1, minWidth: 200 }}>
+                      Agenten kan nå bygge hele synlighetsstrategien på ekte data: eventoppsett, søk/innhold, GEO/AI-synlighet og kanalplan.
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={visibilityStrategyBusy || generating || applying}
+                      onClick={() => { void runVisibilityStrategy(); }}
+                      sx={{ textTransform: 'none', fontWeight: 800, minHeight: 34 }}
+                    >
+                      {visibilityStrategyBusy ? 'Samler data…' : 'Lag synlighetsstrategi'}
+                    </Button>
+                  </Stack>
+                );
+              }
+              return (
+                <Typography sx={{ color: 'rgba(148,163,184,0.75)', fontSize: '0.73rem', mt: 0.6 }}>
+                  {`Synlighetsstrategien låses opp når alle koblinger er registrert — mangler: ${missing.join(', ')}.`}
+                </Typography>
+              );
+            })()}
           </Box>
         ) : null}
 
