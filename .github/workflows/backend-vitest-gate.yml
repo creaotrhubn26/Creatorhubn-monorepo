@@ -1,0 +1,46 @@
+name: Backend Vitest Gate
+
+# Kjører hele backend-testsuiten (vitest, server/) på hver PR. Frem til
+# 19.07.2026 gatet ingenting backend-tester i CI — 8 tester lå røde i
+# månedsvis uten at noen så det, og 200+ nye tester fra doc 14-programmet
+# beskyttet ingenting. Denne gaten feiler PR-en på enhver rød backend-test.
+#
+# Testene bruker mockede pools/fetchere (ingen DB, ingen nettverk) — se
+# sales-trigger-sync.test.ts-mønsteret. En test som trenger ekte
+# infrastruktur hører ikke hjemme i denne suiten.
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-vitest-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-vitest:
+    name: Backend vitest (server/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        run: npx vitest run server/ --reporter=default
