@@ -254,6 +254,7 @@ const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
 const AdsManagementPanel = lazy(() => retryDynamicImport(() => import('./producer/AdsManagementPanel'), 'AdsManagementPanel'));
+const ProducerBudgetTabs = lazy(() => retryDynamicImport(() => import('./producer/ProducerBudgetTabs'), 'ProducerBudgetTabs'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -13554,11 +13555,16 @@ type RoleRoomProjectWorkspaceState = {
             </Box>
           ) : (
             <>
-              {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
-                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til.
-                  KUN for innholdsprodusent-modus eller klient-review (per Daniels krav:
-                  produksjonsteam-økonomi handler om budsjett-pakker, ikke ads-fakturering). */}
-              {(isContentProducerMode || isClientReviewerMode) && (
+              {/* Produksjonsbudsjett vs. markedsføringsbudsjett i to topp-faner
+                  (Daniels krav): produksjon = fase-linjer/bemanning/avtaler,
+                  markedsføring = §5.3 ads-økonomi (annonsekostnad + 20 % påslag,
+                  budsjett-tak, godkjenningspolicy) + kampanje-styring. Markedsføring
+                  vises KUN i innholdsprodusent-/klient-review-modus; i
+                  produksjonsteam-modus faller ProducerBudgetTabs tilbake til ren
+                  produksjonsvisning uten fane-rad. */}
+            <Suspense fallback={null}>
+            <ProducerBudgetTabs
+              marketing={(isContentProducerMode || isClientReviewerMode) ? (
                 <>
                   <Suspense fallback={null}>
                     <ClientEconomyPanel
@@ -13568,14 +13574,15 @@ type RoleRoomProjectWorkspaceState = {
                   </Suspense>
                   {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
                   {!isClientReviewerMode && (
-                    <Box sx={{ mb: 2 }}>
+                    <Box sx={{ mt: 2 }}>
                       <Suspense fallback={null}>
                         <AdsManagementPanel projectId={currentProject.id} />
                       </Suspense>
                     </Box>
                   )}
                 </>
-              )}
+              ) : null}
+              production={(
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
               projectId={currentProject.id}
@@ -13623,6 +13630,9 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+              )}
+            />
+            </Suspense>
             </>
           )}
         </TabPanel>
