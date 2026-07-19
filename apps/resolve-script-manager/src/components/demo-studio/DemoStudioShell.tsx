@@ -954,11 +954,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             <span style={{ width: 18, opacity: 0.85 }}>◇</span> Sjekk oppsett
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
-            <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
-              <span style={{ color: C.accent }}>✦</span> AI Director
-              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: aiReady ? C.green : '#b5651d' }} />
+          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderTop: `3px solid ${C.accent}`, borderRadius: 14, padding: '14px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(30,27,46,0.06)' }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ width: 22, height: 22, borderRadius: 7, background: C.accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, flexShrink: 0 }}>✦</span> AI Director
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: aiReady ? '#e6f6ec' : C.warnSoft, color: aiReady ? C.green : C.warn, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: aiReady ? C.green : C.warn }} />
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
@@ -1329,9 +1329,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     applyDemoTypeTemplate(t, true);
                   }}
                     title={`${DEMO_TYPE_LABELS[t]} — ${DEMO_TYPE_TEMPLATES[t].scenes.length} scener · ~${DEMO_TYPE_TEMPLATES[t].targetSeconds}s`}
-                    style={{ aspectRatio: '1.15', border: `1px solid ${project.demoType === t ? C.accent : C.line}`, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', color: C.inkSoft, background: project.demoType === t ? C.cream : '#fff' }}>
-                    <div style={{ fontSize: 20 }}>{DEMO_TYPE_ICON[t]}</div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: C.ink }}>{DEMO_TYPE_LABELS[t].split(' ')[0]}</div>
+                    style={{ aspectRatio: '1.2', border: `1.5px solid ${project.demoType === t ? C.accent : C.line}`, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer', background: project.demoType === t ? C.accentSoft : '#fff', transition: 'border-color .12s, background .12s' }}>
+                    <div style={{ fontSize: 19, color: project.demoType === t ? C.accent : C.inkSoft }}>{DEMO_TYPE_ICON[t]}</div>
+                    <div style={{ fontSize: 12, fontWeight: project.demoType === t ? 700 : 500, color: project.demoType === t ? C.accent : C.ink }}>{DEMO_TYPE_LABELS[t].split(' ')[0]}</div>
                   </div>
                 ))}
               </div>
@@ -1392,8 +1392,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               {/* G17: frame-blokkert side uten skjermbilder → forklar hvorfor
                   rammen under er blank, med utvei — i stedet for stille feil. */}
               {embedBlocked && !(project.scanShots && project.scanShots.length) && (
-                <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: '#fff8ec', border: '1px solid #f0d9a8', fontSize: 12.5, color: '#8a6516', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span>⚠</span>
+                <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: C.warnSoft, border: `1px solid ${C.warn}`, fontSize: 12.5, color: C.ink, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: C.warn }}>⚠</span>
                   <span style={{ flex: 1 }}>Denne siden blokkerer innebygd forhåndsvisning ({embedBlocked}) — rammen under er derfor blank. Hent ekte skjermbilder i stedet.</span>
                   <button style={{ ...btn, whiteSpace: 'nowrap', opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
                     onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Henter…' : 'Hent forhåndsvisning'}</button>
@@ -1605,6 +1605,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     </div>
                   </div>
 
+                  <div style={{ ...secHd, marginTop: 18, marginBottom: 9, paddingTop: 15, borderTop: `1px solid ${C.line}` }}>Handling & hotspot</div>
                   <div style={fldLabel}>Required action</div>
                   <div style={row2}>
                     <select style={field} value={selected.actionType ?? 'click'} onChange={(e) => updateScene(selected.id, { actionType: e.target.value as DemoActionType })}>
@@ -1626,12 +1627,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {placingHotspot
                     ? <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>{selected.hotspot ? 'Dra boksen for å flytte, eller dra et hjørne/kant for å endre størrelse. Tegn et nytt rektangel på tom flate for å erstatte.' : 'Dra et rektangel rundt elementet for eksakt markering — eller bare klikk for en standard-boks.'}</div>
                     : selected.hotspot
-                    ? <div style={{ marginTop: 6 }}><span style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: '#e6f3ec', color: C.green, display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />Element markert — fremheves i opptak</span></div>
+                    ? <div style={{ marginTop: 6 }}><span style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: '#e6f6ec', color: C.green, display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />Element markert — fremheves i opptak</span></div>
                     : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Tegn rundt elementet på preview-en så Guided Recorder kan fremheve det presist.</div>}
                   {selected.ctaType && (
-                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
+                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: C.warnSoft, color: C.warn }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
                   )}
 
+                  <div style={{ ...secHd, marginTop: 18, marginBottom: 9, paddingTop: 15, borderTop: `1px solid ${C.line}` }}>Video & bevegelse</div>
                   <div style={fldLabel}>Kamera & overgang (autonom video)</div>
                   <div style={row2}>
                     <select style={field} value={selected.cameraMove ?? 'auto'} onChange={(e) => updateScene(selected.id, { cameraMove: e.target.value as CameraMove })}>
@@ -1682,11 +1684,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <Stat h="⏱ Varighet" v={`${fmt(totalDuration(scenes))} total`} s="Anbefalt 60–90 s" />
           <Stat h="◷ Opptak" v={recording ? `Steg ${recorderStepIndex + 1} av ${scenes.length}` : 'Ikke startet'} s={recording ? 'Venter på deg' : 'Trykk Record'} />
           <Stat h="⤓ Format" v={`${project.format} · 1080p`} link="Eksport →" onLink={() => setNav('export')} />
-          <div style={{ background: C.panel, padding: '13px 15px' }}>
-            <div style={{ width: 42, height: 42, borderRadius: '50%', border: `3px solid ${C.green}`, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, float: 'right' }}>{Math.round((doneCount / Math.max(scenes.length, 1)) * 100)}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>✓ Demo-score</div>
-            <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{doneCount === scenes.length ? 'Klar for eksport' : 'Ta opp scener'}</div>
-          </div>
+          {(() => {
+            const pct = Math.round((doneCount / Math.max(scenes.length, 1)) * 100);
+            const ring = pct === 100 ? C.green : pct > 0 ? C.warn : C.lineStrong;
+            return (
+              <div style={{ background: C.panel, padding: '11px 15px 12px' }}>
+                <div style={{ width: 42, height: 42, borderRadius: '50%', border: `3px solid ${ring}`, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: ring, float: 'right' }}>{pct}</div>
+                <div style={{ ...secHd, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>✓ Demo-score</div>
+                <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{pct === 100 ? 'Klar for eksport' : 'Ta opp scener'}</div>
+              </div>
+            );
+          })()}
         </div>
       )}
       {showSignIn && (
@@ -2278,11 +2286,11 @@ function ResponsiveCheckModal({ report, onClose, onApply }: {
 
 function Stat({ h, v, s, link, onLink }: { h: string; v: string; s?: string; link?: string; onLink?: () => void }) {
   return (
-    <div style={{ background: C.panel, padding: '13px 15px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>{h}</div>
-      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{v}</div>
+    <div style={{ background: C.panel, padding: '11px 15px 12px' }}>
+      <div style={{ ...secHd, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>{h}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{v}</div>
       {s && <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{s}</div>}
-      {link && <div onClick={onLink} style={{ fontSize: 11, color: C.inkSoft, marginTop: 8, cursor: onLink ? 'pointer' : 'default' }}>{link}</div>}
+      {link && <div onClick={onLink} style={{ fontSize: 11, fontWeight: 600, color: C.accent, marginTop: 8, cursor: onLink ? 'pointer' : 'default' }}>{link}</div>}
     </div>
   );
 }
