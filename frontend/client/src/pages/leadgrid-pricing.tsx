@@ -235,12 +235,12 @@ export default function LeadgridPricingPage() {
       m.content = content;
       document.head.appendChild(m);
     }
-    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://theroleroom.com/leadgrid/pricing' });
+    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://leadgrid.no/priser' });
     setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid Priser — fra 799 NOK/mnd' });
     setMetaTagByAttr('meta', 'property', 'og:description', { content });
     setMetaTagByAttr('meta', 'property', 'og:type', { content: 'website' });
-    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://theroleroom.com/leadgrid/pricing' });
-    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://theroleroom.com/leadgrid/og-image.png' });
+    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://leadgrid.no/priser' });
+    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://leadgrid.no/leadgrid/og-image.png' });
 
     injectJsonLd('leadgrid-pricing-offers', {
       '@context': 'https://schema.org',

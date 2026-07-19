@@ -201,20 +201,20 @@ export default function LeadgridLanding() {
       document.head.appendChild(m);
     }
     // Canonical
-    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://theroleroom.com/leadgrid' });
+    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://leadgrid.no' });
     // Open Graph
     setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
     setMetaTagByAttr('meta', 'property', 'og:description', { content });
     setMetaTagByAttr('meta', 'property', 'og:type', { content: 'website' });
-    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://theroleroom.com/leadgrid' });
-    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://theroleroom.com/leadgrid/og-image.png' });
+    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://leadgrid.no' });
+    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://leadgrid.no/leadgrid/og-image.png' });
     setMetaTagByAttr('meta', 'property', 'og:site_name', { content: 'Leadgrid' });
     setMetaTagByAttr('meta', 'property', 'og:locale', { content: 'nb_NO' });
     // Twitter Cards
     setMetaTagByAttr('meta', 'name', 'twitter:card', { content: 'summary_large_image' });
     setMetaTagByAttr('meta', 'name', 'twitter:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
     setMetaTagByAttr('meta', 'name', 'twitter:description', { content });
-    setMetaTagByAttr('meta', 'name', 'twitter:image', { content: 'https://theroleroom.com/leadgrid/og-image.png' });
+    setMetaTagByAttr('meta', 'name', 'twitter:image', { content: 'https://leadgrid.no/leadgrid/og-image.png' });
 
     // JSON-LD: SoftwareApplication + Organization + FAQPage
     injectJsonLd('leadgrid-software-app', {
@@ -225,7 +225,7 @@ export default function LeadgridLanding() {
       applicationSubCategory: 'CRM',
       operatingSystem: 'Web, iOS',
       description: content,
-      url: 'https://theroleroom.com/leadgrid',
+      url: 'https://leadgrid.no',
       offers: [
         { '@type': 'Offer', name: 'Solo Free', price: '0', priceCurrency: 'NOK' },
         { '@type': 'Offer', name: 'Solo Pro', price: '799', priceCurrency: 'NOK' },
@@ -251,10 +251,10 @@ export default function LeadgridLanding() {
       name: 'Creatorhub AS',
       legalName: 'Creatorhub AS',
       url: 'https://creatorhubn.com',
-      logo: 'https://theroleroom.com/leadgrid/logo.png',
+      logo: 'https://leadgrid.no/logo.png',
       foundingDate: '2024',
       address: { '@type': 'PostalAddress', addressCountry: 'NO' },
-      sameAs: ['https://theroleroom.com', 'https://theroleroom.com/leadgrid'],
+      sameAs: ['https://theroleroom.com', 'https://leadgrid.no'],
     });
     injectJsonLd('leadgrid-faq', {
       '@context': 'https://schema.org',
@@ -379,7 +379,7 @@ function StickyHeader() {
             <Button
               variant="text"
               sx={{ color: PALETTE.textMuted, fontWeight: 500, textTransform: 'none' }}
-              href="/"
+              href="https://creatorhubn.com"
             >
               Logg inn
             </Button>
