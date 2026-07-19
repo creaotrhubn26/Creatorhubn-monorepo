@@ -773,181 +773,48 @@ function DeviceComposition() {
         },
       }}
     >
-      {/* Hovedskjerm: stylized browser/desktop view av Lead Map */}
-      <MockupBrowser />
-      {/* iPad foran-venstre */}
-      <MockupTablet />
-      {/* iPhone foran-høyre */}
-      <MockupPhone />
-    </Box>
-  );
-}
-
-/** Browser-window (sentral): Leadgrid Lead Map med kart-pins */
-function MockupBrowser() {
-  return (
-    <Box
-      sx={{
-        position: 'relative',
-        width: { xs: '90%', md: '85%' },
-        maxWidth: 560,
-        aspectRatio: '16 / 10',
-        borderRadius: 3,
-        bgcolor: '#0a0512',
-        border: '1px solid rgba(167, 139, 250, 0.20)',
-        boxShadow: '0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04) inset',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Window-bar */}
-      <Box sx={{
-        height: 28, display: 'flex', alignItems: 'center', px: 1.5, gap: 0.8,
-        bgcolor: 'rgba(0,0,0,0.4)', borderBottom: '1px solid rgba(255,255,255,0.04)',
-      }}>
-        {['#ff6058', '#febc2e', '#28c941'].map((c) => (
-          <Box key={c} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c }} />
-        ))}
-      </Box>
-      {/* Map-area med "kart"-gradient + pins */}
-      <Box sx={{
-        position: 'relative', height: 'calc(100% - 28px)',
-        background: `
-          radial-gradient(ellipse 40% 30% at 30% 40%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
-          radial-gradient(ellipse 30% 25% at 70% 60%, rgba(124, 58, 237, 0.10) 0%, transparent 60%),
-          linear-gradient(135deg, #0d0719 0%, #1a0a2e 100%)
-        `,
-      }}>
-        {/* Grid-lines for "kart"-følelse */}
-        <Box sx={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `
-            linear-gradient(rgba(167, 139, 250, 0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(167, 139, 250, 0.06) 1px, transparent 1px)
-          `,
-          backgroundSize: '30px 30px',
-        }} />
-        {/* Pins */}
-        {[
-          { x: '20%', y: '30%', color: PALETTE.accent },
-          { x: '45%', y: '55%', color: PALETTE.accentBright },
-          { x: '65%', y: '35%', color: PALETTE.accent },
-          { x: '78%', y: '70%', color: '#9be15d' },
-          { x: '35%', y: '78%', color: PALETTE.accentBright },
-        ].map((p, i) => (
-          <Box key={i} sx={{
-            position: 'absolute', left: p.x, top: p.y,
-            width: 14, height: 14, borderRadius: '50% 50% 50% 0',
-            bgcolor: p.color, transform: 'rotate(-45deg)',
-            boxShadow: `0 0 16px ${p.color}aa, 0 0 0 3px ${p.color}33`,
-          }} />
-        ))}
-      </Box>
-    </Box>
-  );
-}
-
-/** iPad — foran-venstre, lett vippet */
-function MockupTablet() {
-  return (
-    <Box
-      sx={{
-        position: 'absolute',
-        left: { xs: '0%', md: '-6%' },
-        top: { xs: '8%', md: '10%' },
-        width: { xs: '30%', md: '28%' },
-        aspectRatio: '3 / 4',
-        borderRadius: 2.5,
-        bgcolor: '#0a0512',
-        border: '1px solid rgba(167, 139, 250, 0.18)',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        transform: 'rotate(-4deg)',
-        overflow: 'hidden',
-        p: 0.5,
-      }}
-    >
-      <Box sx={{
-        width: '100%', height: '100%',
-        borderRadius: 1.5,
-        background: `
-          radial-gradient(circle at 30% 25%, rgba(167, 139, 250, 0.18) 0%, transparent 50%),
-          linear-gradient(180deg, #0d0719 0%, #050211 100%)
-        `,
-        display: 'flex', flexDirection: 'column', p: 1, gap: 0.6,
-      }}>
-        {/* Stilisert "Min dag"-header */}
-        <Box sx={{ height: 6, width: '40%', bgcolor: PALETTE.accent, borderRadius: 2, opacity: 0.8 }} />
-        <Box sx={{ height: 4, width: '70%', bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2 }} />
-        {/* Lead-cards */}
-        {[1, 2, 3].map((i) => (
-          <Box key={i} sx={{
-            mt: 0.4, p: 0.6, borderRadius: 0.8,
-            bgcolor: 'rgba(167, 139, 250, 0.08)',
-            border: '1px solid rgba(167, 139, 250, 0.10)',
-            display: 'flex', gap: 0.5,
-          }}>
-            <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: PALETTE.accent, opacity: 0.7 }} />
-            <Box sx={{ flex: 1 }}>
-              <Box sx={{ height: 3, width: '60%', bgcolor: 'rgba(255,255,255,0.14)', borderRadius: 1 }} />
-              <Box sx={{ mt: 0.3, height: 2, width: '40%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
-            </Box>
-          </Box>
-        ))}
-      </Box>
-    </Box>
-  );
-}
-
-/** iPhone — foran-høyre, lett vippet motsatt */
-function MockupPhone() {
-  return (
-    <Box
-      sx={{
-        position: 'absolute',
-        right: { xs: '0%', md: '-4%' },
-        bottom: { xs: '5%', md: '8%' },
-        width: { xs: '22%', md: '20%' },
-        aspectRatio: '1 / 2.05',
-        borderRadius: 3,
-        bgcolor: '#0a0512',
-        border: '1px solid rgba(167, 139, 250, 0.18)',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        transform: 'rotate(6deg)',
-        overflow: 'hidden',
-        p: 0.4,
-        // Notch
-        '&::before': {
-          content: '""',
+      {/* Ekte app-skjermbilder i ekte Apple-rammer (frameit) — samme
+          cardinal rule som ellers: aldri tegnede liksom-UI-er. */}
+      <Box
+        component="img"
+        src="/leadgrid/hero/macbook.png"
+        alt="Leadgrid Salgsledelse på MacBook"
+        sx={{
+          position: 'relative',
+          width: { xs: '96%', md: '100%' },
+          maxWidth: 640,
+          height: 'auto',
+          filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.6))',
+        }}
+      />
+      <Box
+        component="img"
+        src="/leadgrid/hero/ipad.png"
+        alt="Leadgrid-kartet på iPad"
+        sx={{
           position: 'absolute',
-          top: 6, left: '50%', transform: 'translateX(-50%)',
-          width: '40%', height: 10, borderRadius: 6, bgcolor: '#000', zIndex: 2,
-        },
-      }}
-    >
-      <Box sx={{
-        width: '100%', height: '100%',
-        borderRadius: 2,
-        background: 'linear-gradient(180deg, #0d0719 0%, #050211 100%)',
-        display: 'flex', flexDirection: 'column', p: 0.8, gap: 0.5, pt: 2,
-      }}>
-        {/* Lead-list */}
-        {[1, 2, 3, 4].map((i) => (
-          <Box key={i} sx={{
-            p: 0.4, borderRadius: 0.6,
-            bgcolor: 'rgba(167, 139, 250, 0.08)',
-            display: 'flex', gap: 0.4, alignItems: 'center',
-          }}>
-            <Box sx={{
-              width: 8, height: 8, borderRadius: '50% 50% 50% 0',
-              bgcolor: i === 1 ? '#9be15d' : PALETTE.accent,
-              transform: 'rotate(-45deg)',
-            }} />
-            <Box sx={{ flex: 1 }}>
-              <Box sx={{ height: 2.5, width: '70%', bgcolor: 'rgba(255,255,255,0.16)', borderRadius: 1 }} />
-              <Box sx={{ mt: 0.2, height: 1.8, width: '45%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
-            </Box>
-          </Box>
-        ))}
-      </Box>
+          left: { xs: '-2%', md: '-6%' },
+          bottom: { xs: '4%', md: '2%' },
+          width: { xs: '44%', md: '42%' },
+          height: 'auto',
+          transform: 'rotate(-4deg)',
+          filter: 'drop-shadow(0 25px 50px rgba(0,0,0,0.65))',
+        }}
+      />
+      <Box
+        component="img"
+        src="/leadgrid/hero/iphone.png"
+        alt="Dagens agenda i Leadgrid på iPhone"
+        sx={{
+          position: 'absolute',
+          right: { xs: '-1%', md: '-3%' },
+          bottom: { xs: '2%', md: '0%' },
+          width: { xs: '20%', md: '19%' },
+          height: 'auto',
+          transform: 'rotate(6deg)',
+          filter: 'drop-shadow(0 25px 50px rgba(0,0,0,0.65))',
+        }}
+      />
     </Box>
   );
 }
