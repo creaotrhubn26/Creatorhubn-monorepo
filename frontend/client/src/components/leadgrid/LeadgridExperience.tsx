@@ -55,6 +55,9 @@ interface Scene {
   image: string;
   /** Full-bleed bakgrunn bak en 'framed'-enhet. */
   bg?: string;
+  /** Skjermopptak fra simulatoren (grensesnittet i bruk) — vises i
+   *  enhets-rammen i stedet for stillbildet; `image` blir poster. */
+  video?: string;
   eyebrow?: string;
   title: string;
   body: string;
@@ -72,10 +75,11 @@ const SCENES: Scene[] = [
     align: 'left',
   },
   {
-    id: 'kart', kind: 'device', image: '/leadgrid/app/kart.webp',
+    id: 'kart', kind: 'device', image: '/leadgrid/app/tour-kart-poster.webp',
+    video: '/leadgrid/app/tour-kart.mp4',
     eyebrow: 'Kartet', title: 'Se hele territoriet.',
     body: 'Alle leads på kartet, farget etter temperatur. Trykk en pin — hele historikken folder seg ut.',
-    align: 'left',
+    align: 'left', landscape: true,
   },
   {
     id: 'leads', kind: 'device', image: '/leadgrid/app/leads.webp',
@@ -99,7 +103,8 @@ const SCENES: Scene[] = [
     align: 'right',
   },
   {
-    id: 'dorsalg', kind: 'device', image: '/leadgrid/app/dorsalg.webp',
+    id: 'dorsalg', kind: 'device', image: '/leadgrid/app/tour-dorsalg-poster.webp',
+    video: '/leadgrid/app/tour-dorsalg.mp4',
     eyebrow: 'Dørsalg & verving', title: 'Hver dør. Én farge.',
     body: 'Dørsalg-modus henter alle adressene i området og fargelegger dem etter utfall — vunnet, ikke hjemme, avslått. Registrer salget på døra, ferdig.',
     align: 'left', landscape: true,
@@ -268,8 +273,9 @@ function SceneLayer({
         </>
       ) : (
         <DeviceVisual
-          image={scene.image} scale={scale} y={y} align={scene.align}
-          landscape={scene.landscape} narrow={narrow} reduced={reduced}
+          image={scene.image} video={scene.video} scale={scale} y={y}
+          align={scene.align} landscape={scene.landscape} narrow={narrow}
+          reduced={reduced}
         />
       )}
       <Callout
@@ -341,9 +347,10 @@ function FramedVisual({
 
 // ── Ekte app-skjerm i 3D-tiltet iPad ──────────────────────────────────
 function DeviceVisual({
-  image, scale, y, align, landscape, narrow, reduced,
+  image, video, scale, y, align, landscape, narrow, reduced,
 }: {
-  image: string; scale: MotionValue<number>; y: MotionValue<number>;
+  image: string; video?: string;
+  scale: MotionValue<number>; y: MotionValue<number>;
   align?: 'left' | 'center' | 'right'; landscape?: boolean;
   narrow?: boolean; reduced?: boolean;
 }) {
@@ -382,13 +389,27 @@ function DeviceVisual({
           boxShadow: '0 40px 120px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.06)',
         }}
       >
-        <img
-          src={image} alt=""
-          style={{
-            display: 'block', width: '100%', height: 'auto',
-            borderRadius: 24, background: '#0b0518',
-          }}
-        />
+        {video && !reduced ? (
+          // Skjermopptak fra simulatoren: grensesnittet i bruk, ikke
+          // stillbilde. Muted+playsInline kreves for autoplay; poster =
+          // stillbildet så scenen aldri er tom. Reduced motion → poster.
+          <video
+            src={video} poster={image}
+            autoPlay muted loop playsInline preload="metadata"
+            style={{
+              display: 'block', width: '100%', height: 'auto',
+              borderRadius: 24, background: '#0b0518',
+            }}
+          />
+        ) : (
+          <img
+            src={image} alt=""
+            style={{
+              display: 'block', width: '100%', height: 'auto',
+              borderRadius: 24, background: '#0b0518',
+            }}
+          />
+        )}
         {/* pulsende «tap»-hint-pin */}
         <motion.span
           aria-hidden
