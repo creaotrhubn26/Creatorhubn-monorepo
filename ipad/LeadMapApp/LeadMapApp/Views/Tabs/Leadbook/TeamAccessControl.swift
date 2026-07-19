@@ -104,6 +104,10 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // org-er som hovedsakelig driver dørsalg. DEFAULT AV (isExplicitlyEnabled-
     // mønsteret): B2B-org-er ser aldri modusen; blandes aldri med bedrifts-CRM.
     case dorsalgModus = "Dørsalg · Husstandsmodus"
+    // Adressesøk på kartet i dørsalg-modus. DEFAULT AV (Daniel 2026-07-18:
+    // selgerne ser adressen ved å tappe pinnen) — superadmin aktiverer for
+    // org-er som trenger å hoppe rett til en adresse.
+    case dorsalgAdresseSok = "Dørsalg · Adressesøk"
 
     var id: String { rawValue }
 
@@ -166,13 +170,14 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .utstyrsregister: return "shippingbox.fill"
         // Dørsalg
         case .dorsalgModus: return "door.left.hand.open"
+        case .dorsalgAdresseSok: return "magnifyingglass"
         }
     }
 
     var group: Group {
         switch self {
         case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter,
-             .dorsalgModus: return .kjerne
+             .dorsalgModus, .dorsalgAdresseSok: return .kjerne
         case .analyse, .team, .salgsledelse, .omradeTildeling,
              .utstyrsregister: return .analyseTeam
         case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler,

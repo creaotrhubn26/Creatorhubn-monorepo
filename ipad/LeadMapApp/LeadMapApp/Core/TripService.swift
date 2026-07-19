@@ -77,6 +77,21 @@ final class TripService {
         return r?.vehicles ?? []
     }
     func bookings(using api: APIClient?) async -> [GoBooking] {
+        // Demo: et par bookinger så lista viser hvordan deling fungerer.
+        if DemoModeManager.isActiveNonisolated {
+            return [
+                GoBooking(id: "demo-b1", vehicleLabel: "Servicebil 1 · VW ID. Buzz",
+                          vehiclePlate: "EB 41230", bookedBy: "demo-u1",
+                          bookedByName: "Espen Berg",
+                          startAt: "2026-07-20T08:00:00Z", endAt: "2026-07-20T15:00:00Z",
+                          purpose: "Kundebesøk Bjerke", isMine: false),
+                GoBooking(id: "demo-b2", vehicleLabel: "Varebil · VW Caddy",
+                          vehiclePlate: "DR 55821", bookedBy: "demo-me",
+                          bookedByName: "Daniel Qazi",
+                          startAt: "2026-07-21T09:00:00Z", endAt: "2026-07-21T12:00:00Z",
+                          purpose: "Levering utstyr", isMine: true),
+            ]
+        }
         guard let api else { return [] }
         let r: BookingsResponse? = try? await api._get("/api/leadgrid/vehicle/bookings")
         return r?.bookings ?? []
@@ -111,11 +126,37 @@ final class TripService {
     private struct IdAck: Decodable { let ok: Bool?; let id: String?; let error: String? }
 
     /// Aktiv flåte i org-en. Tom liste ved feil (og for org uten flåte).
+    /// Demo: fiktiv flåte så registrering/booking kan vises uten backend.
     func orgVehicles(using api: APIClient?) async -> [OrgVehicle] {
+        if DemoModeManager.isActiveNonisolated { return Self.demoOrgVehicles }
         guard let api else { return [] }
         let r: OrgVehiclesResponse? = try? await api._get("/api/leadgrid/org-vehicles")
         return r?.vehicles ?? []
     }
+
+    /// Fiktive firmabiler (demo/landing-opptak) — dekker delt flåte,
+    /// personlig tildelt bil og EU-kontroll-frist.
+    static let demoOrgVehicles: [OrgVehicle] = [
+        OrgVehicle(id: "demo-v1", plate: "EB 41230", displayName: "Servicebil 1 · VW ID. Buzz",
+                   fuel: "el", kind: "car", euControlDue: nil, isShared: true,
+                   assignedUserId: nil, assignedUserName: nil,
+                   note: "Står på kontoret", status: "aktiv"),
+        OrgVehicle(id: "demo-v2", plate: "EL 78412", displayName: "Selgerbil Øst · Toyota Corolla",
+                   fuel: "fossil", kind: "car", euControlDue: "2026-09-14", isShared: true,
+                   assignedUserId: nil, assignedUserName: nil, note: nil, status: "aktiv"),
+        OrgVehicle(id: "demo-v3", plate: "DR 55821", displayName: "Varebil · VW Caddy",
+                   fuel: "fossil", kind: "van", euControlDue: "2026-08-02", isShared: true,
+                   assignedUserId: nil, assignedUserName: nil,
+                   note: "Husk lasterampe", status: "aktiv"),
+        OrgVehicle(id: "demo-v4", plate: "EK 90455", displayName: "Tesla Model Y",
+                   fuel: "el", kind: "car", euControlDue: nil, isShared: false,
+                   assignedUserId: "demo-u1", assignedUserName: "Espen Berg",
+                   note: nil, status: "aktiv"),
+        OrgVehicle(id: "demo-v5", plate: "EV 12043", displayName: "BMW i4",
+                   fuel: "el", kind: "car", euControlDue: nil, isShared: false,
+                   assignedUserId: "demo-me", assignedUserName: "Daniel Qazi",
+                   note: "Parkert på kontoret", status: "aktiv"),
+    ]
 
     struct OrgVehicleDraft: Encodable {
         var plate: String

@@ -23,6 +23,8 @@ struct LeadgridGoDashboardView: View {
     @State private var showVehicle = false
     @State private var showKjorebok = false
     @State private var showBooking = false
+    /// Org-flåten (for «Start kjøring»-kortet — bil tildelt meg).
+    @State private var orgFleet: [OrgVehicle] = []
     @State private var store = TripStore.shared
     @State private var detector = TripDetector.shared
 
@@ -71,6 +73,38 @@ struct LeadgridGoDashboardView: View {
         .sheet(isPresented: $showKjorebok) { KjorebokView() }
         .sheet(isPresented: $showBooking) { LeadgridGoBookingView() }
         .task { await loadTeam() }
+        .task { orgFleet = await TripService.shared.orgVehicles(using: appState.api) }
+        #if DEBUG
+        // QA (pitch-screenshots): QA_KJOREBOK=1 åpner kjørebok-sheeten
+        // automatisk — reverteres m/ task #59-følget.
+        .task {
+            if ProcessInfo.processInfo.environment["QA_KJOREBOK"] == "1" {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                showKjorebok = true
+            }
+        }
+        // QA (landing-videoer): QA_TOUR=kjorebok — dashboard → kjørebok →
+        // registrer bil (regnr-oppslag) → book firmabil. Task #59-følget.
+        .task {
+            guard ProcessInfo.processInfo.environment["QA_TOUR"] == "kjorebok" else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            showKjorebok = true
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            showKjorebok = false
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            showVehicle = true
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            showVehicle = false
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            showBooking = true
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            showBooking = false
+            // Finale: tildelt bil står klar → «Start kjøring» hopper til
+            // Kart med kjøre-nav (kjøreboka logger turen).
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            startKjoring()
+        }
+        #endif
     }
 
     /// Demo-aware datakilde for header-badges (samme gating som søsterfanene).
@@ -86,10 +120,20 @@ struct LeadgridGoDashboardView: View {
             leads: headerLeads
         ) {
             Button { showBooking = true } label: {
-                Label("Book bil", systemImage: "calendar.badge.plus")
-                    .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(NavPOIBrand.purple, in: Capsule())
+                // HStack + fixedSize (ikke Label): i trang header ble teksten
+                // komprimert til 0 bredde → knappen så ut som en lilla klump
+                // med bare ikon (Daniels screenshot 2026-07-19).
+                HStack(spacing: 5) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.appScaled(size: 11, weight: .bold))
+                    Text("Book bil")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(NavPOIBrand.purple, in: Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -214,8 +258,70 @@ struct LeadgridGoDashboardView: View {
 
     // MARK: personlig — egen kjørebok + firma bil
 
+    /// Bilen org-en har tildelt MEG (fast, ikke delt). Demo matcher på navn.
+    private var minTildelteBil: OrgVehicle? {
+        orgFleet.first { !$0.isShared && $0.assignedUserName == appState.displayName }
+    }
+
+    /// «Start kjøring»: tildelt bil står klar → hopp til Kart med kjøre-nav
+    /// mot dagens første lead. Kjøreboka auto-logger turen (nav-motoren).
+    private func startKjoring() {
+        guard let lead = headerLeads.first else { return }
+        // transport: driving — du setter deg i firmabilen (uten hintet
+        // arvet nav-en gå-modus fra forrige økt).
+        appState.requestNavigation(
+            lat: lead.latitude, lon: lead.longitude,
+            name: lead.name, address: lead.address ?? "",
+            start: true, transport: "driving")
+    }
+
+    /// Klar-til-kjøring-kort: vises når org-en har tildelt deg en firmabil.
+    private var startKjoringCard: some View {
+        Group {
+            if let bil = minTildelteBil, headerLeads.first != nil {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle().fill(NavPOIBrand.green.opacity(0.18))
+                        Image(systemName: "car.fill").foregroundStyle(NavPOIBrand.green)
+                    }
+                    .frame(width: 40, height: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(bil.label) står klar")
+                            .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                        Text("\(bil.plate) · \(bil.note ?? "Tildelt deg") — klar for dagens felt")
+                            .font(.appScaled(size: 10, weight: .semibold))
+                            .foregroundStyle(NavPOIBrand.textSecondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Button { startKjoring() } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "location.north.line.fill")
+                                .font(.appScaled(size: 11, weight: .bold))
+                            Text("Start kjøring")
+                                .font(.appScaled(size: 12, weight: .bold))
+                        }
+                        .fixedSize()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 13).padding(.vertical, 9)
+                        .background(
+                            LinearGradient(colors: [NavPOIBrand.green, NavPOIBrand.green.opacity(0.75)],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(NavPOIBrand.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 13))
+                .overlay(RoundedRectangle(cornerRadius: 13)
+                    .stroke(NavPOIBrand.green.opacity(0.35), lineWidth: 1))
+            }
+        }
+    }
+
     private var personalSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            startKjoringCard
             HStack(spacing: 7) {
                 Image(systemName: "book.closed.fill").foregroundStyle(NavPOIBrand.purpleLight)
                 Text("Min kjørebok").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)

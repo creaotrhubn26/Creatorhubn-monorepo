@@ -514,6 +514,9 @@ struct KartView: View {
     /// har valgt en pin/rad (selectedLead init-es med mock-placeholder
     /// som ellers ville lekke). Demo beholder pre-valgt lead.
     @State private var hasSelectedLead: Bool = false
+    /// iPad: «Leads i området»-kolonnen kollapsbar — i portrett stjeler den
+    /// kartbredde. Persistert så valget huskes mellom økter.
+    @AppStorage("kart.leads_panel_collapsed") private var leadsPanelCollapsed = false
     /// iPhone: «Leads i området» som draggbart halv-sheet over kartet.
     @State private var areaListOpen: Bool = false
     /// Auto-senter kun én gang per fane-liv.
@@ -535,6 +538,32 @@ struct KartView: View {
     @State private var navDelayReason: String? = nil
     /// Posisjonen ruta sist ble beregnet fra — re-ruter når du har beveget deg.
     @State private var navRerouteAnchor: CLLocationCoordinate2D? = nil
+    /// Cooldown: aldri re-rut oftere enn hvert 12. sekund — reroute-stormer
+    /// (GPS utenfor rute over tid) nullstilte stegene og fikk stemmen til å
+    /// annonsere samme manøver i loop.
+    @State private var navLastRerouteAt: Date? = nil
+    /// Tale-pause etter re-rute: stegene er nye, ikke les dem opp med én gang.
+    @State private var navSpeechGraceUntil: Date? = nil
+    /// Faktisk bevegelses-kurs (grader, nord=0) fra siste posisjons-delta —
+    /// driver kurs-pilen på avataren.
+    @State private var navCourse: Double? = nil
+    @State private var navCourseAnchor: CLLocationCoordinate2D? = nil
+
+    // ── Rute-låst følgemotor (proff-nav) ──────────────────────────────
+    // GPS oppdaterer KUN «hvor langt langs ruta» (s-target). Avataren og
+    // kameraet glir kontinuerlig langs selve rute-polylinja (4 Hz-loop):
+    // aldri over bygninger, retning = veiens tangent, tale trigges av
+    // monoton s → kan ikke loope. (Omskrevet 2026-07-19 — rå-GPS-følging
+    // ga ustabilt kamera, feil bil-rotasjon og posisjon utenfor vei.)
+    @State private var navRouteCum: [Double] = []
+    @State private var navStepS: [Double] = []
+    @State private var navSTarget: Double = 0
+    @State private var navSDisplay: Double = 0
+    @State private var navFollowSpeed: Double = 0
+    @State private var navLastFixAt: Date? = nil
+    @State private var navAvatarCoord: CLLocationCoordinate2D? = nil
+    @State private var navTangent: Double? = nil
+    @State private var navCamHeading: Double = 0
     /// Hvor langt på ruta vi er (segment-indeks) — map-matching-lite: snapping
     /// søker kun framover herfra, så figuren aldri hopper bakover/til parallell-gate.
     @State private var navProgressIndex: Int = 0
@@ -545,7 +574,9 @@ struct KartView: View {
     @State private var navPOIActiveKinds: Set<NavPOIKind> = []
     /// Valgt POI (detalj-kort). POI-en brukeren avviste fra nærhets-varsler.
     @State private var navSelectedPOI: NavRoutePOI? = nil
-    @State private var navDismissedPOIAlerts: Set<UUID> = []
+    /// Avviste POI-varsler — stabile nøkler (navn+koordinat), ikke UUID-er
+    /// som regenereres per henting (X-en «virket ikke», Daniel 2026-07-19).
+    @State private var navDismissedPOIAlerts: Set<String> = []
     /// Kjøregodtgjørelse-sheet (statens sats). Portert fra Møter-mocken.
     @State private var navShowMileage: Bool = false
     /// «Min bil»-ark (drivstoff/type + regnr-oppslag).
@@ -635,11 +666,12 @@ struct KartView: View {
     /// Kamera-presets for navigasjon. Hver gir pitch/avstand/sikt-fram (justert
     /// litt etter reisemåte). `overview` fyller hele ruta i bildet.
     enum NavCamPreset: String, CaseIterable, Hashable {
-        case firstPerson = "POV", drive = "Kjøre", overview = "Oversikt", topDown = "2D", north = "Nord"
+        case firstPerson = "POV", drive = "Kjøre", walk = "Gå", overview = "Oversikt", topDown = "2D", north = "Nord"
         var icon: String {
             switch self {
             case .firstPerson: "eye.fill"
             case .drive: "location.north.line.fill"
+            case .walk: "figure.walk"
             case .overview: "scope"
             case .topDown: "square.grid.2x2"
             case .north: "safari.fill"
@@ -655,6 +687,11 @@ struct KartView: View {
             case .drive:
                 let d: Double = transport == .driving ? 320 : (transport == .cycling ? 240 : 190)
                 return (60, d, 0.0009)
+            case .walk:
+                // Gange (dørsalg): flat 2D heading-up — pitch 0 kan aldri
+                // havne bak/i 3D-bygg, nær avstand, minimal ahead-offset.
+                // Retningen du går er opp; stabil uansett bykjerne.
+                return (0, 300, 0.0002)
             case .overview:
                 return (42, min(2600, max(900, routeM * 2.6)), 0.0004)
             case .topDown:
@@ -805,6 +842,36 @@ struct KartView: View {
     @State private var dorsalgValgt: KartverketService.AdressePunkt? = nil
     /// Debounce: pågående hente-task kanselleres ved ny kartbevegelse.
     @State private var dorsalgFetchTask: Task<Void, Never>? = nil
+    /// Husstands-status per adresse-id ("vunnet"/"avslatt") — org-lagret via
+    /// backend (mig 0397), optimistisk oppdatert lokalt. Demo = kun minne.
+    @State private var dorsalgStatuser: [String: String] = [:]
+    @State private var dorsalgStatuserLastet = false
+    /// Fullskjerm-kart: skjuler header/søk/liste + faneraden så kartet får
+    /// hele flaten (viktig for dørsalg i felt).
+    @State private var kartFullskjerm = false
+    /// Dørsalg-filter: nil = alle, ellers "ubesokt" | "vunnet" | "avslatt".
+    /// Lead-filterne (område/type/status) gjelder kun bedrifter og byttes
+    /// ut med disse i dørsalg-modus.
+    @State private var dorsalgFilter: String? = nil
+    /// Produktkatalogen (mig 0399) — org-en kan selge for flere oppdrags-
+    /// givere; selgeren ser kun produktene salgssjefen har satt dem på.
+    @State private var dorsalgProdukter: KartverketService.DorsalgProductsEnvelope?
+    /// Dørsalg-nav starter i oversikt; bytter til heading-up POV ved første
+    /// reelle bevegelse (retningen du går = opp på kartet).
+    @State private var dorsalgNavAutoPOV = false
+    /// Feirings-overlay etter registrert salg (konfetti + sjekk-pop).
+    @State private var dorsalgFeiring = false
+    /// Motivasjons-melding etter avslag («Hvert nei er ett steg nærmere…»).
+    @State private var dorsalgMotivasjon: String?
+    /// Teller avslag i økta — velger neste motivasjonsfrase deterministisk.
+    @State private var dorsalgAvslagTeller = 0
+    /// Dagens registrerte salg (min telling) — driver milepæls-feiringen.
+    @State private var dorsalgDagensSalg = 0
+    /// Dagsmål per selger. TODO(org-konfig): salgssjefen setter budsjettet
+    /// i Salgsledelse → backend; inntil da 3 som fornuftig standard.
+    private let dorsalgDagsmal = 3
+    /// Adresse med «Registrer salg»-skjemaet åpent (Vunnet-knappen).
+    @State private var dorsalgSalgFor: KartverketService.AdressePunkt?
 
     /// Org-gated + demo-gated synlighet (Daniel-regel 3, 2026-07-18):
     /// default AV — B2B-org-er skal ikke se noen referanse til modusen.
@@ -814,26 +881,56 @@ struct KartView: View {
             || EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
     }
 
+    /// REN dørsalg-org (leads låst i profilen): kartet står FAST i dørsalg —
+    /// Bedrifter-verdenen finnes ikke i opplevelsen, så toggelen skjules.
+    private var erRenDorsalgOrgKart: Bool {
+        EntitlementStore.shared.erRenDorsalgOrg
+    }
+
     /// Kartspenn-grense for adresse-henting (~3 km) — over dette vises
     /// «Zoom inn»-chippen i stedet for å hente tusenvis av adresser.
     private var dorsalgZoomOK: Bool {
         currentRegion.span.latitudeDelta < 0.03
     }
 
-    /// Dots som faktisk renderes: tom utenfor modusen (holder Map-builderen
-    /// flat — ingen ekstra buildEither-dybde, jf. AnyView-terskel-noten i
-    /// body). Ved > 400 synlige: de 400 nærmeste kartsenteret.
-    private var dorsalgSynligeAdresser: [KartverketService.AdressePunkt] {
-        guard dorsalgModus else { return [] }
-        guard dorsalgAdresser.count > 400 else { return dorsalgAdresser }
-        let c = currentRegion.center
-        // Billig grad-avstand (kvadrert) — godt nok til rangering.
-        func d2(_ a: KartverketService.AdressePunkt) -> Double {
-            let dLat = a.lat - c.latitude
-            let dLon = (a.lon - c.longitude) * cos(c.latitude * .pi / 180)
-            return dLat * dLat + dLon * dLon
+    /// Pins som faktisk renderes — CACHET (@State), IKKE computed: en
+    /// computed property her leses av Map-builderen ved HVER kamera-tick
+    /// under panorering, og distanse-sortering av 3000 adresser per frame
+    /// gjorde hele appen treg (Daniel 2026-07-18). Oppdateres kun etter
+    /// fetch + debounced kamerastopp via oppdaterDorsalgSynlige().
+    @State private var dorsalgSynligeAdresser: [KartverketService.AdressePunkt] = []
+
+    /// Viewport-filter + cap: adresser innenfor synlig region (+30 % margin),
+    /// ved > 400 de 400 nærmeste senteret. O(n) filter først — sorterer kun
+    /// det som faktisk er i viewporten.
+    private func oppdaterDorsalgSynlige() {
+        guard dorsalgModus else {
+            if !dorsalgSynligeAdresser.isEmpty { dorsalgSynligeAdresser = [] }
+            return
         }
-        return Array(dorsalgAdresser.sorted { d2($0) < d2($1) }.prefix(400))
+        let region = currentRegion
+        let c = region.center
+        let latMargin = region.span.latitudeDelta * 0.65
+        let lonMargin = region.span.longitudeDelta * 0.65
+        var iViewport = dorsalgAdresser.filter {
+            abs($0.lat - c.latitude) < latMargin &&
+            abs($0.lon - c.longitude) < lonMargin
+        }
+        if let f = dorsalgFilter {
+            iViewport = iViewport.filter {
+                let s = dorsalgStatuser[$0.id]
+                return f == "ubesokt" ? s == nil : s == f
+            }
+        }
+        if iViewport.count > 400 {
+            func d2(_ a: KartverketService.AdressePunkt) -> Double {
+                let dLat = a.lat - c.latitude
+                let dLon = (a.lon - c.longitude) * cos(c.latitude * .pi / 180)
+                return dLat * dLat + dLon * dLon
+            }
+            iViewport = Array(iViewport.sorted { d2($0) < d2($1) }.prefix(400))
+        }
+        dorsalgSynligeAdresser = iViewport
     }
 
     enum MapStyleChoice: String, CaseIterable, Hashable {
@@ -953,6 +1050,17 @@ struct KartView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Ren dørsalg-org: kartet står fast i dørsalg. Entitlements lander
+        // async etter login → poll noen sekunder før vi gir oss.
+        .task {
+            for _ in 0..<10 {
+                if erRenDorsalgOrgKart {
+                    if !dorsalgModus { setDorsalgModus(true) }
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
         .task(id: kartLeads.first?.id) {
             // Auto-senter ved oppstart. Demo: zoom på pre-valgt mock-lead
             // (Daniel-feedback 2026-06-29). Ekte: senter over egne leads
@@ -963,6 +1071,41 @@ struct KartView: View {
             if ProcessInfo.processInfo.environment["QA_CINEMATIC"] == "nordic" {
                 didAutoCenter = true
                 runNordicCinematic()
+                return
+            }
+            // QA-hook (landing-videoer): QA_TOUR=kart|dorsalg kjører en
+            // scripted interaksjons-tour (simctl recordVideo utenpå).
+            // Kun DEBUG — reverteres m/ task #59-følget.
+            if let tour = ProcessInfo.processInfo.environment["QA_TOUR"] {
+                didAutoCenter = true
+                await runQATour(tour)
+                return
+            }
+            // QA-hook (pitch-screenshots): QA_DORSALG=1 åpner dørsalg-modus
+            // m/ demo-adresser + valgt callout; =2 viser også produktvelgeren.
+            // Kun DEBUG + simulator — reverteres m/ task #59-følget.
+            if let qaDorsalg = ProcessInfo.processInfo.environment["QA_DORSALG"] {
+                didAutoCenter = true
+                camera = .region(MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7460),
+                    span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02)))
+                currentRegion = MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7460),
+                    span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02))
+                setDorsalgModus(true)
+                // Vent til adressene har landet (ekte Kartverket-fetch kan
+                // ta et par sekunder), velg en nær senteret uten status.
+                for _ in 0..<20 where dorsalgSynligeAdresser.isEmpty {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                }
+                let c = currentRegion.center
+                if let adr = dorsalgSynligeAdresser
+                    .filter({ dorsalgStatuser[$0.id] == nil })
+                    .min(by: { abs($0.lat - c.latitude) + abs($0.lon - c.longitude)
+                             < abs($1.lat - c.latitude) + abs($1.lon - c.longitude) }) {
+                    dorsalgValgt = adr
+                    if qaDorsalg == "2" { dorsalgSalgFor = adr }
+                }
                 return
             }
             #endif
@@ -1011,6 +1154,13 @@ struct KartView: View {
                 lat: lat, lon: lon
             )
             let start = appState.deepLinkNavStart
+            // Transport-hint fra avsenderen («Start kjøring» = driving) —
+            // ellers arves gå-modus fra forrige økt/dørsalg.
+            if let t = appState.deepLinkNavTransport {
+                navTransport = t == "driving" ? .driving
+                    : t == "cycling" ? .cycling : .walking
+                navTransportAuto = false
+            }
             appState.clearNavigationDeepLink()
             didAutoCenter = true   // ikke la oppstart-auto-senter overstyre
             if start {
@@ -1036,6 +1186,15 @@ struct KartView: View {
         }
         .onChange(of: KartLocationManager.shared.currentCoordinate?.longitude) { _, _ in
             navLocationTick()
+        }
+        // Rute-låst follow-loop (4 Hz): glir avatar + kamera langs ruta
+        // uavhengig av GPS-tikkene — kontinuerlig, aldri hopp.
+        .task(id: navModeActive) {
+            guard navModeActive else { return }
+            while !Task.isCancelled && navModeActive {
+                navFollowAdvance(dt: 0.25)
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
         }
         .sheet(isPresented: $addLeadOpen) {
             AddLeadSheet { newLead in
@@ -1201,6 +1360,31 @@ struct KartView: View {
         }
         // Arkiv-dialogen fjernet 2026-07-17: «Arkiver» var toast-fasade uten
         // API — dialogen lot som leaden ble flyttet til arkiv.
+        // Dørsalg «Registrer salg» (mig 0400): produkt + bidrag + kunde +
+        // samtykke — aldri betalingsdata. Grønn pin settes optimistisk;
+        // backend lager Kvalitet-rad + sender velkomst-e-post. Demo = lokalt.
+        .sheet(item: $dorsalgSalgFor) { adr in
+            RegistrerSalgSheet(
+                adresse: adr,
+                produkter: dorsalgProdukter?.tilgjengelige ?? []
+            ) { salg in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    dorsalgStatuser[adr.id] = "vunnet"
+                }
+                if dorsalgFilter != nil { oppdaterDorsalgSynlige() }
+                visDorsalgFeiring()
+                guard !DemoModeManager.isActiveNonisolated,
+                      let api = appState.api else { return }
+                Task {
+                    _ = await KartverketService.shared.registerDorsalgSale(
+                        for: adr, productId: salg.produktId,
+                        bidragBelop: salg.bidragBelop, bidragLabel: salg.bidragLabel,
+                        kundeNavn: salg.kundeNavn, kundeTelefon: salg.kundeTelefon,
+                        kundeEpost: salg.kundeEpost, ringBekreftet: salg.ringBekreftet,
+                        samtykkeTekst: salg.samtykkeTekst, using: api)
+                }
+            }
+        }
         .sheet(isPresented: $mapStyleSheetOpen) {
             LayersSheet(
                 selectedStyle: $mapStyle,
@@ -1208,6 +1392,7 @@ struct KartView: View {
                 navActive: navModeActive,
                 canNavigate: !kartLeads.isEmpty,
                 destinationName: selectedLead.name,
+                dorsalg: dorsalgModus,
                 onStartNav: {
                     mapStyleSheetOpen = false
                     withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: selectedLead) }
@@ -1322,12 +1507,50 @@ struct KartView: View {
         // build 20260717). Simulator overlever (8 MB stack) — fjern ALDRI
         // erasure her uten å teste på fysisk enhet.
         VStack(spacing: 0) {
-            AnyView(kartHeader)
-                .padding(.horizontal, 20).padding(.top, 14)
-            AnyView(searchAndFilters)
-                .padding(.horizontal, 20).padding(.top, 12)
-                .padding(.bottom, 12)
+            if !kartFullskjerm {
+                AnyView(kartHeader)
+                    .padding(.horizontal, 20).padding(.top, 14)
+                AnyView(searchAndFilters)
+                    .padding(.horizontal, 20).padding(.top, 12)
+                    .padding(.bottom, 12)
+            }
 
+            // Fullskjerm (2026-07-18): kun kartet, hele flaten — resten av
+            // fanen (og faneraden) skjules. AnyView på hver gren holder
+            // buildEither-dybden flat (jf. stack-overflow-noten over).
+            if kartFullskjerm {
+                AnyView(mapCard)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 6)
+            } else if dorsalgModus {
+                // Dørsalg: INGEN scroll — kartet fyller ledig plass og
+                // legenden står alltid synlig under (Daniels funn: fast
+                // karthøyde dyttet legenden bak faneraden).
+                AnyView(dorsalgLayout)
+            } else {
+                AnyView(kartInnholdScroll)
+            }
+        }
+        .toolbar(kartFullskjerm ? .hidden : .automatic, for: .tabBar)
+        .statusBarHidden(kartFullskjerm)
+    }
+
+    /// Dørsalg-layout uten scroll: kartet tar all ledig høyde, utfall-
+    /// legenden alltid synlig nederst (over faneraden).
+    private var dorsalgLayout: some View {
+        VStack(spacing: 12) {
+            AnyView(mapCard)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            AnyView(dorsalgLegendCard)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
+    }
+
+    /// Vanlig fane-layout (kart + legend + detaljpanel + områdeliste) —
+    /// ekstrahert så fullskjerm-grenen i content holder seg flat.
+    private var kartInnholdScroll: some View {
             ScrollView {
                 // iPhone: side-kolonnen (300pt) får ikke plass ved siden av
                 // kartet på compact width — stable kolonnene vertikalt i
@@ -1341,8 +1564,34 @@ struct KartView: View {
                             // Kartet skal dominere Kart-fanen. På iPad/Mac
                             // (romslig vindu) gir vi det vesentlig mer høyde;
                             // iPhone holder en kompakt høyde så resten får plass.
+                            // (Dørsalg bruker dorsalgLayout — aldri denne.)
                             .frame(minHeight: DeviceIdiom.isPhone ? 360 : 520,
                                    maxHeight: DeviceIdiom.isPhone ? 460 : 680)
+                            .overlay(alignment: .topTrailing) {
+                                // Gjenåpne kollapset leads-panel.
+                                if !DeviceIdiom.isPhone && leadsPanelCollapsed {
+                                    Button {
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                            leadsPanelCollapsed = false
+                                        }
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: "sidebar.leading")
+                                                .font(.appScaled(size: 11, weight: .bold))
+                                            Text("Leads (\(kartLeads.count))")
+                                                .font(.appScaled(size: 11, weight: .bold))
+                                        }
+                                        .fixedSize()
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 11).padding(.vertical, 8)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .background(KrBrand.purple.opacity(0.45), in: Capsule())
+                                        .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(10)
+                                }
+                            }
                         AnyView(legendCard)
                         if showDetailPanel {
                             AnyView(detailPanel)
@@ -1354,18 +1603,20 @@ struct KartView: View {
 
                     // iPhone (2026-07-17): listen bor nå i halv-sheeten
                     // (liste-FAB på kartet) — ikke dupliser under kartet.
-                    if !DeviceIdiom.isPhone {
+                    // Kollapsbar (Daniel 2026-07-19): i portrett stjeler
+                    // 300pt-kolonnen kartbredde — skjul + gjenåpnings-knapp.
+                    if !DeviceIdiom.isPhone && !leadsPanelCollapsed {
                         VStack(spacing: 12) {
                             AnyView(leadsInAreaCard)
                             Spacer(minLength: 0)
                         }
                         .kartColumnWidth(300)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
-        }
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
@@ -1394,10 +1645,10 @@ struct KartView: View {
         // knapper i horisontal scroller med naturlig bredde.
         if DeviceIdiom.isPhone {
             VStack(spacing: 8) {
-                kartSearchField
+                if visKartSok { kartSearchField }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        kartFilterAndActionChips
+                        kartChipsForMode
                     }
                     .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 20)
@@ -1406,10 +1657,65 @@ struct KartView: View {
             }
         } else {
             HStack(spacing: 8) {
-                kartSearchField
-                kartFilterAndActionChips
+                if visKartSok { kartSearchField }
+                kartChipsForMode
             }
         }
+    }
+
+    /// Dørsalg: søkefeltet treffer bedrifts-leads og er unødvendig (adressen
+    /// vises ved pin-tap) — skjult som default. Superadmin kan aktivere
+    /// `dorsalgAdresseSok` i matrisen for org-er som trenger adressehopp.
+    private var visKartSok: Bool {
+        !dorsalgModus || EntitlementStore.shared.isExplicitlyEnabled(.dorsalgAdresseSok)
+    }
+
+    /// Dørsalg: lead-filterne (område/type/status) gjelder kun bedrifter —
+    /// vis utfall-filtre i stedet.
+    @ViewBuilder
+    private var kartChipsForMode: some View {
+        if dorsalgModus {
+            dorsalgFilterChip(nil, "Alle", icon: "circle.grid.2x2")
+            dorsalgFilterChip("ubesokt", "Ubesøkt", icon: "house.fill")
+            dorsalgFilterChip("vunnet", "Salg", icon: "checkmark.circle.fill")
+            dorsalgFilterChip("ikke_hjemme", "Ikke hjemme", icon: "clock.fill")
+            dorsalgFilterChip("avslatt", "Avslått", icon: "xmark.circle.fill")
+        } else {
+            kartFilterAndActionChips
+        }
+    }
+
+    private func dorsalgFilterChip(_ verdi: String?, _ label: String,
+                                   icon: String) -> some View {
+        let aktiv = dorsalgFilter == verdi
+        let tint: Color = switch verdi {
+        case "vunnet": KrBrand.green
+        case "avslatt": KrBrand.red
+        case "ikke_hjemme": KrBrand.yellow
+        default: KrBrand.purpleLight
+        }
+        return Button {
+            dorsalgFilter = verdi
+            oppdaterDorsalgSynlige()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(aktiv ? .white : tint)
+                Text(label)
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(
+                aktiv ? AnyShapeStyle(tint.opacity(verdi == nil ? 0.45 : 0.55))
+                      : AnyShapeStyle(KrBrand.card),
+                in: RoundedRectangle(cornerRadius: 9)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 9)
+                .stroke(aktiv ? tint.opacity(0.7) : KrBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var kartSearchField: some View {
@@ -1471,6 +1777,8 @@ struct KartView: View {
             }
             .buttonStyle(.plain)
 
+            // Dørsalg: husstander skal aldri inn i CRM — skjul lead-oppretting.
+            if !dorsalgModus {
             Button { addLeadOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus")
@@ -1489,6 +1797,7 @@ struct KartView: View {
                 )
             }
             .buttonStyle(.plain)
+            }
     }
 
     private var areaButtonLabel: String {
@@ -1549,9 +1858,10 @@ struct KartView: View {
                 // Vises kun når CLLocationManager har fått en fix.
                 // Tap åpner MePinActionsSheet (2026-07-02).
                 if let rawCoord = KartLocationManager.shared.currentCoordinate {
-                    // I nav-modus snappes figuren til nærmeste punkt på ruta så den
-                    // alltid ligger på veien (ikke gjennom bygg / GPS-drift).
-                    let coord = navModeActive ? snapToRoute(rawCoord) : rawCoord
+                    // I nav-modus er figuren RUTE-LÅST: den følger punktet
+                    // langs rute-polylinja (follow-motoren) — aldri over bygg.
+                    let coord = navModeActive
+                        ? (navAvatarCoord ?? snapToRoute(rawCoord)) : rawCoord
                     // I nav-modus: 3D gå-avatar (person på puck m/ retnings-stråle
                     // + skygge + gå-bob) som beveger seg. Ellers skjerm-fast MeMapPin.
                     Annotation("Meg", coordinate: coord) {
@@ -1559,7 +1869,12 @@ struct KartView: View {
                             NavAvatarPuck(initials: appState.initials,
                                           email: appState.userEmail,
                                           vehicle: navVehicle,
-                                          moving: KartLocationManager.shared.isMoving)
+                                          moving: KartLocationManager.shared.isMoving
+                                              || navSTarget - navSDisplay > 1
+                                              || navFollowSpeed > 0.5,
+                                          // Rute-tangent − kamera-heading:
+                                          // bilen peker alltid LANGS VEIEN.
+                                          screenCourse: navTangent.map { $0 - navCamHeading })
                         } else {
                             MeMapPin(initials: appState.initials, email: appState.userEmail)
                                 .onTapGesture { zoomToMeAndOpenHUD(coord: coord) }
@@ -1590,14 +1905,35 @@ struct KartView: View {
                     }
                 }
 
-                // 2026-07-18 dørsalg: husstandsadresse-dots (Kartverket).
-                // Tom liste utenfor modusen — kun visning + Naviger, aldri CRM.
-                ForEach(dorsalgSynligeAdresser) { adr in
+                // 2026-07-18 dørsalg: husstandsadresse-pins (Kartverket) i
+                // systemets pin-design. Farge = utfall (vunnet/avslått).
+                // Tom liste utenfor modusen — adressene lagres aldri som CRM.
+                // I nav-modus vises KUN målet — 400 pins fløt i lufta i
+                // POV-visningen (opptak 2026-07-19).
+                ForEach(navModeActive
+                        ? dorsalgSynligeAdresser.filter { $0.id == dorsalgValgt?.id }
+                        : dorsalgSynligeAdresser) { adr in
                     Annotation("", coordinate: CLLocationCoordinate2D(latitude: adr.lat, longitude: adr.lon)) {
-                        DorsalgAdresseDot(valgt: dorsalgValgt?.id == adr.id) {
-                            withAnimation(.easeOut(duration: 0.2)) { dorsalgValgt = adr }
+                        DorsalgAdressePin(status: dorsalgStatuser[adr.id],
+                                          valgt: dorsalgValgt?.id == adr.id) {
+                            selectDorsalgAdresse(adr)
                         }
                     }
+                }
+                // Veiviser til neste dør: stiplet linje fra DEG (Meg-pin,
+                // fallback = døra du registrerte) til nærmeste ubesøkte dør.
+                // Vises sammen med «Neste dør»-raden i callouten.
+                if dorsalgModus, let valgt = dorsalgValgt,
+                   dorsalgStatuser[valgt.id] != nil,
+                   let neste = nesteDorsalgAdresse(fra: valgt) {
+                    let fra = KartLocationManager.shared.currentCoordinate
+                        ?? CLLocationCoordinate2D(latitude: valgt.lat, longitude: valgt.lon)
+                    MapPolyline(coordinates: [
+                        fra,
+                        CLLocationCoordinate2D(latitude: neste.lat, longitude: neste.lon),
+                    ])
+                    .stroke(KrBrand.purpleLight.opacity(0.9),
+                            style: StrokeStyle(lineWidth: 3.5, lineCap: .round, dash: [8, 7]))
                 }
 
                 // Dropped pin fra long-press
@@ -1655,6 +1991,23 @@ struct KartView: View {
                     .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
 
+                // Fullskjerm-kart (2026-07-18) — hele flaten til kartet.
+                mapFABButton(
+                    icon: kartFullskjerm
+                        ? "arrow.down.right.and.arrow.up.left"
+                        : "arrow.up.left.and.arrow.down.right",
+                    action: {
+                        withAnimation(.easeInOut(duration: 0.25)) { kartFullskjerm.toggle() }
+                    }
+                )
+                .background(
+                    kartFullskjerm ? KrBrand.purple.opacity(0.35) : KrBrand.card,
+                    in: RoundedRectangle(cornerRadius: 9)
+                )
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .stroke(kartFullskjerm ? KrBrand.purpleLight.opacity(0.5) : KrBrand.stroke,
+                            lineWidth: 1))
+
                 mapFABButton(icon: "square.stack.3d.up.fill", action: { mapStyleSheetOpen = true })
                     .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
@@ -1672,13 +2025,17 @@ struct KartView: View {
 
                 // Drop pin: legger pin i kart-sentrum + åpner AddLeadSheet
                 // forhåndsutfylt. Erstatter long-press (MapKit-gesture-konflikt).
-                mapFABButton(icon: "mappin.and.ellipse", action: dropPinAtCenter)
-                    .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                // Skjult i dørsalg — husstander skal aldri inn i CRM.
+                if !dorsalgModus {
+                    mapFABButton(icon: "mappin.and.ellipse", action: dropPinAtCenter)
+                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                }
 
                 // iPhone: «Leads i området» som halv-sheet — listen bor
                 // ellers under kartet og krever scroll (2026-07-17).
-                if DeviceIdiom.isPhone {
+                // Dørsalg: bedrifts-lista blandes ikke inn.
+                if DeviceIdiom.isPhone && !dorsalgModus {
                     mapFABButton(icon: "list.bullet", action: { areaListOpen = true })
                         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
@@ -1689,7 +2046,8 @@ struct KartView: View {
 
             // 2026-07-18 dørsalg: modus-velger topp-senter over kartflaten.
             // Org-gated (visDorsalgToggle) og skjult i nav-/måle-modus.
-            if visDorsalgToggle && !navModeActive && !measureMode {
+            // Ren dørsalg-org: fast i dørsalg → ingen toggle.
+            if visDorsalgToggle && !erRenDorsalgOrgKart && !navModeActive && !measureMode {
                 AnyView(dorsalgModeVelger)
                     .padding(.top, 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1731,7 +2089,8 @@ struct KartView: View {
             }
 
             // POI-detalj-kort + nærhets-varsler nederst i nav.
-            if navModeActive {
+            // Dørsalg-gange: bil-POI (lading/bensin/parkering) er irrelevant.
+            if navModeActive && !dorsalgModus {
                 VStack(spacing: 8) {
                     ForEach(navProximityAlerts) { poi in
                         navProximityAlertRow(poi)
@@ -1787,6 +2146,36 @@ struct KartView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(KrBrand.stroke, lineWidth: 1)
         )
+        // Feiring etter registrert salg — konfetti + sjekk-pop over kartet,
+        // med milepæl mot dagsmålet.
+        .overlay {
+            if dorsalgFeiring {
+                SalgFeiringView(antall: dorsalgDagensSalg, maal: dorsalgDagsmal)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        // Motivasjon etter avslag — diskret kort øverst, forsvinner selv.
+        .overlay(alignment: .top) {
+            if let frase = dorsalgMotivasjon {
+                HStack(spacing: 10) {
+                    Image(systemName: "figure.walk.motion")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(KrBrand.purpleLight)
+                    Text(frase)
+                        .font(.appScaled(size: 14, weight: .heavy))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: Capsule())
+                .background(KrBrand.purple.opacity(0.45), in: Capsule())
+                .overlay(Capsule().stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
+                .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
+                .padding(.top, 52)
+                .allowsHitTesting(false)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
     }
 
     // MARK: Mobil lead-HUD
@@ -1896,6 +2285,45 @@ struct KartView: View {
         .macCatalystHover()
     }
 
+    /// Motivasjon etter avslag: kort oppmuntring + neste-dør-fokus.
+    /// Pondus-tonen: avslag er statistikk, ikke nederlag.
+    private static let dorsalgMotivasjonsfraser = [
+        "Hvert nei er ett steg nærmere et ja.",
+        "Rist det av deg — neste dør venter.",
+        "Proffene teller dører, ikke avslag.",
+        "Snittet ditt vinner over tid. Videre!",
+        "Ett nei til unna. Fortsett!",
+    ]
+
+    private func visDorsalgMotivasjon() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        let frase = Self.dorsalgMotivasjonsfraser[
+            dorsalgAvslagTeller % Self.dorsalgMotivasjonsfraser.count]
+        dorsalgAvslagTeller += 1
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+            dorsalgMotivasjon = frase
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            withAnimation(.easeOut(duration: 0.35)) { dorsalgMotivasjon = nil }
+        }
+    }
+
+    /// Feiring etter registrert salg: konfetti + sjekk-pop + suksess-haptikk
+    /// + milepæl mot dagsmålet («2 av 3» / «Dagsmål nådd!»).
+    /// Auto-dismiss (litt lenger når målet nås).
+    private func visDorsalgFeiring() {
+        dorsalgDagensSalg += 1
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.easeOut(duration: 0.2)) { dorsalgFeiring = true }
+        let varighet: UInt64 = dorsalgDagensSalg >= dorsalgDagsmal
+            ? 2_600_000_000 : 1_800_000_000
+        Task {
+            try? await Task.sleep(nanoseconds: varighet)
+            withAnimation(.easeOut(duration: 0.35)) { dorsalgFeiring = false }
+        }
+    }
+
     /// Bytt modus (animeres). Ut av dørsalg → rydd valgt/task; inn → hent.
     private func setDorsalgModus(_ on: Bool) {
         guard dorsalgModus != on else { return }
@@ -1904,11 +2332,97 @@ struct KartView: View {
             dorsalgValgt = nil
         }
         if on {
-            dorsalgMaybeFetch(force: true)
+            // Lead-baserte kartlag av — de hører til bedrifts-verdenen
+            // (territorier + team-på-kartet beholdes).
+            activeOverlays.subtract([.heatmap, .aiLeads, .travelHistory, .dataOverlay])
+            oppdaterDorsalgSynlige()   // vis alt cachet umiddelbart
+            // Prefetch HELE nabolaget (Kartverkets 2000 m-maks) med én gang —
+            // pin-til-pin og «Neste dør» skal aldri vente på nett (Daniels
+            // UX-funn: treg flytting mellom pins ved zoom-styrt liten radius).
+            let senter = currentRegion.center
+            dorsalgFetchTask?.cancel()
+            dorsalgFetchTask = Task {
+                await dorsalgFetch(senter: senter, radius: 2000)
+                oppdaterDorsalgSynlige()
+            }
+            dorsalgLastStatuser()
+            dorsalgLastProdukter()
         } else {
             dorsalgFetchTask?.cancel()
             dorsalgFetchTask = nil
             dorsalgLaster = false
+            dorsalgSynligeAdresser = []
+        }
+    }
+
+    /// Hent org-ens husstands-statuser én gang per økt (demo: kun minne).
+    private func dorsalgLastStatuser() {
+        guard !dorsalgStatuserLastet else { return }
+        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else {
+            dorsalgStatuserLastet = true
+            return
+        }
+        Task {
+            let statuser = await KartverketService.shared.fetchDorsalgStatuser(using: api)
+            if !statuser.isEmpty { dorsalgStatuser = statuser }
+            dorsalgStatuserLastet = true
+        }
+    }
+
+    /// Produktkatalogen — hentes én gang per økt (demo: to demo-produkter).
+    private func dorsalgLastProdukter() {
+        guard dorsalgProdukter == nil else { return }
+        if DemoModeManager.isActiveNonisolated {
+            dorsalgProdukter = KartverketService.DorsalgProductsEnvelope(
+                canManage: true, mine: [],
+                products: [
+                    .init(id: "demo-p1", navn: "SOS Barnebyer",
+                          farge: "#22C55E", aktiv: true, verdiPerVunnet: 450,
+                          bidrag: [.init(belop: 250, label: "Fadder"),
+                                   .init(belop: 350, label: "Fadder+"),
+                                   .init(belop: 500, label: "Fadder+")],
+                          samtykkeTekst: "Jeg ønsker å bli fadder i SOS Barnebyer og godtar at SOS Barnebyer kontakter meg for å sette opp betalingsavtalen. Jeg har 14 dagers angrerett.",
+                          signeringUrl: nil),
+                    .init(id: "demo-p2", navn: "Kirkens Bymisjon",
+                          farge: "#3B82F6", aktiv: true, verdiPerVunnet: 390,
+                          bidrag: [.init(belop: 200, label: "Fast giver"),
+                                   .init(belop: 300, label: "Fast giver")],
+                          samtykkeTekst: "Jeg ønsker å bli fast giver i Kirkens Bymisjon og godtar at de kontakter meg for å sette opp betalingsavtalen. Jeg har 14 dagers angrerett.",
+                          signeringUrl: nil),
+                ])
+            return
+        }
+        guard let api = appState.api else { return }
+        Task {
+            dorsalgProdukter = await KartverketService.shared.fetchDorsalgProducts(using: api)
+        }
+    }
+
+    /// Sett/angre utfall på en dør. Optimistisk lokal oppdatering; backend
+    /// best effort (org-lagret). Demo skriver ALDRI til backend.
+    /// produktId: hvilket produkt som ble vunnet (org m/ flere produkter).
+    private func dorsalgSettStatus(_ status: String?,
+                                   produktId: String? = nil,
+                                   for adr: KartverketService.AdressePunkt) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            if let status {
+                dorsalgStatuser[adr.id] = status
+            } else {
+                dorsalgStatuser.removeValue(forKey: adr.id)
+            }
+        }
+        // Avslag → kort motivasjon (Neste dør-veiviseren tar over fokus).
+        if status == "avslatt" { visDorsalgMotivasjon() }
+        // Aktivt utfall-filter: adressen kan ha byttet gruppe.
+        if dorsalgFilter != nil { oppdaterDorsalgSynlige() }
+        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        Task {
+            if let status {
+                await KartverketService.shared.setDorsalgStatus(
+                    status, for: adr, productId: produktId, using: api)
+            } else {
+                await KartverketService.shared.clearDorsalgStatus(adresseId: adr.id, using: api)
+            }
         }
     }
 
@@ -1952,8 +2466,10 @@ struct KartView: View {
     }
 
     /// Kompakt callout for en valgt husstandsadresse: adresse + postnr/sted
-    /// + «Naviger» + X. KUN navigasjon — adressen lagres aldri i CRM.
+    /// + «Naviger» + utfall-knapper (Vunnet/Avslått — org-lagret, mig 0397).
+    /// Adressen selv lagres fortsatt aldri i CRM.
     private func dorsalgCallout(_ adr: KartverketService.AdressePunkt) -> some View {
+        VStack(spacing: 9) {
         HStack(spacing: 10) {
             ZStack {
                 Circle().fill(KrBrand.purpleLight.opacity(0.22))
@@ -2001,11 +2517,108 @@ struct KartView: View {
             }
             .buttonStyle(.plain)
         }
+        // Utfall på døra: toggle = angre. Pin-fargen følger valget.
+        // «Registrer salg» åpner det ekte salgsskjemaet (mig 0400).
+        HStack(spacing: 8) {
+            dorsalgUtfallKnapp(adr, status: "vunnet", label: "Registrer salg",
+                               icon: "checkmark.circle.fill", tint: KrBrand.green)
+            dorsalgUtfallKnapp(adr, status: "ikke_hjemme", label: "Ikke hjemme",
+                               icon: "clock.fill", tint: KrBrand.yellow)
+            dorsalgUtfallKnapp(adr, status: "avslatt", label: "Avslått",
+                               icon: "xmark.circle.fill", tint: KrBrand.red)
+        }
+        // «Neste dør»: når utfallet er registrert, vis nærmeste ubesøkte
+        // dør med avstand + retning. Origo = DIN posisjon (Meg-pin) når
+        // GPS har fix — ellers døra du nettopp registrerte.
+        if dorsalgStatuser[adr.id] != nil,
+           let neste = nesteDorsalgAdresse(fra: adr) {
+            let origo = KartLocationManager.shared.currentCoordinate
+                ?? CLLocationCoordinate2D(latitude: adr.lat, longitude: adr.lon)
+            let meter = Int(CLLocation(latitude: origo.latitude, longitude: origo.longitude)
+                .distance(from: CLLocation(latitude: neste.lat, longitude: neste.lon))
+                .rounded())
+            let grader = bearing(
+                origo,
+                CLLocationCoordinate2D(latitude: neste.lat, longitude: neste.lon))
+            Button { selectDorsalgAdresse(neste) } label: {
+                HStack(spacing: 10) {
+                    // Mini-kompass: N-merke + nål som peker mot neste dør.
+                    ZStack {
+                        Circle().fill(KrBrand.purpleLight.opacity(0.16))
+                        Circle().stroke(KrBrand.purpleLight.opacity(0.45), lineWidth: 1)
+                        Text("N")
+                            .font(.appScaled(size: 6, weight: .black))
+                            .foregroundStyle(KrBrand.textSecondary)
+                            .offset(y: -10)
+                        Image(systemName: "location.north.fill")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(KrBrand.purpleLight)
+                            .rotationEffect(.degrees(grader))
+                    }
+                    .frame(width: 32, height: 32)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Neste dør: \(neste.adressetekst)")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .lineLimit(1)
+                        Text("\(meter) m mot \(dorsalgKompassOrd(grader)) herfra")
+                            .font(.appScaled(size: 10, weight: .semibold))
+                            .foregroundStyle(KrBrand.textSecondary)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(KrBrand.purple.opacity(0.28), in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11)
+                    .stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+        }
         .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .background(KrBrand.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(KrBrand.stroke, lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+    }
+
+    private func dorsalgUtfallKnapp(_ adr: KartverketService.AdressePunkt,
+                                    status: String, label: String,
+                                    icon: String, tint: Color) -> some View {
+        let aktiv = dorsalgStatuser[adr.id] == status
+        return Button {
+            if aktiv {
+                dorsalgSettStatus(nil, for: adr)                 // angre
+            } else if status == "vunnet" {
+                // Vunnet = EKTE salg — åpne registreringsskjemaet
+                // (produkt, bidrag, kunde, samtykke — aldri betalingsdata).
+                dorsalgSalgFor = adr
+            } else {
+                dorsalgSettStatus(status, for: adr)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.appScaled(size: 12, weight: .bold))
+                Text(label)
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(aktiv ? .white : tint)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(
+                aktiv ? AnyShapeStyle(tint) : AnyShapeStyle(tint.opacity(0.14)),
+                in: Capsule()
+            )
+            .overlay(Capsule().stroke(tint.opacity(aktiv ? 0 : 0.45), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     /// Naviger til husstandsadresse: konstruer en flyktig MapLeadMock KUN
@@ -2019,30 +2632,51 @@ struct KartView: View {
             lastActivity: nil,
             lat: adr.lat, lon: adr.lon
         )
+        // Dørsalg = til fots, korte etapper: tving gange (ikke auto-bil),
+        // dropp bil-POI-varsler (lading/bensin) og bruk oversikts-kamera —
+        // POV-pitch på 50 m gange havnet inne i 3D-bygg (opptak 2026-07-19).
+        navTransport = .walking
+        navTransportAuto = false
         withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: dest) }
+        navPOIActiveKinds = []
+        navPreset = .overview
+        navPresetManual = true
+        // startNavigation flyttet alt kameraet med sitt preset — flytt igjen
+        // med oversikts-preset (POV sto inne i 3D-bygg på 50 m-gange).
+        updateNavCamera(animated: true)
+        // Når selgeren faktisk begynner å gå → auto-bytt til gå-POV.
+        dorsalgNavAutoPOV = true
     }
 
     /// Debounced henting: no-op utenfor modusen, ved for stort kartspenn
-    /// (chip sier «Zoom inn») eller når senteret er < 300 m fra forrige hent.
+    /// (chip sier «Zoom inn») eller når senteret er nær forrige hent
+    /// (terskel = radius/3 — panorering innen samme nabolag re-fetcher ikke).
     private func dorsalgMaybeFetch(force: Bool = false) {
         guard dorsalgModus else { return }
-        guard dorsalgZoomOK else { return }
         let senter = currentRegion.center
-        if !force, let forrige = dorsalgFetchSenter,
-           metersBetween(forrige, senter) < 300 { return }
-        dorsalgFetchTask?.cancel()
         // Synlig radius i meter (halve lat-spennet), klampet til Kartverkets
-        // 2000 m-maks og et 250 m-gulv så tett zoom fortsatt gir et nabolag.
-        let radius = min(2000, max(250, Int(currentRegion.span.latitudeDelta * 111_000 / 2)))
+        // 2000 m-maks og et 800 m-gulv: husnivå-zoom skal ikke gi bittesmå
+        // hyppige hentinger — nabolaget er alt prefetchet (setDorsalgModus).
+        let radius = min(2000, max(800, Int(currentRegion.span.latitudeDelta * 111_000 / 2)))
+        dorsalgFetchTask?.cancel()
         dorsalgFetchTask = Task {
-            // Debounce småbevegelser — kanselleres av neste kamera-tick.
-            try? await Task.sleep(nanoseconds: 450_000_000)
+            // Kort debounce — kanselleres av neste kamera-tick. Viktig:
+            // synlig-lista oppdateres KUN her (etter at kartet har roet seg),
+            // aldri per frame — det er hele ytelses-poenget.
+            try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
+            oppdaterDorsalgSynlige()
+            guard dorsalgZoomOK else { return }
+            if !force, let forrige = dorsalgFetchSenter,
+               metersBetween(forrige, senter) < max(150, Double(radius) / 3) { return }
             await dorsalgFetch(senter: senter, radius: radius)
         }
     }
 
-    /// Hent side 0 (+ side 1–4 når total > 200, maks ~1000 adresser).
+    /// Hent side 0 (1000 per side — Kartverkets maks) + inntil 2 ekstra
+    /// sider PARALLELT når total > 1000. Nye adresser AKKUMULERES inn i
+    /// eksisterende liste (panorering blanker ikke naboområdet); ved > 3000
+    /// beholdes de 3000 nærmeste senteret.
     private func dorsalgFetch(senter: CLLocationCoordinate2D, radius: Int) async {
         guard let api = appState.api else {
             // Demo uten backend: 25 statiske adresser rundt Oslo sentrum så
@@ -2051,6 +2685,14 @@ struct KartView: View {
                 dorsalgAdresser = Self.dorsalgDemoAdresser
                 dorsalgTotal = Self.dorsalgDemoAdresser.count
                 dorsalgFetchSenter = senter
+                // Et par forhåndssatte utfall så pin-fargene vises i demo.
+                if dorsalgStatuser.isEmpty {
+                    dorsalgStatuser = ["Storgata 8|0155": "vunnet",
+                                       "Torggata 15|0181": "vunnet",
+                                       "Grensen 5|0159": "avslatt",
+                                       "Møllergata 24|0179": "ikke_hjemme"]
+                }
+                oppdaterDorsalgSynlige()
             }
             return
         }
@@ -2060,23 +2702,41 @@ struct KartView: View {
             radius: radius, side: 0, using: api)
         guard !Task.isCancelled else { dorsalgLaster = false; return }
         var alle = side0
-        if total > 200 {
-            let sisteSide = min(4, (total - 1) / 200)
-            for side in 1...sisteSide {
-                let (mer, _) = await KartverketService.shared.fetchAdresser(
-                    lat: senter.latitude, lon: senter.longitude,
-                    radius: radius, side: side, using: api)
-                guard !Task.isCancelled else { dorsalgLaster = false; return }
-                alle += mer
+        if total > 1000 {
+            let sisteSide = min(2, (total - 1) / 1000)
+            // Parallelt — sidene er uavhengige backend-cachede kall.
+            await withTaskGroup(of: [KartverketService.AdressePunkt].self) { group in
+                for side in 1...sisteSide {
+                    group.addTask {
+                        let (mer, _) = await KartverketService.shared.fetchAdresser(
+                            lat: senter.latitude, lon: senter.longitude,
+                            radius: radius, side: side, using: api)
+                        return mer
+                    }
+                }
+                for await mer in group { alle += mer }
             }
+            guard !Task.isCancelled else { dorsalgLaster = false; return }
         }
-        // Dedup på id (adressetekst|postnr) — sidene kan overlappe ved
-        // at Kartverket re-sorterer mellom kall.
-        var sett = Set<String>()
-        dorsalgAdresser = alle.filter { sett.insert($0.id).inserted }
-        dorsalgTotal = max(total, dorsalgAdresser.count)
+        // Akkumuler: behold det vi alt har + nye (dedup på id) — panorering
+        // føles da som at kartet «fylles på» i stedet for å blinke.
+        var byId = Dictionary(dorsalgAdresser.map { ($0.id, $0) },
+                              uniquingKeysWith: { a, _ in a })
+        for adr in alle { byId[adr.id] = adr }
+        var samlet = Array(byId.values)
+        if samlet.count > 3000 {
+            func d2(_ a: KartverketService.AdressePunkt) -> Double {
+                let dLat = a.lat - senter.latitude
+                let dLon = (a.lon - senter.longitude) * cos(senter.latitude * .pi / 180)
+                return dLat * dLat + dLon * dLon
+            }
+            samlet = Array(samlet.sorted { d2($0) < d2($1) }.prefix(3000))
+        }
+        dorsalgAdresser = samlet
+        dorsalgTotal = max(total, samlet.count)
         dorsalgFetchSenter = senter
         dorsalgLaster = false
+        oppdaterDorsalgSynlige()
     }
 
     /// 25 statiske demo-adresser rundt Oslo sentrum (kun demo uten API).
@@ -2545,7 +3205,7 @@ struct KartView: View {
                 .background(.ultraThinMaterial, in: Capsule())
                 .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
             }
-            if !anyOn && !navProximityAlerts.isEmpty {
+            if !anyOn && !navProximityAlerts.isEmpty && !dorsalgModus {
                 HStack(spacing: 4) {
                     Image(systemName: "bell.badge.fill").font(.appScaled(size: 10, weight: .bold))
                     Text("\(navProximityAlerts.count) i nærheten").font(.appScaled(size: 10, weight: .bold))
@@ -2556,18 +3216,21 @@ struct KartView: View {
                 .overlay(Capsule().stroke(KrBrand.yellow.opacity(0.4), lineWidth: 1))
             }
             Spacer(minLength: 2)
-            Button { navShowMileage = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "norwegiankronesign.circle.fill").font(.appScaled(size: 11, weight: .bold))
-                    Text("Kjøregodtgjørelse").font(.appScaled(size: 11, weight: .bold))
+            // Kjøregodtgjørelse hører til KJØRING — skjules i dørsalg-gange.
+            if !dorsalgModus {
+                Button { navShowMileage = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "norwegiankronesign.circle.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Kjøregodtgjørelse").font(.appScaled(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(LinearGradient(colors: [KrBrand.purple, KrBrand.purpleLight],
+                                               startPoint: .leading, endPoint: .trailing), in: Capsule())
+                    .shadow(color: KrBrand.purple.opacity(0.4), radius: 6, y: 2)
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 11).padding(.vertical, 7)
-                .background(LinearGradient(colors: [KrBrand.purple, KrBrand.purpleLight],
-                                           startPoint: .leading, endPoint: .trailing), in: Capsule())
-                .shadow(color: KrBrand.purple.opacity(0.4), radius: 6, y: 2)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -2584,14 +3247,39 @@ struct KartView: View {
         return m / 1000
     }
 
-    /// Nærmeste POI per type (innen 6 km), kun når typen er SKJULT og ikke avvist.
+    /// Nærhets-varsler — REGLENE (Daniel 2026-07-19):
+    ///  1. Kun POI-typer som passer BILEN (el → lading, fossil → bensin).
+    ///  2. Vis nærmeste stasjon FORAN deg langs ruta (aldri bak) —
+    ///     avstand langs veien, ikke luftlinje.
+    ///  3. X avviser stasjonen for resten av turen (stabil nøkkel);
+    ///     neste stasjon foran rykker automatisk opp.
     private var navProximityAlerts: [NavRoutePOI] {
-        guard let me = navMeCoordinate, !navRoutePOIs.isEmpty else { return [] }
-        let radiusM = 6_000.0
+        guard !navRoutePOIs.isEmpty else { return [] }
+        let relevante = appState.vehicleProfile.defaultPOIKinds
         var result: [NavRoutePOI] = []
-        for kind in NavPOIKind.allCases where !navPOIActiveKinds.contains(kind) {
-            let nearest = navRoutePOIs
-                .filter { $0.kind == kind && !navDismissedPOIAlerts.contains($0.id) }
+        for kind in relevante where !navPOIActiveKinds.contains(kind) {
+            let kandidater = navRoutePOIs.filter {
+                $0.kind == kind && !navDismissedPOIAlerts.contains($0.stableKey)
+            }
+            // Rute-låst: nærmeste langs ruta, foran deg.
+            if let route = navRoute, navRouteCum.count == route.count,
+               let valgt = kandidater
+                   .compactMap({ p -> (NavRoutePOI, Double)? in
+                       let proj = projectS(point: p.coordinate, route: route, cum: navRouteCum)
+                       guard proj.dist < 600 else { return nil }        // nær ruta
+                       let dS = proj.s - navSDisplay
+                       guard dS > 30 else { return nil }                // foran deg
+                       return (p, dS)
+                   })
+                   .min(by: { $0.1 < $1.1 })?.0 {
+                result.append(valgt)
+                continue
+            }
+            // Fallback uten rutegeometri: luftlinje som før.
+            guard let me = navMeCoordinate else { continue }
+            let radiusM = 6_000.0
+            let nearest = kandidater
+                .filter { $0.kind == kind && !navDismissedPOIAlerts.contains($0.stableKey) }
                 .map { ($0, NavRoutePOIService.haversine(me, $0.coordinate)) }
                 .filter { $0.1 <= radiusM }
                 .min { $0.1 < $1.1 }
@@ -2601,8 +3289,17 @@ struct KartView: View {
     }
 
     private func navProximityAlertRow(_ p: NavRoutePOI) -> some View {
-        let km = (navMeCoordinate.map { NavRoutePOIService.haversine($0, p.coordinate) } ?? 0) / 1000
-        let minsAway = max(1, Int(km / 0.55))
+        // Avstand LANGS RUTA når geometrien finnes (regel 2) — luftlinje
+        // undervurderte avstanden i bygater.
+        let meterUnna: Double = {
+            if let route = navRoute, navRouteCum.count == route.count {
+                let proj = projectS(point: p.coordinate, route: route, cum: navRouteCum)
+                let dS = proj.s - navSDisplay
+                if dS > 0 { return dS }
+            }
+            return navMeCoordinate.map { NavRoutePOIService.haversine($0, p.coordinate) } ?? 0
+        }()
+        let minsAway = max(1, Int(meterUnna / 1000 / 0.55))
         return HStack(spacing: 11) {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(p.brandColor)
@@ -2610,8 +3307,12 @@ struct KartView: View {
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
+                // Nedtellings-animasjon: minuttallet ruller ned mens du
+                // nærmer deg (tydeligst når du starter > 8 min unna).
                 Text("\(p.kind.rawValue) \(minsAway) min unna")
                     .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(.snappy(duration: 0.5), value: minsAway)
                 Text("\(p.name) · +\(p.detourMin) min avstikker")
                     .font(.appScaled(size: 10)).foregroundStyle(KrBrand.textSecondary).lineLimit(1)
             }
@@ -2625,7 +3326,7 @@ struct KartView: View {
             }
             .buttonStyle(.plain)
             Button {
-                withAnimation { _ = navDismissedPOIAlerts.insert(p.id) }
+                withAnimation { _ = navDismissedPOIAlerts.insert(p.stableKey) }
             } label: {
                 Image(systemName: "xmark").font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(KrBrand.textSecondary).padding(7)
@@ -2882,6 +3583,39 @@ struct KartView: View {
         }
     }
 
+    /// Dørsalg-legenden: utfall på døra i stedet for lead-statusene.
+    private var dorsalgLegendCard: some View {
+        HStack(spacing: 10) {
+            dorsalgLegendItem(KrBrand.purpleLight, "house.fill", "Ubesøkt")
+            Spacer(minLength: 2)
+            dorsalgLegendItem(KrBrand.green, "checkmark", "Salg")
+            Spacer(minLength: 2)
+            dorsalgLegendItem(KrBrand.yellow, "clock", "Ikke hjemme")
+            Spacer(minLength: 2)
+            dorsalgLegendItem(KrBrand.red, "xmark", "Avslått")
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    private func dorsalgLegendItem(_ farge: Color, _ ikon: String, _ label: String) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle().fill(farge.opacity(0.22))
+                Image(systemName: ikon)
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(farge)
+            }
+            .frame(width: 22, height: 22)
+            Text(label)
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+    }
+
     @ViewBuilder
     private var legendItems: some View {
         ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
@@ -2936,9 +3670,25 @@ struct KartView: View {
                         .font(.appScaled(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.textSecondary)
+                // Kollaps panelet → kartet får hele bredden (portrett-iPad).
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        leadsPanelCollapsed = true
+                    }
+                } label: {
+                    Image(systemName: "sidebar.trailing")
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
 
-            VStack(spacing: 8) {
+            // Lazy: lista kan bli lang — radene bygges først når de scrolles inn.
+            LazyVStack(spacing: 8) {
                 if filteredLeads.isEmpty {
                     VStack(spacing: 6) {
                         Image(systemName: hasAnyLeads ? "magnifyingglass" : "mappin.slash")
@@ -3056,6 +3806,41 @@ struct KartView: View {
         }
     }
 
+    /// Velger en dørsalg-adresse OG zoomer inn på pinen (speiler
+    /// selectAndZoom for leads). Span ~0.0018° = helt nede på husnivå —
+    /// du ser døra du står ved og nabodørene rundt.
+    private func selectDorsalgAdresse(_ adr: KartverketService.AdressePunkt) {
+        withAnimation(.easeOut(duration: 0.2)) { dorsalgValgt = adr }
+        withAnimation(.easeInOut(duration: 0.55)) {
+            camera = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: adr.lat, longitude: adr.lon),
+                span: MKCoordinateSpan(latitudeDelta: 0.0018, longitudeDelta: 0.0027)
+            ))
+        }
+    }
+
+    /// Nærmeste ubesøkte adresse fra der du står — «Neste dør»-flyten.
+    private func nesteDorsalgAdresse(fra adr: KartverketService.AdressePunkt)
+        -> KartverketService.AdressePunkt? {
+        dorsalgSynligeAdresser
+            .filter { $0.id != adr.id && dorsalgStatuser[$0.id] == nil }
+            .min(by: { dorsalgAvstand(adr, $0) < dorsalgAvstand(adr, $1) })
+    }
+
+    private func dorsalgAvstand(_ a: KartverketService.AdressePunkt,
+                                _ b: KartverketService.AdressePunkt) -> Double {
+        CLLocation(latitude: a.lat, longitude: a.lon)
+            .distance(from: CLLocation(latitude: b.lat, longitude: b.lon))
+    }
+
+    /// Kompassretning som norsk ord («mot nordøst») for Neste dør-hintet.
+    private func dorsalgKompassOrd(_ grader: Double) -> String {
+        let dirs = ["nord", "nordøst", "øst", "sørøst", "sør", "sørvest", "vest", "nordvest"]
+        let norm = (grader.truncatingRemainder(dividingBy: 360) + 360)
+            .truncatingRemainder(dividingBy: 360)
+        return dirs[Int((norm + 22.5).truncatingRemainder(dividingBy: 360) / 45)]
+    }
+
     /// Velger en lead OG zoomer kartet inn på dens pin med smooth
     /// animation. Spans ~0.012° gir ca. gate-nivå zoom.
     private func selectAndZoom(_ lead: MapLeadMock) {
@@ -3082,10 +3867,21 @@ struct KartView: View {
 
     /// Delt tale-synthesizer for stemme-guiding.
     private static let speechSynth = AVSpeechSynthesizer()
+    /// Dedup-vakt: samme setning innen 8 s re-uttales aldri, og køen
+    /// holdes på maks én ventende ytring (GPS-jitter ga tale-loop).
+    private static var lastSpoken: (text: String, at: Date)?
 
     /// Snakk en instruksjon (norsk stemme). No-op når stemme er av.
     private func speak(_ text: String) {
         guard navVoiceOn else { return }
+        if let last = Self.lastSpoken, last.text == text,
+           Date().timeIntervalSince(last.at) < 8 { return }
+        // Ikke stable opp kø: er hun midt i en setning, bytt til den nye
+        // (den gamle er utdatert) i stedet for å lese begge.
+        if Self.speechSynth.isSpeaking {
+            Self.speechSynth.stopSpeaking(at: .word)
+        }
+        Self.lastSpoken = (text, Date())
         let u = AVSpeechUtterance(string: text)
         u.voice = AVSpeechSynthesisVoice(language: "nb-NO") ?? AVSpeechSynthesisVoice(language: "no")
         u.rate = AVSpeechUtteranceDefaultSpeechRate
@@ -3202,6 +3998,15 @@ struct KartView: View {
     private func stopNavigation() {
         navModeActive = false
         navRoute = nil
+        // Rute-låst motor: nullstill geometri + progresjon.
+        navRouteCum = []
+        navStepS = []
+        navSTarget = 0
+        navSDisplay = 0
+        navFollowSpeed = 0
+        navLastFixAt = nil
+        navAvatarCoord = nil
+        navTangent = nil
         navRoutePOIs = []
         navPOIActiveKinds = []
         navSelectedPOI = nil
@@ -3261,7 +4066,23 @@ struct KartView: View {
                 self.navSteps = steps
                 self.navStepIndex = steps.count > 1 ? 1 : 0   // hopp over «start»-steget
                 self.navSpokePrepare = false
+                // Nye steg skal ikke leses opp umiddelbart (reroute-loop-vern).
+                self.navSpeechGraceUntil = Date().addingTimeInterval(4)
                 withAnimation(.easeInOut(duration: 0.5)) { self.navRoute = coords }
+                // Rute-låst motor: bygg geometri + start s der du faktisk er.
+                self.buildRouteGeometry(coords)
+                if let me = KartLocationManager.shared.currentCoordinate,
+                   self.navRouteCum.count == coords.count {
+                    let proj = self.projectS(point: me, route: coords, cum: self.navRouteCum)
+                    self.navSTarget = proj.s
+                    self.navSDisplay = proj.s
+                } else {
+                    self.navSTarget = 0
+                    self.navSDisplay = 0
+                }
+                self.navTangent = nil
+                self.navFollowSpeed = 0
+                self.navAvatarCoord = self.pointAlongRoute(self.navSDisplay)?.coord
                 self.fetchNavRoutePOIs(route: coords)
                 self.fetchNavTolls(route: coords)
                 self.computeTransportETAs(from: from, to: to)
@@ -3322,17 +4143,25 @@ struct KartView: View {
             return
         }
         guard navStepIndex < navSteps.count else { return }
+        // Tale-pause rett etter re-rute: stegene er ferske — vent til de er
+        // stabile før de leses (ellers loop ved gjentatte re-ruter).
+        let taleOK = navSpeechGraceUntil.map { Date() >= $0 } ?? true
         let step = navSteps[navStepIndex]
         let d = metersBetween(me, step.coord)
-        // «Forbered» ~130 m før manøveren
-        if !navSpokePrepare, d < 130, d > 40 {
+        // «Forbered»-avstand skalert til reisemåte: 130 m er bil-tunet og
+        // fyrte umiddelbart på korte gå-etapper (dørsalg = 50 m-turer).
+        let prep: Double = navTransport == .walking ? 55 : 130
+        let prepGulv: Double = navTransport == .walking ? 20 : 40
+        if taleOK, !navSpokePrepare, d < prep, d > prepGulv {
             navSpokePrepare = true
             speak("Om \(Int(d / 10) * 10) meter, \(step.text)")
         }
-        // Manøver-punktet nådd → snakk + gå til neste steg
-        if d < 22 {
-            speak(step.text)
-            if navStepIndex < navSteps.count - 1 { navStepIndex += 1 }
+        // Manøver-punktet nådd → snakk + gå til neste steg. Indeksen økes
+        // ALLTID (kan bli == count): å stå ved siste manøver-punkt fikk
+        // stemmen til å repetere samme instruks hver posisjons-tick (loop).
+        if d < (navTransport == .walking ? 14 : 22) {
+            if taleOK { speak(step.text) }
+            navStepIndex += 1
             navSpokePrepare = false
         }
     }
@@ -3354,10 +4183,18 @@ struct KartView: View {
         if navPreset.northUp {
             heading = 0
             navHeadingSmoothed = 0
+        } else if metersBetween(me, destC) < 18, let prev = navHeadingSmoothed {
+            // Ankomstsone: heading-beregningen flipper når du passerer målet
+            // → kameraet spant rundt. Lås siste stabile retning.
+            heading = prev
         } else {
             let rawHeading = navRouteHeading(from: me, dest: destC)
             if let prev = navHeadingSmoothed {
-                heading = prev + angleDelta(prev, rawHeading) * 0.30
+                // Klamp rotasjonen per tick (maks 9°): i kryss/ved svinger
+                // hoppet kursen titalls grader på én oppdatering → kameraet
+                // slengte rundt («ustabilt», Daniel 2026-07-19).
+                let delta = angleDelta(prev, rawHeading) * 0.30
+                heading = prev + max(-9, min(9, delta))
             } else {
                 heading = rawHeading
             }
@@ -3376,7 +4213,9 @@ struct KartView: View {
             longitude: me.longitude + ahead * sin(rad) / max(0.2, cos(me.latitude * .pi / 180)))
         let cam = MapCamera(centerCoordinate: center, distance: dist, heading: heading, pitch: pitch)
         // Lineær under følging = jevn, kontinuerlig bevegelse (ikke pulsende).
-        withAnimation(animated ? .easeInOut(duration: 0.9) : .linear(duration: 0.55)) {
+        // 1,05 s > GPS-tick-avstanden (~1 s) → neste oppdatering tar over FØR
+        // forrige animasjon stopper — ellers små rykk mellom hver posisjon.
+        withAnimation(animated ? .easeInOut(duration: 0.9) : .linear(duration: 1.05)) {
             camera = .camera(cam)
         }
     }
@@ -3426,6 +4265,133 @@ struct KartView: View {
     /// «Snap-til-vei»: projiser posisjonen ned på nærmeste rute-segment, så
     /// figuren/kameraet alltid ligger på veien (fikser GPS-drift + sim-kutting).
     /// Snapper kun når nær nok (<60 m) — ellers beholdes rå posisjon (av-rute).
+    // MARK: Rute-låst følgemotor — geometri
+
+    /// Bygg kumulative lengder + steg-posisjoner (s) for gjeldende rute.
+    private func buildRouteGeometry(_ route: [CLLocationCoordinate2D]) {
+        guard route.count > 1 else { navRouteCum = []; navStepS = []; return }
+        var cum: [Double] = [0]
+        cum.reserveCapacity(route.count)
+        for i in 1..<route.count {
+            cum.append(cum[i - 1] + metersBetween(route[i - 1], route[i]))
+        }
+        navRouteCum = cum
+        navStepS = navSteps.map { projectS(point: $0.coord, route: route, cum: cum).s }
+    }
+
+    /// Projiser et punkt på ruta → (s = meter langs ruta, avstand fra ruta).
+    private func projectS(point: CLLocationCoordinate2D,
+                          route: [CLLocationCoordinate2D],
+                          cum: [Double]) -> (s: Double, dist: Double) {
+        var bestS = 0.0
+        var bestD = Double.greatestFiniteMagnitude
+        for i in 0..<(route.count - 1) {
+            let p = nearestPointOnSegment(point, route[i], route[i + 1])
+            let d = metersBetween(point, p)
+            if d < bestD {
+                bestD = d
+                bestS = cum[i] + metersBetween(route[i], p)
+            }
+        }
+        return (bestS, bestD)
+    }
+
+    /// Punkt + tangent (grader) ved s meter langs ruta.
+    private func pointAlongRoute(_ s: Double) -> (coord: CLLocationCoordinate2D, tangent: Double)? {
+        guard let route = navRoute, route.count > 1,
+              navRouteCum.count == route.count,
+              let total = navRouteCum.last, total > 0 else { return nil }
+        let sc = max(0, min(s, total))
+        var i = 0
+        while i < navRouteCum.count - 2 && navRouteCum[i + 1] < sc { i += 1 }
+        let segLen = max(0.01, navRouteCum[i + 1] - navRouteCum[i])
+        let t = (sc - navRouteCum[i]) / segLen
+        let a = route[i], b = route[i + 1]
+        let coord = CLLocationCoordinate2D(
+            latitude: a.latitude + (b.latitude - a.latitude) * t,
+            longitude: a.longitude + (b.longitude - a.longitude) * t)
+        return (coord, bearing(a, b))
+    }
+
+    /// 4 Hz-framdrift: gli mot s-target langs ruta, oppdater avatar, kamera,
+    /// tale og fremdrifts-UI. Kalles fra follow-loopen.
+    private func navFollowAdvance(dt: Double) {
+        guard navModeActive, let route = navRoute, route.count > 1,
+              navRouteCum.count == route.count,
+              let total = navRouteCum.last, total > 0 else { return }
+        let etterslep = max(0, navSTarget - navSDisplay)
+        // Fart: estimert GPS-fart + myk innhenting av etterslep — aldri hopp.
+        let v = min(45, max(navFollowSpeed, etterslep > 30 ? etterslep / 3 : 0))
+        let steg = min(etterslep, v * dt)
+        if steg > 0.01 || navAvatarCoord == nil {
+            navSDisplay += steg
+            guard let p = pointAlongRoute(navSDisplay) else { return }
+            withAnimation(.linear(duration: dt * 1.1)) { navAvatarCoord = p.coord }
+            let forrige = navTangent ?? p.tangent
+            navTangent = forrige + max(-14, min(14, angleDelta(forrige, p.tangent)))
+            updateNavCameraRouteLocked(dt: dt)
+            // Kompat: hold progress-indeksen i sync (snapping-vindu m.m.)
+            var i = 0
+            while i < navRouteCum.count - 2 && navRouteCum[i + 1] < navSDisplay { i += 1 }
+            if i > navProgressIndex { navProgressIndex = i }
+            let remaining = max(0, total - navSDisplay)
+            navDistanceText = remaining < 1000
+                ? "\(Int(remaining)) m" : String(format: "%.1f km", remaining / 1000)
+            let secs = remaining / max(0.5, navTransport.fallbackSpeed)
+            navETAMinutes = max(1, Int(secs / 60))
+            navETAText = "\(navETAMinutes) min"
+        }
+        navRouteVoiceTick(total: total)
+    }
+
+    /// Kamera låst til ruta: senter = punktet litt LENGRE FREMME LANGS RUTA
+    /// (ikke luftlinje), heading = glattet tangent. Én kontinuerlig bevegelse.
+    private func updateNavCameraRouteLocked(dt: Double) {
+        guard let tangent = navTangent else { return }
+        var p = navPreset.params(navTransport,
+                                 routeM: max(0, (navRouteCum.last ?? 0) - navSDisplay))
+        #if DEBUG
+        if navCalibOpen { p = (navCalibPitch, navCalibDist, navCalibAhead) }
+        #endif
+        let heading: Double = navPreset.northUp ? 0 : tangent
+        navCamHeading = heading
+        navHeadingSmoothed = heading
+        let aheadM = p.ahead * 111_000
+        guard let senter = pointAlongRoute(navSDisplay + aheadM) else { return }
+        let cam = MapCamera(centerCoordinate: senter.coord, distance: p.dist,
+                            heading: heading, pitch: p.pitch)
+        withAnimation(.linear(duration: dt * 1.1)) { camera = .camera(cam) }
+    }
+
+    /// Tale/manøvrer drevet av s (monoton) — kan ikke loope.
+    private func navRouteVoiceTick(total: Double) {
+        guard let dest = navDestination else { return }
+        // Ankomst
+        if !navArrived, total - navSDisplay < 20 {
+            navArrived = true
+            logCompletedTrip()
+            speak("Du er fremme ved \(dest.name)")
+            showToast("Du er fremme ved \(dest.name)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                if navArrived { withAnimation(.easeOut(duration: 0.3)) { stopNavigation() } }
+            }
+            return
+        }
+        guard navStepIndex < navSteps.count, navStepIndex < navStepS.count else { return }
+        let taleOK = navSpeechGraceUntil.map { Date() >= $0 } ?? true
+        let dist = navStepS[navStepIndex] - navSDisplay
+        let prep: Double = navTransport == .walking ? 55 : 130
+        if taleOK, !navSpokePrepare, dist < prep, dist > 25 {
+            navSpokePrepare = true
+            speak("Om \(Int(dist / 10) * 10) meter, \(navSteps[navStepIndex].text)")
+        }
+        if dist <= (navTransport == .walking ? 12 : 18) {
+            if taleOK { speak(navSteps[navStepIndex].text) }
+            navStepIndex += 1
+            navSpokePrepare = false
+        }
+    }
+
     private func snapToRoute(_ me: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
         guard navModeActive, let route = navRoute, route.count > 1 else { return me }
         // Søk kun i et vindu FRAMOVER fra der vi er (map-matching-lite): unngår at
@@ -3439,7 +4405,10 @@ struct KartView: View {
             let d = metersBetween(me, cand)
             if d < bestD { bestD = d; best = cand }
         }
-        return bestD < 60 ? best : me
+        // 110 m (før 60): GPS-drift mellom bygårder la avataren «oppå
+        // bygninger». Innenfor terskelen limes den til ruta; er du GENUINT
+        // av ruta tar re-rutingen over (hysterese + 12 s-cooldown).
+        return bestD < 110 ? best : me
     }
 
     /// Korteste vinkel-differanse from→to i grader (−180…180), håndterer wrap.
@@ -3495,7 +4464,31 @@ struct KartView: View {
     private func navLocationTick() {
         guard navModeActive, let dest = navDestination,
               let me = KartLocationManager.shared.currentCoordinate else { return }
+        // Dørsalg: oversikt ved start → heading-up gå-POV idet du beveger
+        // deg (>8 m fra start eller motion-deteksjon) — retningen du skal
+        // gå peker da OPP på kartet.
+        if dorsalgNavAutoPOV,
+           KartLocationManager.shared.isMoving
+            || (navStartCoord.map { metersBetween($0, me) > 8 } ?? false) {
+            dorsalgNavAutoPOV = false
+            // .walk: flat 2D heading-up. POV/drive klippet i 3D-byggmasse
+            // (opptak 2026-07-19 «ustabilt») — pitch 0 kan ikke okkluderes.
+            navPreset = .walk
+            navPresetManual = true
+            updateNavCamera(animated: true)
+        }
         let destC = CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon)
+        // Bevegelses-kurs til avatar-pilen: peiling fra forrige posisjon
+        // (kun ved reell forflytning > 4 m — GPS-jitter gir ellers spinn).
+        if let anker = navCourseAnchor {
+            let d = metersBetween(anker, me)
+            if d > 4 {
+                navCourse = bearing(anker, me)
+                navCourseAnchor = me
+            }
+        } else {
+            navCourseAnchor = me
+        }
         // Map-matching-lite: flytt progresjonen framover + oppdater ETA lokalt fra
         // gjenstående rute (ingen reroute nødvendig når du er på ruta).
         var onRouteDist = Double.greatestFiniteMagnitude
@@ -3510,17 +4503,24 @@ struct KartView: View {
             }
             onRouteDist = bestD
             if bestI > navProgressIndex { navProgressIndex = bestI }
-            // gjenstående lengde langs ruta
-            let snapped = snapToRoute(me)
-            var remaining = 0.0
-            let nextI = min(navProgressIndex + 1, route.count - 1)
-            remaining += metersBetween(snapped, route[nextI])
-            var i = nextI
-            while i < route.count - 1 { remaining += metersBetween(route[i], route[i + 1]); i += 1 }
-            let secs = remaining / max(0.5, navTransport.fallbackSpeed)
-            navDistanceText = remaining < 1000 ? "\(Int(remaining)) m" : String(format: "%.1f km", remaining / 1000)
-            navETAMinutes = max(1, Int(secs / 60))
-            navETAText = "\(navETAMinutes) min"
+            // Rute-låst motor: GPS oppdaterer KUN s-target (monoton) + fart.
+            // Avatar/kamera/tale/UI drives av follow-loopen (navFollowAdvance).
+            if navRouteCum.count == route.count {
+                let proj = projectS(point: me, route: route, cum: navRouteCum)
+                let naa = Date()
+                if let sist = navLastFixAt {
+                    let dtFix = naa.timeIntervalSince(sist)
+                    if dtFix > 0.2 {
+                        if proj.s > navSTarget {
+                            navFollowSpeed = min(45, (proj.s - navSTarget) / dtFix)
+                        } else {
+                            navFollowSpeed *= 0.7   // står stille → brems mykt
+                        }
+                    }
+                }
+                navLastFixAt = naa
+                if proj.s > navSTarget { navSTarget = proj.s }
+            }
         }
         // Auto-deteksjon: bytt transportform når Core Motion/fart endrer seg.
         if navTransportAuto {
@@ -3533,21 +4533,26 @@ struct KartView: View {
                 recomputeNavRoute(from: me, to: CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon))
             }
         }
-        updateNavCamera(animated: false)
+        // Kamera drives av follow-loopen når rutegeometrien finnes;
+        // fallback til rå følging kun før første rute er klar.
+        if navRouteCum.isEmpty { updateNavCamera(animated: false) }
         // Reroute-hysterese: bare re-rut når du er tydelig AV-rute (>50 m) i to
         // påfølgende tikk — ellers holder vi ruta + manøvrene stabile.
         if onRouteDist > 50 {
             navOffRouteCount += 1
-            if navOffRouteCount >= 2 {
+            let sidenSist = navLastRerouteAt.map { Date().timeIntervalSince($0) } ?? .infinity
+            if navOffRouteCount >= 2, sidenSist > 12 {
                 navOffRouteCount = 0
                 navRerouteAnchor = me
+                navLastRerouteAt = Date()
                 recomputeNavRoute(from: me, to: destC)
             }
         } else {
             navOffRouteCount = 0
         }
-        // Turn-by-turn: annonser manøvrer + oppdag ankomst.
-        navTurnTick(me)
+        // Turn-by-turn/ankomst drives av follow-loopen (navRouteVoiceTick,
+        // monoton s → kan ikke loope); rå tick kun før geometrien er klar.
+        if navRouteCum.isEmpty { navTurnTick(me) }
         // Fartsgrense (NVDB) — hent på nytt hver ~80 m.
         if navSpeedAnchor == nil || metersBetween(navSpeedAnchor!, me) > 80 {
             navSpeedAnchor = me
@@ -3619,6 +4624,113 @@ struct KartView: View {
         // Beat 2 (t≈6.2s) — «NAVIGER» trykkes → ekte live-nav (roterer + rute).
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.2) {
             startNavigation(to: nordic)
+        }
+    }
+
+    /// QA-tour for landing-videoene: scripted interaksjon som viser
+    /// funksjonaliteten i bruk mens `simctl recordVideo` kjører utenpå.
+    /// QA_TOUR=kart (pan → velg pin → callout → neste pin) eller
+    /// QA_TOUR=dorsalg (modus på → adresse-callout → Registrer salg-ark).
+    /// Ingen backend-skriv. Reverteres m/ task #59-følget.
+    private func runQATour(_ kind: String) async {
+        switch kind {
+        case "kart":
+            let leads = kartLeads
+            camera = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522),
+                span: MKCoordinateSpan(latitudeDelta: 0.16, longitudeDelta: 0.24)))
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            withAnimation(.easeInOut(duration: 1.7)) {
+                camera = .region(MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522),
+                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.075)))
+            }
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if let first = leads.first { selectAndZoom(first) }
+            try? await Task.sleep(nanoseconds: 3_400_000_000)
+            if leads.count > 2 { selectAndZoom(leads[2]) }
+            try? await Task.sleep(nanoseconds: 3_400_000_000)
+
+        case "dorsalg":
+            let senter = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7460)
+            camera = .region(MKCoordinateRegion(
+                center: senter,
+                span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02)))
+            currentRegion = MKCoordinateRegion(
+                center: senter,
+                span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02))
+            setDorsalgModus(true)
+            for _ in 0..<20 where dorsalgSynligeAdresser.isEmpty {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            // Realistisk arbeidsdag: seed utfall på ~1/3 av dørene i området
+            // (mest «ikke hjemme», en del vunnet, noen avslag) — deterministisk
+            // på adresse-id så opptaket er stabilt.
+            for a in dorsalgAdresser where dorsalgStatuser[a.id] == nil {
+                let h = a.id.unicodeScalars.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1.value) }
+                switch abs(h) % 100 {
+                case 0..<13: dorsalgStatuser[a.id] = "vunnet"
+                case 13..<30: dorsalgStatuser[a.id] = "ikke_hjemme"
+                case 30..<38: dorsalgStatuser[a.id] = "avslatt"
+                default: break
+                }
+            }
+            oppdaterDorsalgSynlige()
+            let ledige = dorsalgSynligeAdresser.filter { dorsalgStatuser[$0.id] == nil }
+            guard let adr = ledige.min(by: {
+                abs($0.lat - senter.latitude) + abs($0.lon - senter.longitude)
+                    < abs($1.lat - senter.latitude) + abs($1.lon - senter.longitude)
+            }) else { return }
+            selectDorsalgAdresse(adr)
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            dorsalgSalgFor = adr
+            try? await Task.sleep(nanoseconds: 4_200_000_000)
+            dorsalgSalgFor = nil
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            // Utfall registrert → feiring + «Neste dør»-raden (kompass +
+            // veiviser-linje) dukker opp; tour-en «trykker» den.
+            // Seed 2 tidligere salg så feiringen viser «3 av 3 — dagsmål».
+            dorsalgDagensSalg = 2
+            dorsalgSettStatus("vunnet", for: adr)
+            visDorsalgFeiring()
+            try? await Task.sleep(nanoseconds: 3_100_000_000)
+            guard let neste = nesteDorsalgAdresse(fra: adr) else { return }
+            selectDorsalgAdresse(neste)
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            // Avslag → motivasjons-dytt + veiviser videre.
+            dorsalgSettStatus("avslatt", for: neste)
+            try? await Task.sleep(nanoseconds: 3_100_000_000)
+            if let tredje = nesteDorsalgAdresse(fra: neste) {
+                selectDorsalgAdresse(tredje)
+            }
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+
+        case "dorsalg-nav":
+            // Feilsøk: hva skjer når «Naviger» trykkes fra dørsalg-callouten.
+            let senter = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7460)
+            camera = .region(MKCoordinateRegion(
+                center: senter,
+                span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02)))
+            currentRegion = MKCoordinateRegion(
+                center: senter,
+                span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02))
+            setDorsalgModus(true)
+            for _ in 0..<20 where dorsalgSynligeAdresser.isEmpty {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard let adr = dorsalgSynligeAdresser.min(by: {
+                abs($0.lat - senter.latitude) + abs($0.lon - senter.longitude)
+                    < abs($1.lat - senter.latitude) + abs($1.lon - senter.longitude)
+            }) else { return }
+            selectDorsalgAdresse(adr)
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            dorsalgNaviger(til: adr)
+            try? await Task.sleep(nanoseconds: 9_000_000_000)
+
+        default:
+            break
         }
     }
     #endif
@@ -4421,27 +5533,142 @@ fileprivate struct DroppedPin: View {
     }
 }
 
-// MARK: - Dørsalg adresse-dot (2026-07-18)
+// MARK: - Dørsalg adresse-pin (2026-07-18)
 
-/// Liten husstands-dot i dørsalg-modus: 9 pt sirkel (KrBrand.purpleLight
-/// m/ hvit kant), valgt = litt større m/ glød. Tap-flaten er 26 pt så
-/// den er treffbar med finger uten at kartet ser overlesset ut.
-fileprivate struct DorsalgAdresseDot: View {
+/// Husstands-pin i dørsalg-modus — SAMME dråpe-design som lead-pins
+/// (KartDropPin + gradient + hvit kant), bare mindre siden det kan stå
+/// hundrevis på skjermen. Fargen viser utfallet på døra:
+/// lilla = ubesøkt, grønn = vunnet kunde, rød = avslått.
+/// Feiring etter registrert salg: grønn sjekk popper med sprett mens
+/// konfetti-partikler sprer seg utover, pluss milepæl mot dagsmålet
+/// («2 av 3 mot dagsmålet» / «Dagsmål nådd!» m/ gull-variant og ekstra
+/// konfetti). Ren SwiftUI — auto-drevet av onAppear, forelder styrer
+/// visning/dismiss (dorsalgFeiring).
+fileprivate struct SalgFeiringView: View {
+    let antall: Int
+    let maal: Int
+    @State private var vis = false
+
+    private var maalNaadd: Bool { antall >= maal }
+
+    private static let farger: [Color] = [
+        KrBrand.green, KrBrand.purpleLight, KrBrand.yellow, .white, KrBrand.purple,
+    ]
+    private static let gull = Color(red: 1.0, green: 0.80, blue: 0.25)
+
+    var body: some View {
+        let antallPartikler = maalNaadd ? 32 : 20
+        ZStack {
+            // Konfetti i vifte rundt sjekken — flere når dagsmålet nås.
+            ForEach(0..<antallPartikler, id: \.self) { i in
+                let vinkel = Double(i) / Double(antallPartikler) * 2 * .pi
+                Circle()
+                    .fill(maalNaadd && i % 3 == 0
+                          ? Self.gull : Self.farger[i % Self.farger.count])
+                    .frame(width: i % 3 == 0 ? 11 : 7,
+                           height: i % 3 == 0 ? 11 : 7)
+                    .offset(x: vis ? cos(vinkel) * (i % 2 == 0 ? 165 : 110) : 0,
+                            y: vis ? sin(vinkel) * (i % 2 == 0 ? 165 : 110) + 30 : 0)
+                    .opacity(vis ? 0 : 1)
+                    .animation(.easeOut(duration: maalNaadd ? 1.15 : 0.95)
+                        .delay(Double(i % 5) * 0.03), value: vis)
+            }
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(maalNaadd ? Self.gull : KrBrand.green)
+                        .frame(width: 76, height: 76)
+                        .shadow(color: (maalNaadd ? Self.gull : KrBrand.green).opacity(0.65),
+                                radius: 20)
+                    Image(systemName: maalNaadd ? "trophy.fill" : "checkmark")
+                        .font(.system(size: maalNaadd ? 32 : 36, weight: .heavy))
+                        .foregroundStyle(.white)
+                }
+                .scaleEffect(vis ? 1 : 0.15)
+                .animation(.spring(response: 0.38, dampingFraction: 0.55), value: vis)
+                VStack(spacing: 6) {
+                    Text(maalNaadd ? "Dagsmål nådd!" : "Salg registrert!")
+                        .font(.appScaled(size: 16, weight: .heavy))
+                        .foregroundStyle(.white)
+                    // Milepæl-prikker mot dagsmålet («2 av 3»)
+                    HStack(spacing: 6) {
+                        ForEach(0..<max(maal, antall), id: \.self) { i in
+                            Circle()
+                                .fill(i < antall
+                                      ? (maalNaadd ? Self.gull : KrBrand.green)
+                                      : Color.white.opacity(0.25))
+                                .frame(width: 9, height: 9)
+                        }
+                        Text("\(min(antall, maal)) av \(maal)")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.leading, 4)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .opacity(vis ? 1 : 0)
+                .offset(y: vis ? 0 : 10)
+                .animation(.easeOut(duration: 0.3).delay(0.15), value: vis)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(vis ? 0.25 : 0))
+        .onAppear { vis = true }
+    }
+}
+
+fileprivate struct DorsalgAdressePin: View {
+    let status: String?      // nil | "vunnet" | "avslatt"
     let valgt: Bool
     let onTap: () -> Void
+
+    private var farge: Color {
+        switch status {
+        case "vunnet": return KrBrand.green
+        case "avslatt": return KrBrand.red
+        case "ikke_hjemme": return KrBrand.yellow
+        default: return KrBrand.purpleLight
+        }
+    }
+    private var ikon: String {
+        switch status {
+        case "vunnet": return "checkmark"
+        case "avslatt": return "xmark"
+        case "ikke_hjemme": return "clock"
+        default: return "house.fill"
+        }
+    }
+
     var body: some View {
+        // Ytelse: skygge KUN på valgt pin — soft shadow på 400 samtidige
+        // annotations var GPU-tungt (treg panorering, Daniel 2026-07-18).
         Button(action: onTap) {
-            Circle()
-                .fill(KrBrand.purpleLight)
-                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                .frame(width: valgt ? 13 : 9, height: valgt ? 13 : 9)
-                .shadow(color: valgt ? KrBrand.purpleLight.opacity(0.8) : .black.opacity(0.3),
-                        radius: valgt ? 6 : 2)
-                .frame(width: 26, height: 26)
-                .contentShape(Circle())
+            ZStack {
+                KartDropPin()
+                    .fill(LinearGradient(colors: [farge, farge.opacity(0.85)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .overlay(
+                        KartDropPin()
+                            .stroke(valgt ? Color.white : Color.white.opacity(0.85),
+                                    lineWidth: valgt ? 2.5 : 1.5)
+                    )
+                    .frame(width: valgt ? 27 : 21, height: valgt ? 34 : 27)
+                    .shadow(color: valgt ? farge.opacity(0.8) : .clear,
+                            radius: valgt ? 8 : 0, y: 1)
+                Image(systemName: ikon)
+                    .font(.system(size: valgt ? 10 : 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .offset(y: valgt ? -4.5 : -3.5)
+            }
+            .frame(width: 32, height: 40)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.15), value: valgt)
+        // «Genie»-pop: valgt pin vokser ut av spissen med sprett (overshoot)
+        // — tydelig indikasjon på hvilken dør du står på (Daniel 2026-07-19).
+        .scaleEffect(valgt ? 1.35 : 1.0, anchor: .bottom)
+        .animation(.spring(response: 0.34, dampingFraction: 0.55), value: valgt)
     }
 }
 
@@ -4538,6 +5765,9 @@ fileprivate struct NavAvatarPuck: View {
     var email: String?
     var vehicle: KartView.NavVehicle
     var moving: Bool
+    /// Kjøreretning i SKJERM-grader (kurs minus kamera-heading) — pilen
+    /// peker dit du faktisk beveger deg, uansett kamera-modus.
+    var screenCourse: Double?
 
     private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
     private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
@@ -4560,14 +5790,68 @@ fileprivate struct NavAvatarPuck: View {
                 .offset(y: 24)
 
             // Figuren skifter med reisemåte: gå-person (leddelt, går) eller
-            // kjøretøy-puck (bil/buss/sparkesykkel) m/ profil-hode.
+            // kjøretøy. I bevegelse m/ kjent kurs roteres en TOP-DOWN-bil
+            // etter faktisk kjøreretning (profil-bilen kan ikke roteres
+            // troverdig — Daniels funn 2026-07-19); stillestående vises
+            // profil-avataren som før.
             if vehicle == .walk {
                 WalkingAvatar(portraitAsset: portraitAsset, initials: initials)
+                // Kurs-pil for gange: peker dit du faktisk beveger deg.
+                if let c = screenCourse, moving {
+                    Image(systemName: "location.north.fill")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(purpleLight)
+                        .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+                        .offset(y: -46)
+                        .rotationEffect(.degrees(c))
+                        .animation(.easeInOut(duration: 0.6), value: c)
+                }
+            } else if let c = screenCourse, moving {
+                TopViewCarMarker(color: purple)
+                    .rotationEffect(.degrees(c))
+                    .animation(.easeInOut(duration: 0.6), value: c)
+                // Profil-hodet flyter skjermfast over bilen (roteres ikke).
+                if let asset = portraitAsset {
+                    Image(asset)
+                        .resizable().scaledToFill()
+                        .frame(width: 26, height: 26)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+                        .offset(y: -40)
+                }
             } else {
                 WheeledVehicleAvatar(kind: vehicle, portraitAsset: portraitAsset, initials: initials)
             }
         }
         .frame(width: 92, height: 110)
+    }
+}
+
+/// Top-down-bil for nav-avataren: karosseri m/ front-/bakrute sett ovenfra,
+/// nese opp — roteres av kalleren etter kjøreretning.
+fileprivate struct TopViewCarMarker: View {
+    var color: Color
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9)
+                .fill(LinearGradient(colors: [color, color.opacity(0.78)],
+                                     startPoint: .top, endPoint: .bottom))
+                .frame(width: 27, height: 48)
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .stroke(.white.opacity(0.9), lineWidth: 1.6))
+            // Frontrute (mørk) — markerer nesen
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(red: 0.07, green: 0.04, blue: 0.15).opacity(0.85))
+                .frame(width: 19, height: 9)
+                .offset(y: -9)
+            // Bakrute
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(red: 0.07, green: 0.04, blue: 0.15).opacity(0.55))
+                .frame(width: 19, height: 7)
+                .offset(y: 13)
+        }
+        .shadow(color: .black.opacity(0.45), radius: 5, y: 2)
     }
 }
 
@@ -4826,9 +6110,19 @@ struct LayersSheet: View {
     var navActive: Bool = false
     var canNavigate: Bool = false
     var destinationName: String = ""
+    /// Dørsalg-modus: lead-baserte lag (heatmap/AI-leads/reise-historikk/
+    /// bedrifts-data) og lead-nav skjules — kartstil, territorier og
+    /// team-på-kartet beholdes.
+    var dorsalg: Bool = false
     var onStartNav: () -> Void = {}
     var onStopNav: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
+
+    private var tilgjengeligeLag: [KartView.MapOverlay] {
+        dorsalg
+            ? [.territories, .teamMembers]
+            : KartView.MapOverlay.allCases
+    }
 
     private enum LBrand {
         static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -4844,7 +6138,7 @@ struct LayersSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    navSection
+                    if !dorsalg { navSection }
                     styleSection
                     overlaysSection
                     Color.clear.frame(height: 16)
@@ -5024,7 +6318,7 @@ struct LayersSheet: View {
                     .foregroundStyle(LBrand.textSecondary)
             }
             VStack(spacing: 8) {
-                ForEach(KartView.MapOverlay.allCases, id: \.self) { o in
+                ForEach(tilgjengeligeLag, id: \.self) { o in
                     overlayRow(o)
                 }
             }
@@ -5100,6 +6394,353 @@ private extension View {
             self
         } else {
             self.presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
+// MARK: - Registrer salg (dørsalg, mig 0400)
+
+/// Feltene fra registreringsskjemaet — eies av KartView-callbacken
+/// (demo = lokalt, ekte = POST /dorsalg/sales).
+struct RegistrertSalgData {
+    let produktId: String?
+    let bidragBelop: Double?
+    let bidragLabel: String?
+    let kundeNavn: String
+    let kundeTelefon: String
+    let kundeEpost: String?
+    let ringBekreftet: Bool
+    let samtykkeTekst: String
+}
+
+/// «Registrer salg» på døra — grandma-vennlig: store flater, chips i stedet
+/// for tasting, ALDRI betalingsdata, og en rolig kvitteringsskjerm selgeren
+/// snur mot kunden. Telefon kan ring-bekreftes på stedet; e-post er valgfri
+/// (velkomst-e-post m/ bekreftelseslenke sendes når den finnes).
+fileprivate struct RegistrerSalgSheet: View {
+    let adresse: KartverketService.AdressePunkt
+    let produkter: [KartverketService.DorsalgProduct]
+    let onRegistrer: (RegistrertSalgData) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var valgtProdukt: KartverketService.DorsalgProduct?
+    @State private var valgtBidrag: KartverketService.DorsalgProduct.Bidrag?
+    @State private var navn = ""
+    @State private var telefon = ""
+    @State private var epost = ""
+    @State private var ringBekreftet = false
+    @State private var samtykkeOK = false
+    @State private var visKvittering = false
+
+    private static let epostDomener = ["@gmail.com", "@outlook.com", "@hotmail.com",
+                                       "@icloud.com", "@online.no"]
+
+    private var samtykkeTekst: String {
+        let fallback = "Jeg ønsker å inngå avtalen og godtar å bli kontaktet for å sette opp betalingsavtalen direkte med organisasjonen. 14 dagers angrerett."
+        guard let t = valgtProdukt?.samtykkeTekst, !t.isEmpty else { return fallback }
+        return t
+    }
+
+    private var kanRegistrere: Bool {
+        !navn.trimmingCharacters(in: .whitespaces).isEmpty && samtykkeOK
+            && (produkter.isEmpty || valgtProdukt != nil)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if visKvittering {
+                    kvittering
+                } else {
+                    skjema
+                }
+            }
+            .background(KrBrand.bg.ignoresSafeArea())
+            .navigationTitle(visKvittering ? "" : "Registrer salg")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if !visKvittering {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Avbryt") { dismiss() }
+                            .foregroundStyle(KrBrand.textSecondary)
+                    }
+                }
+            }
+            .toolbarBackground(KrBrand.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .presentationDetents([.large])
+        .interactiveDismissDisabled(visKvittering)
+        .onAppear {
+            if produkter.count == 1 { valgtProdukt = produkter.first }
+        }
+    }
+
+    // MARK: Skjemaet
+
+    private var skjema: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Adressen (kontekst)
+                HStack(spacing: 9) {
+                    Image(systemName: "house.fill").foregroundStyle(KrBrand.purpleLight)
+                    Text("\(adresse.adressetekst), \(adresse.postnummer) \(adresse.poststed)")
+                        .font(.appScaled(size: 13, weight: .semibold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                }
+
+                if !produkter.isEmpty {
+                    felt("Organisasjon") {
+                        chipRad(produkter, label: { $0.navn },
+                                valgt: valgtProdukt?.id) { p in
+                            valgtProdukt = p
+                            valgtBidrag = nil
+                        }
+                    }
+                }
+                if let bidrag = valgtProdukt?.bidrag, !bidrag.isEmpty {
+                    felt("Bidrag per måned") {
+                        chipRad(bidrag,
+                                label: { "\(Int($0.belop)) kr\($0.label.isEmpty ? "" : " · \($0.label)")" },
+                                valgt: valgtBidrag?.id) { valgtBidrag = $0 }
+                    }
+                }
+
+                felt("Kundens navn") {
+                    tekstfelt($navn, prompt: "Fornavn Etternavn", keyboard: .default)
+                }
+                felt("Telefon") {
+                    VStack(spacing: 8) {
+                        tekstfelt($telefon, prompt: "+47 …", keyboard: .phonePad)
+                        // Ring-bekreftelse: kundens telefon ringer i lomma
+                        // der og da — besittelse bevist uten SMS-gateway.
+                        Button {
+                            let ren = telefon.filter { $0.isNumber || $0 == "+" }
+                            if let url = URL(string: "tel://\(ren)"), !ren.isEmpty {
+                                UIApplication.shared.open(url)
+                                ringBekreftet = true
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: ringBekreftet
+                                      ? "checkmark.circle.fill" : "phone.fill")
+                                    .font(.appScaled(size: 13, weight: .bold))
+                                Text(ringBekreftet ? "Nummeret ringte" : "Ring for å bekrefte nummeret")
+                                    .font(.appScaled(size: 13, weight: .bold))
+                            }
+                            .foregroundStyle(ringBekreftet ? KrBrand.green : .white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(ringBekreftet
+                                        ? AnyShapeStyle(KrBrand.green.opacity(0.18))
+                                        : AnyShapeStyle(KrBrand.cardHi),
+                                        in: RoundedRectangle(cornerRadius: 11))
+                            .overlay(RoundedRectangle(cornerRadius: 11)
+                                .stroke(ringBekreftet ? KrBrand.green.opacity(0.5) : KrBrand.stroke,
+                                        lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(telefon.filter(\.isNumber).count < 8)
+                    }
+                }
+                felt("E-post (valgfritt)") {
+                    VStack(spacing: 8) {
+                        tekstfelt($epost, prompt: "fornavn.etternavn", keyboard: .emailAddress)
+                        // Domene-chips: kunden sier «gmail» — ett trykk.
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Self.epostDomener, id: \.self) { d in
+                                    Button {
+                                        if let at = epost.firstIndex(of: "@") {
+                                            epost = String(epost[..<at]) + d
+                                        } else {
+                                            epost += d
+                                        }
+                                    } label: {
+                                        Text(d)
+                                            .font(.appScaled(size: 12, weight: .semibold))
+                                            .foregroundStyle(KrBrand.purpleLight)
+                                            .padding(.horizontal, 10).padding(.vertical, 6)
+                                            .background(KrBrand.cardHi, in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Samtykket kunden faktisk godtar — teksten versjoneres
+                // per salg i backend (dokumentert spor).
+                felt("Samtykke") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(samtykkeTekst)
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(KrBrand.textSecondary)
+                        Button {
+                            samtykkeOK.toggle()
+                        } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: samtykkeOK
+                                      ? "checkmark.square.fill" : "square")
+                                    .font(.appScaled(size: 18))
+                                    .foregroundStyle(samtykkeOK ? KrBrand.green : KrBrand.textSecondary)
+                                Text("Kunden har hørt og godtatt dette")
+                                    .font(.appScaled(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                    .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1))
+                }
+
+                Button {
+                    onRegistrer(RegistrertSalgData(
+                        produktId: valgtProdukt?.id,
+                        bidragBelop: valgtBidrag?.belop,
+                        bidragLabel: valgtBidrag?.label,
+                        kundeNavn: navn.trimmingCharacters(in: .whitespaces),
+                        kundeTelefon: telefon.trimmingCharacters(in: .whitespaces),
+                        kundeEpost: epost.contains("@") ? epost.trimmingCharacters(in: .whitespaces) : nil,
+                        ringBekreftet: ringBekreftet,
+                        samtykkeTekst: samtykkeTekst))
+                    withAnimation(.easeInOut(duration: 0.3)) { visKvittering = true }
+                } label: {
+                    Text("Registrer salg")
+                        .font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(
+                            LinearGradient(colors: [KrBrand.green, KrBrand.green.opacity(0.75)],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: RoundedRectangle(cornerRadius: 13))
+                }
+                .buttonStyle(.plain)
+                .disabled(!kanRegistrere)
+                .opacity(kanRegistrere ? 1 : 0.45)
+                Color.clear.frame(height: 16)
+            }
+            .padding(18)
+        }
+    }
+
+    // MARK: Kvitteringen (grandma-skjermen — snus mot kunden)
+
+    private var kvittering: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                Spacer().frame(height: 16)
+                ZStack {
+                    Circle().fill(KrBrand.green.opacity(0.18)).frame(width: 96, height: 96)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 44, weight: .bold))
+                        .foregroundStyle(KrBrand.green)
+                }
+                Text("Takk, \(navn.split(separator: " ").first.map(String.init) ?? navn)!")
+                    .font(.appScaled(size: 26, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                if let p = valgtProdukt {
+                    Text(valgtBidrag != nil
+                         ? "Du støtter nå \(p.navn) med \(Int(valgtBidrag!.belop)) kr i måneden."
+                         : "Du støtter nå \(p.navn).")
+                        .font(.appScaled(size: 17, weight: .semibold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                VStack(alignment: .leading, spacing: 13) {
+                    kvitteringRad("banknote", "Ingen betaling er gjort på døra — og du oppgir aldri kontonummer til selgeren.")
+                    kvitteringRad("phone.fill", "Du blir ringt for en hyggelig velkomstsamtale.")
+                    if epost.contains("@") {
+                        kvitteringRad("envelope.fill", "Du får en e-post — trykk på knappen der for å bekrefte.")
+                    }
+                    kvitteringRad("checkmark.shield.fill", "Du har 14 dagers angrerett — helt uten grunn.")
+                    kvitteringRad("building.columns.fill", "Betalingsavtalen setter du opp direkte med organisasjonen.")
+                }
+                .padding(16)
+                .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(KrBrand.green.opacity(0.3), lineWidth: 1))
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Ferdig")
+                        .font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(KrBrand.purple, in: RoundedRectangle(cornerRadius: 13))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+            }
+            .padding(22)
+        }
+    }
+
+    private func kvitteringRad(_ ikon: String, _ tekst: String) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: ikon)
+                .font(.appScaled(size: 15))
+                .foregroundStyle(KrBrand.green)
+                .frame(width: 24)
+            Text(tekst)
+                .font(.appScaled(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: Små byggeklosser
+
+    private func felt(_ label: String, @ViewBuilder innhold: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label.uppercased())
+                .font(.appScaled(size: 9, weight: .bold))
+                .foregroundStyle(KrBrand.textSecondary).kerning(0.5)
+            innhold()
+        }
+    }
+
+    private func tekstfelt(_ tekst: Binding<String>, prompt: String,
+                           keyboard: UIKeyboardType) -> some View {
+        TextField("", text: tekst,
+                  prompt: Text(prompt).foregroundColor(KrBrand.textTertiary))
+            .textFieldStyle(.plain)
+            .foregroundStyle(.white)
+            .font(.appScaled(size: 16))
+            .keyboardType(keyboard)
+            .textInputAutocapitalization(keyboard == .emailAddress ? .never : .words)
+            .autocorrectionDisabled()
+            .padding(13)
+            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    private func chipRad<T: Identifiable>(_ elementer: [T],
+                                          label: @escaping (T) -> String, valgt: String?,
+                                          onTap: @escaping (T) -> Void) -> some View
+        where T.ID == String {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(elementer) { e in
+                    let aktiv = e.id == valgt
+                    Button { onTap(e) } label: {
+                        Text(label(e))
+                            .font(.appScaled(size: 14, weight: .bold))
+                            .foregroundStyle(aktiv ? .white : KrBrand.textSecondary)
+                            .padding(.horizontal, 15).padding(.vertical, 11)
+                            .background(
+                                aktiv ? AnyShapeStyle(KrBrand.purple)
+                                      : AnyShapeStyle(KrBrand.card),
+                                in: RoundedRectangle(cornerRadius: 11))
+                            .overlay(RoundedRectangle(cornerRadius: 11)
+                                .stroke(aktiv ? KrBrand.purpleLight.opacity(0.6) : KrBrand.stroke,
+                                        lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 }

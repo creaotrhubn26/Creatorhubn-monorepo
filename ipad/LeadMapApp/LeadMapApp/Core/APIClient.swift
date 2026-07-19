@@ -4373,6 +4373,12 @@ extension APIClient {
         _ = try await _request(path, method: "PATCH", body: payload)
     }
 
+    func _put<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        let payload = try Self._sharedEncoder.encode(body)
+        let data = try await _request(path, method: "PUT", body: payload)
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
     func _delete(_ path: String) async throws {
         _ = try await _request(path, method: "DELETE")
     }

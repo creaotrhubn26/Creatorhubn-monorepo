@@ -76,7 +76,18 @@ final class EntitlementStore: ObservableObject {
         hasServerEntitlements = true
     }
 
+    #if DEBUG
+    /// QA (pitch-screenshots): env QA_DORSALG_REN=1 simulerer en REN
+    /// dørsalg-org (dorsalgModus på + leads låst) på simulator — alle
+    /// erRenDorsalgOrg-greinene i appen tenner. Reverteres m/ task #59.
+    private static let qaRenDorsalg =
+        ProcessInfo.processInfo.environment["QA_DORSALG_REN"] == "1"
+    #endif
+
     func canUse(_ feature: LeadgridFeature) -> Bool {
+        #if DEBUG
+        if Self.qaRenDorsalg && feature == .leads { return false }
+        #endif
         switch access(feature) {
         case .included, .trial, .addOn: return true
         case .locked: return false
@@ -88,11 +99,27 @@ final class EntitlementStore: ObservableObject {
     /// åpen (motsatt av access()-defaulten). Brukes for kostnadsbærende
     /// AI-flater som ikke skal etterlate noen referanse når de er av.
     func isExplicitlyEnabled(_ feature: LeadgridFeature) -> Bool {
+        #if DEBUG
+        if Self.qaRenDorsalg && feature == .dorsalgModus { return true }
+        #endif
         guard let state = entitlements[feature]?.state else { return false }
         switch state {
         case .included, .trial, .addOn: return true
         case .locked: return false
         }
+    }
+
+    /// REN dørsalg-org: dørsalg eksplisitt på + leads låst i profilen.
+    /// Hele appen bytter opplevelse på denne (Oversikt/Møter/Salgsledelse/
+    /// Min profil/header/Kart). QA_DORSALG_REN=1 (DEBUG) tvinger den på —
+    /// også i demo-modus (pitch-screenshots m/ demo-data).
+    var erRenDorsalgOrg: Bool {
+        #if DEBUG
+        if Self.qaRenDorsalg { return true }
+        #endif
+        return !DemoModeManager.isActiveNonisolated
+            && isExplicitlyEnabled(.dorsalgModus)
+            && !canUse(.leads)
     }
 
     func limit(_ feature: LeadgridFeature) -> (used: Int, limit: Int)? {

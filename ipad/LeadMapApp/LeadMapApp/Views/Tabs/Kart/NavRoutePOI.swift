@@ -75,6 +75,13 @@ struct NavRoutePOI: Identifiable, Hashable {
 
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
 
+    /// Stabil identitet på tvers av re-fetch (id = UUID() regenereres per
+    /// henting → avviste varsler kom tilbake etter reroute/ny henting).
+    /// Navn + rundede koordinater identifiserer stasjonen.
+    var stableKey: String {
+        "\(kind.rawValue)|\(name)|\(Int(lat * 10_000))|\(Int(lon * 10_000))"
+    }
+
     /// Merkefarge avledet fra navnet. Kun kosmetikk; ikke data-påstand.
     var brandColor: Color {
         let n = brand.lowercased()

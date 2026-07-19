@@ -45,6 +45,22 @@ struct KvalitetView: View {
             TemplateListSheet(templates: $templates)
         }
         .task { await reload() }
+        #if DEBUG
+        // QA (landing-videoer): QA_TOUR=kvalitet spiller kø → åpne
+        // verifiseringssamtale → lukk → åpne neste. simctl recordVideo
+        // utenpå. Reverteres m/ task #59-følget.
+        .task {
+            guard ProcessInfo.processInfo.environment["QA_TOUR"] == "kvalitet" else { return }
+            try? await Task.sleep(nanoseconds: 2_800_000_000)
+            active = items.first
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            active = nil
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            active = items.dropFirst().first
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            active = nil
+        }
+        #endif
     }
 
     /// Demo-aware datakilde for header-badges (samme gating som søsterfanene).

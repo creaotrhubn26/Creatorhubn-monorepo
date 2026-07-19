@@ -21,6 +21,8 @@ struct MinProfilSheet: View {
     // holdes ærlig, så seksjonen skjules helt i demo.
     @State private var myEquipment: [APIClient.EquipmentDTO] = []
     @State private var equipmentLoaded = false
+    /// Dørsalg: mine egne dør-tall (meg-blokka fra /dorsalg/stats).
+    @State private var dorsalgMeg: KartverketService.DorsalgStats.Meg?
     @State private var showEditProfile = false
     @State private var showLogoutConfirm = false
     @State private var photoItem: PhotosPickerItem?
@@ -113,6 +115,11 @@ struct MinProfilSheet: View {
                 autoDetectFaceIfNeeded()
             }
             .task { myProfile = try? await appState.api?.fetchMyProfile().profile }
+            // Dørsalg-KPI-ene (kun for dørsalg-profil-orger).
+            .task {
+                guard erDorsalgProfil, let api = appState.api else { return }
+                dorsalgMeg = await KartverketService.shared.fetchDorsalgStats(using: api)?.meg
+            }
             // 2026-07-17: Mitt utstyr — hentes kun i ekte modus.
             .task {
                 guard !DemoModeManager.isActiveNonisolated, let api = appState.api else {
@@ -339,7 +346,37 @@ struct MinProfilSheet: View {
         return "\(Int(v))"
     }
 
+    /// Dørsalg-org: lead-KPI-ene ville stått på null for alltid — vis
+    /// personlige dørsalg-tall i stedet (Daniel 2026-07-18). `meg`-blokka
+    /// fra /dorsalg/stats.
+    private var erDorsalgProfil: Bool {
+        EntitlementStore.shared.erRenDorsalgOrg
+    }
+
+    @ViewBuilder
     private var kpiRow: some View {
+        if erDorsalgProfil {
+            dorsalgKpiRow
+        } else {
+            leadKpiRow
+        }
+    }
+
+    private var dorsalgKpiRow: some View {
+        let m = dorsalgMeg
+        let behandlet = (m?.vunnet ?? 0) + (m?.avslatt ?? 0)
+        let hitRate = behandlet > 0
+            ? "\(Int((Double(m?.vunnet ?? 0) / Double(behandlet) * 100).rounded())) %"
+            : "–"
+        return HStack(spacing: 10) {
+            kpiTile("Dører i dag", "\(m?.iDag ?? 0)", LBrand.purpleLight, "door.left.hand.open")
+            kpiTile("Denne uka", "\(m?.denneUka ?? 0)", LBrand.blue, "calendar")
+            kpiTile("Vunnet", "\(m?.vunnet ?? 0)", LBrand.green, "trophy.fill")
+            kpiTile("Hit-rate", hitRate, LBrand.orange, "percent")
+        }
+    }
+
+    private var leadKpiRow: some View {
         let pipeline = myActiveLeads.compactMap(\.estimatedValue).reduce(0, +)
         let wonSum = myWonLeads.compactMap(\.estimatedValue).reduce(0, +)
         let meetings = myLeads.filter { $0.status == .meetingBooked }.count

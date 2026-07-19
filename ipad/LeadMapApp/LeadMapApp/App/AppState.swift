@@ -114,16 +114,21 @@ final class AppState {
     /// `true` = start turn-by-turn med én gang. `false` = bare senter/velg
     /// lead-en på kartet (rute-forhåndsvisning uten å gå inn i nav-modus).
     var deepLinkNavStart: Bool = true
+    /// Transport-hint: "driving" fra «Start kjøring» (Leadgrid Go) — uten
+    /// dette arvet nav-en gå-modus selv når du setter deg i firmabilen.
+    var deepLinkNavTransport: String?
     var deepLinkNavRequestedAt: Date?
 
     /// Be Kart-fanen navigere til en koordinat. `start=true` går rett inn i
     /// turn-by-turn; `start=false` senterer og velger lead-en (forhåndsvisning).
-    func requestNavigation(lat: Double, lon: Double, name: String, address: String, start: Bool = true) {
+    func requestNavigation(lat: Double, lon: Double, name: String, address: String,
+                           start: Bool = true, transport: String? = nil) {
         self.deepLinkNavLat = lat
         self.deepLinkNavLon = lon
         self.deepLinkNavName = name
         self.deepLinkNavAddress = address
         self.deepLinkNavStart = start
+        self.deepLinkNavTransport = transport
         self.deepLinkNavRequestedAt = Date()
         self.selectedSidebarItem = .kart
     }
@@ -135,6 +140,7 @@ final class AppState {
         self.deepLinkNavLon = nil
         self.deepLinkNavName = nil
         self.deepLinkNavAddress = nil
+        self.deepLinkNavTransport = nil
         self.deepLinkNavRequestedAt = nil
     }
 
@@ -498,6 +504,17 @@ final class AppState {
     }
 
     func bootstrap() async {
+        #if DEBUG
+        // QA-hook (landing-videoer): QA_TOUR kjører på ren demo-data og
+        // trenger ingen backend — hopp over pairing hvis sesjonen mangler.
+        // Reverteres m/ task #59-følget.
+        if ProcessInfo.processInfo.environment["QA_TOUR"] != nil,
+           AuthClient.loadToken() == nil {
+            self.authToken = "qa-tour-demo"
+            self.userEmail = "demo@leadgrid.no"
+            return
+        }
+        #endif
         // 1. Hent persistert prosjekt + org-valg
         if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
             self.activeProjectId = stored

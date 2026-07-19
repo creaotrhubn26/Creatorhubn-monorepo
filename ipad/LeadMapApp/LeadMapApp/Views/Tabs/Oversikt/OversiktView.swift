@@ -61,6 +61,18 @@ struct OversiktView: View {
     @State private var forecast: LeadgridForecast?
     @State private var loading = false
     @State private var lastUpdated: Date?
+    /// Dørsalg-oversikt (2026-07-18): aggregat fra leadgrid_dorsalg_status.
+    @State private var dorsalgStats: KartverketService.DorsalgStats?
+
+    /// Org har dørsalg-modus eksplisitt på (feature-matrisen, fail-closed).
+    private var dorsalgAktivert: Bool {
+        EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
+    }
+    /// REN dørsalg-org (leads låst i profilen): Oversikt byttes helt ut —
+    /// bedrifts-KPI-ene og lead-kartet er meningsløse for dem.
+    private var erRenDorsalgOrg: Bool {
+        EntitlementStore.shared.erRenDorsalgOrg
+    }
     // Header-state + kalender-quick-actions eies nå av LeadgridTabHeader
     // (Views/Tabs/Shared/LeadgridTabHeader.swift) — delt av alle faner.
 
@@ -103,12 +115,23 @@ struct OversiktView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     LeadgridTabHeader(
-                        subtitle: "Få full kontroll over dine leads, aktiviteter og resultater.",
+                        subtitle: erRenDorsalgOrg
+                            ? "Full kontroll over dørene: vunnet, avslått og innsatsen i dag."
+                            : "Få full kontroll over dine leads, aktiviteter og resultater.",
                         leads: effectiveLeads,
                         momentum: momentum,
                         lastUpdated: lastUpdated)
+                    if erRenDorsalgOrg {
+                        // Ren dørsalg-org: HELE oversikten er dørsalg-tall.
+                        AnyView(DorsalgOversiktSection(stats: dorsalgStats))
+                    } else {
                     KPICardRow(leads: effectiveLeads, momentum: momentum, forecast: forecast,
                                compact: isCompact || isPortrait)
+                    // Hybrid-org (dørsalg + bedrifter): dørsalg-tallene som
+                    // egen seksjon oppå bedrifts-dashbordet.
+                    if dorsalgAktivert {
+                        AnyView(DorsalgOversiktSection(stats: dorsalgStats))
+                    }
                     if isCompact {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
@@ -126,6 +149,7 @@ struct OversiktView: View {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
                     }
+                    }   // slutt ikke-dørsalg-gren
                     Spacer(minLength: 12)
                 }
                 .padding(.horizontal, isCompact ? 16 : 28)
@@ -186,6 +210,15 @@ struct OversiktView: View {
     private func refresh() async {
         loading = true
         defer { loading = false }
+        // Dørsalg-stats (kun når org-en har modusen): demo = statiske tall,
+        // ekte = aggregat fra backend (mig 0397).
+        if dorsalgAktivert || DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isActiveNonisolated {
+                if dorsalgAktivert { dorsalgStats = Self.demoDorsalgStats }
+            } else if let api = appState.api {
+                dorsalgStats = await KartverketService.shared.fetchDorsalgStats(using: api)
+            }
+        }
         // Pakke 10: bind til prod-APIClient sine ekte endepunkter
         // (/api/leadgrid/momentum/today + /api/leadgrid/forecasting/pipeline).
         // Hvis api ikke er tilgjengelig (kun før login fullført), eller backend
@@ -208,6 +241,151 @@ struct OversiktView: View {
             self.forecast = fc
             self.lastUpdated = Date()
         }
+    }
+
+    /// Demo-tall for dørsalg-seksjonen (aldri backend i demo).
+    private static let demoDorsalgStats = KartverketService.DorsalgStats(
+        vunnet: 47, avslatt: 118, iDag: 23, vunnetIDag: 6, denneUka: 96,
+        meg: .init(vunnet: 6, avslatt: 14, iDag: 9, denneUka: 31),
+        perProdukt: [
+            .init(produktId: "demo-p1", navn: "SOS Barnebyer", vunnet: 27, avslatt: 61),
+            .init(produktId: "demo-p2", navn: "Kirkens Bymisjon", vunnet: 20, avslatt: 57),
+        ],
+        perSelger: [
+            .init(navn: "Espen Berg", vunnet: 16, avslatt: 31, verdi: 7050),
+            .init(navn: "Helena Dahl", vunnet: 13, avslatt: 28, verdi: 5610),
+            .init(navn: "Lars Erik Moen", vunnet: 10, avslatt: 33, verdi: 4320),
+            .init(navn: "Marit Johansen", vunnet: 8, avslatt: 26, verdi: 3480),
+        ],
+        sisteVunnet: [
+            .init(adressetekst: "Industriveien 8D", postnummer: "1461", poststed: "LØRENSKOG", settAt: ""),
+            .init(adressetekst: "Solheimveien 44", postnummer: "1473", poststed: "LØRENSKOG", settAt: ""),
+            .init(adressetekst: "Skårersletta 18", postnummer: "1473", poststed: "LØRENSKOG", settAt: ""),
+        ])
+}
+
+// MARK: - Dørsalg-oversikt (2026-07-18)
+
+/// Dørsalg-tall i Oversikt: KPI-tiles + siste vunnede dører + per selger.
+/// Ren dørsalg-org får denne som HELE oversikten; hybrid-org får den som
+/// seksjon oppå bedrifts-dashbordet.
+private struct DorsalgOversiktSection: View {
+    let stats: KartverketService.DorsalgStats?
+
+    private var hitRate: Int? {
+        guard let s = stats, s.vunnet + s.avslatt > 0 else { return nil }
+        return Int((Double(s.vunnet) / Double(s.vunnet + s.avslatt) * 100).rounded())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 7) {
+                Image(systemName: "door.left.hand.open")
+                    .foregroundStyle(Brand.purpleLight)
+                Text("Dørsalg").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                Text("Fra utfallene på kartet")
+                    .font(.appScaled(size: 9)).foregroundStyle(Brand.textTertiary)
+            }
+            if let s = stats, s.vunnet + s.avslatt + s.iDag > 0 {
+                HStack(spacing: 10) {
+                    tile("\(s.vunnet)", "Vunnet", Brand.green)
+                    tile("\(s.avslatt)", "Avslått", Brand.red)
+                    tile("\(s.iDag)", "Dører i dag", Brand.purpleLight)
+                    tile("\(s.denneUka)", "Denne uka", Brand.blue)
+                    if let hr = hitRate { tile("\(hr) %", "Hit-rate", Brand.orange) }
+                }
+                // KPI per produkt (SOS Barnebyer, Kirkens Bymisjon, …) —
+                // selgere ser kun produktene de er satt på (backend-filtrert).
+                if let produkter = s.perProdukt, !produkter.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Per produkt")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.textSecondary)
+                        ForEach(produkter) { p in
+                            HStack(spacing: 8) {
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.appScaled(size: 11))
+                                    .foregroundStyle(Brand.purpleLight)
+                                Text(p.navn)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white).lineLimit(1)
+                                Spacer()
+                                Text("\(p.vunnet) vunnet")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .foregroundStyle(Brand.green).monospacedDigit()
+                                Text("\(p.avslatt) avslått")
+                                    .font(.appScaled(size: 11, weight: .semibold))
+                                    .foregroundStyle(Brand.red).monospacedDigit()
+                                if p.vunnet + p.avslatt > 0 {
+                                    Text("\(Int((Double(p.vunnet) / Double(p.vunnet + p.avslatt) * 100).rounded())) %")
+                                        .font(.appScaled(size: 10, weight: .bold))
+                                        .foregroundStyle(Brand.orange).monospacedDigit()
+                                }
+                            }
+                        }
+                    }
+                }
+                if !s.sisteVunnet.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Siste vunnede dører")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.textSecondary)
+                        ForEach(s.sisteVunnet.prefix(5)) { d in
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.appScaled(size: 12)).foregroundStyle(Brand.green)
+                                Text(d.adressetekst)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white).lineLimit(1)
+                                Text("\(d.postnummer) \(d.poststed)")
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(Brand.textSecondary).lineLimit(1)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                if !s.perSelger.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Per selger")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.textSecondary)
+                        ForEach(s.perSelger.prefix(6)) { sel in
+                            HStack(spacing: 8) {
+                                Text(sel.navn)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white).lineLimit(1)
+                                Spacer()
+                                Text("\(sel.vunnet) vunnet")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .foregroundStyle(Brand.green).monospacedDigit()
+                                Text("\(sel.avslatt) avslått")
+                                    .font(.appScaled(size: 11, weight: .semibold))
+                                    .foregroundStyle(Brand.red).monospacedDigit()
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Ingen dører registrert enda. Utfall du setter i dørsalg-modus på kartet (Vunnet kunde / Avslått) lander her.")
+                    .font(.appScaled(size: 11)).foregroundStyle(Brand.textSecondary)
+            }
+        }
+        .padding(14)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Brand.purple.opacity(0.3), lineWidth: 1))
+    }
+
+    private func tile(_ value: String, _ label: String, _ tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.appScaled(size: 17, weight: .black, design: .rounded))
+                .foregroundStyle(.white).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+            Text(label).font(.appScaled(size: 8, weight: .semibold)).foregroundStyle(tint)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 11)
+        .background(Brand.cardHi, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
