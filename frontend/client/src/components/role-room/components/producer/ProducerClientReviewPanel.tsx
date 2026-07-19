@@ -13,6 +13,8 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -521,6 +523,11 @@ export default function ProducerClientReviewPanel({
   // Klient-samtykker: hvilke plattformer klienten har godkjent tilgang til.
   // Endrer seg sjelden — henter ved mount + sakte poll (30 sek) så et nytt
   // samtykke dukker opp uten reload.
+  // Godkjenning-visning: skiller «Grunnlag & blokkeringer» (status,
+  // prosjektgrunnlag, åpne blokkeringer, retning) fra «Reviews &
+  // beslutninger» (mobilreview + selve review-lista) så alt ikke ligger i
+  // én lang scroll. Begge holdes montert (display-toggle).
+  const [reviewView, setReviewView] = useState<'grunnlag' | 'reviews'>('grunnlag');
   const [clientConsents, setClientConsents] = useState<ProducerClientConsent[]>([]);
   useEffect(() => {
     if (!projectId) return;
@@ -2398,6 +2405,33 @@ export default function ProducerClientReviewPanel({
         </Stack>
       </Stack>
 
+      {/* Godkjenning-faner: grunnlag/blokkeringer vs. selve reviews — jf.
+          Daniels ønske om at Godkjenning ikke skal være én lang scroll. */}
+      <Tabs
+        value={reviewView}
+        onChange={(_event, next) => setReviewView(next)}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        sx={{
+          borderBottom: '1px solid rgba(148,163,184,0.18)',
+          minHeight: 44,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 800,
+            fontSize: '0.9rem',
+            color: 'rgba(226,232,240,0.78)',
+            minHeight: 44,
+          },
+          '& .Mui-selected': { color: '#f8fafc' },
+          '& .MuiTabs-indicator': { backgroundColor: '#c084fc', height: 3 },
+        }}
+      >
+        <Tab value="grunnlag" label="Grunnlag & blokkeringer" />
+        <Tab value="reviews" label="Reviews & beslutninger" />
+      </Tabs>
+
+      <Box sx={{ display: reviewView === 'grunnlag' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
+
       <Box
         sx={{
           p: 1.25,
@@ -2926,6 +2960,9 @@ export default function ProducerClientReviewPanel({
         </Stack>
       )}
 
+      </Box>
+
+      <Box sx={{ display: reviewView === 'reviews' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
       <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
 
       <Stack spacing={1.2}>
@@ -3564,6 +3601,7 @@ export default function ProducerClientReviewPanel({
           </Box>
         )}
       </Stack>
+      </Box>
     </Box>
   );
 }
