@@ -154,7 +154,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
+    <div style={{ display: 'flex', width: '100%', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
       {/* ── Left nav (mørk) ── */}
       <div style={{ width: 210, background: C.navBg, color: C.navText, display: 'flex', flexDirection: 'column', flexShrink: 0, padding: '14px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 16px' }}>
