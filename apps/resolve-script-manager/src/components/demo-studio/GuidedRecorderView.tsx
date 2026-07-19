@@ -27,10 +27,10 @@ import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const C = {
-  navBg: '#1c1a18', navText: '#cbc6bf', navActive: '#2a2724',
-  bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd', lineStrong: '#ddd6cc',
-  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#2f2a26',
-  green: '#4a9d6b', red: '#d9534f', amber: '#e0922f', deviceFrame: '#2a2a2e',
+  navBg: '#17141f', navText: '#c9c4d6', navActive: '#2a2340',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee', lineStrong: '#d8d2e2',
+  ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8', accent: '#8b5cf6', dark: '#241d42',
+  green: '#22c55e', red: '#d9534f', amber: '#e0922f', deviceFrame: '#2a2a2e',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -200,7 +200,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
           .find((e) => (e.textContent ?? '').toLowerCase().includes(label)) as HTMLElement | undefined;
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.style.outline = '3px solid #ef8a5d'; el.style.outlineOffset = '2px';
+          el.style.outline = '3px solid #8b5cf6'; el.style.outlineOffset = '2px';
           await sleep(500);
           if (type === 'click') el.click();
         }
@@ -399,7 +399,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         {/* Body: device-trio + Guide-panel */}
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           {/* Device-trio preview */}
-          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#f6f3ee,#efe9e0)', minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#faf8f7,#efe9e0)', minWidth: 0, overflow: 'hidden' }}>
             {/* Advarsel: siden tillater ikke innbygging → web-opptak gir svart skjerm */}
             {captureKind === 'web' && embedBlocked && (
               <div style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 5, background: '#fdeee0', border: `1px solid #f0c9a8`, borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: '#8a4b15', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -621,9 +621,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
 function SourceItem({ label, sub, onClick, active }: { label: string; sub: string; onClick: () => void; active: boolean }) {
   return (
-    <div onClick={onClick} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? '#f3ece2' : 'transparent' }}>
-      <div style={{ fontSize: 12.5, fontWeight: active ? 600 : 500, color: '#1d1b19' }}>{label}</div>
-      <div style={{ fontSize: 10.5, color: '#9a9186' }}>{sub}</div>
+    <div onClick={onClick} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? '#efeaf7' : 'transparent' }}>
+      <div style={{ fontSize: 12.5, fontWeight: active ? 600 : 500, color: '#1e1b2e' }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: '#9a94a8' }}>{sub}</div>
     </div>
   );
 }

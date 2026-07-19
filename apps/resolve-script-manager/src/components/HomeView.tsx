@@ -472,7 +472,7 @@ export function HomeView({
           disabled={!signedIn}
           title={signedIn ? "Scene-basert produktdemo fra URL — Mac/iPad/iPhone-mockups, manus, teleprompter og guided opptak. Krever Demo Studio-abonnement." : "Logg inn først"}
         >
-          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef8a5d, #a030c0)" }}>
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #8b5cf6, #a030c0)" }}>
             <DevicesIcon sx={{ fontSize: 28, color: "white" }} />
           </div>
           <div className="home-action-body">

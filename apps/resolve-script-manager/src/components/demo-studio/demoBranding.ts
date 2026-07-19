@@ -53,7 +53,7 @@ export function renderIntroCard(opts: { brandName: string; tagline?: string; col
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   const fg = isDark(bg) ? '#ffffff' : '#1d1b19';
   const sub = isDark(bg) ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.6)';
-  const accent = '#ef8a5d';
+  const accent = '#8b5cf6';
   // accent-strek
   ctx.fillStyle = accent; ctx.fillRect(W / 2 - 34, H / 2 - 130, 68, 5);
   ctx.textAlign = 'center';
@@ -80,7 +80,7 @@ export function renderOutroCard(opts: { brandName: string; url?: string; color?:
   ctx.fillText(opts.brandName.slice(0, 28), W / 2, H / 2 + 10);
   let host = opts.url || '';
   try { host = new URL(opts.url || '').host; } catch { /* */ }
-  if (host) { ctx.fillStyle = '#ef8a5d'; ctx.font = '600 34px Helvetica, Arial, sans-serif'; ctx.fillText(host, W / 2, H / 2 + 90); }
+  if (host) { ctx.fillStyle = '#8b5cf6'; ctx.font = '600 34px Helvetica, Arial, sans-serif'; ctx.fillText(host, W / 2, H / 2 + 90); }
   return png(c);
 }
 

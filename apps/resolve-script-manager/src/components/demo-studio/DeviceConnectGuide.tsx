@@ -16,8 +16,8 @@ import { useEffect, useRef, useState } from 'react';
 import { listCaptureSources, openIphoneMirroring, type CaptureSource } from '../../api';
 
 const C = {
-  bg: 'rgba(20,18,16,0.55)', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
-  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#2f2a26', green: '#4a9d6b',
+  bg: 'rgba(20,18,16,0.55)', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee',
+  ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8', accent: '#8b5cf6', dark: '#241d42', green: '#22c55e',
   device: '#2a2a2e', screen: '#0e1830',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
@@ -58,7 +58,7 @@ function ConnectAnim({ device, step, connector }: { device: DeviceKind; step: nu
 
       {/* Kabel */}
       <div style={{ position: 'relative', width: 46, height: 6, margin: '0 -2px' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 6, background: '#cbc6bf', borderRadius: 3, animation: connected ? 'none' : 'dcg-cable 1.6s ease-in-out infinite' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 6, background: '#c9c4d6', borderRadius: 3, animation: connected ? 'none' : 'dcg-cable 1.6s ease-in-out infinite' }} />
         {/* Datastrøm-prikker når tilkoblet */}
         {connected && [0, 1, 2].map((i) => (
           <span key={i} style={{ position: 'absolute', top: 1, left: 4, width: 4, height: 4, borderRadius: '50%', background: C.accent, animation: `dcg-flow 1.4s linear ${i * 0.45}s infinite` }} />
@@ -172,7 +172,7 @@ export function DeviceConnectGuide({ onClose, onDetected }: { onClose: () => voi
         </div>
 
         {/* Animasjon */}
-        <div style={{ background: 'linear-gradient(180deg,#f6f3ee,#efe9e0)', padding: '24px 20px' }}>
+        <div style={{ background: 'linear-gradient(180deg,#faf8f7,#efe9e0)', padding: '24px 20px' }}>
           <ConnectAnim device={device} step={step} connector={device === 'ipad' ? 'usbc' : connector} />
         </div>
 
@@ -221,7 +221,7 @@ export function DeviceConnectGuide({ onClose, onDetected }: { onClose: () => voi
           {/* Prikker */}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '14px 0' }}>
             {STEPS.map((_, i) => (
-              <span key={i} onClick={() => setStep(i + 1)} style={{ width: i === step - 1 ? 18 : 7, height: 7, borderRadius: 4, background: i === step - 1 ? C.accent : '#ddd6cc', cursor: 'pointer', transition: 'all .2s' }} />
+              <span key={i} onClick={() => setStep(i + 1)} style={{ width: i === step - 1 ? 18 : 7, height: 7, borderRadius: 4, background: i === step - 1 ? C.accent : '#d8d2e2', cursor: 'pointer', transition: 'all .2s' }} />
             ))}
           </div>
 
@@ -246,7 +246,7 @@ export function DeviceConnectGuide({ onClose, onDetected }: { onClose: () => voi
   );
 }
 
-const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg,#ef8a5d,#d96a3a)', border: 0, color: '#fff', fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 9, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', border: 0, color: '#fff', fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 9, cursor: 'pointer' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.line}`, color: C.ink, fontSize: 13, padding: '9px 16px', borderRadius: 9, cursor: 'pointer' };
 
 export default DeviceConnectGuide;

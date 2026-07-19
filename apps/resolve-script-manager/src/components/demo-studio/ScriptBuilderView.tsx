@@ -30,10 +30,10 @@ import {
 
 const C = {
   // Mørk app-chrome + lyst editor-workspace (fra mockup).
-  navBg: '#1c1a18', navText: '#cbc6bf', navActive: '#2a2724', navActiveText: '#fff',
-  bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd', lineStrong: '#ddd6cc',
-  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d',
-  dark: '#2f2a26', green: '#4a9d6b', preview: '#23201d',
+  navBg: '#17141f', navText: '#c9c4d6', navActive: '#2a2340', navActiveText: '#fff',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee', lineStrong: '#d8d2e2',
+  ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8', accent: '#8b5cf6',
+  dark: '#241d42', green: '#22c55e', preview: '#23201d',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -366,7 +366,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             </div>
             {/* Teleprompter preview-kort */}
             <div style={{ background: C.preview, borderRadius: 12, padding: 18, color: '#f2ede6', marginBottom: 18 }}>
-              <span style={{ fontSize: 11, background: '#3a342e', borderRadius: 6, padding: '3px 8px', color: '#cbc6bf' }}>Scene {selected.index + 1} of {scenes.length}</span>
+              <span style={{ fontSize: 11, background: '#3a342e', borderRadius: 6, padding: '3px 8px', color: '#c9c4d6' }}>Scene {selected.index + 1} of {scenes.length}</span>
               <div style={{ height: 1, background: '#3a342e', margin: '14px 0' }} />
               <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, lineHeight: 1.35, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto' }}>
                 {selected.narration || 'Skriv narration for å se teleprompter-preview…'}
@@ -374,7 +374,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ display: 'flex', gap: 5, marginTop: 16 }}>
                 {scenes.map((s, i) => <span key={s.id} style={{ width: i === selected.index ? 16 : 6, height: 6, borderRadius: 3, background: i === selected.index ? C.accent : '#4a443d' }} />)}
               </div>
-              <div style={{ fontSize: 11, color: '#9a9186', marginTop: 12 }}>≈ {readingTime}s lesetid</div>
+              <div style={{ fontSize: 11, color: '#9a94a8', marginTop: 12 }}>≈ {readingTime}s lesetid</div>
             </div>
 
             {/* AI Assistant */}
