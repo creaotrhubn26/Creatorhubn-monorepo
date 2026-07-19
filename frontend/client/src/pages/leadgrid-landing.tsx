@@ -297,7 +297,11 @@ export default function LeadgridLanding() {
       color: PALETTE.text,
       minHeight: '100vh',
       fontFamily: '-apple-system, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif',
-      overflowX: 'hidden',
+      // 'clip' og IKKE 'hidden': overflow-x hidden gjør boksen til
+      // scroll-container (overflow-y computes til auto) → position:sticky i
+      // LeadgridExperience fester seg mot boksen i stedet for viewporten og
+      // scroll-filmen blir svart. 'clip' klipper uten scroll-container.
+      overflowX: 'clip',
     }}>
       {designMode && <WorkspaceDesignOverlay workspace="leadgrid" targetFile="frontend/client/src/pages/leadgrid-landing.tsx" onClose={() => setDesignMode(false)} />}
       <StickyHeader />
