@@ -1198,6 +1198,92 @@ export function setupRoleRoomAgentCoreRoutes(
     }
   });
 
+  // ── GSC-innsikt: ekte søkedata inn i strategigrunnlaget ────────────
+  // «Koblet riktig» skal bety noe: når Google-koblingen har webmasters-
+  // tilgang og domenet ligger i Search Console, henter vi topp-søkeord
+  // (siste 90 dager) som agenten kan bygge strategi på. Read-only.
+  app.get("/api/role-room/agent/gsc-insights/:projectId", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId ?? "");
+    const domain = String(req.query.domain ?? "").trim().toLowerCase()
+      .replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    if (!projectId || !domain) {
+      return res.status(400).json({ success: false, error: "projectId og domain er påkrevd." });
+    }
+    try {
+      const { row, source } = await resolveProjectGoogleConnection(projectId, session.userId);
+      if (!row) {
+        return res.status(409).json({
+          success: false, needsConnect: true,
+          error: "Ingen Google-kobling — koble til Google i Kontotilgang først.",
+        });
+      }
+      let accessToken: string;
+      try {
+        accessToken = (await ensureFreshGoogleAccessToken(pool, row)).accessToken;
+      } catch {
+        return res.status(409).json({
+          success: false, needsReauth: true,
+          error: "Google-koblingen må fornyes — koble til på nytt i Kontotilgang.",
+        });
+      }
+      const end = new Date();
+      const start = new Date(end.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const candidates = [`sc-domain:${domain}`, `https://${domain}/`, `https://www.${domain}/`];
+      for (const siteUrl of candidates) {
+        const r = await fetch(
+          `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              startDate: fmt(start), endDate: fmt(end),
+              dimensions: ["query"], rowLimit: 12,
+            }),
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+        if (r.status === 401) {
+          return res.status(409).json({
+            success: false, needsReauth: true,
+            error: "Google-koblingen mangler Search Console-tilgang — koble til på nytt.",
+          });
+        }
+        if (!r.ok) continue; // 403/404 = ikke tilgang til akkurat denne site-varianten
+        const body = (await r.json().catch(() => null)) as {
+          rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }>;
+        } | null;
+        return res.json({
+          success: true,
+          siteUrl,
+          connectionSource: source,
+          usedGoogleEmail: row.google_email ?? null,
+          period: { from: fmt(start), to: fmt(end) },
+          rows: (body?.rows ?? []).map((x) => ({
+            query: x.keys?.[0] ?? "",
+            clicks: x.clicks ?? 0,
+            impressions: x.impressions ?? 0,
+            ctr: x.ctr ?? 0,
+            position: x.position ?? 0,
+          })),
+        });
+      }
+      return res.status(404).json({
+        success: false, siteNotInGsc: true,
+        error: `${domain} ligger ikke i Search Console for den koblede kontoen — kjør GSC-oppsettet først (eller koble klientens konto).`,
+      });
+    } catch (err) {
+      console.error("[gsc-insights] failed", err);
+      return res.status(500).json({ success: false, error: "gsc_insights_failed" });
+    }
+  });
+
   // ── OAuth-fasen (doc 14): Meta Pixel via Marketing API ─────────────
   // Bruker prosjektets eksisterende Meta-kobling (ads_management er
   // allerede i scopene). Pixelen KOBLES, aldri aktiveres — annonse-

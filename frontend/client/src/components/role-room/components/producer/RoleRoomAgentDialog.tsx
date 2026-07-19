@@ -263,6 +263,65 @@ export default function RoleRoomAgentDialog({
   const [organizationNumber, setOrganizationNumber] = useState(initialOrganizationNumber ?? '');
   const [companyName, setCompanyName] = useState(initialCompanyName ?? '');
   const [extraContext, setExtraContext] = useState(initialExtraContext ?? '');
+  // Agenten skal REGISTRERE koblingsstatus up-front — ikke først når en
+  // setup-knapp feiler. Hentes ved åpning: viser om man er koblet riktig
+  // (klientens konto = klient-eierskap) eller feil/mangler, før man gjør noe.
+  const [connStatus, setConnStatus] = useState<{
+    google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
+    meta: { connected: boolean; verified: boolean; name: string | null };
+    manages?: {
+      ga4PropertyId: string | null;
+      ga4MeasurementId: string | null;
+      gscSites: string[];
+      gscError: string | null;
+      igUsername: string | null;
+    };
+  } | null>(null);
+  useEffect(() => {
+    if (!open || !projectId) return;
+    let cancelled = false;
+    void fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+      credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
+    })
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled && body?.success) {
+          setConnStatus({ google: body.google, meta: body.meta, manages: body.manages });
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [open, projectId]);
+  // GSC-innsikt: ekte topp-søkeord (90 dager) fra Search Console når man
+  // er koblet riktig — grunnlaget for datadrevet strategi, ikke gjetting.
+  const [gscInsights, setGscInsights] = useState<{
+    siteUrl: string;
+    period: { from: string; to: string };
+    rows: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  } | null>(null);
+  const [gscInsightsBusy, setGscInsightsBusy] = useState(false);
+  const [gscInsightsError, setGscInsightsError] = useState<string | null>(null);
+  const fetchGscInsights = async (domain: string) => {
+    setGscInsightsBusy(true);
+    setGscInsightsError(null);
+    try {
+      const r = await fetch(
+        `/api/role-room/agent/gsc-insights/${encodeURIComponent(projectId)}?domain=${encodeURIComponent(domain)}`,
+        { credentials: 'include', headers: roleRoomAgentDefaultHeaders() },
+      );
+      const body = await r.json().catch(() => null);
+      if (body?.success) {
+        setGscInsights({ siteUrl: body.siteUrl, period: body.period, rows: body.rows ?? [] });
+      } else {
+        setGscInsightsError(body?.error ?? `Kunne ikke hente søkedata (${r.status}).`);
+      }
+    } catch {
+      setGscInsightsError('Kunne ikke hente søkedata.');
+    } finally {
+      setGscInsightsBusy(false);
+    }
+  };
 
   // Refinement history — grows as the user tells the agent "actually...".
   // Each round is appended to the outgoing extraContext so Claude sees the
@@ -1131,6 +1190,82 @@ export default function RoleRoomAgentDialog({
               />
             </Box>
           ) : null}
+
+        {/* Koblings-registrering up-front: agenten viser om Google/Meta er
+            koblet RIKTIG (klientens konto = klient-eierskap), koblet via
+            produsentens konto (fungerer, men eierskaps-varsel), eller
+            mangler — FØR man prøver oppsett eller strategi. */}
+        {activeTab === 'research' && connStatus ? (
+          <Box sx={{ px: { xs: 1.4, md: 2 }, pt: { xs: 1.4, md: 2 } }}>
+            <Stack
+              direction="row"
+              spacing={0.55}
+              flexWrap="wrap"
+              useFlexGap
+              alignItems="center"
+              sx={{
+                p: 0.85,
+                borderRadius: 2.5,
+                border: '1px solid rgba(148,163,184,0.16)',
+                bgcolor: 'rgba(2,6,23,0.4)',
+              }}
+            >
+              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', fontWeight: 800 }}>
+                Agenten ser:
+              </Typography>
+              <Chip
+                size="small"
+                label={connStatus.google.connected
+                  ? (connStatus.google.source === 'project'
+                    ? `Google: klientens konto (${connStatus.google.email ?? 'ukjent'}) ✓ klient-eierskap`
+                    : `Google: din konto (${connStatus.google.email ?? 'ukjent'}) — oppsett lander hos deg`)
+                  : 'Google: ikke koblet'}
+                sx={{
+                  bgcolor: connStatus.google.connected
+                    ? (connStatus.google.source === 'project' ? 'rgba(34,197,94,0.16)' : 'rgba(245,158,11,0.16)')
+                    : 'rgba(239,68,68,0.16)',
+                  color: connStatus.google.connected
+                    ? (connStatus.google.source === 'project' ? '#bbf7d0' : '#fde68a')
+                    : '#fecaca',
+                  fontWeight: 700,
+                  fontSize: '0.7rem',
+                }}
+              />
+              {connStatus.manages?.gscError === 'needs_reauth' ? (
+                <Chip size="small" label="Search Console: krever ny innlogging"
+                  sx={{ bgcolor: 'rgba(239,68,68,0.16)', color: '#fecaca', fontWeight: 700, fontSize: '0.7rem' }} />
+              ) : null}
+              {connStatus.manages?.ga4MeasurementId ? (
+                <Chip size="small" label={`GA4: ${connStatus.manages.ga4MeasurementId}`}
+                  sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 700, fontSize: '0.7rem' }} />
+              ) : null}
+              <Chip
+                size="small"
+                label={connStatus.meta.connected
+                  ? (connStatus.meta.verified
+                    ? `Meta: koblet${connStatus.manages?.igUsername ? ` (@${connStatus.manages.igUsername})` : ''}`
+                    : 'Meta: koblet, ikke verifisert')
+                  : 'Meta: ikke koblet'}
+                sx={{
+                  bgcolor: connStatus.meta.connected && connStatus.meta.verified
+                    ? 'rgba(34,197,94,0.16)'
+                    : connStatus.meta.connected ? 'rgba(245,158,11,0.16)' : 'rgba(148,163,184,0.14)',
+                  color: connStatus.meta.connected && connStatus.meta.verified
+                    ? '#bbf7d0'
+                    : connStatus.meta.connected ? '#fde68a' : '#cbd5e1',
+                  fontWeight: 700,
+                  fontSize: '0.7rem',
+                }}
+              />
+              {(!connStatus.google.connected || connStatus.manages?.gscError === 'needs_reauth') && onOpenAccountAccess ? (
+                <Button size="small" variant="text" onClick={onOpenAccountAccess}
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', minHeight: 26 }}>
+                  Åpne Kontotilgang
+                </Button>
+              ) : null}
+            </Stack>
+          </Box>
+        ) : null}
 
         {/* Proactive "Dagens brief" — surfaces the nightly cross-tab scan on
             the landing/research tab with one-click jump to the relevant tab. */}
@@ -2008,6 +2143,69 @@ export default function RoleRoomAgentDialog({
                         );
                       })}
                     </Stack>
+
+                    {/* Datadrevet strategi: når Google-koblingen er riktig,
+                        hentes EKTE topp-søkeord fra Search Console (90 d) —
+                        og kan legges rett i strategigrunnlaget for neste
+                        generering. Koblet riktig skal bety noe konkret. */}
+                    {connStatus?.google.connected ? (
+                      <Stack spacing={0.6} sx={{ mt: 0.4 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Button size="small" variant="outlined" disabled={gscInsightsBusy}
+                            onClick={() => {
+                              const domain = (result.siteSetupAudit?.url ?? websiteUrl ?? '')
+                                .replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+                              if (domain) void fetchGscInsights(domain);
+                            }}
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#a5f3fc', borderColor: 'rgba(34,211,238,0.4)' }}>
+                            {gscInsightsBusy ? 'Henter søkedata…' : 'Hent ekte søkedata (Search Console, 90 dager)'}
+                          </Button>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
+                            Read-only — bruker Google-koblingen, aldri passord.
+                          </Typography>
+                        </Stack>
+                        {gscInsightsError ? (
+                          <Alert severity="warning" sx={{ py: 0.25 }}>{gscInsightsError}</Alert>
+                        ) : null}
+                        {gscInsights ? (
+                          <Box sx={{ p: 0.9, borderRadius: 2.2, border: '1px solid rgba(34,211,238,0.2)', bgcolor: 'rgba(15,23,42,0.52)' }}>
+                            <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.84rem', mb: 0.4 }}>
+                              {`Topp-søk for ${gscInsights.siteUrl.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')} (${gscInsights.period.from} – ${gscInsights.period.to})`}
+                            </Typography>
+                            {gscInsights.rows.length === 0 ? (
+                              <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.78rem' }}>
+                                Ingen søkedata registrert i perioden — siten er i Search Console, men har lite/ingen trafikk ennå.
+                              </Typography>
+                            ) : (
+                              <>
+                                <Stack spacing={0.25} sx={{ mb: 0.6 }}>
+                                  {gscInsights.rows.slice(0, 8).map((row) => (
+                                    <Stack key={row.query} direction="row" spacing={0.8} alignItems="baseline">
+                                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {row.query}
+                                      </Typography>
+                                      <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums' }}>
+                                        {`${row.clicks} klikk · ${row.impressions} visn. · pos. ${row.position.toFixed(1)}`}
+                                      </Typography>
+                                    </Stack>
+                                  ))}
+                                </Stack>
+                                <Button size="small" variant="contained"
+                                  onClick={() => {
+                                    const lines = gscInsights.rows.slice(0, 10)
+                                      .map((row) => `- «${row.query}»: ${row.clicks} klikk, ${row.impressions} visninger, snittposisjon ${row.position.toFixed(1)}`);
+                                    const block = `\n\nEkte Search Console-data for ${gscInsights.siteUrl} (${gscInsights.period.from} til ${gscInsights.period.to}) — bygg strategien på disse faktiske søkene:\n${lines.join('\n')}`;
+                                    setExtraContext((current) => (current.includes('Ekte Search Console-data for') ? current : current + block));
+                                  }}
+                                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.76rem' }}>
+                                  Legg inn i strategigrunnlaget
+                                </Button>
+                              </>
+                            )}
+                          </Box>
+                        ) : null}
+                      </Stack>
+                    ) : null}
                   </Stack>
                 </Box>
               ) : null}
