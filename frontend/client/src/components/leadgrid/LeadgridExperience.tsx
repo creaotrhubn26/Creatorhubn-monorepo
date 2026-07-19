@@ -42,6 +42,8 @@ interface Scene {
   title: string;
   body: string;
   align?: 'left' | 'center' | 'right';
+  /** Skjermbildet er liggende iPad (bredere enhet i scenen). */
+  landscape?: boolean;
 }
 
 // ── Manus: rekkefølgen du flyr gjennom ────────────────────────────────
@@ -75,6 +77,24 @@ const SCENES: Scene[] = [
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg — rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
     align: 'right',
+  },
+  {
+    id: 'dorsalg', kind: 'device', image: '/leadgrid/app/dorsalg.png',
+    eyebrow: 'Dørsalg & verving', title: 'Hver dør. Én farge.',
+    body: 'Dørsalg-modus henter alle adressene i området og fargelegger dem etter utfall — vunnet, ikke hjemme, avslått. Registrer salget på døra, ferdig.',
+    align: 'left', landscape: true,
+  },
+  {
+    id: 'kvalitet', kind: 'device', image: '/leadgrid/app/kvalitet.png',
+    eyebrow: 'Kvalitet', title: 'Hvert salg verifiseres.',
+    body: 'Egen verifiseringskø med samtale-maler og kvalitetsgrad per selger. Kunden bekrefter — organisasjonen kan stole på tallene.',
+    align: 'right', landscape: true,
+  },
+  {
+    id: 'go', kind: 'device', image: '/leadgrid/app/kjorebok.png',
+    eyebrow: 'Leadgrid Go', title: 'Kjøreboka skriver seg selv.',
+    body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport — for hele flåten.',
+    align: 'left', landscape: true,
   },
   {
     id: 'team', kind: 'device', image: '/leadgrid/app/team.png',
@@ -115,7 +135,13 @@ export default function LeadgridExperience({
     <section
       ref={ref}
       aria-label="Leadgrid — en dag i feltet"
-      style={{ position: 'relative', height: `${(N + 1) * 100}vh`, background: P.bg }}
+      style={{
+        position: 'relative',
+        // 85vh per scene (ikke 100): strammere reise uten døde soner nå som
+        // manuset har flere scener — selve scroll-effekten er uendret.
+        height: `${(N + 1) * 85}vh`,
+        background: P.bg,
+      }}
     >
       <div
         style={{
@@ -180,9 +206,11 @@ function SceneLayer({
   const end = start + unit;
   const pad = unit * 0.42;
 
+  // Rask inn-toning (0.3×pad, ikke 0.5×) gir lengre fullt synlig platå per
+  // scene og fjerner «tomrommet» der begge nabo-scener lå under 50 %.
   const opacity = useTransform(
     progress,
-    [start - pad, start + pad * 0.5, end - pad * 0.5, end + pad],
+    [start - pad, start + pad * 0.3, end - pad * 0.3, end + pad],
     [0, 1, 1, 0],
   );
   // Innhold glir og skalerer lett = POV-dybde.
@@ -202,7 +230,10 @@ function SceneLayer({
       {isCinematic ? (
         <CinematicVisual image={scene.image} scale={scale} />
       ) : (
-        <DeviceVisual image={scene.image} scale={scale} y={y} align={scene.align} />
+        <DeviceVisual
+          image={scene.image} scale={scale} y={y} align={scene.align}
+          landscape={scene.landscape}
+        />
       )}
       <Callout scene={scene} progress={progress} start={start} mid={mid} end={end} pad={pad} />
     </motion.div>
@@ -234,10 +265,10 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
 
 // ── Ekte app-skjerm i 3D-tiltet iPad ──────────────────────────────────
 function DeviceVisual({
-  image, scale, y, align,
+  image, scale, y, align, landscape,
 }: {
   image: string; scale: MotionValue<number>; y: MotionValue<number>;
-  align?: 'left' | 'center' | 'right';
+  align?: 'left' | 'center' | 'right'; landscape?: boolean;
 }) {
   // iPaden lener seg motsatt av tekst-siden for dybde.
   const rotateY = align === 'right' ? 9 : align === 'left' ? -9 : 0;
@@ -248,7 +279,8 @@ function DeviceVisual({
       style={{
         position: 'relative', scale, y, x: shiftX,
         transformStyle: 'preserve-3d', rotateY, rotateX: 4,
-        width: 'min(46vw, 540px)',
+        // Liggende iPad trenger mer bredde for samme visuelle vekt.
+        width: landscape ? 'min(58vw, 720px)' : 'min(46vw, 540px)',
       }}
     >
       {/* glød bak enheten */}

@@ -57,6 +57,8 @@ import {
   ViewKanbanOutlined,
   InsightsOutlined,
   WorkspacesOutlined,
+  DoorFrontOutlined,
+  DirectionsCarFilledOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
@@ -1131,6 +1133,18 @@ function FeatureGridSection() {
           accent="#f472b6"
         />
         <FeatureCard
+          title="Dørsalg & verving"
+          desc="Egen dørsalg-modus: alle adressene i området på kartet, farget etter utfall. Registrer salget på døra med produkt, bidrag og kundebekreftelse — og kvalitetsavdelingen verifiserer hvert salg."
+          Icon={DoorFrontOutlined}
+          accent="#c084fc"
+        />
+        <FeatureCard
+          title="Leadgrid Go — elektronisk kjørebok"
+          desc="Automatisk trip-logg med kjøregodtgjørelse, ekte bomkostnad og Skatteetaten-klar rapport. Flåteoversikt, EU-kontroll og bilbooking for hele organisasjonen."
+          Icon={DirectionsCarFilledOutlined}
+          accent="#5eead4"
+        />
+        <FeatureCard
           title="Alt du trenger — samlet på ett sted"
           desc="Leadgrid samler kart, data, kommunikasjon og pipeline i én plattform som hjelper teamet ditt å jobbe smartere og vinne flere kunder."
           Icon={WorkspacesOutlined}
@@ -1658,13 +1672,38 @@ function Footer() {
             </Typography>
           </Grid>
 
+          {/* Kun lenker som faktisk går et sted — døde «#»-lenker fjernet. */}
           {[
-            { title: 'Produkt', links: ['Funksjoner', { label: 'Integrasjoner', href: '/leadgrid/connectors' }, { label: 'Connector Marketplace', href: '/leadgrid/connectors' }, 'Sikkerhet', 'Oppdateringer'] },
-            { title: 'Løsninger', links: ['Salgsteam', 'Markedsføring', 'Franchise', 'Eiendomsmegling'] },
-            { title: 'Ressurser', links: ['Hjelpesenter', 'Blogg', 'Guides', 'Webinarer'] },
+            {
+              title: 'Produkt',
+              links: [
+                { label: 'Funksjoner', href: '#losninger' },
+                { label: 'Priser', href: '#priser' },
+                { label: 'Integrasjoner', href: '/leadgrid/connectors' },
+                { label: 'For utviklere', href: '/leadgrid/developers' },
+              ],
+            },
+            {
+              title: 'Løsninger',
+              links: [
+                { label: 'Feltsalg & salgsteam', href: '/leadgrid/feltsalg-for-salgsteam' },
+                { label: 'Dørsalg & verving', href: '#losninger' },
+                { label: 'Import fra annet CRM', href: '/leadgrid/import' },
+              ],
+            },
+            {
+              title: 'Ressurser',
+              links: [
+                { label: 'Leadgrid Akademi', href: '/leadgrid/akademi' },
+                { label: 'Slik skaffer du leads', href: '/leadgrid/skaffe-leads-guide' },
+              ],
+            },
             {
               title: 'Selskap',
-              links: ['Om oss', 'Karriere', 'Kontakt oss', { label: 'Personvern', href: '/leadgrid/personvern' }],
+              links: [
+                { label: 'Kontakt oss', href: '#demo' },
+                { label: 'Personvern', href: '/leadgrid/personvern' },
+              ],
             },
           ].map((col) => (
             <Grid item xs={6} md={2} key={col.title}>
@@ -1710,7 +1749,7 @@ function Footer() {
             © {new Date().getFullYear()} Leadgrid · Et The Role Room-produkt
           </Typography>
           <Typography sx={{ color: PALETTE.textFaint, fontSize: 12 }}>
-            Norsk selskap 🇳🇴
+            Bygget i Norge
           </Typography>
         </Stack>
       </Container>
