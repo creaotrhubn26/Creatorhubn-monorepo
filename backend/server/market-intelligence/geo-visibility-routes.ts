@@ -31,7 +31,7 @@ import {
   listPromptSets,
   setPromptEnabled,
 } from "./geo-prompt-set-service.js";
-import { computeReport, resumeStaleProbeRuns, runProbe } from "./geo-probe-runner-service.js";
+import { computeReport, resumeStaleProbeRuns } from "./geo-probe-runner-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -159,10 +159,11 @@ export function registerGeoVisibilityRoutes({
   app.post("/api/geo-visibility/prompt-sets/:id/run", async (req, res) => {
     const session = requireAdmin(req, res);
     if (!session) return;
-    // Fire-and-forget — panelet poller report-endepunktet
-    void runProbe(pool, req.params.id, session.userId).catch((err) => {
-      console.error("[geo-visibility] probe run failed", err);
-    });
+    // Via jobb-køen (0400): overlever deploy-restart (idempotent
+    // gjenopptak i handleren), dedupet per sett. Panelet poller
+    // report-endepunktet som før.
+    const { enqueueGeoProbeRun } = await import("../job-handlers.js");
+    await enqueueGeoProbeRun(pool, { setId: req.params.id, userId: session.userId });
     return res.status(202).json({ started: true });
   });
 
@@ -209,21 +210,25 @@ export function registerGeoVisibilityRoutes({
            FROM geo_prompt_sets WHERE status = 'approved'
           ORDER BY updated_at ASC LIMIT 20`,
       );
-      // Fire-and-forget, men sekvensielt internt — LLM-kall er
-      // kostnads-/rate-sensitive, så settene kjøres ett om gangen.
-      const started = sets.rows.map((s) => s.id);
-      void (async () => {
-        // Selvhelbreding: fullfør kjøringer drept av deploy-restarts
-        await resumeStaleProbeRuns(pool).catch((err) =>
-          console.error("[geo-visibility] resume-stale feilet:", err));
-        for (const s of sets.rows) {
-          try {
-            await runProbe(pool, s.id, s.workspace_owner_user_id);
-          } catch (err) {
-            console.error(`[geo-visibility] cron run failed for ${s.id}`, err);
-          }
-        }
-      })();
+      // Via jobb-køen (0400): én jobb per sett i stedet for én skjør
+      // promise-sløyfe (redeploy midt i mistet alle gjenstående sett).
+      // 12 min stagger bevarer den sekvensielle kostnadsprofilen for
+      // LLM-kallene; dedupe-nøkkelen gjør dobbel cron-fyring ufarlig.
+      // resume-stale beholdes som belte-og-seler for kjøringer fra før
+      // køen fantes.
+      await resumeStaleProbeRuns(pool).catch((err) =>
+        console.error("[geo-visibility] resume-stale feilet:", err));
+      const { enqueueGeoProbeRun } = await import("../job-handlers.js");
+      const started: string[] = [];
+      for (let i = 0; i < sets.rows.length; i++) {
+        const s = sets.rows[i];
+        await enqueueGeoProbeRun(pool, {
+          setId: s.id,
+          userId: s.workspace_owner_user_id,
+          delayMs: i * 12 * 60_000,
+        });
+        started.push(s.id);
+      }
       return res.json({ started });
     } catch (err) {
       console.error("[geo-visibility] cron failed", err);
