@@ -94,7 +94,7 @@ export function setupGoogleVerificationMarketingRoutes(deps: {
         // v18 er solnedgang-et (juni 2026) → 404 på den faste versjonen i
         // listAccessibleCustomers. Prøv flere versjoner inline og bruk den som
         // svarer; returner Googles faktiske feiltekst hvis ALLE feiler.
-        const versions = ["v21", "v20", "v19", "v18"];
+        const versions = ["v23", "v22", "v21", "v20"]; // v18/v19 pensjonert per 19.07.2026
         let lastStatus = 0;
         let lastDetail = "";
         for (const v of versions) {

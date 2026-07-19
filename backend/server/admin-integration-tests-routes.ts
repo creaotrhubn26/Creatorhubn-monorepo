@@ -485,7 +485,9 @@ async function testGoogleAds(): Promise<TestResult> {
   // googleads.googleapis.com som returnerer 401/403 selv uten OAuth-token.
   // Det bekrefter at developer-token er gjenkjent og endpoint er nådd.
   const result = await fetchWithTimeout(
-    "https://googleads.googleapis.com/v17/customers:listAccessibleCustomers",
+    // v23 per 19.07.2026 — Google pensjonerer Ads-API-versjoner etter ~ett år
+    // (v17–v19 svarer 404 nå). 404 her betyr «versjonen er død», ikke auth.
+    "https://googleads.googleapis.com/v23/customers:listAccessibleCustomers",
     {
       headers: {
         "developer-token": devToken,
