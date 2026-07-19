@@ -2011,6 +2011,14 @@ export default function ProducerMediaPanel({
   const savedPlanningSnapshotRef = useRef<string>('');
   const mobileWorkspaceDraftHydratedRef = useRef(false);
   const appliedInitialWorkspaceFocusKeyRef = useRef<string>('');
+  // Verdibaserte idempotens-vakter mot en render-løkke i klient-portalen:
+  // parent gir en ny inline onWorkspaceFocusChange hver render, og
+  // activeSection/activePage er memo-er hvis identitet endres når
+  // workspaceSections rebygges — så begge effektene under kan re-fyre uten at
+  // den *semantiske* verdien har endret seg. Ref-ene sørger for at vi kun
+  // emitter fokus / skriver URL når faktisk innhold endres.
+  const lastEmittedFocusKeyRef = useRef<string | null>(null);
+  const lastWrittenClientPortalUrlRef = useRef<string | null>(null);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
 
@@ -2091,12 +2099,27 @@ export default function ProducerMediaPanel({
   }, [projectId]);
 
   useEffect(() => {
-    onWorkspaceFocusChange?.({
+    const focus = {
       workspace: toClientPortalWorkspace(activeWorkspace),
       sectionId: activeSection?.id,
       pageId: activePage?.id,
       artifactId: focusedArtifactId ?? undefined,
-    });
+    };
+    // Kun emitter når den semantiske verdien faktisk endres. Uten dette fyrer
+    // en ny inline onWorkspaceFocusChange (ny identitet hver parent-render)
+    // effekten på nytt og pusher identisk fokus opp → parent re-render →
+    // løkke. Nøkkelen er verdi-basert, ikke identitets-basert.
+    const focusKey = JSON.stringify([
+      focus.workspace ?? '',
+      focus.sectionId ?? '',
+      focus.pageId ?? '',
+      focus.artifactId ?? '',
+    ]);
+    if (lastEmittedFocusKeyRef.current === focusKey) {
+      return;
+    }
+    lastEmittedFocusKeyRef.current = focusKey;
+    onWorkspaceFocusChange?.(focus);
   }, [activePage?.id, activeSection?.id, activeWorkspace, focusedArtifactId, onWorkspaceFocusChange]);
   const strategySnapshot = useMemo(
     () => getProducerStrategySnapshot(planningDraft),
@@ -2740,6 +2763,16 @@ export default function ProducerMediaPanel({
     if (currentUrl === nextUrl) {
       return;
     }
+    // Ekstra vakt: hvis vi allerede har skrevet nøyaktig denne URL-en, ikke
+    // skriv igjen. Beskytter mot en flom av replaceState hvis buildClientPortal-
+    // Url og bar-URL-en aldri blir helt like (f.eks. path-normalisering) mens
+    // effekten re-fyrer pga. memo-identitets-churn. En replaceState-flom
+    // trigger analytics-bibliotekenes history-patch → «Throttling navigation»
+    // + synlig URL-risting.
+    if (lastWrittenClientPortalUrlRef.current === nextUrl) {
+      return;
+    }
+    lastWrittenClientPortalUrlRef.current = nextUrl;
     window.history.replaceState({}, '', nextUrl);
   }, [activePage, activeSection, activeWorkspace, focusedArtifactId, isClientPortalView, projectId]);
 
