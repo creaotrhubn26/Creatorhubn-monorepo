@@ -339,10 +339,12 @@ function Callout({
     <motion.div
       style={{
         position: 'absolute', opacity, y,
-        maxWidth: 'min(90vw, 520px)',
-        padding: '0 6vw',
-        left: align === 'left' ? 0 : undefined,
-        right: align === 'right' ? 0 : undefined,
+        // Side-avstanden ligger i left/right, IKKE i padding: border-box
+        // (CssBaseline) trakk 2x6vw fra maxWidth, og på brede skjermer ble
+        // tekstkolonnen ~60px smal - ett ord per linje.
+        maxWidth: 'min(84vw, 520px)',
+        left: align === 'left' ? '6vw' : undefined,
+        right: align === 'right' ? '6vw' : undefined,
         textAlign: align === 'center' ? 'center' : 'left',
         top: '50%', transform: 'translateY(-50%)',
       }}
