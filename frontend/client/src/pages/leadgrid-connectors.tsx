@@ -11,6 +11,10 @@
  *   - Developer CTA m/ inline curl-eksempel + Swagger UI / OpenAPI JSON / API-key
  *   - Webhook-events grid (22 events)
  *   - Partner Program CTA
+ *
+ * Mørkt tema som matcher leadgrid-landing (warm-dark + lilla accent) —
+ * siden lå i lys lilla/hvit og brøt totalt med resten av leadgrid.no.
+ * Ikoner (lucide) i stedet for emoji-logoer.
  */
 
 import React, { useState } from "react";
@@ -27,13 +31,24 @@ import {
   MessageSquare,
   Zap,
   Database,
+  FileSpreadsheet,
+  Link2,
+  Cloud,
+  Workflow,
+  Wrench,
+  Bot,
+  Users,
+  Mail,
+  Github,
+  FileJson,
+  type LucideIcon,
 } from "lucide-react";
 
 interface Connector {
   id: string;
   name: string;
   description: string;
-  logo: string; // emoji eller URL
+  Icon: LucideIcon;
   status: "live" | "beta" | "coming_soon";
   category: "crm" | "communication" | "automation" | "developer";
   features: string[];
@@ -48,7 +63,7 @@ const CONNECTORS: Connector[] = [
     name: "CSV / Excel-import",
     description:
       "Last opp eksisterende lead-lister fra Pipedrive/HubSpot/Excel. 3-stegs wizard m/ column-mapping + dedup.",
-    logo: "📄",
+    Icon: FileSpreadsheet,
     status: "live",
     category: "crm",
     features: [
@@ -63,8 +78,8 @@ const CONNECTORS: Connector[] = [
     id: "url_extract",
     name: "URL-basert ekstraksjon",
     description:
-      "Lim inn opptil 20 nettside-/SoMe-URLer — Claude Haiku 4.5 ekstraherer firma-data automatisk.",
-    logo: "🔗",
+      "Lim inn opptil 20 nettside-/SoMe-URLer — AI-en vår ekstraherer firma-data automatisk.",
+    Icon: Link2,
     status: "live",
     category: "automation",
     features: [
@@ -81,7 +96,7 @@ const CONNECTORS: Connector[] = [
     name: "Salesforce",
     description:
       "Bi-directional sync av leads + recommendations til Salesforce Sales Cloud",
-    logo: "☁️",
+    Icon: Cloud,
     status: "coming_soon",
     category: "crm",
     features: [
@@ -97,7 +112,7 @@ const CONNECTORS: Connector[] = [
     name: "HubSpot",
     description:
       "Sync Leadgrid leads + NBA-anbefalinger til HubSpot CRM",
-    logo: "🟠",
+    Icon: Database,
     status: "coming_soon",
     category: "crm",
     features: [
@@ -113,7 +128,7 @@ const CONNECTORS: Connector[] = [
     name: "Pipedrive",
     description:
       "Hent leads fra Pipedrive og bruk Leadgrid Intelligence Engine for scoring",
-    logo: "🟢",
+    Icon: Workflow,
     status: "coming_soon",
     category: "crm",
     features: ["Lead import", "Webhook listener", "Intelligence overlay"],
@@ -125,7 +140,7 @@ const CONNECTORS: Connector[] = [
     name: "Zapier",
     description:
       "1000+ apper koblet til Leadgrid via API v1. Triggers + actions.",
-    logo: "⚡",
+    Icon: Zap,
     status: "live",
     category: "automation",
     features: [
@@ -140,7 +155,7 @@ const CONNECTORS: Connector[] = [
     id: "make",
     name: "Make (Integromat)",
     description: "Visuelle workflows m/ Leadgrid",
-    logo: "🔧",
+    Icon: Wrench,
     status: "live",
     category: "automation",
     features: [
@@ -154,7 +169,7 @@ const CONNECTORS: Connector[] = [
     id: "n8n",
     name: "n8n",
     description: "Self-hosted automation m/ Leadgrid-node",
-    logo: "🤖",
+    Icon: Bot,
     status: "beta",
     category: "automation",
     features: ["Open-source", "Self-hosted", "Custom workflows"],
@@ -165,7 +180,7 @@ const CONNECTORS: Connector[] = [
     name: "Slack",
     description:
       "Webhook → Slack-kanal når NBA endrer, deal vinnes/tapes, territory.breach",
-    logo: "💬",
+    Icon: MessageSquare,
     status: "live",
     category: "communication",
     features: [
@@ -181,7 +196,7 @@ const CONNECTORS: Connector[] = [
     name: "Microsoft Teams",
     description:
       "Samme webhook-events til Teams-kanal eller individuell chat",
-    logo: "🔵",
+    Icon: Users,
     status: "coming_soon",
     category: "communication",
     features: [
@@ -195,7 +210,7 @@ const CONNECTORS: Connector[] = [
     id: "email",
     name: "E-post (Resend)",
     description: "Sendgrid/Resend transactional e-post fra Leadgrid",
-    logo: "📧",
+    Icon: Mail,
     status: "live",
     category: "communication",
     features: [
@@ -209,7 +224,7 @@ const CONNECTORS: Connector[] = [
     id: "github",
     name: "GitHub Actions",
     description: "CI-eksempler for å integrere mot API v1",
-    logo: "🐙",
+    Icon: Github,
     status: "live",
     category: "developer",
     features: [
@@ -224,7 +239,7 @@ const CONNECTORS: Connector[] = [
     name: "OpenAPI 3.1 Spec",
     description:
       "Auto-generer klient-bibliotek (Python, Ruby, Go, etc.)",
-    logo: "📋",
+    Icon: FileJson,
     status: "live",
     category: "developer",
     features: ["Maskinellbar spec", "Swagger UI", "Codegen-støtte"],
@@ -235,7 +250,7 @@ const CONNECTORS: Connector[] = [
     name: "Custom Webhooks",
     description:
       "Lytt på 22 event-types og HMAC-signerte payloads",
-    logo: "🔗",
+    Icon: Webhook,
     status: "live",
     category: "developer",
     features: [
@@ -289,17 +304,17 @@ export default function LeadgridConnectorsPage() {
       : CONNECTORS.filter((c) => c.category === category);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-white to-purple-50">
+    <div className="min-h-screen bg-[#05010f] text-[#F4F0FF]">
       {/* Hero */}
       <section className="container mx-auto px-4 py-16 text-center">
-        <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-1.5 rounded-full text-sm font-medium mb-6">
+        <div className="inline-flex items-center gap-2 bg-purple-500/15 text-purple-300 px-4 py-1.5 rounded-full text-sm font-medium mb-6 border border-purple-500/25">
           <Zap className="w-4 h-4" />
           Public API v1 m/ OpenAPI 3.1
         </div>
-        <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+        <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-300 to-pink-400 bg-clip-text text-transparent">
           Connector Marketplace
         </h1>
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+        <p className="text-xl text-purple-100/60 max-w-2xl mx-auto mb-8">
           Koble Leadgrid til alle dine verktøy via stabilt versjonert API + 22 webhook-events.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
@@ -307,13 +322,13 @@ export default function LeadgridConnectorsPage() {
             href="/api/v1/docs"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-full font-medium hover:bg-purple-700 transition"
+            className="inline-flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-full font-medium hover:bg-purple-500 transition"
           >
             <Code className="w-4 h-4" /> Swagger UI{" "}
             <ExternalLink className="w-3 h-3" />
           </a>
           <Link href="/leadgrid/api-keys">
-            <button className="inline-flex items-center gap-2 bg-white border-2 border-purple-600 text-purple-600 px-6 py-3 rounded-full font-medium hover:bg-purple-50 transition">
+            <button className="inline-flex items-center gap-2 bg-transparent border-2 border-purple-400 text-purple-300 px-6 py-3 rounded-full font-medium hover:bg-purple-500/10 transition">
               <Key className="w-4 h-4" /> Lag API-key
             </button>
           </Link>
@@ -331,12 +346,12 @@ export default function LeadgridConnectorsPage() {
           ].map((stat) => (
             <div
               key={stat.label}
-              className="text-center bg-white rounded-xl p-4 shadow"
+              className="text-center bg-white/[0.04] border border-white/10 rounded-xl p-4"
             >
-              <div className="text-2xl font-bold text-purple-600">
+              <div className="text-2xl font-bold text-purple-300">
                 {stat.value}
               </div>
-              <div className="text-xs text-gray-500">{stat.label}</div>
+              <div className="text-xs text-purple-100/50">{stat.label}</div>
             </div>
           ))}
         </div>
@@ -355,7 +370,7 @@ export default function LeadgridConnectorsPage() {
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition ${
                   active
                     ? "bg-purple-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-100"
+                    : "bg-white/[0.06] text-purple-100/70 hover:bg-white/[0.12]"
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -377,7 +392,7 @@ export default function LeadgridConnectorsPage() {
 
       {/* Developer CTA */}
       <section className="container mx-auto px-4 py-16">
-        <div className="max-w-4xl mx-auto bg-gradient-to-br from-gray-900 to-purple-900 rounded-3xl p-12 text-white">
+        <div className="max-w-4xl mx-auto bg-gradient-to-br from-[#171130] to-[#2a1548] border border-purple-500/20 rounded-3xl p-12 text-white">
           <div className="flex items-start gap-4">
             <div className="flex-1">
               <div className="inline-flex items-center gap-2 bg-purple-500/20 px-3 py-1 rounded-full text-xs font-medium mb-4">
@@ -386,11 +401,11 @@ export default function LeadgridConnectorsPage() {
               <h2 className="text-3xl font-bold mb-4">
                 Bygg din egen connector på 30 minutter
               </h2>
-              <p className="text-gray-300 mb-6">
+              <p className="text-purple-100/60 mb-6">
                 Public API v1 har stabilt schema. Auth via API-key, 60 RPM rate-limit, HMAC-signerte webhooks.
                 Vi har OpenAPI 3.1-spec for code-gen i Python/Go/Ruby/TypeScript.
               </p>
-              <div className="bg-gray-950 rounded-lg p-4 font-mono text-sm mb-4 overflow-x-auto">
+              <div className="bg-[#03000a] border border-white/10 rounded-lg p-4 font-mono text-sm mb-4 overflow-x-auto">
                 <span className="text-green-400">$</span> curl -H{" "}
                 <span className="text-yellow-300">
                   &quot;Authorization: Bearer lgk_live_...&quot;
@@ -414,7 +429,7 @@ export default function LeadgridConnectorsPage() {
                   href="/api/v1/openapi.json"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-purple-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-purple-700 transition inline-flex items-center gap-2"
+                  className="bg-purple-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-purple-500 transition inline-flex items-center gap-2"
                 >
                   <Code className="w-4 h-4" /> OpenAPI JSON
                 </a>
@@ -434,14 +449,14 @@ export default function LeadgridConnectorsPage() {
         <h2 className="text-3xl font-bold text-center mb-4">
           22 Webhook-events
         </h2>
-        <p className="text-center text-gray-600 mb-8">
+        <p className="text-center text-purple-100/60 mb-8">
           Lytt på det som matter. HMAC-SHA256-signert payload.
         </p>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl mx-auto">
           {WEBHOOK_EVENTS.map((event) => (
             <div
               key={event}
-              className="bg-white rounded-lg px-4 py-3 border text-sm font-mono text-purple-600"
+              className="bg-white/[0.04] rounded-lg px-4 py-3 border border-white/10 text-sm font-mono text-purple-300"
             >
               <Webhook className="inline w-3 h-3 mr-1" /> {event}
             </div>
@@ -450,7 +465,7 @@ export default function LeadgridConnectorsPage() {
       </section>
 
       {/* Final CTA */}
-      <section className="bg-gradient-to-br from-purple-600 to-pink-600 text-white py-16">
+      <section className="bg-gradient-to-br from-purple-700 to-pink-700 text-white py-16">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-4xl font-bold mb-4">
             Bygger du en connector?
@@ -459,7 +474,7 @@ export default function LeadgridConnectorsPage() {
             Bli en del av Partner Programmet — co-marketing, revenue share, prioritert support.
           </p>
           <Link href="/leadgrid/partners">
-            <button className="bg-white text-purple-600 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:scale-105 transition">
+            <button className="bg-white text-purple-700 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:scale-105 transition">
               Søk Partner Status{" "}
               <ArrowRight className="inline w-5 h-5 ml-2" />
             </button>
@@ -471,24 +486,27 @@ export default function LeadgridConnectorsPage() {
 }
 
 function ConnectorCard({ connector }: { connector: Connector }) {
+  const { Icon } = connector;
   return (
-    <div className="bg-white rounded-2xl shadow hover:shadow-xl transition p-6 flex flex-col h-full">
+    <div className="bg-white/[0.04] border border-white/10 rounded-2xl hover:border-purple-400/40 hover:shadow-[0_0_30px_rgba(167,139,250,0.15)] transition p-6 flex flex-col h-full">
       <div className="flex items-start justify-between mb-4">
-        <div className="text-4xl">{connector.logo}</div>
+        <div className="w-12 h-12 rounded-xl bg-purple-500/15 border border-purple-500/25 flex items-center justify-center">
+          <Icon className="w-6 h-6 text-purple-300" />
+        </div>
         <StatusBadge
           status={connector.status}
           releaseDate={connector.releaseDate}
         />
       </div>
-      <h3 className="text-xl font-bold mb-1">{connector.name}</h3>
-      <p className="text-sm text-gray-600 mb-4">{connector.description}</p>
+      <h3 className="text-xl font-bold mb-1 text-[#F4F0FF]">{connector.name}</h3>
+      <p className="text-sm text-purple-100/60 mb-4">{connector.description}</p>
       <ul className="space-y-1 mb-4 flex-1">
         {connector.features.map((f) => (
           <li
             key={f}
-            className="flex items-center gap-2 text-sm text-gray-700"
+            className="flex items-center gap-2 text-sm text-purple-100/80"
           >
-            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
             {f}
           </li>
         ))}
@@ -496,7 +514,7 @@ function ConnectorCard({ connector }: { connector: Connector }) {
       {connector.docUrl && (
         <a
           href={connector.docUrl}
-          className="text-sm font-medium text-purple-600 hover:text-purple-700 inline-flex items-center gap-1 mt-auto"
+          className="text-sm font-medium text-purple-300 hover:text-purple-200 inline-flex items-center gap-1 mt-auto"
         >
           Se docs <ExternalLink className="w-3 h-3" />
         </a>
@@ -514,21 +532,21 @@ function StatusBadge({
 }) {
   if (status === "live") {
     return (
-      <div className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">
-        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />{" "}
+      <div className="inline-flex items-center gap-1 bg-green-500/15 text-green-300 px-2 py-1 rounded-full text-xs font-bold border border-green-500/25">
+        <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />{" "}
         Live
       </div>
     );
   }
   if (status === "beta") {
     return (
-      <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-bold">
+      <div className="inline-flex items-center gap-1 bg-blue-500/15 text-blue-300 px-2 py-1 rounded-full text-xs font-bold border border-blue-500/25">
         <Sparkles className="w-3 h-3" /> Beta
       </div>
     );
   }
   return (
-    <div className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-xs font-bold">
+    <div className="inline-flex items-center gap-1 bg-orange-500/15 text-orange-300 px-2 py-1 rounded-full text-xs font-bold border border-orange-500/25">
       <Clock className="w-3 h-3" /> {releaseDate ?? "Snart"}
     </div>
   );

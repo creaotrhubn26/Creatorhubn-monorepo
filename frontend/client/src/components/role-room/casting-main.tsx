@@ -230,10 +230,15 @@ function CastingStandaloneAppContent() {
       return;
     }
 
-    syncSiteSeo({
-      hostname: window.location.hostname,
-      pathname: window.location.pathname,
-    });
+    // Leadgrid-dedikert host: siteSeo kjenner kun Role Room/CreatorHub og
+    // ville satt «CreatorHub Norge | …»-tittelen oppå Leadgrid-sidenes egen
+    // SEO (denne foreldre-effekten kjører ETTER sidenes effekter).
+    if (!isLeadgridDedicatedHost(window.location.hostname)) {
+      syncSiteSeo({
+        hostname: window.location.hostname,
+        pathname: window.location.pathname,
+      });
+    }
 
     trackMarketingPageView(window.location.pathname);
   }, [isEducationPath, competitorKey, studentPageKey, isPressKitPath]);
