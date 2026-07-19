@@ -47,12 +47,14 @@ const P = {
   muted: 'rgba(244,240,255,0.66)',
 };
 
-type SceneKind = 'cinematic' | 'device';
+type SceneKind = 'cinematic' | 'device' | 'framed';
 
 interface Scene {
   id: string;
   kind: SceneKind;
   image: string;
+  /** Full-bleed bakgrunn bak en 'framed'-enhet. */
+  bg?: string;
   eyebrow?: string;
   title: string;
   body: string;
@@ -88,7 +90,10 @@ const SCENES: Scene[] = [
     align: 'left',
   },
   {
-    id: 'watch', kind: 'cinematic', image: '/leadgrid/scenes/watch-glance.webp',
+    // Rett-på Apple-bezel (offisiell product bezel) m/ ekte watch-UI —
+    // perspektiv-composite i foto så amatørmessig ut på store skjermer.
+    id: 'watch', kind: 'framed', image: '/leadgrid/scenes/watch-framed.webp',
+    bg: '/leadgrid/scenes/watch-bg.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg — rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
     align: 'right',
@@ -256,6 +261,11 @@ function SceneLayer({
     >
       {isCinematic ? (
         <CinematicVisual image={scene.image} scale={scale} />
+      ) : scene.kind === 'framed' ? (
+        <>
+          {scene.bg && <CinematicVisual image={scene.bg} scale={scale} />}
+          <FramedVisual image={scene.image} y={y} narrow={narrow} align={scene.align} />
+        </>
       ) : (
         <DeviceVisual
           image={scene.image} scale={scale} y={y} align={scene.align}
@@ -290,6 +300,42 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
         }}
       />
     </>
+  );
+}
+
+// ── Rett-på enhet i offisiell Apple-bezel (f.eks. Apple Watch) ────────
+function FramedVisual({
+  image, y, narrow, align,
+}: {
+  image: string; y: MotionValue<number>; narrow?: boolean;
+  align?: 'left' | 'center' | 'right';
+}) {
+  // Enheten står motsatt av tekst-siden; sentrert på telefon.
+  const shiftX = narrow ? '0%' : align === 'right' ? '-24%' : align === 'left' ? '24%' : '0%';
+  return (
+    <motion.div
+      style={{
+        position: 'relative', y, x: shiftX,
+        width: narrow ? 'min(46vw, 220px)' : 'min(22vw, 300px)',
+        marginBottom: narrow ? '30vh' : 0,
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute', inset: '-22% -30%',
+          background: `radial-gradient(ellipse at center, ${P.accent}44, transparent 65%)`,
+          filter: 'blur(34px)',
+        }}
+      />
+      <img
+        src={image} alt=""
+        style={{
+          position: 'relative', display: 'block', width: '100%', height: 'auto',
+          filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.65))',
+        }}
+      />
+    </motion.div>
   );
 }
 
