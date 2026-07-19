@@ -1,1 +1,7 @@
-Demo-modus: kjørebok/Leadgrid Go Dashboard (demo-turer, team-oversikt, PDF/CSV) + Kvalitet (verifiseringskø, samtale-mal, stats) fylles nå med demo-data for salgsdemoer.
+Dørsalg-modus: tapp en pin så zoomer kartet til husnivå, salg feires med dagsmål-milepæl («X av 3» + gull-trofé), avslag gir en oppmuntring, og «Neste dør» viser kompass + retning til nærmeste ubesøkte dør. Salgssjef/teamleder kan nå sette dagsmål og budsjett per team og per selger i Salgsledelse.
+
+Navigasjon: helt ny rute-låst motor — bilen følger veien (aldri over bygninger), peker riktig retning gjennom svinger, kameraet glir jevnt, og stemmen gjentar aldri seg selv. Gå-visning når du går, bil-visning når du kjører.
+
+Leadgrid Go: «Start kjøring» tar deg fra tildelt firmabil rett ut i navigasjon; registrer bil med regnr-oppslag og book firmabil fra dashbordet.
+
+Diverse: «Leads i området» kan kollapses i portrett for fullt kart, og lade-/bensin-varsler følger bilen din og teller ned avstanden.
