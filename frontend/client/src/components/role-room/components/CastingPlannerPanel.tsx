@@ -3395,12 +3395,25 @@ type RoleRoomProjectWorkspaceState = {
         lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
         projectId: stored.projectId ?? existing?.projectId ?? null,
       };
-      setStoryArcView(stored.storyArcView);
-      setStoryArcFocus(stored.storyArcFocus ?? null);
-      setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      // 2026-07-19: Eksplisitte URL-params VINNER over lagret tilstand.
+      // Før overstyrte restore både ?tab= og ?surface= — en delelenke til
+      // tab=producer-media landet i sist lagrede fane (tidslinje) i stedet.
+      // Lagret tilstand fyller kun dimensjonene URL-en ikke spesifiserer.
+      const urlHasTab = !!sp.get('tab');
+      const urlHasSurface = !!sp.get('surface');
+      const urlHasView = !!sp.get('view');
+      if (!urlHasView) {
+        setStoryArcView(stored.storyArcView);
+        setStoryArcFocus(stored.storyArcFocus ?? null);
+      }
+      if (!urlHasSurface) {
+        setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      }
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
       setContentProducerResumeTarget(stored.contentProducerResumeTarget ?? null);
-      setActiveTab(stored.activeTab);
+      if (!urlHasTab) {
+        setActiveTab(stored.activeTab);
+      }
     };
 
     void hydrateWorkspaceState();
