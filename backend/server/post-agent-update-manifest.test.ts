@@ -1,40 +1,60 @@
 import { describe, expect, it } from "vitest";
 
-import { updateManifestUrl, fetchUpdateManifest } from "./post-agent-update-manifest.js";
+import { latestPostAgentTag, manifestUrlForTag, fetchUpdateManifest } from "./post-agent-update-manifest.js";
 
-describe("updateManifestUrl", () => {
-  it("tag-basert URL når versjon er kjent (robust)", () => {
-    expect(updateManifestUrl("darwin-aarch64", "0.3.16")).toContain("/releases/download/post-agent-v0.3.16/post-agent-darwin-aarch64.json");
-    expect(updateManifestUrl("darwin-x86_64", "v0.3.16")).toContain("post-agent-v0.3.16/post-agent-darwin-x86_64.json");
+describe("latestPostAgentTag", () => {
+  it("velger nyeste post-agent-tag (semver), ignorerer andre produkter + draft/prerelease", () => {
+    const releases = [
+      { tag_name: "protools-companion-v0.9.0" },
+      { tag_name: "post-agent-v0.3.9" },
+      { tag_name: "post-agent-v0.3.17" },
+      { tag_name: "post-agent-v0.3.16" },
+      { tag_name: "post-agent-v0.4.0", draft: true },
+      { tag_name: "post-agent-v0.3.18", prerelease: true },
+    ];
+    expect(latestPostAgentTag(releases)).toBe("post-agent-v0.3.17");
   });
-  it("faller til /latest/ uten versjon", () => {
-    expect(updateManifestUrl("darwin-aarch64", null)).toContain("/releases/latest/download/post-agent-darwin-aarch64.json");
-    expect(updateManifestUrl("darwin-aarch64", "rar")).toContain("/releases/latest/download/");
+  it("semver-sortering (ikke leksikalsk: v0.3.10 > v0.3.9)", () => {
+    expect(latestPostAgentTag([{ tag_name: "post-agent-v0.3.9" }, { tag_name: "post-agent-v0.3.10" }])).toBe("post-agent-v0.3.10");
   });
-  it("ugyldig target-key → null", () => {
-    expect(updateManifestUrl("linux-x64", "0.3.16")).toBeNull();
-    expect(updateManifestUrl("../etc", "0.3.16")).toBeNull();
+  it("ingen post-agent-tag → null", () => {
+    expect(latestPostAgentTag([{ tag_name: "one-desk-v1.0.0" }])).toBeNull();
+    expect(latestPostAgentTag(null)).toBeNull();
   });
 });
 
 describe("fetchUpdateManifest", () => {
-  const mockFetch = (ok: boolean, status: number, body: string) =>
-    async () => ({ ok, status, text: async () => body });
+  // fetcher: API-kall → releases-liste; deretter manifest-kall.
+  const mk = (releasesJson: string, manifestOk: boolean, manifestBody: string) => {
+    return async (url: string) => {
+      if (url.includes("api.github.com")) return { ok: true, status: 200, text: async () => releasesJson };
+      return { ok: manifestOk, status: manifestOk ? 200 : 404, text: async () => manifestBody };
+    };
+  };
 
-  it("gyldig manifest → { ok, body }", async () => {
-    const r = await fetchUpdateManifest("darwin-aarch64", "0.3.16", mockFetch(true, 200, '{"version":"0.3.16","platforms":{}}'));
-    expect(r).toEqual({ ok: true, body: '{"version":"0.3.16","platforms":{}}' });
+  it("henter manifest for nyeste post-agent-tag fra API-et", async () => {
+    const releases = JSON.stringify([{ tag_name: "post-agent-v0.3.16" }, { tag_name: "post-agent-v0.3.17" }]);
+    const r = await fetchUpdateManifest("darwin-aarch64", mk(releases, true, '{"version":"0.3.17","platforms":{}}'));
+    expect(r).toEqual({ ok: true, body: '{"version":"0.3.17","platforms":{}}' });
   });
-  it("404 → feil", async () => {
-    const r = await fetchUpdateManifest("darwin-aarch64", "0.3.16", mockFetch(false, 404, ""));
+  it("faller til /latest/ når API-et feiler", async () => {
+    const fetcher = async (url: string) => {
+      if (url.includes("api.github.com")) return { ok: false, status: 500, text: async () => "" };
+      expect(url).toContain("/releases/latest/download/");
+      return { ok: true, status: 200, text: async () => '{"version":"0.3.17"}' };
+    };
+    const r = await fetchUpdateManifest("darwin-aarch64", fetcher);
+    expect(r).toEqual({ ok: true, body: '{"version":"0.3.17"}' });
+  });
+  it("manifest 404 → 502-feil", async () => {
+    const r = await fetchUpdateManifest("darwin-aarch64", mk("[]", false, ""));
     expect(r).toEqual({ ok: false, status: 502, error: "manifest_utilgjengelig_404" });
   });
-  it("respons uten \"version\" → ugyldig_manifest", async () => {
-    const r = await fetchUpdateManifest("darwin-aarch64", "0.3.16", mockFetch(true, 200, "<html>404</html>"));
-    expect(r).toEqual({ ok: false, status: 502, error: "ugyldig_manifest" });
-  });
   it("ugyldig key → 400", async () => {
-    const r = await fetchUpdateManifest("bad", "0.3.16", mockFetch(true, 200, '{"version":"x"}'));
+    const r = await fetchUpdateManifest("linux-x64", mk("[]", true, '{"version":"x"}'));
     expect(r).toEqual({ ok: false, status: 400, error: "ugyldig_target" });
+  });
+  it("manifestUrlForTag bygger riktig URL", () => {
+    expect(manifestUrlForTag("post-agent-v0.3.17", "darwin-aarch64")).toContain("/releases/download/post-agent-v0.3.17/post-agent-darwin-aarch64.json");
   });
 });

@@ -209,7 +209,7 @@ export function createPostAgentRouter(
   // ---- Robust updater-manifest (PUBLIC — updateren sender ingen bearer) ----
 
   router.get('/update/:key', async (req: Request, res: Response) => {
-    const result = await fetchUpdateManifest(req.params.key, process.env.POST_AGENT_LATEST_VERSION);
+    const result = await fetchUpdateManifest(req.params.key);
     if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
     res.type('application/json').setHeader('Cache-Control', 'public, max-age=120').send(result.body);
   });
