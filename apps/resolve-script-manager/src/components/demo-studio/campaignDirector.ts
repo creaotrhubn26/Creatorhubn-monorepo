@@ -195,11 +195,13 @@ export const OMNI_CHANNELS: OmniChannel[] = [
   { id: 'wide', label: 'Wide 16:9', w: 1920, h: 1080 },
 ];
 
-/** base64url (kryss-miljø: browser btoa + node-fallback). */
+/** base64url via btoa + TextEncoder (globaler i både Tauri-webview og node —
+ *  ingen Buffer/@types/node, som brøt Tauri-bygget). */
 function b64url(s: string): string {
-  const b64 = typeof btoa !== 'undefined'
-    ? btoa(unescape(encodeURIComponent(s)))
-    : Buffer.from(s, 'utf8').toString('base64');
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  const b64 = btoa(bin);
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
