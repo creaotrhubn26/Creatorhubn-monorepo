@@ -973,4 +973,16 @@ const container = document.getElementById('casting-root');
 if (container) {
   const root = createRoot(container);
   root.render(<CastingStandaloneApp />);
+
+  // Observability: theroleroom.com-flaten (denne entryen) hadde ingen
+  // frontend-feilrapportering — verken Sentry eller in-house-reporteren var
+  // wiret her, kun i main.tsx (CreatorHub-appen). Det er derfor klient-portal-
+  // 401-ene aldri dukket opp noe sted. Vi wirer begge:
+  //   • initSentry() — no-op uten VITE_SENTRY_DSN, trygt for paritet.
+  //   • installFrontendErrorReporter() — JS-errors + unhandledrejection +
+  //     uventede API-svar (401/403/5xx) → /api/admin-room/errors (Admin Room).
+  void import('@/utils/sentry').then((m) => m.initSentry()).catch(() => {});
+  void import('@/utils/installFrontendErrorReporter')
+    .then((m) => m.installFrontendErrorReporter())
+    .catch(() => {});
 }
