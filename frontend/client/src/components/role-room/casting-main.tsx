@@ -917,8 +917,15 @@ export default function CastingStandaloneApp() {
     // Leadgrid-dedikert host: Leadgrid eier tittel + favicon. Sidene
     // setter egen tittel - denne effekten skal ikke overskrive den med
     // Role Room-branding (jf. fanetittel-buggen pa leadgrid.no).
+    // Statisk index.html-tittel ("CreatorHub Norge | ...") regnes ogsaa som
+    // ikke-satt: sider uten egen SEO (f.eks. /connectors) ble staaende
+    // med CreatorHub-tittelen.
     if (isLeadgridDedicatedHost(window.location.hostname)) {
-      if (!document.title || document.title === ROLE_ROOM_DOCUMENT_TITLE) {
+      if (
+        !document.title
+        || document.title === ROLE_ROOM_DOCUMENT_TITLE
+        || document.title.startsWith('CreatorHub Norge')
+      ) {
         document.title = 'Leadgrid \u2014 Kartbasert CRM for feltsalg';
       }
       upsertHeadLink('icon', '/leadgrid/app/kart.png');
