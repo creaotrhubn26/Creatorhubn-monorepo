@@ -2669,6 +2669,16 @@ export default function ProducerMediaPanel({
   const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
     google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
     meta: { connected: boolean; verified: boolean; name: string | null };
+    manages?: {
+      ga4PropertyId: string | null;
+      ga4MeasurementId: string | null;
+      gscSites: string[];
+      gscError: 'needs_reauth' | 'unavailable' | null;
+      youtubeChannels: string[];
+      metaPages: string[];
+      igUsername: string | null;
+      facebookPageName: string | null;
+    };
   } | null>(null);
   const loadAgentConnectionStatus = useCallback(async () => {
     if (!projectId) return;
@@ -2679,7 +2689,7 @@ export default function ProducerMediaPanel({
       });
       const body = await r.json();
       if (body?.success) {
-        setAgentConnectionStatus({ google: body.google, meta: body.meta });
+        setAgentConnectionStatus({ google: body.google, meta: body.meta, manages: body.manages ?? undefined });
       }
     } catch {
       // Stille — statusen er berikelse, ikke blokkerende.
@@ -2725,6 +2735,20 @@ export default function ProducerMediaPanel({
       setGoogleOauthStarting(false);
     }
   }, [loadAgentConnectionStatus, projectId]);
+  // Felles popup-åpner for GET-baserte OAuth-starter (Meta/LinkedIn):
+  // samme vindu-størrelse som Google-flyten, og koblingsstatusen re-leses
+  // når popupen lukkes — konsistent opplevelse på tvers av kortene.
+  const openOauthPopupAndRefresh = useCallback((url: string) => {
+    if (typeof window === 'undefined') return;
+    const popup = window.open(url, '_blank', 'width=620,height=760');
+    const poll = window.setInterval(() => {
+      if (!popup || popup.closed) {
+        window.clearInterval(poll);
+        void loadAgentConnectionStatus();
+        void loadLinkedInAccessStatus();
+      }
+    }, 1200);
+  }, [loadAgentConnectionStatus, loadLinkedInAccessStatus]);
 
   useEffect(() => () => {
     linkedInAccessRequestRef.current += 1;
@@ -12655,6 +12679,47 @@ export default function ProducerMediaPanel({
                               'Ingen sikker tilgang definert ennå.',
                             )}
                           </Typography>
+                          {(() => {
+                            // «Styrer»-raden: de konkrete ressursene koblingen
+                            // faktisk rår over (GA4-ID, GSC-siter, @IG-konto,
+                            // sider, kanaler) — «koblet» alene sier ingenting.
+                            const m = agentConnectionStatus?.manages;
+                            if (!m) return null;
+                            const styrer: string[] = [];
+                            if (isGoogleEntry) {
+                              if (m.ga4MeasurementId) styrer.push(`GA4: ${m.ga4MeasurementId}`);
+                              else if (m.ga4PropertyId) styrer.push(`GA4-property: ${m.ga4PropertyId}`);
+                              m.gscSites.slice(0, 3).forEach((s) => styrer.push(
+                                `Search Console: ${s.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')}`,
+                              ));
+                              if (m.gscError === 'needs_reauth') styrer.push('Search Console: krever ny innlogging');
+                            }
+                            if (entry.platform === 'meta') {
+                              if (m.igUsername) styrer.push(`Instagram: @${m.igUsername}`);
+                              if (m.facebookPageName) styrer.push(`Facebook-side: ${m.facebookPageName}`);
+                              m.metaPages.filter((p) => p !== m.facebookPageName).slice(0, 3)
+                                .forEach((p) => styrer.push(`Side: ${p}`));
+                            }
+                            if (entry.platform === 'youtube') {
+                              m.youtubeChannels.slice(0, 3).forEach((c) => styrer.push(`Kanal: ${c}`));
+                            }
+                            if (styrer.length === 0) return null;
+                            return (
+                              <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap sx={{ mt: 0.55 }}>
+                                <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.7rem', fontWeight: 700, alignSelf: 'center' }}>
+                                  Styrer:
+                                </Typography>
+                                {styrer.map((label) => (
+                                  <Chip
+                                    key={label}
+                                    size="small"
+                                    label={label}
+                                    sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#dbeafe', fontSize: '0.68rem', height: 20 }}
+                                  />
+                                ))}
+                              </Stack>
+                            );
+                          })()}
                         </Box>
                         {isGoogleEntry ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
@@ -12681,8 +12746,34 @@ export default function ProducerMediaPanel({
                               </Button>
                             ) : null}
                           </Stack>
+                        ) : entry.platform === 'meta' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.meta.connected ? (
+                              <Chip
+                                size="small"
+                                label={agentConnectionStatus.meta.verified
+                                  ? `Koblet: ${agentConnectionStatus.manages?.igUsername ? `@${agentConnectionStatus.manages.igUsername}` : agentConnectionStatus.meta.name ?? 'verifisert'}`
+                                  : 'Koblet (ikke verifisert)'}
+                                sx={{
+                                  bgcolor: agentConnectionStatus.meta.verified ? 'rgba(34,197,94,0.16)' : 'rgba(245,158,11,0.18)',
+                                  color: agentConnectionStatus.meta.verified ? '#bbf7d0' : '#fde68a',
+                                  fontWeight: 700,
+                                }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.meta.connected ? 'outlined' : 'contained'}
+                                onClick={() => openOauthPopupAndRefresh(`/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`)}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {agentConnectionStatus?.meta.connected ? 'Koble til på nytt' : 'Koble til Meta'}
+                              </Button>
+                            ) : null}
+                          </Stack>
                         ) : isLinkedInEntry ? (
-                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
                             <Tooltip title="Oppdater LinkedIn-status">
                               <span>
                                 <IconButton
@@ -12707,22 +12798,59 @@ export default function ProducerMediaPanel({
                                 size="small"
                                 variant={linkedInAccessStatus?.state === 'connected' ? 'outlined' : 'contained'}
                                 onClick={() => {
-                                  if (linkedInAccessStatus?.state !== 'connected') {
-                                    void handleStartLinkedInAccountLink();
-                                  }
+                                  void handleStartLinkedInAccountLink();
                                 }}
                                 disabled={linkedInAccessActionKey === 'connect' || linkedInAccessStatus?.configured === false}
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
                                 {linkedInAccessStatus?.configured === false
                                   ? 'LinkedIn ikke konfigurert'
-                                  : linkedInAccessStatus?.state === 'connected'
-                                    ? 'LinkedIn aktivert'
-                                    : linkedInAccessActionKey === 'connect'
-                                      ? 'Starter...'
-                                      : 'Aktiver LinkedIn'}
+                                  : linkedInAccessActionKey === 'connect'
+                                    ? 'Starter...'
+                                    : linkedInAccessStatus?.state === 'connected'
+                                      ? 'Koble til på nytt'
+                                      : 'Koble til LinkedIn'}
                               </Button>
                             ) : null}
+                          </Stack>
+                        ) : entry.platform === 'youtube' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.google.connected ? (
+                              <Chip
+                                size="small"
+                                label="Bruker Google-koblingen"
+                                sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.google.connected ? 'outlined' : 'contained'}
+                                onClick={() => { void handleStartGoogleOauthLink(); }}
+                                disabled={googleOauthStarting}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {googleOauthStarting
+                                  ? 'Starter...'
+                                  : agentConnectionStatus?.google.connected
+                                    ? 'Koble til på nytt'
+                                    : 'Koble til Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : entry.platform === 'tiktok' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              component="a"
+                              href="https://business.tiktok.com"
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                            >
+                              Åpne TikTok Business Center
+                            </Button>
                           </Stack>
                         ) : linkedAccountReview ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>

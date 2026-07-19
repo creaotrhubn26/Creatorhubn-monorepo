@@ -1300,7 +1300,107 @@ export function setupRoleRoomAgentCoreRoutes(
       // verified forblir false — ærlig «kunne ikke verifisere»
     }
 
-    return res.json({ success: true, google, meta });
+    // Hva koblingene faktisk STYRER — «koblet» sier ingenting om hvilke
+    // ressurser. GA4-property/måle-ID leses fra KPI-konfigen agenten selv
+    // registrerte ved ga4-setup; GSC-siter og YouTube-kanaler hentes live
+    // fra Google (det Google faktisk viser); Meta-sider fra Graph.
+    // gscError 'needs_reauth' = koblingen mangler webmasters-scopet
+    // (samtykke fra før scope-utvidelsen). Alt er best-effort berikelse.
+    const manages: {
+      ga4PropertyId: string | null;
+      ga4MeasurementId: string | null;
+      gscSites: string[];
+      gscError: "needs_reauth" | "unavailable" | null;
+      youtubeChannels: string[];
+      metaPages: string[];
+      igUsername: string | null;
+      facebookPageName: string | null;
+    } = {
+      ga4PropertyId: null, ga4MeasurementId: null, gscSites: [], gscError: null,
+      youtubeChannels: [], metaPages: [], igUsername: null, facebookPageName: null,
+    };
+    if (projectId) {
+      const { getKpiSourceConfigValue } = await import("./role-room-kpi-source-config.js");
+      manages.ga4PropertyId = await getKpiSourceConfigValue(pool, projectId, "google_analytics", "property_id");
+      manages.ga4MeasurementId = await getKpiSourceConfigValue(pool, projectId, "google_analytics", "measurement_id");
+    }
+    if (google.connected) {
+      try {
+        const { row } = await resolveProjectGoogleConnection(projectId, session.userId);
+        if (row) {
+          const fresh = await ensureFreshGoogleAccessToken(pool, row);
+          const authHeader = { Authorization: `Bearer ${fresh.accessToken}` };
+          const [sitesRes, channelsRes] = await Promise.all([
+            fetch("https://www.googleapis.com/webmasters/v3/sites", {
+              headers: authHeader, signal: AbortSignal.timeout(8000),
+            }).catch(() => null),
+            fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true&maxResults=10", {
+              headers: authHeader, signal: AbortSignal.timeout(8000),
+            }).catch(() => null),
+          ]);
+          if (sitesRes?.ok) {
+            const body = (await sitesRes.json().catch(() => null)) as {
+              siteEntry?: Array<{ siteUrl?: string; permissionLevel?: string }>;
+            } | null;
+            manages.gscSites = (body?.siteEntry ?? [])
+              .filter((s) => s.siteUrl && s.permissionLevel !== "siteUnverifiedUser")
+              .map((s) => String(s.siteUrl))
+              .slice(0, 12);
+          } else if (sitesRes && (sitesRes.status === 401 || sitesRes.status === 403)) {
+            manages.gscError = "needs_reauth";
+          } else {
+            manages.gscError = "unavailable";
+          }
+          if (channelsRes?.ok) {
+            const body = (await channelsRes.json().catch(() => null)) as {
+              items?: Array<{ snippet?: { title?: string } }>;
+            } | null;
+            manages.youtubeChannels = (body?.items ?? [])
+              .map((c) => c.snippet?.title)
+              .filter((t): t is string => Boolean(t))
+              .slice(0, 10);
+          }
+        }
+      } catch {
+        manages.gscError = "unavailable";
+      }
+    }
+    if (meta.connected) {
+      try {
+        const conn = await pool.query<{
+          access_token: string | null;
+          ig_username: string | null;
+          facebook_page_name: string | null;
+        }>(
+          `SELECT access_token, ig_username, facebook_page_name
+             FROM role_room_instagram_connections
+            WHERE project_id = $1 ORDER BY connected_at DESC LIMIT 1`,
+          [projectId],
+        );
+        manages.igUsername = conn.rows[0]?.ig_username ?? null;
+        manages.facebookPageName = conn.rows[0]?.facebook_page_name ?? null;
+        const token = conn.rows[0]?.access_token ?? null;
+        if (token) {
+          const pagesRes = await fetch(
+            `https://graph.facebook.com/v21.0/me/accounts?fields=name&limit=10&access_token=${encodeURIComponent(token)}`,
+            { signal: AbortSignal.timeout(8000) },
+          );
+          if (pagesRes.ok) {
+            const body = (await pagesRes.json().catch(() => null)) as {
+              data?: Array<{ name?: string }>;
+            } | null;
+            manages.metaPages = (body?.data ?? [])
+              .map((p) => p.name)
+              .filter((n): n is string => Boolean(n))
+              .slice(0, 10);
+          }
+        }
+      } catch {
+        // best effort
+      }
+    }
+
+    return res.json({ success: true, google, meta, manages });
   });
 
   // ── Kontrakt-skann: signert avtale → økonomisk oppsett ─────────────
