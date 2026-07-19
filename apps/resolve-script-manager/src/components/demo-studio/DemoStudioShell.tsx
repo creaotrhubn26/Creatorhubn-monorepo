@@ -52,6 +52,7 @@ import {
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
   clearLearnedTargets, detectLearnedDrift, pickShot, listStoredProjects, deleteStoredProject, type LearnedTarget,
+  detectFormatMismatch,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -1435,6 +1436,23 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <button onClick={() => redo()} disabled={!canRedo()} title="Gjør om (⌘⇧Z)"
                     style={{ ...btn, padding: '5px 9px', fontSize: 12, opacity: canRedo() ? 1 : 0.4 }}>↷ Gjør om</button>
                 </div>
+                {(() => {
+                  // Format ↔ orientering: fang «filmer bredt, eksporterer smalt» FØR Export.
+                  const fm = detectFormatMismatch(project.scenes, project.format);
+                  if (!fm) return null;
+                  const oriLabel = fm.formatOrientation === 'portrait' ? 'stående' : 'liggende';
+                  const devLabel = fm.formatOrientation === 'portrait' ? 'liggende (MacBook/iPad-landskap)' : 'stående (iPhone)';
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: '#fdf1e6', border: '1px solid #f0c088', borderRadius: 8, padding: '8px 12px' }}>
+                      <span style={{ fontSize: 16 }}>⚠</span>
+                      <span style={{ fontSize: 12.5, color: '#8a5a1a', flex: 1, lineHeight: 1.4 }}>
+                        <b>{fm.conflicting} av {fm.total} scener</b> er {devLabel}, men eksport-format er <b>{project.format}</b> ({oriLabel}) — innholdet <b>beskjæres</b> ved Export.
+                      </span>
+                      <button style={{ ...btn, padding: '5px 11px', fontSize: 12, fontWeight: 600, background: '#f0c088', borderColor: '#e0a860', color: '#5a3a10' }}
+                        onClick={() => setProjectField('format', fm.suggestFormat)}>Bytt format til {fm.suggestFormat}</button>
+                    </div>
+                  );
+                })()}
                 {selectedSceneIds.length > 0 ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: C.creamActive, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '6px 10px' }}>
                     <span style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedSceneIds.length} scene{selectedSceneIds.length === 1 ? '' : 'r'} valgt</span>
