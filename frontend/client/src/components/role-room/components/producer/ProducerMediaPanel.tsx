@@ -2090,13 +2090,28 @@ export default function ProducerMediaPanel({
     mobileWorkspaceDraftHydratedRef.current = false;
   }, [projectId]);
 
+  // onWorkspaceFocusChange er en inline-callback hos forelderen (ny identitet
+  // hver render), så denne effekten fyrer på HVER parent-render — ikke bare
+  // ved reelle fokus-endringer. Med to monterte instanser (planner-project_room
+  // + producer-media-tabpanelet) på hver sin side ping-ponget fokuset A→B→A i
+  // render-hastighet: forelderen sendte fokus tilbake ned som initialPageId,
+  // begge re-anvendte, og hele arbeidsflaten ristet (mount/unmount-løkke).
+  // Ref-guarden gjør rapporten idempotent: samme fokus rapporteres aldri to
+  // ganger, så kjeden dør ut ved første konvergens.
+  const lastReportedWorkspaceFocusRef = useRef('');
   useEffect(() => {
-    onWorkspaceFocusChange?.({
+    const focus = {
       workspace: toClientPortalWorkspace(activeWorkspace),
       sectionId: activeSection?.id,
       pageId: activePage?.id,
       artifactId: focusedArtifactId ?? undefined,
-    });
+    };
+    const focusKey = `${focus.workspace ?? ''}|${focus.sectionId ?? ''}|${focus.pageId ?? ''}|${focus.artifactId ?? ''}`;
+    if (lastReportedWorkspaceFocusRef.current === focusKey) {
+      return;
+    }
+    lastReportedWorkspaceFocusRef.current = focusKey;
+    onWorkspaceFocusChange?.(focus);
   }, [activePage?.id, activeSection?.id, activeWorkspace, focusedArtifactId, onWorkspaceFocusChange]);
   const strategySnapshot = useMemo(
     () => getProducerStrategySnapshot(planningDraft),
