@@ -499,7 +499,7 @@ export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceK
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS: Record<ProducerAccountAccessPlatform, string> = {
-  google: 'Google Workspace',
+  google: 'Google (Workspace + Analytics)',
   meta: 'Meta Business',
   linkedin: 'LinkedIn',
   youtube: 'YouTube',
@@ -868,7 +868,7 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       status: 'not_started',
       tier: 'delegated_access',
       riskLevel: 'low',
-      accessScope: 'Drive, Kalender og Meet for prosjektet.',
+      accessScope: 'Drive, Kalender og Meet — pluss GA4, Search Console og Site Verification for agentens analytics-oppsett.',
       sharedWithRoles: ['producer', 'admin'],
       twoFactorStatus: 'unknown',
       secretStatus: 'not_shared',
