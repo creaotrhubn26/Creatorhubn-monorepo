@@ -516,7 +516,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
         // sikrest) eller navnesøk på FIRMANAVNET m/ match-vakt. Person-
         // navnet brukes aldri — enrichLeadWithBrreg søker på lead.name,
         // som på kort-leads er kontaktpersonen, derfor må org.nr settes her.
-        const { resolveOrgNrForCard, enrichLeadWithBrreg } = await import("./lead-brreg-service.js");
+        const { resolveOrgNrForCard } = await import("./lead-brreg-service.js");
         const brregLink = await resolveOrgNrForCard({
           company: body.company ?? null,
           rawText: body.raw_text ?? null,
@@ -565,11 +565,15 @@ export function setupLeadMapRoutes(deps: Deps): void {
         // Full berikelse (adresse, NACE, daglig leder, regnskap) i bakgrunnen
         // når org.nr er sikkert koblet — pipeline hopper over navnesøket.
         if (brregLink.status === "linked") {
-          void enrichLeadWithBrreg(pool, {
+          // Via jobb-køen (0400): overlever deploy-restart, retry m/
+          // backoff, og feil blir synlige i /api/admin-room/jobs i stedet
+          // for en stille console.warn.
+          const { enqueueLeadBrregEnrich } = await import("./job-handlers.js");
+          await enqueueLeadBrregEnrich(pool, {
             leadId: cardLeadId,
-            workspaceOwnerUserId: session.userId,
+            ownerUserId: session.userId,
           }).catch((err) => {
-            console.warn("[from-card] BRREG-berikelse feilet:", String(err).slice(0, 120));
+            console.warn("[from-card] kunne ikke køe BRREG-berikelse:", String(err).slice(0, 120));
           });
         }
         void (async () => {

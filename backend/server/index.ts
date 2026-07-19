@@ -17074,6 +17074,22 @@ setupAdminResendStatusRoutes({
   app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
 });
 
+// ── Jobb-kø (0400): tunge operasjoner overlever deploy-restart.
+// Handlers registreres og worker startes her; innsyn i Admin Room.
+import("./job-handlers.js")
+  .then(({ startBackgroundJobs, setupJobQueueRoutes }) => {
+    startBackgroundJobs(pool);
+    setupJobQueueRoutes({
+      app,
+      pool,
+      activeSessions,
+      isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+    });
+  })
+  .catch((err) => {
+    console.error("[job-queue] oppstart feilet:", String(err).slice(0, 200));
+  });
+
 // ── Migrations — admin-trigger av migrate.sh fra Admin Room
 setupAdminMigrationsRoutes({
   app,
