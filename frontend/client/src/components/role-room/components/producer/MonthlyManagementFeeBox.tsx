@@ -15,6 +15,7 @@ import {
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
+import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
 
 interface ConfigSummary {
   config_id: string;
@@ -50,6 +51,7 @@ export default function MonthlyManagementFeeBox({
     setLoading(true);
     fetch(`/api/role-room/ads/management-fee-summary?clientProjectId=${encodeURIComponent(clientProjectId)}`, {
       credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
     })
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (!cancelled) setData(d); })
