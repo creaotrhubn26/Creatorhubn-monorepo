@@ -867,9 +867,9 @@ struct KartView: View {
     @State private var dorsalgAvslagTeller = 0
     /// Dagens registrerte salg (min telling) — driver milepæls-feiringen.
     @State private var dorsalgDagensSalg = 0
-    /// Dagsmål per selger. TODO(org-konfig): salgssjefen setter budsjettet
-    /// i Salgsledelse → backend; inntil da 3 som fornuftig standard.
-    private let dorsalgDagsmal = 3
+    /// Dagsmål per selger — resolvert fra backend (team-først, salgssjefen
+    /// setter det i Salgsledelse). Default 3 til stats er hentet.
+    @State private var dorsalgDagsmal = 3
     /// Adresse med «Registrer salg»-skjemaet åpent (Vunnet-knappen).
     @State private var dorsalgSalgFor: KartverketService.AdressePunkt?
 
@@ -2347,11 +2347,23 @@ struct KartView: View {
             }
             dorsalgLastStatuser()
             dorsalgLastProdukter()
+            dorsalgLastDagsmal()
         } else {
             dorsalgFetchTask?.cancel()
             dorsalgFetchTask = nil
             dorsalgLaster = false
             dorsalgSynligeAdresser = []
+        }
+    }
+
+    /// Hent selgerens resolverte dagsmål (team-først) fra backend —
+    /// driver milepæl-feiringen. Demo: behold 3 (salgssjef-styrt live).
+    private func dorsalgLastDagsmal() {
+        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        Task {
+            if let m = await KartverketService.shared.fetchDorsalgMaal(using: api) {
+                dorsalgDagsmal = max(1, m.mittDagsmal)
+            }
         }
     }
 

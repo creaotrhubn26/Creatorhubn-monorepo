@@ -381,11 +381,60 @@ final class KartverketService {
         let perProdukt: [Produkt]?
         let perSelger: [Selger]
         let sisteVunnet: [VunnetDor]
+        /// Callerens resolverte dagsmål (team-først). Eldre backend: nil.
+        let dagsmal: Int?
+        /// Valgfritt kr-budsjett per selger per dag. Eldre backend: nil.
+        let budsjett: Int?
     }
 
     /// Dørsalg-statistikk for callerens org. Nil ved feil.
     func fetchDorsalgStats(using api: APIClient) async -> DorsalgStats? {
         try? await api._get("/api/leadgrid/dorsalg/stats")
+    }
+
+    // ─── Dagsmål + budsjett (2026-07-19): leder styrer per team/org ─────
+
+    struct DorsalgMaal: Decodable, Sendable {
+        struct OrgDefault: Decodable, Sendable {
+            let dagsmal: Int
+            let budsjett: Int?
+            let erSatt: Bool
+        }
+        struct TeamMaal: Decodable, Sendable, Identifiable {
+            let teamId: String
+            let navn: String
+            let dagsmal: Int?
+            let budsjett: Int?
+            var id: String { teamId }
+        }
+        let canManage: Bool
+        let mittDagsmal: Int
+        let mittBudsjett: Int?
+        let orgDefault: OrgDefault?
+        let perTeam: [TeamMaal]?
+    }
+
+    /// Hent dagsmål/budsjett — callerens resolverte + (leder) org/team.
+    func fetchDorsalgMaal(using api: APIClient) async -> DorsalgMaal? {
+        try? await api._get("/api/leadgrid/dorsalg/maal")
+    }
+
+    /// Sett org-default (teamId nil/tom) eller et teams mål (leder).
+    /// Returnerer true ved suksess.
+    @discardableResult
+    func setDorsalgMaal(teamId: String?, dagsmalPerSelger: Int,
+                        budsjettPerSelger: Int?, using api: APIClient) async -> Bool {
+        struct Body: Encodable {
+            let teamId: String
+            let dagsmalPerSelger: Int
+            let budsjettPerSelger: Int?
+        }
+        struct Ack: Decodable { let ok: Bool? }
+        let ack: Ack? = try? await api._put(
+            "/api/leadgrid/dorsalg/maal",
+            body: Body(teamId: teamId ?? "", dagsmalPerSelger: dagsmalPerSelger,
+                       budsjettPerSelger: budsjettPerSelger))
+        return ack?.ok == true
     }
 
     /// Fjern status (angre) — best effort.

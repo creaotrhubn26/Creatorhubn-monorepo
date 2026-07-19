@@ -21,6 +21,7 @@ struct SalgsledelseView: View {
     // på vunnede dører). Aktiveres av dørsalg-profilen (superadmin-preset).
     @State private var dorsalgStats: KartverketService.DorsalgStats?
     @State private var showProdukter = false
+    @State private var showMaal = false
 
     private var erRenDorsalgOrg: Bool {
         EntitlementStore.shared.erRenDorsalgOrg
@@ -121,6 +122,17 @@ struct SalgsledelseView: View {
         }
         .gated(.salgsledelse)   // entitlement-laget (feature-matrisen)
         .sheet(isPresented: $showProdukter) { DorsalgProduktSheet() }
+        .sheet(isPresented: $showMaal) { DorsalgMaalSheet() }
+        #if DEBUG
+        // QA (verifiser mål-arket): QA_DORSALG_MAAL=1 auto-åpner det.
+        // Reverteres m/ task #59-følget.
+        .task {
+            if ProcessInfo.processInfo.environment["QA_DORSALG_MAAL"] == "1" {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                showMaal = true
+            }
+        }
+        #endif
         // Ekte team-data når demo er AV — attach er idempotent (samme
         // mønster som TeamView) og fyller memberDTOs → sellers re-evalueres.
         .task {
@@ -152,7 +164,7 @@ struct SalgsledelseView: View {
             .init(navn: "Lars Erik Moen", vunnet: 10, avslatt: 33, verdi: 4320),
             .init(navn: "Marit Johansen", vunnet: 8, avslatt: 26, verdi: 3480),
         ],
-        sisteVunnet: [])
+        sisteVunnet: [], dagsmal: 3, budsjett: nil)
 
     private var inner: some View {
         VStack(spacing: 0) {
@@ -178,24 +190,13 @@ struct SalgsledelseView: View {
                             }
                         }
                     }
-                    Button { showProdukter = true } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "shippingbox.fill")
-                                .font(.appScaled(size: 12, weight: .bold))
-                            Text("Produkter & tilgang")
-                                .font(.appScaled(size: 12, weight: .bold))
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.appScaled(size: 10, weight: .bold))
-                                .foregroundStyle(LBrand.textSecondary)
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 13).padding(.vertical, 11)
-                        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
-                        .overlay(RoundedRectangle(cornerRadius: 11)
-                            .stroke(LBrand.purple.opacity(0.35), lineWidth: 1))
+                    dorsalgLederKnapp("shippingbox.fill", "Produkter & tilgang") {
+                        showProdukter = true
                     }
-                    .buttonStyle(.plain)
+                    // Dagsmål + budsjett per team/selger (mig 0402).
+                    dorsalgLederKnapp("target", "Mål & budsjett") {
+                        showMaal = true
+                    }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
             }
@@ -222,6 +223,228 @@ extension SalgsledelseView {
         .frame(maxWidth: .infinity).padding(.vertical, 9)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.25), lineWidth: 1))
+    }
+
+    /// Delt navigasjons-knapp for dørsalg-leder-verktøyene.
+    fileprivate func dorsalgLederKnapp(_ icon: String, _ label: String,
+                                       action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.appScaled(size: 12, weight: .bold))
+                Text(label).font(.appScaled(size: 12, weight: .bold))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .foregroundStyle(LBrand.textSecondary)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 13).padding(.vertical, 11)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11)
+                .stroke(LBrand.purple.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Mål & budsjett (dørsalg, mig 0402)
+
+/// Salgssjefens dagsmål- og budsjett-styring: sett hvor mange salg per dag
+/// hver selger skal nå (driver «X av 3»-milepælen på kartet) org-bredt eller
+/// per team, pluss valgfritt kr-budsjett per selger.
+private struct DorsalgMaalSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+
+    @State private var maal: KartverketService.DorsalgMaal?
+    @State private var orgDagsmal = 3
+    @State private var orgBudsjett = ""
+    // teamId → (dagsmål, budsjett-tekst)
+    @State private var teamDagsmal: [String: Int] = [:]
+    @State private var teamBudsjett: [String: String] = [:]
+    @State private var lagrer = false
+    @State private var lagret = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    infoBanner
+                    orgSeksjon
+                    if let teams = maal?.perTeam, !teams.isEmpty {
+                        teamSeksjon(teams)
+                    }
+                    Color.clear.frame(height: 16)
+                }
+                .padding(18)
+            }
+            .background(LBrand.bg.ignoresSafeArea())
+            .navigationTitle("Mål & budsjett")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lukk") { dismiss() }
+                        .fontWeight(.bold).foregroundStyle(LBrand.purpleLight)
+                }
+            }
+            .toolbarBackground(LBrand.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .presentationDetents([.large])
+        .task { await reload() }
+    }
+
+    private var infoBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "target").font(.appScaled(size: 15, weight: .bold))
+                .foregroundStyle(LBrand.purpleLight)
+            Text("Dagsmål driver milepæl-feiringen selgeren ser på kartet «\(orgDagsmal) av \(orgDagsmal)». Team-mål overstyrer org-standarden.")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(LBrand.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.purple.opacity(0.3), lineWidth: 1))
+    }
+
+    private var orgSeksjon: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Standard for hele organisasjonen")
+                .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+            maalRad(tittel: "Dagsmål per selger", enhet: "salg/dag",
+                    verdi: $orgDagsmal, budsjett: $orgBudsjett)
+            lagreKnapp {
+                await lagre(teamId: nil, dagsmal: orgDagsmal, budsjettTekst: orgBudsjett)
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func teamSeksjon(_ teams: [KartverketService.DorsalgMaal.TeamMaal]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Per team (overstyrer standarden)")
+                .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+            ForEach(teams) { team in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(team.navn).font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(LBrand.purpleLight)
+                    maalRad(
+                        tittel: "Dagsmål", enhet: "salg/dag",
+                        verdi: Binding(
+                            get: { teamDagsmal[team.teamId] ?? team.dagsmal ?? orgDagsmal },
+                            set: { teamDagsmal[team.teamId] = $0 }),
+                        budsjett: Binding(
+                            get: { teamBudsjett[team.teamId] ?? team.budsjett.map(String.init) ?? "" },
+                            set: { teamBudsjett[team.teamId] = $0 }))
+                    lagreKnapp {
+                        await lagre(
+                            teamId: team.teamId,
+                            dagsmal: teamDagsmal[team.teamId] ?? team.dagsmal ?? orgDagsmal,
+                            budsjettTekst: teamBudsjett[team.teamId] ?? team.budsjett.map(String.init) ?? "")
+                    }
+                }
+                .padding(12)
+                .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func maalRad(tittel: String, enhet: String,
+                         verdi: Binding<Int>, budsjett: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text(tittel).font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("\(verdi.wrappedValue) \(enhet)")
+                    .font(.appScaled(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(LBrand.green).monospacedDigit()
+                Stepper("", value: verdi, in: 0...50).labelsHidden().fixedSize()
+            }
+            HStack(spacing: 8) {
+                Text("Budsjett/selger")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(LBrand.textSecondary)
+                Spacer()
+                TextField("valgfritt", text: budsjett)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 90)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(LBrand.bg, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(LBrand.stroke, lineWidth: 1))
+                Text("kr").font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(LBrand.textSecondary)
+            }
+        }
+    }
+
+    private func lagreKnapp(_ action: @escaping () async -> Void) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            HStack(spacing: 6) {
+                if lagrer { ProgressView().controlSize(.small).tint(.white) }
+                else { Image(systemName: lagret ? "checkmark" : "square.and.arrow.down.fill")
+                    .font(.appScaled(size: 11, weight: .bold)) }
+                Text(lagret ? "Lagret" : "Lagre").font(.appScaled(size: 12, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity).padding(.vertical, 9)
+            .background(
+                LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                               startPoint: .leading, endPoint: .trailing),
+                in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(lagrer || isDemo)
+        .opacity(isDemo ? 0.5 : 1)
+    }
+
+    private func reload() async {
+        if isDemo {
+            // Demo: vis org-standard 3 + de to demo-teamene (om noen).
+            orgDagsmal = 3
+            maal = KartverketService.DorsalgMaal(
+                canManage: true, mittDagsmal: 3, mittBudsjett: nil,
+                orgDefault: .init(dagsmal: 3, budsjett: nil, erSatt: false),
+                perTeam: [])
+            return
+        }
+        guard let api = appState.api else { return }
+        if let m = await KartverketService.shared.fetchDorsalgMaal(using: api) {
+            maal = m
+            orgDagsmal = m.orgDefault?.dagsmal ?? 3
+            orgBudsjett = m.orgDefault?.budsjett.map(String.init) ?? ""
+        }
+    }
+
+    private func lagre(teamId: String?, dagsmal: Int, budsjettTekst: String) async {
+        guard !isDemo, let api = appState.api else { return }
+        lagrer = true; lagret = false
+        let budsjett = Int(budsjettTekst.trimmingCharacters(in: .whitespaces))
+        let ok = await KartverketService.shared.setDorsalgMaal(
+            teamId: teamId, dagsmalPerSelger: dagsmal,
+            budsjettPerSelger: budsjett, using: api)
+        lagrer = false
+        if ok {
+            lagret = true
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            lagret = false
+        }
     }
 }
 

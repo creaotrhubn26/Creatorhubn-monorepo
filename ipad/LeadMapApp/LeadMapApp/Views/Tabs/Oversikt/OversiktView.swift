@@ -261,7 +261,7 @@ struct OversiktView: View {
             .init(adressetekst: "Industriveien 8D", postnummer: "1461", poststed: "LØRENSKOG", settAt: ""),
             .init(adressetekst: "Solheimveien 44", postnummer: "1473", poststed: "LØRENSKOG", settAt: ""),
             .init(adressetekst: "Skårersletta 18", postnummer: "1473", poststed: "LØRENSKOG", settAt: ""),
-        ])
+        ], dagsmal: 3, budsjett: nil)
 }
 
 // MARK: - Dørsalg-oversikt (2026-07-18)
