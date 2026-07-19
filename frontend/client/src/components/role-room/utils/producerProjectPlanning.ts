@@ -500,7 +500,7 @@ export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceK
 
 export const PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS: Record<ProducerAccountAccessPlatform, string> = {
   google: 'Google (Workspace + Analytics)',
-  meta: 'Meta Business',
+  meta: 'Meta (Facebook + Instagram)',
   linkedin: 'LinkedIn',
   youtube: 'YouTube',
   tiktok: 'TikTok',
