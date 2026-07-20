@@ -100,4 +100,42 @@ describe('Versjonert regelregister', () => {
     expect(register.appliesTo('no.tax.corporate-rate', 'ENK', 'registered')).toBe(false);
     expect(register.appliesTo('no.vat.rate.standard', 'ENK', 'not_registered')).toBe(false);
   });
+
+  it('fradragskatalog: fagforeningskontingent har årsavhengig maksbeløp', () => {
+    const v2025 = register.getVersionAt('no.deduction.union-fee', '2025-06-01');
+    const v2026 = register.getVersionAt('no.deduction.union-fee', '2026-06-01');
+    expect(v2025.parameters['maxDeductionNokMinor']).toBe('825000'); // 8 250,00 kr
+    expect(v2026.parameters['maxDeductionNokMinor']).toBe('870000'); // 8 700,00 kr
+    // Beløpet er ikke verifisert for år før 2025 — registeret nekter heller enn å gjette.
+    expect(() => register.getVersionAt('no.deduction.union-fee', '2024-06-01')).toThrow(NotFoundError);
+  });
+
+  it('fradragsregel bærer katalog-metadata (hjemmel, målgruppe, behandling)', () => {
+    const rule = register.getRule('no.deduction.union-fee');
+    expect(rule.taxpayerGroups).toEqual(['personal']);
+    expect(rule.deductionTreatment).toBe('personal-deduction');
+    expect(rule.legalReference).toMatch(/§ 6-20/);
+    expect(rule.needsProfessionalVerification).toBe(true);
+  });
+
+  it('uverifiserte regler kan hentes ut samlet og er tydelig flagget', () => {
+    const unverified = register.rulesNeedingVerification();
+    expect(unverified.map((r) => r.ruleId)).toContain('no.deduction.union-fee');
+    for (const r of unverified) {
+      expect(r.needsProfessionalVerification).toBe(true);
+      expect(r.verificationNote, `${r.ruleId} mangler verificationNote`).toBeTruthy();
+    }
+  });
+
+  it('offisielle API-kilder er registrert med lisens og tilgangsmodell', () => {
+    const apiSources = register.sourcesWithApi();
+    const ids = apiSources.map((s) => s.sourceId);
+    expect(ids).toContain('lovdata-api');
+    expect(ids).toContain('skatteetaten-datadeling');
+    const lovdata = register.getSource('lovdata-api');
+    expect(lovdata.license).toBe('NLOD 2.0');
+    expect(lovdata.apiAccess).toBe('open');
+    expect(register.getSource('skatteetaten-datadeling').apiAccess).toBe('granted');
+    for (const s of apiSources) expect(s.apiUrl).toMatch(/^https:\/\//);
+  });
 });

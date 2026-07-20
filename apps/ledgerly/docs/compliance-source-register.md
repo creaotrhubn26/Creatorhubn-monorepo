@@ -25,7 +25,25 @@ Alle har `lastVerified: 2026-01-01` og `verifiedBy: system-bootstrap`.
 | skatteetaten-saf-t | Skatteetaten: SAF-T Regnskap — teknisk dokumentasjon og standard mva-koder | saf-t-dokumentasjon | https://www.skatteetaten.no/bedrift-og-organisasjon/starte-og-drive/rutiner-regnskap-og-kassasystem/saf-t-regnskap/ |
 | skatteetaten-trygdeavgift | Skatteetaten: Trygdeavgift (satser for lønn og næringsinntekt) | skatteetaten | https://www.skatteetaten.no/satser/trygdeavgift/ |
 | lovdata-bokforingsloven | Bokføringsloven (LOV-2004-11-19-73) | lov | https://lovdata.no/dokument/NL/lov/2004-11-19-73 |
+| lovdata-api | Lovdata API — maskinlesbare lover/forskrifter (NLOD 2.0) | lov | https://api.lovdata.no/ |
+| skatteetaten-datadeling | Skatteetaten datadeling — API-er for satser og skattedata | skatteetaten | https://skatteetaten.github.io/api-dokumentasjon/en/ |
+| skatteetaten-fradrag-fagforening | Skatteetaten: Fradrag for fagforeningskontingent (satser) | skatteetaten | https://www.skatteetaten.no/en/rates/deduction-for-trade-union-fees/ |
 | google-gmail-api | Google: Gmail API — offisiell dokumentasjon (scopes, OAuth 2.0) | google-dokumentasjon | https://developers.google.com/gmail/api/auth/scopes |
+
+### Offisielle innhentingskanaler (lovlig alternativ til skraping)
+
+Registeret skiller nå menneskelesbar kilde-URL fra maskinlesbart **`apiUrl`** med
+**`license`** og **`apiAccess`**. Det gjør at satser og lovtekst kan hentes fra
+offisielle kanaler i stedet for å skrapes eller legges inn fra hukommelse:
+
+| Kanal | apiUrl | Lisens | Tilgang | Dekker |
+|---|---|---|---|---|
+| Lovdata API | https://api.lovdata.no/ | NLOD 2.0 | åpen (ingen nøkkel) | Lovtekst: skatteloven, mval., bokføringsloven — kapittel/paragraf-struktur, oppdatert nattlig |
+| Skatteetaten datadeling | https://skatteetaten.github.io/api-dokumentasjon/en/ | — | innvilget (Maskinporten) | Årsavhengige satser og skattedata via standardiserte API-er |
+
+Merk: i dette utviklingsmiljøet blokkeres direkte henting av begge primærkildene
+(HTTP 403), så oppføringene over er kartlagt via søk, ikke direkte lesing.
+Faktisk API-integrasjon (klient + innhenting til registeret) gjenstår som eget arbeid.
 
 ## Regler (`src/rules/no/rules.ts`)
 
@@ -40,6 +58,20 @@ Alle har `lastVerified: 2026-01-01` og `verifiedBy: system-bootstrap`.
 | no.tax.social-security-self-employed | Trygdeavgift næringsinntekt | v1: 11,0 % (2024); v2: 10,9 % fra 2025-01-01 | **2026-sats ikke verifisert** — kontroller mot Skatteetaten |
 | no.asset.expense-threshold | Grense for direkte kostnadsføring | v1: 15 000 kr (1992–2023); v2: 30 000 kr fra 2024-01-01 | |
 | no.asset.depreciation-groups | Saldogrupper og avskrivningssatser | v1 fra 2017-01-01: a 30 %, b 20 %, c 24 %, d 20 %, e 14 %, f 12 %, g 5 %, h 4 %, i 2 %, j 10 % | Kun regelgrunnlag — ingen avskrivningsautomatikk i MVP |
+| no.deduction.union-fee | Fradrag for fagforeningskontingent | v1: 8 250 kr (2025); v2: 8 700 kr fra 2026-01-01 | **Fradragskatalog, målgruppe C. `needsProfessionalVerification: true`** — hjemmel (antatt sktl. § 6-20) og beløp må fagkontrolleres; bekreftet kun via websearch |
+
+### Fradragskatalog (ny struktur)
+
+`TaxRule` bærer nå valgfrie felt for en fradragskatalog: **`taxpayerGroups`**
+(A=ENK/`sole-proprietor`, B=AS/`company`, C=privatperson/`personal`),
+**`legalReference`** (hjemmelsparagraf), **`deductionTreatment`**
+(`direct-expense` / `capitalize-depreciate` / `personal-deduction` / `not-deductible`),
+og **`needsProfessionalVerification`** + **`verificationNote`** («må-fagkontrolleres»-flagg).
+`no.deduction.union-fee` er første oppføring — lagt inn som fungerende eksempel.
+Regler med flagget skal aldri presenteres som endelige; `RuleRegister.rulesNeedingVerification()`
+lister dem samlet. Den fulle katalogen (§ 6-1 hovedregel, bil, hjemmekontor,
+representasjon, minstefradrag, pendlerfradrag m.m.) gjenstår og må forfattes/kontrolleres
+av statsautorisert regnskapsfører mot Lovdata/Skatte-ABC.
 
 ## Kontrollrutine
 

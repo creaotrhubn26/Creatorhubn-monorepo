@@ -39,6 +39,39 @@ export const NORWEGIAN_SOURCES: RuleSource[] = [
     verifiedBy: 'system-bootstrap',
   },
   {
+    // Offisiell, lisensiert kanal for lovtekst — brukes til automatisk innhenting
+    // i stedet for skraping. Gratis, ingen nøkkel, oppdateres nattlig.
+    sourceId: 'lovdata-api',
+    title: 'Lovdata API — maskinlesbare lover og forskrifter (NLOD 2.0)',
+    type: 'lov',
+    url: 'https://api.lovdata.no/',
+    apiUrl: 'https://api.lovdata.no/',
+    license: 'NLOD 2.0',
+    apiAccess: 'open',
+    lastVerified: '2026-07-20',
+    verifiedBy: 'api-kartlegging (websearch — direkte henting blokkert)',
+  },
+  {
+    // Skatteetatens datadeling: satser og skattedata via standardiserte API-er.
+    // Krever innvilget tilgang per API (Maskinporten) — derfor apiAccess 'granted'.
+    sourceId: 'skatteetaten-datadeling',
+    title: 'Skatteetaten datadeling — API-er for satser og skattedata',
+    type: 'skatteetaten',
+    url: 'https://www.skatteetaten.no/en/deling/inntekt-skatt-og-avgift/intro/fa-tilgang/',
+    apiUrl: 'https://skatteetaten.github.io/api-dokumentasjon/en/',
+    apiAccess: 'granted',
+    lastVerified: '2026-07-20',
+    verifiedBy: 'api-kartlegging (websearch — direkte henting blokkert)',
+  },
+  {
+    sourceId: 'skatteetaten-fradrag-fagforening',
+    title: 'Skatteetaten: Fradrag for fagforeningskontingent (satser)',
+    type: 'skatteetaten',
+    url: 'https://www.skatteetaten.no/en/rates/deduction-for-trade-union-fees/',
+    lastVerified: '2026-07-20',
+    verifiedBy: 'deep-research-workflow (websearch 3-0 — direkte henting blokkert)',
+  },
+  {
     sourceId: 'skatteetaten-selskapsskatt',
     title: 'Skatteetaten: Skattesats for selskaper (alminnelig inntekt)',
     type: 'skatteetaten',

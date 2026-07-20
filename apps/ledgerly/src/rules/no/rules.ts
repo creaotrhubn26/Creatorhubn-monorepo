@@ -251,6 +251,50 @@ export const NORWEGIAN_RULES: TaxRule[] = [
       },
     ],
   },
+  // ── Fradragskatalog ────────────────────────────────────────────────────────
+  // Første oppføring i fradragskatalogen (målgruppe C, privatperson/lønnstaker).
+  // Lagt inn som fungerende eksempel på den nye strukturen. Kildekvalitet:
+  // verifisert via WebSearch mot skatteetaten.no (3-0), IKKE direkte lest fra
+  // primærkilden (henting blokkert). Derfor needsProfessionalVerification: true.
+  {
+    ruleId: 'no.deduction.union-fee',
+    shortName: 'Fradrag for fagforeningskontingent',
+    plainExplanation:
+      'Betalt fagforeningskontingent gir fradrag i inntekten opp til et årlig maksbeløp. Taket gjelder samlet uansett hvor mange fagforeninger du er medlem av, og beløpet er normalt forhåndsutfylt i skattemeldingen.',
+    technicalExplanation:
+      'Fradrag for fagforeningskontingent, antatt hjemmel sktl. § 6-20 (paragraf må verifiseres mot Lovdata). Årlig maksbeløp fastsettes i Stortingets skattevedtak: 8 250 kr for inntektsåret 2025 og 8 700 kr for inntektsåret 2026 (kilde: Skatteetaten). Taket er kumulativt uavhengig av antall medlemskap.',
+    sourceIds: ['skatteetaten-fradrag-fagforening', 'lovdata-sktl'],
+    appliesToOrgForms: 'all',
+    appliesToVatStatus: 'all',
+    appliesToSituations: ['lønnstaker', 'fagforeningsmedlem'],
+    taxpayerGroups: ['personal'],
+    legalReference: 'sktl. § 6-20 (antatt — må verifiseres mot Lovdata)',
+    deductionTreatment: 'personal-deduction',
+    needsProfessionalVerification: true,
+    verificationNote:
+      'Hjemmelsparagraf og årsbeløp må kontrolleres mot Lovdata/Skatte-ABC per inntektsår. Innholdet er bekreftet via WebSearch mot skatteetaten.no (3-0), ikke direkte lesing av primærsiden (henting blokkert).',
+    calculationMethod: 'fradrag = min(betalt kontingent, årets maksbeløp)',
+    documentationRequirements: [
+      'Beløp innrapportert av arbeidsgiver via a-melding, eller av fagforeningen ved direkte innbetaling',
+    ],
+    riskLevel: 'medium',
+    lastReviewed: '2026-07-20',
+    reviewedBy: 'deep-research-workflow (uverifisert — må fagkontrolleres)',
+    versions: [
+      {
+        version: 1,
+        validFrom: '2025-01-01',
+        validTo: '2025-12-31',
+        parameters: { maxDeductionNokMinor: '825000' }, // 8 250,00 kr
+      },
+      {
+        version: 2,
+        validFrom: '2026-01-01',
+        parameters: { maxDeductionNokMinor: '870000' }, // 8 700,00 kr
+        changeNote: 'Maksbeløp økt fra 8 250 til 8 700 kr for inntektsåret 2026.',
+      },
+    ],
+  },
 ];
 
 /** Bygger et ferdig register med norske kilder og regler. */

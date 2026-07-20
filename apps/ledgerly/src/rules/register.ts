@@ -71,6 +71,20 @@ export class RuleRegister {
     return [...this.sources.values()];
   }
 
+  /**
+   * Regler som ennå ikke er fagkontrollert. Disse skal aldri presenteres som
+   * endelige — kun som forslag med tydelig forbehold. Brukes til å drive
+   * «må-fagkontrolleres»-varsler og til å holde oversikt før produksjon.
+   */
+  rulesNeedingVerification(): TaxRule[] {
+    return [...this.rules.values()].filter((r) => r.needsProfessionalVerification === true);
+  }
+
+  /** Kilder med offisielt, maskinlesbart API (lovlig innhenting vs. skraping). */
+  sourcesWithApi(): RuleSource[] {
+    return [...this.sources.values()].filter((s) => s.apiUrl !== undefined);
+  }
+
   /** Finner regelversjonen som gjaldt på gitt ISO-dato. */
   getVersionAt(ruleId: string, isoDate: string): TaxRuleVersion {
     const rule = this.getRule(ruleId);
