@@ -134,7 +134,9 @@ describe('Versjonert regelregister', () => {
     expect(ids).toContain('skatteetaten-datadeling');
     const lovdata = register.getSource('lovdata-api');
     expect(lovdata.license).toBe('NLOD 2.0');
-    expect(lovdata.apiAccess).toBe('open');
+    // RETTET 2026-07-20: live-probing viste at per-paragraf-oppslag krever
+    // X-API-Key (401 uten). «Åpent uten nøkkel» gjelder kun bulk-datasettene.
+    expect(lovdata.apiAccess).toBe('granted');
     expect(register.getSource('skatteetaten-datadeling').apiAccess).toBe('granted');
     for (const s of apiSources) expect(s.apiUrl).toMatch(/^https:\/\//);
   });

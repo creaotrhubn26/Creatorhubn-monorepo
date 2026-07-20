@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApiServer } from '../src/api/server.js';
 import type { Db } from '../src/db/pool.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
+import { StaticLovdataStub } from '../src/integrations/lovdata.js';
 import { setupTestDb, truncateAll } from './helpers.js';
 
 let db: Db;
@@ -27,7 +28,13 @@ async function login(email: string, displayName: string): Promise<string> {
 beforeAll(async () => {
   db = await setupTestDb();
   await truncateAll();
-  app = createApiServer({ db, rules: buildNorwegianRuleRegister() });
+  // Modellerer det reelle miljøet uten Lovdata-nøkkel: åpne bulk-datasett finnes,
+  // men per-paragraf lovtekst-oppslag er ikke aktivt (rapporteres ærlig).
+  app = createApiServer({
+    db,
+    rules: buildNorwegianRuleRegister(),
+    legalText: new StaticLovdataStub({}, [], { hasApiKey: false }),
+  });
   ownerToken = await login('eier@example.com', 'Eier');
   employeeToken = await login('ansatt@example.com', 'Ansatt');
   outsiderToken = await login('utenfor@example.com', 'Utenforstående');
@@ -268,6 +275,11 @@ describe('Vertikal flyt over HTTP', () => {
       .expect(200);
     expect(res.body.gmail.mode).toBe('sandbox');
     expect(res.body.gmail.active).toBe(false);
+    // Lovdata uten nøkkel: åpne bulk-data finnes, men per-paragraf-oppslag
+    // (målet) er ikke aktivt — statusen skal si det ærlig, ikke lyve om «aktiv».
+    expect(res.body.lovdata.mode).toBe('public_data_only');
+    expect(res.body.lovdata.active).toBe(false);
+    expect(res.body.lovdata.openPublicData).toBe(true);
   });
 
   it('kodebiblioteket forklarer kontoer på vanlig norsk', async () => {

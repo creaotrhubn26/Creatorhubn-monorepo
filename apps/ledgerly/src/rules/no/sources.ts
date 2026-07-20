@@ -40,16 +40,20 @@ export const NORWEGIAN_SOURCES: RuleSource[] = [
   },
   {
     // Offisiell, lisensiert kanal for lovtekst — brukes til automatisk innhenting
-    // i stedet for skraping. Gratis, ingen nøkkel, oppdateres nattlig.
+    // i stedet for skraping. RETTET 2026-07-20 etter live-probing av api.lovdata.no:
+    // «ingen nøkkel» gjelder KUN de åpne NLOD-bulkdatasettene (/v1/publicData/*,
+    // f.eks. gjeldende-lover.tar.bz2). Per-paragraf lovtekst-oppslag (/renderRefID,
+    // /lookup) KREVER en Lovdata-utstedt API-nøkkel (X-API-Key) — 401 uten. Derfor
+    // apiAccess: 'granted'. Klient: src/integrations/lovdata.ts.
     sourceId: 'lovdata-api',
-    title: 'Lovdata API — maskinlesbare lover og forskrifter (NLOD 2.0)',
+    title: 'Lovdata API — maskinlesbare lover og forskrifter (NLOD 2.0; nøkkel kreves for per-paragraf-oppslag)',
     type: 'lov',
     url: 'https://api.lovdata.no/',
     apiUrl: 'https://api.lovdata.no/',
     license: 'NLOD 2.0',
-    apiAccess: 'open',
+    apiAccess: 'granted',
     lastVerified: '2026-07-20',
-    verifiedBy: 'api-kartlegging (websearch — direkte henting blokkert)',
+    verifiedBy: 'live-probing av OpenAPI-spec + endepunkter (api.lovdata.no naable her; per-dokument = 401 uten X-API-Key)',
   },
   {
     // Skatteetatens datadeling: KATALOG over transaksjons-/innrapporterings-API-er

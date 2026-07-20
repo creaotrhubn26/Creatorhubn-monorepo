@@ -26,6 +26,7 @@ import {
   updateOrganizationSettings,
 } from '../orgs/service.js';
 import type { VatRegisterLookup } from '../integrations/brreg.js';
+import type { LovdataPort } from '../integrations/lovdata.js';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
@@ -80,6 +81,11 @@ export interface ApiDeps {
   ocrStatus?: { tesseract: boolean; pdftotext: boolean } | undefined;
   /** Oppslag mot MVA-registeret (Brreg åpne data). Uten denne er kontrollen utilgjengelig. */
   vatRegister?: VatRegisterLookup | undefined;
+  /**
+   * Lovdata API-klient til lovtekst-oppslag. Åpne bulk-datasett fungerer uten
+   * nøkkel; per-paragraf lovtekst krever X-API-Key. Status rapporteres ærlig.
+   */
+  legalText?: LovdataPort | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -614,6 +620,24 @@ export function createApiServer(deps: ApiDeps): express.Express {
       brreg: deps.vatRegister
         ? { mode: 'open_api', active: true, note: 'Oppslag mot Enhetsregisteret (data.brreg.no) for MVA-registerkontroll. Åpne data, ingen nøkkel.' }
         : { mode: 'not_configured', active: false, note: 'MVA-registerkontroll er ikke konfigurert i dette miljøet.' },
+      lovdata: deps.legalText
+        ? deps.legalText.hasApiKey
+          ? {
+              mode: 'api_key',
+              active: true,
+              note: 'Lovdata API-nøkkel er konfigurert. Per-paragraf lovtekst-oppslag (renderRefID) og åpne NLOD-bulkdatasett er tilgjengelig.',
+              openPublicData: true,
+            }
+          : {
+              mode: 'public_data_only',
+              // Målet — å hente lovteksten bak en enkelt paragraf — krever nøkkel,
+              // så per-paragraf-oppslaget er IKKE aktivt. Det åpne bulk-datasettet
+              // (gjeldende-lover.tar.bz2, NLOD 2.0) er derimot tilgjengelig uten nøkkel.
+              active: false,
+              note: 'Ingen Lovdata API-nøkkel (LEDGERLY_LOVDATA_API_KEY). Åpne NLOD-bulkdatasett er tilgjengelig uten nøkkel, men per-paragraf lovtekst-oppslag (renderRefID/lookup) krever X-API-Key og er derfor ikke aktivt.',
+              openPublicData: true,
+            }
+        : { mode: 'not_configured', active: false, note: 'Lovdata-klient er ikke konfigurert i dette miljøet.' },
       ehf: { mode: 'not_implemented', active: false },
       altinn: { mode: 'not_implemented', active: false },
     });

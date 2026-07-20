@@ -9,6 +9,12 @@ export interface ProductConfig {
   port: number;
   /** Katalog for lokalt objektlager (dokumentinnhold). */
   storageDir: string;
+  /**
+   * Lovdata API-nøkkel (X-API-Key). Kreves for per-paragraf lovtekst-oppslag.
+   * Uten den rapporteres Lovdata-integrasjonen ærlig som ikke aktiv; åpne
+   * NLOD-bulkdatasett er uansett tilgjengelig uten nøkkel.
+   */
+  lovdataApiKey?: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig {
@@ -26,5 +32,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     databaseUrl,
     port: Number(env.PORT ?? 4310),
     storageDir: env.LEDGERLY_STORAGE_DIR ?? './data/documents',
+    lovdataApiKey: env.LEDGERLY_LOVDATA_API_KEY,
   };
 }

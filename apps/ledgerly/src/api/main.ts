@@ -7,6 +7,7 @@ import { DeterministicTextExtractor } from '../pipeline/extract.js';
 import { isOcrAvailable, OcrExtractor } from '../pipeline/ocr.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
 import { BrregVatRegisterClient } from '../integrations/brreg.js';
+import { LovdataApiClient } from '../integrations/lovdata.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -25,6 +26,9 @@ const app = createApiServer({
   ocrStatus,
   // Åpne data fra Brønnøysundregistrene — ekte klient, ingen nøkkel kreves.
   vatRegister: new BrregVatRegisterClient(),
+  // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
+  // X-API-Key (LEDGERLY_LOVDATA_API_KEY). Status rapporteres ærlig.
+  legalText: new LovdataApiClient(config.lovdataApiKey),
 });
 console.log(
   ocrStatus.tesseract

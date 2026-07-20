@@ -38,8 +38,17 @@ offisielle kanaler i stedet for å skrapes eller legges inn fra hukommelse:
 
 | Kanal | apiUrl | Lisens | Tilgang | Dekker |
 |---|---|---|---|---|
-| Lovdata API | https://api.lovdata.no/ | NLOD 2.0 | åpen (ingen nøkkel) | Lovtekst: skatteloven, mval., bokføringsloven — kapittel/paragraf-struktur, oppdatert nattlig |
+| Lovdata API — bulk | https://api.lovdata.no/v1/publicData/ | NLOD 2.0 | **åpen (ingen nøkkel)** | Bulk-datasett: `gjeldende-lover.tar.bz2` (alle gjeldende lover), sentrale forskrifter, Lovtidend — hele korpuset, oppdatert nattlig |
+| Lovdata API — per-paragraf | https://api.lovdata.no/ (`/renderRefID`, `/lookup`) | NLOD 2.0 | **krever API-nøkkel (`X-API-Key`)** | Ordrett lovtekst bak én `legalReference` (f.eks. skatteloven § 6-20) uten å laste ned hele korpuset |
 | Skatteetaten datadeling | https://skatteetaten.github.io/api-dokumentasjon/en/ | — | innvilget (Maskinporten) | **Katalog over transaksjons-/innrapporterings-API-er — IKKE en satsfeed** |
+
+> **RETTELSE 2026-07-20 (ærlig statusrapportering):** Tidligere sto Lovdata API
+> oppført som «åpen (ingen nøkkel)» uten forbehold. Live-probing av api.lovdata.no
+> viser at dette KUN gjelder bulk-datasettene under `/v1/publicData/*`; per-dokument-
+> og paragraf-endepunktene (`/renderRefID`, `/lookup`) svarer **401 uten `X-API-Key`**.
+> `apiAccess` for `lovdata-api` er rettet fra `'open'` til `'granted'` i
+> `src/rules/no/sources.ts`, og `src/integrations/lovdata.ts` implementerer begge
+> veiene med ærlig statusrapportering (`/api/integrations/status`).
 
 **Viktig avklaring om Skatteetatens API-er:** katalogen er transaksjons- og
 innrapporterings-API-er (Beregnet skatt, MVA-melding, Mva-register, a-melding),
@@ -53,9 +62,13 @@ API-ene som kobler på Ledgerly-funksjoner:
 | skatteetaten-mva-melding-innsending | MVA-melding validering + innsending | Lukker innsendings-gapet (MVA-rapport er i dag alltid kladd); rettigheten `vat.submit` |
 | skatteetaten-mva-register-api | Mva-register avgiftssubjekt | Autoritativ variant av MVA-kontrollen som i MVP gjøres mot Brønnøysund |
 
-Merk: i dette utviklingsmiljøet blokkeres direkte henting av alle primærkildene
-(HTTP 403 på WebFetch, uansett domene), så oppføringene over er kartlagt via søk,
-ikke direkte lesing. Faktisk API-integrasjon (klient + innhenting) gjenstår.
+Merk: i det tidligere web-miljøet blokkerte WebFetch direkte henting av alle
+primærkildene (HTTP 403 uansett domene). **Oppdatering 2026-07-20:** i gjeldende
+utviklingsmiljø er `api.lovdata.no` naable og ble probet direkte (OpenAPI-spec +
+endepunkter). Det er nå en ekte klient mot Lovdata API (`src/integrations/lovdata.ts`)
+med ærlig statusrapportering; de åpne bulk-datasettene virker uten nøkkel, per-
+paragraf-oppslag venter på en API-nøkkel. Skatteetatens datadeling-API-er (bak
+Maskinporten) er fortsatt kun kartlagt, ikke integrert.
 
 ## Regler (`src/rules/no/rules.ts`)
 
