@@ -22,6 +22,7 @@ import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import CampaignDirectorView from './CampaignDirectorView';
 import { materializePost } from './campaignDirector';
 import SystemArchDialog from './SystemArchDialog';
+import MotionStingDialog from './MotionStingDialog';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -41,6 +42,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import AnimationIcon from '@mui/icons-material/Animation';
 import MovieIcon from '@mui/icons-material/Movie';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import WidgetsIcon from '@mui/icons-material/Widgets';
@@ -925,6 +927,7 @@ export function InfographicStudioView(
   const [multiPreview, setMultiPreview] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
   const [showSystemArch, setShowSystemArch] = useState(false);
+  const [showMotion, setShowMotion] = useState(false);
   // Enhets-mockup (iPhone/feed/nettleser) i side-ved-side-visningen.
   const [mockup, setMockup] = useState(true);
   // «Innsikt»: aggregert bevis fra backend på at modellen lærer i drift.
@@ -1577,6 +1580,15 @@ export function InfographicStudioView(
       {showSystemArch && (
         <SystemArchDialog accent={accent} brandName={project?.name || 'System'} onClose={() => setShowSystemArch(false)} />
       )}
+      {showMotion && (
+        <MotionStingDialog
+          values={fieldVals(scene, tpl)}
+          order={tpl.fields.map((f) => f.key)}
+          brandName={project?.name || 'Merkevare'}
+          accent={sceneAccent(scene)}
+          onClose={() => setShowMotion(false)}
+        />
+      )}
       {/* flexWrap: header-knappene (Preview/Spill alt/New Scene/Send to Resolve) tvang
           ellers studioet bredere enn smale vinduer → høyre Data-panel ble klippet. Wrap
           lar knappene bryte til ny linje i stedet, og minWidth:0 lar studioet krympe. */}
@@ -1597,6 +1609,7 @@ export function InfographicStudioView(
         <button style={topBtn} onClick={addScene}><AddIcon style={{ fontSize: 16 }} /> New Scene</button>
         <button style={topBtn} onClick={() => setShowCampaign(true)} title="Kampanje-regissør — mål-drevet, on-brand kampanje fra nettside-bevis"><CampaignIcon style={{ fontSize: 16 }} /> Kampanje</button>
         <button style={topBtn} onClick={() => setShowSystemArch(true)} title="System-arkitektur — Mermaid → merkevaret arkitektur-infographic med ekte system-logoer"><AccountTreeIcon style={{ fontSize: 16 }} /> Arkitektur</button>
+        <button style={topBtn} onClick={() => setShowMotion(true)} title="Motion — samme scene-data som en animert data-sting (still + motion fra ett data-objekt)"><AnimationIcon style={{ fontSize: 16 }} /> Motion</button>
         {busy ? (
           <button style={{ ...topBtn, background: '#7a2530', border: 'none' }} onClick={() => { cancelRef.current = true; }} title="Avbryt etter gjeldende scene">
             <CloseIcon style={{ fontSize: 15 }} /> Avbryt{renderProgress ? ` (${renderProgress.done}/${renderProgress.total})` : ''}
