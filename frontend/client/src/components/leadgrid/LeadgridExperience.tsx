@@ -379,8 +379,16 @@ function DeviceVisual({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (active) el.play().catch(() => {});
-    else el.pause();
+    const apply = () => {
+      // Nettleseren pauser video i skjulte faner; play() feiler da stille.
+      // Re-appliser når fanen blir synlig igjen (visibilitychange) så en
+      // aktiv scene ikke blir stående pauset etter fane-bytte.
+      if (active && !document.hidden) el.play().catch(() => {});
+      else if (!active) el.pause();
+    };
+    apply();
+    document.addEventListener('visibilitychange', apply);
+    return () => document.removeEventListener('visibilitychange', apply);
   }, [active]);
 
   // iPaden lener seg motsatt av tekst-siden for dybde. Liggende enhet er
