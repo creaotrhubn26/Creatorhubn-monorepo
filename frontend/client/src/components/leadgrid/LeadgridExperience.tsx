@@ -21,6 +21,7 @@ import {
   useTransform,
   useSpring,
   useReducedMotion,
+  useMotionValueEvent,
   type MotionValue,
 } from 'framer-motion';
 
@@ -256,6 +257,22 @@ function SceneLayer({
   const scale = useTransform(progress, [start - pad, mid, end + pad], [1.12, 1, 0.92]);
   const y = useTransform(progress, [start - pad, mid, end + pad], [60, 0, -60]);
 
+  // Video-styring: spill KUN når scenen er synlig (opacity > 0.15). Når
+  // hele filmen er scrollet forbi er alle scenenes opacity 0 → alle
+  // videoer pauser (ingen off-screen dekoding). Terskel-vakt unngår
+  // re-render på hver scroll-tick.
+  const [sceneVisible, setSceneVisible] = useState(false);
+  useMotionValueEvent(opacity, 'change', (v) => {
+    const now = v > 0.15;
+    setSceneVisible((prev) => (prev === now ? prev : now));
+  });
+  // Refresh midt i en scene: les gjeldende opacity én gang ved mount
+  // (change-eventet fyrer ellers ikke før første scroll).
+  useEffect(() => {
+    setSceneVisible(opacity.get() > 0.15);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isCinematic = scene.kind === 'cinematic';
 
   return (
@@ -277,7 +294,7 @@ function SceneLayer({
         <DeviceVisual
           image={scene.image} video={scene.video} scale={scale} y={y}
           align={scene.align} landscape={scene.landscape} narrow={narrow}
-          reduced={reduced}
+          reduced={reduced} active={sceneVisible}
         />
       )}
       <Callout
@@ -349,17 +366,30 @@ function FramedVisual({
 
 // ── Ekte app-skjerm i 3D-tiltet iPad ──────────────────────────────────
 function DeviceVisual({
-  image, video, scale, y, align, landscape, narrow, reduced,
+  image, video, scale, y, align, landscape, narrow, reduced, active,
 }: {
   image: string; video?: string;
   scale: MotionValue<number>; y: MotionValue<number>;
   align?: 'left' | 'center' | 'right'; landscape?: boolean;
-  narrow?: boolean; reduced?: boolean;
+  narrow?: boolean; reduced?: boolean; active?: boolean;
 }) {
-  // iPaden lener seg motsatt av tekst-siden for dybde.
+  // Spill videoen kun når scenen er synlig (fra SceneLayer). Sparer CPU/
+  // batteri — 4 videoer dekodet samtidig var unødvendig (QA 2026-07-20).
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (active) el.play().catch(() => {});
+    else el.pause();
+  }, [active]);
+
+  // iPaden lener seg motsatt av tekst-siden for dybde. Liggende enhet er
+  // bredere → skyv den lenger fra callout-siden så teksten får luft
+  // (Kvalitet-scenen tangerte kanten, QA 2026-07-20).
   const rotateY = align === 'right' ? 9 : align === 'left' ? -9 : 0;
   const shiftX = narrow ? '0%'
-    : align === 'right' ? '-16%' : align === 'left' ? '16%' : '0%';
+    : align === 'right' ? (landscape ? '-24%' : '-16%')
+    : align === 'left' ? (landscape ? '24%' : '16%') : '0%';
 
   return (
     <motion.div
@@ -396,8 +426,8 @@ function DeviceVisual({
           // stillbilde. Muted+playsInline kreves for autoplay; poster =
           // stillbildet så scenen aldri er tom. Reduced motion → poster.
           <video
-            src={video} poster={image}
-            autoPlay muted loop playsInline preload="metadata"
+            ref={videoRef} src={video} poster={image}
+            muted loop playsInline preload="metadata"
             style={{
               display: 'block', width: '100%', height: 'auto',
               borderRadius: 24, background: '#0b0518',
