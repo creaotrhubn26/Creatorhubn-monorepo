@@ -287,6 +287,8 @@ describe('Vertikal flyt over HTTP', () => {
     // MVA-melding-innsending er kodet men uten Maskinporten-legitimasjon: ærlig inaktiv.
     expect(res.body.altinn.mode).toBe('awaiting_maskinporten');
     expect(res.body.altinn.active).toBe(false);
+    // Feilovervåking: ingen errorMonitor wiret i testen ⇒ ærlig not_configured.
+    expect(res.body.sentry.active).toBe(false);
   });
 
   it('kodebiblioteket forklarer kontoer på vanlig norsk', async () => {

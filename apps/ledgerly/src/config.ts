@@ -22,6 +22,10 @@ export interface ProductConfig {
    * innsending). Udefinert = integrasjonen rapporteres ærlig som ikke aktiv.
    */
   maskinporten?: MaskinportenConfig | undefined;
+  /** Sentry DSN for feilovervåking. Udefinert = feilovervåking ikke aktiv. */
+  sentryDsn?: string | undefined;
+  /** Release-tag til Sentry (f.eks. git-sha), valgfri. */
+  sentryRelease?: string | undefined;
 }
 
 /** Bygger Maskinporten-konfig fra env kun når ALLE påkrevde felt finnes. */
@@ -58,5 +62,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     storageDir: env.LEDGERLY_STORAGE_DIR ?? './data/documents',
     lovdataApiKey: env.LEDGERLY_LOVDATA_API_KEY,
     maskinporten: loadMaskinportenConfig(env),
+    sentryDsn: env.SENTRY_DSN,
+    sentryRelease: env.SENTRY_RELEASE,
   };
 }

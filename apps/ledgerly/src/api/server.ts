@@ -28,6 +28,7 @@ import {
 import type { VatRegisterLookup } from '../integrations/brreg.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
 import type { VatSubmissionPort } from '../integrations/vat-submission.js';
+import type { ErrorMonitor } from '../ops/sentry.js';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
@@ -92,6 +93,8 @@ export interface ApiDeps {
    * er den ikke aktiv; status rapporteres ærlig.
    */
   vatSubmission?: VatSubmissionPort | undefined;
+  /** Feilovervåking (Sentry) for uventede serverfeil. Uten denne rapporteres den ærlig som ikke aktiv. */
+  errorMonitor?: ErrorMonitor | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -660,6 +663,15 @@ export function createApiServer(deps: ApiDeps): express.Express {
               note: 'MVA-melding-innsending er kodet, men ikke aktiv: Maskinporten-legitimasjon (MASKINPORTEN_CLIENT_ID/SCOPE/PRIVATE_KEY/KEY_ID) mangler. MVA-rapporten forblir kladd til dette er på plass.',
             }
         : { mode: 'not_implemented', active: false },
+      sentry: deps.errorMonitor
+        ? {
+            mode: deps.errorMonitor.active ? 'sentry' : 'not_configured',
+            active: deps.errorMonitor.active,
+            note: deps.errorMonitor.active
+              ? 'Feilovervåking aktiv — kun uventede serverfeil (5xx) rapporteres.'
+              : 'Feilovervåking ikke aktiv: SENTRY_DSN mangler.',
+          }
+        : { mode: 'not_configured', active: false, note: 'Feilovervåking ikke konfigurert i dette miljøet.' },
     });
   });
 
@@ -1486,8 +1498,10 @@ export function createApiServer(deps: ApiDeps): express.Express {
       });
       return;
     }
-    // Ukjent feil: logg internt (uten sensitivt innhold), generisk svar ut.
+    // Ukjent feil: logg internt (uten sensitivt innhold), rapporter til
+    // feilovervåking (kun 5xx), generisk svar ut.
     console.error('Uventet feil:', err instanceof Error ? err.message : err);
+    deps.errorMonitor?.capture(err);
     res.status(500).json({ error: { code: 'INTERNAL', message: 'Intern feil.' } });
   });
 
