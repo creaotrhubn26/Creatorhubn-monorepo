@@ -8,6 +8,8 @@ import { createApiServer } from '../src/api/server.js';
 import type { Db } from '../src/db/pool.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { StaticLovdataStub } from '../src/integrations/lovdata.js';
+import { MaskinportenClient } from '../src/integrations/maskinporten.js';
+import { SkatteetatenVatSubmissionClient } from '../src/integrations/vat-submission.js';
 import { setupTestDb, truncateAll } from './helpers.js';
 
 let db: Db;
@@ -34,6 +36,8 @@ beforeAll(async () => {
     db,
     rules: buildNorwegianRuleRegister(),
     legalText: new StaticLovdataStub({}, [], { hasApiKey: false }),
+    // Ingen Maskinporten-legitimasjon: MVA-melding-innsending kodet, men ikke aktiv.
+    vatSubmission: new SkatteetatenVatSubmissionClient(new MaskinportenClient(undefined)),
   });
   ownerToken = await login('eier@example.com', 'Eier');
   employeeToken = await login('ansatt@example.com', 'Ansatt');
@@ -280,6 +284,9 @@ describe('Vertikal flyt over HTTP', () => {
     expect(res.body.lovdata.mode).toBe('public_data_only');
     expect(res.body.lovdata.active).toBe(false);
     expect(res.body.lovdata.openPublicData).toBe(true);
+    // MVA-melding-innsending er kodet men uten Maskinporten-legitimasjon: ærlig inaktiv.
+    expect(res.body.altinn.mode).toBe('awaiting_maskinporten');
+    expect(res.body.altinn.active).toBe(false);
   });
 
   it('kodebiblioteket forklarer kontoer på vanlig norsk', async () => {

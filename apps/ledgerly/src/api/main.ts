@@ -8,6 +8,8 @@ import { isOcrAvailable, OcrExtractor } from '../pipeline/ocr.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
 import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { LovdataApiClient } from '../integrations/lovdata.js';
+import { MaskinportenClient } from '../integrations/maskinporten.js';
+import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -29,6 +31,9 @@ const app = createApiServer({
   // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
   // X-API-Key (LEDGERLY_LOVDATA_API_KEY). Status rapporteres ærlig.
   legalText: new LovdataApiClient(config.lovdataApiKey),
+  // MVA-melding-innsending via Maskinporten. Uten MASKINPORTEN_*-legitimasjon
+  // er den ikke aktiv (rapporteres ærlig); MVA-rapporten forblir kladd.
+  vatSubmission: new SkatteetatenVatSubmissionClient(new MaskinportenClient(config.maskinporten)),
 });
 console.log(
   ocrStatus.tesseract

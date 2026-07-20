@@ -1,3 +1,5 @@
+import type { MaskinportenConfig } from './integrations/maskinporten.js';
+
 /**
  * Produktkonfigurasjon. Produktnavnet er BEVISST ikke hardkodet i domenemodellen —
  * det er ren presentasjon og kan endres uten kodeendring i domenet.
@@ -15,6 +17,28 @@ export interface ProductConfig {
    * NLOD-bulkdatasett er uansett tilgjengelig uten nøkkel.
    */
   lovdataApiKey?: string | undefined;
+  /**
+   * Maskinporten-legitimasjon for Skatteetatens «granted»-API-er (MVA-melding-
+   * innsending). Udefinert = integrasjonen rapporteres ærlig som ikke aktiv.
+   */
+  maskinporten?: MaskinportenConfig | undefined;
+}
+
+/** Bygger Maskinporten-konfig fra env kun når ALLE påkrevde felt finnes. */
+function loadMaskinportenConfig(env: NodeJS.ProcessEnv): MaskinportenConfig | undefined {
+  const clientId = env.MASKINPORTEN_CLIENT_ID;
+  const scope = env.MASKINPORTEN_SCOPE;
+  const privateKeyPem = env.MASKINPORTEN_PRIVATE_KEY;
+  const keyId = env.MASKINPORTEN_KEY_ID;
+  if (!clientId || !scope || !privateKeyPem || !keyId) return undefined;
+  return {
+    env: env.MASKINPORTEN_ENV === 'prod' ? 'prod' : 'test',
+    clientId,
+    scope,
+    privateKeyPem,
+    keyId,
+    ...(env.MASKINPORTEN_CONSUMER_ORG ? { consumerOrg: env.MASKINPORTEN_CONSUMER_ORG } : {}),
+  };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig {
@@ -33,5 +57,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     port: Number(env.PORT ?? 4310),
     storageDir: env.LEDGERLY_STORAGE_DIR ?? './data/documents',
     lovdataApiKey: env.LEDGERLY_LOVDATA_API_KEY,
+    maskinporten: loadMaskinportenConfig(env),
   };
 }

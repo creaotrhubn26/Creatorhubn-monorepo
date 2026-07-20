@@ -27,6 +27,7 @@ import {
 } from '../orgs/service.js';
 import type { VatRegisterLookup } from '../integrations/brreg.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
+import type { VatSubmissionPort } from '../integrations/vat-submission.js';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
@@ -86,6 +87,11 @@ export interface ApiDeps {
    * nøkkel; per-paragraf lovtekst krever X-API-Key. Status rapporteres ærlig.
    */
   legalText?: LovdataPort | undefined;
+  /**
+   * MVA-melding-innsending mot Skatteetaten via Maskinporten. Uten legitimasjon
+   * er den ikke aktiv; status rapporteres ærlig.
+   */
+  vatSubmission?: VatSubmissionPort | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -639,7 +645,21 @@ export function createApiServer(deps: ApiDeps): express.Express {
             }
         : { mode: 'not_configured', active: false, note: 'Lovdata-klient er ikke konfigurert i dette miljøet.' },
       ehf: { mode: 'not_implemented', active: false },
-      altinn: { mode: 'not_implemented', active: false },
+      altinn: deps.vatSubmission
+        ? deps.vatSubmission.active
+          ? {
+              mode: 'maskinporten',
+              active: true,
+              note: `MVA-melding-innsending via Maskinporten (${deps.vatSubmission.env}) er konfigurert. Meldinger valideres mot Skatteetatens grensesnittstøtte før innsending.`,
+            }
+          : {
+              // Maskinporten-legitimasjon mangler ⇒ vat.submit-gapet er IKKE lukket.
+              // Ingen sandbox utgis for aktiv tilkobling.
+              mode: 'awaiting_maskinporten',
+              active: false,
+              note: 'MVA-melding-innsending er kodet, men ikke aktiv: Maskinporten-legitimasjon (MASKINPORTEN_CLIENT_ID/SCOPE/PRIVATE_KEY/KEY_ID) mangler. MVA-rapporten forblir kladd til dette er på plass.',
+            }
+        : { mode: 'not_implemented', active: false },
     });
   });
 
