@@ -3,6 +3,14 @@
 Status rapporteres ærlig av API-et: `GET /api/integrations/status`
 (`src/api/server.ts`) — sandbox presenteres aldri som aktiv tilkobling.
 
+**Helsesjekk for CreatorHub Control Center:** `GET /api/health` (uten auth,
+kun lesing, ingen secrets) gir `{ service, status, uptimeSeconds, database,
+integrations{…} }` — 200 ved frisk, 503 når databasen er nede. Endepunktet er
+laget for å probes av Control Center-cockpitens helse-tavle
+(`backend/server/control-center-health-client.ts` på `main`). Registrering på
+Control Center-siden: sett en health-URL-env som peker hit (se
+`docs/integration-status.md` §Control Center under).
+
 | Integrasjon | Status | Hva som finnes i koden |
 |---|---|---|
 | **Gmail** | **Sandbox — ikke aktiv** | Port-grensesnitt (`src/ingestion/gmail/port.ts`), sandbox-adapter med fixtures (`src/ingestion/gmail/sandbox.ts`), sanitering (`sanitize.ts`), full importflyt med filter, duplikat, karantene og token-tilstander. Ingen produksjonsadapter. |

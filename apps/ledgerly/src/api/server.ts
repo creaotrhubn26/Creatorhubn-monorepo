@@ -615,6 +615,50 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // Probe-bar helsesjekk for CreatorHub Control Center (og andre overvåkere).
+  // Bevisst UTEN auth: kun grove booleans + overordnet status, ingen secrets og
+  // ingen mutasjon (SELECT 1). Detaljert integrasjonsstatus ligger auth-gated på
+  // /api/integrations/status. 200 = frisk, 503 = database nede (så en HTTP-probe
+  // ser den som «down»).
+  app.get('/api/health', async (_req, res) => {
+    const started = Date.now();
+    let dbUp = false;
+    let dbDetail = 'ukjent';
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      try {
+        await deps.db.query('SELECT 1');
+        dbUp = true;
+        dbDetail = `SELECT 1 · ${Date.now() - started} ms`;
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err) {
+      dbDetail = err instanceof Error ? err.message : 'databasefeil';
+      deps.errorMonitor?.capture(err);
+    }
+    const integrations = {
+      database: dbUp,
+      brreg: Boolean(deps.vatRegister),
+      lovdata: Boolean(deps.legalText?.hasApiKey),
+      lovdataPublicData: Boolean(deps.legalText),
+      ocr: Boolean(deps.ocrStatus?.tesseract),
+      mvaSubmission: Boolean(deps.vatSubmission?.active),
+      errorMonitoring: Boolean(deps.errorMonitor?.active),
+      gmail: false, // alltid sandbox i MVP
+    };
+    const status = dbUp ? 'ok' : 'down';
+    res.status(dbUp ? 200 : 503).json({
+      service: 'ledgerly',
+      status,
+      uptimeSeconds: Math.round(process.uptime()),
+      checkedAt: new Date().toISOString(),
+      database: { up: dbUp, detail: dbDetail },
+      integrations,
+    });
+  });
+
   app.get('/api/integrations/status', requireAuth, (_req, res) => {
     res.json({
       gmail: {

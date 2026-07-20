@@ -272,6 +272,21 @@ describe('Vertikal flyt over HTTP', () => {
       .expect(403);
   });
 
+  it('helsesjekk for Control Center: probe-bar uten auth, db oppe, ærlige integrasjons-flagg', async () => {
+    const res = await request(app).get('/api/health').expect(200); // ingen Authorization-header
+    expect(res.body.service).toBe('ledgerly');
+    expect(res.body.status).toBe('ok');
+    expect(res.body.database.up).toBe(true);
+    expect(typeof res.body.uptimeSeconds).toBe('number');
+    // Ærlige flagg: uten legitimasjon er disse false (samme sannhet som /status).
+    expect(res.body.integrations.lovdata).toBe(false); // ingen API-nøkkel
+    expect(res.body.integrations.mvaSubmission).toBe(false); // ingen Maskinporten
+    expect(res.body.integrations.errorMonitoring).toBe(false); // ingen SENTRY_DSN
+    expect(res.body.integrations.gmail).toBe(false); // sandbox
+    // Lovdata-klient er wiret (bulk-data tilgjengelig) selv uten nøkkel.
+    expect(res.body.integrations.lovdataPublicData).toBe(true);
+  });
+
   it('integrasjonsstatus er ærlig: Gmail er sandbox, ikke aktiv', async () => {
     const res = await request(app)
       .get('/api/integrations/status')
