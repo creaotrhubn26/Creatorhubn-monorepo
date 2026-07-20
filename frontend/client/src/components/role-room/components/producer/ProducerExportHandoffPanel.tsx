@@ -22,6 +22,7 @@ import {
 import { useSnackbar } from 'notistack';
 import { useProject } from '@/contexts/ProjectContext';
 import { describeProducerError } from '../../utils/producerErrorMessage';
+import { CollapsibleSection } from '../CollapsibleSection';
 import type {
   CastingProject,
   ProducerClientIntake,
@@ -1238,30 +1239,21 @@ export default function ProducerExportHandoffPanel({
         }}
       >
         <Stack spacing={2}>
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Neste klientpunkter"
+            defaultOpen
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Neste klientpunkter
-              </Typography>
-              <Stack direction="row" spacing={1}>
-                {onOpenReviews ? (
-                  <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={onOpenReviews} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Åpne klientsamarbeid
-                  </Button>
-                ) : null}
-                {onOpenTimeline ? (
-                  <Button size="small" variant="outlined" startIcon={<CalendarMonthIcon />} onClick={onOpenTimeline} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Åpne tidslinje
-                  </Button>
-                ) : null}
-              </Stack>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+              {onOpenReviews ? (
+                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={onOpenReviews} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                  Åpne klientsamarbeid
+                </Button>
+              ) : null}
+              {onOpenTimeline ? (
+                <Button size="small" variant="outlined" startIcon={<CalendarMonthIcon />} onClick={onOpenTimeline} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                  Åpne tidslinje
+                </Button>
+              ) : null}
             </Stack>
             <Stack spacing={0.9}>
               {manifest.pendingClientMoments.slice(0, 6).map((moment) => {
@@ -1394,26 +1386,17 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Kontotilgang"
+            summary={`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} plattformer koblet · ${manifest.accountAccessSummary.clientActionCount} krever klient`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Kontotilgang
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(accountsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne kontotilgang
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(accountsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne kontotilgang
+              </Button>
+            ) : null}
             <Stack spacing={0.7}>
               <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
                 {`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} nødvendige plattformer er koblet. ${manifest.accountAccessSummary.clientActionCount} krever klienthandling. ${manifest.accountAccessSummary.inviteSentCount} venter på invite-bekreftelse.`}
@@ -1486,26 +1469,13 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               </Box>
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Leveransearbeidsområde"
+            summary={`${deliveryWorkspaceFiles.length} prosjektfiler`}
+            badge={<Chip size="small" label={String(deliveryWorkspaceFiles.length)} sx={{ height: 18, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontSize: '0.68rem' }} />}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Leveransearbeidsområde
-              </Typography>
-              <Chip
-                size="small"
-                label={`${deliveryWorkspaceFiles.length} prosjektfiler`}
-                sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-              />
-            </Stack>
             <Stack spacing={0.85}>
               {deliveryWorkspaceFiles.length > 0 ? deliveryWorkspaceFiles.slice(0, 8).map((file) => (
                 <Box
@@ -1550,26 +1520,13 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               )}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Juridiske dokumenter"
+            summary={`${legalAgreements.agreements.length} avtaler`}
+            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.68rem' }} />}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Juridiske dokumenter
-              </Typography>
-              <Chip
-                size="small"
-                label={`${legalAgreements.agreements.length} avtaler`}
-                sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }}
-              />
-            </Stack>
             {legalAgreements.agreements.length > 0 ? (
               <Stack spacing={0.85}>
                 {legalAgreements.agreements.slice(0, 6).map((agreement) => {
@@ -1666,26 +1623,17 @@ export default function ProducerExportHandoffPanel({
                 Ingen juridiske dokumenter er koblet til klientpakken ennå.
               </Typography>
             )}
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Klientinnspill før handoff"
+            summary={`${openClientContributionTasks.length} punkter må avklares`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Klientinnspill før handoff
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(materialsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne brief og materiale
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(materialsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne brief og materiale
+              </Button>
+            ) : null}
             <Stack spacing={0.85}>
               {openClientContributionTasks.slice(0, 6).map((task) => (
                 <Box
@@ -1748,19 +1696,12 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Leveranser og filnavn"
+            summary={`${upcomingDeliveries.length} leveranser`}
           >
-            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-              Leveranser og filnavn
-            </Typography>
             <Stack spacing={0.9}>
               {upcomingDeliveries.map((item) => (
                 <Box
@@ -1818,28 +1759,19 @@ export default function ProducerExportHandoffPanel({
                 </Box>
               ))}
             </Stack>
-          </Box>
+          </CollapsibleSection>
         </Stack>
 
         <Stack spacing={2}>
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Klientbrief og materiale"
+            defaultOpen
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Klientbrief og materiale
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne brief og materiale
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne brief og materiale
+              </Button>
+            ) : null}
             <Stack spacing={0.8}>
               {[
                 ['Prosjektmål', clientIntake.projectGoal],
@@ -1929,19 +1861,12 @@ export default function ProducerExportHandoffPanel({
                 </>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Prosjektramme"
+            summary="Strategi, konsept og aktivering"
           >
-            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-              Prosjektramme
-            </Typography>
             <Stack spacing={0.8}>
               {frameworkSections.map((section) => (
                 <Box key={section.key}>
@@ -1959,19 +1884,12 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Content Logic"
+            summary="Mål, målgruppe, hook, budskap, CTA"
           >
-            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-              Content Logic
-            </Typography>
             <Stack spacing={0.8}>
               {[
                 { label: 'Mål', value: manifest.contentLogicSummary.objective },
@@ -2005,26 +1923,17 @@ export default function ProducerExportHandoffPanel({
                 </Box>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Merkevareguide"
+            summary={`${readiness.brandItems.filter((i) => i.ready).length}/${readiness.brandItems.length} elementer klare`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Merkevareguide
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(brandWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne merkevareguide
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(brandWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne merkevareguide
+              </Button>
+            ) : null}
             <Stack spacing={0.7}>
               {readiness.brandItems.map((item) => (
                 <Stack key={item.label} direction="row" spacing={1} alignItems="flex-start">
@@ -2157,26 +2066,17 @@ export default function ProducerExportHandoffPanel({
                 </Box>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Leveringsrutine"
+            summary={`${readiness.workflowItems.filter((i) => i.ready).length}/${readiness.workflowItems.length} steg klare`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Leveringsrutine
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(deliveryWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne leveringsrutine
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(deliveryWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne leveringsrutine
+              </Button>
+            ) : null}
             <Stack spacing={0.7}>
               {readiness.workflowItems.map((item) => (
                 <Stack key={item.label} direction="row" spacing={1} alignItems="flex-start">
@@ -2192,7 +2092,7 @@ export default function ProducerExportHandoffPanel({
                 </Stack>
               ))}
             </Stack>
-          </Box>
+          </CollapsibleSection>
         </Stack>
       </Box>
 
