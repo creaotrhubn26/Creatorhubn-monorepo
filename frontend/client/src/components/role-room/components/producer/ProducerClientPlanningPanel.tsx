@@ -1054,17 +1054,7 @@ export default function ProducerClientPlanningPanel({
           onDeleted={(id) => setClientMaterials((previous) => previous.filter((material) => material.id !== id))}
         />
 
-        <Box
-          sx={{
-            p: 1.2,
-            borderRadius: 1.6,
-            border: '1px solid rgba(148,163,184,0.16)',
-            background: 'rgba(2,6,23,0.42)',
-          }}
-        >
-          <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-            Gantt-oversikt
-          </Typography>
+        <CollapsibleSection title="Gantt-oversikt" summary="Fase-tidslinje og milepæler per fase">
           <Stack spacing={1}>
             {draft.phasePlan.map((item) => {
               const metrics = getBarMetrics(planningRange, item.startDate, item.endDate);
@@ -1128,25 +1118,13 @@ export default function ProducerClientPlanningPanel({
               );
             })}
           </Stack>
-        </Box>
+        </CollapsibleSection>
 
-        <Box
-          sx={{
-            p: 1.2,
-            borderRadius: 1.6,
-            border: '1px solid rgba(148,163,184,0.16)',
-            background: 'rgba(2,6,23,0.42)',
-          }}
+        <CollapsibleSection
+          title="Klientflyt og publiseringspunkter"
+          summary="Faseplan og content-kalender som én samlet klientflyt"
         >
           <Stack spacing={1}>
-            <Box>
-              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Klientflyt og publiseringspunkter
-              </Typography>
-              <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.85rem', mt: 0.35 }}>
-                Faseplan og content-kalender brukes her som én samlet klientflyt, slik at godkjenninger og publisering ikke blir liggende i hvert sitt spor.
-              </Typography>
-            </Box>
             <Stack spacing={0.9}>
               {clientMoments.slice(0, 6).map((moment) => {
                 const contentLogicMomentKind = getProducerContentLogicMomentKind(moment.id);
@@ -1248,7 +1226,7 @@ export default function ProducerClientPlanningPanel({
               })}
             </Stack>
           </Stack>
-        </Box>
+        </CollapsibleSection>
 
         <Tabs
           value={activeTab}
