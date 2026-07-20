@@ -59,6 +59,7 @@ import {
   WorkspacesOutlined,
   DoorFrontOutlined,
   DirectionsCarFilledOutlined,
+  VerifiedOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
@@ -1417,6 +1418,70 @@ function PricingSection() {
             </Grid>
           ))}
         </Grid>
+        {/* Tilleggsmoduler — feltsalg-spesifikke produkter som slås på
+            oppå en plan. Speiler entitlement-matrisen (addOn Starter/Pro). */}
+        <Box sx={{ mt: 7 }}>
+          <Typography sx={{
+            textAlign: 'center', fontSize: 13, fontWeight: 700,
+            letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: PALETTE.textFaint, mb: 3,
+          }}>
+            Tillegg for feltsalg
+          </Typography>
+          <Grid container spacing={2}>
+            {[
+              {
+                Icon: DoorFrontOutlined,
+                title: 'Dørsalg & verving',
+                desc: 'Adressekart, salg på døra med kundebekreftelse, dagsmål og team-oppfølging.',
+                accent: '#c084fc',
+              },
+              {
+                Icon: VerifiedOutlined,
+                title: 'Kvalitet',
+                desc: 'Verifiseringskø, samtale-maler og kvalitetsgrad per selger — stol på tallene.',
+                accent: '#5eead4',
+              },
+              {
+                Icon: DirectionsCarFilledOutlined,
+                title: 'Leadgrid Go',
+                desc: 'Automatisk kjørebok, kjøregodtgjørelse, flåte og bilbooking for hele teamet.',
+                accent: '#7ab8ff',
+              },
+            ].map((a) => (
+              <Grid item xs={12} md={4} key={a.title}>
+                <Card sx={{
+                  height: '100%', bgcolor: PALETTE.card,
+                  border: `1px solid ${PALETTE.cardBorder}`, borderRadius: 3,
+                  boxShadow: 'none',
+                }}>
+                  <CardContent sx={{ p: 3 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" mb={1.5}>
+                      <Box sx={{
+                        width: 40, height: 40, borderRadius: 2,
+                        bgcolor: `${a.accent}22`, border: `1px solid ${a.accent}40`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <a.Icon sx={{ fontSize: 22, color: a.accent }} />
+                      </Box>
+                      <Typography sx={{ fontWeight: 600, fontSize: 17, color: PALETTE.text }}>
+                        {a.title}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ color: PALETTE.textMuted, fontSize: 14, lineHeight: 1.55 }}>
+                      {a.desc}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+          <Typography sx={{
+            textAlign: 'center', fontSize: 13, color: PALETTE.textFaint, mt: 2.5,
+          }}>
+            Tilleggsmoduler aktiveres på Solo Pro og Agency. Kontakt oss for pris.
+          </Typography>
+        </Box>
         <Box sx={{ mt: 5, textAlign: 'center' }}>
           <Button
             href="/leadgrid/pricing"
