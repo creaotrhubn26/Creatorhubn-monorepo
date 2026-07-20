@@ -52,12 +52,38 @@ export const NORWEGIAN_SOURCES: RuleSource[] = [
     verifiedBy: 'api-kartlegging (websearch — direkte henting blokkert)',
   },
   {
-    // Skatteetatens datadeling: satser og skattedata via standardiserte API-er.
-    // Krever innvilget tilgang per API (Maskinporten) — derfor apiAccess 'granted'.
+    // Skatteetatens datadeling: KATALOG over transaksjons-/innrapporterings-API-er
+    // (ikke en satsfeed). Alle bak Maskinporten med innvilget tilgang per API.
+    // Satser/fradragsbeløp finnes IKKE her — de kommer fra satssidene/Skatte-ABC
+    // eller Lovdata API. De konkrete API-ene under kobler på egne funksjoner.
     sourceId: 'skatteetaten-datadeling',
-    title: 'Skatteetaten datadeling — API-er for satser og skattedata',
+    title: 'Skatteetaten datadeling — katalog over API-er for skattedata og innrapportering',
     type: 'skatteetaten',
     url: 'https://www.skatteetaten.no/en/deling/inntekt-skatt-og-avgift/intro/fa-tilgang/',
+    apiUrl: 'https://skatteetaten.github.io/api-dokumentasjon/en/',
+    apiAccess: 'granted',
+    lastVerified: '2026-07-20',
+    verifiedBy: 'api-kartlegging (websearch — direkte henting blokkert)',
+  },
+  {
+    // Offisiell vei til å sende inn MVA-meldingen (lukker innsendings-gapet;
+    // MVA-rapporten er i dag alltid kladd). Kobler på rettigheten vat.submit.
+    sourceId: 'skatteetaten-mva-melding-innsending',
+    title: 'Skatteetaten: MVA-melding validerings- og innsendings-API',
+    type: 'skatteetaten',
+    url: 'https://skatteetaten.github.io/mva-meldingen/documentation/api/',
+    apiUrl: 'https://skatteetaten.github.io/api-dokumentasjon/en/api/mvameldinginnsending',
+    apiAccess: 'granted',
+    lastVerified: '2026-07-20',
+    verifiedBy: 'api-kartlegging (websearch — direkte henting blokkert)',
+  },
+  {
+    // Offisielt oppslag i MVA-registeret — autoritativ variant av MVA-kontrollen
+    // som i MVP gjøres mot Brønnøysund (Enhetsregisterets registrertIMvaregisteret).
+    sourceId: 'skatteetaten-mva-register-api',
+    title: 'Skatteetaten: Mva-register avgiftssubjekt API',
+    type: 'skatteetaten',
+    url: 'https://skatteetaten.github.io/api-dokumentasjon/en/',
     apiUrl: 'https://skatteetaten.github.io/api-dokumentasjon/en/',
     apiAccess: 'granted',
     lastVerified: '2026-07-20',

@@ -39,11 +39,23 @@ offisielle kanaler i stedet for å skrapes eller legges inn fra hukommelse:
 | Kanal | apiUrl | Lisens | Tilgang | Dekker |
 |---|---|---|---|---|
 | Lovdata API | https://api.lovdata.no/ | NLOD 2.0 | åpen (ingen nøkkel) | Lovtekst: skatteloven, mval., bokføringsloven — kapittel/paragraf-struktur, oppdatert nattlig |
-| Skatteetaten datadeling | https://skatteetaten.github.io/api-dokumentasjon/en/ | — | innvilget (Maskinporten) | Årsavhengige satser og skattedata via standardiserte API-er |
+| Skatteetaten datadeling | https://skatteetaten.github.io/api-dokumentasjon/en/ | — | innvilget (Maskinporten) | **Katalog over transaksjons-/innrapporterings-API-er — IKKE en satsfeed** |
 
-Merk: i dette utviklingsmiljøet blokkeres direkte henting av begge primærkildene
-(HTTP 403), så oppføringene over er kartlagt via søk, ikke direkte lesing.
-Faktisk API-integrasjon (klient + innhenting til registeret) gjenstår som eget arbeid.
+**Viktig avklaring om Skatteetatens API-er:** katalogen er transaksjons- og
+innrapporterings-API-er (Beregnet skatt, MVA-melding, Mva-register, a-melding),
+alle bak Maskinporten med innvilget tilgang per virksomhet. De gir **ikke** en
+maskinlesbar satstabell — satser/fradragsbeløp må fortsatt komme fra satssidene/
+Skatte-ABC (manuelt, fagkontrollert) eller Lovdata API (lovtekst). De konkrete
+API-ene som kobler på Ledgerly-funksjoner:
+
+| sourceId | API | Kobler på |
+|---|---|---|
+| skatteetaten-mva-melding-innsending | MVA-melding validering + innsending | Lukker innsendings-gapet (MVA-rapport er i dag alltid kladd); rettigheten `vat.submit` |
+| skatteetaten-mva-register-api | Mva-register avgiftssubjekt | Autoritativ variant av MVA-kontrollen som i MVP gjøres mot Brønnøysund |
+
+Merk: i dette utviklingsmiljøet blokkeres direkte henting av alle primærkildene
+(HTTP 403 på WebFetch, uansett domene), så oppføringene over er kartlagt via søk,
+ikke direkte lesing. Faktisk API-integrasjon (klient + innhenting) gjenstår.
 
 ## Regler (`src/rules/no/rules.ts`)
 
