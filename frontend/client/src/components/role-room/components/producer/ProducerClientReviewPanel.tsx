@@ -116,6 +116,7 @@ import {
   normalizeProducerProjectPlanning,
 } from '../../utils/producerProjectPlanning';
 import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { CollapsibleSection } from '../CollapsibleSection';
 
 interface ProducerClientReviewPanelProps {
   projectId: string;
@@ -2499,34 +2500,20 @@ export default function ProducerClientReviewPanel({
         )}
       </Box>
 
-      <Box
-        sx={{
-          p: 1.25,
-          borderRadius: 1.5,
-          border: '1px solid rgba(148,163,184,0.2)',
-          background: 'rgba(15,23,42,0.52)',
-        }}
+      <CollapsibleSection
+        title="Åpne blokkeringer"
+        summary="Dette stopper videre arbeid akkurat nå"
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between">
-          <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Åpne blokkeringer
-            </Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.84rem', mt: 0.35 }}>
-              Dette stopper videre arbeid akkurat nå.
-            </Typography>
-          </Box>
-          {onOpenMedia ? (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
-              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' }, minHeight: 44 }}
-            >
-              Åpne grunnlag
-            </Button>
-          ) : null}
-        </Stack>
+        {onOpenMedia ? (
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
+            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, mb: 1 }}
+          >
+            Åpne grunnlag
+          </Button>
+        ) : null}
         {activeClientGroundingReviews.length > 0 ? (
           <Stack spacing={0.9} sx={{ mt: 1.1 }}>
             {activeClientGroundingReviews.map((review) => (
@@ -2617,21 +2604,14 @@ export default function ProducerClientReviewPanel({
             ))}
           </Stack>
         ) : null}
-      </Box>
+      </CollapsibleSection>
 
       {strategySnapshot.length > 0 || clientMoments.length > 0 ? (
-        <Box
-          sx={{
-            p: 1.25,
-            borderRadius: 1.5,
-            border: '1px solid rgba(148,163,184,0.2)',
-            background: 'rgba(15,23,42,0.52)',
-          }}
+        <CollapsibleSection
+          title="Retning og neste klientpunkter"
+          summary="Strategi-signaler og neste klientpunkter"
         >
           <Stack spacing={1}>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Retning og neste klientpunkter
-            </Typography>
             {strategySnapshot.length > 0 ? (
               <Stack direction="row" spacing={0.75} flexWrap="wrap">
                 {strategySnapshot.map((item) => (
@@ -2797,7 +2777,7 @@ export default function ProducerClientReviewPanel({
               </Typography>
             )}
           </Stack>
-        </Box>
+        </CollapsibleSection>
       ) : null}
 
       {error && <Alert severity="error">{error}</Alert>}
