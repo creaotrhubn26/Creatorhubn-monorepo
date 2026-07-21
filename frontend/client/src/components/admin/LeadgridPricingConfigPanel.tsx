@@ -21,20 +21,12 @@ import {
   Save as SaveIcon,
 } from '@mui/icons-material';
 import { AdminButton, AdminLoading, AdminError, useIsMobile } from './design-system';
-
-interface PricingTier {
-  key: string; name: string; price: number; tagline: string;
-  priceNote: string; popular: boolean; cta: string; features: string[];
-}
-interface PricingModule {
-  key: string; title: string; desc: string;
-  priceSoloPro: number; priceAgency: number; accent: string; active: boolean;
-}
-interface PricingConfig {
-  tiers: PricingTier[];
-  modules: PricingModule[];
-  bundle: { active: boolean; priceAgency: number; label: string };
-}
+// Kanonisk form — delt med landingssiden (@shared/leadgridPricingConfig).
+import type {
+  LeadgridPricingConfig as PricingConfig,
+  PricingTier,
+  PricingModule,
+} from '@shared/leadgridPricingConfig';
 
 function bearer(): string {
   return typeof window !== 'undefined' && localStorage.getItem('rr_bearer')
