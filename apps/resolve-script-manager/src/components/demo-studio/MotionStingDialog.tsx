@@ -212,6 +212,19 @@ export default function MotionStingDialog(
               </div>
             </div>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+              <span style={{ fontSize: 11, color: C.soft, width: 74, flexShrink: 0 }}>Tema</span>
+              <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                {([['dark', 'Mørk'], ['light', 'Lyst']] as const).map(([v, l]) => {
+                  const on = (place.theme ?? 'dark') === v;
+                  return (
+                    <span key={v} onClick={() => setPlace((p) => ({ ...p, theme: v }))}
+                      style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '5px 0', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? accent : C.line}`, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 }}>{l}</span>
+                  );
+                })}
+              </div>
+            </div>
+
             <div onClick={() => setAdv((v) => !v)} style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: adv ? accent : C.soft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               {adv ? '▾' : '▸'} Avansert · fin-juster mellomrom
             </div>

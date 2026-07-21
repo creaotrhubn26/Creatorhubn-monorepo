@@ -10,6 +10,7 @@ import {
   buildStingCaptureSpec,
   layoutVars,
   spacingCss,
+  themeColors,
   type StingData,
 } from './motionSting.js';
 
@@ -136,6 +137,20 @@ describe('layoutVars', () => {
   it('spacingCss: kun positive verdier → margin-top per data-r', () => {
     expect(spacingCss({ hero: 2, brand: 0 })).toBe('[data-r="hero"]{margin-top:2em}');
     expect(spacingCss(undefined)).toBe('');
+  });
+});
+
+describe('themeColors', () => {
+  it('mørk (default) vs lyst skiller grunn + ink', () => {
+    expect(themeColors('dark').ground).toBe('#0c0a16');
+    expect(themeColors('light').ground).toBe('#f4f1fb');
+    expect(themeColors('light').ink).not.toBe(themeColors('dark').ink);
+    expect(themeColors(undefined).ground).toBe('#0c0a16'); // default mørk
+  });
+  it('lyst tema lander i sting-HTML', () => {
+    const light = buildMotionStingHtml(DATA, { layout: { theme: 'light' } });
+    expect(light).toContain('#f4f1fb');
+    expect(buildMotionStingHtml(DATA, {})).not.toContain('#f4f1fb');
   });
 });
 

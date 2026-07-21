@@ -11,7 +11,7 @@
  * matte nøyaktig, så preview == det render-pipelinen fanger.
  */
 
-import { layoutVars, spacingCss, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
+import { layoutVars, spacingCss, themeColors, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
 
 export type RevealKind = 'fade' | 'slideUp' | 'pop' | 'countUp' | 'barGrow' | 'wipe';
 
@@ -282,7 +282,6 @@ export function pickArchetype(templateId: string, values: Record<string, string>
 function aspectFor(f: StingFormat): string {
   return f === '9:16' ? '9 / 16' : f === '1:1' ? '1 / 1' : '16 / 9';
 }
-const GOLD = '#f5c451';
 
 export function buildMotionHtml(
   layout: MotionLayout,
@@ -292,6 +291,7 @@ export function buildMotionHtml(
   const format = opts.format || '16:9';
   const autoplay = opts.autoplay !== false;
   const L = layoutVars(opts.place);
+  const T = themeColors(opts.place?.theme);
   const k = opts.tempo && opts.tempo > 0 ? opts.tempo : 1;
 
   // Merkevare-lockup (valgfritt) + tempo-skalering av reveals/total.
@@ -306,46 +306,46 @@ export function buildMotionHtml(
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
 body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",system-ui,sans-serif;display:grid;place-items:center;overflow:hidden}
-#stage{aspect-ratio:${aspectFor(format)};width:100%;max-width:100%;max-height:100%;position:relative;border-radius:14px;overflow:hidden;color:#efecf9;
-  background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), #0c0a16;
+#stage{aspect-ratio:${aspectFor(format)};width:100%;max-width:100%;max-height:100%;position:relative;border-radius:14px;overflow:hidden;color:${T.ink};
+  background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), ${T.ground};
   display:flex;flex-direction:column;justify-content:${L.align};padding:${L.pad}}
 [data-r]{opacity:0}
 .arc{display:flex;flex-direction:column;max-width:100%;min-width:0;gap:${L.gap}}
 [data-r],.arc>*{max-width:100%}
 .st-label,.st-sub,.q-text,.q-author,.cmp-title,.cmp-lab,.cmp-val{overflow:hidden;text-overflow:ellipsis}
 /* stat */
-.st-label{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2;white-space:nowrap}
-.st-num{font-size:clamp(40px,13vw,104px);font-weight:800;letter-spacing:-.04em;line-height:.92;font-variant-numeric:tabular-nums;color:${GOLD};text-shadow:0 0 46px ${GOLD}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-label{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:${T.soft};white-space:nowrap}
+.st-num{font-size:clamp(40px,13vw,104px);font-weight:800;letter-spacing:-.04em;line-height:.92;font-variant-numeric:tabular-nums;color:${T.hero};text-shadow:0 0 46px ${T.hero}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st-delta{align-self:flex-start;font-size:clamp(12px,2.6vw,17px);font-weight:700;color:#34d399;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4);padding:.25em .7em;border-radius:999px;margin-top:1%}
-.st-sub{font-size:clamp(12px,2.6vw,17px);color:#c9c3dd;margin-top:1.5%;max-width:22ch}
+.st-sub{font-size:clamp(12px,2.6vw,17px);color:${T.ink};margin-top:1.5%;max-width:22ch}
 /* quote */
 .q-mark{font-size:clamp(48px,12vw,110px);line-height:.6;font-weight:800;color:${accent}}
 .q-text{font-size:clamp(17px,4vw,34px);font-weight:600;line-height:1.32;letter-spacing:-.01em;max-width:22ch;clip-path:inset(0 100% 0 0)}
-.q-author{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(10px,2.3vw,14px);letter-spacing:.12em;text-transform:uppercase;color:#a49dc2}
-.q-author .q-role{color:#726c92}
+.q-author{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(10px,2.3vw,14px);letter-spacing:.12em;text-transform:uppercase;color:${T.soft}}
+.q-author .q-role{color:${T.faint}}
 /* compare */
-.cmp-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2}
+.cmp-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:${T.soft}}
 .cmp-rows{display:flex;flex-direction:column;gap:${L.subGap}}
 .cmp-row{display:flex;align-items:center;gap:3%}
-.cmp-lab{flex:none;width:26%;font-size:clamp(11px,2.6vw,16px);font-weight:600;color:#c9c3dd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cmp-track{flex:1;height:clamp(18px,4.6vw,32px);border-radius:.3em;background:rgba(255,255,255,.05);overflow:hidden}
+.cmp-lab{flex:none;width:26%;font-size:clamp(11px,2.6vw,16px);font-weight:600;color:${T.ink};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmp-track{flex:1;height:clamp(18px,4.6vw,32px);border-radius:.3em;background:${T.barTop};overflow:hidden}
 .cmp-bar{display:block;height:100%;width:0;border-radius:.3em;background:linear-gradient(90deg,#6d28d9,${accent})}
-.cmp-win .cmp-bar{background:linear-gradient(90deg,${accent},${GOLD})}
+.cmp-win .cmp-bar{background:linear-gradient(90deg,${accent},${T.hero})}
 .cmp-val{flex:none;min-width:3.5em;max-width:6em;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(12px,2.8vw,18px);white-space:nowrap}
-.cmp-winner{align-self:flex-start;font-size:clamp(11px,2.5vw,15px);font-weight:700;color:${GOLD};margin-top:1%}
+.cmp-winner{align-self:flex-start;font-size:clamp(11px,2.5vw,15px);font-weight:700;color:${T.hero};margin-top:1%}
 /* list */
 .arc-list{gap:${L.gap}}
-.ls-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:${T.soft};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ls-list{display:flex;flex-direction:column;gap:${L.subGap}}
 .ls-item{display:flex;align-items:center;gap:3%;min-width:0}
-.ls-idx{flex:none;width:1.7em;height:1.7em;border-radius:.45em;display:grid;place-items:center;font-weight:800;font-size:clamp(11px,2.4vw,15px);color:#0c0a16;background:linear-gradient(135deg,${accent},#6d28d9)}
+.ls-idx{flex:none;width:1.7em;height:1.7em;border-radius:.45em;display:grid;place-items:center;font-weight:800;font-size:clamp(11px,2.4vw,15px);color:${T.chip};background:linear-gradient(135deg,${accent},#6d28d9)}
 .ls-body{display:flex;flex-direction:column;min-width:0}
 .ls-lab{font-weight:650;font-size:clamp(13px,3vw,20px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ls-sub{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,1.9vw,10.5px);letter-spacing:.12em;text-transform:uppercase;color:#726c92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls-sub{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,1.9vw,10.5px);letter-spacing:.12em;text-transform:uppercase;color:${T.faint};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* brand-lockup */
 .mb-brand{display:flex;align-items:center;gap:.6em;font-weight:700;font-size:clamp(11px,3vw,16px);margin-bottom:2%}
-.mb-mark{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:#0c0a16;font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
-#scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${GOLD});box-shadow:0 0 12px ${GOLD}88}
+.mb-mark{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:${T.chip};font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
+#scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${T.hero});box-shadow:0 0 12px ${T.hero}88}
 ${spacingCss(opts.place?.spacing)}
 </style></head><body>
 <div id="stage">${brandHtml}${layout.bodyHtml}<div id="scrub"></div></div>
