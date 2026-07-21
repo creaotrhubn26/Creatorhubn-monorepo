@@ -50,7 +50,7 @@ export default function LeadgridResearchConsentPage() {
                     body="Vi besøker hjemmesiden din og leser metadata (tittel, beskrivelse, logo). Vi følger en standard User-Agent ('LeadgridResearch/1.0') og respekterer robots.txt." />
               <Item icon={<AutoAwesomeIcon sx={{ color: "#a78bfa" }} />}
                     title="AI-sammendrag"
-                    body="Vi bruker Claude (Anthropic) til å lage et kort sammendrag av hvem dere er og hvor relevant Leadgrid kan være for dere. Dette hjelper teamet vårt forberede et godt møte." />
+                    body="Vi bruker Claude (Anthropic) til å lage et kort sammendrag av hvem dere er og hvor relevant Leadgrid kan være for dere. Dette hjelper teamet vårt å forberede et godt møte." />
             </Stack>
           </CardContent>
         </Card>

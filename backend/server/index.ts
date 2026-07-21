@@ -853,6 +853,7 @@ import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
+import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
@@ -25059,6 +25060,13 @@ setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
 setupControlCenterRoutes({ app, pool, activeSessions });
 // Lead Map module pricing-admin
 setupAdminLeadMapPricingRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid offentlig pris-config (én sannhetskilde: landing + admin + iPad)
+registerLeadgridPricingConfigRoutes({
   app,
   pool,
   activeSessions,

@@ -124,23 +124,61 @@ const ECOSYSTEM = [
 // rendres seksjonen ikke i det hele tatt. Vi vil ikke ha falske sitater.
 const TESTIMONIALS: { quote: string; name: string; role: string }[] = [];
 
-const PRICING = [
-  {
-    name: 'Solo Free', price: 0, popular: false,
-    blurb: 'Gratis for solo-selgere. Kom i gang på 2 min.',
-    perks: ['1 kunde · 3 auto-onboards/mnd', 'Kart, Kanban og filtre', 'Native iPad-app', 'Intelligence + Momentum Engine'],
-  },
-  {
-    name: 'Solo Pro', price: 799, popular: true,
-    blurb: 'Full Leadgrid for én selger — alle AI-features.',
-    perks: ['Alt i Solo Free', 'Forecasting + Market Scan', 'Voice Memo + AI-møtenotater', '1 000 AI-kall/mnd'],
-  },
-  {
-    name: 'Agency', price: 2999, popular: false,
-    blurb: 'For salgs-team med flere selgere.',
-    perks: ['Alt i Solo Pro', 'Multi-bruker (5 inkl.) + team-roller', 'Territorie-grids m/ geofence', 'White-label klient-portal'],
-  },
-];
+// ────────────────────────────────────────────────────────────
+// Pris-config — én sannhetskilde (super-admin → /api/leadgrid/pricing-config).
+// Tidligere hardkodet her; nå leses den fra backend, og denne konstanten
+// er kun fallback så siden aldri står tom om API-et er nede.
+// Formen MÅ speile PricingConfig i leadgrid-pricing-config-routes.ts.
+// ────────────────────────────────────────────────────────────
+type PricingTier = {
+  key: string; name: string; price: number; tagline: string;
+  priceNote: string; popular: boolean; cta: string; features: string[];
+};
+type PricingModule = {
+  key: string; title: string; desc: string;
+  priceSoloPro: number; priceAgency: number; accent: string; active: boolean;
+};
+type LeadgridPricingConfig = {
+  tiers: PricingTier[];
+  modules: PricingModule[];
+  bundle: { active: boolean; priceAgency: number; label: string };
+};
+
+const DEFAULT_PRICING_CONFIG: LeadgridPricingConfig = {
+  tiers: [
+    {
+      key: 'free', name: 'Solo Free', price: 0, popular: false, cta: 'Start gratis',
+      tagline: 'Gratis for solo-selgere. Kom i gang på 2 min.',
+      priceNote: 'Ingen kortkrav, ingen binding.',
+      features: ['1 kunde · 3 auto-onboards/mnd', 'Kart, Kanban og filtre', 'Native iPad-app', 'Intelligence + Momentum Engine'],
+    },
+    {
+      key: 'pro', name: 'Solo Pro', price: 799, popular: true, cta: 'Start gratis',
+      tagline: 'Full Leadgrid for én selger — alle AI-features.',
+      priceNote: 'Rimeligere ved årlig fakturering. Ingen binding.',
+      features: ['Alt i Solo Free', 'Forecasting + Market Scan', 'Voice Memo + AI-møtenotater', '1 000 AI-kall/mnd'],
+    },
+    {
+      key: 'agency', name: 'Agency', price: 2999, popular: false, cta: 'Kontakt oss',
+      tagline: 'For salgs-team med flere selgere.',
+      priceNote: 'Rimeligere ved årlig fakturering. Ingen binding.',
+      features: ['Alt i Solo Pro', 'Multi-bruker (5 inkl.) + team-roller', 'Territorie-grids m/ geofence', 'White-label klient-portal'],
+    },
+  ],
+  modules: [
+    { key: 'dorsalg', title: 'Dørsalg & verving', desc: 'Adressekart, salg på døra med kundebekreftelse, dagsmål og team-oppfølging.', priceSoloPro: 490, priceAgency: 990, accent: '#c084fc', active: true },
+    { key: 'kvalitet', title: 'Kvalitet', desc: 'Verifiseringskø, samtale-maler og kvalitetsgrad per selger — stol på tallene.', priceSoloPro: 390, priceAgency: 790, accent: '#5eead4', active: true },
+    { key: 'go', title: 'Leadgrid Go', desc: 'Automatisk kjørebok, kjøregodtgjørelse, flåte og bilbooking for hele teamet.', priceSoloPro: 249, priceAgency: 690, accent: '#7ab8ff', active: true },
+  ],
+  bundle: { active: true, priceAgency: 1490, label: 'Alle tre moduler på Agency' },
+};
+
+// Ikoner kan ikke ligge i JSON — mappes fra modul-key.
+const MODULE_ICONS: Record<string, SvgIconComponent> = {
+  dorsalg: DoorFrontOutlined,
+  kvalitet: VerifiedOutlined,
+  go: DirectionsCarFilledOutlined,
+};
 
 // ────────────────────────────────────────────────────────────
 // Komponent
@@ -988,7 +1026,7 @@ function FeatureGridSection() {
         />
         <FeatureCard
           title="AI-pitch og oppfølging"
-          desc="Få hjelp til å skrive personlige, førsteinntrykk og oppfølgings-e-poster som faktisk får svar."
+          desc="Få hjelp til å skrive personlige førsteinntrykk og oppfølgings-e-poster som faktisk får svar."
           Icon={AutoFixHighOutlined}
           accent="#9be15d"
         />
@@ -1319,13 +1357,29 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
 }
 
 function PricingSection() {
+  // Én sannhetskilde: super-admin redigerer, landing leser. Fallback til
+  // lokal default så seksjonen aldri står tom om API-et svikter.
+  const [config, setConfig] = useState<LeadgridPricingConfig>(DEFAULT_PRICING_CONFIG);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/leadgrid/pricing-config')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: LeadgridPricingConfig) => {
+        if (alive && data?.tiers?.length) setConfig(data);
+      })
+      .catch(() => { /* behold default */ });
+    return () => { alive = false; };
+  }, []);
+
+  const activeModules = config.modules.filter((m) => m.active);
+
   return (
     <Box id="priser" sx={{ py: { xs: 8, md: 12 }, bgcolor: PALETTE.bgAlt }}>
       <Container maxWidth="lg">
         <SectionTitle title="Enkel og transparent prising" />
         <Grid container spacing={3} alignItems="stretch">
-          {PRICING.map((p) => (
-            <Grid item xs={12} md={4} key={p.name}>
+          {config.tiers.map((p) => (
+            <Grid item xs={12} md={4} key={p.key}>
               <Card sx={{
                 height: '100%',
                 bgcolor: p.popular ? 'rgba(167, 139, 250, 0.10)' : PALETTE.card,
@@ -1354,7 +1408,7 @@ function PricingSection() {
                   {p.name}
                 </Typography>
                 <Typography sx={{ color: PALETTE.textMuted, fontSize: 13.5, mb: 3 }}>
-                  {p.blurb}
+                  {p.tagline}
                 </Typography>
                 <Stack direction="row" alignItems="baseline" spacing={1} mb={1}>
                   <Typography sx={{ fontWeight: 700, fontSize: 40, lineHeight: 1 }}>
@@ -1367,10 +1421,10 @@ function PricingSection() {
                   )}
                 </Stack>
                 <Typography sx={{ color: PALETTE.textFaint, fontSize: 12, mb: 3 }}>
-                  {p.price === 0 ? 'Ingen kortkrav, ingen binding.' : 'Rimeligere ved årlig fakturering. Ingen binding.'}
+                  {p.priceNote}
                 </Typography>
                 <Stack spacing={1} mb={3} flexGrow={1}>
-                  {p.perks.map((perk) => (
+                  {p.features.map((perk) => (
                     <Stack direction="row" spacing={1} key={perk} alignItems="flex-start">
                       <CheckCircleOutlineOutlined sx={{ fontSize: 18, color: PALETTE.accent, mt: 0.2 }} />
                       <Typography sx={{ fontSize: 14, color: PALETTE.text }}>
@@ -1397,7 +1451,7 @@ function PricingSection() {
                   }}
                   href="/"
                 >
-                  {p.name === 'Agency' ? 'Kontakt oss' : 'Start gratis'}
+                  {p.cta}
                 </Button>
               </Card>
             </Grid>
@@ -1429,27 +1483,10 @@ function PricingSection() {
             Tillegg for feltsalg
           </Typography>
           <Grid container spacing={2}>
-            {[
-              {
-                Icon: DoorFrontOutlined,
-                title: 'Dørsalg & verving',
-                desc: 'Adressekart, salg på døra med kundebekreftelse, dagsmål og team-oppfølging.',
-                accent: '#c084fc',
-              },
-              {
-                Icon: VerifiedOutlined,
-                title: 'Kvalitet',
-                desc: 'Verifiseringskø, samtale-maler og kvalitetsgrad per selger — stol på tallene.',
-                accent: '#5eead4',
-              },
-              {
-                Icon: DirectionsCarFilledOutlined,
-                title: 'Leadgrid Go',
-                desc: 'Automatisk kjørebok, kjøregodtgjørelse, flåte og bilbooking for hele teamet.',
-                accent: '#7ab8ff',
-              },
-            ].map((a) => (
-              <Grid item xs={12} md={4} key={a.title}>
+            {activeModules.map((a) => {
+              const Icon = MODULE_ICONS[a.key] ?? VerifiedOutlined;
+              return (
+              <Grid item xs={12} md={4} key={a.key}>
                 <Card sx={{
                   height: '100%', bgcolor: PALETTE.card,
                   border: `1px solid ${PALETTE.cardBorder}`, borderRadius: 3,
@@ -1462,24 +1499,43 @@ function PricingSection() {
                         bgcolor: `${a.accent}22`, border: `1px solid ${a.accent}40`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        <a.Icon sx={{ fontSize: 22, color: a.accent }} />
+                        <Icon sx={{ fontSize: 22, color: a.accent }} />
                       </Box>
                       <Typography sx={{ fontWeight: 600, fontSize: 17, color: PALETTE.text }}>
                         {a.title}
                       </Typography>
                     </Stack>
-                    <Typography sx={{ color: PALETTE.textMuted, fontSize: 14, lineHeight: 1.55 }}>
+                    <Typography sx={{ color: PALETTE.textMuted, fontSize: 14, lineHeight: 1.55, mb: 2 }}>
                       {a.desc}
+                    </Typography>
+                    <Stack direction="row" alignItems="baseline" spacing={1}>
+                      <Typography sx={{ fontWeight: 700, fontSize: 24, color: a.accent, lineHeight: 1 }}>
+                        kr {a.priceSoloPro}
+                      </Typography>
+                      <Typography sx={{ color: PALETTE.textFaint, fontSize: 13 }}>
+                        /mnd på Solo Pro
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
+                      kr {a.priceAgency}/mnd på Agency
                     </Typography>
                   </CardContent>
                 </Card>
               </Grid>
-            ))}
+              );
+            })}
           </Grid>
+          {config.bundle.active && (
+            <Typography sx={{
+              textAlign: 'center', fontSize: 13.5, color: PALETTE.textMuted, mt: 2.5,
+            }}>
+              {config.bundle.label}: <Box component="span" sx={{ fontWeight: 700, color: PALETTE.text }}>kr {config.bundle.priceAgency}/mnd</Box> — spar mot enkeltmoduler.
+            </Typography>
+          )}
           <Typography sx={{
-            textAlign: 'center', fontSize: 13, color: PALETTE.textFaint, mt: 2.5,
+            textAlign: 'center', fontSize: 13, color: PALETTE.textFaint, mt: 1,
           }}>
-            Tilleggsmoduler aktiveres på Solo Pro og Agency. Kontakt oss for pris.
+            Tilleggsmoduler aktiveres på Solo Pro og Agency.
           </Typography>
         </Box>
         <Box sx={{ mt: 5, textAlign: 'center' }}>
