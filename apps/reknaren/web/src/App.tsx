@@ -18,6 +18,27 @@ import { Icons, ToastProvider } from './ui';
 
 export type ViewMode = 'simple' | 'advanced' | 'pro';
 
+/** Reknaren-monogram: skoggrønn flis, kremhvit R, gull-prikk (jf. logo). */
+function LogoMark() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect width="40" height="40" rx="9" fill="#1f4d3a" />
+      <circle cx="29.5" cy="11" r="3.4" fill="#b0913b" />
+      <text
+        x="19"
+        y="29"
+        textAnchor="middle"
+        fontSize="25"
+        fontWeight="800"
+        fill="#f4f3ee"
+        fontFamily="'Avenir Next','Segoe UI',system-ui,sans-serif"
+      >
+        R
+      </text>
+    </svg>
+  );
+}
+
 const VIEW_MODE_LABELS: Record<ViewMode, string> = {
   simple: 'Enkel visning',
   advanced: 'Avansert visning',
@@ -100,7 +121,7 @@ export default function App() {
       <div className="auth-wrap">
         <div className="auth-card">
           <div className="brand">
-            <div className="logo" aria-hidden>R</div>
+            <LogoMark />
             <div className="name">Reknaren</div>
           </div>
           <p className="subtitle">Logger inn …</p>
@@ -127,9 +148,7 @@ export default function App() {
       <div className="layout">
         <aside className="sidebar">
           <div className="brand">
-            <div className="logo" aria-hidden>
-              R
-            </div>
+            <LogoMark />
             <div className="name">Reknaren</div>
           </div>
           <nav aria-label="Hovedmeny">
@@ -239,9 +258,7 @@ function LoginScreen() {
     <div className="auth-wrap">
       <div className="auth-card">
         <div className="brand">
-          <div className="logo" aria-hidden>
-            R
-          </div>
+          <LogoMark />
           <div className="name">Reknaren</div>
         </div>
         <p className="subtitle">

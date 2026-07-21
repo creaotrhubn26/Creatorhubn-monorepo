@@ -6,19 +6,21 @@
 
 :root {
   /* Flater og tekst */
-  --bg: #f4f5f7;
+  --bg: #f4f3ee;
   --surface: #ffffff;
-  --surface-2: #fafbfc;
-  --border: #e3e6ea;
-  --border-strong: #cdd3da;
-  --text: #16202b;
-  --text-2: #55606c;
-  --text-3: #8a93a0;
+  --surface-2: #faf9f4;
+  --border: #e6e3d9;
+  --border-strong: #d2cebf;
+  --text: #1a241c;
+  --text-2: #56605a;
+  --text-3: #8a938c;
 
-  /* Aksent og semantikk */
-  --accent: #2352c8;
-  --accent-hover: #1c44a6;
-  --accent-soft: #e9effc;
+  /* Aksent og semantikk — Reknaren-merkevare (skoggrønn + gull) */
+  --accent: #1f4d3a;
+  --accent-hover: #163a2b;
+  --accent-soft: #e6efe9;
+  --gold: #b0913b;
+  --gold-soft: #f3ecd9;
   --ok: #196b45;
   --ok-soft: #e2f3ea;
   --warn: #8a5b00;
@@ -45,9 +47,11 @@
     --text: #e8ebef;
     --text-2: #a9b2bd;
     --text-3: #76808c;
-    --accent: #6f96f2;
-    --accent-hover: #8badf5;
-    --accent-soft: #22314e;
+    --accent: #6fbf95;
+    --accent-hover: #86cfa6;
+    --accent-soft: #16352a;
+    --gold: #d4b568;
+    --gold-soft: #33301f;
     --ok: #59c389;
     --ok-soft: #16352a;
     --warn: #e5b45b;
