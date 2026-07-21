@@ -2666,6 +2666,12 @@ export default function ProducerMediaPanel({
   // 2FA) foldes ut per kort. Før sto alle fem kortene fullt utfoldet
   // samtidig — en vegg av felter uten lesbar samlet status.
   const [expandedAccountCards, setExpandedAccountCards] = useState<Record<string, boolean>>({});
+  // Enkel/Avansert for Kontotilgang: Enkel (standard) skjuler proff-
+  // maskineriet (tier/risiko-nivåene) så en ikke-proff bare ser koble-
+  // handlingen og grunnfeltene. Klient-review er ALLTID enkel — kunden
+  // skal aldri møte risiko-taksonomien.
+  const [accountAccessAdvanced, setAccountAccessAdvanced] = useState(false);
+  const accountAccessShowAdvanced = accountAccessAdvanced && !isClientReviewerMode;
   const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
     google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
     meta: { connected: boolean; verified: boolean; name: string | null };
@@ -12541,6 +12547,16 @@ export default function ProducerMediaPanel({
                   />
                 ) : null}
                 <Box sx={{ flex: 1 }} />
+                {!isClientReviewerMode && canEditClientInput ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setAccountAccessAdvanced((v) => !v)}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28, color: accountAccessAdvanced ? '#c084fc' : 'rgba(148,163,184,0.8)' }}
+                  >
+                    {accountAccessAdvanced ? 'Avansert ✓' : 'Vis avansert'}
+                  </Button>
+                ) : null}
                 <Button
                   size="small"
                   variant="text"
@@ -13171,6 +13187,7 @@ export default function ProducerMediaPanel({
                         </Box>
                       </Box>
 
+                      {accountAccessShowAdvanced && (
                       <Stack
                         direction={{ xs: 'column', md: 'row' }}
                         spacing={0.7}
@@ -13251,6 +13268,7 @@ export default function ProducerMediaPanel({
                           <ToggleButton value="high" disabled={!canEditClientInput}>Høy</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
+                      )}
 
                       <TextField
                         label="Notater"
