@@ -11,7 +11,7 @@
  * matte nøyaktig, så preview == det render-pipelinen fanger.
  */
 
-import { layoutVars, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
+import { layoutVars, spacingCss, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
 
 export type RevealKind = 'fade' | 'slideUp' | 'pop' | 'countUp' | 'barGrow' | 'wipe';
 
@@ -325,7 +325,7 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .q-author .q-role{color:#726c92}
 /* compare */
 .cmp-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2}
-.cmp-rows{display:flex;flex-direction:column;gap:3%}
+.cmp-rows{display:flex;flex-direction:column;gap:${L.subGap}}
 .cmp-row{display:flex;align-items:center;gap:3%}
 .cmp-lab{flex:none;width:26%;font-size:clamp(11px,2.6vw,16px);font-weight:600;color:#c9c3dd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cmp-track{flex:1;height:clamp(18px,4.6vw,32px);border-radius:.3em;background:rgba(255,255,255,.05);overflow:hidden}
@@ -336,7 +336,7 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 /* list */
 .arc-list{gap:${L.gap}}
 .ls-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ls-list{display:flex;flex-direction:column;gap:2.4%}
+.ls-list{display:flex;flex-direction:column;gap:${L.subGap}}
 .ls-item{display:flex;align-items:center;gap:3%;min-width:0}
 .ls-idx{flex:none;width:1.7em;height:1.7em;border-radius:.45em;display:grid;place-items:center;font-weight:800;font-size:clamp(11px,2.4vw,15px);color:#0c0a16;background:linear-gradient(135deg,${accent},#6d28d9)}
 .ls-body{display:flex;flex-direction:column;min-width:0}
@@ -346,6 +346,7 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .mb-brand{display:flex;align-items:center;gap:.6em;font-weight:700;font-size:clamp(11px,3vw,16px);margin-bottom:2%}
 .mb-mark{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:#0c0a16;font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
 #scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${GOLD});box-shadow:0 0 12px ${GOLD}88}
+${spacingCss(opts.place?.spacing)}
 </style></head><body>
 <div id="stage">${brandHtml}${layout.bodyHtml}<div id="scrub"></div></div>
 <script>

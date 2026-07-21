@@ -9,6 +9,7 @@ import {
   stingFrameTimes,
   buildStingCaptureSpec,
   layoutVars,
+  spacingCss,
   type StingData,
 } from './motionSting.js';
 
@@ -124,6 +125,17 @@ describe('layoutVars', () => {
     expect(layoutVars({}).align).toBe('center');
     expect(layoutVars({ density: 'tight' }).gap).not.toBe(layoutVars({ density: 'airy' }).gap);
     expect(layoutVars({ pad: 'snug' }).pad).not.toBe(layoutVars({ pad: 'roomy' }).pad);
+  });
+  it('subGap skalerer med gap (Luft påvirker barer/rader/liste)', () => {
+    expect(layoutVars({ density: 'tight' }).subGap).not.toBe(layoutVars({ density: 'airy' }).subGap);
+  });
+  it('fin gap-override vinner over density', () => {
+    expect(layoutVars({ gap: 7 }).gap).toBe('7%');
+    expect(layoutVars({ gap: 7, density: 'tight' }).gap).toBe('7%');
+  });
+  it('spacingCss: kun positive verdier → margin-top per data-r', () => {
+    expect(spacingCss({ hero: 2, brand: 0 })).toBe('[data-r="hero"]{margin-top:2em}');
+    expect(spacingCss(undefined)).toBe('');
   });
 });
 
