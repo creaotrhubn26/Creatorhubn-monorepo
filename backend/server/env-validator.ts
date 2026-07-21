@@ -94,6 +94,7 @@ const OPTIONAL: EnvVar[] = [
   { name: "CONTROL_CENTER_UPLOADS_HEALTH_URL", description: "Valgfri fallback health-URL for lagring (Fase 3). Brukes kun hvis verken B2 (B2_APPLICATION_KEY_ID/-KEY) eller R2 (R2_ENDPOINT) er satt." },
   { name: "CONTROL_CENTER_REALTIME_HEALTH_URL", description: "Valgfri health-URL for realtime-tjenesten (Fase 3 health-ping). Mangler → status 'not_configured'." },
   { name: "CONTROL_CENTER_WORKERS_HEALTH_URL", description: "Valgfri health-URL for bakgrunns-workers (Fase 3 health-ping). Mangler → status 'not_configured'." },
+  { name: "CONTROL_CENTER_LEDGERLY_HEALTH_URL", description: "Valgfri health-URL for Ledgerly regnskaps-appen (egen tjeneste/DB). Peker på appens /api/health. Mangler → status 'not_configured'." },
   { name: "META_APP_ID", description: "Meta/Facebook OAuth. Påvirker Facebook-publishing." },
   { name: "META_APP_SECRET", description: "Hører sammen med META_APP_ID." },
   { name: "LINKEDIN_CLIENT_ID", description: "LinkedIn-innlogging." },

@@ -23,6 +23,7 @@
  *              ellers R2_ENDPOINT (nåbarhet), ellers CONTROL_CENTER_UPLOADS_HEALTH_URL
  *   Realtime : CONTROL_CENTER_REALTIME_HEALTH_URL
  *   Workers  : CONTROL_CENTER_WORKERS_HEALTH_URL
+ *   Ledgerly : CONTROL_CENTER_LEDGERLY_HEALTH_URL  (regnskaps-appens /api/health)
  */
 
 import type { Pool } from "pg";
@@ -34,7 +35,8 @@ export type HealthService =
   | "frontend"
   | "uploads"
   | "realtime"
-  | "workers";
+  | "workers"
+  | "ledgerly";
 
 /** Normalisert helse-status på tvers av tjenester. */
 export type HealthStatus =
@@ -244,6 +246,9 @@ export async function runHealthChecks(pool: Pool): Promise<HealthCheck[]> {
     probeStorage(),
     probeOptionalHttp("realtime", "CONTROL_CENTER_REALTIME_HEALTH_URL"),
     probeOptionalHttp("workers", "CONTROL_CENTER_WORKERS_HEALTH_URL"),
+    // Ledgerly (regnskaps-appen) — egen tjeneste/DB. Probe /api/health (GET,
+    // les-only, 200 frisk / 503 db-nede). Ikke satt → not_configured.
+    probeOptionalHttp("ledgerly", "CONTROL_CENTER_LEDGERLY_HEALTH_URL"),
   ]);
   return results;
 }

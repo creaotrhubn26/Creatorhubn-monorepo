@@ -140,7 +140,7 @@ interface DeploysResponse {
   generatedAt: string;
 }
 
-type HealthService = 'api' | 'database' | 'payments' | 'frontend' | 'uploads' | 'realtime' | 'workers';
+type HealthService = 'api' | 'database' | 'payments' | 'frontend' | 'uploads' | 'realtime' | 'workers' | 'ledgerly';
 type HealthStatus = 'up' | 'degraded' | 'down' | 'not_configured' | 'unknown';
 
 interface HealthServiceRecord {
@@ -295,6 +295,7 @@ const HEALTH_SERVICE_LABEL: Record<HealthService, string> = {
   uploads: 'Lagring (B2/R2)',
   realtime: 'Realtime',
   workers: 'Workers',
+  ledgerly: 'Ledgerly (regnskap)',
 };
 
 const DEPLOY_STATUS_META: Record<DeployStatus, { label: string; color: string }> = {
