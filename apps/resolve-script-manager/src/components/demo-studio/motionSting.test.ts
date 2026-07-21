@@ -8,6 +8,7 @@ import {
   stingStateAt,
   stingFrameTimes,
   buildStingCaptureSpec,
+  layoutVars,
   type StingData,
 } from './motionSting.js';
 
@@ -103,6 +104,22 @@ describe('buildMotionStingHtml', () => {
   it('9:16-format setter riktig aspect-ratio', () => {
     const vert = buildMotionStingHtml({ ...DATA, format: '9:16' });
     expect(vert).toContain('aspect-ratio:9 / 16');
+  });
+  it('layout-knapper (plassering/luft/ramme) endrer stage-CSS', () => {
+    const h = buildMotionStingHtml(DATA, { layout: { align: 'bottom', density: 'airy', pad: 'roomy' } });
+    expect(h).toContain('justify-content:flex-end');
+    expect(h).toContain('gap:5.4%');
+    expect(h).toContain('padding:9.5% 9.5%');
+  });
+});
+
+describe('layoutVars', () => {
+  it('mapper align/density/pad; default = midt/normal', () => {
+    expect(layoutVars({ align: 'top' }).align).toBe('flex-start');
+    expect(layoutVars({ align: 'bottom' }).align).toBe('flex-end');
+    expect(layoutVars({}).align).toBe('center');
+    expect(layoutVars({ density: 'tight' }).gap).not.toBe(layoutVars({ density: 'airy' }).gap);
+    expect(layoutVars({ pad: 'snug' }).pad).not.toBe(layoutVars({ pad: 'roomy' }).pad);
   });
 });
 

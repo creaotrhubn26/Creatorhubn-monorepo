@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { buildMotionStingHtml, stingFromValues, buildStingCaptureSpec, type StingFormat } from './motionSting.js';
+import { buildMotionStingHtml, stingFromValues, buildStingCaptureSpec, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
 import {
   buildMotionHtml, statLayout, quoteLayout, compareLayout,
   statFrom, quoteFrom, compareFrom, pickArchetype, type Archetype,
@@ -44,6 +44,7 @@ export default function MotionStingDialog(
   },
 ) {
   const [format, setFormat] = useState<StingFormat>('16:9');
+  const [place, setPlace] = useState<MotionLayoutOpts>({ align: 'center', density: 'normal', pad: 'normal' });
   // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
   const [edit, setEdit] = useState<Record<string, string>>(() => ({ ...values }));
   const setField = (k: string, v: string) => { setEdit((e) => ({ ...e, [k]: v })); onValueChange?.(k, v); };
@@ -68,7 +69,7 @@ export default function MotionStingDialog(
         ...d.metrics.map((m) => ({ k: 'Funnel', v: m.display || fmtNb(m.value), s: m.label })),
         ...(d.caption ? [{ k: 'Caption', v: d.caption, s: '' }] : []),
       ];
-      return { html: buildMotionStingHtml({ ...d, format }), total: spec.total, readout, dataCount: d.metrics.length + (d.hero.value ? 1 : 0) };
+      return { html: buildMotionStingHtml({ ...d, format }, { layout: place }), total: spec.total, readout, dataCount: d.metrics.length + (d.hero.value ? 1 : 0) };
     }
     if (arch === 'stat') {
       const d = statFrom(liveEdit, editOrder);
@@ -78,7 +79,7 @@ export default function MotionStingDialog(
         ...(d.delta ? [{ k: 'Delta', v: d.delta, s: '' }] : []),
         ...(d.sub ? [{ k: 'Under', v: d.sub, s: '' }] : []),
       ];
-      return { html: buildMotionHtml(lay, { accent, format }), total: lay.total, readout, dataCount: d.value ? 1 : 0 };
+      return { html: buildMotionHtml(lay, { accent, format, place }), total: lay.total, readout, dataCount: d.value ? 1 : 0 };
     }
     if (arch === 'quote') {
       const d = quoteFrom(liveEdit, editOrder);
@@ -87,7 +88,7 @@ export default function MotionStingDialog(
         { k: 'Sitat', v: d.quote || '—', s: '' },
         ...(d.author ? [{ k: 'Kilde', v: d.author + (d.role ? ` · ${d.role}` : ''), s: '' }] : []),
       ];
-      return { html: buildMotionHtml(lay, { accent, format }), total: lay.total, readout, dataCount: d.quote ? 1 : 0 };
+      return { html: buildMotionHtml(lay, { accent, format, place }), total: lay.total, readout, dataCount: d.quote ? 1 : 0 };
     }
     const d = compareFrom(liveEdit, editOrder);
     const lay = compareLayout(d);
@@ -95,8 +96,8 @@ export default function MotionStingDialog(
       ...(d.title ? [{ k: 'Tittel', v: d.title, s: '' }] : []),
       ...d.items.map((it) => ({ k: 'Rad', v: it.display || fmtNb(it.value), s: it.label })),
     ];
-    return { html: buildMotionHtml(lay, { accent, format }), total: lay.total, readout, dataCount: d.items.length };
-  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format]);
+    return { html: buildMotionHtml(lay, { accent, format, place }), total: lay.total, readout, dataCount: d.items.length };
+  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format, place]);
 
   const [w, h] = format === '9:16' ? [1080, 1920] : format === '1:1' ? [1080, 1080] : [1920, 1080];
   const frames = Math.max(1, Math.round((built.total / 1000) * 30) + 1);
@@ -153,6 +154,28 @@ export default function MotionStingDialog(
                 <span key={f} onClick={() => setFormat(f)} style={chip(format === f)}>{f}</span>
               ))}
             </div>
+          </div>
+
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
+            <div style={lbl}>Layout <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: C.soft }}>· plassering + luft</span></div>
+            {([
+              { k: 'align', name: 'Plassering', opts: [['top', 'Topp'], ['center', 'Midt'], ['bottom', 'Bunn']] },
+              { k: 'density', name: 'Luft', opts: [['tight', 'Tett'], ['normal', 'Normal'], ['airy', 'Luftig']] },
+              { k: 'pad', name: 'Ramme', opts: [['snug', 'Smal'], ['normal', 'Normal'], ['roomy', 'Vid']] },
+            ] as const).map((row) => (
+              <div key={row.k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                <span style={{ fontSize: 11, color: C.soft, width: 74, flexShrink: 0 }}>{row.name}</span>
+                <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                  {row.opts.map(([v, l]) => {
+                    const on = place[row.k] === v;
+                    return (
+                      <span key={v} onClick={() => setPlace((p) => ({ ...p, [row.k]: v }))}
+                        style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '5px 0', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? accent : C.line}`, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 }}>{l}</span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>

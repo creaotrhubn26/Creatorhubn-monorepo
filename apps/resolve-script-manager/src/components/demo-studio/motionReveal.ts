@@ -11,7 +11,7 @@
  * matte nøyaktig, så preview == det render-pipelinen fanger.
  */
 
-import type { StingFormat } from './motionSting.js';
+import { layoutVars, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
 
 export type RevealKind = 'fade' | 'slideUp' | 'pop' | 'countUp' | 'barGrow' | 'wipe';
 
@@ -247,11 +247,12 @@ const GOLD = '#f5c451';
 
 export function buildMotionHtml(
   layout: MotionLayout,
-  opts: { accent?: string; format?: StingFormat; autoplay?: boolean } = {},
+  opts: { accent?: string; format?: StingFormat; autoplay?: boolean; place?: MotionLayoutOpts } = {},
 ): string {
   const accent = opts.accent && /^#[0-9a-fA-F]{3,8}$/.test(opts.accent) ? opts.accent : '#8b5cf6';
   const format = opts.format || '16:9';
   const autoplay = opts.autoplay !== false;
+  const L = layoutVars(opts.place);
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -259,25 +260,22 @@ html,body{height:100%}
 body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",system-ui,sans-serif;display:grid;place-items:center;overflow:hidden}
 #stage{aspect-ratio:${aspectFor(format)};width:100%;max-width:100%;max-height:100%;position:relative;border-radius:14px;overflow:hidden;color:#efecf9;
   background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), #0c0a16;
-  display:flex;flex-direction:column;justify-content:center;padding:6.5% 7%}
+  display:flex;flex-direction:column;justify-content:${L.align};padding:${L.pad}}
 [data-r]{opacity:0}
-.arc{display:flex;flex-direction:column;max-width:100%;min-width:0}
+.arc{display:flex;flex-direction:column;max-width:100%;min-width:0;gap:${L.gap}}
 [data-r],.arc>*{max-width:100%}
 .st-label,.st-sub,.q-text,.q-author,.cmp-title,.cmp-lab,.cmp-val{overflow:hidden;text-overflow:ellipsis}
 /* stat */
-.arc-stat{gap:2%}
 .st-label{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2;white-space:nowrap}
 .st-num{font-size:clamp(40px,13vw,104px);font-weight:800;letter-spacing:-.04em;line-height:.92;font-variant-numeric:tabular-nums;color:${GOLD};text-shadow:0 0 46px ${GOLD}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st-delta{align-self:flex-start;font-size:clamp(12px,2.6vw,17px);font-weight:700;color:#34d399;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4);padding:.25em .7em;border-radius:999px;margin-top:1%}
 .st-sub{font-size:clamp(12px,2.6vw,17px);color:#c9c3dd;margin-top:1.5%;max-width:22ch}
 /* quote */
-.arc-quote{gap:2.5%}
 .q-mark{font-size:clamp(48px,12vw,110px);line-height:.6;font-weight:800;color:${accent}}
 .q-text{font-size:clamp(17px,4vw,34px);font-weight:600;line-height:1.32;letter-spacing:-.01em;max-width:22ch;clip-path:inset(0 100% 0 0)}
 .q-author{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(10px,2.3vw,14px);letter-spacing:.12em;text-transform:uppercase;color:#a49dc2}
 .q-author .q-role{color:#726c92}
 /* compare */
-.arc-compare{gap:3%}
 .cmp-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2}
 .cmp-rows{display:flex;flex-direction:column;gap:3%}
 .cmp-row{display:flex;align-items:center;gap:3%}
