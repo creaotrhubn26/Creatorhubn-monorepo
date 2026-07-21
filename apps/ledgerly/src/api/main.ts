@@ -48,9 +48,12 @@ const app = createApiServer({
   errorMonitor,
   // Stripe-inntektssynk (kun LES). Inaktiv uten LEDGERLY_STRIPE_SECRET_KEY.
   stripe: new StripeApiClient(config.stripeSecretKey),
-  // Hodeløs cron-synk: token + org-bootstrap (prod-appen har ingen interaktiv login).
+  // Hodeløs cron-synk: token + org-bootstrap.
   cronSecret: config.cronSecret,
   bootstrapOrg: config.bootstrapOrg,
+  // Passordløs innlogging (magisk lenke) — erstatter dev-login i produksjon.
+  allowedEmails: config.allowedEmails,
+  appBaseUrl: config.appBaseUrl,
   // Utgående e-post for påminnelser. SMTP (Gmail) har forrang når konfigurert,
   // ellers Resend. Inaktiv uten legitimasjon + avsender.
   email:

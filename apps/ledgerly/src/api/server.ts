@@ -60,6 +60,7 @@ import { DomainError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
 import { issueToken, resolveAuthSecret, verifyToken, type AuthTokenPayload } from './auth.js';
+import { createMagicToken, isAllowedEmail, verifyMagicToken } from './magic-link.js';
 
 /** JSON-serialisering: bigint (øre) blir strenger — aldri flyttall over grensen. */
 function toJson(value: unknown): unknown {
@@ -110,6 +111,10 @@ export interface ApiDeps {
   bootstrapOrg?: BootstrapOrgConfig | undefined;
   /** Utgående e-post (betalingspåminnelser). Uten konfig er sending ærlig inaktiv. */
   email?: EmailPort | undefined;
+  /** Tillatte innloggings-e-poster (magisk lenke). Tom = magisk innlogging av. */
+  allowedEmails?: string[] | undefined;
+  /** Basis-URL for magiske lenker (f.eks. https://ledgerly-coss.onrender.com). */
+  appBaseUrl?: string | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -180,6 +185,68 @@ export function createApiServer(deps: ApiDeps): express.Express {
       const userId = await ensureUser(deps.db, body.email, body.displayName);
       const token = issueToken({ userId, email: body.email, issuedAt: Date.now() }, secret);
       res.json({ token, userId });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ── Auth (produksjon): passordløs magisk lenke ────────────────────────────
+  // Ber om innlogging: sender en signert, tidsbegrenset lenke til e-post PÅ
+  // tillatelseslisten. Svarer alltid 200 (lekker ikke hvem som er tillatt).
+  app.post('/api/auth/request-magic-link', async (req, res, next) => {
+    try {
+      const { email } = z.object({ email: z.string().email() }).parse(req.body);
+      const allow = deps.allowedEmails ?? [];
+      if (deps.email?.configured && allow.length > 0 && isAllowedEmail(email, allow)) {
+        const token = createMagicToken(email, secret);
+        const base = (deps.appBaseUrl ?? '').replace(/\/$/, '');
+        const link = `${base}/?magic=${encodeURIComponent(token)}`;
+        await deps.email
+          .send({
+            to: email,
+            subject: 'Logg inn i Ledgerly',
+            text:
+              `Klikk for å logge inn i Ledgerly (gyldig i 15 minutter):\n\n${link}\n\n` +
+              `Har du ikke bedt om dette, kan du se bort fra e-posten.`,
+          })
+          .catch(() => {}); // ikke lekk sende-status
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Verifiserer en magisk lenke → sikrer bruker + medlemskap i bootstrap-orgen →
+  // gir en sesjonstoken.
+  app.post('/api/auth/verify-magic-link', async (req, res, next) => {
+    try {
+      const { token } = z.object({ token: z.string().min(1) }).parse(req.body);
+      const email = verifyMagicToken(token, secret);
+      const allow = deps.allowedEmails ?? [];
+      if (!email || allow.length === 0 || !isAllowedEmail(email, allow)) {
+        res.status(401).json({ error: { code: 'INVALID_MAGIC', message: 'Ugyldig eller utløpt innloggingslenke.' } });
+        return;
+      }
+      const userId = await ensureUser(deps.db, email, email.split('@')[0] ?? email);
+      // Tillatte innloggingsbrukere blir eier av Creatorhubs bøker (bootstrap-org).
+      if (deps.bootstrapOrg) {
+        const org = await deps.db.query<{ id: string }>(
+          `SELECT id FROM organizations WHERE org_number = $1`,
+          [deps.bootstrapOrg.orgNumber],
+        );
+        const orgId = org.rows[0]?.id;
+        if (orgId) {
+          await deps.db.query(
+            `INSERT INTO memberships (id, organization_id, user_id, role, created_by)
+             VALUES ($1,$2,$3,'owner',$3)
+             ON CONFLICT (organization_id, user_id) DO NOTHING`,
+            [newId(), orgId, userId],
+          );
+        }
+      }
+      const session = issueToken({ userId, email, issuedAt: Date.now() }, secret);
+      res.json({ token: session, userId, email });
     } catch (err) {
       next(err);
     }

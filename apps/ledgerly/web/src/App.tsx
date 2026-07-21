@@ -62,6 +62,7 @@ const PRO_NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
+  const [verifyingMagic, setVerifyingMagic] = useState(false);
   const [orgId, setOrg] = useState<string | null>(getOrgId());
   const [screen, setScreen] = useState<Screen>({ name: 'overview' });
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -75,7 +76,40 @@ export default function App() {
     }
   };
 
-  if (!loggedIn) return <LoginScreen onDone={() => setLoggedIn(true)} />;
+  // Magisk innloggingslenke: ?magic=<token> i URL → verifiser → sesjon.
+  useEffect(() => {
+    if (loggedIn) return;
+    const magic = new URLSearchParams(window.location.search).get('magic');
+    if (!magic) return;
+    setVerifyingMagic(true);
+    api<{ token: string; email: string }>('POST', '/api/auth/verify-magic-link', { token: magic })
+      .then((res) => {
+        setToken(res.token);
+        setUserEmail(res.email);
+        setLoggedIn(true);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setVerifyingMagic(false);
+        window.history.replaceState({}, '', window.location.pathname);
+      });
+  }, [loggedIn]);
+
+  if (verifyingMagic) {
+    return (
+      <div className="auth-wrap">
+        <div className="auth-card">
+          <div className="brand">
+            <div className="logo" aria-hidden>L</div>
+            <div className="name">Ledgerly</div>
+          </div>
+          <p className="subtitle">Logger inn …</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loggedIn) return <LoginScreen />;
   if (!orgId)
     return (
       <OrgSetupScreen
@@ -182,9 +216,9 @@ export default function App() {
   );
 }
 
-function LoginScreen({ onDone }: { onDone: () => void }) {
+function LoginScreen() {
   const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
+  const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -192,13 +226,8 @@ function LoginScreen({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ token: string }>('POST', '/api/auth/dev-login', {
-        email,
-        displayName: name || email,
-      });
-      setToken(res.token);
-      setUserEmail(email);
-      onDone();
+      await api('POST', '/api/auth/request-magic-link', { email });
+      setSent(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -216,26 +245,30 @@ function LoginScreen({ onDone }: { onDone: () => void }) {
           <div className="name">Ledgerly</div>
         </div>
         <p className="subtitle">
-          Regnskapet ditt, forklart på vanlig norsk. Utviklingsinnlogging — produksjon vil bruke
-          BankID/OIDC med tofaktor.
+          Regnskapet ditt, forklart på vanlig norsk. Passordløs innlogging med engangslenke på e-post.
         </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (email && !busy) void submit();
-          }}
-        >
-          <label htmlFor="email">E-post</label>
-          <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <label htmlFor="name">Navn</label>
-          <input id="name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
-          {error && <div className="error">{error}</div>}
-          <div className="actions">
-            <button type="submit" className="primary" disabled={busy || !email}>
-              Logg inn
-            </button>
+        {sent ? (
+          <div className="notice">
+            Sjekk e-posten din — vi har sendt en innloggingslenke. Den er gyldig i 15 minutter.
+            Fikk du ingen? Sjekk at e-posten er registrert som bruker.
           </div>
-        </form>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (email && !busy) void submit();
+            }}
+          >
+            <label htmlFor="email">E-post</label>
+            <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            {error && <div className="error">{error}</div>}
+            <div className="actions">
+              <button type="submit" className="primary" disabled={busy || !email}>
+                {busy ? 'Sender …' : 'Send innloggingslenke'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import type { MaskinportenConfig } from './integrations/maskinporten.js';
 import type { BootstrapOrgConfig } from './ops/bootstrap.js';
+import { parseAllowlist } from './api/magic-link.js';
 import type { OrganizationForm, VatRegistrationStatus } from './rules/types.js';
 
 /**
@@ -52,6 +53,10 @@ export interface ProductConfig {
    * kun når org.nr + navn finnes i env. Udefinert = ingen bootstrap.
    */
   bootstrapOrg?: BootstrapOrgConfig | undefined;
+  /** Tillatte innloggings-e-poster (magisk lenke), fra LEDGERLY_ALLOWED_EMAILS. */
+  allowedEmails: string[];
+  /** Basis-URL for magiske lenker (LEDGERLY_APP_URL). */
+  appBaseUrl?: string | undefined;
 }
 
 const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
@@ -124,5 +129,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     smtpPassword: env.LEDGERLY_SMTP_PASSWORD,
     cronSecret: env.LEDGERLY_CRON_SECRET,
     bootstrapOrg: loadBootstrapOrg(env),
+    allowedEmails: parseAllowlist(env.LEDGERLY_ALLOWED_EMAILS),
+    appBaseUrl: env.LEDGERLY_APP_URL,
   };
 }
