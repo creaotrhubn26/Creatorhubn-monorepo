@@ -47,6 +47,9 @@ const app = createApiServer({
   errorMonitor,
   // Stripe-inntektssynk (kun LES). Inaktiv uten LEDGERLY_STRIPE_SECRET_KEY.
   stripe: new StripeApiClient(config.stripeSecretKey),
+  // Hodeløs cron-synk: token + org-bootstrap (prod-appen har ingen interaktiv login).
+  cronSecret: config.cronSecret,
+  bootstrapOrg: config.bootstrapOrg,
 });
 console.log(errorMonitor.active ? 'Sentry: feilovervåking aktiv' : 'Sentry: ikke aktiv (SENTRY_DSN mangler)');
 console.log(

@@ -31,6 +31,8 @@ import type { VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
 import type { StripeReadPort } from '../integrations/stripe.js';
 import { syncStripeRevenue } from '../integrations/stripe-sync.js';
+import { ensureBootstrapOrg, type BootstrapOrgConfig } from '../ops/bootstrap.js';
+import { timingSafeEqual } from 'node:crypto';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
@@ -99,6 +101,10 @@ export interface ApiDeps {
   errorMonitor?: ErrorMonitor | undefined;
   /** Stripe-lesing (kun LES) for inntektssynk. Uten nøkkel er synk ærlig inaktiv. */
   stripe?: StripeReadPort | undefined;
+  /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
+  cronSecret?: string | undefined;
+  /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
+  bootstrapOrg?: BootstrapOrgConfig | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -770,6 +776,54 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // Hodeløs Stripe-synk for cron/scheduler — token-autentisert (ingen sesjon).
+  // Sikrer at Creatorhubs org + system-bruker finnes, og synker betalte Stripe-
+  // fakturaer → kunde + utkast-faktura. Løser at prod-appen mangler interaktiv
+  // innlogging: automatiske jobber trenger ikke et menneske for å registrere
+  // betalende kunder. Utkast bokføres fortsatt ikke før mennesket utsteder.
+  app.post('/api/cron/stripe-sync', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      if (!secret || secret.length < 16) {
+        res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'LEDGERLY_CRON_SECRET mangler eller er for kort.' } });
+        return;
+      }
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      const a = Buffer.from(secret);
+      const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } });
+        return;
+      }
+      if (!deps.stripe || !deps.stripe.hasApiKey) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Stripe er ikke konfigurert (LEDGERLY_STRIPE_SECRET_KEY mangler).' } });
+        return;
+      }
+      if (!deps.bootstrapOrg) {
+        res.status(503).json({ error: { code: 'ORG_NOT_CONFIGURED', message: 'Bootstrap-org er ikke konfigurert (LEDGERLY_ORG_NUMBER/LEDGERLY_ORG_NAME mangler).' } });
+        return;
+      }
+      const q = z
+        .object({
+          since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          vatCode: z.string().min(1).max(4).optional(),
+          revenueAccount: z.string().regex(/^\d{4}$/).optional(),
+        })
+        .parse(req.body ?? {});
+      const boot = await ensureBootstrapOrg(deps.db, deps.bootstrapOrg);
+      const summary = await syncStripeRevenue(deps.db, deps.rules, deps.stripe, {
+        organizationId: boot.orgId,
+        actor: { userId: boot.userId, role: 'owner' },
+        ...(q.since ? { sinceUnix: Math.floor(new Date(q.since + 'T00:00:00Z').getTime() / 1000) } : {}),
+        ...(q.vatCode ? { vatCode: q.vatCode } : {}),
+        ...(q.revenueAccount ? { revenueAccount: q.revenueAccount } : {}),
+      });
+      res.json(toJson({ organizationId: boot.orgId, createdOrg: boot.createdOrg, ...summary }));
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // ── Rapporter ────────────────────────────────────────────────────────────
   const reportQuery = z.object({

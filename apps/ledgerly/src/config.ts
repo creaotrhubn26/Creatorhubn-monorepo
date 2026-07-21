@@ -1,4 +1,6 @@
 import type { MaskinportenConfig } from './integrations/maskinporten.js';
+import type { BootstrapOrgConfig } from './ops/bootstrap.js';
+import type { OrganizationForm, VatRegistrationStatus } from './rules/types.js';
 
 /**
  * Produktkonfigurasjon. Produktnavnet er BEVISST ikke hardkodet i domenemodellen —
@@ -31,6 +33,41 @@ export interface ProductConfig {
    * betalende kunder registreres i regnskapet. Udefinert = synk ikke aktiv.
    */
   stripeSecretKey?: string | undefined;
+  /**
+   * Hemmelig token for hodeløse cron-jobber (f.eks. Stripe-synk). Udefinert =
+   * cron-endepunktene svarer 503 (ikke konfigurert).
+   */
+  cronSecret?: string | undefined;
+  /**
+   * Organisasjonen hodeløse jobber opererer på (Creatorhubs egne bøker). Bygges
+   * kun når org.nr + navn finnes i env. Udefinert = ingen bootstrap.
+   */
+  bootstrapOrg?: BootstrapOrgConfig | undefined;
+}
+
+const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
+
+function loadBootstrapOrg(env: NodeJS.ProcessEnv): BootstrapOrgConfig | undefined {
+  const orgNumber = env.LEDGERLY_ORG_NUMBER;
+  const name = env.LEDGERLY_ORG_NAME;
+  if (!orgNumber || !name) return undefined;
+  const orgForm = (ORG_FORMS as string[]).includes(env.LEDGERLY_ORG_FORM ?? '')
+    ? (env.LEDGERLY_ORG_FORM as OrganizationForm)
+    : 'AS';
+  const vatStatus: VatRegistrationStatus =
+    env.LEDGERLY_ORG_VAT_STATUS === 'registered'
+      ? 'registered'
+      : env.LEDGERLY_ORG_VAT_STATUS === 'pending'
+        ? 'pending'
+        : 'not_registered';
+  return {
+    name,
+    orgNumber,
+    orgForm,
+    vatStatus,
+    systemUserEmail: env.LEDGERLY_SYSTEM_USER_EMAIL ?? 'system@ledgerly.local',
+    systemUserName: env.LEDGERLY_SYSTEM_USER_NAME ?? 'Ledgerly System (cron)',
+  };
 }
 
 /** Bygger Maskinporten-konfig fra env kun når ALLE påkrevde felt finnes. */
@@ -70,5 +107,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     sentryDsn: env.SENTRY_DSN,
     sentryRelease: env.SENTRY_RELEASE,
     stripeSecretKey: env.LEDGERLY_STRIPE_SECRET_KEY,
+    cronSecret: env.LEDGERLY_CRON_SECRET,
+    bootstrapOrg: loadBootstrapOrg(env),
   };
 }
