@@ -53,7 +53,11 @@ type SceneKind = 'cinematic' | 'device' | 'framed';
 interface Scene {
   id: string;
   kind: SceneKind;
+  /** For 'framed': skjerm-innholdet (bytt fritt — bilde/GIF her, mp4 i `video`).
+   *  For 'device'/'cinematic': stillbildet/posteren. */
   image: string;
+  /** Transparent enhets-ramme (kun 'framed'). Skjerm-media legges bak den. */
+  bezel?: string;
   /** Full-bleed bakgrunn bak en 'framed'-enhet. */
   bg?: string;
   /** Skjermopptak fra simulatoren (grensesnittet i bruk) — vises i
@@ -65,6 +69,8 @@ interface Scene {
   align?: 'left' | 'center' | 'right';
   /** Skjermbildet er liggende iPad (bredere enhet i scenen). */
   landscape?: boolean;
+  /** Vis pulserende «trykk her»-pin (kun der en pin kan trykkes, f.eks. kart). */
+  tapHint?: boolean;
 }
 
 // ── Manus: rekkefølgen du flyr gjennom ────────────────────────────────
@@ -80,7 +86,7 @@ const SCENES: Scene[] = [
     video: '/leadgrid/app/tour-kart.mp4',
     eyebrow: 'Kartet', title: 'Se hele territoriet.',
     body: 'Alle leads på kartet, farget etter temperatur. Trykk en pin, og hele historikken folder seg ut.',
-    align: 'left', landscape: true,
+    align: 'left', landscape: true, tapHint: true,
   },
   {
     id: 'leads', kind: 'device', image: '/leadgrid/app/leads.webp',
@@ -97,7 +103,11 @@ const SCENES: Scene[] = [
   {
     // Rett-på Apple-bezel (offisiell product bezel) m/ ekte watch-UI —
     // perspektiv-composite i foto så amatørmessig ut på store skjermer.
-    id: 'watch', kind: 'framed', image: '/leadgrid/scenes/watch-framed.webp',
+    // Byttbar skjerm-slot: `image` = det som vises inne i klokka (bilde/GIF),
+    // ev. `video: '/leadgrid/…​.mp4'` for animert skjerm. `bezel` = rammen.
+    id: 'watch', kind: 'framed',
+    image: '/leadgrid/scenes/watch-screen-default.webp',
+    bezel: '/leadgrid/scenes/watch-bezel.webp',
     bg: '/leadgrid/scenes/watch-bg.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg, rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
@@ -122,7 +132,7 @@ const SCENES: Scene[] = [
     video: '/leadgrid/app/tour-kjorebok.mp4',
     eyebrow: 'Leadgrid Go', title: 'Kjøreboka skriver seg selv.',
     body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport, for hele flåten.',
-    align: 'left', landscape: true,
+    align: 'left',
   },
   {
     id: 'team', kind: 'device', image: '/leadgrid/app/team.webp',
@@ -288,13 +298,17 @@ function SceneLayer({
       ) : scene.kind === 'framed' ? (
         <>
           {scene.bg && <CinematicVisual image={scene.bg} scale={scale} />}
-          <FramedVisual image={scene.image} y={y} narrow={narrow} align={scene.align} />
+          <FramedVisual
+            bezel={scene.bezel ?? scene.image} image={scene.image} video={scene.video}
+            y={y} narrow={narrow} align={scene.align}
+            reduced={reduced} active={sceneVisible}
+          />
         </>
       ) : (
         <DeviceVisual
           image={scene.image} video={scene.video} scale={scale} y={y}
           align={scene.align} landscape={scene.landscape} narrow={narrow}
-          reduced={reduced} active={sceneVisible}
+          reduced={reduced} active={sceneVisible} tapHint={scene.tapHint}
         />
       )}
       <Callout
@@ -328,13 +342,34 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
   );
 }
 
-// ── Rett-på enhet i offisiell Apple-bezel (f.eks. Apple Watch) ────────
+// ── Enhet med BYTTBAR skjerm-slot (f.eks. Apple Watch) ────────────────
+// `bezel` = transparent enhets-ramme (body/reim/crown m/ gjennomsiktig
+// skjerm). `image`/`video` = det som vises INNE i skjermen — bytt fritt
+// mellom bilde, GIF (bare .gif i `image`) eller mp4 (`video`).
+// Skjerm-rektangelet er målt mot watch-bezel.webp (560×880).
+const WATCH_SCREEN = { left: '9%', top: '20.8%', width: '82%', height: '61%' } as const;
+
 function FramedVisual({
-  image, y, narrow, align,
+  bezel, image, video, y, narrow, align, reduced, active,
 }: {
-  image: string; y: MotionValue<number>; narrow?: boolean;
-  align?: 'left' | 'center' | 'right';
+  bezel: string; image: string; video?: string;
+  y: MotionValue<number>; narrow?: boolean;
+  align?: 'left' | 'center' | 'right'; reduced?: boolean; active?: boolean;
 }) {
+  // Spill skjerm-videoen kun når scenen er synlig (samme mønster som DeviceVisual).
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const apply = () => {
+      if (active && !document.hidden) el.play().catch(() => {});
+      else if (!active) el.pause();
+    };
+    apply();
+    document.addEventListener('visibilitychange', apply);
+    return () => document.removeEventListener('visibilitychange', apply);
+  }, [active]);
+
   // Enheten står motsatt av tekst-siden; sentrert på telefon.
   const shiftX = narrow ? '0%' : align === 'right' ? '-24%' : align === 'left' ? '24%' : '0%';
   return (
@@ -353,25 +388,50 @@ function FramedVisual({
           filter: 'blur(34px)',
         }}
       />
-      <img
-        src={image} alt=""
-        style={{
-          position: 'relative', display: 'block', width: '100%', height: 'auto',
-          filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.65))',
-        }}
-      />
+      {/* container med enhets-forhold; skjerm-media bak, transparent ramme over */}
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '560 / 880' }}>
+        <div
+          style={{
+            position: 'absolute', ...WATCH_SCREEN, overflow: 'hidden',
+            borderRadius: '13%', background: '#0b0518',
+          }}
+        >
+          {video && !reduced ? (
+            <video
+              ref={videoRef} src={video} poster={image}
+              muted loop playsInline preload="metadata"
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <img
+              src={image} alt=""
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          )}
+        </div>
+        <img
+          src={bezel} alt="" aria-hidden
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            pointerEvents: 'none',
+            filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.65))',
+          }}
+        />
+      </div>
     </motion.div>
   );
 }
 
 // ── Ekte app-skjerm i 3D-tiltet iPad ──────────────────────────────────
 function DeviceVisual({
-  image, video, scale, y, align, landscape, narrow, reduced, active,
+  image, video, scale, y, align, landscape, narrow, reduced, active, tapHint,
 }: {
   image: string; video?: string;
   scale: MotionValue<number>; y: MotionValue<number>;
   align?: 'left' | 'center' | 'right'; landscape?: boolean;
   narrow?: boolean; reduced?: boolean; active?: boolean;
+  /** Vis pulserende «trykk her»-pin. Kun meningsfullt på kart-scenen. */
+  tapHint?: boolean;
 }) {
   // Spill videoen kun når scenen er synlig (fra SceneLayer). Sparer CPU/
   // batteri — 4 videoer dekodet samtidig var unødvendig (QA 2026-07-20).
@@ -450,19 +510,49 @@ function DeviceVisual({
             }}
           />
         )}
-        {/* pulsende «tap»-hint-pin */}
-        <motion.span
-          aria-hidden
-          style={{
-            position: 'absolute', left: '30%', top: '36%',
-            width: 18, height: 18, borderRadius: '50%',
-            background: P.magenta, boxShadow: `0 0 0 0 ${P.magenta}`,
-          }}
-          animate={reduced ? undefined : {
-            boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 22px ${P.magenta}00`],
-          }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
-        />
+        {/* «trykk her»-hint = Leadgrid-logoens kart-pin (visuell gjenkjenning).
+            Kun der en pin faktisk kan trykkes (kart). Tuppen peker på punktet. */}
+        {tapHint && (
+          <motion.div
+            aria-hidden
+            style={{
+              position: 'absolute', left: '30%', top: '36%',
+              transform: 'translate(-50%, -100%)',
+            }}
+            animate={reduced ? undefined : { y: [0, -6, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            {/* pulserende ring i pin-tuppen */}
+            <motion.span
+              style={{
+                position: 'absolute', left: '50%', bottom: 0,
+                width: 12, height: 12, borderRadius: '50%',
+                transform: 'translate(-50%, 50%)', background: P.magenta,
+              }}
+              animate={reduced ? undefined : {
+                boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 20px ${P.magenta}00`],
+              }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+            />
+            {/* hvit logo-pin */}
+            <svg
+              width="30" height="42" viewBox="0 0 24 34"
+              style={{ display: 'block', filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.55))' }}
+            >
+              <defs>
+                <linearGradient id="lgPin" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="#FFFFFF" />
+                  <stop offset="1" stopColor="#D8CCFF" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M12 0C5.373 0 0 5.373 0 12c0 9 12 22 12 22s12-13 12-22C24 5.373 18.627 0 12 0z"
+                fill="url(#lgPin)"
+              />
+              <circle cx="12" cy="12" r="4.6" fill="#1a0535" />
+            </svg>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );
