@@ -10,6 +10,7 @@
  */
 
 import { createOrganization, ensureUser } from '../orgs/service.js';
+import { ensureProductDimensions } from './products.js';
 import type { OrganizationForm, VatRegistrationStatus } from '../rules/types.js';
 import type { Db } from '../db/pool.js';
 
@@ -33,12 +34,16 @@ export async function ensureBootstrapOrg(
   config: BootstrapOrgConfig,
 ): Promise<BootstrapResult> {
   const userId = await ensureUser(db, config.systemUserEmail, config.systemUserName);
+  const actor = { userId, role: 'owner' };
   const existing = await db.query<{ id: string }>(
     `SELECT id FROM organizations WHERE org_number = $1`,
     [config.orgNumber],
   );
   if (existing.rows[0]) {
-    return { orgId: existing.rows[0].id, userId, createdOrg: false };
+    const orgId = existing.rows[0].id;
+    // Produktlinjene skal alltid finnes, også for kostnads-tagging (uavhengig av Stripe).
+    await ensureProductDimensions(db, orgId, actor);
+    return { orgId, userId, createdOrg: false };
   }
   const org = await createOrganization(db, {
     name: config.name,
@@ -47,5 +52,6 @@ export async function ensureBootstrapOrg(
     orgNumber: config.orgNumber,
     createdByUserId: userId,
   });
+  await ensureProductDimensions(db, org.id, actor);
   return { orgId: org.id, userId, createdOrg: true };
 }

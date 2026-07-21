@@ -96,4 +96,15 @@ describe('ensureBootstrapOrg', () => {
     expect(b.orgId).toBe(a.orgId);
     expect(b.userId).toBe(a.userId);
   });
+
+  it('seeder produktdimensjonene (tilgjengelig for kostnads-tagging uten Stripe-synk)', async () => {
+    const { orgId } = await ensureBootstrapOrg(db, bootstrapOrg);
+    const dims = await db.query<{ code: string }>(
+      `SELECT code FROM projects WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(dims.rows.map((r) => r.code)).toEqual(
+      expect.arrayContaining(['CREATORHUB', 'ROLEROOM', 'LEADGRID']),
+    );
+  });
 });
