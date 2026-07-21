@@ -290,6 +290,11 @@ struct SuperAdminHubView: View {
                         } label: {
                             Label("Outreach-templates", systemImage: "text.bubble.fill")
                         }
+                        NavigationLink {
+                            LeadgridPricingConfigEditorView(api: api)
+                        } label: {
+                            Label("Leadgrid-priser", systemImage: "creditcard.fill")
+                        }
                     }
 
                     // Fase 25: Ad-tech-stack
