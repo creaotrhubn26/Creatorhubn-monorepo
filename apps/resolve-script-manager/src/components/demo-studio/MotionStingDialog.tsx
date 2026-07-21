@@ -6,7 +6,7 @@
  * funnel). Smart forslag som default, men fritt overstyrbart. Alle er
  * deterministisk seekbare (scrubber) og frame-capture-bare mot Resolve.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildMotionStingHtml, stingFromValues, buildStingCaptureSpec, type StingFormat } from './motionSting.js';
 import {
@@ -26,9 +26,11 @@ const ARCS: { id: Archetype; label: string; hint: string }[] = [
 const fmtNb = (n: number) => new Intl.NumberFormat('nb-NO').format(n);
 
 export default function MotionStingDialog(
-  { values, order, templateId = '', brandName = 'Merkevare', accent = '#8b5cf6', mark, caption, eyebrow, onClose }:
+  { values, fields, order, templateId = '', brandName = 'Merkevare', accent = '#8b5cf6', mark, caption, eyebrow, onValueChange, onClose }:
   {
     values: Record<string, string>;
+    /** Redigerbare felt (nøkkel + etikett) — samme felt som selve malen. */
+    fields?: { key: string; label: string }[];
     order?: string[];
     templateId?: string;
     brandName?: string;
@@ -36,17 +38,30 @@ export default function MotionStingDialog(
     mark?: string;
     caption?: string;
     eyebrow?: string;
+    /** Skriver endringen TILBAKE til scenen → still + motion holdes i synk. */
+    onValueChange?: (key: string, value: string) => void;
     onClose?: () => void;
   },
 ) {
   const [format, setFormat] = useState<StingFormat>('16:9');
+  // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
+  const [edit, setEdit] = useState<Record<string, string>>(() => ({ ...values }));
+  const setField = (k: string, v: string) => { setEdit((e) => ({ ...e, [k]: v })); onValueChange?.(k, v); };
+  // Debouncet kopi som mater preview-en → animasjonen replayer først når du
+  // stopper å skrive (input er umiddelbar, forhåndsvisningen roer seg).
+  const [liveEdit, setLiveEdit] = useState<Record<string, string>>(edit);
+  useEffect(() => { const h = setTimeout(() => setLiveEdit(edit), 280); return () => clearTimeout(h); }, [edit]);
+  const editOrder = fields && fields.length ? fields.map((f) => f.key) : order;
+  const editFields = fields && fields.length
+    ? fields
+    : (editOrder || Object.keys(edit)).map((k) => ({ key: k, label: k }));
   const [arch, setArch] = useState<Archetype>(() => pickArchetype(templateId, values));
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Bygg HTML + total + readout for valgt arketype.
   const built = useMemo(() => {
     if (arch === 'sting') {
-      const d = stingFromValues(values, { brandName, accent, mark, caption, eyebrow, order });
+      const d = stingFromValues(liveEdit, { brandName, accent, mark, caption, eyebrow, order: editOrder });
       const spec = buildStingCaptureSpec({ ...d, format });
       const readout = [
         { k: 'Hero', v: `${fmtNb(d.hero.value)}${d.hero.suffix ? ` ${d.hero.suffix}` : ''}`, s: d.hero.label },
@@ -56,7 +71,7 @@ export default function MotionStingDialog(
       return { html: buildMotionStingHtml({ ...d, format }), total: spec.total, readout, dataCount: d.metrics.length + (d.hero.value ? 1 : 0) };
     }
     if (arch === 'stat') {
-      const d = statFrom(values, order);
+      const d = statFrom(liveEdit, editOrder);
       const lay = statLayout(d);
       const readout = [
         { k: 'Tall', v: `${d.prefix || ''}${fmtNb(d.value)}${d.suffix ? ` ${d.suffix}` : ''}`, s: d.label },
@@ -66,7 +81,7 @@ export default function MotionStingDialog(
       return { html: buildMotionHtml(lay, { accent, format }), total: lay.total, readout, dataCount: d.value ? 1 : 0 };
     }
     if (arch === 'quote') {
-      const d = quoteFrom(values, order);
+      const d = quoteFrom(liveEdit, editOrder);
       const lay = quoteLayout(d);
       const readout = [
         { k: 'Sitat', v: d.quote || '—', s: '' },
@@ -74,14 +89,14 @@ export default function MotionStingDialog(
       ];
       return { html: buildMotionHtml(lay, { accent, format }), total: lay.total, readout, dataCount: d.quote ? 1 : 0 };
     }
-    const d = compareFrom(values, order);
+    const d = compareFrom(liveEdit, editOrder);
     const lay = compareLayout(d);
     const readout = [
       ...(d.title ? [{ k: 'Tittel', v: d.title, s: '' }] : []),
       ...d.items.map((it) => ({ k: 'Rad', v: it.display || fmtNb(it.value), s: it.label })),
     ];
     return { html: buildMotionHtml(lay, { accent, format }), total: lay.total, readout, dataCount: d.items.length };
-  }, [arch, values, order, brandName, accent, mark, caption, eyebrow, format]);
+  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format]);
 
   const [w, h] = format === '9:16' ? [1080, 1920] : format === '1:1' ? [1080, 1080] : [1920, 1080];
   const frames = Math.max(1, Math.round((built.total / 1000) * 30) + 1);
@@ -141,14 +156,25 @@ export default function MotionStingDialog(
           </div>
 
           <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
-            <div style={lbl}>Fra denne scenen</div>
-            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: '#c4d0e4' }}>
+            <div style={lbl}>Rediger data <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: C.soft }}>· oppdaterer scenen live</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {editFields.map((f) => (
+                <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10.5, color: C.soft }}>{f.label}</span>
+                  <input value={edit[f.key] ?? ''} onChange={(e) => setField(f.key, e.target.value)}
+                    style={{ background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 7, padding: '7px 9px', color: C.ink, fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }} />
+                </label>
+              ))}
+              {editFields.length === 0 && <div style={{ fontSize: 12, color: C.soft }}>Scenen har ingen felt å redigere.</div>}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 11, color: C.soft, lineHeight: 1.65 }}>
+              <span style={{ fontWeight: 600, color: '#c4d0e4' }}>Tolkes som:</span>{' '}
               {built.readout.map((r, i) => (
-                <div key={i}><span style={{ color: C.soft }}>{r.k}:</span> {r.v.length > 46 ? r.v.slice(0, 46) + '…' : r.v}{r.s ? <span style={{ color: C.soft }}> · {r.s}</span> : null}</div>
+                <span key={i}>{i > 0 ? ' · ' : ''}<span style={{ color: C.soft }}>{r.k}</span> {r.v.length > 24 ? r.v.slice(0, 24) + '…' : r.v}</span>
               ))}
             </div>
             {built.dataCount === 0 && (
-              <div style={{ marginTop: 10, fontSize: 12, color: '#f0b429', lineHeight: 1.5 }}>Denne arketypen fant ingen egnede felt i scenen — prøv en annen, eller legg til data.</div>
+              <div style={{ marginTop: 10, fontSize: 12, color: '#f0b429', lineHeight: 1.5 }}>Denne arketypen fant ingen egnede felt — prøv en annen, eller fyll inn tall/tekst over.</div>
             )}
           </div>
 
