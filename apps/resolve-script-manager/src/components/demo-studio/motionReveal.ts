@@ -200,7 +200,7 @@ export function quoteFrom(values: Record<string, string>, order?: string[]): Quo
 
 export function compareFrom(values: Record<string, string>, order?: string[]): CompareData {
   const fs = fields(values, order);
-  const items = fs.filter((f) => f.value != null).slice(0, 4).map((f) => ({ label: f.label, value: f.value!, display: f.raw }));
+  const items = fs.filter((f) => f.value != null).slice(0, 4).map((f) => ({ label: f.label, value: f.value!, display: f.raw.length <= 8 ? f.raw : fmt(f.value!) }));
   const title = fs.find((f) => f.value == null && f.len <= 48)?.raw;
   return { title, items };
 }
@@ -261,11 +261,13 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
   background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), #0c0a16;
   display:flex;flex-direction:column;justify-content:center;padding:6.5% 7%}
 [data-r]{opacity:0}
-.arc{display:flex;flex-direction:column}
+.arc{display:flex;flex-direction:column;max-width:100%;min-width:0}
+[data-r],.arc>*{max-width:100%}
+.st-label,.st-sub,.q-text,.q-author,.cmp-title,.cmp-lab,.cmp-val{overflow:hidden;text-overflow:ellipsis}
 /* stat */
 .arc-stat{gap:2%}
-.st-label{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2}
-.st-num{font-size:clamp(40px,13vw,104px);font-weight:800;letter-spacing:-.04em;line-height:.92;font-variant-numeric:tabular-nums;color:${GOLD};text-shadow:0 0 46px ${GOLD}44}
+.st-label{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2;white-space:nowrap}
+.st-num{font-size:clamp(40px,13vw,104px);font-weight:800;letter-spacing:-.04em;line-height:.92;font-variant-numeric:tabular-nums;color:${GOLD};text-shadow:0 0 46px ${GOLD}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st-delta{align-self:flex-start;font-size:clamp(12px,2.6vw,17px);font-weight:700;color:#34d399;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4);padding:.25em .7em;border-radius:999px;margin-top:1%}
 .st-sub{font-size:clamp(12px,2.6vw,17px);color:#c9c3dd;margin-top:1.5%;max-width:22ch}
 /* quote */
@@ -283,7 +285,7 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .cmp-track{flex:1;height:clamp(18px,4.6vw,32px);border-radius:.3em;background:rgba(255,255,255,.05);overflow:hidden}
 .cmp-bar{display:block;height:100%;width:0;border-radius:.3em;background:linear-gradient(90deg,#6d28d9,${accent})}
 .cmp-win .cmp-bar{background:linear-gradient(90deg,${accent},${GOLD})}
-.cmp-val{flex:none;min-width:3.5em;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(12px,2.8vw,18px)}
+.cmp-val{flex:none;min-width:3.5em;max-width:6em;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(12px,2.8vw,18px);white-space:nowrap}
 .cmp-winner{align-self:flex-start;font-size:clamp(11px,2.5vw,15px);font-weight:700;color:${GOLD};margin-top:1%}
 #scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${GOLD});box-shadow:0 0 12px ${GOLD}88}
 </style></head><body>
