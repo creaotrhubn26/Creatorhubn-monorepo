@@ -11,7 +11,10 @@
  * matte nøyaktig, så preview == det render-pipelinen fanger.
  */
 
-import { layoutVars, spacingCss, themeColors, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
+import {
+  layoutVars, spacingCss, themeColors, buildMotionStingHtml, stingFromValues, deriveStingTimeline,
+  type StingFormat, type MotionLayoutOpts,
+} from './motionSting.js';
 
 export type RevealKind = 'fade' | 'slideUp' | 'pop' | 'countUp' | 'barGrow' | 'wipe';
 
@@ -391,4 +394,36 @@ ${spacingCss(opts.place?.spacing)}
 })();
 </script>
 </body></html>`;
+}
+
+/* ================================================================== */
+/* Multi-scene: bygg motion-HTML for én scene (auto-valgt arketype)     */
+/* ================================================================== */
+
+export interface SceneMotion { html: string; durationSec: number; archetype: Archetype }
+
+/**
+ * Auto-utled og bygg motion-HTML for en scenes felt-verdier. Brukes av «Send
+ * ALLE som Motion» → hver scene får sin egen arketype (pickArchetype) og
+ * rendres/plasseres på tidslinjen ved scene-tid. Ren + testbar.
+ */
+export function motionHtmlForScene(
+  values: Record<string, string>,
+  opts: { templateId?: string; brandName?: string; accent?: string; order?: string[]; format?: StingFormat; theme?: 'dark' | 'light' } = {},
+): SceneMotion {
+  const arch = pickArchetype(opts.templateId || '', values);
+  const accent = opts.accent || '#8b5cf6';
+  const brandName = opts.brandName || 'Merkevare';
+  const place: MotionLayoutOpts = { theme: opts.theme };
+  if (arch === 'sting') {
+    const d = stingFromValues(values, { brandName, accent, order: opts.order });
+    return { html: buildMotionStingHtml({ ...d, format: opts.format }, { layout: place }), durationSec: deriveStingTimeline(d).total / 1000, archetype: arch };
+  }
+  const brand = { name: brandName, mark: brandName.slice(0, 1).toUpperCase() };
+  const lay =
+    arch === 'stat' ? statLayout(statFrom(values, opts.order))
+      : arch === 'quote' ? quoteLayout(quoteFrom(values, opts.order))
+        : arch === 'compare' ? compareLayout(compareFrom(values, opts.order))
+          : listLayout(listFrom(values, opts.order));
+  return { html: buildMotionHtml(lay, { accent, format: opts.format, brand, place }), durationSec: lay.total / 1000, archetype: arch };
 }
