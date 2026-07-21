@@ -513,8 +513,8 @@ export const PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS: Record<ProducerAccountAccess
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS: Record<ProducerAccountAccessStatus, string> = {
-  not_started: 'Ikke startet',
-  client_action: 'Venter på klient',
+  not_started: 'Ikke begynt ennå',
+  client_action: 'Venter på kunden',
   invite_sent: 'Invitasjon sendt',
   connected: 'Koblet',
   revoked: 'Avsluttet',

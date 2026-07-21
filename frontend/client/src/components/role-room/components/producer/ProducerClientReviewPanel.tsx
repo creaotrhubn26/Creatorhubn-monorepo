@@ -483,7 +483,7 @@ function buildReviewClientInviteEmailSubject(
   }
   const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
   if (contentLogicMomentKind) {
-    return `${projectName} · Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
+    return `${projectName} · Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
   }
   return `${projectName} · Klientreview · ${review.title}`;
 }
@@ -1700,7 +1700,7 @@ export default function ProducerClientReviewPanel({
     const eyebrow = accountAccessPlatforms.length > 0
       ? `[Kontotilgang · ${accountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' / ')}]`
       : contentLogicMomentKind
-      ? `[Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
+      ? `[Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
       : `[${getProducerReviewTypeLabel(review.review_type)}]`;
     const actionLabel = getReviewClientInviteActionLabel(contentLogicMomentKind, review);
     return [
@@ -2667,7 +2667,7 @@ export default function ProducerClientReviewPanel({
                           <Stack direction="row" spacing={0.65} flexWrap="wrap" sx={{ mb: 0.45 }}>
                             <Chip
                               size="small"
-                              label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                              label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                               sx={{
                                 bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
                                 color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
@@ -2749,7 +2749,7 @@ export default function ProducerClientReviewPanel({
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                             >
                               {isContentLogicMoment
-                                ? 'Åpne Content Logic'
+                                ? 'Åpne Innholdsplan'
                                 : isAccountAccessMoment
                                   ? 'Åpne kontotilgang'
                                   : 'Åpne brief og materiale'}
@@ -3065,7 +3065,7 @@ export default function ProducerClientReviewPanel({
               ? getAgreementSignatureTone(linkedAgreement.google_signature)
               : null;
             const reviewMetaLine = [
-              isContentLogicReview ? 'Content Logic' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
+              isContentLogicReview ? 'Innholdsplan' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
               isAccountAccessReview ? `Plattform: ${linkedAccountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' · ')}` : '',
               isContentLogicReview ? `Fokus: ${contentLogicMomentLabel}` : entityLabel ? `Mål: ${entityLabel}` : '',
               review.due_at ? `Frist: ${new Date(review.due_at).toLocaleString('nb-NO')}` : '',
@@ -3123,7 +3123,7 @@ export default function ProducerClientReviewPanel({
                       <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
                         <Chip
                           size="small"
-                          label="Content Logic"
+                          label="Innholdsplan"
                           sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
                         />
                         <Chip
@@ -3392,7 +3392,7 @@ export default function ProducerClientReviewPanel({
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
                           {isContentLogicReview
-                            ? 'Åpne Content Logic'
+                            ? 'Åpne Innholdsplan'
                             : isAccountAccessReview
                               ? 'Åpne kontotilgang'
                             : isDeliveryManagedReview

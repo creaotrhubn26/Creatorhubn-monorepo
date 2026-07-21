@@ -2772,7 +2772,7 @@ export default function ProjectEconomyHub({
                     }}
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 800, mb: 0.8 }}>
-                      Statusdriver akkurat nå
+                      Det viktigste akkurat nå
                     </Typography>
                     {statusTouchpoint ? (
                       <Stack spacing={0.75}>
@@ -4094,7 +4094,7 @@ export default function ProjectEconomyHub({
               >
                 <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(15,23,42,0.66)' }}>
                   <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-                    Statusdriver akkurat nå
+                    Det viktigste akkurat nå
                   </Typography>
                   {statusTouchpoint ? (
                     <Stack spacing={1}>

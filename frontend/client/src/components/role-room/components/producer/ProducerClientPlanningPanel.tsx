@@ -541,7 +541,7 @@ export default function ProducerClientPlanningPanel({
           return;
         }
         console.error('[ProducerClientPlanningPanel] Failed to load client grounding', error);
-        setClientWorkspaceError('Kunne ikke hente klientgrunnlag og story logic.');
+        setClientWorkspaceError('Kunne ikke hente klientgrunnlag og den røde tråden.');
       } finally {
         if (!cancelled) {
           setClientWorkspaceLoading(false);
@@ -864,7 +864,7 @@ export default function ProducerClientPlanningPanel({
                   disabled={!storyLogicData}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Fyll fra story logic
+                  Fyll fra den røde tråden
                 </Button>
                 <Tooltip
                   title={
@@ -915,7 +915,7 @@ export default function ProducerClientPlanningPanel({
           </Typography>
         ) : null}
         {clientWorkspaceError ? <Alert severity="warning">{clientWorkspaceError}</Alert> : null}
-        {clientWorkspaceLoading ? <Alert severity="info">Henter klientgrunnlag og story logic.</Alert> : null}
+        {clientWorkspaceLoading ? <Alert severity="info">Henter klientgrunnlag og den røde tråden.</Alert> : null}
         {reviewsError ? <Alert severity="warning">{reviewsError}</Alert> : null}
         {reviewsLoading ? <Alert severity="info">Oppdaterer klientpunkter og godkjenningsstatus.</Alert> : null}
 
@@ -933,7 +933,7 @@ export default function ProducerClientPlanningPanel({
                 Arbeidsgrunnlag fra klient
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.86rem' }}>
-                Planen kan fylles direkte fra brief, materialer og story logic, slik at retning, idé og aktivering ikke må skrives opp på nytt.
+                Planen kan fylles direkte fra brief, materialer og den røde tråden, slik at retning, idé og aktivering ikke må skrives opp på nytt.
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
@@ -949,7 +949,7 @@ export default function ProducerClientPlanningPanel({
               />
               <Chip
                 size="small"
-                label={storyLogicSnapshot.length > 0 ? `Story logic ${storyLogicSnapshot.length} signaler` : 'Story logic ikke fylt ut'}
+                label={storyLogicSnapshot.length > 0 ? `Den røde tråden ${storyLogicSnapshot.length} signaler` : 'Den røde tråden ikke fylt ut'}
                 sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
               />
               {onOpenMedia ? (
@@ -1024,7 +1024,7 @@ export default function ProducerClientPlanningPanel({
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                Story logic som planmotor
+                Den røde tråden
               </Typography>
               {storyLogicSnapshot.length > 0 ? (
                 <Stack spacing={0.65}>
@@ -1041,7 +1041,7 @@ export default function ProducerClientPlanningPanel({
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-                  Story logic er ikke fylt ut ennå. Du kan fortsatt fylle planen direkte fra klientbrief og materiale.
+                  Den røde tråden er ikke fylt ut ennå. Du kan fortsatt fylle planen direkte fra klientbrief og materiale.
                 </Typography>
               )}
             </Box>
@@ -1121,7 +1121,7 @@ export default function ProducerClientPlanningPanel({
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Klientflyt og publiseringspunkter"
+          title="Kundeflyt og innlegg"
           summary="Faseplan og content-kalender som én samlet klientflyt"
         >
           <Stack spacing={1}>
@@ -1151,7 +1151,7 @@ export default function ProducerClientPlanningPanel({
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.4 }}>
                           <Chip
                             size="small"
-                            label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                            label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                             sx={{
                               bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
                               color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
@@ -1190,7 +1190,7 @@ export default function ProducerClientPlanningPanel({
                         </Typography>
                         {isContentLogicMoment ? (
                           <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.3 }}>
-                            Content Logic-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
+                            Innholdsplan-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
                           </Typography>
                         ) : null}
                       </Box>
@@ -1249,7 +1249,7 @@ export default function ProducerClientPlanningPanel({
             },
           }}
         >
-          <Tab value="activation" label="Content Logic" />
+          <Tab value="activation" label="Innholdsplan" />
           <Tab value="phase_plan" label="Faseplan" />
           <Tab value="calendar" label="Content-kalender" />
           <Tab value="brand" label="Merkevareguide" />
@@ -1259,7 +1259,7 @@ export default function ProducerClientPlanningPanel({
         {activeTab === 'activation' ? (
           <Stack spacing={1.2}>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-              `Content Logic` er innholdsprodusentens og klientens arbeidsmodus. Den gjør mål, hook, budskap, bevis og CTA konkrete uten å endre produksjonsteamets separate `Story Logic`.
+              `Innholdsplan` er innholdsprodusentens og klientens arbeidsmodus. Den gjør mål, hook, budskap, bevis og CTA konkrete uten å endre produksjonsteamets separate `Story Logic`.
             </Typography>
 
             <ToggleButtonGroup
@@ -1291,7 +1291,7 @@ export default function ProducerClientPlanningPanel({
                 },
               }}
             >
-              <ToggleButton value="content_logic">Content Logic</ToggleButton>
+              <ToggleButton value="content_logic">Innholdsplan</ToggleButton>
               <ToggleButton value="activation_plan">Planramme</ToggleButton>
             </ToggleButtonGroup>
 
@@ -1440,7 +1440,7 @@ export default function ProducerClientPlanningPanel({
                     </Stack>
                   ) : (
                     <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-                      Story Logic er ikke fylt ut ennå. Det stopper ikke Content Logic for klient og innholdsprodusent.
+                      Story Logic er ikke fylt ut ennå. Det stopper ikke Innholdsplan for klient og innholdsprodusent.
                     </Typography>
                   )}
                 </Box>
