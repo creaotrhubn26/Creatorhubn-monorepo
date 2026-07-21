@@ -23,6 +23,7 @@ import CampaignDirectorView from './CampaignDirectorView';
 import { materializePost } from './campaignDirector';
 import SystemArchDialog from './SystemArchDialog';
 import MotionStingDialog from './MotionStingDialog';
+import { motionHtmlForScene } from './motionReveal.js';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -1448,6 +1449,40 @@ export function InfographicStudioView(
     } finally { setBusy(false); setShowMotion(false); }
   };
 
+  // Multi-scene: rendrer ALLE scener som Motion (hver auto-utledet arketype) og
+  // plasserer dem på overlay-sporet ved hver scenes atSec — én sammenhengende
+  // data-film. Gjenbruker render_infographic + place_overlay (som scene-render).
+  const sendAllMotionToResolve = async () => {
+    if (busy) return;
+    setBusy(true); setNeedsPlaywright(false); cancelRef.current = false;
+    setRenderProgress({ done: 0, total: scenes.length });
+    try {
+      const st = await playwrightStatus().catch(() => null);
+      if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å rendre.'); return; }
+      const overlays: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < scenes.length; i++) {
+        if (cancelRef.current) { setMsg(`Avbrutt etter ${i} av ${scenes.length} scener.`); return; }
+        const sc = scenes[i];
+        const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+        const m = motionHtmlForScene(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key), format: '16:9' });
+        setRenderProgress({ done: i, total: scenes.length });
+        setMsg(`Rendrer motion ${i + 1}/${scenes.length} (${m.archetype}) …`);
+        const out = await invoke<string>('render_infographic', { html: m.html, durationSec: m.durationSec, name: `motion-${sc.id}-${Date.now()}`, fps, scale, exitSec: 0, frame: '1920x1080', easing: 'linear', entrance: 'none' });
+        overlays.push({ path: out, atSec: sc.atSec, durationSec: m.durationSec, track: overlayTrack, posX: 50, posY: 50, fps });
+      }
+      setRenderProgress({ done: scenes.length, total: scenes.length });
+      setMsg('Legger alle motion-klipp i Resolve …');
+      const summary = await executeScript('place_overlay', { overlays });
+      const errEvt = summary.events.find((e) => e.type === 'error');
+      if (!summary.succeeded || errEvt) { setMsg('Rendret, men ikke plassert: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?')); if (overlays[0]?.path) void systemOpen(String(overlays[0].path)).catch(() => {}); }
+      else setMsg(`${scenes.length} motion-klipp sendt til Resolve (ProRes 4444, overlay-spor til riktig tid).`);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Motion-render: ' + m + ' — krever Playwright-runtime.'); }
+      else setMsg('Motion-render feilet: ' + m);
+    } finally { setBusy(false); setRenderProgress(null); }
+  };
+
   // Eksporter GJELDENDE scene til en frittstående fil (utenfor Resolve):
   // ProRes/MP4/GIF/APNG/PNG — for social, web, e-post, slides.
   const exportFile = async () => {
@@ -1647,7 +1682,10 @@ export function InfographicStudioView(
             <CloseIcon style={{ fontSize: 15 }} /> Avbryt{renderProgress ? ` (${renderProgress.done}/${renderProgress.total})` : ''}
           </button>
         ) : (
-          <button style={{ ...topBtn, background: D.accent, border: 'none' }} onClick={() => void sendToResolve()}><AutoAwesomeIcon style={{ fontSize: 16 }} /> Send to Resolve</button>
+          <>
+            <button style={topBtn} onClick={() => void sendAllMotionToResolve()} title="Rendrer ALLE scener som animert Motion (auto-valgt arketype per scene) og plasserer dem på overlay-sporet ved riktig tid"><AnimationIcon style={{ fontSize: 16 }} /> Alle → Motion</button>
+            <button style={{ ...topBtn, background: D.accent, border: 'none' }} onClick={() => void sendToResolve()}><AutoAwesomeIcon style={{ fontSize: 16 }} /> Send to Resolve</button>
+          </>
         )}
       </div>
 

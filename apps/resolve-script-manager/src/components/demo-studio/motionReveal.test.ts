@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   motionStateAt, statLayout, quoteLayout, compareLayout, listLayout,
-  statFrom, quoteFrom, compareFrom, listFrom, pickArchetype, buildMotionHtml,
+  statFrom, quoteFrom, compareFrom, listFrom, pickArchetype, buildMotionHtml, motionHtmlForScene,
 } from './motionReveal.js';
 
 describe('motionStateAt — deterministisk reveal (seekbar)', () => {
@@ -93,5 +93,20 @@ describe('LIST/STEPS-arketype', () => {
   it('pickArchetype: shot-liste (tall inne i tekst) → list, ikke sting', () => {
     expect(pickArchetype('x', { scene: 'Scene 12 — Audition', s1: 'Statisk | 24mm', s2: 'Dolly inn | 35mm', s3: 'Nær — reaksjon', s4: 'Macro | 100mm' })).toBe('list');
     expect(pickArchetype('rr-call-sheet', {})).toBe('list');
+  });
+});
+
+describe('motionHtmlForScene — multi-scene auto-bygg', () => {
+  it('numerisk funnel → sting-HTML m/ varighet', () => {
+    const m = motionHtmlForScene({ doors: '1240', deals: '47', pipe: '312000 kr' }, { brandName: 'Leadgrid', accent: '#8b5cf6', order: ['doors', 'deals', 'pipe'] });
+    expect(m.archetype).toBe('sting');
+    expect(m.html.startsWith('<!doctype')).toBe(true);
+    expect(m.durationSec).toBeGreaterThan(0);
+  });
+  it('tekst-liste → list + render-kontrakt (setProgress) + brand', () => {
+    const m = motionHtmlForScene({ scene: 'Scene 12', s1: 'Vidvinkel', s2: 'Nær', s3: 'Insert' }, { templateId: 'rr-shot', brandName: 'X', order: ['scene', 's1', 's2', 's3'] });
+    expect(m.archetype).toBe('list');
+    expect(m.html).toContain('window.setProgress');
+    expect(m.html).toContain('data-r="__brand"');
   });
 });
