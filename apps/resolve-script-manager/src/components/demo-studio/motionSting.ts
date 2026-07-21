@@ -251,6 +251,15 @@ function esc(s: string): string {
 
 const HERO_GOLD = '#f5c451';
 
+export type MotionTheme = 'dark' | 'light';
+export interface ThemeColors { ground: string; grad: string; ink: string; soft: string; faint: string; hero: string; chip: string; barTop: string }
+/** Tema-palett. Mørk = dagens kinematiske brett; lys = lyst brett for lyse merkevarer. */
+export function themeColors(theme: MotionTheme | undefined): ThemeColors {
+  return theme === 'light'
+    ? { ground: '#f4f1fb', grad: '#0c0a16', ink: '#241d42', soft: '#6b6480', faint: '#938da8', hero: '#a9781a', chip: '#fff', barTop: 'rgba(30,27,46,.06)' }
+    : { ground: '#0c0a16', grad: '#0c0a16', ink: '#efecf9', soft: '#a49dc2', faint: '#726c92', hero: HERO_GOLD, chip: '#0c0a16', barTop: 'rgba(255,255,255,.06)' };
+}
+
 function aspectFor(f: StingFormat): string {
   return f === '9:16' ? '9 / 16' : f === '1:1' ? '1 / 1' : '16 / 9';
 }
@@ -264,6 +273,8 @@ export interface MotionLayoutOpts {
   gap?: number;
   /** Avansert: ekstra topp-margin per element (data-r → em). */
   spacing?: Record<string, number>;
+  /** Mørkt (dagens) eller lyst brett. */
+  theme?: 'dark' | 'light';
 }
 export function layoutVars(o: MotionLayoutOpts = {}): { align: string; gap: string; subGap: string; pad: string } {
   // Fin gap-override vinner over density-preset. subGap (barer/rader/liste-punkt)
@@ -300,6 +311,7 @@ export function buildMotionStingHtml(data: StingData, opts: { autoplay?: boolean
   const format = data.format || '16:9';
   const autoplay = opts.autoplay !== false;
   const L = layoutVars(opts.layout);
+  const T = themeColors(opts.layout?.theme);
 
   const metricRows = data.metrics
     .map((m, i) => {
@@ -320,23 +332,23 @@ export function buildMotionStingHtml(data: StingData, opts: { autoplay?: boolean
 html,body{height:100%}
 body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",system-ui,sans-serif;display:grid;place-items:center;overflow:hidden}
 #stage{aspect-ratio:${aspectFor(format)};width:100%;max-width:100%;max-height:100%;position:relative;border-radius:14px;overflow:hidden;
-  background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), #0c0a16;
-  color:#efecf9;padding:${L.pad};display:flex;flex-direction:column;justify-content:${L.align};gap:${L.gap}}
+  background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), ${T.ground};
+  color:${T.ink};padding:${L.pad};display:flex;flex-direction:column;justify-content:${L.align};gap:${L.gap}}
 .brand{display:flex;align-items:center;gap:2.5%;font-weight:700;font-size:clamp(11px,3.2vw,17px);opacity:0}
-.brand .mk{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:#0c0a16;font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
-.brand .tc{margin-left:auto;font-family:ui-monospace,"SF Mono",monospace;font-size:.62em;letter-spacing:.14em;color:#726c92;font-weight:500}
+.brand .mk{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:${T.chip};font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
+.brand .tc{margin-left:auto;font-family:ui-monospace,"SF Mono",monospace;font-size:.62em;letter-spacing:.14em;color:${T.faint};font-weight:500}
 .funnel{display:flex;flex-direction:column;gap:${L.subGap}}
 .row{display:flex;align-items:center;gap:3.5%;opacity:0}
-.row .bar{height:clamp(16px,4.4vw,30px);border-radius:.28em;width:0;max-width:62%;background:linear-gradient(90deg,#6d28d9,${accent});box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);flex:none}
+.row .bar{height:clamp(16px,4.4vw,30px);border-radius:.28em;width:0;max-width:62%;background:linear-gradient(90deg,#6d28d9,${accent});box-shadow:inset 0 0 0 1px ${T.barTop};flex:none}
 .meta{display:flex;flex-direction:column;line-height:1.1;flex:1;min-width:0}
-.meta .lab{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10px);letter-spacing:.15em;text-transform:uppercase;color:#726c92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta .lab{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10px);letter-spacing:.15em;text-transform:uppercase;color:${T.faint};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meta .val{font-weight:800;font-size:clamp(12px,3.4vw,18px);font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero{opacity:0;min-width:0}
-.hero .cap{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10.5px);letter-spacing:.18em;text-transform:uppercase;color:#a49dc2;margin-bottom:.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero .cap{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10.5px);letter-spacing:.18em;text-transform:uppercase;color:${T.soft};margin-bottom:.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero .num{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hero .num{font-size:clamp(30px,10vw,72px);font-weight:800;letter-spacing:-.035em;line-height:.92;font-variant-numeric:tabular-nums;color:${HERO_GOLD};text-shadow:0 0 40px ${HERO_GOLD}44}
+.hero .num{font-size:clamp(30px,10vw,72px);font-weight:800;letter-spacing:-.035em;line-height:.92;font-variant-numeric:tabular-nums;color:${T.hero};text-shadow:0 0 40px ${T.hero}44}
 .caption{font-size:clamp(12px,3vw,18px);font-weight:600;opacity:0}
-#scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${HERO_GOLD});box-shadow:0 0 12px ${HERO_GOLD}88}
+#scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${T.hero});box-shadow:0 0 12px ${T.hero}88}
 ${spacingCss(opts.layout?.spacing)}
 </style></head><body>
 <div id="stage">
