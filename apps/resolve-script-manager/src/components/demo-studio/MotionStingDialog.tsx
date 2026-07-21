@@ -8,7 +8,7 @@
  */
 import { useMemo, useRef, useState } from 'react';
 
-import { buildMotionStingHtml, stingFromValues, type StingFormat } from './motionSting.js';
+import { buildMotionStingHtml, stingFromValues, buildStingCaptureSpec, type StingFormat } from './motionSting.js';
 
 const C = { bg: '#0b1120', panel: '#0f1524', panel2: '#141b2b', line: '#202a40', ink: '#e8eefc', soft: '#8a98b5' };
 
@@ -34,7 +34,14 @@ export default function MotionStingDialog(
   );
   const numericCount = data.metrics.length + (data.hero.value ? 1 : 0);
   const html = useMemo(() => buildMotionStingHtml({ ...data, format }), [data, format]);
+  const spec = useMemo(() => buildStingCaptureSpec({ ...data, format }, { fps: 30 }), [data, format]);
 
+  const seek = (t: number) => {
+    try {
+      const w = iframeRef.current?.contentWindow as unknown as { __stingSeek?: (t: number) => void } | null;
+      w?.__stingSeek?.(t);
+    } catch { /* srcDoc = samme opphav */ }
+  };
   const replay = () => {
     try {
       const w = iframeRef.current?.contentWindow as unknown as { __stingPlay?: () => void } | null;
@@ -93,14 +100,25 @@ export default function MotionStingDialog(
             <span onClick={download} style={btn}>⬇ Last ned HTML</span>
           </div>
           <div style={{ fontSize: 11, color: C.soft, lineHeight: 1.5, borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>
-            <b style={{ color: '#c4d0e4' }}>Neste steg:</b> «Send til Resolve» fanger denne HTML-en bilde-for-bilde → transparent ProRes 4444 → drop rett i filmen som en 6-sek data-sting.
+            <b style={{ color: '#c4d0e4' }}>Neste steg — Send til Resolve:</b> fang HTML-en bilde-for-bilde → transparent ProRes 4444 → drop i filmen.
+            <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: accent }}>{spec.width}×{spec.height} · {spec.fps} fps · {(spec.total / 1000).toFixed(1)}s · {spec.frames.length} bilder</div>
           </div>
         </div>
 
-        {/* høyre: live sting */}
-        <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.line}`, background: '#07040f', display: 'grid', placeItems: 'center', padding: 20 }}>
-          <iframe ref={iframeRef} title="motion-sting" srcDoc={html} key={format}
-            style={{ width: format === '9:16' ? '46%' : '100%', height: format === '9:16' ? '100%' : 'auto', aspectRatio: format === '9:16' ? '9 / 16' : format === '1:1' ? '1 / 1' : '16 / 9', maxHeight: '100%', maxWidth: '100%', border: 0, background: 'transparent' }} />
+        {/* høyre: live sting + scrubber */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.line}`, background: '#07040f', display: 'grid', placeItems: 'center', padding: 20 }}>
+            <iframe ref={iframeRef} title="motion-sting" srcDoc={html} key={format}
+              style={{ width: format === '9:16' ? '46%' : '100%', height: format === '9:16' ? '100%' : 'auto', aspectRatio: format === '9:16' ? '9 / 16' : format === '1:1' ? '1 / 1' : '16 / 9', maxHeight: '100%', maxWidth: '100%', border: 0, background: 'transparent' }} />
+          </div>
+          {/* Scrubber: seeker stingen deterministisk (samme sti render-pipelinen bruker) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span onClick={replay} title="Spill av" style={{ ...btn, padding: '6px 11px' }}>▶</span>
+            <input type="range" min={0} max={spec.total} step={16} defaultValue={0}
+              onChange={(e) => seek(Number(e.target.value))}
+              style={{ flex: 1, accentColor: accent, cursor: 'pointer' }} />
+            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: C.soft, minWidth: 42, textAlign: 'right' }}>{(spec.total / 1000).toFixed(1)}s</span>
+          </div>
         </div>
       </div>
     </div>
