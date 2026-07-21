@@ -128,6 +128,16 @@ const MATERIAL_PRIORITY_LABELS: Record<'critical' | 'important' | 'reference', s
 const hasText = (value: string | undefined | null): value is string => typeof value === 'string' && value.trim().length > 0;
 const CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS = 12_000;
 
+// Trafikklys: ett fargesystem med fast betydning (The Role Room-farger).
+// Grønn = ferdig, gul = venter, rød = mangler. Kutter regnbuen så fargen
+// alltid betyr det samme — mindre å tolke.
+type StatusTone = 'go' | 'wait' | 'stop';
+const TONE_COLORS: Record<StatusTone, { fg: string; stripe: string; bg: string }> = {
+  go: { fg: '#34d399', stripe: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+  wait: { fg: '#fbbf24', stripe: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },
+  stop: { fg: '#f87171', stripe: '#ef4444', bg: 'rgba(239,68,68,0.10)' },
+};
+
 // Dempet stil for sekundærhandlinger — de skal være tilgjengelige, men
 // aldri konkurrere med hovedhandlingen om oppmerksomheten.
 const SECONDARY_ACTION_SX = {
@@ -1129,6 +1139,7 @@ export default function ProducerExportHandoffPanel({
         {[
           {
             label: 'Klientpunkter',
+            tone: (manifest.pendingClientMoments.length > 0 ? 'wait' : 'go') as StatusTone,
             value: `${manifest.pendingClientMoments.length}`,
             detail: manifest.pendingClientMoments.length > 0
               ? 'Åpne punkter fra faseplan og content-kalender.'
@@ -1136,6 +1147,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Merkevareklarhet',
+            tone: (readiness.brandReadyCount === readiness.brandItems.length ? 'go' : 'wait') as StatusTone,
             value: `${readiness.brandReadyCount}/${readiness.brandItems.length}`,
             detail: readiness.brandReadyCount === readiness.brandItems.length
               ? 'Merkevareguiden er klar for levering.'
@@ -1143,6 +1155,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Leveringsrutine',
+            tone: (readiness.workflowReadyCount === readiness.workflowItems.length ? 'go' : 'wait') as StatusTone,
             value: `${readiness.workflowReadyCount}/${readiness.workflowItems.length}`,
             detail: readiness.workflowReadyCount === readiness.workflowItems.length
               ? 'Filstruktur og levering er definert.'
@@ -1150,6 +1163,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Klientgrunnlag',
+            tone: (clientMaterials.length > 0 ? 'go' : 'wait') as StatusTone,
             value: `${clientBriefReadyCount}/6 · ${clientMaterials.length} filer`,
             detail: clientMaterials.length > 0
               ? 'Klientbrief og opplastet materiale er koblet til pakken.'
@@ -1157,6 +1171,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Innholdsplan',
+            tone: 'wait' as StatusTone,
             value: [manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length > 0
               ? `${[manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length}/3`
               : '0/3',
@@ -1166,6 +1181,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Hvem har tilgang',
+            tone: (manifest.accountAccessSummary.connectedCount >= manifest.accountAccessSummary.requiredPlatformCount ? 'go' : manifest.accountAccessSummary.connectedCount === 0 ? 'stop' : 'wait') as StatusTone,
             value: `${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount}`,
             detail: manifest.accountAccessSummary.clientActionCount > 0
               ? `${manifest.accountAccessSummary.clientActionCount} plattform${manifest.accountAccessSummary.clientActionCount === 1 ? '' : 'er'} krever klienthandling.`
@@ -1175,33 +1191,39 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Åpne klientinnspill',
+            tone: (openClientContributionTasks.length > 0 ? 'wait' : 'go') as StatusTone,
             value: `${openClientContributionTasks.length}`,
             detail: openClientContributionTasks.length > 0
               ? 'Punkter som fortsatt må avklares før pakken er helt trygg å sende.'
               : 'Ingen åpne klientinnspill akkurat nå.',
           },
-        ].map((card) => (
+        ].map((card) => {
+          const t = TONE_COLORS[card.tone];
+          return (
           <Box
             key={card.label}
             data-testid={`producer-export-summary-${normalizeFileToken(card.label)}`}
             sx={{
               p: 1.3,
+              pl: 1.5,
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.64)',
+              borderLeft: `3px solid ${t.stripe}`,
+              background: t.bg,
             }}
           >
             <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', fontWeight: 700 }}>
               {card.label}
             </Typography>
-            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.16rem', mt: 0.45 }}>
+            <Typography sx={{ color: t.fg, fontWeight: 800, fontSize: '1.16rem', mt: 0.45, fontVariantNumeric: 'tabular-nums' }}>
               {card.value}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.45 }}>
               {card.detail}
             </Typography>
           </Box>
-        ))}
+          );
+        })}
       </Box>
 
       <Box
