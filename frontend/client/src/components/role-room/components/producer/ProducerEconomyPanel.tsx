@@ -409,16 +409,23 @@ export default function ProducerEconomyPanel({
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button
             variant="contained"
+            size="large"
             onClick={onSendBudgetReview}
             sx={{
               textTransform: 'none',
-              fontWeight: 700,
-              bgcolor: '#fbbf24',
-              color: '#111827',
-              '&:hover': { bgcolor: '#f59e0b' },
+              fontWeight: 800,
+              fontSize: '1.02rem',
+              px: 2.6,
+              py: 1.1,
+              minHeight: 52,
+              borderRadius: 2.5,
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+              color: '#fff',
+              boxShadow: '0 8px 24px rgba(139,92,246,0.35)',
+              '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
             }}
           >
-            Send budsjett til klient
+            Send budsjett til kunden
           </Button>
         </Stack>
       )}
@@ -466,11 +473,11 @@ export default function ProducerEconomyPanel({
             InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
           />
           <Button
-            variant="contained"
+            variant="outlined"
             startIcon={<AddIcon />}
             onClick={() => { void handleCreate(); }}
             disabled={loading || !category.trim() || !itemName.trim()}
-            sx={{ bgcolor: '#fbbf24', color: '#111827', fontWeight: 700, textTransform: 'none', minWidth: 140 }}
+            sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.4)', fontWeight: 700, textTransform: 'none', minWidth: 140, '&:hover': { borderColor: 'rgba(148,163,184,0.7)', background: 'rgba(148,163,184,0.08)' } }}
           >
             Legg til linje
           </Button>
