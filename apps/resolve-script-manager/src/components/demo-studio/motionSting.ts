@@ -275,9 +275,11 @@ function barWidth(metrics: StingMetric[], i: number): number {
   return Math.round(Math.max(22, 38 + frac * 62));
 }
 
-export function buildMotionStingHtml(data: StingData, opts: { autoplay?: boolean; layout?: MotionLayoutOpts } = {}): string {
+export function buildMotionStingHtml(data: StingData, opts: { autoplay?: boolean; layout?: MotionLayoutOpts; tempo?: number } = {}): string {
   const accent = /^#[0-9a-fA-F]{3,8}$/.test(data.accent) ? data.accent : '#8b5cf6';
-  const timeline = deriveStingTimeline(data);
+  const k = opts.tempo && opts.tempo > 0 ? opts.tempo : 1;
+  const t0 = deriveStingTimeline(data);
+  const timeline: StingTimeline = { total: Math.round(t0.total * k), keyframes: t0.keyframes.map((kf) => ({ ...kf, at: Math.round(kf.at * k), dur: Math.round(kf.dur * k) })) };
   const format = data.format || '16:9';
   const autoplay = opts.autoplay !== false;
   const L = layoutVars(opts.layout);

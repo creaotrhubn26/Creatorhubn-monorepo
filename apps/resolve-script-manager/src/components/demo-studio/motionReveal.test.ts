@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  motionStateAt, statLayout, quoteLayout, compareLayout,
-  statFrom, quoteFrom, compareFrom, pickArchetype, buildMotionHtml,
+  motionStateAt, statLayout, quoteLayout, compareLayout, listLayout,
+  statFrom, quoteFrom, compareFrom, listFrom, pickArchetype, buildMotionHtml,
 } from './motionReveal.js';
 
 describe('motionStateAt — deterministisk reveal (seekbar)', () => {
@@ -63,5 +63,35 @@ describe('buildMotionHtml', () => {
     expect(html.startsWith('<!doctype html>')).toBe(true);
     expect(html).toContain('window.__motionSeek =');
     expect(html).toContain('window.__motionPlay();');
+  });
+  it('brand-lockup rendres bare når brand er satt', () => {
+    const withB = buildMotionHtml(statLayout({ label: 'x', value: 5 }), { brand: { name: 'Leadgrid', mark: 'L' } });
+    expect(withB).toContain('data-r="__brand"');
+    expect(withB).toContain('Leadgrid');
+    expect(buildMotionHtml(statLayout({ label: 'x', value: 5 }), {})).not.toContain('data-r="__brand"');
+  });
+  it('tempo skalerer total (rolig > normal)', () => {
+    const total = (h: string) => Number(h.match(/var TOTAL = (\d+)/)![1]);
+    expect(total(buildMotionHtml(statLayout({ label: 'x', value: 5 }), { tempo: 1.4 })))
+      .toBeGreaterThan(total(buildMotionHtml(statLayout({ label: 'x', value: 5 }), {})));
+  });
+});
+
+describe('LIST/STEPS-arketype', () => {
+  it('listFrom: hvert felt → element (verdi=etikett, feltnavn=undertekst)', () => {
+    const d = listFrom({ scene: 'Scene 12', s1: 'Vidvinkel' }, ['scene', 's1']);
+    expect(d.items).toHaveLength(2);
+    expect(d.items[0]).toMatchObject({ label: 'Scene 12', sub: 'Scene' });
+  });
+  it('listLayout: elementer kaskader (stigende starttid) + arc-list', () => {
+    const l = listLayout({ items: [{ label: 'A' }, { label: 'B' }, { label: 'C' }] });
+    expect(l.bodyHtml).toContain('arc-list');
+    const ats = l.reveals.filter((r) => r.ref.startsWith('li')).map((r) => r.at);
+    expect(ats[0]).toBeLessThan(ats[1]);
+    expect(ats[1]).toBeLessThan(ats[2]);
+  });
+  it('pickArchetype: shot-liste (tall inne i tekst) → list, ikke sting', () => {
+    expect(pickArchetype('x', { scene: 'Scene 12 — Audition', s1: 'Statisk | 24mm', s2: 'Dolly inn | 35mm', s3: 'Nær — reaksjon', s4: 'Macro | 100mm' })).toBe('list');
+    expect(pickArchetype('rr-call-sheet', {})).toBe('list');
   });
 });
