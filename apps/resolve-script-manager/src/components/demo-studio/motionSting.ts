@@ -260,13 +260,30 @@ export interface MotionLayoutOpts {
   align?: 'top' | 'center' | 'bottom';
   density?: 'tight' | 'normal' | 'airy';
   pad?: 'snug' | 'normal' | 'roomy';
+  /** Avansert: fin, kontinuerlig element-mellomrom (%) — overstyrer density. */
+  gap?: number;
+  /** Avansert: ekstra topp-margin per element (data-r → em). */
+  spacing?: Record<string, number>;
 }
-export function layoutVars(o: MotionLayoutOpts = {}): { align: string; gap: string; pad: string } {
+export function layoutVars(o: MotionLayoutOpts = {}): { align: string; gap: string; subGap: string; pad: string } {
+  // Fin gap-override vinner over density-preset. subGap (barer/rader/liste-punkt)
+  // skalerer MED gap-en, så «Luft» faktisk endrer det mest synlige mellomrommet.
+  const g = typeof o.gap === 'number' && o.gap >= 0 ? o.gap : (o.density === 'tight' ? 1.6 : o.density === 'airy' ? 5.4 : 3.2);
   return {
     align: o.align === 'top' ? 'flex-start' : o.align === 'bottom' ? 'flex-end' : 'center',
-    gap: o.density === 'tight' ? '1.5%' : o.density === 'airy' ? '5.4%' : '3.2%',
+    gap: `${g}%`,
+    subGap: `${(g * 0.72).toFixed(2)}%`,
     pad: o.pad === 'snug' ? '4.5% 5.5%' : o.pad === 'roomy' ? '9.5% 9.5%' : '6.5% 7%',
   };
+}
+
+/** Bygg CSS for per-element ekstra topp-margin (data-r → em). */
+export function spacingCss(spacing?: Record<string, number>): string {
+  if (!spacing) return '';
+  return Object.entries(spacing)
+    .filter(([, v]) => typeof v === 'number' && v > 0)
+    .map(([ref, v]) => `[data-r="${ref}"]{margin-top:${v}em}`)
+    .join('');
 }
 
 function barWidth(metrics: StingMetric[], i: number): number {
@@ -308,7 +325,7 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .brand{display:flex;align-items:center;gap:2.5%;font-weight:700;font-size:clamp(11px,3.2vw,17px);opacity:0}
 .brand .mk{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:#0c0a16;font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
 .brand .tc{margin-left:auto;font-family:ui-monospace,"SF Mono",monospace;font-size:.62em;letter-spacing:.14em;color:#726c92;font-weight:500}
-.funnel{display:flex;flex-direction:column;gap:2.6%}
+.funnel{display:flex;flex-direction:column;gap:${L.subGap}}
 .row{display:flex;align-items:center;gap:3.5%;opacity:0}
 .row .bar{height:clamp(16px,4.4vw,30px);border-radius:.28em;width:0;max-width:62%;background:linear-gradient(90deg,#6d28d9,${accent});box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);flex:none}
 .meta{display:flex;flex-direction:column;line-height:1.1;flex:1;min-width:0}
@@ -320,12 +337,13 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .hero .num{font-size:clamp(30px,10vw,72px);font-weight:800;letter-spacing:-.035em;line-height:.92;font-variant-numeric:tabular-nums;color:${HERO_GOLD};text-shadow:0 0 40px ${HERO_GOLD}44}
 .caption{font-size:clamp(12px,3vw,18px);font-weight:600;opacity:0}
 #scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${HERO_GOLD});box-shadow:0 0 12px ${HERO_GOLD}88}
+${spacingCss(opts.layout?.spacing)}
 </style></head><body>
 <div id="stage">
-  <div class="brand"><span class="mk">${esc(data.mark || '◆')}</span> ${esc(data.brandName)}<span class="tc">${esc(data.eyebrow || '')}</span></div>
-  <div class="funnel">${metricRows}</div>
-  <div class="hero"><div class="cap">${esc(data.hero.label)}</div><div class="num"><span id="hero" data-count="${data.hero.value}" data-pre="${heroPrefix}" data-suf="${heroSuffix}">${heroPrefix}0${heroSuffix}</span></div></div>
-  ${data.caption ? `<div class="caption">${esc(data.caption)}</div>` : ''}
+  <div class="brand" data-r="brand"><span class="mk">${esc(data.mark || '◆')}</span> ${esc(data.brandName)}<span class="tc">${esc(data.eyebrow || '')}</span></div>
+  <div class="funnel" data-r="funnel">${metricRows}</div>
+  <div class="hero" data-r="hero"><div class="cap">${esc(data.hero.label)}</div><div class="num"><span id="hero" data-count="${data.hero.value}" data-pre="${heroPrefix}" data-suf="${heroSuffix}">${heroPrefix}0${heroSuffix}</span></div></div>
+  ${data.caption ? `<div class="caption" data-r="caption">${esc(data.caption)}</div>` : ''}
   <div id="scrub"></div>
 </div>
 <script>

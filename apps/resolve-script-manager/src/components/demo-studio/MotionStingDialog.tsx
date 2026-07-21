@@ -50,6 +50,9 @@ export default function MotionStingDialog(
   const [place, setPlace] = useState<MotionLayoutOpts>({ align: 'center', density: 'normal', pad: 'normal' });
   const [tempo, setTempo] = useState<'fast' | 'normal' | 'slow'>('normal');
   const tempoK = tempo === 'fast' ? 0.7 : tempo === 'slow' ? 1.4 : 1;
+  const [adv, setAdv] = useState(false);
+  const densityDefault = place.density === 'tight' ? 1.6 : place.density === 'airy' ? 5.4 : 3.2;
+  const setSpacing = (ref: string, v: number) => setPlace((p) => ({ ...p, spacing: { ...(p.spacing || {}), [ref]: v } }));
   // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
   const [edit, setEdit] = useState<Record<string, string>>(() => ({ ...values }));
   const setField = (k: string, v: string) => { setEdit((e) => ({ ...e, [k]: v })); onValueChange?.(k, v); };
@@ -113,6 +116,14 @@ export default function MotionStingDialog(
 
   const [w, h] = format === '9:16' ? [1080, 1920] : format === '1:1' ? [1080, 1080] : [1920, 1080];
   const frames = Math.max(1, Math.round((built.total / 1000) * 30) + 1);
+  // Elementer man kan gi ekstra mellomrom (per arketype).
+  const spaceable: [string, string][] =
+    arch === 'sting' ? [['brand', 'Merke'], ['funnel', 'Funnel'], ['hero', 'Hero'], ['caption', 'Caption']]
+      : arch === 'stat' ? [['label', 'Etikett'], ['delta', 'Delta'], ['sub', 'Undertekst']]
+        : arch === 'quote' ? [['quote', 'Sitat'], ['author', 'Kilde']]
+          : arch === 'compare' ? [['title', 'Tittel'], ['winner', 'Vinner']]
+            : arch === 'list' ? built.readout.map((_, i) => [`li${i}`, `Punkt ${i + 1}`] as [string, string])
+              : [];
 
   const seek = (t: number) => {
     const win = iframeRef.current?.contentWindow as unknown as { __motionSeek?: (t: number) => void; __stingSeek?: (t: number) => void } | null;
@@ -200,6 +211,29 @@ export default function MotionStingDialog(
                 })}
               </div>
             </div>
+
+            <div onClick={() => setAdv((v) => !v)} style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: adv ? accent : C.soft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              {adv ? '▾' : '▸'} Avansert · fin-juster mellomrom
+            </div>
+            {adv && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.soft, marginBottom: 2 }}><span>Mellomrom (alle)</span><span style={{ fontFamily: 'ui-monospace, monospace' }}>{(place.gap ?? densityDefault).toFixed(1)}%</span></div>
+                  <input type="range" min={0} max={9} step={0.2} value={place.gap ?? densityDefault}
+                    onChange={(e) => setPlace((p) => ({ ...p, gap: Number(e.target.value) }))}
+                    style={{ width: '100%', accentColor: accent, cursor: 'pointer' }} />
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: C.soft, marginTop: 2 }}>Mellomrom per element</div>
+                {spaceable.map(([ref, label]) => (
+                  <div key={ref}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.soft, marginBottom: 2 }}><span>{label}</span><span style={{ fontFamily: 'ui-monospace, monospace' }}>+{(place.spacing?.[ref] ?? 0).toFixed(1)}</span></div>
+                    <input type="range" min={0} max={6} step={0.25} value={place.spacing?.[ref] ?? 0}
+                      onChange={(e) => setSpacing(ref, Number(e.target.value))}
+                      style={{ width: '100%', accentColor: accent, cursor: 'pointer' }} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
