@@ -23,6 +23,7 @@ import type { Actor } from '../audit/audit.js';
 import type { Db } from '../db/pool.js';
 import type { RuleRegister } from '../rules/register.js';
 import { createInvoiceDraft } from '../invoicing/service.js';
+import { ensureProductDimensions, productDimensionCode } from '../ops/products.js';
 import type { StripeReadPort } from './stripe.js';
 
 export interface StripeSyncOptions {
@@ -61,6 +62,10 @@ export async function syncStripeRevenue(
   const vatCode = opts.vatCode ?? '6';
   const revenueAccount = opts.revenueAccount ?? '3100';
   const invoices = await stripe.listPaidInvoices(opts.sinceUnix); // kaster uten nøkkel
+
+  // Sikre at produktlinjene (Creatorhub/Role Room/Leadgrid) finnes som dimensjoner,
+  // slik at inntekt kan segmenteres per produkt. Idempotent.
+  await ensureProductDimensions(db, opts.organizationId, opts.actor);
 
   const result: StripeSyncResult = {
     imported: 0,
@@ -112,9 +117,13 @@ export async function syncStripeRevenue(
         {
           description: inv.description,
           quantityThousandths: 1000n, // antall = 1
-          unitPriceMinor: inv.amountMinor, // Stripe-beløp; eks. mva (ingen mva ved kode 7)
+          unitPriceMinor: inv.amountMinor, // Stripe-beløp; eks. mva (ingen mva ved kode 6)
           vatCode,
           revenueAccount,
+          // Segmenter inntekt per produkt (Creatorhub/Role Room/Leadgrid).
+          ...(productDimensionCode(inv.sourceProduct)
+            ? { project: productDimensionCode(inv.sourceProduct) as string }
+            : {}),
         },
       ],
     });

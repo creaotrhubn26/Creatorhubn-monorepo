@@ -84,6 +84,24 @@ describe('Stripe-inntektssynk', () => {
     expect(imports.rows.filter((r) => r.status === 'skipped_currency')).toHaveLength(1);
   });
 
+  it('segmenterer inntekt per produkt: dimensjoner opprettet + utkast-linje tagget', async () => {
+    // Produktlinjene finnes nå som prosjektdimensjoner.
+    const dims = await db.query<{ code: string }>(
+      `SELECT code FROM projects WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(dims.rows.map((r) => r.code)).toEqual(
+      expect.arrayContaining(['CREATORHUB', 'ROLEROOM', 'LEADGRID']),
+    );
+    // Utkast-linjene fra leadgrid-fakturaene er tagget med LEADGRID-dimensjonen.
+    const lines = await db.query<{ project: string | null }>(
+      `SELECT project FROM invoice_lines WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(lines.rowCount).toBeGreaterThan(0);
+    expect(lines.rows.every((r) => r.project === 'LEADGRID')).toBe(true);
+  });
+
   it('er idempotent: ny kjøring importerer ingenting på nytt', async () => {
     const stub = new StaticStripeStub([inv({ id: 'in_a' }), inv({ id: 'in_b', customerEmail: 'delt@example.com' })]);
     const r = await syncStripeRevenue(db, rules, stub, opts());
