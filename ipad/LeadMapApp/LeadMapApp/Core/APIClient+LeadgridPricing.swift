@@ -5,8 +5,13 @@
 //   PUT  /api/leadgrid/pricing-config   (super-admin)
 //
 // Én sannhetskilde: super-admin redigerer her → landing (leadgrid.no) og
-// web-admin-dashboardet leser samme config. Speiler PricingConfig i
-// backend/server/leadgrid-pricing-config-routes.ts.
+// web-admin-dashboardet leser samme config.
+//
+// ⚠️ FORM-SPEIL (annet språk — kan ikke dele TS-typen). Endres formen, MÅ
+//    disse holdes i sync (samme camelCase-nøkler):
+//   • backend/server/leadgrid-pricing-config-routes.ts  (runtime-kilde +
+//     kontrakttest leadgrid-pricing-config.contract.test.ts som feiler ved drift)
+//   • frontend/shared/leadgridPricingConfig.ts  (kanonisk for frontend)
 //
 // 🔑 Configen bruker camelCase-nøkler (priceNote, priceSoloPro, priceAgency).
 // De delte _get/_put bruker .convertToSnakeCase på encoderen — det ville
