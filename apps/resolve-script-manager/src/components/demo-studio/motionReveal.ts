@@ -380,6 +380,9 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
     scrub.style.width = (cl(t/TOTAL)*100)+'%';
   }
   window.__motionSeek = function(t){ applyReveals(Math.max(0, Math.min(TOTAL, t))); };
+  // Render-kontrakt (playwright_render): setProgress(p) p 0..1 → deterministisk
+  // seek til p*total, stopper autoplay slik at render-kallene tar over.
+  window.setProgress = function(pp){ if(raf) cancelAnimationFrame(raf); applyReveals(Math.max(0, Math.min(1, pp)) * TOTAL); };
   var raf=null, start=null;
   function loop(ts){ if(start===null)start=ts; var t=ts-start; applyReveals(t); if(t<TOTAL) raf=requestAnimationFrame(loop); }
   window.__motionPlay = function(){ if(raf)cancelAnimationFrame(raf); start=null; if(reduce){applyReveals(TOTAL);return;} raf=requestAnimationFrame(loop); };

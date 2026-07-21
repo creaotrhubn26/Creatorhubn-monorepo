@@ -27,7 +27,7 @@ const ARCS: { id: Archetype; label: string; hint: string }[] = [
 const fmtNb = (n: number) => new Intl.NumberFormat('nb-NO').format(n);
 
 export default function MotionStingDialog(
-  { values, fields, order, templateId = '', brandName = 'Merkevare', accent = '#8b5cf6', mark, caption, eyebrow, onValueChange, onClose }:
+  { values, fields, order, templateId = '', brandName = 'Merkevare', accent = '#8b5cf6', mark, caption, eyebrow, onValueChange, onSendToResolve, onClose }:
   {
     values: Record<string, string>;
     /** Redigerbare felt (nøkkel + etikett) — samme felt som selve malen. */
@@ -41,6 +41,8 @@ export default function MotionStingDialog(
     eyebrow?: string;
     /** Skriver endringen TILBAKE til scenen → still + motion holdes i synk. */
     onValueChange?: (key: string, value: string) => void;
+    /** Rendrer motion-HTML-en → transparent ProRes 4444 → inn i Resolve. */
+    onSendToResolve?: (html: string, durationSec: number, frame: string) => void;
     onClose?: () => void;
   },
 ) {
@@ -227,9 +229,14 @@ export default function MotionStingDialog(
             <span onClick={replay} style={{ ...btn, background: accent, borderColor: accent, color: '#04121a' }}>▶ Spill av</span>
             <span onClick={download} style={btn}>⬇ Last ned HTML</span>
           </div>
-          <div style={{ fontSize: 11, color: C.soft, lineHeight: 1.5, borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>
-            <b style={{ color: '#c4d0e4' }}>Neste steg — Send til Resolve:</b> fang HTML-en bilde-for-bilde → transparent ProRes 4444 → drop i filmen.
-            <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: accent }}>{w}×{h} · 30 fps · {(built.total / 1000).toFixed(1)}s · {frames} bilder</div>
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>
+            {onSendToResolve && (
+              <span onClick={() => onSendToResolve(built.html, built.total / 1000, `${w}x${h}`)}
+                style={{ ...btn, width: '100%', justifyContent: 'center', background: accent, borderColor: accent, color: '#04121a', fontWeight: 700 }}>
+                ⤓ Send til Resolve
+              </span>
+            )}
+            <div style={{ marginTop: 8, fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: C.soft }}>ProRes 4444 (alfa) · {w}×{h} · 30 fps · {(built.total / 1000).toFixed(1)}s · {frames} bilder</div>
           </div>
         </div>
 
