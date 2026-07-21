@@ -11,6 +11,7 @@
 
 import { createOrganization, ensureUser } from '../orgs/service.js';
 import { ensureProductDimensions } from './products.js';
+import { ensureAiAccounts } from './ai-accounts.js';
 import type { OrganizationForm, VatRegistrationStatus } from '../rules/types.js';
 import type { Db } from '../db/pool.js';
 
@@ -41,8 +42,9 @@ export async function ensureBootstrapOrg(
   );
   if (existing.rows[0]) {
     const orgId = existing.rows[0].id;
-    // Produktlinjene skal alltid finnes, også for kostnads-tagging (uavhengig av Stripe).
+    // Produktlinjene + AI-kontoene skal alltid finnes (uavhengig av Stripe).
     await ensureProductDimensions(db, orgId, actor);
+    await ensureAiAccounts(db, orgId);
     return { orgId, userId, createdOrg: false };
   }
   const org = await createOrganization(db, {
@@ -53,5 +55,6 @@ export async function ensureBootstrapOrg(
     createdByUserId: userId,
   });
   await ensureProductDimensions(db, org.id, actor);
+  await ensureAiAccounts(db, org.id);
   return { orgId: org.id, userId, createdOrg: true };
 }

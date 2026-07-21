@@ -24,6 +24,7 @@ import type { Db } from '../db/pool.js';
 import type { RuleRegister } from '../rules/register.js';
 import { createInvoiceDraft } from '../invoicing/service.js';
 import { ensureProductDimensions, productDimensionCode } from '../ops/products.js';
+import { AI_REVENUE_ACCOUNT, isAiUsageLine } from '../ops/ai-accounts.js';
 import type { StripeReadPort } from './stripe.js';
 
 export interface StripeSyncOptions {
@@ -126,12 +127,14 @@ export async function syncStripeRevenue(
       const period = li.periodStart && li.periodEnd ? ` (${li.periodStart} – ${li.periodEnd})` : '';
       const qty = li.quantity > 1 ? ` ×${li.quantity}` : '';
       const code = productDimensionCode(li.sourceProduct);
+      // AI-/bruksbaserte linjer bokføres på egen AI-inntektskonto (3210) → AI-margin.
+      const account = isAiUsageLine(li.description) ? AI_REVENUE_ACCOUNT : revenueAccount;
       return {
         description: `${li.description}${qty}${period}`.slice(0, 500),
         quantityThousandths: 1000n, // hele linjebeløpet som én enhet (eksakt, ingen avrunding)
         unitPriceMinor: li.amountMinor, // Stripe-linjebeløp; eks. mva (kode 6 = 0 %)
         vatCode,
-        revenueAccount,
+        revenueAccount: account,
         ...(code ? { project: code } : {}),
       };
     });

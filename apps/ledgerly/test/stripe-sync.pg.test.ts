@@ -128,6 +128,28 @@ describe('Stripe-inntektssynk', () => {
     expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
   });
 
+  it('AI-/overage-linjer bokføres på AI-inntektskonto (3210), vanlige på 3100', async () => {
+    const stub = new StaticStripeStub([
+      inv({
+        id: 'in_ai',
+        lineItems: [
+          { description: 'AI overage', amountMinor: 5000n, quantity: 1, periodStart: null, periodEnd: null, sourceProduct: 'creatorhub' },
+          { description: 'CreatorHub Pro', amountMinor: 29900n, quantity: 1, periodStart: null, periodEnd: null, sourceProduct: 'creatorhub' },
+        ],
+      }),
+    ]);
+    await syncStripeRevenue(db, rules, stub, opts());
+    const lines = await db.query<{ description: string; revenue_account: string }>(
+      `SELECT il.description, il.revenue_account
+       FROM invoice_lines il
+       JOIN stripe_imports si ON si.invoice_id = il.invoice_id
+       WHERE si.organization_id = $1 AND si.stripe_invoice_id = 'in_ai'`,
+      [orgId],
+    );
+    expect(lines.rows.find((r) => /AI overage/.test(r.description))!.revenue_account).toBe('3210');
+    expect(lines.rows.find((r) => /CreatorHub Pro/.test(r.description))!.revenue_account).toBe('3100');
+  });
+
   it('uten Stripe-nøkkel kaster synken (ærlig inaktiv)', async () => {
     const stub = new StaticStripeStub([], { hasApiKey: false });
     await expect(syncStripeRevenue(db, rules, stub, opts())).rejects.toThrow();

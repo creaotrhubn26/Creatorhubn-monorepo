@@ -34,6 +34,7 @@ import { syncStripeRevenue } from '../integrations/stripe-sync.js';
 import { ensureBootstrapOrg, type BootstrapOrgConfig } from '../ops/bootstrap.js';
 import type { EmailPort } from '../integrations/email.js';
 import { sendInvoiceReminders } from '../invoicing/reminders.js';
+import { aiMarginReport } from '../ops/ai-accounts.js';
 import { timingSafeEqual } from 'node:crypto';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
@@ -1131,6 +1132,30 @@ export function createApiServer(deps: ApiDeps): express.Express {
             await dimensionResultReport(deps.db, {
               organizationId: req.params.orgId!,
               kind: q.kind,
+              ...(q.from ? { fromDate: q.from } : {}),
+              ...(q.to ? { toDate: q.to } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // AI-margin: AI-inntekt (fakturert kundene) vs AI-kostnad (betalt leverandører)
+  // per produkt — «AI cost forbruk» side ved side. Fra posterte journallinjer.
+  app.get(
+    '/api/organizations/:orgId/reports/ai-margin',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req, res, next) => {
+      try {
+        const q = reportQuery.parse(req.query);
+        res.json(
+          toJson(
+            await aiMarginReport(deps.db, {
+              organizationId: req.params.orgId!,
               ...(q.from ? { fromDate: q.from } : {}),
               ...(q.to ? { toDate: q.to } : {}),
             }),
