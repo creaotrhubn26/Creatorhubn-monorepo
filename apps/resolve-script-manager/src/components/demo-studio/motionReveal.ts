@@ -167,6 +167,32 @@ export function compareLayout(d: CompareData): MotionLayout {
 }
 
 /* ================================================================== */
+/* Arketype 4 — LIST/STEPS: elementer kaskader inn ett etter ett        */
+/* ================================================================== */
+
+export interface ListItem { label: string; sub?: string }
+export interface ListData { title?: string; items: ListItem[] }
+
+export function listLayout(d: ListData): MotionLayout {
+  const items = d.items.slice(0, 6);
+  const reveals: RevealOp[] = [];
+  let body = '';
+  if (d.title) { body += `<div class="ls-title" data-r="title">${esc(d.title)}</div>`; reveals.push({ ref: 'title', kind: 'fade', at: 120, dur: 320 }); }
+  let rows = '';
+  items.forEach((it, i) => {
+    rows +=
+      `<div class="ls-item" data-r="li${i}">` +
+      `<span class="ls-idx">${i + 1}</span>` +
+      `<div class="ls-body"><span class="ls-lab">${esc(it.label)}</span>` +
+      (it.sub ? `<span class="ls-sub">${esc(it.sub)}</span>` : '') +
+      `</div></div>`;
+    reveals.push({ ref: `li${i}`, kind: 'slideUp', at: (d.title ? 460 : 220) + i * 240, dur: 460 });
+  });
+  body += `<div class="ls-list">${rows}</div>`;
+  return { bodyHtml: `<div class="arc arc-list">${body}</div>`, reveals, total: layoutTotal(reveals) };
+}
+
+/* ================================================================== */
 /* Adaptere: scene-verdier → arketype-data                              */
 /* ================================================================== */
 
@@ -205,11 +231,20 @@ export function compareFrom(values: Record<string, string>, order?: string[]): C
   return { title, items };
 }
 
+/** Alle felt blir list-elementer (verdi = etikett, feltnavn = undertekst). */
+export function listFrom(values: Record<string, string>, order?: string[]): ListData {
+  const items = fields(values, order)
+    .filter((f) => f.raw)
+    .slice(0, 6)
+    .map<ListItem>((f) => ({ label: f.raw, sub: f.label }));
+  return { items };
+}
+
 /* ================================================================== */
 /* Arketype-velger — HVILKEN koreografi passer innholdet?               */
 /* ================================================================== */
 
-export type Archetype = 'sting' | 'stat' | 'quote' | 'compare';
+export type Archetype = 'sting' | 'stat' | 'quote' | 'compare' | 'list';
 
 /**
  * Velg arketype fra mal-id + data-form. Heuristikk; dialogen lar bruker overstyre.
@@ -221,19 +256,23 @@ export type Archetype = 'sting' | 'stat' | 'quote' | 'compare';
 export function pickArchetype(templateId: string, values: Record<string, string>): Archetype {
   const id = (templateId || '').toLowerCase();
   const fs = fields(values);
-  const nums = fs.filter((f) => f.value != null);
   const longText = fs.some((f) => f.value == null && f.len >= 40);
+  // «Rene» tall: tallet ER mesteparten av strengen (ikke bare et mm-tall inne i
+  // «Dolly inn | 35mm»). Bare disse teller som ekte metrikker.
+  const nums = fs.filter((f) => f.value != null && f.raw.replace(/\s/g, '').length <= 10);
 
   if (/quote|testimonial|sitat|review|omtale/.test(id)) return 'quote';
+  if (/liste|shot|steps|sjekk|checklist|agenda|call.?sheet/.test(id)) return 'list';
   if (longText && nums.length <= 1) return 'quote';
+  // Mange felt uten reelle tall (f.eks. shot-liste) → liste, ikke tvunget funnel.
+  if (fs.length >= 4 && nums.length <= 1) return 'list';
   if (nums.length === 1) return 'stat';
   if (nums.length >= 2) {
     const mags = nums.map((f) => Math.abs(f.value!)).sort((a, b) => b - a);
     const ratio = mags[0] / Math.max(1, mags[mags.length - 1]);
-    // lik størrelsesorden → sammenligning; stort sprang → funnel/sting
     return ratio <= 6 ? 'compare' : 'sting';
   }
-  return 'sting';
+  return fs.length >= 3 ? 'list' : 'sting';
 }
 
 /* ================================================================== */
@@ -247,12 +286,21 @@ const GOLD = '#f5c451';
 
 export function buildMotionHtml(
   layout: MotionLayout,
-  opts: { accent?: string; format?: StingFormat; autoplay?: boolean; place?: MotionLayoutOpts } = {},
+  opts: { accent?: string; format?: StingFormat; autoplay?: boolean; place?: MotionLayoutOpts; brand?: { name: string; mark?: string }; tempo?: number } = {},
 ): string {
   const accent = opts.accent && /^#[0-9a-fA-F]{3,8}$/.test(opts.accent) ? opts.accent : '#8b5cf6';
   const format = opts.format || '16:9';
   const autoplay = opts.autoplay !== false;
   const L = layoutVars(opts.place);
+  const k = opts.tempo && opts.tempo > 0 ? opts.tempo : 1;
+
+  // Merkevare-lockup (valgfritt) + tempo-skalering av reveals/total.
+  const brandHtml = opts.brand
+    ? `<div class="mb-brand" data-r="__brand"><span class="mb-mark">${esc(opts.brand.mark || (opts.brand.name ? opts.brand.name.slice(0, 1).toUpperCase() : '◆'))}</span> ${esc(opts.brand.name)}</div>`
+    : '';
+  const brandReveal: RevealOp[] = opts.brand ? [{ ref: '__brand', kind: 'fade', at: 80, dur: 300 }] : [];
+  const reveals = [...brandReveal, ...layout.reveals].map((r) => ({ ...r, at: Math.round(r.at * k), dur: Math.round(r.dur * k) }));
+  const total = Math.round(layout.total * k);
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -285,13 +333,25 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .cmp-win .cmp-bar{background:linear-gradient(90deg,${accent},${GOLD})}
 .cmp-val{flex:none;min-width:3.5em;max-width:6em;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(12px,2.8vw,18px);white-space:nowrap}
 .cmp-winner{align-self:flex-start;font-size:clamp(11px,2.5vw,15px);font-weight:700;color:${GOLD};margin-top:1%}
+/* list */
+.arc-list{gap:${L.gap}}
+.ls-title{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(9px,2.3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#a49dc2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls-list{display:flex;flex-direction:column;gap:2.4%}
+.ls-item{display:flex;align-items:center;gap:3%;min-width:0}
+.ls-idx{flex:none;width:1.7em;height:1.7em;border-radius:.45em;display:grid;place-items:center;font-weight:800;font-size:clamp(11px,2.4vw,15px);color:#0c0a16;background:linear-gradient(135deg,${accent},#6d28d9)}
+.ls-body{display:flex;flex-direction:column;min-width:0}
+.ls-lab{font-weight:650;font-size:clamp(13px,3vw,20px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls-sub{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,1.9vw,10.5px);letter-spacing:.12em;text-transform:uppercase;color:#726c92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* brand-lockup */
+.mb-brand{display:flex;align-items:center;gap:.6em;font-weight:700;font-size:clamp(11px,3vw,16px);margin-bottom:2%}
+.mb-mark{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:#0c0a16;font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
 #scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${GOLD});box-shadow:0 0 12px ${GOLD}88}
 </style></head><body>
-<div id="stage">${layout.bodyHtml}<div id="scrub"></div></div>
+<div id="stage">${brandHtml}${layout.bodyHtml}<div id="scrub"></div></div>
 <script>
 (function(){
-  var R = ${JSON.stringify(layout.reveals)};
-  var TOTAL = ${layout.total};
+  var R = ${JSON.stringify(reveals)};
+  var TOTAL = ${total};
   var FADE = ${FADE};
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var nf = new Intl.NumberFormat('nb-NO');

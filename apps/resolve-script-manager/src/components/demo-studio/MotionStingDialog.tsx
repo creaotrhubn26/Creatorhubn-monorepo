@@ -10,8 +10,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildMotionStingHtml, stingFromValues, buildStingCaptureSpec, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
 import {
-  buildMotionHtml, statLayout, quoteLayout, compareLayout,
-  statFrom, quoteFrom, compareFrom, pickArchetype, type Archetype,
+  buildMotionHtml, statLayout, quoteLayout, compareLayout, listLayout,
+  statFrom, quoteFrom, compareFrom, listFrom, pickArchetype, type Archetype,
 } from './motionReveal.js';
 
 const C = { bg: '#0b1120', panel: '#0f1524', panel2: '#141b2b', line: '#202a40', ink: '#e8eefc', soft: '#8a98b5' };
@@ -21,6 +21,7 @@ const ARCS: { id: Archetype; label: string; hint: string }[] = [
   { id: 'stat', label: 'Stat', hint: 'Ett stort tall + delta' },
   { id: 'quote', label: 'Sitat', hint: 'Sitat + kilde' },
   { id: 'compare', label: 'Sammenlign', hint: 'Barer som racer' },
+  { id: 'list', label: 'Liste', hint: 'Punkter som kaskader' },
 ];
 
 const fmtNb = (n: number) => new Intl.NumberFormat('nb-NO').format(n);
@@ -45,6 +46,8 @@ export default function MotionStingDialog(
 ) {
   const [format, setFormat] = useState<StingFormat>('16:9');
   const [place, setPlace] = useState<MotionLayoutOpts>({ align: 'center', density: 'normal', pad: 'normal' });
+  const [tempo, setTempo] = useState<'fast' | 'normal' | 'slow'>('normal');
+  const tempoK = tempo === 'fast' ? 0.7 : tempo === 'slow' ? 1.4 : 1;
   // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
   const [edit, setEdit] = useState<Record<string, string>>(() => ({ ...values }));
   const setField = (k: string, v: string) => { setEdit((e) => ({ ...e, [k]: v })); onValueChange?.(k, v); };
@@ -69,8 +72,9 @@ export default function MotionStingDialog(
         ...d.metrics.map((m) => ({ k: 'Funnel', v: m.display || fmtNb(m.value), s: m.label })),
         ...(d.caption ? [{ k: 'Caption', v: d.caption, s: '' }] : []),
       ];
-      return { html: buildMotionStingHtml({ ...d, format }, { layout: place }), total: spec.total, readout, dataCount: d.metrics.length + (d.hero.value ? 1 : 0) };
+      return { html: buildMotionStingHtml({ ...d, format }, { layout: place, tempo: tempoK }), total: Math.round(spec.total * tempoK), readout, dataCount: d.metrics.length + (d.hero.value ? 1 : 0) };
     }
+    const rOpts = { accent, format, place, brand: { name: brandName, mark }, tempo: tempoK };
     if (arch === 'stat') {
       const d = statFrom(liveEdit, editOrder);
       const lay = statLayout(d);
@@ -79,7 +83,7 @@ export default function MotionStingDialog(
         ...(d.delta ? [{ k: 'Delta', v: d.delta, s: '' }] : []),
         ...(d.sub ? [{ k: 'Under', v: d.sub, s: '' }] : []),
       ];
-      return { html: buildMotionHtml(lay, { accent, format, place }), total: lay.total, readout, dataCount: d.value ? 1 : 0 };
+      return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.value ? 1 : 0 };
     }
     if (arch === 'quote') {
       const d = quoteFrom(liveEdit, editOrder);
@@ -88,7 +92,13 @@ export default function MotionStingDialog(
         { k: 'Sitat', v: d.quote || '—', s: '' },
         ...(d.author ? [{ k: 'Kilde', v: d.author + (d.role ? ` · ${d.role}` : ''), s: '' }] : []),
       ];
-      return { html: buildMotionHtml(lay, { accent, format, place }), total: lay.total, readout, dataCount: d.quote ? 1 : 0 };
+      return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.quote ? 1 : 0 };
+    }
+    if (arch === 'list') {
+      const d = listFrom(liveEdit, editOrder);
+      const lay = listLayout(d);
+      const readout = d.items.map((it) => ({ k: 'Punkt', v: it.label, s: it.sub || '' }));
+      return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.items.length };
     }
     const d = compareFrom(liveEdit, editOrder);
     const lay = compareLayout(d);
@@ -96,8 +106,8 @@ export default function MotionStingDialog(
       ...(d.title ? [{ k: 'Tittel', v: d.title, s: '' }] : []),
       ...d.items.map((it) => ({ k: 'Rad', v: it.display || fmtNb(it.value), s: it.label })),
     ];
-    return { html: buildMotionHtml(lay, { accent, format, place }), total: lay.total, readout, dataCount: d.items.length };
-  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format, place]);
+    return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.items.length };
+  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format, place, tempoK]);
 
   const [w, h] = format === '9:16' ? [1080, 1920] : format === '1:1' ? [1080, 1080] : [1920, 1080];
   const frames = Math.max(1, Math.round((built.total / 1000) * 30) + 1);
@@ -176,6 +186,18 @@ export default function MotionStingDialog(
                 </div>
               </div>
             ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 1 }}>
+              <span style={{ fontSize: 11, color: C.soft, width: 74, flexShrink: 0 }}>Tempo</span>
+              <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                {([['fast', 'Rask'], ['normal', 'Normal'], ['slow', 'Rolig']] as const).map(([v, l]) => {
+                  const on = tempo === v;
+                  return (
+                    <span key={v} onClick={() => setTempo(v)}
+                      style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '5px 0', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? accent : C.line}`, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 }}>{l}</span>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
