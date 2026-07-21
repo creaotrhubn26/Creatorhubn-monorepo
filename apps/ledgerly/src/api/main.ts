@@ -12,6 +12,7 @@ import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { LovdataApiClient } from '../integrations/lovdata.js';
 import { MaskinportenClient } from '../integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
+import { StripeApiClient } from '../integrations/stripe.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -44,6 +45,8 @@ const app = createApiServer({
   vatSubmission: new SkatteetatenVatSubmissionClient(new MaskinportenClient(config.maskinporten)),
   // Feilovervåking (Sentry). No-op uten SENTRY_DSN.
   errorMonitor,
+  // Stripe-inntektssynk (kun LES). Inaktiv uten LEDGERLY_STRIPE_SECRET_KEY.
+  stripe: new StripeApiClient(config.stripeSecretKey),
 });
 console.log(errorMonitor.active ? 'Sentry: feilovervåking aktiv' : 'Sentry: ikke aktiv (SENTRY_DSN mangler)');
 console.log(

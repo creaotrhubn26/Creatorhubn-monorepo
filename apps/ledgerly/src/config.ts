@@ -26,6 +26,11 @@ export interface ProductConfig {
   sentryDsn?: string | undefined;
   /** Release-tag til Sentry (f.eks. git-sha), valgfri. */
   sentryRelease?: string | undefined;
+  /**
+   * Stripe secret key (helst RESTRICTED, kun lese-tilgang) for inntektssynk:
+   * betalende kunder registreres i regnskapet. Udefinert = synk ikke aktiv.
+   */
+  stripeSecretKey?: string | undefined;
 }
 
 /** Bygger Maskinporten-konfig fra env kun når ALLE påkrevde felt finnes. */
@@ -64,5 +69,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     maskinporten: loadMaskinportenConfig(env),
     sentryDsn: env.SENTRY_DSN,
     sentryRelease: env.SENTRY_RELEASE,
+    stripeSecretKey: env.LEDGERLY_STRIPE_SECRET_KEY,
   };
 }

@@ -29,6 +29,8 @@ import type { VatRegisterLookup } from '../integrations/brreg.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
 import type { VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
+import type { StripeReadPort } from '../integrations/stripe.js';
+import { syncStripeRevenue } from '../integrations/stripe-sync.js';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
@@ -95,6 +97,8 @@ export interface ApiDeps {
   vatSubmission?: VatSubmissionPort | undefined;
   /** Feilovervåking (Sentry) for uventede serverfeil. Uten denne rapporteres den ærlig som ikke aktiv. */
   errorMonitor?: ErrorMonitor | undefined;
+  /** Stripe-lesing (kun LES) for inntektssynk. Uten nøkkel er synk ærlig inaktiv. */
+  stripe?: StripeReadPort | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -646,6 +650,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       ocr: Boolean(deps.ocrStatus?.tesseract),
       mvaSubmission: Boolean(deps.vatSubmission?.active),
       errorMonitoring: Boolean(deps.errorMonitor?.active),
+      stripeSync: Boolean(deps.stripe?.hasApiKey),
       gmail: false, // alltid sandbox i MVP
     };
     const status = dbUp ? 'ok' : 'down';
@@ -716,8 +721,55 @@ export function createApiServer(deps: ApiDeps): express.Express {
               : 'Feilovervåking ikke aktiv: SENTRY_DSN mangler.',
           }
         : { mode: 'not_configured', active: false, note: 'Feilovervåking ikke konfigurert i dette miljøet.' },
+      stripe: deps.stripe
+        ? {
+            mode: deps.stripe.hasApiKey ? 'read_sync' : 'not_configured',
+            active: deps.stripe.hasApiKey,
+            note: deps.stripe.hasApiKey
+              ? 'Stripe-inntektssynk aktiv (kun lesing). Betalte fakturaer → kunde + UTKAST-salgsfaktura til godkjenning.'
+              : 'Stripe-inntektssynk ikke aktiv: LEDGERLY_STRIPE_SECRET_KEY mangler.',
+          }
+        : { mode: 'not_configured', active: false, note: 'Stripe-inntektssynk ikke konfigurert i dette miljøet.' },
     });
   });
+
+  // Stripe → regnskap: registrer betalende kunder + utkast-salgsfaktura. Kun LES
+  // mot Stripe; utkast bokføres ikke før mennesket utsteder.
+  app.post(
+    '/api/organizations/:orgId/integrations/stripe/sync',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.stripe || !deps.stripe.hasApiKey) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message: 'Stripe-inntektssynk er ikke konfigurert (LEDGERLY_STRIPE_SECRET_KEY mangler).',
+            },
+          });
+          return;
+        }
+        const q = z
+          .object({
+            since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            vatCode: z.string().min(1).max(4).optional(),
+            revenueAccount: z.string().regex(/^\d{4}$/).optional(),
+          })
+          .parse(req.body ?? {});
+        const summary = await syncStripeRevenue(deps.db, deps.rules, deps.stripe, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ...(q.since ? { sinceUnix: Math.floor(new Date(q.since + 'T00:00:00Z').getTime() / 1000) } : {}),
+          ...(q.vatCode ? { vatCode: q.vatCode } : {}),
+          ...(q.revenueAccount ? { revenueAccount: q.revenueAccount } : {}),
+        });
+        res.json(toJson(summary));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // ── Rapporter ────────────────────────────────────────────────────────────
   const reportQuery = z.object({
