@@ -132,7 +132,7 @@ const SCENES: Scene[] = [
     video: '/leadgrid/app/tour-kjorebok.mp4',
     eyebrow: 'Leadgrid Go', title: 'Kjøreboka skriver seg selv.',
     body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport, for hele flåten.',
-    align: 'left', landscape: true,
+    align: 'left',
   },
   {
     id: 'team', kind: 'device', image: '/leadgrid/app/team.webp',
