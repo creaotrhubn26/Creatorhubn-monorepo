@@ -1583,10 +1583,11 @@ export function InfographicStudioView(
       {showMotion && (
         <MotionStingDialog
           values={fieldVals(scene, tpl)}
-          order={tpl.fields.map((f) => f.key)}
+          fields={tpl.fields.map((f) => ({ key: f.key, label: f.label }))}
           templateId={tpl.id}
           brandName={project?.name || 'Merkevare'}
           accent={sceneAccent(scene)}
+          onValueChange={(k, v) => setValue(k, v)}
           onClose={() => setShowMotion(false)}
         />
       )}
