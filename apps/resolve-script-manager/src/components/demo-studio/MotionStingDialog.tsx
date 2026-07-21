@@ -13,6 +13,8 @@ import {
   buildMotionHtml, statLayout, quoteLayout, compareLayout, listLayout,
   statFrom, quoteFrom, compareFrom, listFrom, pickArchetype, type Archetype,
 } from './motionReveal.js';
+import { aiSuggestMotion } from './motionAI.js';
+import { loadPresets, savePreset, deletePreset, type MotionPreset } from './motionPresets.js';
 
 const C = { bg: '#0b1120', panel: '#0f1524', panel2: '#141b2b', line: '#202a40', ink: '#e8eefc', soft: '#8a98b5' };
 
@@ -52,6 +54,32 @@ export default function MotionStingDialog(
   const tempoK = tempo === 'fast' ? 0.7 : tempo === 'slow' ? 1.4 : 1;
   const [adv, setAdv] = useState(false);
   const [sending, setSending] = useState(false);
+  const [presets, setPresets] = useState<MotionPreset[]>(() => loadPresets());
+  const applyPreset = (name: string) => {
+    const p = presets.find((x) => x.name === name);
+    if (!p) return;
+    setArch(p.arch); setFormat(p.format); setPlace(p.place); setTempo(p.tempo);
+  };
+  const saveCurrentPreset = () => {
+    const name = window.prompt('Navn på stil-preset:')?.trim();
+    if (!name) return;
+    setPresets(savePreset({ name, arch, format, place, tempo }));
+  };
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const [aiCaption, setAiCaption] = useState<string | undefined>();
+  const [aiEyebrow, setAiEyebrow] = useState<string | undefined>();
+  const runAi = async () => {
+    if (aiBusy) return;
+    setAiBusy(true); setAiNote(null);
+    try {
+      const s = await aiSuggestMotion(edit, { templateId });
+      setArch(s.archetype);
+      setAiCaption(s.caption); setAiEyebrow(s.eyebrow);
+      setAiNote(s.fromAi ? `AI valgte «${s.archetype}»${s.caption ? ` · «${s.caption}»` : ''}` : `AI ikke koblet — brukte heuristikk («${s.archetype}»)`);
+    } catch { setAiNote('AI-forslag feilet.'); }
+    finally { setAiBusy(false); }
+  };
   const densityDefault = place.density === 'tight' ? 1.6 : place.density === 'airy' ? 5.4 : 3.2;
   const setSpacing = (ref: string, v: number) => setPlace((p) => ({ ...p, spacing: { ...(p.spacing || {}), [ref]: v } }));
   // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
@@ -71,7 +99,7 @@ export default function MotionStingDialog(
   // Bygg HTML + total + readout for valgt arketype.
   const built = useMemo(() => {
     if (arch === 'sting') {
-      const d = stingFromValues(liveEdit, { brandName, accent, mark, caption, eyebrow, order: editOrder });
+      const d = stingFromValues(liveEdit, { brandName, accent, mark, caption: aiCaption ?? caption, eyebrow: aiEyebrow ?? eyebrow, order: editOrder });
       const spec = buildStingCaptureSpec({ ...d, format });
       const readout = [
         { k: 'Hero', v: `${fmtNb(d.hero.value)}${d.hero.suffix ? ` ${d.hero.suffix}` : ''}`, s: d.hero.label },
@@ -113,7 +141,7 @@ export default function MotionStingDialog(
       ...d.items.map((it) => ({ k: 'Rad', v: it.display || fmtNb(it.value), s: it.label })),
     ];
     return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.items.length };
-  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format, place, tempoK]);
+  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format, place, tempoK, aiCaption, aiEyebrow]);
 
   const [w, h] = format === '9:16' ? [1080, 1920] : format === '1:1' ? [1080, 1080] : [1920, 1080];
   const frames = Math.max(1, Math.round((built.total / 1000) * 30) + 1);
@@ -160,7 +188,13 @@ export default function MotionStingDialog(
         {/* venstre: valg + kontroller */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, overflowY: 'auto' }}>
           <div>
-            <div style={lbl}>Hva vil du lage?</div>
+            <div style={{ ...lbl, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Hva vil du lage?</span>
+              <span onClick={runAi} title="La AI velge arketype + skrive caption fra scene-data"
+                style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0, textTransform: 'none', color: aiBusy ? C.soft : accent, cursor: aiBusy ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {aiBusy ? '● tenker …' : '✨ La AI velge'}
+              </span>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {ARCS.map((a) => (
                 <div key={a.id} onClick={() => setArch(a.id)} style={{ ...chip(arch === a.id), flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '9px 11px' }}>
@@ -169,6 +203,7 @@ export default function MotionStingDialog(
                 </div>
               ))}
             </div>
+            {aiNote && <div style={{ marginTop: 6, fontSize: 11, color: C.soft, lineHeight: 1.4 }}>{aiNote}</div>}
           </div>
 
           <div>
@@ -177,6 +212,22 @@ export default function MotionStingDialog(
               {(['16:9', '9:16', '1:1'] as StingFormat[]).map((f) => (
                 <span key={f} onClick={() => setFormat(f)} style={chip(format === f)}>{f}</span>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={lbl}>Stil-preset <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: C.soft }}>· hus-stil (uten data)</span></div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value="" onChange={(e) => { applyPreset(e.target.value); e.currentTarget.value = ''; }}
+                style={{ flex: 1, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 8, padding: '7px 9px', color: presets.length ? C.ink : C.soft, fontSize: 12.5, outline: 'none', cursor: 'pointer' }}>
+                <option value="">{presets.length ? 'Bruk lagret stil …' : 'Ingen lagret enda'}</option>
+                {presets.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </select>
+              <span onClick={saveCurrentPreset} title="Lagre gjeldende arketype + layout + tempo + tema som gjenbrukbar stil" style={{ ...btn, padding: '7px 12px' }}>Lagre</span>
+              {presets.length > 0 && (
+                <span onClick={() => { const n = presets[presets.length - 1]?.name; if (n && window.confirm(`Slette preset «${n}»?`)) setPresets(deletePreset(n)); }}
+                  title="Slett siste preset" style={{ ...btn, padding: '7px 10px', color: '#e08a8a' }}>✕</span>
+              )}
             </div>
           </div>
 
