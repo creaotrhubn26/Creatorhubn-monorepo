@@ -128,6 +128,18 @@ const MATERIAL_PRIORITY_LABELS: Record<'critical' | 'important' | 'reference', s
 const hasText = (value: string | undefined | null): value is string => typeof value === 'string' && value.trim().length > 0;
 const CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS = 12_000;
 
+// Dempet stil for sekundærhandlinger — de skal være tilgjengelige, men
+// aldri konkurrere med hovedhandlingen om oppmerksomheten.
+const SECONDARY_ACTION_SX = {
+  textTransform: 'none' as const,
+  fontWeight: 600,
+  fontSize: '0.8rem',
+  color: 'rgba(203,213,225,0.72)',
+  minWidth: 0,
+  px: 0.9,
+  '&:hover': { color: '#e2e8f0', background: 'rgba(148,163,184,0.08)' },
+};
+
 function withClientPackageInputTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -989,82 +1001,46 @@ export default function ProducerExportHandoffPanel({
             Alt kunden skal få — innleggene som skal ut, filnavn, stilguide og leveringsrutine — samlet på ett sted, slik at det som planlegges er nøyaktig det som sendes.
           </Typography>
         </Box>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          {onOpenManuscript ? (
-            <Button variant="outlined" startIcon={<AutoStoriesIcon />} onClick={onOpenManuscript} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              Åpne manus
-            </Button>
-          ) : null}
-          {onOpenShotList ? (
-            <Button variant="outlined" startIcon={<ViewListIcon />} onClick={onOpenShotList} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              Åpne shotlist
-            </Button>
-          ) : null}
-          {onOpenMedia ? (
-            <Button variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              Åpne klientbrief
-            </Button>
-          ) : null}
-          <Button
-            variant="outlined"
-            startIcon={<ContentCopyIcon />}
-            data-testid="producer-export-copy-portal"
-            onClick={() => {
-              void handleCopyClientPortalUrl();
-            }}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
-          >
-            Kopier klientportal
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<TaskAltIcon />}
-            data-testid="producer-export-write-package"
-            onClick={() => {
-              void handleBuildAndUploadPackage();
-            }}
-            disabled={uploadingPackage}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
-          >
-            {uploadingPackage ? 'Skriver pakke...' : 'Skriv klientpakke'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<ViewListIcon />}
-            data-testid="producer-export-write-workspace"
-            onClick={() => {
-              void handleWriteDeliveryWorkspace();
-            }}
-            disabled={writingWorkspace}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
-          >
-            {writingWorkspace ? 'Skriver arbeidsområde...' : 'Skriv leveransearbeidsområde'}
-          </Button>
-          {latestPackage ? (
-            <Button
-              variant="outlined"
-              startIcon={<LaunchIcon />}
-              data-testid="producer-export-share-package"
-              onClick={() => {
-                void handleShareLatestPackage();
-              }}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              Del siste klientpakke
-            </Button>
-          ) : null}
+        {/* Én hovedhandling (The Role Room-gradient), resten dempet til
+            stille tekst-knapper — mindre å velge mellom på ett blikk. */}
+        <Stack spacing={1} alignItems={{ sm: 'flex-end' }} sx={{ flexShrink: 0 }}>
           {onSendToClient ? (
             <Button
               variant="contained"
+              size="large"
               startIcon={<SendIcon />}
               data-testid="producer-export-send-package"
               onClick={() => { void handleSendToClient(); }}
               disabled={sendingToClient || uploadingPackage || writingWorkspace}
-              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
+              sx={{
+                textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
+                px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                color: '#fff', boxShadow: '0 8px 24px rgba(139,92,246,0.35)',
+                '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
+                '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
+              }}
             >
-              {sendingToClient ? 'Klargjør klientpakke…' : 'Send klientpakke'}
+              {sendingToClient ? 'Klargjør…' : 'Send til kunden'}
             </Button>
           ) : null}
+          <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap justifyContent={{ sm: 'flex-end' }}>
+            {onOpenManuscript ? (
+              <Button variant="text" size="small" startIcon={<AutoStoriesIcon />} onClick={onOpenManuscript} sx={SECONDARY_ACTION_SX}>Åpne manus</Button>
+            ) : null}
+            {onOpenShotList ? (
+              <Button variant="text" size="small" startIcon={<ViewListIcon />} onClick={onOpenShotList} sx={SECONDARY_ACTION_SX}>Åpne shotlist</Button>
+            ) : null}
+            {onOpenMedia ? (
+              <Button variant="text" size="small" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={SECONDARY_ACTION_SX}>Åpne brief</Button>
+            ) : null}
+            <Button variant="text" size="small" startIcon={<ContentCopyIcon />} data-testid="producer-export-copy-portal" onClick={() => { void handleCopyClientPortalUrl(); }} sx={SECONDARY_ACTION_SX}>Kopier kundeportal</Button>
+            <Button variant="text" size="small" startIcon={<TaskAltIcon />} data-testid="producer-export-write-package" onClick={() => { void handleBuildAndUploadPackage(); }} disabled={uploadingPackage} sx={SECONDARY_ACTION_SX}>{uploadingPackage ? 'Skriver…' : 'Lag pakke'}</Button>
+            <Button variant="text" size="small" startIcon={<ViewListIcon />} data-testid="producer-export-write-workspace" onClick={() => { void handleWriteDeliveryWorkspace(); }} disabled={writingWorkspace} sx={SECONDARY_ACTION_SX}>{writingWorkspace ? 'Skriver…' : 'Lag filer'}</Button>
+            {latestPackage ? (
+              <Button variant="text" size="small" startIcon={<LaunchIcon />} data-testid="producer-export-share-package" onClick={() => { void handleShareLatestPackage(); }} sx={SECONDARY_ACTION_SX}>Del siste pakke</Button>
+            ) : null}
+          </Stack>
         </Stack>
       </Stack>
 
