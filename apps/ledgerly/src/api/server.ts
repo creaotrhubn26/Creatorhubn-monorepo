@@ -32,6 +32,8 @@ import type { ErrorMonitor } from '../ops/sentry.js';
 import type { StripeReadPort } from '../integrations/stripe.js';
 import { syncStripeRevenue } from '../integrations/stripe-sync.js';
 import { ensureBootstrapOrg, type BootstrapOrgConfig } from '../ops/bootstrap.js';
+import type { EmailPort } from '../integrations/email.js';
+import { sendInvoiceReminders } from '../invoicing/reminders.js';
 import { timingSafeEqual } from 'node:crypto';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
@@ -105,6 +107,8 @@ export interface ApiDeps {
   cronSecret?: string | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
   bootstrapOrg?: BootstrapOrgConfig | undefined;
+  /** Utgående e-post (betalingspåminnelser). Uten konfig er sending ærlig inaktiv. */
+  email?: EmailPort | undefined;
 }
 
 export function createApiServer(deps: ApiDeps): express.Express {
@@ -736,8 +740,52 @@ export function createApiServer(deps: ApiDeps): express.Express {
               : 'Stripe-inntektssynk ikke aktiv: LEDGERLY_STRIPE_SECRET_KEY mangler.',
           }
         : { mode: 'not_configured', active: false, note: 'Stripe-inntektssynk ikke konfigurert i dette miljøet.' },
+      email: deps.email
+        ? {
+            mode: deps.email.configured ? 'resend' : 'not_configured',
+            active: deps.email.configured,
+            note: deps.email.configured
+              ? 'Utgående e-post (Resend) aktiv — brukes til betalingspåminnelser.'
+              : 'Utgående e-post ikke aktiv: LEDGERLY_RESEND_API_KEY + LEDGERLY_REMINDER_FROM mangler.',
+          }
+        : { mode: 'not_configured', active: false, note: 'Utgående e-post ikke konfigurert i dette miljøet.' },
     });
   });
+
+  // Betalingspåminnelser: send purring på forfalte, utstedte fakturaer. (Stripe-
+  // abonnement dunes av Stripe selv.) Krever konfigurert e-postsender.
+  app.post(
+    '/api/organizations/:orgId/invoices/reminders/send',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.email || !deps.email.configured) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message: 'Utgående e-post er ikke konfigurert (LEDGERLY_RESEND_API_KEY + LEDGERLY_REMINDER_FROM mangler).',
+            },
+          });
+          return;
+        }
+        const q = z
+          .object({
+            asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            minDaysBetween: z.number().int().min(1).max(90).optional(),
+          })
+          .parse(req.body ?? {});
+        const summary = await sendInvoiceReminders(deps.db, deps.email, {
+          organizationId: req.params.orgId!,
+          asOfDate: q.asOf ?? new Date().toISOString().slice(0, 10),
+          ...(q.minDaysBetween ? { minDaysBetween: q.minDaysBetween } : {}),
+        });
+        res.json(toJson(summary));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // Stripe → regnskap: registrer betalende kunder + utkast-salgsfaktura. Kun LES
   // mot Stripe; utkast bokføres ikke før mennesket utsteder.

@@ -33,6 +33,10 @@ export interface ProductConfig {
    * betalende kunder registreres i regnskapet. Udefinert = synk ikke aktiv.
    */
   stripeSecretKey?: string | undefined;
+  /** Resend API-nøkkel for utgående e-post (påminnelser). Udefinert = sending inaktiv. */
+  resendApiKey?: string | undefined;
+  /** Avsenderadresse for påminnelser (f.eks. 'faktura@creatorhubn.com'). */
+  reminderFrom?: string | undefined;
   /**
    * Hemmelig token for hodeløse cron-jobber (f.eks. Stripe-synk). Udefinert =
    * cron-endepunktene svarer 503 (ikke konfigurert).
@@ -107,6 +111,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     sentryDsn: env.SENTRY_DSN,
     sentryRelease: env.SENTRY_RELEASE,
     stripeSecretKey: env.LEDGERLY_STRIPE_SECRET_KEY,
+    resendApiKey: env.LEDGERLY_RESEND_API_KEY,
+    reminderFrom: env.LEDGERLY_REMINDER_FROM,
     cronSecret: env.LEDGERLY_CRON_SECRET,
     bootstrapOrg: loadBootstrapOrg(env),
   };

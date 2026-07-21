@@ -13,6 +13,7 @@ import { LovdataApiClient } from '../integrations/lovdata.js';
 import { MaskinportenClient } from '../integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
 import { StripeApiClient } from '../integrations/stripe.js';
+import { ResendEmailClient } from '../integrations/email.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -50,6 +51,8 @@ const app = createApiServer({
   // Hodeløs cron-synk: token + org-bootstrap (prod-appen har ingen interaktiv login).
   cronSecret: config.cronSecret,
   bootstrapOrg: config.bootstrapOrg,
+  // Utgående e-post (Resend) for betalingspåminnelser. Inaktiv uten nøkkel+avsender.
+  email: new ResendEmailClient(config.resendApiKey, config.reminderFrom),
 });
 console.log(errorMonitor.active ? 'Sentry: feilovervåking aktiv' : 'Sentry: ikke aktiv (SENTRY_DSN mangler)');
 console.log(
