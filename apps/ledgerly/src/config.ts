@@ -80,7 +80,7 @@ function loadBootstrapOrg(env: NodeJS.ProcessEnv): BootstrapOrgConfig | undefine
     orgForm,
     vatStatus,
     systemUserEmail: env.LEDGERLY_SYSTEM_USER_EMAIL ?? 'system@ledgerly.local',
-    systemUserName: env.LEDGERLY_SYSTEM_USER_NAME ?? 'Ledgerly System (cron)',
+    systemUserName: env.LEDGERLY_SYSTEM_USER_NAME ?? 'Reknaren System (cron)',
   };
 }
 
@@ -111,7 +111,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
         })()
       : 'postgres://ledgerly:ledgerly_dev@localhost:5432/ledgerly_dev');
   return {
-    productName: env.PRODUCT_NAME ?? 'Ledgerly Norge',
+    productName: env.PRODUCT_NAME ?? 'Reknaren',
     environment,
     databaseUrl,
     port: Number(env.PORT ?? 4310),

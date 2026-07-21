@@ -100,8 +100,8 @@ export default function App() {
       <div className="auth-wrap">
         <div className="auth-card">
           <div className="brand">
-            <div className="logo" aria-hidden>L</div>
-            <div className="name">Ledgerly</div>
+            <div className="logo" aria-hidden>R</div>
+            <div className="name">Reknaren</div>
           </div>
           <p className="subtitle">Logger inn …</p>
         </div>
@@ -128,9 +128,9 @@ export default function App() {
         <aside className="sidebar">
           <div className="brand">
             <div className="logo" aria-hidden>
-              L
+              R
             </div>
-            <div className="name">Ledgerly</div>
+            <div className="name">Reknaren</div>
           </div>
           <nav aria-label="Hovedmeny">
             {NAV.map((item) => (
@@ -240,9 +240,9 @@ function LoginScreen() {
       <div className="auth-card">
         <div className="brand">
           <div className="logo" aria-hidden>
-            L
+            R
           </div>
-          <div className="name">Ledgerly</div>
+          <div className="name">Reknaren</div>
         </div>
         <p className="subtitle">
           Regnskapet ditt, forklart på vanlig norsk. Passordløs innlogging med engangslenke på e-post.

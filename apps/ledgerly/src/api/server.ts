@@ -204,9 +204,9 @@ export function createApiServer(deps: ApiDeps): express.Express {
         await deps.email
           .send({
             to: email,
-            subject: 'Logg inn i Ledgerly',
+            subject: 'Logg inn i Reknaren',
             text:
-              `Klikk for å logge inn i Ledgerly (gyldig i 15 minutter):\n\n${link}\n\n` +
+              `Klikk for å logge inn i Reknaren (gyldig i 15 minutter):\n\n${link}\n\n` +
               `Har du ikke bedt om dette, kan du se bort fra e-posten.`,
           })
           .catch(() => {}); // ikke lekk sende-status
