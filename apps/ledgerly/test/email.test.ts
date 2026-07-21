@@ -4,6 +4,8 @@ import {
   EmailNotConfiguredError,
   InMemoryEmailStub,
   ResendEmailClient,
+  SmtpEmailClient,
+  type MailTransport,
 } from '../src/integrations/email.js';
 
 function fakeFetch(status = 200) {
@@ -39,6 +41,31 @@ describe('ResendEmailClient', () => {
 
   it('ikke-2xx fra Resend → EmailError', async () => {
     const client = new ResendEmailClient('re_key', 'f@x.no', fakeFetch(422).impl);
+    await expect(client.send(msg)).rejects.toBeInstanceOf(EmailError);
+  });
+});
+
+describe('SmtpEmailClient (Gmail)', () => {
+  const smtp = { host: 'smtp.gmail.com', port: 465, user: 'bot@gmail.com', pass: 'app-pass', from: 'Creatorhub AS <faktura@creatorhubn.com>' };
+
+  it('uten konfig: configured=false og send kaster', async () => {
+    const client = new SmtpEmailClient(undefined);
+    expect(client.configured).toBe(false);
+    await expect(client.send(msg)).rejects.toBeInstanceOf(EmailNotConfiguredError);
+  });
+
+  it('med konfig: sender via transport med riktig from/to/subject', async () => {
+    const sent: unknown[] = [];
+    const transport: MailTransport = { sendMail: async (o) => (sent.push(o), 'ok') };
+    const client = new SmtpEmailClient(smtp, () => transport);
+    expect(client.configured).toBe(true);
+    await client.send(msg);
+    expect(sent[0]).toMatchObject({ from: 'Creatorhub AS <faktura@creatorhubn.com>', to: 'kunde@example.com', subject: 'Påminnelse' });
+  });
+
+  it('transport-feil pakkes som EmailError', async () => {
+    const transport: MailTransport = { sendMail: async () => { throw new Error('SMTP nede'); } };
+    const client = new SmtpEmailClient(smtp, () => transport);
     await expect(client.send(msg)).rejects.toBeInstanceOf(EmailError);
   });
 });

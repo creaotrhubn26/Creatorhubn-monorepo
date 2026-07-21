@@ -743,11 +743,11 @@ export function createApiServer(deps: ApiDeps): express.Express {
         : { mode: 'not_configured', active: false, note: 'Stripe-inntektssynk ikke konfigurert i dette miljøet.' },
       email: deps.email
         ? {
-            mode: deps.email.configured ? 'resend' : 'not_configured',
+            mode: deps.email.configured ? 'active' : 'not_configured',
             active: deps.email.configured,
             note: deps.email.configured
-              ? 'Utgående e-post (Resend) aktiv — brukes til betalingspåminnelser.'
-              : 'Utgående e-post ikke aktiv: LEDGERLY_RESEND_API_KEY + LEDGERLY_REMINDER_FROM mangler.',
+              ? 'Utgående e-post aktiv (SMTP/Gmail eller Resend) — brukes til betalingspåminnelser.'
+              : 'Utgående e-post ikke aktiv: mangler SMTP (LEDGERLY_SMTP_USER/PASSWORD) eller Resend + LEDGERLY_REMINDER_FROM.',
           }
         : { mode: 'not_configured', active: false, note: 'Utgående e-post ikke konfigurert i dette miljøet.' },
     });

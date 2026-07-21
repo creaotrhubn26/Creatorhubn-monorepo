@@ -37,6 +37,11 @@ export interface ProductConfig {
   resendApiKey?: string | undefined;
   /** Avsenderadresse for påminnelser (f.eks. 'faktura@creatorhubn.com'). */
   reminderFrom?: string | undefined;
+  /** SMTP (f.eks. Gmail). Har forrang over Resend når bruker+passord finnes. */
+  smtpHost?: string | undefined;
+  smtpPort?: number | undefined;
+  smtpUser?: string | undefined;
+  smtpPassword?: string | undefined;
   /**
    * Hemmelig token for hodeløse cron-jobber (f.eks. Stripe-synk). Udefinert =
    * cron-endepunktene svarer 503 (ikke konfigurert).
@@ -113,6 +118,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     stripeSecretKey: env.LEDGERLY_STRIPE_SECRET_KEY,
     resendApiKey: env.LEDGERLY_RESEND_API_KEY,
     reminderFrom: env.LEDGERLY_REMINDER_FROM,
+    smtpHost: env.LEDGERLY_SMTP_HOST ?? 'smtp.gmail.com',
+    smtpPort: Number(env.LEDGERLY_SMTP_PORT ?? 465),
+    smtpUser: env.LEDGERLY_SMTP_USER,
+    smtpPassword: env.LEDGERLY_SMTP_PASSWORD,
     cronSecret: env.LEDGERLY_CRON_SECRET,
     bootstrapOrg: loadBootstrapOrg(env),
   };

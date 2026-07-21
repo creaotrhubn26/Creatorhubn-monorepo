@@ -89,6 +89,65 @@ export class ResendEmailClient implements EmailPort {
   }
 }
 
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  /** Avsender, f.eks. 'Creatorhub AS <faktura@creatorhubn.com>' (Gmail send-as-alias). */
+  from: string;
+}
+
+/** Minimal transport-kontrakt (nodemailer) — injiserbar for test. */
+export interface MailTransport {
+  sendMail(opts: { from: string; to: string; subject: string; text: string }): Promise<unknown>;
+}
+
+/**
+ * SMTP-sender (f.eks. Gmail med app-passord + send-as-alias faktura@creatorhubn.com).
+ * Uten host/bruker/passord/avsender er den ærlig inaktiv.
+ */
+export class SmtpEmailClient implements EmailPort {
+  private transport: MailTransport | null = null;
+
+  constructor(
+    private readonly config: SmtpConfig | undefined,
+    private readonly transportFactory?: (c: SmtpConfig) => MailTransport,
+  ) {}
+
+  get configured(): boolean {
+    const c = this.config;
+    return Boolean(c && c.host && c.user && c.pass && c.from);
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    if (!this.configured) {
+      throw new EmailNotConfiguredError('SMTP er ikke konfigurert (host/bruker/passord/avsender mangler).');
+    }
+    const c = this.config as SmtpConfig;
+    if (!this.transport) {
+      this.transport = this.transportFactory
+        ? this.transportFactory(c)
+        : await defaultNodemailerTransport(c);
+    }
+    try {
+      await this.transport.sendMail({ from: c.from, to: message.to, subject: message.subject, text: message.text });
+    } catch (err) {
+      throw new EmailError(`SMTP-sending feilet: ${err instanceof Error ? err.message : 'ukjent feil'}`);
+    }
+  }
+}
+
+async function defaultNodemailerTransport(c: SmtpConfig): Promise<MailTransport> {
+  const nodemailer = (await import('nodemailer')).default;
+  return nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.port === 465,
+    auth: { user: c.user, pass: c.pass },
+  }) as unknown as MailTransport;
+}
+
 /** Test-/sandboxsender: samler e-poster i minnet, sender ingenting. */
 export class InMemoryEmailStub implements EmailPort {
   readonly sent: EmailMessage[] = [];
