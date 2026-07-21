@@ -514,7 +514,7 @@ export default function RoleRoomAgentDialog({
   // ref means the saved state survives reopen and auto-clears only when a
   // genuinely new analysis (new object) arrives.
   // "Bruk forslag" applies the result INTO the current project (brief, branding,
-  // story logic) — that IS saving.
+  // den røde tråden) — that IS saving.
   const [createdResultRef, setCreatedResultRef] =
     useState<RoleRoomAgentProducerBootstrapResult | null>(null);
   const [appliedResultRef, setAppliedResultRef] =

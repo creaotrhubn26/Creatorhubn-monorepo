@@ -312,7 +312,7 @@ export default function ProducerTimelinePanel({
   const { enqueueSnackbar } = useSnackbar();
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // Planner-visning: skiller «Tidslinje & fremdrift» (faseprioritet +
-  // milepæler) fra «Klientplan» (brief, story logic, gantt, publisering)
+  // milepæler) fra «Klientplan» (brief, den røde tråden, gantt, publisering)
   // så alt ikke ligger i én lang scroll. Begge holdes montert (display-
   // toggle) så data ikke re-hentes ved fanebytte.
   const [plannerView, setPlannerView] = useState<'tidslinje' | 'klientplan'>('tidslinje');
@@ -1046,7 +1046,7 @@ export default function ProducerTimelinePanel({
         <Stack spacing={1.1}>
           <Box>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-              Faseprioritet akkurat nå
+              Hva som haster nå
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.92rem', mt: 0.4 }}>
               Shotlist, opptaksdager og klientgodkjenning prioriteres her etter hva som faktisk kan stoppe flyten før, under og etter produksjonen.

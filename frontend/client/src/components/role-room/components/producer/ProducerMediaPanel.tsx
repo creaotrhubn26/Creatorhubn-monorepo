@@ -4799,10 +4799,10 @@ export default function ProducerMediaPanel({
   const missingLogicFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(contentLogicDraft.objective)) {
-      items.push({ id: 'logic-objective', label: 'Content Logic-mål mangler' });
+      items.push({ id: 'logic-objective', label: 'Innholdsplan-mål mangler' });
     }
     if (!hasText(contentLogicDraft.audience)) {
-      items.push({ id: 'logic-audience', label: 'Content Logic-målgruppe mangler' });
+      items.push({ id: 'logic-audience', label: 'Innholdsplan-målgruppe mangler' });
     }
     if (!hasText(contentLogicDraft.hook)) {
       items.push({ id: 'logic-hook', label: 'Hook mangler' });
@@ -4959,7 +4959,7 @@ export default function ProducerMediaPanel({
     },
     {
       key: 'logic' as const,
-      label: 'Content Logic',
+      label: 'Innholdsplan',
       description: 'Mål, krok og handling slik produsenten planlegger videre.',
       status: briefStepProgress.logic.ready === briefStepProgress.logic.total
         ? 'Klar'
@@ -5053,7 +5053,7 @@ export default function ProducerMediaPanel({
         contentLogicDraft.objective,
         contentLogicDraft.hook,
         contentLogicDraft.callToAction,
-        'Content Logic er ikke fylt ut ennå.',
+        'Innholdsplan er ikke fylt ut ennå.',
       );
     }
     if (activeBriefStep === 'foundation') {
@@ -7002,7 +7002,7 @@ export default function ProducerMediaPanel({
               {
                 id: 'materials-calendar',
                 title: `${linkedCalendarMaterialCount} koblet til kalender`,
-                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til publiseringspunkter eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
+                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til innlegg som skal ut eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
               },
               {
                 id: 'materials-shotlist',
@@ -9288,7 +9288,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Content Logic
+                        Innholdsplan
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
                         Samme struktur som produsenten bruker videre i planlegging og levering. Klienten beskriver målet, kroken og handlingen direkte her.
@@ -9301,7 +9301,7 @@ export default function ProducerMediaPanel({
                               hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Content Logic mål"
+                              label="Innholdsplan mål"
                               value={contentLogicDraft.objective}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9325,7 +9325,7 @@ export default function ProducerMediaPanel({
                               hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Content Logic målgruppe"
+                              label="Innholdsplan målgruppe"
                               value={contentLogicDraft.audience}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9673,7 +9673,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Content Logic videreføring
+                        Innholdsplan videreføring
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
                         Her konkretiseres hva som beviser budskapet og hvordan innholdet skal fordeles på flater.
