@@ -115,7 +115,7 @@ curl -X POST \\
 
 export default function LeadgridDevelopersPage() {
   useEffect(() => {
-    document.title = "Leadgrid Developers — API & Webhooks";
+    document.title = "Leadgrid Developers: API & Webhooks";
   }, []);
 
   return (
@@ -300,7 +300,7 @@ X-RateLimit-Burst: <max calls per minute>`}</CodeBlock>
             <strong> 30s → 5min → 30min → 4t → 24t</strong>.
           </Typography>
           <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            4xx-respons (utenom 408 og 429) regnes som permanent feil — vi
+            4xx-respons (utenom 408 og 429) regnes som permanent feil, og vi
             prøver ikke på nytt. Etter 10 fortløpende fails auto-disables
             endpoint-et og du må re-aktivere det manuelt.
           </Typography>
@@ -315,7 +315,7 @@ X-RateLimit-Burst: <max calls per minute>`}</CodeBlock>
         <Section title="Idempotency">
           <Typography sx={{ color: PALETTE.textMuted }}>
             Vi sender samme event-ID ved retry. Bruk <code>X-Leadgrid-Delivery</code>
-            -headeren til å deduplisere — lagre IDs du allerede har behandlet.
+            -headeren til å deduplisere. Lagre IDs du allerede har behandlet.
           </Typography>
         </Section>
 

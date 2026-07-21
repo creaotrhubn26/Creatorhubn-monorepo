@@ -72,14 +72,14 @@ const SCENES: Scene[] = [
   {
     id: 'intro', kind: 'cinematic', image: '/leadgrid/scenes/field-intro-1.webp',
     eyebrow: 'Leadgrid', title: 'Feltet ditt er et grid.',
-    body: 'Hver dør en mulighet. Leadgrid gjør nabolaget til et levende rutenett av leads — og du beveger deg gjennom det.',
+    body: 'Hver dør en mulighet. Leadgrid gjør nabolaget til et levende rutenett av leads, og du beveger deg gjennom det.',
     align: 'left',
   },
   {
     id: 'kart', kind: 'device', image: '/leadgrid/app/tour-kart-poster.webp',
     video: '/leadgrid/app/tour-kart.mp4',
     eyebrow: 'Kartet', title: 'Se hele territoriet.',
-    body: 'Alle leads på kartet, farget etter temperatur. Trykk en pin — hele historikken folder seg ut.',
+    body: 'Alle leads på kartet, farget etter temperatur. Trykk en pin, og hele historikken folder seg ut.',
     align: 'left', landscape: true,
   },
   {
@@ -91,7 +91,7 @@ const SCENES: Scene[] = [
   {
     id: 'moter', kind: 'device', image: '/leadgrid/app/moter.webp',
     eyebrow: 'Møter', title: 'Dagen er planlagt for deg.',
-    body: 'Agenda, kjørerute og AI-innsikt for hvert møte — klart før du går ut døra.',
+    body: 'Agenda, kjørerute og AI-innsikt for hvert møte, klart før du går ut døra.',
     align: 'left',
   },
   {
@@ -100,40 +100,40 @@ const SCENES: Scene[] = [
     id: 'watch', kind: 'framed', image: '/leadgrid/scenes/watch-framed.webp',
     bg: '/leadgrid/scenes/watch-bg.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
-    body: 'Ny lead tildelt deg — rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
+    body: 'Ny lead tildelt deg, rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
     align: 'right',
   },
   {
     id: 'dorsalg', kind: 'device', image: '/leadgrid/app/tour-dorsalg-poster.webp',
     video: '/leadgrid/app/tour-dorsalg.mp4',
     eyebrow: 'Dørsalg & verving', title: 'Hver dør. Én farge.',
-    body: 'Dørsalg-modus henter alle adressene i området og fargelegger dem etter utfall — vunnet, ikke hjemme, avslått. Registrer salget på døra, ferdig.',
+    body: 'Dørsalg-modus henter alle adressene i området og fargelegger dem etter utfall: vunnet, ikke hjemme, avslått. Registrer salget på døra, ferdig.',
     align: 'left', landscape: true,
   },
   {
     id: 'kvalitet', kind: 'device', image: '/leadgrid/app/tour-kvalitet-poster.webp',
     video: '/leadgrid/app/tour-kvalitet.mp4',
     eyebrow: 'Kvalitet', title: 'Hvert salg verifiseres.',
-    body: 'Egen verifiseringskø med samtale-maler og kvalitetsgrad per selger. Kunden bekrefter — organisasjonen kan stole på tallene.',
+    body: 'Egen verifiseringskø med samtale-maler og kvalitetsgrad per selger. Kunden bekrefter, og organisasjonen kan stole på tallene.',
     align: 'right', landscape: true,
   },
   {
     id: 'go', kind: 'device', image: '/leadgrid/app/tour-kjorebok-poster.webp',
     video: '/leadgrid/app/tour-kjorebok.mp4',
     eyebrow: 'Leadgrid Go', title: 'Kjøreboka skriver seg selv.',
-    body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport — for hele flåten.',
+    body: 'Automatisk trip-logg, kjøregodtgjørelse med ekte bomkostnad og Skatteetaten-klar rapport, for hele flåten.',
     align: 'left', landscape: true,
   },
   {
     id: 'team', kind: 'device', image: '/leadgrid/app/team.webp',
     eyebrow: 'Team', title: 'Hver selger sin sone.',
-    body: 'Territorie-grid med geofence. Ingen tråkker i hverandres felt — og lederen ser alt.',
+    body: 'Territorie-grid med geofence. Ingen tråkker i hverandres felt, og lederen ser alt.',
     align: 'left',
   },
   {
     id: 'leadbook', kind: 'device', image: '/leadgrid/app/leadbook.webp',
     eyebrow: 'Leadbook', title: 'Vinn med Pondus.',
-    body: 'Manus som lukker — første kontakt, innvendinger, beslutningstaker — bygget inn i appen.',
+    body: 'Manus som lukker: første kontakt, innvendinger og beslutningstaker, bygget inn i appen.',
     align: 'right',
   },
   {
@@ -167,7 +167,7 @@ export default function LeadgridExperience({
   return (
     <section
       ref={ref}
-      aria-label="Leadgrid — en dag i feltet"
+      aria-label="Leadgrid: en dag i feltet"
       style={{
         position: 'relative',
         // 85vh per scene (ikke 100): strammere reise uten døde soner nå som
