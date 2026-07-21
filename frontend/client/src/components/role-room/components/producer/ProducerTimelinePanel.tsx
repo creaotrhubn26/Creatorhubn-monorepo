@@ -1296,11 +1296,11 @@ export default function ProducerTimelinePanel({
               />
             )}
             <Button
-              variant="contained"
+              variant="outlined"
               startIcon={<AddIcon />}
               onClick={() => { void handleCreate(); }}
               disabled={loading || !title.trim()}
-              sx={{ bgcolor: '#fbbf24', color: '#111827', fontWeight: 700, textTransform: 'none', minWidth: 170 }}
+              sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.4)', fontWeight: 700, textTransform: 'none', minWidth: 170, '&:hover': { borderColor: 'rgba(148,163,184,0.7)', background: 'rgba(148,163,184,0.08)' } }}
             >
               Legg til milepæl
             </Button>
