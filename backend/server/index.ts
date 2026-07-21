@@ -854,6 +854,7 @@ import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
 import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-routes";
+import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-config-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
@@ -25067,6 +25068,13 @@ setupAdminLeadMapPricingRoutes({
 });
 // Leadgrid offentlig pris-config (én sannhetskilde: landing + admin + iPad)
 registerLeadgridPricingConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid experience-media (mockup-innhold i scrollfilmen, super-admin-styrt)
+registerLeadgridExperienceConfigRoutes({
   app,
   pool,
   activeSessions,

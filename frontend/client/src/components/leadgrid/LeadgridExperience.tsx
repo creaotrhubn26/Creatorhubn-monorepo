@@ -27,6 +27,33 @@ import {
 
 /** Smal skjerm (telefon): enhet øverst + tekst nederst i stedet for
  *  side-om-side — callouten overlappet enheten under ~700px. */
+// Super-admin kan overstyre media inne i hver mockup (media-editor →
+// /api/leadgrid/experience-config). Returnerer SCENES med overstyringer anvendt.
+function useExperienceMedia(): Scene[] {
+  const [scenes, setScenes] = useState<Scene[]>(SCENES);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/leadgrid/experience-config')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((cfg: { scenes?: Record<string, { image?: string; video?: string }> }) => {
+        if (!alive || !cfg?.scenes) return;
+        setScenes(SCENES.map((s) => {
+          const o = cfg.scenes?.[s.id];
+          if (!o || (!o.image && !o.video)) return s;
+          return {
+            ...s,
+            image: o.image || s.image,
+            // Eksplisitt video-overstyring; tom streng = fjern video (kun bilde).
+            video: o.video !== undefined ? (o.video || undefined) : s.video,
+          };
+        }));
+      })
+      .catch(() => { /* behold defaults */ });
+    return () => { alive = false; };
+  }, []);
+  return scenes;
+}
+
 function useIsNarrow() {
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
@@ -164,6 +191,7 @@ export default function LeadgridExperience({
   const ref = useRef<HTMLDivElement>(null);
   const narrow = useIsNarrow();
   const reduced = useReducedMotion();
+  const scenes = useExperienceMedia();
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ['start start', 'end end'],
@@ -196,7 +224,7 @@ export default function LeadgridExperience({
         <GridField progress={smooth} />
 
         {/* Scenene — hver toner inn/ut i sitt scroll-vindu */}
-        {SCENES.map((s, i) => (
+        {scenes.map((s, i) => (
           <SceneLayer
             key={s.id} scene={s} index={i} progress={smooth}
             narrow={narrow} reduced={!!reduced}
