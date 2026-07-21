@@ -1652,7 +1652,7 @@ export function InfographicStudioView(
           brandName={project?.name || 'Merkevare'}
           accent={sceneAccent(scene)}
           onValueChange={(k, v) => setValue(k, v)}
-          onSendToResolve={(html, durSec, frame) => void sendMotionToResolve(html, durSec, frame)}
+          onSendToResolve={(html, durSec, frame) => sendMotionToResolve(html, durSec, frame)}
           onClose={() => setShowMotion(false)}
         />
       )}

@@ -42,7 +42,7 @@ export default function MotionStingDialog(
     /** Skriver endringen TILBAKE til scenen → still + motion holdes i synk. */
     onValueChange?: (key: string, value: string) => void;
     /** Rendrer motion-HTML-en → transparent ProRes 4444 → inn i Resolve. */
-    onSendToResolve?: (html: string, durationSec: number, frame: string) => void;
+    onSendToResolve?: (html: string, durationSec: number, frame: string) => void | Promise<void>;
     onClose?: () => void;
   },
 ) {
@@ -51,6 +51,7 @@ export default function MotionStingDialog(
   const [tempo, setTempo] = useState<'fast' | 'normal' | 'slow'>('normal');
   const tempoK = tempo === 'fast' ? 0.7 : tempo === 'slow' ? 1.4 : 1;
   const [adv, setAdv] = useState(false);
+  const [sending, setSending] = useState(false);
   const densityDefault = place.density === 'tight' ? 1.6 : place.density === 'airy' ? 5.4 : 3.2;
   const setSpacing = (ref: string, v: number) => setPlace((p) => ({ ...p, spacing: { ...(p.spacing || {}), [ref]: v } }));
   // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
@@ -278,9 +279,13 @@ export default function MotionStingDialog(
           </div>
           <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>
             {onSendToResolve && (
-              <span onClick={() => onSendToResolve(built.html, built.total / 1000, `${w}x${h}`)}
-                style={{ ...btn, width: '100%', justifyContent: 'center', background: accent, borderColor: accent, color: '#04121a', fontWeight: 700 }}>
-                ⤓ Send til Resolve
+              <span onClick={async () => {
+                if (sending) return;
+                setSending(true);
+                try { await onSendToResolve(built.html, built.total / 1000, `${w}x${h}`); } finally { setSending(false); }
+              }}
+                style={{ ...btn, width: '100%', justifyContent: 'center', background: accent, borderColor: accent, color: '#04121a', fontWeight: 700, opacity: sending ? 0.7 : 1, cursor: sending ? 'default' : 'pointer' }}>
+                {sending ? '● Rendrer → Resolve …' : '⤓ Send til Resolve'}
               </span>
             )}
             <div style={{ marginTop: 8, fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: C.soft }}>ProRes 4444 (alfa) · {w}×{h} · 30 fps · {(built.total / 1000).toFixed(1)}s · {frames} bilder</div>
@@ -302,6 +307,17 @@ export default function MotionStingDialog(
           </div>
         </div>
       </div>
+
+      {sending && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(11,17,32,.72)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, textAlign: 'center' }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', border: `3px solid ${C.line}`, borderTopColor: accent, animation: 'mspin 0.8s linear infinite' }} />
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>Rendrer motion → ProRes 4444</div>
+            <div style={{ fontSize: 12.5, color: C.soft, maxWidth: 320, lineHeight: 1.5 }}>Fanger {frames} bilder ({w}×{h}) og plasserer klippet på overlay-sporet i Resolve. Se status-linjen i studioet når dialogen lukkes.</div>
+          </div>
+          <style>{'@keyframes mspin{to{transform:rotate(360deg)}}'}</style>
+        </div>
+      )}
     </div>
   );
 }
