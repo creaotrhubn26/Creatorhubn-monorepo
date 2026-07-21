@@ -217,7 +217,9 @@ export function stingFromValues(
   const metrics = numeric
     .filter((_, i) => i !== heroIdx)
     .slice(0, 4)
-    .map<StingMetric>((f) => ({ label: f.label, value: f.value, display: f.raw.trim() }));
+    // Kort rå-tekst («312 000 kr») beholdes; lang («Dolly inn | 35mm») faller
+    // tilbake til rent tall så bar-verdien ikke flommer ut av rammen.
+    .map<StingMetric>((f) => ({ label: f.label, value: f.value, display: f.raw.trim().length <= 10 ? f.raw.trim() : fmt(f.value) }));
 
   const hero: StingHero = heroF
     ? { label: heroF.label, value: heroF.value, prefix: heroF.affix.prefix, suffix: heroF.affix.suffix }
@@ -291,12 +293,13 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 .brand .tc{margin-left:auto;font-family:ui-monospace,"SF Mono",monospace;font-size:.62em;letter-spacing:.14em;color:#726c92;font-weight:500}
 .funnel{display:flex;flex-direction:column;gap:2.6%}
 .row{display:flex;align-items:center;gap:3.5%;opacity:0}
-.row .bar{height:clamp(16px,4.4vw,30px);border-radius:.28em;width:0;background:linear-gradient(90deg,#6d28d9,${accent});box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);flex:none}
-.meta{display:flex;flex-direction:column;line-height:1.1}
-.meta .lab{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10px);letter-spacing:.15em;text-transform:uppercase;color:#726c92}
-.meta .val{font-weight:800;font-size:clamp(12px,3.4vw,18px);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.hero{opacity:0}
-.hero .cap{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10.5px);letter-spacing:.18em;text-transform:uppercase;color:#a49dc2;margin-bottom:.3em}
+.row .bar{height:clamp(16px,4.4vw,30px);border-radius:.28em;width:0;max-width:62%;background:linear-gradient(90deg,#6d28d9,${accent});box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);flex:none}
+.meta{display:flex;flex-direction:column;line-height:1.1;flex:1;min-width:0}
+.meta .lab{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10px);letter-spacing:.15em;text-transform:uppercase;color:#726c92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta .val{font-weight:800;font-size:clamp(12px,3.4vw,18px);font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero{opacity:0;min-width:0}
+.hero .cap{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(8px,2vw,10.5px);letter-spacing:.18em;text-transform:uppercase;color:#a49dc2;margin-bottom:.3em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero .num{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero .num{font-size:clamp(30px,10vw,72px);font-weight:800;letter-spacing:-.035em;line-height:.92;font-variant-numeric:tabular-nums;color:${HERO_GOLD};text-shadow:0 0 40px ${HERO_GOLD}44}
 .caption{font-size:clamp(12px,3vw,18px);font-weight:600;opacity:0}
 #scrub{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${HERO_GOLD});box-shadow:0 0 12px ${HERO_GOLD}88}
