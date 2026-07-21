@@ -1419,6 +1419,35 @@ export function InfographicStudioView(
     } finally { setBusy(false); setRenderProgress(null); }
   };
 
+  // Motion-sting → ProRes 4444. Bruker SAMME render-pipeline: motion-HTML
+  // eksponerer window.setProgress(p) (render-kontrakten), easing='linear' så
+  // pipelinens progresjon mapper 1:1 til stingens egen indre timing; frame=WxH
+  // (fast lerret, ikke #wrap-native). Plasseres på overlay-sporet ved scene-tid.
+  const sendMotionToResolve = async (html: string, durationSec: number, frame: string) => {
+    if (busy) return;
+    setBusy(true); setNeedsPlaywright(false);
+    try {
+      const st = await playwrightStatus().catch(() => null);
+      if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å rendre.'); return; }
+      setMsg('Rendrer motion-sting → ProRes 4444 …');
+      const out = await invoke<string>('render_infographic', { html, durationSec, name: `motion-${scene.id}-${Date.now()}`, fps, scale, exitSec: 0, frame, easing: 'linear', entrance: 'none' });
+      setMsg('Legger motion-sting i Resolve …');
+      const overlays = [{ path: out, atSec: scene.atSec, durationSec, track: overlayTrack, posX: 50, posY: 50, fps }];
+      const summary = await executeScript('place_overlay', { overlays });
+      const errEvt = summary.events.find((e) => e.type === 'error');
+      if (!summary.succeeded || errEvt) {
+        setMsg('Rendret, men ikke plassert i Resolve: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?'));
+        void systemOpen(out).catch(() => {});
+      } else {
+        setMsg('Motion-sting sendt til Resolve (ProRes 4444, overlay-spor).');
+      }
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Motion-render: ' + m + ' — krever Playwright-runtime.'); }
+      else setMsg('Motion-render feilet: ' + m);
+    } finally { setBusy(false); setShowMotion(false); }
+  };
+
   // Eksporter GJELDENDE scene til en frittstående fil (utenfor Resolve):
   // ProRes/MP4/GIF/APNG/PNG — for social, web, e-post, slides.
   const exportFile = async () => {
@@ -1588,6 +1617,7 @@ export function InfographicStudioView(
           brandName={project?.name || 'Merkevare'}
           accent={sceneAccent(scene)}
           onValueChange={(k, v) => setValue(k, v)}
+          onSendToResolve={(html, durSec, frame) => void sendMotionToResolve(html, durSec, frame)}
           onClose={() => setShowMotion(false)}
         />
       )}

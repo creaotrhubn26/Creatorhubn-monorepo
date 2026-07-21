@@ -92,6 +92,10 @@ describe('buildMotionStingHtml', () => {
     expect(html).toContain('window.__stingPlay();'); // autoplay
     expect(html).toContain('"keyframes"');
   });
+  it('eksponerer setProgress(p)-render-kontrakten (playwright_render)', () => {
+    expect(html).toContain('window.setProgress = function');
+    expect(html).toContain('* TL.total'); // p 0..1 → seek til p*total
+  });
   it('autoplay:false starter på frame 0 uten å spille', () => {
     const still = buildMotionStingHtml(DATA, { autoplay: false });
     expect(still).toContain('applyAt(0);');
