@@ -107,35 +107,55 @@ export async function syncStripeRevenue(
     const { customerId, created } = await upsertCustomer(db, opts, inv.customerName, inv.customerEmail);
     if (created) result.customersCreated++;
 
-    // 2. Utkast-salgsfaktura (ikke bokført — mennesket utsteder).
+    // 2. Utkast-salgsfaktura (ikke bokført — mennesket utsteder). Itemisert:
+    // én linje per Stripe-linje = hva kunden faktisk betalte for.
+    const items =
+      inv.lineItems.length > 0
+        ? inv.lineItems
+        : [
+            {
+              description: inv.description,
+              amountMinor: inv.amountMinor,
+              quantity: 1,
+              periodStart: inv.periodStart,
+              periodEnd: inv.periodEnd,
+              sourceProduct: inv.sourceProduct,
+            },
+          ];
+    const lines = items.map((li) => {
+      const period = li.periodStart && li.periodEnd ? ` (${li.periodStart} – ${li.periodEnd})` : '';
+      const qty = li.quantity > 1 ? ` ×${li.quantity}` : '';
+      const code = productDimensionCode(li.sourceProduct);
+      return {
+        description: `${li.description}${qty}${period}`.slice(0, 500),
+        quantityThousandths: 1000n, // hele linjebeløpet som én enhet (eksakt, ingen avrunding)
+        unitPriceMinor: li.amountMinor, // Stripe-linjebeløp; eks. mva (kode 6 = 0 %)
+        vatCode,
+        revenueAccount,
+        ...(code ? { project: code } : {}),
+      };
+    });
     const draft = await createInvoiceDraft(db, rules, {
       organizationId: opts.organizationId,
       actor: opts.actor,
       customerId,
       invoiceDate: inv.date,
-      lines: [
-        {
-          description: inv.description,
-          quantityThousandths: 1000n, // antall = 1
-          unitPriceMinor: inv.amountMinor, // Stripe-beløp; eks. mva (ingen mva ved kode 6)
-          vatCode,
-          revenueAccount,
-          // Segmenter inntekt per produkt (Creatorhub/Role Room/Leadgrid).
-          ...(productDimensionCode(inv.sourceProduct)
-            ? { project: productDimensionCode(inv.sourceProduct) as string }
-            : {}),
-        },
-      ],
+      lines,
     });
 
-    // 3. Registrer importen (idempotens-anker).
+    // 3. Registrer importen (idempotens-anker + sporbarhet til Stripe).
     await db.query(
       `INSERT INTO stripe_imports
          (id, organization_id, stripe_invoice_id, stripe_customer_id, source_product,
-          customer_id, invoice_id, amount_minor, currency, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'imported')
+          customer_id, invoice_id, amount_minor, currency, status,
+          stripe_number, hosted_invoice_url, period_start, period_end)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'imported',$10,$11,$12,$13)
        ON CONFLICT (organization_id, stripe_invoice_id) DO NOTHING`,
-      [newId(), opts.organizationId, inv.id, inv.stripeCustomerId, inv.sourceProduct, customerId, draft.id, inv.amountMinor.toString(), inv.currency],
+      [
+        newId(), opts.organizationId, inv.id, inv.stripeCustomerId, inv.sourceProduct,
+        customerId, draft.id, inv.amountMinor.toString(), inv.currency,
+        inv.number, inv.hostedInvoiceUrl, inv.periodStart, inv.periodEnd,
+      ],
     );
 
     result.imported++;

@@ -27,6 +27,8 @@ const bootstrapOrg: BootstrapOrgConfig = {
 
 const invoice = (id: string, over: Partial<StripePaidInvoice> = {}): StripePaidInvoice => ({
   id,
+  number: 'INV-' + id,
+  hostedInvoiceUrl: 'https://invoice.stripe.com/' + id,
   stripeCustomerId: 'cus_' + id,
   customerName: 'Betaler ' + id,
   customerEmail: id + '@example.com',
@@ -34,6 +36,9 @@ const invoice = (id: string, over: Partial<StripePaidInvoice> = {}): StripePaidI
   currency: 'NOK',
   description: 'CreatorHub Pro',
   date: '2026-01-20',
+  periodStart: null,
+  periodEnd: null,
+  lineItems: [],
   sourceProduct: 'creatorhub',
   ...over,
 });
@@ -75,6 +80,26 @@ describe('POST /api/cron/stripe-sync (hodeløs)', () => {
     const drafts = await db.query(`SELECT status FROM invoices`);
     expect(drafts.rowCount).toBe(2);
     expect(drafts.rows.every((r: { status: string }) => r.status === 'draft')).toBe(true);
+  });
+
+  it('payments-endepunktet viser HVEM som betalte + HVA de betalte for + Stripe-referanse', async () => {
+    const orgId = (await db.query<{ id: string }>(`SELECT id FROM organizations WHERE org_number = '937518684'`)).rows[0]!.id;
+    const login = await request(app)
+      .post('/api/auth/dev-login')
+      .send({ email: 'system@ledgerly.local', displayName: 'System' })
+      .expect(200);
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/integrations/stripe/payments`)
+      .set('Authorization', `Bearer ${login.body.token}`)
+      .expect(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    const p = res.body[0];
+    expect(p.customer_name).toBeTruthy(); // HVEM
+    expect(p.customer_email).toContain('@'); // HVEM
+    expect(p.stripe_number).toBeTruthy(); // Stripe-referanse
+    expect(Array.isArray(p.lines)).toBe(true); // HVA
+    expect(p.lines[0].description).toBeTruthy();
+    expect(p.lines[0].netMinor).toBeTruthy();
   });
 
   it('er idempotent: ny kjøring gjenoppretter ikke org og importerer ikke på nytt', async () => {

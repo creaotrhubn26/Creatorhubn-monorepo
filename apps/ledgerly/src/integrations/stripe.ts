@@ -27,9 +27,27 @@ export class StripeAuthError extends StripeError {
   }
 }
 
+/** Én linje på Stripe-fakturaen — «hva» kunden betalte for. */
+export interface StripeLineItem {
+  description: string;
+  /** Linjebeløp i minste valutaenhet (øre for NOK), eks. evt. mva. */
+  amountMinor: bigint;
+  /** Antall (heltall; default 1). */
+  quantity: number;
+  /** Faktureringsperiode for linjen (ISO yyyy-mm-dd), når oppgitt. */
+  periodStart: string | null;
+  periodEnd: string | null;
+  /** Kilde-produkt for denne linjen ('creatorhub'|'role_room'|'leadgrid'|null). */
+  sourceProduct: string | null;
+}
+
 export interface StripePaidInvoice {
   /** Stripe-faktura-id (in_…). Idempotensnøkkel. */
   id: string;
+  /** Menneskelesbart Stripe-fakturanummer (f.eks. ABCD-0001). */
+  number: string | null;
+  /** Lenke til Stripe-fakturaen/kvitteringen (full kildedetalj). */
+  hostedInvoiceUrl: string | null;
   stripeCustomerId: string | null;
   customerName: string | null;
   customerEmail: string | null;
@@ -37,10 +55,15 @@ export interface StripePaidInvoice {
   amountMinor: bigint;
   /** ISO 4217, store bokstaver (NOK, USD, …). */
   currency: string;
-  /** Kort beskrivelse (produktnavn/linje) — til fakturalinjens tekst. */
+  /** Kort samlebeskrivelse — brukes når det ikke finnes linjer. */
   description: string;
   /** Fakturadato (ISO yyyy-mm-dd), utledet fra Stripes created/finalized. */
   date: string;
+  /** Faktureringsperiode for fakturaen (ISO yyyy-mm-dd), når oppgitt. */
+  periodStart: string | null;
+  periodEnd: string | null;
+  /** Itemiserte linjer — hva kunden faktisk betalte for. */
+  lineItems: StripeLineItem[];
   /**
    * Kilde-produkt utledet av Stripe-metadata/linjer når mulig
    * ('creatorhub' | 'role_room' | 'leadgrid' | null).
@@ -65,8 +88,20 @@ type FetchLike = (
 
 const STRIPE_API = 'https://api.stripe.com/v1';
 
+interface StripeLineRaw {
+  description?: string | null;
+  amount?: number;
+  quantity?: number;
+  period?: { start?: number; end?: number } | null;
+  price?: { product?: string | null; nickname?: string | null } | null;
+  plan?: { nickname?: string | null } | null;
+  metadata?: Record<string, string>;
+}
+
 interface StripeInvoiceRaw {
   id?: string;
+  number?: string | null;
+  hosted_invoice_url?: string | null;
   customer?: string | null;
   customer_name?: string | null;
   customer_email?: string | null;
@@ -74,9 +109,15 @@ interface StripeInvoiceRaw {
   currency?: string;
   description?: string | null;
   created?: number;
+  period_start?: number;
+  period_end?: number;
   status?: string;
-  lines?: { data?: Array<{ description?: string | null; price?: { product?: string | null } | null }> };
+  lines?: { data?: StripeLineRaw[] };
   metadata?: Record<string, string>;
+}
+
+function unixToDate(u?: number | null): string | null {
+  return typeof u === 'number' && u > 0 ? new Date(u * 1000).toISOString().slice(0, 10) : null;
 }
 
 /** Utleder kilde-produkt fra metadata/beskrivelse. Best-effort, ellers null. */
@@ -153,15 +194,36 @@ export class StripeApiClient implements StripeReadPort {
 }
 
 function mapInvoice(inv: StripeInvoiceRaw): StripePaidInvoice {
-  const firstLine = inv.lines?.data?.[0];
+  const rawLines = inv.lines?.data ?? [];
+  const lineItems: StripeLineItem[] = rawLines.map((l) => {
+    const desc =
+      (l.description && l.description.trim()) ||
+      (l.price?.nickname && l.price.nickname.trim()) ||
+      (l.plan?.nickname && l.plan.nickname.trim()) ||
+      'Linje';
+    return {
+      description: desc,
+      amountMinor: BigInt(l.amount ?? 0),
+      quantity: typeof l.quantity === 'number' && l.quantity > 0 ? l.quantity : 1,
+      periodStart: unixToDate(l.period?.start),
+      periodEnd: unixToDate(l.period?.end),
+      sourceProduct: deriveSourceProduct({
+        ...(l.metadata ? { metadata: l.metadata } : {}),
+        description: l.description ?? null,
+        lineText: l.price?.nickname ?? l.plan?.nickname ?? null,
+      }),
+    };
+  });
+  const firstLine = rawLines[0];
   const description =
     (inv.description && inv.description.trim()) ||
     (firstLine?.description && firstLine.description.trim()) ||
     'Stripe-faktura';
-  const created = typeof inv.created === 'number' ? inv.created : 0;
-  const date = created ? new Date(created * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const date = unixToDate(inv.created) ?? new Date().toISOString().slice(0, 10);
   return {
     id: inv.id ?? '',
+    number: inv.number ?? null,
+    hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
     stripeCustomerId: inv.customer ?? null,
     customerName: inv.customer_name ?? null,
     customerEmail: inv.customer_email ?? null,
@@ -169,11 +231,16 @@ function mapInvoice(inv: StripeInvoiceRaw): StripePaidInvoice {
     currency: (inv.currency ?? 'nok').toUpperCase(),
     description,
     date,
-    sourceProduct: deriveSourceProduct({
-      ...(inv.metadata ? { metadata: inv.metadata } : {}),
-      description: inv.description ?? null,
-      lineText: firstLine?.description ?? null,
-    }),
+    periodStart: unixToDate(inv.period_start),
+    periodEnd: unixToDate(inv.period_end),
+    lineItems,
+    sourceProduct:
+      lineItems.find((li) => li.sourceProduct)?.sourceProduct ??
+      deriveSourceProduct({
+        ...(inv.metadata ? { metadata: inv.metadata } : {}),
+        description: inv.description ?? null,
+        lineText: firstLine?.description ?? null,
+      }),
   };
 }
 

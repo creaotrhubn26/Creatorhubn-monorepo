@@ -17,6 +17,8 @@ const rules = buildNorwegianRuleRegister();
 
 function inv(over: Partial<StripePaidInvoice> & { id: string }): StripePaidInvoice {
   return {
+    number: 'INV-' + over.id,
+    hostedInvoiceUrl: 'https://invoice.stripe.com/' + over.id,
     stripeCustomerId: 'cus_' + over.id,
     customerName: 'Kunde ' + over.id,
     customerEmail: over.id + '@example.com',
@@ -24,6 +26,9 @@ function inv(over: Partial<StripePaidInvoice> & { id: string }): StripePaidInvoi
     currency: 'NOK',
     description: 'Leadgrid Solo Pro',
     date: '2026-01-15',
+    periodStart: null,
+    periodEnd: null,
+    lineItems: [],
     sourceProduct: 'leadgrid',
     ...over,
   };

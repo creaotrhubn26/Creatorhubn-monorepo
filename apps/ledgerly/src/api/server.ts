@@ -777,6 +777,41 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // Detaljer på hva kundene har betalt for: importerte Stripe-betalinger med
+  // kunde, beløp, produkt, faktureringsperiode, lenke til Stripe-kvitteringen og
+  // de itemiserte utkast-linjene (hva). Kun lesing.
+  app.get(
+    '/api/organizations/:orgId/integrations/stripe/payments',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req, res, next) => {
+      try {
+        const rows = await deps.db.query(
+          `SELECT si.stripe_invoice_id, si.stripe_number, si.hosted_invoice_url,
+                  si.amount_minor::TEXT AS amount_minor, si.currency, si.source_product,
+                  si.status, si.imported_at, si.period_start, si.period_end,
+                  si.invoice_id, c.name AS customer_name, c.email AS customer_email,
+                  COALESCE((
+                    SELECT json_agg(json_build_object(
+                             'description', il.description,
+                             'netMinor', il.net_minor::TEXT,
+                             'product', il.project) ORDER BY il.id)
+                    FROM invoice_lines il WHERE il.invoice_id = si.invoice_id
+                  ), '[]'::json) AS lines
+           FROM stripe_imports si
+           LEFT JOIN customers c ON c.id = si.customer_id
+           WHERE si.organization_id = $1
+           ORDER BY si.imported_at DESC
+           LIMIT 500`,
+          [req.params.orgId],
+        );
+        res.json(toJson(rows.rows));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   // Hodeløs Stripe-synk for cron/scheduler — token-autentisert (ingen sesjon).
   // Sikrer at Creatorhubs org + system-bruker finnes, og synker betalte Stripe-
   // fakturaer → kunde + utkast-faktura. Løser at prod-appen mangler interaktiv
