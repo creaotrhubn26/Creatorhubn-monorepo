@@ -69,6 +69,8 @@ interface Scene {
   align?: 'left' | 'center' | 'right';
   /** Skjermbildet er liggende iPad (bredere enhet i scenen). */
   landscape?: boolean;
+  /** Vis pulserende «trykk her»-pin (kun der en pin kan trykkes, f.eks. kart). */
+  tapHint?: boolean;
 }
 
 // ── Manus: rekkefølgen du flyr gjennom ────────────────────────────────
@@ -84,7 +86,7 @@ const SCENES: Scene[] = [
     video: '/leadgrid/app/tour-kart.mp4',
     eyebrow: 'Kartet', title: 'Se hele territoriet.',
     body: 'Alle leads på kartet, farget etter temperatur. Trykk en pin, og hele historikken folder seg ut.',
-    align: 'left', landscape: true,
+    align: 'left', landscape: true, tapHint: true,
   },
   {
     id: 'leads', kind: 'device', image: '/leadgrid/app/leads.webp',
@@ -306,7 +308,7 @@ function SceneLayer({
         <DeviceVisual
           image={scene.image} video={scene.video} scale={scale} y={y}
           align={scene.align} landscape={scene.landscape} narrow={narrow}
-          reduced={reduced} active={sceneVisible}
+          reduced={reduced} active={sceneVisible} tapHint={scene.tapHint}
         />
       )}
       <Callout
@@ -422,12 +424,14 @@ function FramedVisual({
 
 // ── Ekte app-skjerm i 3D-tiltet iPad ──────────────────────────────────
 function DeviceVisual({
-  image, video, scale, y, align, landscape, narrow, reduced, active,
+  image, video, scale, y, align, landscape, narrow, reduced, active, tapHint,
 }: {
   image: string; video?: string;
   scale: MotionValue<number>; y: MotionValue<number>;
   align?: 'left' | 'center' | 'right'; landscape?: boolean;
   narrow?: boolean; reduced?: boolean; active?: boolean;
+  /** Vis pulserende «trykk her»-pin. Kun meningsfullt på kart-scenen. */
+  tapHint?: boolean;
 }) {
   // Spill videoen kun når scenen er synlig (fra SceneLayer). Sparer CPU/
   // batteri — 4 videoer dekodet samtidig var unødvendig (QA 2026-07-20).
@@ -506,19 +510,49 @@ function DeviceVisual({
             }}
           />
         )}
-        {/* pulsende «tap»-hint-pin */}
-        <motion.span
-          aria-hidden
-          style={{
-            position: 'absolute', left: '30%', top: '36%',
-            width: 18, height: 18, borderRadius: '50%',
-            background: P.magenta, boxShadow: `0 0 0 0 ${P.magenta}`,
-          }}
-          animate={reduced ? undefined : {
-            boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 22px ${P.magenta}00`],
-          }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
-        />
+        {/* «trykk her»-hint = Leadgrid-logoens kart-pin (visuell gjenkjenning).
+            Kun der en pin faktisk kan trykkes (kart). Tuppen peker på punktet. */}
+        {tapHint && (
+          <motion.div
+            aria-hidden
+            style={{
+              position: 'absolute', left: '30%', top: '36%',
+              transform: 'translate(-50%, -100%)',
+            }}
+            animate={reduced ? undefined : { y: [0, -6, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            {/* pulserende ring i pin-tuppen */}
+            <motion.span
+              style={{
+                position: 'absolute', left: '50%', bottom: 0,
+                width: 12, height: 12, borderRadius: '50%',
+                transform: 'translate(-50%, 50%)', background: P.magenta,
+              }}
+              animate={reduced ? undefined : {
+                boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 20px ${P.magenta}00`],
+              }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+            />
+            {/* hvit logo-pin */}
+            <svg
+              width="30" height="42" viewBox="0 0 24 34"
+              style={{ display: 'block', filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.55))' }}
+            >
+              <defs>
+                <linearGradient id="lgPin" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="#FFFFFF" />
+                  <stop offset="1" stopColor="#D8CCFF" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M12 0C5.373 0 0 5.373 0 12c0 9 12 22 12 22s12-13 12-22C24 5.373 18.627 0 12 0z"
+                fill="url(#lgPin)"
+              />
+              <circle cx="12" cy="12" r="4.6" fill="#1a0535" />
+            </svg>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );
