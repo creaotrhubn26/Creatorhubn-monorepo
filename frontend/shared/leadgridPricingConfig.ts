@@ -55,7 +55,7 @@ export const DEFAULT_PRICING_CONFIG: LeadgridPricingConfig = {
     },
     {
       key: 'pro', name: 'Solo Pro', price: 799, popular: true, cta: 'Start gratis',
-      tagline: 'Full Leadgrid for én selger — alle AI-features.',
+      tagline: 'Full Leadgrid for én selger, med alle AI-funksjonene.',
       priceNote: 'Rimeligere ved årlig fakturering. Ingen binding.',
       features: ['Alt i Solo Free', 'Forecasting + Market Scan', 'Voice Memo + AI-møtenotater', '1 000 AI-kall/mnd'],
     },
@@ -68,7 +68,7 @@ export const DEFAULT_PRICING_CONFIG: LeadgridPricingConfig = {
   ],
   modules: [
     { key: 'dorsalg', title: 'Dørsalg & verving', desc: 'Adressekart, salg på døra med kundebekreftelse, dagsmål og team-oppfølging.', priceSoloPro: 490, priceAgency: 990, accent: '#c084fc', active: true },
-    { key: 'kvalitet', title: 'Kvalitet', desc: 'Verifiseringskø, samtale-maler og kvalitetsgrad per selger — stol på tallene.', priceSoloPro: 390, priceAgency: 790, accent: '#5eead4', active: true },
+    { key: 'kvalitet', title: 'Kvalitet', desc: 'Verifiseringskø, samtale-maler og kvalitetsgrad per selger. Stol på tallene.', priceSoloPro: 390, priceAgency: 790, accent: '#5eead4', active: true },
     { key: 'go', title: 'Leadgrid Go', desc: 'Automatisk kjørebok, kjøregodtgjørelse, flåte og bilbooking for hele teamet.', priceSoloPro: 249, priceAgency: 690, accent: '#7ab8ff', active: true },
   ],
   bundle: { active: true, priceAgency: 1490, label: 'Alle tre moduler på Agency' },

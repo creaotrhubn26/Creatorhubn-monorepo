@@ -109,7 +109,7 @@ export default function LeadgridPartnerApplicationPage() {
       });
       const d = await r.json();
       if (r.ok) {
-        setSnackbar({ msg: "Søknad sendt — vi tar kontakt!", severity: "success" });
+        setSnackbar({ msg: "Søknad sendt. Vi tar kontakt!", severity: "success" });
         setApplyOpen(false);
         loadApplication(orgId);
       } else {
@@ -154,7 +154,7 @@ export default function LeadgridPartnerApplicationPage() {
             Bli en av våre partnere
           </Typography>
           <Typography variant="body1" textAlign="center" sx={{ color: "rgba(255,255,255,0.7)", maxWidth: 560 }}>
-            Som Leadgrid-partner får du fordeler avhengig av rollen — fra
+            Som Leadgrid-partner får du fordeler avhengig av rollen, fra
             gratis Solo Pro til API-tilgang og kommisjon.
           </Typography>
         </Stack>

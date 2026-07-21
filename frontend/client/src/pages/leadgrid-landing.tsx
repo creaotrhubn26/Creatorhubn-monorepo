@@ -94,7 +94,7 @@ const STEPS = [
   },
   {
     n: '3', Icon: SendOutlined, title: 'Følg opp',
-    desc: 'Automatiser e-post, SMS og oppgaver — og få påminnelser som driver resultat.',
+    desc: 'Automatiser e-post, SMS og oppgaver, og få påminnelser som driver resultat.',
   },
   {
     n: '4', Icon: EventAvailableOutlined, title: 'Book møter',
@@ -102,7 +102,7 @@ const STEPS = [
   },
   {
     n: '5', Icon: EmojiEventsOutlined, title: 'Lukk avtaler',
-    desc: 'Flytt leads i pipelinen og vinn flere kunder — igjen og igjen.',
+    desc: 'Flytt leads i pipelinen og vinn flere kunder, igjen og igjen.',
   },
 ];
 
@@ -180,16 +180,16 @@ export default function LeadgridLanding() {
   const [expStartOpen, setExpStartOpen] = useState(false);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
-    trackPageView('/leadgrid', 'Leadgrid — Gjør kartet om til kunder');
+    trackPageView('/leadgrid', 'Leadgrid: Gjør kartet om til kunder');
     trackEvent('leadgrid_landing_view', {
       referrer: document.referrer || 'direct',
       utm_source: new URLSearchParams(window.location.search).get('utm_source') ?? null,
       utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign') ?? null,
     });
     // Side-tittel + meta beskrivelse for SEO
-    document.title = 'Leadgrid — Gjør kartet om til kunder';
+    document.title = 'Leadgrid: Gjør kartet om til kunder';
     const desc = document.querySelector('meta[name="description"]');
-    const content = 'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads — alt i ett visuelt system.';
+    const content = 'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads, alt i ett visuelt system.';
     if (desc) desc.setAttribute('content', content);
     else {
       const m = document.createElement('meta');
@@ -200,7 +200,7 @@ export default function LeadgridLanding() {
     // Canonical
     setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://leadgrid.no' });
     // Open Graph
-    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
+    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid: Gjør kartet om til kunder' });
     setMetaTagByAttr('meta', 'property', 'og:description', { content });
     setMetaTagByAttr('meta', 'property', 'og:type', { content: 'website' });
     setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://leadgrid.no' });
@@ -209,7 +209,7 @@ export default function LeadgridLanding() {
     setMetaTagByAttr('meta', 'property', 'og:locale', { content: 'nb_NO' });
     // Twitter Cards
     setMetaTagByAttr('meta', 'name', 'twitter:card', { content: 'summary_large_image' });
-    setMetaTagByAttr('meta', 'name', 'twitter:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
+    setMetaTagByAttr('meta', 'name', 'twitter:title', { content: 'Leadgrid: Gjør kartet om til kunder' });
     setMetaTagByAttr('meta', 'name', 'twitter:description', { content });
     setMetaTagByAttr('meta', 'name', 'twitter:image', { content: 'https://leadgrid.no/leadgrid/og-image.png' });
 
@@ -270,12 +270,12 @@ export default function LeadgridLanding() {
         {
           '@type': 'Question',
           name: 'Hvordan kommer jeg i gang?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Trykk Start gratis — du oppgir bare e-post og bedriftsnavn. Vi setter opp alt og du legger til din første kunde innen 2 minutter.' },
+          acceptedAnswer: { '@type': 'Answer', text: 'Trykk Start gratis. Du oppgir bare e-post og bedriftsnavn. Vi setter opp alt, og du legger til din første kunde innen 2 minutter.' },
         },
         {
           '@type': 'Question',
           name: 'Trenger kunden min konto for å se sin portal?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord — bare klikke på lenken i e-posten.' },
+          acceptedAnswer: { '@type': 'Answer', text: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord, bare klikk på lenken i e-posten.' },
         },
         {
           '@type': 'Question',
@@ -485,7 +485,7 @@ function HeroSection() {
               }}
             >
               Leadgrid hjelper team med å finne, organisere, følge opp
-              og vinne lokale leads — alt i ett visuelt system.
+              og vinne lokale leads, alt i ett visuelt system.
             </Typography>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={3}>
@@ -623,7 +623,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
       setError(null);
       alert(
         data.magic_link_sent
-          ? 'Sjekk e-posten din — vi sendte deg en magic link til Leadgrid.'
+          ? 'Sjekk e-posten din. Vi sendte deg en magic link til Leadgrid.'
           : 'Klar! Gå til /leadgrid/welcome for å komme i gang.',
       );
       onClose();
@@ -1000,18 +1000,18 @@ function FeatureGridSection() {
         />
         <FeatureCard
           title="Dørsalg & verving"
-          desc="Egen dørsalg-modus: alle adressene i området på kartet, farget etter utfall. Registrer salget på døra med produkt, bidrag og kundebekreftelse — og kvalitetsavdelingen verifiserer hvert salg."
+          desc="Egen dørsalg-modus: alle adressene i området på kartet, farget etter utfall. Registrer salget på døra med produkt, bidrag og kundebekreftelse, og kvalitetsavdelingen verifiserer hvert salg."
           Icon={DoorFrontOutlined}
           accent="#c084fc"
         />
         <FeatureCard
-          title="Leadgrid Go — elektronisk kjørebok"
+          title="Leadgrid Go: elektronisk kjørebok"
           desc="Automatisk trip-logg med kjøregodtgjørelse, ekte bomkostnad og Skatteetaten-klar rapport. Flåteoversikt, EU-kontroll og bilbooking for hele organisasjonen."
           Icon={DirectionsCarFilledOutlined}
           accent="#5eead4"
         />
         <FeatureCard
-          title="Alt du trenger — samlet på ett sted"
+          title="Alt du trenger, samlet på ett sted"
           desc="Leadgrid samler kart, data, kommunikasjon og pipeline i én plattform som hjelper teamet ditt å jobbe smartere og vinne flere kunder."
           Icon={WorkspacesOutlined}
           accent="#a78bfa"
@@ -1253,7 +1253,7 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
                 <Typography sx={{ fontWeight: 700, fontSize: 22 }}>1 300–1 800 kr</Typography>
               </Stack>
               <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
-                per bruker/mnd — + oppsett og integrasjoner
+                per bruker/mnd, pluss oppsett og integrasjoner
               </Typography>
             </Card>
           </Grid>
@@ -1266,13 +1266,13 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
             }}>
               <Typography sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>Med Leadgrid</Typography>
               <Typography sx={{ color: PALETTE.accentBright, fontSize: 13, mb: 3 }}>
-                Alt i ett — én norsk pris
+                Alt i ett, én norsk pris
               </Typography>
               <Stack spacing={1.5} flexGrow={1}>
                 {[
-                  'Alt over — innebygd, ingen tillegg',
+                  'Alt over innebygd, ingen tillegg',
                   'Pondus-coaching med per-manus-score',
-                  'Akademi — lær opp dine egne selgere',
+                  'Akademi: lær opp dine egne selgere',
                   'Salgsledelse: provisjon, konkurranser & premier',
                   'Native iPad, Apple Watch & Mac',
                 ].map((f) => (
@@ -1304,7 +1304,7 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
 
         <Typography sx={{ color: PALETTE.textFaint, fontSize: 12, textAlign: 'center', mt: 3, maxWidth: 760, mx: 'auto' }}>
           Prisene til venstre er typiske markedspriser (2025) for tilsvarende frittstående verktøy,
-          vist som kategorier — ikke navngitte leverandører. Faktisk stabel-kostnad varierer med
+          vist som kategorier, ikke navngitte leverandører. Faktisk stabel-kostnad varierer med
           sete-minimum, oppsett og integrasjoner.
         </Typography>
       </Container>
@@ -1485,7 +1485,7 @@ function PricingSection() {
             <Typography sx={{
               textAlign: 'center', fontSize: 13.5, color: PALETTE.textMuted, mt: 2.5,
             }}>
-              {config.bundle.label}: <Box component="span" sx={{ fontWeight: 700, color: PALETTE.text }}>kr {config.bundle.priceAgency}/mnd</Box> — spar mot enkeltmoduler.
+              {config.bundle.label}: <Box component="span" sx={{ fontWeight: 700, color: PALETTE.text }}>kr {config.bundle.priceAgency}/mnd</Box>. Spar mot enkeltmoduler.
             </Typography>
           )}
           <Typography sx={{
@@ -1561,7 +1561,7 @@ function FinalCtaSection() {
             fontSize: { xs: 15, md: 17 },
             mb: 4, maxWidth: 600, mx: 'auto',
           }}>
-            Start gratis i dag — og se forskjellen på kartet.
+            Start gratis i dag, og se forskjellen på kartet.
           </Typography>
           <Button
             variant="contained"

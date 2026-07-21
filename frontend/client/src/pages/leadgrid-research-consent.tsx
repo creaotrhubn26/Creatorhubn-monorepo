@@ -120,11 +120,11 @@ export default function LeadgridResearchConsentPage() {
               relevant og konkret. Ved å gjøre automatisk research <em>før</em> møtet,
               kan vi:
               <br/>• Gi deg et tilpasset tilbud fra første samtale, ikke generisk salgspitch
-              <br/>• Spare tid — du slipper å forklare grunnleggende info om bedriften
+              <br/>• Spare tid. Du slipper å forklare grunnleggende info om bedriften
               <br/>• Vise hva vår platform faktisk kan finne om markedet ditt
               <br/><br/>
-              Du kan alltid si nei til denne sjekken og fortsatt få demo eller kontakt
-              — vi gjør da research manuelt sammen med deg i møtet.
+              Du kan alltid si nei til denne sjekken og fortsatt få demo eller kontakt.
+              Vi gjør da research manuelt sammen med deg i møtet.
             </Typography>
           </CardContent>
         </Card>

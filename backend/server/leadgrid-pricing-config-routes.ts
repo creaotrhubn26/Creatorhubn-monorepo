@@ -64,7 +64,7 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
     },
     {
       key: "pro", name: "Solo Pro", price: 799,
-      tagline: "Full Leadgrid for én selger — alle AI-features.",
+      tagline: "Full Leadgrid for én selger, med alle AI-funksjonene.",
       priceNote: "Rimeligere ved årlig fakturering. Ingen binding.",
       popular: true, cta: "Start gratis",
       features: [
@@ -95,7 +95,7 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
     },
     {
       key: "kvalitet", title: "Kvalitet",
-      desc: "Verifiseringskø, samtale-maler og kvalitetsgrad per selger — stol på tallene.",
+      desc: "Verifiseringskø, samtale-maler og kvalitetsgrad per selger. Stol på tallene.",
       priceSoloPro: 390, priceAgency: 790, accent: "#5eead4", active: true,
     },
     {

@@ -41,7 +41,7 @@ const LAST_UPDATED = '17. juni 2026';
 
 export default function LeadgridPersonvern() {
   useEffect(() => {
-    document.title = 'Personvern — Leadgrid';
+    document.title = 'Personvern: Leadgrid';
     const desc = document.querySelector('meta[name="description"]');
     const content = 'Personvernerklæring for Leadgrid. Hvilke opplysninger vi samler, hvorfor, hvor de lagres, og dine rettigheter under GDPR.';
     if (desc) desc.setAttribute('content', content);
@@ -73,7 +73,7 @@ export default function LeadgridPersonvern() {
           Personvern­erklæring
         </Typography>
         <Typography sx={{ color: PALETTE.textMuted, fontSize: 17, lineHeight: 1.6, mb: 1 }}>
-          Slik behandler Leadgrid personopplysninger — hva vi samler,
+          Slik behandler Leadgrid personopplysninger: hva vi samler,
           hvorfor vi samler det, hvor vi lagrer det, og hvilke rettigheter
           du har som bruker.
         </Typography>
@@ -102,7 +102,7 @@ export default function LeadgridPersonvern() {
             <><strong>Lead-data:</strong> bedriftsnavn, adresse, kontaktperson, telefon, e-post, bransje, åpen kildeinformasjon (Google Places, BRREG).</>,
             <><strong>Posisjonsdata (GPS):</strong> selgerens nåværende posisjon når app-en er aktiv (for «leads i nærheten»), og automatisk koordinat-fanging ved logging av fysiske besøk. Background-sporing skjer kun for «nær-lead»-varsling og krever eksplisitt samtykke.</>,
             <><strong>Visit-logg:</strong> tidsstempel, kontaktperson, samtale-sammendrag, neste handling, oppfølgings­dato. Stemme-dikterte notater behandles på enheten av Apple Speech og lagres som transkribert tekst på vår server.</>,
-            <><strong>Visittkort-skanning:</strong> kameraet brukes lokalt på enheten via Apple VisionKit; bildet sendes ikke til oss — kun ekstrahert tekst lagres.</>,
+            <><strong>Visittkort-skanning:</strong> kameraet brukes lokalt på enheten via Apple VisionKit. Bildet sendes ikke til oss; kun ekstrahert tekst lagres.</>,
             <><strong>Pitch Deck-bruk:</strong> hvilke slides som vises, Apple Pencil-annotasjoner, utfalls-status etter presentasjon.</>,
             <><strong>Telemetri:</strong> krash-rapporter, build-versjon, OS-versjon, anonymisert bruksstatistikk for å forbedre app-en.</>,
           ]} />
@@ -113,7 +113,7 @@ export default function LeadgridPersonvern() {
             Rettslig grunnlag pr. behandling:
           </P>
           <Bullets items={[
-            <><strong>Avtaleoppfyllelse</strong> (GDPR art. 6(1)(b)): drift av Leadgrid-tjenesten for kunden vår — kartvisning, lead-CRM, pitch-deck-bygging.</>,
+            <><strong>Avtaleoppfyllelse</strong> (GDPR art. 6(1)(b)): drift av Leadgrid-tjenesten for kunden vår, det vil si kartvisning, lead-CRM og pitch-deck-bygging.</>,
             <><strong>Berettiget interesse</strong> (GDPR art. 6(1)(f)): kart-visualisering av kontaktinfo registrert offentlig (BRREG, Google Places), funksjons-forbedring basert på anonymisert telemetri.</>,
             <><strong>Samtykke</strong> (GDPR art. 6(1)(a)): bakgrunns-GPS for «nær-lead»-varsling, push-notifikasjoner, lokasjons-deling mellom team-medlemmer.</>,
             <><strong>Lovpålagt</strong> (GDPR art. 6(1)(c)): bokførings­plikt for fakturerings­data (5 år iflg. bokføringsloven).</>,
@@ -125,10 +125,10 @@ export default function LeadgridPersonvern() {
             All produksjonsdata lagres på servere i <strong>EU/EØS</strong>:
           </P>
           <Bullets items={[
-            <><strong>Render Inc.</strong> (Frankfurt) — vår primære app-server og PostgreSQL-database. Render er prosessor i henhold til standard­kontrakts­klausuler.</>,
-            <><strong>Backblaze B2</strong> (Amsterdam, region eu-central-003) — fil-lagring for mockups, deck-eksporter og iPad-foto. Tilgang via signed URLs med 10 minutters levetid.</>,
-            <><strong>Apple Push Notification service</strong> — push-leveranse. Apple lagrer kun device-token og ikke meldingsinnholdet over tid.</>,
-            <><strong>Apple iCloud Keychain</strong> (på din egen enhet) — bearer-tokens for sesjon. Aldri tilgjengelig for oss.</>,
+            <><strong>Render Inc.</strong> (Frankfurt): vår primære app-server og PostgreSQL-database. Render er prosessor i henhold til standard­kontrakts­klausuler.</>,
+            <><strong>Backblaze B2</strong> (Amsterdam, region eu-central-003): fil-lagring for mockups, deck-eksporter og iPad-foto. Tilgang via signed URLs med 10 minutters levetid.</>,
+            <><strong>Apple Push Notification service</strong>: push-leveranse. Apple lagrer kun device-token og ikke meldingsinnholdet over tid.</>,
+            <><strong>Apple iCloud Keychain</strong> (på din egen enhet): bearer-tokens for sesjon. Aldri tilgjengelig for oss.</>,
           ]} />
           <P>
             Tilgang til lead-data inne i din organisasjon styres av
@@ -144,12 +144,12 @@ export default function LeadgridPersonvern() {
             etter databehandler-avtaler:
           </P>
           <Bullets items={[
-            <><strong>Apple Inc.</strong> — App Store, TestFlight, APNs, iCloud Keychain.</>,
-            <><strong>Google LLC</strong> — Google Places API (geo-oppslag av bedriftsnavn). Sender kun søke-streng + brukerens grov-region, ikke andre personopplysninger.</>,
-            <><strong>Anthropic PBC</strong> — Claude AI for pitch-deck-generering, brief-generering og tale-analyse av visit-notater. Vi sender kun det som er strengt nødvendig for spørringen; ingen treningsbruk per Anthropic's API-avtale.</>,
-            <><strong>Twilio Ireland</strong> — SMS-utsending (kun ved aktivt salgs-flyt-bruk).</>,
-            <><strong>Resend, Inc.</strong> — Transaksjons-e-poster.</>,
-            <><strong>Stripe Payments Europe Ltd.</strong> — Betalings­behandling for abonnement.</>,
+            <><strong>Apple Inc.</strong>: App Store, TestFlight, APNs, iCloud Keychain.</>,
+            <><strong>Google LLC</strong>: Google Places API (geo-oppslag av bedriftsnavn). Sender kun søke-streng + brukerens grov-region, ikke andre personopplysninger.</>,
+            <><strong>Anthropic PBC</strong>: Claude AI for pitch-deck-generering, brief-generering og tale-analyse av visit-notater. Vi sender kun det som er strengt nødvendig for spørringen, og det er ingen treningsbruk i henhold til Anthropics API-avtale.</>,
+            <><strong>Twilio Ireland</strong>: SMS-utsending (kun ved aktivt salgs-flyt-bruk).</>,
+            <><strong>Resend, Inc.</strong>: Transaksjons-e-poster.</>,
+            <><strong>Stripe Payments Europe Ltd.</strong>: Betalings­behandling for abonnement.</>,
           ]} />
         </Section>
 

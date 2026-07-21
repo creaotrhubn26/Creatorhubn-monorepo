@@ -78,7 +78,7 @@ const CONNECTORS: Connector[] = [
     id: "url_extract",
     name: "URL-basert ekstraksjon",
     description:
-      "Lim inn opptil 20 nettside-/SoMe-URLer — AI-en vår ekstraherer firma-data automatisk.",
+      "Lim inn opptil 20 nettside-/SoMe-URLer, så ekstraherer AI-en vår firma-data automatisk.",
     Icon: Link2,
     status: "live",
     category: "automation",
@@ -471,7 +471,7 @@ export default function LeadgridConnectorsPage() {
             Bygger du en connector?
           </h2>
           <p className="text-xl opacity-90 mb-8">
-            Bli en del av Partner Programmet — co-marketing, revenue share, prioritert support.
+            Bli en del av Partner Programmet: co-marketing, revenue share og prioritert support.
           </p>
           <Link href="/leadgrid/partners">
             <button className="bg-white text-purple-700 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:scale-105 transition">
