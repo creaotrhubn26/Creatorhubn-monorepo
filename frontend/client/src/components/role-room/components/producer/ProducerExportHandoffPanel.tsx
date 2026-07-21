@@ -721,7 +721,7 @@ export default function ProducerExportHandoffPanel({
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(content);
-        enqueueSnackbar('Overleveringsbrief kopiert.', { variant: 'success' });
+        enqueueSnackbar('Sammendrag til kunden kopiert.', { variant: 'success' });
         return;
       } catch (clipboardError) {
         console.warn('[ProducerExportHandoffPanel] Clipboard copy failed, falling back to file download', clipboardError);
@@ -898,7 +898,7 @@ export default function ProducerExportHandoffPanel({
       }
 
       setDeliveryWorkspaceFiles(uploadedWorkspaceFiles);
-      enqueueSnackbar('Leveransearbeidsområdet ble skrevet til prosjektfiler.', { variant: 'success' });
+      enqueueSnackbar('Filene ble klargjort for levering.', { variant: 'success' });
       return uploadedWorkspaceFiles;
     } catch (workspaceError) {
       console.error('[ProducerExportHandoffPanel] Failed to write delivery workspace', workspaceError);
@@ -982,11 +982,11 @@ export default function ProducerExportHandoffPanel({
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <AssignmentTurnedInIcon sx={{ color: '#fbbf24' }} />
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-              Eksport og overlevering
+              Sende til kunden
             </Typography>
           </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.86)', maxWidth: 920 }}>
-            Samler klientpakke, publiseringspunkter, filnavn, merkevareguide og leveringsrutine i ett sted, slik at det som planlegges også er det som faktisk sendes og leveres.
+            Alt kunden skal få — innleggene som skal ut, filnavn, stilguide og leveringsrutine — samlet på ett sted, slik at det som planlegges er nøyaktig det som sendes.
           </Typography>
         </Box>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -1180,7 +1180,7 @@ export default function ProducerExportHandoffPanel({
               : 'Klienten bør legge inn brief og materiale før endelig handoff.',
           },
           {
-            label: 'Content Logic',
+            label: 'Innholdsplan',
             value: [manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length > 0
               ? `${[manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length}/3`
               : '0/3',
@@ -1189,7 +1189,7 @@ export default function ProducerExportHandoffPanel({
               : 'Mål, hook og CTA bør fylles før klientpakken sendes.',
           },
           {
-            label: 'Kontotilgang',
+            label: 'Hvem har tilgang',
             value: `${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount}`,
             detail: manifest.accountAccessSummary.clientActionCount > 0
               ? `${manifest.accountAccessSummary.clientActionCount} plattform${manifest.accountAccessSummary.clientActionCount === 1 ? '' : 'er'} krever klienthandling.`
@@ -1240,7 +1240,7 @@ export default function ProducerExportHandoffPanel({
       >
         <Stack spacing={2}>
           <CollapsibleSection
-            title="Neste klientpunkter"
+            title="Neste steg med kunden"
             defaultOpen
           >
             <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
@@ -1289,7 +1289,7 @@ export default function ProducerExportHandoffPanel({
                             <>
                               <Chip
                                 size="small"
-                                label="Content Logic"
+                                label="Innholdsplan"
                                 sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
                               />
                               <Chip
@@ -1303,7 +1303,7 @@ export default function ProducerExportHandoffPanel({
                             <>
                               <Chip
                                 size="small"
-                                label="Kontotilgang"
+                                label="Hvem har tilgang"
                                 sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#ccfbf1' }}
                               />
                               <Chip
@@ -1389,7 +1389,7 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Kontotilgang"
+            title="Hvem har tilgang"
             summary={`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} plattformer koblet · ${manifest.accountAccessSummary.clientActionCount} krever klient`}
           >
             {onOpenMedia ? (
@@ -1472,7 +1472,7 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Leveransearbeidsområde"
+            title="Filer klare til levering"
             summary={`${deliveryWorkspaceFiles.length} prosjektfiler`}
             badge={<Chip size="small" label={String(deliveryWorkspaceFiles.length)} sx={{ height: 18, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontSize: '0.68rem' }} />}
           >
@@ -1626,7 +1626,7 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Klientinnspill før handoff"
+            title="Innspill fra kunden før levering"
             summary={`${openClientContributionTasks.length} punkter må avklares`}
           >
             {onOpenMedia ? (
@@ -1887,7 +1887,7 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Content Logic"
+            title="Innholdsplan"
             summary="Mål, målgruppe, hook, budskap, CTA"
           >
             <Stack spacing={0.8}>
@@ -1927,7 +1927,7 @@ export default function ProducerExportHandoffPanel({
 
           <CollapsibleSection
             title="Merkevareguide"
-            summary={`${readiness.brandItems.filter((i) => i.ready).length}/${readiness.brandItems.length} elementer klare`}
+            summary="Farger, fonter og tone kunden skal bruke"
           >
             {onOpenMedia ? (
               <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(brandWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
@@ -2100,7 +2100,7 @@ export default function ProducerExportHandoffPanel({
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.82rem', maxWidth: 880 }}>
-          Overleveringsbriefen bygger automatisk på retning, idé, aktivering, content-kalender, merkevareguide og leveringsrutine. Filnavn og klientpunkter følger prosjektets egne regler.
+          Sammendraget til kunden bygges automatisk på retning, idé, aktivering, innleggsplan, merkevareguide og leveringsrutine. Filnavn og punkter følger prosjektets egne regler.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button
