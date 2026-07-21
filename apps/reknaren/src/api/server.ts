@@ -976,6 +976,48 @@ export function createApiServer(deps: ApiDeps): express.Express {
     }
   });
 
+  // Hodeløs betalingspåminnelse for cron — token-autentisert. Sikrer org, sender
+  // purring på forfalte utstedte fakturaer via e-postporten. Ingen sesjon.
+  app.post('/api/cron/reminders', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      if (!secret || secret.length < 16) {
+        res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler eller er for kort.' } });
+        return;
+      }
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      const a = Buffer.from(secret);
+      const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } });
+        return;
+      }
+      if (!deps.email || !deps.email.configured) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Utgående e-post er ikke konfigurert.' } });
+        return;
+      }
+      if (!deps.bootstrapOrg) {
+        res.status(503).json({ error: { code: 'ORG_NOT_CONFIGURED', message: 'Bootstrap-org er ikke konfigurert.' } });
+        return;
+      }
+      const q = z
+        .object({
+          asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          minDaysBetween: z.number().int().min(1).max(90).optional(),
+        })
+        .parse(req.body ?? {});
+      const boot = await ensureBootstrapOrg(deps.db, deps.bootstrapOrg);
+      const summary = await sendInvoiceReminders(deps.db, deps.email, {
+        organizationId: boot.orgId,
+        asOfDate: q.asOf ?? new Date().toISOString().slice(0, 10),
+        ...(q.minDaysBetween ? { minDaysBetween: q.minDaysBetween } : {}),
+      });
+      res.json(toJson(summary));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ── Rapporter ────────────────────────────────────────────────────────────
   const reportQuery = z.object({
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

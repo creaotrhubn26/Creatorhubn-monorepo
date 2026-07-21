@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApiServer } from '../src/api/server.js';
 import type { Db } from '../src/db/pool.js';
 import { StaticStripeStub, type StripePaidInvoice } from '../src/integrations/stripe.js';
+import { InMemoryEmailStub } from '../src/integrations/email.js';
 import { ensureBootstrapOrg, type BootstrapOrgConfig } from '../src/ops/bootstrap.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { setupTestDb, truncateAll } from './helpers.js';
@@ -50,6 +51,7 @@ beforeAll(async () => {
     db,
     rules: buildNorwegianRuleRegister(),
     stripe: new StaticStripeStub([invoice('in_x'), invoice('in_y')]),
+    email: new InMemoryEmailStub(),
     cronSecret: CRON_SECRET,
     bootstrapOrg,
   });
@@ -131,5 +133,23 @@ describe('ensureBootstrapOrg', () => {
     expect(dims.rows.map((r) => r.code)).toEqual(
       expect.arrayContaining(['CREATORHUB', 'ROLEROOM', 'LEADGRID']),
     );
+  });
+});
+
+describe('POST /api/cron/reminders (hodeløs purring)', () => {
+  it('avviser uten/med feil cron-token (403)', async () => {
+    await request(app).post('/api/cron/reminders').expect(403);
+    await request(app).post('/api/cron/reminders').set('x-cron-secret', 'feil').expect(403);
+  });
+
+  it('kjører med gyldig token og returnerer purre-sammendrag', async () => {
+    const res = await request(app)
+      .post('/api/cron/reminders')
+      .set('x-cron-secret', CRON_SECRET)
+      .expect(200);
+    // Ingen forfalte fakturaer i denne orgen → 0 sendt, men endepunktet kjørte.
+    expect(res.body).toHaveProperty('overdue');
+    expect(res.body).toHaveProperty('sent');
+    expect(res.body.sent).toBe(0);
   });
 });
