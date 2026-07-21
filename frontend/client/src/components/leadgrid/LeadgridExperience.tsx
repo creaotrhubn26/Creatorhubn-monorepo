@@ -53,7 +53,11 @@ type SceneKind = 'cinematic' | 'device' | 'framed';
 interface Scene {
   id: string;
   kind: SceneKind;
+  /** For 'framed': skjerm-innholdet (bytt fritt — bilde/GIF her, mp4 i `video`).
+   *  For 'device'/'cinematic': stillbildet/posteren. */
   image: string;
+  /** Transparent enhets-ramme (kun 'framed'). Skjerm-media legges bak den. */
+  bezel?: string;
   /** Full-bleed bakgrunn bak en 'framed'-enhet. */
   bg?: string;
   /** Skjermopptak fra simulatoren (grensesnittet i bruk) — vises i
@@ -97,7 +101,11 @@ const SCENES: Scene[] = [
   {
     // Rett-på Apple-bezel (offisiell product bezel) m/ ekte watch-UI —
     // perspektiv-composite i foto så amatørmessig ut på store skjermer.
-    id: 'watch', kind: 'framed', image: '/leadgrid/scenes/watch-framed.webp',
+    // Byttbar skjerm-slot: `image` = det som vises inne i klokka (bilde/GIF),
+    // ev. `video: '/leadgrid/…​.mp4'` for animert skjerm. `bezel` = rammen.
+    id: 'watch', kind: 'framed',
+    image: '/leadgrid/scenes/watch-screen-default.webp',
+    bezel: '/leadgrid/scenes/watch-bezel.webp',
     bg: '/leadgrid/scenes/watch-bg.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg, rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
@@ -288,7 +296,11 @@ function SceneLayer({
       ) : scene.kind === 'framed' ? (
         <>
           {scene.bg && <CinematicVisual image={scene.bg} scale={scale} />}
-          <FramedVisual image={scene.image} y={y} narrow={narrow} align={scene.align} />
+          <FramedVisual
+            bezel={scene.bezel ?? scene.image} image={scene.image} video={scene.video}
+            y={y} narrow={narrow} align={scene.align}
+            reduced={reduced} active={sceneVisible}
+          />
         </>
       ) : (
         <DeviceVisual
@@ -328,13 +340,34 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
   );
 }
 
-// ── Rett-på enhet i offisiell Apple-bezel (f.eks. Apple Watch) ────────
+// ── Enhet med BYTTBAR skjerm-slot (f.eks. Apple Watch) ────────────────
+// `bezel` = transparent enhets-ramme (body/reim/crown m/ gjennomsiktig
+// skjerm). `image`/`video` = det som vises INNE i skjermen — bytt fritt
+// mellom bilde, GIF (bare .gif i `image`) eller mp4 (`video`).
+// Skjerm-rektangelet er målt mot watch-bezel.webp (560×880).
+const WATCH_SCREEN = { left: '9%', top: '20.8%', width: '82%', height: '61%' } as const;
+
 function FramedVisual({
-  image, y, narrow, align,
+  bezel, image, video, y, narrow, align, reduced, active,
 }: {
-  image: string; y: MotionValue<number>; narrow?: boolean;
-  align?: 'left' | 'center' | 'right';
+  bezel: string; image: string; video?: string;
+  y: MotionValue<number>; narrow?: boolean;
+  align?: 'left' | 'center' | 'right'; reduced?: boolean; active?: boolean;
 }) {
+  // Spill skjerm-videoen kun når scenen er synlig (samme mønster som DeviceVisual).
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const apply = () => {
+      if (active && !document.hidden) el.play().catch(() => {});
+      else if (!active) el.pause();
+    };
+    apply();
+    document.addEventListener('visibilitychange', apply);
+    return () => document.removeEventListener('visibilitychange', apply);
+  }, [active]);
+
   // Enheten står motsatt av tekst-siden; sentrert på telefon.
   const shiftX = narrow ? '0%' : align === 'right' ? '-24%' : align === 'left' ? '24%' : '0%';
   return (
@@ -353,13 +386,36 @@ function FramedVisual({
           filter: 'blur(34px)',
         }}
       />
-      <img
-        src={image} alt=""
-        style={{
-          position: 'relative', display: 'block', width: '100%', height: 'auto',
-          filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.65))',
-        }}
-      />
+      {/* container med enhets-forhold; skjerm-media bak, transparent ramme over */}
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '560 / 880' }}>
+        <div
+          style={{
+            position: 'absolute', ...WATCH_SCREEN, overflow: 'hidden',
+            borderRadius: '13%', background: '#0b0518',
+          }}
+        >
+          {video && !reduced ? (
+            <video
+              ref={videoRef} src={video} poster={image}
+              muted loop playsInline preload="metadata"
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <img
+              src={image} alt=""
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          )}
+        </div>
+        <img
+          src={bezel} alt="" aria-hidden
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            pointerEvents: 'none',
+            filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.65))',
+          }}
+        />
+      </div>
     </motion.div>
   );
 }
