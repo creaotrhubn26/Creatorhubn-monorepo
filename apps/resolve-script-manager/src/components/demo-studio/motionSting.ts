@@ -255,17 +255,32 @@ function aspectFor(f: StingFormat): string {
   return f === '9:16' ? '9 / 16' : f === '1:1' ? '1 / 1' : '16 / 9';
 }
 
+/** Layout-knapper: plassering + luft + ramme. Relative verdier → format-trygt. */
+export interface MotionLayoutOpts {
+  align?: 'top' | 'center' | 'bottom';
+  density?: 'tight' | 'normal' | 'airy';
+  pad?: 'snug' | 'normal' | 'roomy';
+}
+export function layoutVars(o: MotionLayoutOpts = {}): { align: string; gap: string; pad: string } {
+  return {
+    align: o.align === 'top' ? 'flex-start' : o.align === 'bottom' ? 'flex-end' : 'center',
+    gap: o.density === 'tight' ? '1.5%' : o.density === 'airy' ? '5.4%' : '3.2%',
+    pad: o.pad === 'snug' ? '4.5% 5.5%' : o.pad === 'roomy' ? '9.5% 9.5%' : '6.5% 7%',
+  };
+}
+
 function barWidth(metrics: StingMetric[], i: number): number {
   const max = Math.max(1, ...metrics.map((m) => Math.abs(m.value)));
   const frac = Math.abs(metrics[i].value) / max;
   return Math.round(Math.max(22, 38 + frac * 62));
 }
 
-export function buildMotionStingHtml(data: StingData, opts: { autoplay?: boolean } = {}): string {
+export function buildMotionStingHtml(data: StingData, opts: { autoplay?: boolean; layout?: MotionLayoutOpts } = {}): string {
   const accent = /^#[0-9a-fA-F]{3,8}$/.test(data.accent) ? data.accent : '#8b5cf6';
   const timeline = deriveStingTimeline(data);
   const format = data.format || '16:9';
   const autoplay = opts.autoplay !== false;
+  const L = layoutVars(opts.layout);
 
   const metricRows = data.metrics
     .map((m, i) => {
@@ -287,7 +302,7 @@ html,body{height:100%}
 body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",system-ui,sans-serif;display:grid;place-items:center;overflow:hidden}
 #stage{aspect-ratio:${aspectFor(format)};width:100%;max-width:100%;max-height:100%;position:relative;border-radius:14px;overflow:hidden;
   background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), #0c0a16;
-  color:#efecf9;padding:6% 6.5%;display:flex;flex-direction:column;justify-content:center;gap:3.2%}
+  color:#efecf9;padding:${L.pad};display:flex;flex-direction:column;justify-content:${L.align};gap:${L.gap}}
 .brand{display:flex;align-items:center;gap:2.5%;font-weight:700;font-size:clamp(11px,3.2vw,17px);opacity:0}
 .brand .mk{width:1.5em;height:1.5em;border-radius:.42em;flex:none;display:grid;place-items:center;color:#0c0a16;font-weight:900;font-size:.8em;background:linear-gradient(135deg,${accent},#6d28d9)}
 .brand .tc{margin-left:auto;font-family:ui-monospace,"SF Mono",monospace;font-size:.62em;letter-spacing:.14em;color:#726c92;font-weight:500}
