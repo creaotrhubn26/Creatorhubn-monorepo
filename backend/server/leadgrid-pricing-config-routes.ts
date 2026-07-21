@@ -10,6 +10,13 @@
  * Singleton-rad (mig 0403). Lat CREATE + seed av default så endepunktene
  * aldri 500-er før migrasjonen er kjørt på en gitt DB.
  * Gate-mønster speilet fra admin-lead-map-pricing-routes.
+ *
+ * ⚠️ FORM-SYNK: PricingConfig + DEFAULT_PRICING_CONFIG under er RUNTIME-kilden.
+ * Andre build-targets kan ikke importere den, men MÅ speile samme camelCase-form:
+ *   • frontend/shared/leadgridPricingConfig.ts  (kanonisk for frontend — landing + admin-editor)
+ *   • ipad/.../Core/APIClient+LeadgridPricing.swift  (Codable-DTO-er)
+ * Endrer du formen her: oppdater begge, + kontrakttesten
+ * leadgrid-pricing-config.contract.test.ts (pinner nøkkel-formen → feiler ved drift).
  */
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
