@@ -126,6 +126,13 @@ import {
 } from "./role-room-ads-oauth.js";
 import crypto from "node:crypto";
 
+// Role Room-casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`),
+// mens `client_ads_configs.client_project_id` er en UUID-kolonne. Brukes til å
+// kort-slutte UUID-castede spørringer for ikke-UUID-prosjektid-er (unngår
+// «invalid input syntax for type uuid» → 500).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function _adsOauthStateKey(): string {
   return process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.AUTH_SECRET || "";
 }
@@ -2160,6 +2167,13 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!projectId) return res.status(400).json({ error: "clientProjectId påkrevd" });
     if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
       return res.status(403).json({ error: "forbidden_project" });
+    }
+    // `client_ads_configs.client_project_id` er en UUID-kolonne, men Role Room-
+    // casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`). En
+    // slug kan aldri matche en UUID-nøkkel, så `$1::uuid`-castet kastet «invalid
+    // input syntax for type uuid» → 500. Kort-slutt til tom liste for ikke-UUID.
+    if (!UUID_RE.test(projectId)) {
+      return res.json({ configs: [] });
     }
     try {
       const r = await pool.query(
