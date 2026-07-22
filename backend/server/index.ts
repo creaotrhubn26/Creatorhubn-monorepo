@@ -866,6 +866,7 @@ import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-exam
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
 import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
+import { registerLeadgridDemoRequestRoutes } from "./leadgrid-demo-request-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -66595,6 +66596,7 @@ registerLeadgridCrashRoutes({ app, pool, requireUserSession });
 
 // «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
 registerLeadgridSignupInterestRoutes({ app, pool });
+registerLeadgridDemoRequestRoutes({ app, pool });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
