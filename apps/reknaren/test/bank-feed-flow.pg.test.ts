@@ -31,7 +31,7 @@ class StubBankFeed implements BankFeedProvider {
     this.lastReference = p.reference;
     return { requisitionId: 'req-1', link: 'https://ob.example/start/req-1' };
   }
-  async getRequisitionAccounts(): Promise<RequisitionAccounts> {
+  async completeConsent(): Promise<RequisitionAccounts> {
     return { status: 'LN', accountIds: ['acc-1', 'acc-2'] };
   }
   async fetchTransactions(): Promise<BankFeedResult> {

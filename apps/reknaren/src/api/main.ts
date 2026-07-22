@@ -15,7 +15,11 @@ import { MaskinportenClient } from '../integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
 import { StripeApiClient } from '../integrations/stripe.js';
 import { ResendEmailClient, SmtpEmailClient } from '../integrations/email.js';
-import { GoCardlessBankFeedProvider, UnconfiguredBankFeedProvider } from '../bank/feed.js';
+import {
+  EnableBankingBankFeedProvider,
+  GoCardlessBankFeedProvider,
+  UnconfiguredBankFeedProvider,
+} from '../bank/feed.js';
 import { UnconfiguredPeppolAccessPoint } from '../invoicing/ehf.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
@@ -59,11 +63,13 @@ const app = createApiServer({
   errorMonitor,
   // Stripe-inntektssynk (kun LES). Inaktiv uten REKNAREN_STRIPE_SECRET_KEY.
   stripe: new StripeApiClient(config.stripeSecretKey),
-  // Bank-feed (PSD2/open banking via GoCardless). Inaktiv uten GOCARDLESS-hemmeligheter
-  // — manuell CSV-import fungerer uansett.
-  bankFeed: config.bankFeed
-    ? new GoCardlessBankFeedProvider(config.bankFeed)
-    : new UnconfiguredBankFeedProvider(),
+  // Bank-feed (PSD2/open banking). Enable Banking har forrang, ellers GoCardless,
+  // ellers ærlig inaktiv (manuell CSV-import fungerer uansett).
+  bankFeed: config.bankFeedEnable
+    ? new EnableBankingBankFeedProvider(config.bankFeedEnable)
+    : config.bankFeed
+      ? new GoCardlessBankFeedProvider(config.bankFeed)
+      : new UnconfiguredBankFeedProvider(),
   // EHF/PEPPOL: XML-generering + nedlasting virker alltid; overføring via
   // aksesspunkt er ikke aktiv uten avtale (ærlig no-op).
   peppol: new UnconfiguredPeppolAccessPoint(),

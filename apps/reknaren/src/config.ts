@@ -67,6 +67,11 @@ export interface ProductConfig {
    * (manuell CSV-import fungerer uansett).
    */
   bankFeed?: { secretId: string; secretKey: string } | undefined;
+  /**
+   * Enable Banking (nordisk PSD2-aggregator) — alternativ bank-feed. Bygges kun når
+   * BEGGE finnes. Har forrang over GoCardless når konfigurert.
+   */
+  bankFeedEnable?: { applicationId: string; privateKeyPem: string } | undefined;
 }
 
 const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
@@ -146,6 +151,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     bankFeed:
       env.REKNAREN_GOCARDLESS_SECRET_ID && env.REKNAREN_GOCARDLESS_SECRET_KEY
         ? { secretId: env.REKNAREN_GOCARDLESS_SECRET_ID, secretKey: env.REKNAREN_GOCARDLESS_SECRET_KEY }
+        : undefined,
+    bankFeedEnable:
+      env.REKNAREN_ENABLEBANKING_APP_ID && env.REKNAREN_ENABLEBANKING_PRIVATE_KEY
+        ? {
+            applicationId: env.REKNAREN_ENABLEBANKING_APP_ID,
+            privateKeyPem: env.REKNAREN_ENABLEBANKING_PRIVATE_KEY,
+          }
         : undefined,
   };
 }

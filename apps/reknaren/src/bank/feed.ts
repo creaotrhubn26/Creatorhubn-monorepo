@@ -15,6 +15,7 @@
  * aggregatorens flyt; her tar vi imot den ferdige `connectionId` (aggregatorens
  * konto-ID) og henter transaksjonene for den.
  */
+import { createSign } from 'node:crypto';
 import type { BankTransactionInput } from './import.js';
 import { moneyFromDecimalString } from '../shared/money.js';
 
@@ -56,10 +57,20 @@ export interface RequisitionLink {
   link: string;
 }
 
-/** Status + konto-ID-er en fullført requisition peker på. */
+/** Status + konto-ID-er et fullført samtykke peker på. */
 export interface RequisitionAccounts {
   status: string;
   accountIds: string[];
+}
+
+/**
+ * Det aggregatoren trenger for å fullføre samtykket etter bank-redirect. Ulike
+ * leverandører bruker ulike token: GoCardless slår opp på server-lagret
+ * `requisitionId`; Enable Banking bytter inn `code` fra redirect-URL-en.
+ */
+export interface ConsentCompletion {
+  requisitionId?: string;
+  code?: string;
 }
 
 export interface BankFeedProvider {
@@ -74,8 +85,8 @@ export interface BankFeedProvider {
     redirectUrl: string;
     reference: string;
   }): Promise<RequisitionLink>;
-  /** Henter konto-ID-ene en (forhåpentlig fullført) requisition gir tilgang til. */
-  getRequisitionAccounts(requisitionId: string): Promise<RequisitionAccounts>;
+  /** Fullfører samtykket etter redirect → konto-ID-ene tilgangen gir. */
+  completeConsent(params: ConsentCompletion): Promise<RequisitionAccounts>;
   /** Henter normaliserte transaksjoner for en tilkoblet konto. */
   fetchTransactions(params: { connectionId: string; sinceDate?: string }): Promise<BankFeedResult>;
 }
@@ -238,8 +249,10 @@ export class GoCardlessBankFeedProvider implements BankFeedProvider {
     return { requisitionId: body.id, link: body.link };
   }
 
-  async getRequisitionAccounts(requisitionId: string): Promise<RequisitionAccounts> {
+  async completeConsent(params: ConsentCompletion): Promise<RequisitionAccounts> {
     this.ensureConfigured();
+    const requisitionId = params.requisitionId;
+    if (!requisitionId) throw new BankFeedError('GoCardless krever requisitionId for å fullføre samtykket.');
     const token = await this.ensureToken();
     const body = (await this.request(`/requisitions/${encodeURIComponent(requisitionId)}/`, {
       method: 'GET',
@@ -278,10 +291,191 @@ export class UnconfiguredBankFeedProvider implements BankFeedProvider {
   async createRequisition(): Promise<RequisitionLink> {
     this.fail();
   }
-  async getRequisitionAccounts(): Promise<RequisitionAccounts> {
+  async completeConsent(): Promise<RequisitionAccounts> {
     this.fail();
   }
   async fetchTransactions(): Promise<BankFeedResult> {
     this.fail();
+  }
+}
+
+// ── Enable Banking (nordisk PSD2-aggregator) ─────────────────────────────────
+
+const EB_BASE = 'https://api.enablebanking.com';
+
+export interface EnableBankingConfig {
+  applicationId: string;
+  /** RSA privatnøkkel (PEM) lastet ned da appen ble registrert hos Enable Banking. */
+  privateKeyPem: string;
+}
+
+function base64url(input: Buffer | string): string {
+  return Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+/**
+ * Enable Banking autentiserer med en SELV-SIGNERT RS256-JWT (ingen token-exchange):
+ * header `kid`=application-ID, `iss`=enablebanking.com, `aud`=api.enablebanking.com.
+ * Signeres med Nodes `crypto` — ingen ekstra avhengighet (samme mønster som
+ * Maskinporten-klienten).
+ */
+function signEnableJwt(cfg: EnableBankingConfig, nowSeconds: number): string {
+  const header = { typ: 'JWT', alg: 'RS256', kid: cfg.applicationId };
+  const claims = { iss: 'enablebanking.com', aud: 'api.enablebanking.com', iat: nowSeconds, exp: nowSeconds + 3600 };
+  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claims))}`;
+  const signature = createSign('RSA-SHA256').update(signingInput).end().sign(cfg.privateKeyPem);
+  return `${signingInput}.${base64url(signature)}`;
+}
+
+interface EbTransaction {
+  entry_reference?: string;
+  transaction_amount?: { amount?: string; currency?: string };
+  credit_debit_indicator?: string; // CRDT (inn) | DBIT (ut)
+  booking_date?: string;
+  value_date?: string;
+  remittance_information?: string[];
+  creditor?: { name?: string };
+  debtor?: { name?: string };
+}
+
+/**
+ * Normaliserer én Enable Banking-transaksjon til `BankTransactionInput`. Fortegn
+ * fra `credit_debit_indicator` (DBIT = negativ), beløp EKSAKT til øre (aldri
+ * flyttall). Mangler `entry_reference` bygges en deterministisk id fra dato+beløp+
+ * tekst (stabil idempotensnøkkel). Ugyldig dato/beløp eller nullbeløp → null.
+ */
+export function mapEnableTransaction(tx: EbTransaction): BankTransactionInput | null {
+  const bookedDate = tx.booking_date ?? tx.value_date;
+  const amountStr = tx.transaction_amount?.amount;
+  if (!bookedDate || !amountStr || !/^\d{4}-\d{2}-\d{2}$/.test(bookedDate)) return null;
+  const currency = tx.transaction_amount?.currency ?? 'NOK';
+  let magnitude: bigint;
+  try {
+    magnitude = moneyFromDecimalString(amountStr.replace(/^[-+]/, '').trim(), currency).minorUnits;
+  } catch {
+    return null;
+  }
+  const debit = (tx.credit_debit_indicator ?? '').toUpperCase() === 'DBIT';
+  const amountMinor = debit ? -magnitude : magnitude;
+  if (amountMinor === 0n) return null;
+  const description =
+    tx.remittance_information && tx.remittance_information.length
+      ? tx.remittance_information.join(' ')
+      : debit
+        ? 'Utbetaling'
+        : 'Innbetaling';
+  const counterparty = debit ? tx.creditor?.name : tx.debtor?.name;
+  const externalId = tx.entry_reference ?? `${bookedDate}:${amountMinor.toString()}:${description}`.slice(0, 200);
+  return { externalId, bookedDate, amountMinor, currency, description, ...(counterparty ? { counterparty } : {}) };
+}
+
+export class EnableBankingBankFeedProvider implements BankFeedProvider {
+  readonly name = 'enablebanking';
+
+  constructor(
+    private readonly config: EnableBankingConfig | undefined,
+    private readonly fetchImpl: FetchLike = fetch as unknown as FetchLike,
+    private readonly timeoutMs = 20000,
+    private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
+  ) {}
+
+  get configured(): boolean {
+    return Boolean(this.config?.applicationId && this.config?.privateKeyPem);
+  }
+
+  private ensureConfigured(): void {
+    if (!this.configured) {
+      throw new BankFeedNotConfiguredError(
+        'Bank-feed er ikke konfigurert (REKNAREN_ENABLEBANKING_APP_ID + REKNAREN_ENABLEBANKING_PRIVATE_KEY mangler).',
+      );
+    }
+  }
+
+  private authHeader(): string {
+    return `Bearer ${signEnableJwt(this.config as EnableBankingConfig, this.nowSeconds())}`;
+  }
+
+  private async request(
+    path: string,
+    init: { method: string; body?: string },
+  ): Promise<unknown> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await this.fetchImpl(`${EB_BASE}${path}`, {
+        method: init.method,
+        headers: { accept: 'application/json', 'content-type': 'application/json', authorization: this.authHeader() },
+        ...(init.body ? { body: init.body } : {}),
+        signal: controller.signal,
+      });
+      if (res.status === 401 || res.status === 403) {
+        throw new BankFeedNotConfiguredError(`Enable Banking avviste legitimasjonen (${res.status}).`);
+      }
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).slice(0, 200);
+        throw new BankFeedError(`Enable Banking svarte med status ${res.status}. ${detail}`.trim(), res.status);
+      }
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async listInstitutions(country: string): Promise<BankInstitution[]> {
+    this.ensureConfigured();
+    const body = (await this.request(`/aspsps?country=${encodeURIComponent(country.toUpperCase())}`, {
+      method: 'GET',
+    })) as { aspsps?: Array<{ name?: string; bic?: string; logo?: string }> };
+    return (body.aspsps ?? [])
+      .filter((a): a is { name: string; bic?: string; logo?: string } => Boolean(a.name))
+      .map((a) => ({ id: a.name, name: a.name, ...(a.bic ? { bic: a.bic } : {}), ...(a.logo ? { logo: a.logo } : {}) }));
+  }
+
+  async createRequisition(params: {
+    institutionId: string;
+    redirectUrl: string;
+    reference: string;
+  }): Promise<RequisitionLink> {
+    this.ensureConfigured();
+    const validUntil = new Date((this.nowSeconds() + 90 * 24 * 3600) * 1000).toISOString();
+    const body = (await this.request('/auth', {
+      method: 'POST',
+      body: JSON.stringify({
+        access: { valid_until: validUntil },
+        aspsp: { name: params.institutionId, country: 'NO' },
+        state: params.reference,
+        redirect_url: params.redirectUrl,
+        psu_type: 'business',
+      }),
+    })) as { url?: string; authorization_id?: string };
+    if (!body.url) throw new BankFeedError('Enable Banking returnerte ikke en samtykkelenke.');
+    return { requisitionId: body.authorization_id ?? '', link: body.url };
+  }
+
+  async completeConsent(params: ConsentCompletion): Promise<RequisitionAccounts> {
+    this.ensureConfigured();
+    if (!params.code) {
+      throw new BankFeedError('Enable Banking krever «code» fra redirect-URL-en for å fullføre samtykket.');
+    }
+    const body = (await this.request('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ code: params.code }),
+    })) as { session_id?: string; accounts?: Array<string | { uid?: string }> };
+    const ids = (body.accounts ?? [])
+      .map((a) => (typeof a === 'string' ? a : a.uid))
+      .filter((x): x is string => Boolean(x));
+    return { status: ids.length ? 'AUTHORIZED' : 'PENDING', accountIds: ids };
+  }
+
+  async fetchTransactions(params: { connectionId: string; sinceDate?: string }): Promise<BankFeedResult> {
+    this.ensureConfigured();
+    const query = params.sinceDate ? `?date_from=${encodeURIComponent(params.sinceDate)}` : '';
+    const body = (await this.request(`/accounts/${encodeURIComponent(params.connectionId)}/transactions${query}`, {
+      method: 'GET',
+    })) as { transactions?: EbTransaction[] };
+    const transactions = (body.transactions ?? [])
+      .map(mapEnableTransaction)
+      .filter((t): t is BankTransactionInput => t !== null);
+    return { transactions, ...(params.sinceDate ? { sinceDate: params.sinceDate } : {}) };
   }
 }

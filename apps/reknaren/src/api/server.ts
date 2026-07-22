@@ -777,14 +777,14 @@ export function createApiServer(deps: ApiDeps): express.Express {
       },
       bank: deps.bankFeed?.configured
         ? {
-            mode: 'psd2_gocardless',
+            mode: `psd2_${deps.bankFeed.name}`,
             active: true,
-            note: 'Automatisk bank-feed via GoCardless Bank Account Data (PSD2). Transaksjoner hentes og kjøres gjennom samme idempotente import + deterministiske matching som CSV. Manuell CSV-import er fortsatt tilgjengelig.',
+            note: `Automatisk bank-feed via ${deps.bankFeed.name} (PSD2). Transaksjoner hentes og kjøres gjennom samme idempotente import + deterministiske matching som CSV. Manuell CSV-import er fortsatt tilgjengelig.`,
           }
         : {
             mode: 'manual_csv',
             active: true,
-            note: 'Manuell CSV-import med deterministisk matching. Ingen PSD2-/open banking-tilkobling (sett REKNAREN_GOCARDLESS_SECRET_ID + _SECRET_KEY for automatisk feed).',
+            note: 'Manuell CSV-import med deterministisk matching. Ingen PSD2-/open banking-tilkobling (sett Enable Banking- eller GoCardless-legitimasjon for automatisk feed).',
           },
       ocr: deps.aiExtraction
         ? { mode: 'ai_claude', active: true, note: 'AI-bilagslesing (Claude vision) aktiv: foto/PDF → strukturerte felt. Sumvalidering + menneskelig godkjenning uendret; avvik går til kontrollkø.' }
@@ -2130,16 +2130,26 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         if (bankFeedUnavailable(res)) return;
         const body = z
-          .object({ requisitionId: z.string().min(1).max(200).optional(), accountId: z.string().min(1).max(200).optional() })
+          .object({
+            // GoCardless: requisitionId (server-lagret). Enable Banking: code fra redirect-URL-en.
+            requisitionId: z.string().min(1).max(200).optional(),
+            code: z.string().min(1).max(2000).optional(),
+            accountId: z.string().min(1).max(200).optional(),
+          })
           .parse(req.body ?? {});
         const acct = await deps.db.query(
           `SELECT feed_requisition_id FROM bank_accounts WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
           [req.params.bankAccountId, req.params.orgId],
         );
         if (!acct.rowCount) throw new NotFoundError('Bankkontoen finnes ikke eller er frakoblet.');
-        const requisitionId = body.requisitionId ?? acct.rows[0].feed_requisition_id;
-        if (!requisitionId) throw new ValidationError('Ingen samtykke startet. Kjør /feed/connect først.');
-        const { status, accountIds } = await deps.bankFeed!.getRequisitionAccounts(requisitionId);
+        const requisitionId = body.requisitionId ?? acct.rows[0].feed_requisition_id ?? undefined;
+        if (!requisitionId && !body.code) {
+          throw new ValidationError('Mangler fullførings-token. Oppgi «code» (fra redirect) eller kjør /feed/connect først.');
+        }
+        const { status, accountIds } = await deps.bankFeed!.completeConsent({
+          ...(requisitionId ? { requisitionId } : {}),
+          ...(body.code ? { code: body.code } : {}),
+        });
         // Velg oppgitt konto, ellers første tilknyttede.
         const chosen = body.accountId && accountIds.includes(body.accountId) ? body.accountId : accountIds[0];
         if (!chosen) {
