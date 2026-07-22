@@ -409,15 +409,16 @@ export interface SceneMotion { html: string; durationSec: number; archetype: Arc
  */
 export function motionHtmlForScene(
   values: Record<string, string>,
-  opts: { templateId?: string; brandName?: string; accent?: string; order?: string[]; format?: StingFormat; theme?: 'dark' | 'light'; arch?: Archetype } = {},
+  opts: { templateId?: string; brandName?: string; accent?: string; order?: string[]; format?: StingFormat; arch?: Archetype; place?: MotionLayoutOpts; tempo?: number; caption?: string; eyebrow?: string } = {},
 ): SceneMotion {
   const arch = opts.arch || pickArchetype(opts.templateId || '', values);
   const accent = opts.accent || '#8b5cf6';
   const brandName = opts.brandName || 'Merkevare';
-  const place: MotionLayoutOpts = { theme: opts.theme };
+  const place: MotionLayoutOpts = opts.place || {};
+  const tempo = opts.tempo;
   if (arch === 'sting') {
-    const d = stingFromValues(values, { brandName, accent, order: opts.order });
-    return { html: buildMotionStingHtml({ ...d, format: opts.format }, { layout: place }), durationSec: deriveStingTimeline(d).total / 1000, archetype: arch };
+    const d = stingFromValues(values, { brandName, accent, order: opts.order, caption: opts.caption, eyebrow: opts.eyebrow });
+    return { html: buildMotionStingHtml({ ...d, format: opts.format }, { layout: place, tempo }), durationSec: (deriveStingTimeline(d).total / 1000) * (tempo && tempo > 0 ? tempo : 1), archetype: arch };
   }
   const brand = { name: brandName, mark: brandName.slice(0, 1).toUpperCase() };
   const lay =
@@ -425,5 +426,5 @@ export function motionHtmlForScene(
       : arch === 'quote' ? quoteLayout(quoteFrom(values, opts.order))
         : arch === 'compare' ? compareLayout(compareFrom(values, opts.order))
           : listLayout(listFrom(values, opts.order));
-  return { html: buildMotionHtml(lay, { accent, format: opts.format, brand, place }), durationSec: lay.total / 1000, archetype: arch };
+  return { html: buildMotionHtml(lay, { accent, format: opts.format, brand, place, tempo }), durationSec: (lay.total / 1000) * (tempo && tempo > 0 ? tempo : 1), archetype: arch };
 }

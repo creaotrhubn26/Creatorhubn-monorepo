@@ -24,6 +24,9 @@ import { materializePost } from './campaignDirector';
 import SystemArchDialog from './SystemArchDialog';
 import MotionStingDialog from './MotionStingDialog';
 import { motionHtmlForScene, type Archetype } from './motionReveal.js';
+import { aiSuggestMotion } from './motionAI.js';
+import { loadPresets, savePreset, type MotionPreset } from './motionPresets.js';
+import type { MotionLayoutOpts } from './motionSting.js';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -927,6 +930,13 @@ export function InfographicStudioView(
   // Hovedvisning: Still (infographic) vs Motion (animert sting av samme data).
   const [motionMode, setMotionMode] = useState(false);
   const [mainArch, setMainArch] = useState<Archetype | null>(null);
+  // Fulle motion-kontroller inline i hovedvisningen (tempo/tema/luft/preset/AI).
+  const [motionPlace, setMotionPlace] = useState<MotionLayoutOpts>({ theme: 'dark', density: 'normal' });
+  const [motionTempo, setMotionTempo] = useState<'fast' | 'normal' | 'slow'>('normal');
+  const motionTempoK = motionTempo === 'fast' ? 0.7 : motionTempo === 'slow' ? 1.4 : 1;
+  const [motionCaption, setMotionCaption] = useState<string | undefined>();
+  const [motionPresets, setMotionPresets] = useState<MotionPreset[]>(() => loadPresets());
+  const [aiMainBusy, setAiMainBusy] = useState(false);
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
@@ -1205,11 +1215,27 @@ export function InfographicStudioView(
   // Motion i HOVEDVISNINGEN: samme scene-data → animert sting rett i preview-en
   // (samme setProgress-kontrakt som still, så play()/scrub virker uendret).
   const motionFormat = (fmt === '9:16' ? '9:16' : fmt === '1:1' ? '1:1' : '16:9') as '16:9' | '9:16' | '1:1';
-  const motionSrcDoc = useMemo(
-    () => motionHtmlForScene(fieldVals(scene, tpl), { templateId: tpl.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(scene), order: tpl.fields.map((f) => f.key), format: motionFormat, arch: mainArch ?? undefined }).html,
+  const mainMotion = useMemo(
+    () => motionHtmlForScene(fieldVals(scene, tpl), { templateId: tpl.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(scene), order: tpl.fields.map((f) => f.key), format: motionFormat, arch: mainArch ?? undefined, place: motionPlace, tempo: motionTempoK, caption: motionCaption }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scene, tpl, accent, logo, mainArch, motionFormat, dataMap],
+    [scene, tpl, accent, logo, mainArch, motionFormat, dataMap, motionPlace, motionTempoK, motionCaption],
   );
+  const motionSrcDoc = mainMotion.html;
+  const [mw, mh] = motionFormat === '9:16' ? [1080, 1920] : motionFormat === '1:1' ? [1080, 1080] : [1920, 1080];
+  const runMainAi = async () => {
+    if (aiMainBusy) return;
+    setAiMainBusy(true);
+    try { const s = await aiSuggestMotion(fieldVals(scene, tpl), { templateId: tpl.id }); setMainArch(s.archetype); setMotionCaption(s.caption); } catch { /* */ } finally { setAiMainBusy(false); }
+  };
+  const saveMainPreset = () => {
+    const name = window.prompt('Navn på stil-preset:')?.trim();
+    if (name) setMotionPresets(savePreset({ name, arch: mainArch ?? 'sting', format: motionFormat, place: motionPlace, tempo: motionTempo }));
+  };
+  const applyMainPreset = (name: string) => {
+    const p = motionPresets.find((x) => x.name === name);
+    if (!p) return;
+    setMainArch(p.arch); setFmt(p.format === '9:16' ? '9:16' : p.format === '1:1' ? '1:1' : '16:9'); setMotionPlace(p.place); setMotionTempo(p.tempo);
+  };
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -1476,7 +1502,7 @@ export function InfographicStudioView(
         if (cancelRef.current) { setMsg(`Avbrutt etter ${i} av ${scenes.length} scener.`); return; }
         const sc = scenes[i];
         const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
-        const m = motionHtmlForScene(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key), format: '16:9' });
+        const m = motionHtmlForScene(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key), format: '16:9', place: motionPlace, tempo: motionTempoK });
         setRenderProgress({ done: i, total: scenes.length });
         setMsg(`Rendrer motion ${i + 1}/${scenes.length} (${m.archetype}) …`);
         const out = await invoke<string>('render_infographic', { html: m.html, durationSec: m.durationSec, name: `motion-${sc.id}-${Date.now()}`, fps, scale, exitSec: 0, frame: '1920x1080', easing: 'linear', entrance: 'none' });
@@ -2156,15 +2182,38 @@ export function InfographicStudioView(
                       return <span key={v} onClick={() => setMotionMode(v === 'motion')} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', color: on ? '#04121a' : D.soft, background: on ? D.accent : 'transparent' }}>{l}</span>;
                     })}
                   </div>
-                  {motionMode && (
-                    <div style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 8, background: 'rgba(11,17,32,0.78)', border: `1px solid ${D.line}`, flexWrap: 'wrap', maxWidth: 288, justifyContent: 'flex-end' }}>
-                      {([['auto', 'Auto'], ['sting', 'Sting'], ['stat', 'Stat'], ['quote', 'Sitat'], ['compare', 'Sammenlign'], ['list', 'Liste']] as const).map(([v, l]) => {
-                        const on = v === 'auto' ? mainArch === null : mainArch === v;
-                        return <span key={v} onClick={() => setMainArch(v === 'auto' ? null : (v as Archetype))} style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', color: on ? D.accent : D.soft, background: on ? `${D.accent}22` : 'transparent' }}>{l}</span>;
-                      })}
-                      <span onClick={() => setShowMotion(true)} title="Avanserte Motion-kontroller (layout, tempo, tema, presets, Send til Resolve)" style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', color: D.accent }}>⚙ Avansert</span>
-                    </div>
-                  )}
+                  {motionMode && (() => {
+                    const cluster: React.CSSProperties = { display: 'flex', gap: 3, padding: 3, borderRadius: 8, background: 'rgba(11,17,32,0.82)', border: `1px solid ${D.line}`, flexWrap: 'wrap', maxWidth: 300, justifyContent: 'flex-end', alignItems: 'center' };
+                    const chip: React.CSSProperties = { fontSize: 10.5, fontWeight: 600, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', color: D.soft, whiteSpace: 'nowrap' };
+                    const tLbl = motionTempo === 'fast' ? 'Rask' : motionTempo === 'slow' ? 'Rolig' : 'Normal';
+                    const dLbl = motionPlace.density === 'tight' ? 'Tett' : motionPlace.density === 'airy' ? 'Luftig' : 'Normal';
+                    return (
+                      <>
+                        <div style={cluster}>
+                          {([['auto', 'Auto'], ['sting', 'Sting'], ['stat', 'Stat'], ['quote', 'Sitat'], ['compare', 'Sammenlign'], ['list', 'Liste']] as const).map(([v, l]) => {
+                            const on = v === 'auto' ? mainArch === null : mainArch === v;
+                            return <span key={v} onClick={() => setMainArch(v === 'auto' ? null : (v as Archetype))} style={{ ...chip, color: on ? D.accent : D.soft, background: on ? `${D.accent}22` : 'transparent' }}>{l}</span>;
+                          })}
+                        </div>
+                        <div style={cluster}>
+                          <span onClick={runMainAi} title="La AI velge arketype + caption fra data" style={{ ...chip, color: aiMainBusy ? D.soft : D.accent, fontWeight: 700 }}>{aiMainBusy ? '● …' : '✨ AI'}</span>
+                          <span onClick={() => setMotionTempo((t) => (t === 'fast' ? 'normal' : t === 'normal' ? 'slow' : 'fast'))} title="Tempo" style={chip}>⏱ {tLbl}</span>
+                          <span onClick={() => setMotionPlace((p) => ({ ...p, theme: p.theme === 'light' ? 'dark' : 'light' }))} title="Tema" style={chip}>{motionPlace.theme === 'light' ? '☀ Lys' : '🌙 Mørk'}</span>
+                          <span onClick={() => setMotionPlace((p) => ({ ...p, density: p.density === 'tight' ? 'normal' : p.density === 'normal' ? 'airy' : 'tight' }))} title="Luft" style={chip}>↕ {dLbl}</span>
+                          <span onClick={() => setShowMotion(true)} title="Alle avanserte kontroller (per-element mellomrom, plassering, …)" style={{ ...chip, color: D.accent }}>⚙</span>
+                        </div>
+                        <div style={cluster}>
+                          <select value="" onChange={(e) => { applyMainPreset(e.target.value); e.currentTarget.value = ''; }}
+                            style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 6px', borderRadius: 5, border: `1px solid ${D.line}`, background: 'transparent', color: motionPresets.length ? D.ink : D.soft, cursor: 'pointer', maxWidth: 96 }}>
+                            <option value="">{motionPresets.length ? 'Preset …' : 'Ingen preset'}</option>
+                            {motionPresets.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                          </select>
+                          <span onClick={saveMainPreset} title="Lagre gjeldende stil som preset" style={chip}>💾</span>
+                          <span onClick={() => void sendMotionToResolve(mainMotion.html, mainMotion.durationSec, `${mw}x${mh}`)} title="Rendrer denne scenens motion → ProRes 4444 → Resolve" style={{ ...chip, background: D.accent, color: '#04121a', fontWeight: 700 }}>⤓ Resolve</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 {/* Linjaler + safe-frame (stiplet) for presis plassering. */}
                 {showGuides && <>
