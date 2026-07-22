@@ -338,7 +338,7 @@ function StickyHeader() {
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box
               component="img"
-              src="/leadgrid/logo.png"
+              src="/leadgrid/logo.webp"
               alt="Leadgrid"
               sx={{ width: 36, height: 36, borderRadius: 1 }}
             />
@@ -1604,7 +1604,7 @@ function Footer() {
             <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
               <Box
                 component="img"
-                src="/leadgrid/logo.png"
+                src="/leadgrid/logo.webp"
                 alt="Leadgrid"
                 sx={{ width: 36, height: 36, borderRadius: 1 }}
               />
