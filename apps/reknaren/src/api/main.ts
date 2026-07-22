@@ -21,6 +21,8 @@ import {
   UnconfiguredBankFeedProvider,
 } from '../bank/feed.js';
 import { UnconfiguredPeppolAccessPoint } from '../invoicing/ehf.js';
+import { ImapGmailAdapter } from '../ingestion/gmail/imap.js';
+import { ClaudeEmailClassifier } from '../ingestion/gmail/smart-filter.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -73,6 +75,17 @@ const app = createApiServer({
   // EHF/PEPPOL: XML-generering + nedlasting virker alltid; overføring via
   // aksesspunkt er ikke aktiv uten avtale (ærlig no-op).
   peppol: new UnconfiguredPeppolAccessPoint(),
+  // Ekte Gmail-lesing via IMAP (samme app-passord som SMTP). Uten creds → sandbox.
+  ...(config.smtpUser && config.smtpPassword
+    ? {
+        gmailAdapterFactory: () =>
+          new ImapGmailAdapter({ user: config.smtpUser as string, password: config.smtpPassword as string }),
+        gmailMode: 'imap',
+      }
+    : {}),
+  // Smart bilagsfilter: AI-klassifisering med Claude når nøkkel finnes (Haiku = raskt/
+  // billig for sortering), ellers heuristikk-only. Reknaren gjenbruker samme nøkkel.
+  emailClassifier: new ClaudeEmailClassifier(config.anthropicApiKey),
   // Hodeløs cron-synk: token + org-bootstrap.
   cronSecret: config.cronSecret,
   bootstrapOrg: config.bootstrapOrg,

@@ -10,6 +10,8 @@ import { getAccountDef, STANDARD_ACCOUNTS } from '../coa/accounts.js';
 import { getVatCode, VAT_CODES } from '../coa/vat-codes.js';
 import type { Db } from '../db/pool.js';
 import { SandboxGmailAdapter } from '../ingestion/gmail/sandbox.js';
+import type { GmailPort } from '../ingestion/gmail/port.js';
+import { SmartGmailFilter, type EmailClassifier, type EmailSignals } from '../ingestion/gmail/smart-filter.js';
 import { lockPeriod, reverseJournalEntry } from '../ledger/engine.js';
 import {
   balanceSheet,
@@ -96,7 +98,11 @@ export interface ApiDeps {
   db: Db;
   rules: RuleRegister;
   /** Sandbox til ekte OAuth-nøkler er på plass; status rapporteres ærlig. */
-  gmailAdapterFactory?: () => SandboxGmailAdapter;
+  gmailAdapterFactory?: (() => GmailPort) | undefined;
+  /** Modus rapportert til klienten: 'imap' (ekte) eller 'sandbox'. */
+  gmailMode?: string | undefined;
+  /** AI-klassifisering for det smarte bilagsfilteret. Uten nøkkel: heuristikk-only. */
+  emailClassifier?: EmailClassifier | undefined;
   /** Objektlager for dokumentinnhold. */
   storage?: ObjectStorage | undefined;
   /** Katalog med bygget web-UI (vite dist). Serveres statisk når satt. */
@@ -796,7 +802,91 @@ export function createApiServer(deps: ApiDeps): express.Express {
           },
           vatStatus,
         });
-        res.json(toJson({ ...summary, integrationMode: 'sandbox' }));
+        res.json(toJson({ ...summary, integrationMode: deps.gmailMode ?? 'sandbox' }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Smart skanning: les e-post (IMAP), la det smarte filteret avgjøre hva som er
+  // bilag, og returner en KLASSIFISERT liste (import/review/skip) UTEN å bokføre.
+  // Mennesket bekrefter hva som faktisk skal hentes inn.
+  app.post(
+    '/api/organizations/:orgId/gmail/scan',
+    requireAuth,
+    requireOrgPermission('integrations.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            labels: z.array(z.string().min(1)).min(1).max(20),
+            senders: z.array(z.string()).optional(),
+            afterDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body);
+        const gmail = (deps.gmailAdapterFactory ?? (() => new SandboxGmailAdapter()))();
+        const messages = await gmail.searchMessages({
+          labels: body.labels,
+          ...(body.senders ? { senders: body.senders } : {}),
+          ...(body.afterDate ? { afterDate: body.afterDate } : {}),
+        });
+        const filter = new SmartGmailFilter(deps.emailClassifier);
+        // Vurder inntil 60 e-poster, 6 om gangen (responsiv + sparer AI-kall).
+        const capped = messages.slice(0, 60);
+        const verdicts: unknown[] = [];
+        let skipped = 0;
+        for (let i = 0; i < capped.length; i += 6) {
+          const batch = capped.slice(i, i + 6);
+          const results = await Promise.all(
+            batch.map(async (m) => {
+              const signals: EmailSignals = {
+                from: m.from,
+                subject: m.subject,
+                snippet: m.snippet,
+                attachmentNames: m.attachments.map((a) => a.filename),
+                hasPdf: m.attachments.some((a) => a.mimeType === 'application/pdf'),
+              };
+              const v = await filter.evaluate(signals);
+              return { message: m, verdict: v };
+            }),
+          );
+          for (const r of results) {
+            if (r.verdict.decision === 'skip') {
+              skipped++;
+              continue;
+            }
+            verdicts.push({
+              messageId: r.message.messageId,
+              from: r.message.from,
+              subject: r.message.subject,
+              date: r.message.date,
+              attachments: r.message.attachments.map((a) => ({ filename: a.filename, mimeType: a.mimeType })),
+              decision: r.verdict.decision,
+              confidence: r.verdict.confidence,
+              documentType: r.verdict.documentType,
+              vendorGuess: r.verdict.vendorGuess ?? null,
+              reason: r.verdict.reason,
+              source: r.verdict.source,
+            });
+          }
+        }
+        // import øverst, deretter review; høyest konfidens først.
+        verdicts.sort((a, b) => {
+          const av = a as { decision: string; confidence: number };
+          const bv = b as { decision: string; confidence: number };
+          if (av.decision !== bv.decision) return av.decision === 'import' ? -1 : 1;
+          return bv.confidence - av.confidence;
+        });
+        res.json(
+          toJson({
+            scanned: messages.length,
+            candidates: verdicts,
+            skipped,
+            mode: deps.gmailMode ?? 'sandbox',
+            aiFilter: Boolean(deps.emailClassifier?.available),
+          }),
+        );
       } catch (err) {
         next(err);
       }
@@ -852,11 +942,18 @@ export function createApiServer(deps: ApiDeps): express.Express {
 
   app.get('/api/integrations/status', requireAuth, (_req, res) => {
     res.json({
-      gmail: {
-        mode: 'sandbox',
-        active: false,
-        note: 'Gmail kjører mot sandbox-adapter. Ekte OAuth-tilkobling krever Google Cloud-prosjekt og klienthemmeligheter (se docs/integration-status.md).',
-      },
+      gmail:
+        deps.gmailMode === 'imap'
+          ? {
+              mode: 'imap',
+              active: true,
+              note: 'Ekte Gmail-lesing via IMAP med app-passord (gmail.readonly-ekvivalent). Skanner kun valgte etiketter; smart filter avgjør hvilke vedlegg som er bilag.',
+            }
+          : {
+              mode: 'sandbox',
+              active: false,
+              note: 'Gmail kjører mot sandbox-adapter. Ekte lesing krever REKNAREN_SMTP_USER + app-passord (IMAP).',
+            },
       bank: deps.bankFeed?.configured
         ? {
             mode: `psd2_${deps.bankFeed.name}`,
