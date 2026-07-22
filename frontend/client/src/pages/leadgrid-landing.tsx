@@ -1257,14 +1257,27 @@ function EcosystemSection() {
 // Testimonials
 // ────────────────────────────────────────────────────────────
 
+type LgTestimonial = { id?: string; quote: string; name: string; role: string; rating?: number };
+
 function TestimonialsSection() {
-  // Ingen ekte testimonials ennå → render ikke seksjonen i det hele tatt
-  if (TESTIMONIALS.length === 0) return null;
+  // Aktiverbart: henter GODKJENTE omtaler fra backend. Seksjonen er skjult til
+  // minst én er godkjent (super-admin godkjenner innsendte kunde-omtaler).
+  const [items, setItems] = useState<LgTestimonial[]>(TESTIMONIALS);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/leadgrid/testimonials')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => { if (alive && Array.isArray(d?.testimonials)) setItems(d.testimonials); })
+      .catch(() => { /* behold (tom) fallback */ });
+    return () => { alive = false; };
+  }, []);
+  if (items.length === 0) return null;
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
+      <SectionTitle title="Hva kundene sier" />
       <Grid container spacing={3}>
-        {TESTIMONIALS.map((t) => (
-          <Grid item xs={12} md={4} key={t.name}>
+        {items.map((t, i) => (
+          <Grid item xs={12} md={4} key={t.id ?? `${t.name}-${i}`}>
             <Card sx={{
               height: '100%',
               bgcolor: PALETTE.card,

@@ -855,6 +855,7 @@ import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from 
 import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
 import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-routes";
 import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-config-routes";
+import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
@@ -25076,6 +25077,12 @@ registerLeadgridPricingConfigRoutes({
 });
 // Leadgrid experience-media (mockup-innhold i scrollfilmen, super-admin-styrt)
 registerLeadgridExperienceConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+registerLeadgridTestimonialsRoutes({
   app,
   pool,
   activeSessions,
