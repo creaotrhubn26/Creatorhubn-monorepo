@@ -42,6 +42,7 @@ import {
   AttachMoney as MoneyIcon,
   Business as EnterpriseIcon,
   EmailOutlined as EmailIcon,
+  Movie as MovieIcon,
   People as PeopleIcon,
   Public as PublicIcon,
   Save as SaveIcon,
@@ -58,6 +59,7 @@ import {
 import { PostAgentPricingPanel } from './PostAgentPricingPanel';
 import LeadMapPricingPanel from './LeadMapPricingPanel';
 import LeadgridPricingConfigPanel from './LeadgridPricingConfigPanel';
+import LeadgridExperienceMediaPanel from './LeadgridExperienceMediaPanel';
 import {
   AdminButton,
   AdminTableContainer,
@@ -225,7 +227,8 @@ type PriceManagementSection =
   | 'enterprise'
   | 'post-agent'
   | 'lead-map'
-  | 'leadgrid-pricing';
+  | 'leadgrid-pricing'
+  | 'leadgrid-experience';
 
 interface PriceManagementDashboardProps {
   onMeetingCreate?: (meeting: WorkflowPayload) => void;
@@ -649,6 +652,7 @@ export default function PriceManagementDashboard({
     'post-agent': 5,
     'lead-map': 6,
     'leadgrid-pricing': 7,
+    'leadgrid-experience': 8,
   };
 
   useEffect(() => {
@@ -1550,6 +1554,7 @@ export default function PriceManagementDashboard({
           <Tab icon={<MoneyIcon />} label="Post Agent" />
           <Tab icon={<MoneyIcon />} label="Lead Map" />
           <Tab icon={<PublicIcon />} label="Leadgrid-priser" />
+          <Tab icon={<MovieIcon />} label="Mockup-innhold" />
 </Tabs>
       </Box>
 
@@ -2509,6 +2514,10 @@ export default function PriceManagementDashboard({
 
       <TabPanel value={tabValue} index={7}>
         <LeadgridPricingConfigPanel />
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={8}>
+        <LeadgridExperienceMediaPanel />
       </TabPanel>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>

@@ -27,6 +27,33 @@ import {
 
 /** Smal skjerm (telefon): enhet øverst + tekst nederst i stedet for
  *  side-om-side — callouten overlappet enheten under ~700px. */
+// Super-admin kan overstyre media inne i hver mockup (media-editor →
+// /api/leadgrid/experience-config). Returnerer SCENES med overstyringer anvendt.
+function useExperienceMedia(): Scene[] {
+  const [scenes, setScenes] = useState<Scene[]>(SCENES);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/leadgrid/experience-config')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((cfg: { scenes?: Record<string, { image?: string; video?: string }> }) => {
+        if (!alive || !cfg?.scenes) return;
+        setScenes(SCENES.map((s) => {
+          const o = cfg.scenes?.[s.id];
+          if (!o || (!o.image && !o.video)) return s;
+          return {
+            ...s,
+            image: o.image || s.image,
+            // Eksplisitt video-overstyring; tom streng = fjern video (kun bilde).
+            video: o.video !== undefined ? (o.video || undefined) : s.video,
+          };
+        }));
+      })
+      .catch(() => { /* behold defaults */ });
+    return () => { alive = false; };
+  }, []);
+  return scenes;
+}
+
 function useIsNarrow() {
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
@@ -107,7 +134,7 @@ const SCENES: Scene[] = [
     // ev. `video: '/leadgrid/…​.mp4'` for animert skjerm. `bezel` = rammen.
     id: 'watch', kind: 'framed',
     image: '/leadgrid/scenes/watch-screen-default.webp',
-    bezel: '/leadgrid/scenes/watch-bezel.webp',
+    bezel: '/leadgrid/scenes/watch-frame-fal.webp',
     bg: '/leadgrid/scenes/watch-bg.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg, rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
@@ -164,6 +191,7 @@ export default function LeadgridExperience({
   const ref = useRef<HTMLDivElement>(null);
   const narrow = useIsNarrow();
   const reduced = useReducedMotion();
+  const scenes = useExperienceMedia();
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ['start start', 'end end'],
@@ -196,7 +224,7 @@ export default function LeadgridExperience({
         <GridField progress={smooth} />
 
         {/* Scenene — hver toner inn/ut i sitt scroll-vindu */}
-        {SCENES.map((s, i) => (
+        {scenes.map((s, i) => (
           <SceneLayer
             key={s.id} scene={s} index={i} progress={smooth}
             narrow={narrow} reduced={!!reduced}
@@ -346,8 +374,9 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
 // `bezel` = transparent enhets-ramme (body/reim/crown m/ gjennomsiktig
 // skjerm). `image`/`video` = det som vises INNE i skjermen — bytt fritt
 // mellom bilde, GIF (bare .gif i `image`) eller mp4 (`video`).
-// Skjerm-rektangelet er målt mot watch-bezel.webp (560×880).
-const WATCH_SCREEN = { left: '9%', top: '20.8%', width: '82%', height: '61%' } as const;
+// Skjerm-rektangelet er målt mot watch-frame-fal.webp (457×789, fotoreal render).
+// Litt større enn selve hullet så media over-dekker; rammen masker kantene.
+const WATCH_SCREEN = { left: '11%', top: '23%', width: '76.5%', height: '53.5%' } as const;
 
 function FramedVisual({
   bezel, image, video, y, narrow, align, reduced, active,
@@ -389,7 +418,7 @@ function FramedVisual({
         }}
       />
       {/* container med enhets-forhold; skjerm-media bak, transparent ramme over */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '560 / 880' }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '457 / 789' }}>
         <div
           style={{
             position: 'absolute', ...WATCH_SCREEN, overflow: 'hidden',
