@@ -223,6 +223,9 @@ extension Notification.Name {
 struct RootView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.horizontalSizeClass) private var hSize
+    #if DEBUG
+    @State private var qaFeedback = false
+    #endif
 
     var body: some View {
         @Bindable var bindableState = appState
@@ -251,6 +254,16 @@ struct RootView: View {
             )
             .interactiveDismissDisabled()
         }
+        #if DEBUG
+        // QA-hook (skjermbilder): `SIMCTL_CHILD_QA_FEEDBACK=1` presenterer
+        // «Hva synes du om Leadgrid?»-sheeten direkte. Reverteres m/ task #59.
+        .sheet(isPresented: $qaFeedback) {
+            LeadgridFeedbackSheet(api: appState.api ?? APIClient(token: "qa-demo"))
+        }
+        .onAppear {
+            if ProcessInfo.processInfo.environment["QA_FEEDBACK"] == "1" { qaFeedback = true }
+        }
+        #endif
         .task {
             await appState.bootstrap()
             // Start Leadgrid-polling så snart auth er på plass.
