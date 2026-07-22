@@ -2961,6 +2961,33 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "stabilize_clip",
+      "name": "Stabilize clip (tiered)",
+      "category": "video",
+      "scriptPath": "scripts/video/stabilize_clip.py",
+      "description": "Stabiliser et klipp/segment. Auto-velger beste tilgjengelige metode: Gyroflow (hvis kamera-gyrodata + CLI finnes) → ffmpeg vid.stab 2-pass → ffmpeg deshake (alltid tilgjengelig). Ingen gimbal/gyro påkrevd for ffmpeg-nivåene. Output: <input>_stabilized.mp4.",
+      "requiredInputs": [
+        {
+          "key": "videoPath",
+          "label": "Video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "strength",
+          "label": "Styrke 0..1 (default 0.5)",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     }
   ]
 }

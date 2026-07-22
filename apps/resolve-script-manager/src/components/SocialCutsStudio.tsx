@@ -113,9 +113,11 @@ export function SocialCutsStudio({
     setError(null);
     const selected = moments.filter((_, i) => selectedMomentIdxs.has(i));
 
-    for (let i = 0; i < selected.length; i++) {
-      const m = selected[i];
-      setExtractProgress(`(${i + 1}/${selected.length}) ${m.text.slice(0, 40)}…`);
+    const errors: string[] = [];
+
+    for (let n = 0; n < selected.length; n++) {
+      const m = selected[n];
+      setExtractProgress(`(${n + 1}/${selected.length}) ${m.text.slice(0, 40)}…`);
       try {
         // 1. Run extract_social_cut
         const summary = await executeScript("extract_social_cut", {
@@ -131,6 +133,13 @@ export function SocialCutsStudio({
           outputPath?: string; thumbnailPath?: string;
         } | undefined;
 
+        // Uten outputPath ble ingen fil produsert — ikke persister en
+        // tom/ødelagt cut, registrer heller en feil for dette momentet.
+        if (!result?.outputPath) {
+          errors.push(`${m.text.slice(0, 30)}…: ingen output-fil produsert`);
+          continue;
+        }
+
         // 2. Persistere i DB
         await socialCutsService.create({
           projectId,
@@ -139,22 +148,28 @@ export function SocialCutsStudio({
           endSec: m.endSec,
           aspectRatio: aspect,
           captionsBurnt: burnCaptions,
-          outputPath: result?.outputPath,
-          thumbnailPath: result?.thumbnailPath,
+          outputPath: result.outputPath,
+          thumbnailPath: result.thumbnailPath,
           standoutScore: m.score,
           transcriptSnippet: m.text,
           headline: m.text.slice(0, 100),
           agentKind,
         });
       } catch (e) {
-        setError(`${m.text.slice(0, 30)}…: ${(e as Error).message}`);
+        errors.push(`${m.text.slice(0, 30)}…: ${(e as Error).message}`);
       }
     }
 
     setExtracting(false);
     setExtractProgress("");
-    setMoments([]);
-    setSelectedMomentIdxs(new Set());
+    setError(errors.length > 0 ? errors.join(" · ") : null);
+
+    // Rydd kun bort moment-lista/valget når ALT lyktes; ved delvis feil
+    // beholder vi brukerens valg så de kan prøve på nytt.
+    if (errors.length === 0) {
+      setMoments([]);
+      setSelectedMomentIdxs(new Set());
+    }
     await refresh();
   };
 

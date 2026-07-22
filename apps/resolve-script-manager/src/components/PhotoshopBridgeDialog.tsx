@@ -149,7 +149,7 @@ export function PhotoshopBridgeDialog({ onClose }: Props) {
             </div>
           </div>
           <button
-            disabled={busy}
+            disabled={busy || !connected}
             style={primaryBtn}
             onClick={() => run("ping", () => photoshop.ping())}
           >

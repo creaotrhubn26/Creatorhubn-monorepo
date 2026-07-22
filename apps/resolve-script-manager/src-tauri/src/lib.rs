@@ -90,7 +90,7 @@ async fn claude_chat(
         return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY. Logg inn fra Settings.".into());
     }
 
-    let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
+    let model = model.unwrap_or_else(|| "claude-opus-4-8".to_string());
     let max_tokens = max_tokens.unwrap_or(1024);
     let mut body = serde_json::json!({
         "model": model,
