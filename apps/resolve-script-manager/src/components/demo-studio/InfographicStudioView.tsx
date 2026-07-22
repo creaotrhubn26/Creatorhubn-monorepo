@@ -959,6 +959,13 @@ export function InfographicStudioView(
   const [filmOutro, setFilmOutro] = useState(false);
   const [outroCta, setOutroCta] = useState('Kom i gang');
   const [directing, setDirecting] = useState(false);
+  // Musikk-spor: vedlegg + waveform + synk-avspilling i preview (ikke i ProRes — den
+  // er ren video/alfa; legg musikken i Resolve). Web Audio for peaks, <audio> for lyd.
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioName, setAudioName] = useState<string | null>(null);
+  const [audioPeaks, setAudioPeaks] = useState<number[] | null>(null);
+  const [audioDur, setAudioDur] = useState(0);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
@@ -1401,20 +1408,24 @@ export function InfographicStudioView(
     recentScrubRef.current = performance.now(); // marker: undertrykk autoplay ved evt. iframe-reload
     setScrubT(t); const { index, p } = sceneAtTime(t);
     if (index !== sel) setSel(index); else applyScrubFrame(scenes[index], p);
+    // Manuell scrub → sett lyd-posisjon (under avspilling styrer <audio> seg selv).
+    if (!playingAllRef.current && audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = Math.max(0, Math.min(audioDur || t, t)); } catch { /* seek race */ } }
   };
   // Når scrub bytter scene, vent på ny iframe-load og sett progresjonen (m/ easing+inngang).
   useEffect(() => { if (playingAll || scrubT > 0) { const { p } = sceneAtTime(scrubT); const h = setTimeout(() => applyScrubFrame(scene, p), 60); return () => clearTimeout(h); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
-  const stopPlayAll = () => { if (playAllRef.current) cancelAnimationFrame(playAllRef.current); playAllRef.current = null; playingAllRef.current = false; setPlayingAll(false); };
+  const stopPlayAll = () => { if (playAllRef.current) cancelAnimationFrame(playAllRef.current); playAllRef.current = null; playingAllRef.current = false; setPlayingAll(false); try { audioElRef.current?.pause(); } catch { /* noop */ } };
   const playAll = () => {
     stopPlayAll(); playingAllRef.current = true; setPlayingAll(true);
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; } // stopp enkelt-scene-loop
+    // Start musikk fra spillehode-posisjonen (synk med den visuelle filmen).
+    if (audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = Math.max(0, Math.min(audioDur || scrubT, scrubT)); void audioElRef.current.play(); } catch { /* autoplay/seek */ } }
     let t0 = performance.now();
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (t >= totalDur) {
-        if (loopAll) { t0 = performance.now(); scrubTo(0); playAllRef.current = requestAnimationFrame(tick); return; }
+        if (loopAll) { t0 = performance.now(); scrubTo(0); if (audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = 0; void audioElRef.current.play(); } catch { /* noop */ } } playAllRef.current = requestAnimationFrame(tick); return; }
         scrubTo(totalDur); stopPlayAll(); return;
       }
       scrubTo(t);
@@ -1432,6 +1443,8 @@ export function InfographicStudioView(
     if (target) { setSel(target.i); scrubTo(target.t); } else scrubTo(dir > 0 ? totalDur : 0);
   };
   // Dra en scene-klipp: body = flytt atSec, høyre kant = endre varighet.
+  const scenesRef = useRef(scenes);
+  useEffect(() => { scenesRef.current = scenes; }, [scenes]);
   const onClipDrag = (e: React.PointerEvent, i: number, mode: 'move' | 'resize') => {
     e.stopPropagation(); e.preventDefault();
     const sc = scenes[i]; const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
@@ -1456,10 +1469,19 @@ export function InfographicStudioView(
     };
     const move = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / z;
-      if (mode === 'move') { const at = snap(Math.max(0, atSec0 + dx)); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, atSec: at } : s))); }
-      else { const dur = Math.max(1, Math.round((dur0 + dx) * 10) / 10); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, durSec: dur } : s))); }
+      if (mode === 'move') { const at = snap(Math.max(0, atSec0 + dx)); setScenes((ss) => ss.map((s) => (s.id === sc.id ? { ...s, atSec: at } : s))); }
+      else { const dur = Math.max(1, Math.round((dur0 + dx) * 10) / 10); setScenes((ss) => ss.map((s) => (s.id === sc.id ? { ...s, durSec: dur } : s))); }
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      // Dra-for-å-omorganisere: sorter array etter atSec ved slipp, så FILMEN spiller
+      // i samme rekkefølge som tidslinja viser (film-sekvensen leser array-rekkefølgen).
+      if (mode === 'move') {
+        const cur = scenesRef.current;
+        const sorted = [...cur].sort((a, b) => (a.atSec - b.atSec) || 0);
+        if (sorted.some((s, idx) => s.id !== cur[idx].id)) { setScenes(sorted); const ni = sorted.findIndex((s) => s.id === sc.id); if (ni >= 0) setSel(ni); }
+      }
+    };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
   // Tastatur-snarveier for tidslinjen (kun i motion/film, ikke mens man skriver).
@@ -1514,6 +1536,28 @@ export function InfographicStudioView(
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
+  // Fest en lydfil: dekod til waveform-peaks (best-effort) + object-URL for avspilling.
+  const attachAudio = async (file: File) => {
+    try {
+      const ab = await file.arrayBuffer();
+      try {
+        const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AC) {
+          const ctx = new AC();
+          const buf = await ctx.decodeAudioData(ab.slice(0));
+          const ch = buf.getChannelData(0); const N = 260; const block = Math.max(1, Math.floor(ch.length / N)); const peaks: number[] = [];
+          for (let i = 0; i < N; i++) { let mx = 0; const s = i * block; for (let j = 0; j < block; j += 64) { const v = Math.abs(ch[s + j] || 0); if (v > mx) mx = v; } peaks.push(mx); }
+          const norm = Math.max(...peaks) || 1; setAudioPeaks(peaks.map((p) => p / norm)); setAudioDur(buf.duration);
+          void ctx.close();
+        } else { setAudioPeaks(null); }
+      } catch { setAudioPeaks(null); }
+      setAudioUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+      setAudioName(file.name);
+      setMsg(`🎵 «${file.name}» festet — spilles i preview (legg musikken i Resolve for eksport).`);
+    } catch { setMsg('Kunne ikke lese lydfilen.'); }
+  };
+  const clearAudio = () => { setAudioUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); setAudioName(null); setAudioPeaks(null); setAudioDur(0); };
+  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
   // Spillehode-følging: hold playheaden i syne mens sekvensen spilles.
   useEffect(() => {
     const el = tlScrollRef.current; if (!el || !playingAll) return;
@@ -2408,7 +2452,7 @@ export function InfographicStudioView(
               const spans = scenes.map((sc) => { const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0]; return { a: sc.atSec, b: sc.atSec + effDur(sc, t) }; });
               const overlap = spans.some((s, i) => spans.some((o, j) => j !== i && s.a < o.b && o.a < s.b));
               const px = tlZoom;
-              const innerW = Math.max(320, totalDur * px + 60);
+              const innerW = Math.max(320, Math.max(totalDur, audioPeaks ? audioDur : 0) * px + 60);
               const rowH = 44;
               const ordered = scenes.map((sc, i) => ({ sc, i, t: INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0] })).sort((a, b) => (a.sc.atSec - b.sc.atSec) || (a.i - b.i));
               const tickStep = px < 55 ? 2 : 1;
@@ -2427,6 +2471,12 @@ export function InfographicStudioView(
                   <button style={{ ...topBtn, padding: '3px 7px', background: filmOutro ? D.accent : D.panel2, border: `1px solid ${filmOutro ? D.accent : D.line}`, color: filmOutro ? '#fff' : D.ink }} onClick={() => setFilmOutro((v) => !v)} title="Merkevare-outro på slutten av filmen">🎬 Outro</button>
                   {filmOutro && <input value={outroCta} onChange={(e) => setOutroCta(e.target.value)} placeholder="CTA" style={{ ...inp, width: 90, padding: '2px 6px', fontSize: 11 }} />}
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4 }} title="BPM-rutenett for snapping (0 = av)"><MusicNoteIcon style={{ fontSize: 14, color: bpm > 0 ? D.accent : D.faint }} /><input type="number" min={0} max={220} value={bpm} onChange={(e) => setBpm(Math.max(0, Math.min(220, parseInt(e.target.value, 10) || 0)))} style={{ ...inp, width: 44, padding: '2px 4px', fontSize: 11 }} /></span>
+                  <label style={{ ...topBtn, padding: '3px 7px', fontSize: 11, cursor: 'pointer', background: audioName ? D.panel2 : 'transparent', border: `1px solid ${audioName ? D.teal : D.line}` }} title="Fest musikk — spilles synk i preview (legg den i Resolve for eksport)">
+                    🎵 {audioName ? (audioName.length > 12 ? audioName.slice(0, 12) + '…' : audioName) : 'Musikk'}
+                    <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void attachAudio(f); e.currentTarget.value = ''; }} />
+                  </label>
+                  {audioName && <button style={{ ...topBtn, padding: '3px 5px', fontSize: 11 }} onClick={clearAudio} title="Fjern musikk"><CloseIcon style={{ fontSize: 13 }} /></button>}
+                  {audioUrl && <audio ref={audioElRef} src={audioUrl} preload="auto" />}
                   <div style={{ flex: 1 }} />
                   <button style={{ ...topBtn, padding: '3px 6px', background: loopAll ? D.accent : D.panel2, border: `1px solid ${loopAll ? D.accent : D.line}`, color: loopAll ? '#fff' : D.ink }} onClick={() => setLoopAll((v) => !v)} title="Loop hele sekvensen"><RepeatIcon style={{ fontSize: 15 }} /></button>
                   <button style={{ ...topBtn, padding: '3px 6px', fontSize: 12, background: snapOn ? D.accent : D.panel2, border: `1px solid ${snapOn ? D.accent : D.line}`, color: snapOn ? '#fff' : D.ink }} onClick={() => setSnapOn((v) => !v)} title="Magnetisk snapping av/på">🧲</button>
@@ -2492,6 +2542,17 @@ export function InfographicStudioView(
                         );
                       })}
                     </div>
+                    {/* Musikk-spor: waveform (peaks) — dekorativ + tidsreferanse. Klikk = scrub. */}
+                    {audioPeaks && audioDur > 0 && (
+                      <div onMouseDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); scrubTo(Math.max(0, Math.min(totalDur, (e.clientX - r.left) / px))); }}
+                        style={{ position: 'relative', height: 34, marginTop: 6, borderTop: `1px solid ${D.line}`, cursor: 'pointer' }} title={`Musikk: ${audioName || ''} · ${audioDur.toFixed(1)}s`}>
+                        <div style={{ position: 'absolute', left: 2, top: 3, fontSize: 8.5, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.4, pointerEvents: 'none', zIndex: 1 }}><MusicNoteIcon style={{ fontSize: 10, verticalAlign: -1 }} /> {audioName}</div>
+                        {audioPeaks.map((p, idx) => {
+                          const bw = Math.max(1, (audioDur * px) / audioPeaks.length);
+                          return <div key={idx} style={{ position: 'absolute', left: (idx / audioPeaks.length) * audioDur * px, bottom: 2, width: bw, height: Math.max(2, p * 26), background: `${D.teal}77`, borderRadius: 1, pointerEvents: 'none' }} />;
+                        })}
+                      </div>
+                    )}
                     {/* Playhead + tidsboble. */}
                     <div style={{ position: 'absolute', left: scrubT * px, top: 0, bottom: 0, width: 2, background: D.teal, pointerEvents: 'none', zIndex: 5 }} />
                     <div style={{ position: 'absolute', left: scrubT * px, top: -1, transform: 'translateX(-50%)', background: D.teal, color: '#04121a', fontSize: 9, fontWeight: 800, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', zIndex: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtTC(scrubT)}</div>
