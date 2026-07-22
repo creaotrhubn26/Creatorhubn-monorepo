@@ -276,3 +276,14 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
   .kv { grid-template-columns: 1fr; gap: 2px 0; }
   .kv dt { margin-top: 8px; }
 }
+
+/* Virksomhetsvelger (OrgGate) */
+.org-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 4px; }
+.org-choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 14px 16px; border: 1px solid var(--border, #e2e2e2); border-radius: 12px;
+  background: #fff; cursor: pointer; text-align: left; transition: border-color .12s, box-shadow .12s;
+}
+.org-choice:hover { border-color: var(--accent, #1f4d3a); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.org-choice-name { font-weight: 700; font-size: 15px; }
+.org-choice-meta { font-size: 12px; color: #666; }

@@ -53,6 +53,15 @@ afterAll(async () => {
 describe('Medlemsadministrasjon', () => {
   let memberUserId: string;
 
+  it('GET /organizations lister virksomhetene eieren er medlem av (returnerende bruker slipper å opprette på nytt)', async () => {
+    const res = await request(app)
+      .get('/api/organizations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const mine = res.body.find((o: { id: string }) => o.id === orgId);
+    expect(mine).toMatchObject({ name: 'Team AS', orgForm: 'AS', role: 'owner' });
+  });
+
   it('eier ser seg selv i medlemslista', async () => {
     const res = await request(app)
       .get(`/api/organizations/${orgId}/members`)

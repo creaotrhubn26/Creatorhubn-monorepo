@@ -329,6 +329,31 @@ export function createApiServer(deps: ApiDeps): express.Express {
   });
 
   // ── Organisasjoner ───────────────────────────────────────────────────────
+  // Virksomhetene den innloggede brukeren er aktivt medlem av — så en returnerende
+  // bruker kan VELGE org i stedet for å måtte opprette en ny hver gang.
+  app.get('/api/organizations', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      const rows = await deps.db.query(
+        `SELECT o.id, o.name, o.org_form, o.org_number, m.role
+         FROM memberships m JOIN organizations o ON o.id = m.organization_id
+         WHERE m.user_id = $1 AND m.status = 'active'
+         ORDER BY o.name`,
+        [req.auth!.userId],
+      );
+      res.json(
+        rows.rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          orgForm: r.org_form,
+          orgNumber: r.org_number,
+          role: r.role,
+        })),
+      );
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.post('/api/organizations', requireAuth, async (req: AuthedRequest, res, next) => {
     try {
       const body = z

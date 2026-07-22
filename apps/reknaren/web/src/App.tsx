@@ -133,8 +133,8 @@ export default function App() {
   if (!loggedIn) return <LoginScreen />;
   if (!orgId)
     return (
-      <OrgSetupScreen
-        onDone={(id) => {
+      <OrgGate
+        onPick={(id) => {
           setOrgId(id);
           setOrg(id);
         }}
@@ -291,7 +291,69 @@ function LoginScreen() {
   );
 }
 
-function OrgSetupScreen({ onDone }: { onDone: (orgId: string) => void }) {
+interface MyOrg {
+  id: string;
+  name: string;
+  orgForm: string;
+  orgNumber: string | null;
+  role: string;
+}
+
+/** Etter innlogging: velg blant virksomhetene du er medlem av, eller opprett ny. */
+function OrgGate({ onPick }: { onPick: (orgId: string) => void }) {
+  const orgs = useLoad(() => api<MyOrg[]>('GET', '/api/organizations'), []);
+  const [creating, setCreating] = useState(false);
+
+  // Nøyaktig én virksomhet → hopp rett inn (vanligste tilfellet).
+  useEffect(() => {
+    if (!creating && orgs.data && orgs.data.length === 1) onPick(orgs.data[0]!.id);
+  }, [orgs.data, creating, onPick]);
+
+  if (creating || (orgs.data && orgs.data.length === 0)) {
+    return <OrgSetupScreen onDone={onPick} onCancel={orgs.data && orgs.data.length > 0 ? () => setCreating(false) : undefined} />;
+  }
+  if (orgs.loading || !orgs.data || orgs.data.length === 1) {
+    return (
+      <div className="auth-wrap">
+        <div className="auth-card">
+          <div className="brand">
+            <LogoMark />
+            <div className="name">Reknaren</div>
+          </div>
+          <p className="subtitle">Laster virksomhetene dine …</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card">
+        <div className="brand">
+          <LogoMark />
+          <div className="name">Reknaren</div>
+        </div>
+        <h1>Velg virksomhet</h1>
+        <p className="subtitle">Du er medlem av flere virksomheter. Velg hvilken du vil åpne.</p>
+        <div className="org-list">
+          {orgs.data.map((o) => (
+            <button key={o.id} className="org-choice" onClick={() => onPick(o.id)}>
+              <span className="org-choice-name">{o.name}</span>
+              <span className="org-choice-meta">
+                {o.orgForm}
+                {o.orgNumber ? ` · ${o.orgNumber}` : ''} · {o.role}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="actions">
+          <button onClick={() => setCreating(true)}>Opprett ny virksomhet</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrgSetupScreen({ onDone, onCancel }: { onDone: (orgId: string) => void; onCancel?: () => void }) {
   const [name, setName] = useState('');
   const [orgForm, setOrgForm] = useState('ENK');
   const [vatStatus, setVatStatus] = useState('registered');
@@ -367,6 +429,11 @@ function OrgSetupScreen({ onDone }: { onDone: (orgId: string) => void }) {
             <button type="submit" className="primary" disabled={busy || !name}>
               Opprett
             </button>
+            {onCancel && (
+              <button type="button" onClick={onCancel}>
+                Tilbake
+              </button>
+            )}
           </div>
         </form>
       </div>
