@@ -1441,22 +1441,28 @@ export function InfographicStudioView(
   };
   // Film-modus: map arrangement-tid t → GLOBAL film-progresjon og driv filmens
   // egen setProgress (som forventer 0..1 over HELE filmen), ikke lokal scene-p.
-  const filmSeek = (t: number) => {
-    const sm = sequenceMotion;
-    if (!sm.filmTotal || sm.filmTotal <= 0) return;
-    const { index, p } = sceneAtTime(t);
-    const id = scenes[index]?.id;
-    const si = id ? sm.sortedIds.indexOf(id) : -1;
-    if (si < 0) { setPreviewProgress(0); return; }
-    const globalMs = sm.filmStarts[si] + p * sm.filmTotals[si];
-    setPreviewProgress(globalMs / sm.filmTotal);
+  // Film-modus kjører i FILM-TID (0..filmvarighet), lineært → filmens setProgress
+  // (som forventer 0..1 over hele filmen). Outro nås, tidskode = ekte lengde.
+  const filmDurSec = () => sequenceMotion.filmTotal / 1000;
+  const filmSeek = (tSec: number) => {
+    const total = filmDurSec();
+    if (total <= 0) return;
+    setPreviewProgress(Math.max(0, Math.min(1, tSec / total)));
+  };
+  // Hvilken scene (array-indeks) er aktiv ved film-tid tSec — for inspektør-valg.
+  const sceneAtFilmTime = (tSec: number): number => {
+    const sm = sequenceMotion; const tms = tSec * 1000;
+    for (let k = sm.sortedIds.length - 1; k >= 0; k--) {
+      if (tms >= sm.filmStarts[k]) { const ai = scenes.findIndex((s) => s.id === sm.sortedIds[k]); return ai >= 0 ? ai : sel; }
+    }
+    return sel;
   };
   const scrubTo = (t: number) => {
     recentScrubRef.current = performance.now(); // marker: undertrykk autoplay ved evt. iframe-reload
     setScrubT(t);
     if (previewMode === 'film') {
-      // Driv den sammenhengende filmen globalt; bytt kun valgt scene (for inspektøren).
-      filmSeek(t); const { index } = sceneAtTime(t); if (index !== sel) setSel(index);
+      // Lineær film-tid → global progresjon; velg scenen hvis film-spennet dekker t.
+      filmSeek(t); const ai = sceneAtFilmTime(t); if (ai >= 0 && ai !== sel) setSel(ai);
     } else {
       const { index, p } = sceneAtTime(t);
       if (index !== sel) setSel(index); else applyScrubFrame(scenes[index], p);
@@ -1474,16 +1480,18 @@ export function InfographicStudioView(
   const playAll = () => {
     stopPlayAll(); playingAllRef.current = true; setPlayingAll(true);
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; } // stopp enkelt-scene-loop
+    // Film-modus spiller til filmens EKTE lengde; ellers til arrangement-slutt.
+    const playEnd = previewMode === 'film' ? filmDurSec() : totalDur;
     // Spill fra spillehodet (ikke fra 0), så bilde + lyd starter samme sted. Ved
     // spillehode på/etter slutten starter vi forfra.
-    const startAt = scrubT >= totalDur - 0.05 ? 0 : Math.max(0, scrubT);
+    const startAt = scrubT >= playEnd - 0.05 ? 0 : Math.max(0, scrubT);
     if (audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = Math.max(0, Math.min(audioDur || startAt, startAt)); void audioElRef.current.play(); } catch { /* autoplay/seek */ } }
     let t0 = performance.now() - startAt * 1000;
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
-      if (t >= totalDur) {
+      if (t >= playEnd) {
         if (loopAll) { t0 = performance.now(); scrubTo(0); if (audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = 0; void audioElRef.current.play(); } catch { /* noop */ } } playAllRef.current = requestAnimationFrame(tick); return; }
-        scrubTo(totalDur); stopPlayAll(); return;
+        scrubTo(playEnd); stopPlayAll(); return;
       }
       scrubTo(t);
       playAllRef.current = requestAnimationFrame(tick);
@@ -1491,13 +1499,20 @@ export function InfographicStudioView(
     playAllRef.current = requestAnimationFrame(tick);
   };
   useEffect(() => () => stopPlayAll(), []);
+  // Modusbytte (Still/Motion/Film) endrer tidsbasen (arrangement ↔ film-tid) →
+  // nullstill spillehodet så det ikke havner feil sted i den andre basen.
+  useEffect(() => { stopPlayAll(); setScrubT(0); recentScrubRef.current = performance.now(); }, [previewMode]); // eslint-disable-line react-hooks/exhaustive-deps
   // ── Rik multi-scene-tidslinje: zoom (px/s), transport, dra-flytt/-endre ──
   const [tlZoom, setTlZoom] = useState(90);
   const fmtTC = (s: number) => { const m = Math.floor(Math.max(0, s) / 60); const sec = Math.max(0, s) - m * 60; return `${m}:${sec.toFixed(1).padStart(4, '0')}`; };
   const jumpScene = (dir: 1 | -1) => {
-    const order = scenes.map((s, i) => ({ t: s.atSec, i })).sort((a, b) => a.t - b.t);
+    // Film-modus hopper mellom film-tid-grenser; ellers mellom atSec-posisjoner.
+    const end = previewMode === 'film' ? sequenceMotion.filmTotal / 1000 : totalDur;
+    const order = previewMode === 'film'
+      ? sequenceMotion.sortedIds.map((id, k) => ({ t: sequenceMotion.filmStarts[k] / 1000, i: scenes.findIndex((s) => s.id === id) }))
+      : scenes.map((s, i) => ({ t: s.atSec, i })).sort((a, b) => a.t - b.t);
     const target = dir > 0 ? order.find((o) => o.t > scrubT + 0.05) : [...order].reverse().find((o) => o.t < scrubT - 0.05);
-    if (target) { setSel(target.i); scrubTo(target.t); } else scrubTo(dir > 0 ? totalDur : 0);
+    if (target) { if (target.i >= 0) setSel(target.i); scrubTo(target.t); } else scrubTo(dir > 0 ? end : 0);
   };
   // Dra en scene-klipp: body = flytt atSec, høyre kant = endre varighet.
   const scenesRef = useRef(scenes);
@@ -1547,11 +1562,12 @@ export function InfographicStudioView(
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const end = previewMode === 'film' ? sequenceMotion.filmTotal / 1000 : totalDur;
       if (e.key === ' ') { e.preventDefault(); if (playingAll) stopPlayAll(); else playAll(); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); scrubTo(Math.min(totalDur, scrubT + (e.shiftKey ? 1 : 0.1))); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); scrubTo(Math.min(end, scrubT + (e.shiftKey ? 1 : 0.1))); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); scrubTo(Math.max(0, scrubT - (e.shiftKey ? 1 : 0.1))); }
       else if (e.key === 'Home') { e.preventDefault(); scrubTo(0); }
-      else if (e.key === 'End') { e.preventDefault(); scrubTo(totalDur); }
+      else if (e.key === 'End') { e.preventDefault(); scrubTo(end); }
       else if (e.key === '[' || e.key === ',') { e.preventDefault(); jumpScene(-1); }
       else if (e.key === ']' || e.key === '.') { e.preventDefault(); jumpScene(1); }
     };
@@ -1584,7 +1600,7 @@ export function InfographicStudioView(
     return ss.map((s) => ({ ...s, atSec: at[s.id] ?? s.atSec }));
   });
   // Zoom slik at hele filmen får plass i synlig bredde.
-  const fitZoom = () => { const w = tlScrollRef.current?.clientWidth || 600; if (totalDur > 0) setTlZoom(Math.max(30, Math.min(260, Math.floor((w - 48) / totalDur)))); };
+  const fitZoom = () => { const w = tlScrollRef.current?.clientWidth || 600; const d = previewMode === 'film' ? sequenceMotion.filmTotal / 1000 : totalDur; if (d > 0) setTlZoom(Math.max(30, Math.min(260, Math.floor((w - 48) / d)))); };
   // Dra overgangs-kilen mellom to klipp → sett overgangslengden (ms) inn i scene i.
   const onTransDrag = (e: React.PointerEvent, i: number) => {
     e.preventDefault(); e.stopPropagation(); setSel(i);
@@ -2522,14 +2538,27 @@ export function InfographicStudioView(
               som klipp (body = flytt, høyre kant = endre varighet). */}
           <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '8px 16px 6px' }}>
             {(() => {
-              const spans = scenes.map((sc) => { const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0]; return { a: sc.atSec, b: sc.atSec + effDur(sc, t) }; });
-              const overlap = spans.some((s, i) => spans.some((o, j) => j !== i && s.a < o.b && o.a < s.b));
+              const film = previewMode === 'film';
+              const sm = sequenceMotion;
               const px = tlZoom;
-              const innerW = Math.max(320, Math.max(totalDur, audioPeaks ? audioDur : 0) * px + 60);
-              const rowH = 44;
+              const spans = scenes.map((sc) => { const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0]; return { a: sc.atSec, b: sc.atSec + effDur(sc, t) }; });
+              const overlap = !film && spans.some((s, i) => spans.some((o, j) => j !== i && s.a < o.b && o.a < s.b));
               const ordered = scenes.map((sc, i) => ({ sc, i, t: INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0] })).sort((a, b) => (a.sc.atSec - b.sc.atSec) || (a.i - b.i));
+              // Film-modus: klipp lagt i FILM-TID (back-to-back slik filmen spiller) +
+              // valgfritt outro-klipp. Arrangement-modus: klipp ved atSec.
+              type LaneClip = { key: string; label: string; tplId: string; sc: Scene | null; ai: number; left: number; w: number; wedge: boolean };
+              const laneClips: LaneClip[] = film
+                ? sm.sortedIds.map((id, k) => {
+                  const ai = scenes.findIndex((s) => s.id === id); const sc2 = ai >= 0 ? scenes[ai] : null;
+                  const t2 = sc2 ? (INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc2.tplId) || INFOGRAPHIC_TEMPLATES[0]) : INFOGRAPHIC_TEMPLATES[0];
+                  return { key: id, label: sc2?.name || t2.name, tplId: sc2?.tplId || t2.id, sc: sc2, ai, left: (sm.filmStarts[k] / 1000) * px, w: Math.max(20, (sm.filmTotals[k] / 1000) * px), wedge: k > 0 };
+                }).concat(filmOutro ? [{ key: 'outro', label: '🎬 Outro', tplId: '', sc: null, ai: -1, left: (sm.filmStarts[sm.sortedIds.length] / 1000) * px, w: Math.max(20, (sm.filmTotals[sm.sortedIds.length] / 1000) * px), wedge: false }] : [])
+                : ordered.map(({ sc, i, t }) => ({ key: sc.id, label: sc.name || t.name, tplId: sc.tplId, sc, ai: i, left: sc.atSec * px, w: Math.max(20, effDur(sc, t) * px), wedge: false }));
+              const dur = film ? sm.filmTotal / 1000 : totalDur;
+              const innerW = Math.max(320, Math.max(dur, audioPeaks ? audioDur : 0) * px + 60);
+              const rowH = 44;
               const tickStep = px < 55 ? 2 : 1;
-              const ticks: number[] = []; for (let s = 0; s <= Math.ceil(totalDur); s += tickStep) ticks.push(s);
+              const ticks: number[] = []; for (let s = 0; s <= Math.ceil(dur); s += tickStep) ticks.push(s);
               return (<>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8, marginBottom: 10 }}>
                   {/* Gruppe 1 — avspilling + tidskode */}
@@ -2538,8 +2567,8 @@ export function InfographicStudioView(
                     <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(-1)} title="Forrige scene"><FastRewindIcon style={{ fontSize: 16 }} /></button>
                     <button style={{ ...topBtn, padding: '3px 10px' }} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill / pause (mellomrom)">{playingAll ? <PauseIcon style={{ fontSize: 16 }} /> : <PlayArrowIcon style={{ fontSize: 16 }} />}</button>
                     <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(1)} title="Neste scene"><FastForwardIcon style={{ fontSize: 16 }} /></button>
-                    <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(totalDur)} title="Til slutt"><SkipNextIcon style={{ fontSize: 16 }} /></button>
-                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: D.ink, marginLeft: 8, fontWeight: 700, background: D.panel2, border: `1px solid ${D.line}`, borderRadius: 6, padding: '2px 9px' }}>{fmtTC(scrubT)} <span style={{ color: D.faint, fontWeight: 400 }}>/ {fmtTC(totalDur)}</span></span>
+                    <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(dur)} title="Til slutt"><SkipNextIcon style={{ fontSize: 16 }} /></button>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: D.ink, marginLeft: 8, fontWeight: 700, background: D.panel2, border: `1px solid ${D.line}`, borderRadius: 6, padding: '2px 9px' }} title={film ? 'Film-tid (ekte lengde på data-filmen)' : 'Arrangement-tid'}>{fmtTC(scrubT)} <span style={{ color: D.faint, fontWeight: 400 }}>/ {fmtTC(dur)}</span>{film && <span style={{ color: D.teal, fontWeight: 700, marginLeft: 4 }}>· FILM</span>}</span>
                     {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 4 }} title="Scener overlapper i tid"><WarningAmberIcon style={{ fontSize: 12 }} /></span>}
                   </div>
                   <div style={{ width: 1, height: 18, background: D.line, alignSelf: 'center' }} />
@@ -2571,54 +2600,56 @@ export function InfographicStudioView(
                 <div ref={tlScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', height: tlH, minHeight: 92 }}>
                   <div style={{ position: 'relative', width: innerW }}>
                     {/* Linjal — klikk for å scrubbe. */}
-                    <div onMouseDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); scrubTo(Math.max(0, Math.min(totalDur, (e.clientX - r.left) / px))); }}
+                    <div onMouseDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); scrubTo(Math.max(0, Math.min(dur, (e.clientX - r.left) / px))); }}
                       style={{ position: 'relative', height: 16, borderBottom: `1px solid ${D.line}`, cursor: 'pointer' }}>
                       {ticks.map((s) => (
                         <div key={s} style={{ position: 'absolute', left: s * px, top: 0, bottom: 0, borderLeft: `1px solid ${D.line}`, paddingLeft: 3, fontSize: 8.5, color: D.faint }}>{s}s</div>
                       ))}
-                      {/* Beat-rutenett (BPM) — snapper klipp til takten. */}
-                      {bpm > 0 && (60 / bpm) * px >= 6 && (() => {
+                      {/* Beat-rutenett (BPM) — snapper klipp til takten (kun arrangement-modus). */}
+                      {!film && bpm > 0 && (60 / bpm) * px >= 6 && (() => {
                         const beat = 60 / bpm; const out: React.ReactNode[] = [];
-                        for (let b = beat, k = 0; b <= totalDur; b += beat, k++) out.push(<div key={`bt${k}`} style={{ position: 'absolute', left: b * px, top: 0, bottom: 0, borderLeft: `1px solid ${D.accent}55`, pointerEvents: 'none' }} />);
+                        for (let b = beat, k = 0; b <= dur; b += beat, k++) out.push(<div key={`bt${k}`} style={{ position: 'absolute', left: b * px, top: 0, bottom: 0, borderLeft: `1px solid ${D.accent}55`, pointerEvents: 'none' }} />);
                         return out;
                       })()}
                     </div>
-                    {/* ETT video-spor: alle scener på ÉN linje (som en ekte NLE).
-                        Klipp: dra = flytt, høyre kant = varighet, chips = overgang/kamera. */}
+                    {/* ETT video-spor. Arrangement-modus: klipp ved atSec (dra = flytt/varighet).
+                        Film-modus: klipp i FILM-TID (back-to-back slik filmen spiller) — ikke
+                        dragbare (posisjon utledes av rekkefølge+lengde), men velgbare. */}
                     <div style={{ position: 'relative', height: rowH + 10, paddingTop: 6 }}>
-                      {ordered.map(({ sc, i, t }) => {
-                        const left = sc.atSec * px, w = Math.max(20, effDur(sc, t) * px);
-                        const active = i === sel;
-                        const showThumb = w > 118;
+                      {laneClips.map((cl) => {
+                        const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === cl.tplId) || INFOGRAPHIC_TEMPLATES[0];
+                        const active = cl.ai >= 0 && cl.ai === sel;
+                        const isOutro = cl.ai < 0;
+                        const showThumb = cl.w > 118 && !isOutro;
+                        const onSelect = () => { if (cl.ai >= 0) setSel(cl.ai); if (film) scrubTo(Math.max(0, cl.left / px)); };
                         return (
-                          <div key={sc.id} onPointerDown={(e) => onClipDrag(e, i, 'move')} onClick={() => setSel(i)}
-                            title={`${sc.name || t.name} · ${sc.atSec.toFixed(1)}–${(sc.atSec + effDur(sc, t)).toFixed(1)}s`}
-                            style={{ position: 'absolute', left, width: w, top: 0, height: rowH, borderRadius: 6, background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}`, display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px 0 0', overflow: 'hidden', cursor: 'grab', color: active ? '#fff' : D.soft, fontSize: 10.5, whiteSpace: 'nowrap', userSelect: 'none', touchAction: 'none', boxShadow: active ? `0 2px 10px ${D.accent}55` : 'none', zIndex: active ? 3 : 2 }}>
-                            {showThumb
-                              ? <div style={{ flex: 'none', width: (rowH - 8) * 1.5, height: rowH - 8, margin: '0 6px', borderRadius: 4, overflow: 'hidden', pointerEvents: 'none', border: `1px solid ${active ? 'rgba(255,255,255,0.3)' : D.line}` }}><TemplateThumb tpl={t} accent={sceneAccent(sc)} values={fieldVals(sc, t)} height={rowH - 8} /></div>
-                              : <span style={{ display: 'inline-flex', flex: 'none', marginLeft: 8 }}>{tplIcon(sc.tplId, 12)}</span>}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0, fontWeight: active ? 700 : 500 }}>{sc.name || t.name}</span>
-                            {w > 96 && (
+                          <div key={cl.key} onPointerDown={(e) => { if (!film && !isOutro) onClipDrag(e, cl.ai, 'move'); }} onClick={onSelect}
+                            title={`${cl.label} · ${(cl.left / px).toFixed(1)}–${((cl.left + cl.w) / px).toFixed(1)}s`}
+                            style={{ position: 'absolute', left: cl.left, width: cl.w, top: 0, height: rowH, borderRadius: 6, background: active ? D.accent : isOutro ? 'rgba(245,196,81,0.16)' : D.panel2, border: `1px solid ${active ? D.accent : isOutro ? '#f5c451' : D.line}`, display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px 0 0', overflow: 'hidden', cursor: film ? 'pointer' : 'grab', color: active ? '#fff' : D.soft, fontSize: 10.5, whiteSpace: 'nowrap', userSelect: 'none', touchAction: 'none', boxShadow: active ? `0 2px 10px ${D.accent}55` : 'none', zIndex: active ? 3 : 2 }}>
+                            {showThumb && cl.sc
+                              ? <div style={{ flex: 'none', width: (rowH - 8) * 1.5, height: rowH - 8, margin: '0 6px', borderRadius: 4, overflow: 'hidden', pointerEvents: 'none', border: `1px solid ${active ? 'rgba(255,255,255,0.3)' : D.line}` }}><TemplateThumb tpl={t} accent={sceneAccent(cl.sc)} values={fieldVals(cl.sc, t)} height={rowH - 8} /></div>
+                              : <span style={{ display: 'inline-flex', flex: 'none', marginLeft: 8 }}>{isOutro ? '🎬' : tplIcon(cl.tplId, 12)}</span>}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0, fontWeight: active ? 700 : 500 }}>{cl.label}</span>
+                            {cl.w > 96 && !isOutro && cl.ai >= 0 && (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: 'none', marginRight: 4 }}>
-                                <span onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); cycleTrans(i); }} title={`Overgang inn: ${TRANS_LABEL[sceneTrans(i)]} — klikk for å bla`} style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 0.3, padding: '1px 4px', borderRadius: 4, background: 'rgba(255,255,255,0.18)', cursor: 'pointer' }}>{transShort(sceneTrans(i))}</span>
-                                <span onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); cycleCam(i); }} title={`Kamera: ${CAM_LABEL[sc.cam || 'none']} — klikk for å bla`} style={{ fontSize: 9.5, cursor: 'pointer', opacity: sc.cam && sc.cam !== 'none' ? 1 : 0.45 }}>🎥</span>
+                                <span onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); cycleTrans(cl.ai); }} title={`Overgang inn: ${TRANS_LABEL[sceneTrans(cl.ai)]} — klikk for å bla`} style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 0.3, padding: '1px 4px', borderRadius: 4, background: 'rgba(255,255,255,0.18)', cursor: 'pointer' }}>{transShort(sceneTrans(cl.ai))}</span>
+                                <span onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); cycleCam(cl.ai); }} title={`Kamera: ${CAM_LABEL[cl.sc?.cam || 'none']} — klikk for å bla`} style={{ fontSize: 9.5, cursor: 'pointer', opacity: cl.sc?.cam && cl.sc.cam !== 'none' ? 1 : 0.45 }}>🎥</span>
                               </span>
                             )}
-                            <div onPointerDown={(e) => onClipDrag(e, i, 'resize')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.14)' }} />
+                            {!film && !isOutro && <div onPointerDown={(e) => onClipDrag(e, cl.ai, 'resize')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.14)' }} />}
                           </div>
                         );
                       })}
-                      {/* Overgangs-kiler mellom klippene (i tid-rekkefølge) — dra for å endre lengde. */}
-                      {ordered.map((cur, ord) => {
-                        if (ord === 0) return null; // første scene har ingen inngang
-                        const kind = sceneTrans(cur.i);
+                      {/* Overgangs-kiler ved klipp-grensene — dra for å endre overgangslengden. */}
+                      {laneClips.map((cl) => {
+                        if (!cl.wedge || cl.ai < 0) return null;
+                        const kind = sceneTrans(cl.ai);
                         if (kind === 'cut') return null; // kutt = ingen overgangssone
-                        const len = (cur.sc.transLen ?? 550) / 1000;
-                        const x = cur.sc.atSec * px, wpx = Math.max(7, len * px);
+                        const len = (cl.sc?.transLen ?? 550) / 1000, wpx = Math.max(7, len * px);
                         return (
-                          <div key={`wg${cur.sc.id}`} onPointerDown={(e) => onTransDrag(e, cur.i)}
+                          <div key={`wg${cl.key}`} onPointerDown={(e) => onTransDrag(e, cl.ai)}
                             title={`Overgang: ${TRANS_LABEL[kind]} · ${Math.round(len * 1000)} ms — dra for å endre lengde`}
-                            style={{ position: 'absolute', left: x, top: 4, width: wpx, height: rowH + 2, transform: 'translateX(-50%)', cursor: 'ew-resize', zIndex: 4 }}>
+                            style={{ position: 'absolute', left: cl.left, top: 4, width: wpx, height: rowH + 2, transform: 'translateX(-50%)', cursor: 'ew-resize', zIndex: 4 }}>
                             <div style={{ width: '100%', height: '100%', background: `${D.teal}2b`, border: `1px solid ${D.teal}`, borderRadius: 3, display: 'grid', placeItems: 'center', color: D.teal, fontSize: 9, fontWeight: 800 }}>✕</div>
                           </div>
                         );
@@ -2626,7 +2657,7 @@ export function InfographicStudioView(
                     </div>
                     {/* Musikk-spor: waveform (peaks) — dekorativ + tidsreferanse. Klikk = scrub. */}
                     {audioPeaks && audioDur > 0 && (
-                      <div onMouseDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); scrubTo(Math.max(0, Math.min(totalDur, (e.clientX - r.left) / px))); }}
+                      <div onMouseDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); scrubTo(Math.max(0, Math.min(dur, (e.clientX - r.left) / px))); }}
                         style={{ position: 'relative', height: 34, marginTop: 6, borderTop: `1px solid ${D.line}`, cursor: 'pointer' }} title={`Musikk: ${audioName || ''} · ${audioDur.toFixed(1)}s`}>
                         <div style={{ position: 'absolute', left: 2, top: 3, fontSize: 8.5, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.4, pointerEvents: 'none', zIndex: 1 }}><MusicNoteIcon style={{ fontSize: 10, verticalAlign: -1 }} /> {audioName}</div>
                         {audioPeaks.map((p, idx) => {
