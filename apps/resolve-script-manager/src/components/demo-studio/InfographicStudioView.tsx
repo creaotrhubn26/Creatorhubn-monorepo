@@ -934,6 +934,9 @@ export function InfographicStudioView(
   const [leftW, setLeftW] = useState(() => lsNum('trrpa.studio.leftW', 280, 200, 480));
   const [inspW, setInspW] = useState(() => lsNum('trrpa.studio.inspW', 280, 220, 560));
   const [tlH, setTlH] = useState(() => lsNum('trrpa.studio.tlH', 150, 92, 480));
+  const [leftCollapsed, setLeftCollapsed] = useState(() => lsNum('trrpa.studio.leftClosed', 0, 0, 1) === 1);
+  const [inspCollapsed, setInspCollapsed] = useState(() => lsNum('trrpa.studio.inspClosed', 0, 0, 1) === 1);
+  const [dragging, setDragging] = useState(false); // undertrykk transition mens man drar
   const [snapOn, setSnapOn] = useState(true);
   const [loopAll, setLoopAll] = useState(false);
   const [showGuides, setShowGuides] = useState(true);
@@ -1507,14 +1510,14 @@ export function InfographicStudioView(
   const cycleTrans = (i: number) => setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, trans: TRANS_KINDS[(TRANS_KINDS.indexOf(sceneTrans(i)) + 1) % TRANS_KINDS.length] } : s)));
   const cycleCam = (i: number) => setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, cam: CAM_KINDS[(CAM_KINDS.indexOf(s.cam || 'none') + 1) % CAM_KINDS.length] } : s)));
   const transShort = (k: TransKind): string => ({ cut: 'CUT', cross: 'X', slide: '↑', slideX: '→', wipe: '▨', zoom: '⤢', morph: '∿' }[k] || k);
-  // Persister den frie panel-layouten.
-  useEffect(() => { try { localStorage.setItem('trrpa.studio.leftW', String(leftW)); localStorage.setItem('trrpa.studio.inspW', String(inspW)); localStorage.setItem('trrpa.studio.tlH', String(tlH)); } catch { /* ignore */ } }, [leftW, inspW, tlH]);
+  // Persister den frie panel-layouten (størrelser + kollaps-tilstand).
+  useEffect(() => { try { localStorage.setItem('trrpa.studio.leftW', String(leftW)); localStorage.setItem('trrpa.studio.inspW', String(inspW)); localStorage.setItem('trrpa.studio.tlH', String(tlH)); localStorage.setItem('trrpa.studio.leftClosed', leftCollapsed ? '1' : '0'); localStorage.setItem('trrpa.studio.inspClosed', inspCollapsed ? '1' : '0'); } catch { /* ignore */ } }, [leftW, inspW, tlH, leftCollapsed, inspCollapsed]);
   // Dra en skillelinje for å endre panelstørrelse (x = bredde, y = høyde).
   const dragResize = (e: React.PointerEvent, o: { axis: 'x' | 'y'; cur: number; min: number; max: number; sign?: 1 | -1; set: (v: number) => void }) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault(); e.stopPropagation(); setDragging(true);
     const start = o.axis === 'x' ? e.clientX : e.clientY; const sign = o.sign ?? 1;
     const move = (ev: PointerEvent) => { const d = ((o.axis === 'x' ? ev.clientX : ev.clientY) - start) * sign; o.set(Math.max(o.min, Math.min(o.max, Math.round(o.cur + d)))); };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.style.cursor = ''; document.body.style.userSelect = ''; setDragging(false); };
     document.body.style.cursor = o.axis === 'x' ? 'col-resize' : 'row-resize'; document.body.style.userSelect = 'none';
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -1863,14 +1866,19 @@ export function InfographicStudioView(
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Skillelinjer: dra for å endre panelstørrelse (hover = aksentert grep). */}
+      {/* Skillelinjer + kollaps: dra for å endre størrelse, chevron for å skjule/vise. */}
       <style>{`
         .trr-vsplit{width:7px;flex:none;cursor:col-resize;position:relative;z-index:4;align-self:stretch}
         .trr-vsplit::after{content:'';position:absolute;inset:0 2px;border-radius:3px;background:transparent;transition:background .12s}
         .trr-vsplit:hover::after{background:${D.accent}}
+        .trr-vsplit:hover .trr-tab{opacity:1}
         .trr-hsplit{height:8px;cursor:row-resize;position:relative;z-index:4;flex:none}
         .trr-hsplit::after{content:'';position:absolute;inset:2px 26%;border-radius:3px;background:${D.line};transition:background .12s,inset .12s}
         .trr-hsplit:hover::after{background:${D.accent};inset:2px 40%}
+        .trr-tab{position:absolute;top:50%;transform:translateY(-50%);width:16px;height:36px;display:grid;place-items:center;border-radius:6px;background:${D.panel2};border:1px solid ${D.line};color:${D.soft};cursor:pointer;z-index:6;opacity:.55;transition:opacity .12s,background .12s,color .12s;padding:0}
+        .trr-tab:hover{opacity:1;background:${D.accent};color:#fff;border-color:${D.accent}}
+        .trr-rail{width:15px;flex:none;cursor:pointer;background:${D.panel};display:grid;place-items:center;color:${D.faint};transition:background .12s,color .12s}
+        .trr-rail:hover{background:${D.panel2};color:${D.accent}}
       `}</style>
       {showCampaign && (
         <CampaignDirectorView
@@ -1974,7 +1982,7 @@ export function InfographicStudioView(
         </div>
 
         {/* Sekundær-panel */}
-        <div style={{ width: leftW, flex: 'none', borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
+        <div style={{ width: leftCollapsed ? 0 : leftW, flex: 'none', borderRight: leftCollapsed ? 'none' : `1px solid ${D.line}`, overflowY: leftCollapsed ? 'hidden' : 'auto', overflowX: 'hidden', padding: leftCollapsed ? 0 : 14, background: D.panel, transition: dragging ? 'none' : 'width .18s ease, padding .18s ease' }}>
           {(leftSec === 'templates' || leftSec in CATEGORY_IDS || leftSec === 'kit-rr' || leftSec === 'kit-ch' || leftSec === 'custom') && (<>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{CATEGORY_LABEL[leftSec] || 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
             {/* AI-mal-valg: beskriv → Claude velger beste mal + fyller feltene. */}
@@ -2321,7 +2329,11 @@ export function InfographicStudioView(
         </div>
 
         {/* Center */}
-        <div className="trr-vsplit" onPointerDown={(e) => dragResize(e, { axis: 'x', cur: leftW, min: 200, max: 480, sign: 1, set: setLeftW })} onDoubleClick={() => setLeftW(280)} title="Dra for å endre bredden på venstre panel · dobbeltklikk = nullstill" />
+        {leftCollapsed
+          ? <div className="trr-rail" onClick={() => setLeftCollapsed(false)} title="Vis mal-panel"><ChevronRightIcon style={{ fontSize: 15 }} /></div>
+          : <div className="trr-vsplit" onPointerDown={(e) => dragResize(e, { axis: 'x', cur: leftW, min: 200, max: 480, sign: 1, set: setLeftW })} onDoubleClick={() => setLeftW(280)} title="Dra for å endre bredden · dobbeltklikk = nullstill">
+              <button className="trr-tab" style={{ left: -8 }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setLeftCollapsed(true); }} title="Skjul mal-panel"><ChevronLeftIcon style={{ fontSize: 14 }} /></button>
+            </div>}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, minHeight: 0, minWidth: 0, padding: 18, display: 'flex', flexDirection: 'column' }}>
             {/* flexWrap: verktøylinja (format-preset + Alle formater + Guides/Bakgrunn) tvang
@@ -2458,33 +2470,42 @@ export function InfographicStudioView(
               const tickStep = px < 55 ? 2 : 1;
               const ticks: number[] = []; for (let s = 0; s <= Math.ceil(totalDur); s += tickStep) ticks.push(s);
               return (<>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(0)} title="Til start"><SkipPreviousIcon style={{ fontSize: 16 }} /></button>
-                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(-1)} title="Forrige scene"><FastRewindIcon style={{ fontSize: 16 }} /></button>
-                  <button style={{ ...topBtn, padding: '3px 9px' }} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill / pause">{playingAll ? <PauseIcon style={{ fontSize: 16 }} /> : <PlayArrowIcon style={{ fontSize: 16 }} />}</button>
-                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(1)} title="Neste scene"><FastForwardIcon style={{ fontSize: 16 }} /></button>
-                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(totalDur)} title="Til slutt"><SkipNextIcon style={{ fontSize: 16 }} /></button>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: D.ink, marginLeft: 8, fontWeight: 600 }}>{fmtTC(scrubT)} <span style={{ color: D.faint, fontWeight: 400 }}>/ {fmtTC(totalDur)}</span></span>
-                  {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 8 }}><WarningAmberIcon style={{ fontSize: 12 }} /> overlapp</span>}
-                  <div style={{ width: 1, height: 15, background: D.line, margin: '0 6px' }} />
-                  <button style={{ ...topBtn, padding: '3px 8px', opacity: directing ? 0.6 : 1 }} disabled={directing} onClick={() => void runFilmDirector()} title="AI-regi: sett overgang + kamera pr. scene for hele filmen">{directing ? '✨ …' : '✨ Regi'}</button>
-                  <button style={{ ...topBtn, padding: '3px 7px', background: filmOutro ? D.accent : D.panel2, border: `1px solid ${filmOutro ? D.accent : D.line}`, color: filmOutro ? '#fff' : D.ink }} onClick={() => setFilmOutro((v) => !v)} title="Merkevare-outro på slutten av filmen">🎬 Outro</button>
-                  {filmOutro && <input value={outroCta} onChange={(e) => setOutroCta(e.target.value)} placeholder="CTA" style={{ ...inp, width: 90, padding: '2px 6px', fontSize: 11 }} />}
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4 }} title="BPM-rutenett for snapping (0 = av)"><MusicNoteIcon style={{ fontSize: 14, color: bpm > 0 ? D.accent : D.faint }} /><input type="number" min={0} max={220} value={bpm} onChange={(e) => setBpm(Math.max(0, Math.min(220, parseInt(e.target.value, 10) || 0)))} style={{ ...inp, width: 44, padding: '2px 4px', fontSize: 11 }} /></span>
-                  <label style={{ ...topBtn, padding: '3px 7px', fontSize: 11, cursor: 'pointer', background: audioName ? D.panel2 : 'transparent', border: `1px solid ${audioName ? D.teal : D.line}` }} title="Fest musikk — spilles synk i preview (legg den i Resolve for eksport)">
-                    🎵 {audioName ? (audioName.length > 12 ? audioName.slice(0, 12) + '…' : audioName) : 'Musikk'}
-                    <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void attachAudio(f); e.currentTarget.value = ''; }} />
-                  </label>
-                  {audioName && <button style={{ ...topBtn, padding: '3px 5px', fontSize: 11 }} onClick={clearAudio} title="Fjern musikk"><CloseIcon style={{ fontSize: 13 }} /></button>}
-                  {audioUrl && <audio ref={audioElRef} src={audioUrl} preload="auto" />}
-                  <div style={{ flex: 1 }} />
-                  <button style={{ ...topBtn, padding: '3px 6px', background: loopAll ? D.accent : D.panel2, border: `1px solid ${loopAll ? D.accent : D.line}`, color: loopAll ? '#fff' : D.ink }} onClick={() => setLoopAll((v) => !v)} title="Loop hele sekvensen"><RepeatIcon style={{ fontSize: 15 }} /></button>
-                  <button style={{ ...topBtn, padding: '3px 6px', fontSize: 12, background: snapOn ? D.accent : D.panel2, border: `1px solid ${snapOn ? D.accent : D.line}`, color: snapOn ? '#fff' : D.ink }} onClick={() => setSnapOn((v) => !v)} title="Magnetisk snapping av/på">🧲</button>
-                  <button style={{ ...topBtn, padding: '3px 7px', fontSize: 11 }} onClick={packScenes} title="Tett sammen — legg scenene ende-til-ende (fjern hull/overlapp)">⇥ Tett</button>
-                  <button style={{ ...topBtn, padding: '3px 7px', fontSize: 11 }} onClick={fitZoom} title="Zoom til å passe hele filmen i bredden">⤢ Fit</button>
-                  <ZoomOutIcon style={{ fontSize: 15, color: D.faint, marginLeft: 4 }} />
-                  <input type="range" min={30} max={260} value={tlZoom} onChange={(e) => setTlZoom(parseInt(e.target.value, 10))} style={{ width: 90 }} title="Zoom tidslinje" />
-                  <ZoomInIcon style={{ fontSize: 15, color: D.faint }} />
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8, marginBottom: 10 }}>
+                  {/* Gruppe 1 — avspilling + tidskode */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(0)} title="Til start"><SkipPreviousIcon style={{ fontSize: 16 }} /></button>
+                    <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(-1)} title="Forrige scene"><FastRewindIcon style={{ fontSize: 16 }} /></button>
+                    <button style={{ ...topBtn, padding: '3px 10px' }} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill / pause (mellomrom)">{playingAll ? <PauseIcon style={{ fontSize: 16 }} /> : <PlayArrowIcon style={{ fontSize: 16 }} />}</button>
+                    <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(1)} title="Neste scene"><FastForwardIcon style={{ fontSize: 16 }} /></button>
+                    <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(totalDur)} title="Til slutt"><SkipNextIcon style={{ fontSize: 16 }} /></button>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: D.ink, marginLeft: 8, fontWeight: 700, background: D.panel2, border: `1px solid ${D.line}`, borderRadius: 6, padding: '2px 9px' }}>{fmtTC(scrubT)} <span style={{ color: D.faint, fontWeight: 400 }}>/ {fmtTC(totalDur)}</span></span>
+                    {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 4 }} title="Scener overlapper i tid"><WarningAmberIcon style={{ fontSize: 12 }} /></span>}
+                  </div>
+                  <div style={{ width: 1, height: 18, background: D.line, alignSelf: 'center' }} />
+                  {/* Gruppe 2 — film-verktøy */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <button style={{ ...topBtn, padding: '3px 9px', opacity: directing ? 0.6 : 1 }} disabled={directing} onClick={() => void runFilmDirector()} title="AI-regi: sett overgang + kamera pr. scene for hele filmen">{directing ? '✨ …' : '✨ Regi'}</button>
+                    <button style={{ ...topBtn, padding: '3px 8px', background: filmOutro ? D.accent : D.panel2, border: `1px solid ${filmOutro ? D.accent : D.line}`, color: filmOutro ? '#fff' : D.ink }} onClick={() => setFilmOutro((v) => !v)} title="Merkevare-outro på slutten av filmen">🎬 Outro</button>
+                    {filmOutro && <input value={outroCta} onChange={(e) => setOutroCta(e.target.value)} placeholder="CTA" style={{ ...inp, width: 88, padding: '2px 6px', fontSize: 11 }} />}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title="BPM-rutenett for snapping (0 = av)"><MusicNoteIcon style={{ fontSize: 14, color: bpm > 0 ? D.accent : D.faint }} /><input type="number" min={0} max={220} value={bpm} onChange={(e) => setBpm(Math.max(0, Math.min(220, parseInt(e.target.value, 10) || 0)))} style={{ ...inp, width: 44, padding: '2px 4px', fontSize: 11 }} /></span>
+                    <label style={{ ...topBtn, padding: '3px 8px', fontSize: 11, cursor: 'pointer', background: audioName ? D.panel2 : 'transparent', border: `1px solid ${audioName ? D.teal : D.line}` }} title="Fest musikk — spilles synk i preview (legg den i Resolve for eksport)">
+                      🎵 {audioName ? (audioName.length > 12 ? audioName.slice(0, 12) + '…' : audioName) : 'Musikk'}
+                      <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void attachAudio(f); e.currentTarget.value = ''; }} />
+                    </label>
+                    {audioName && <button style={{ ...topBtn, padding: '3px 5px', fontSize: 11 }} onClick={clearAudio} title="Fjern musikk"><CloseIcon style={{ fontSize: 13 }} /></button>}
+                    {audioUrl && <audio ref={audioElRef} src={audioUrl} preload="auto" />}
+                  </div>
+                  {/* Gruppe 3 — visning (høyrestilt på brede skjermer, bryter pent på smale) */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+                    <button style={{ ...topBtn, padding: '3px 6px', background: loopAll ? D.accent : D.panel2, border: `1px solid ${loopAll ? D.accent : D.line}`, color: loopAll ? '#fff' : D.ink }} onClick={() => setLoopAll((v) => !v)} title="Loop hele sekvensen"><RepeatIcon style={{ fontSize: 15 }} /></button>
+                    <button style={{ ...topBtn, padding: '3px 6px', fontSize: 12, background: snapOn ? D.accent : D.panel2, border: `1px solid ${snapOn ? D.accent : D.line}`, color: snapOn ? '#fff' : D.ink }} onClick={() => setSnapOn((v) => !v)} title="Magnetisk snapping av/på">🧲</button>
+                    <button style={{ ...topBtn, padding: '3px 7px', fontSize: 11 }} onClick={packScenes} title="Tett sammen — legg scenene ende-til-ende (fjern hull/overlapp)">⇥ Tett</button>
+                    <button style={{ ...topBtn, padding: '3px 7px', fontSize: 11 }} onClick={fitZoom} title="Zoom til å passe hele filmen i bredden">⤢ Fit</button>
+                    <div style={{ width: 1, height: 18, background: D.line, alignSelf: 'center', margin: '0 2px' }} />
+                    <ZoomOutIcon style={{ fontSize: 15, color: D.faint }} />
+                    <input type="range" min={30} max={260} value={tlZoom} onChange={(e) => setTlZoom(parseInt(e.target.value, 10))} style={{ width: 84 }} title="Zoom tidslinje" />
+                    <ZoomInIcon style={{ fontSize: 15, color: D.faint }} />
+                  </div>
                 </div>
                 <div ref={tlScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', height: tlH, minHeight: 92 }}>
                   <div style={{ position: 'relative', width: innerW }}>
@@ -2627,8 +2648,12 @@ export function InfographicStudioView(
         </div>
 
         {/* Høyre: Design / Animate / Data */}
-        <div className="trr-vsplit" onPointerDown={(e) => dragResize(e, { axis: 'x', cur: inspW, min: 220, max: 560, sign: -1, set: setInspW })} onDoubleClick={() => setInspW(280)} title="Dra for å endre bredden på inspektøren · dobbeltklikk = nullstill" />
-        <div style={{ width: inspW, flex: 'none', borderLeft: `1px solid ${D.line}`, background: D.panel, display: 'flex', flexDirection: 'column' }}>
+        {inspCollapsed
+          ? <div className="trr-rail" onClick={() => setInspCollapsed(false)} title="Vis inspektør"><ChevronLeftIcon style={{ fontSize: 15 }} /></div>
+          : <div className="trr-vsplit" onPointerDown={(e) => dragResize(e, { axis: 'x', cur: inspW, min: 220, max: 560, sign: -1, set: setInspW })} onDoubleClick={() => setInspW(280)} title="Dra for å endre bredden · dobbeltklikk = nullstill">
+              <button className="trr-tab" style={{ right: -8 }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setInspCollapsed(true); }} title="Skjul inspektør"><ChevronRightIcon style={{ fontSize: 14 }} /></button>
+            </div>}
+        <div style={{ width: inspCollapsed ? 0 : inspW, flex: 'none', borderLeft: inspCollapsed ? 'none' : `1px solid ${D.line}`, background: D.panel, display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: dragging ? 'none' : 'width .18s ease' }}>
           <div style={{ display: 'flex', borderBottom: `1px solid ${D.line}` }}>
             {(['Design', 'Animate', 'Data'] as const).map((t) => <div key={t} style={tabBtn(rightTab === t)} onClick={() => setRightTab(t)}>{t}</div>)}
           </div>
