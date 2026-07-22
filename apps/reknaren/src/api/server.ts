@@ -37,6 +37,8 @@ import { sendInvoiceReminders } from '../invoicing/reminders.js';
 import { aiMarginReport } from '../ops/ai-accounts.js';
 import { timingSafeEqual } from 'node:crypto';
 import { renderInvoiceDocument } from '../invoicing/document.js';
+import { loadInvoiceView } from '../invoicing/view.js';
+import { renderInvoicePdf } from '../invoicing/pdf.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
   approveAndPost,
@@ -728,6 +730,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       lovdata: Boolean(deps.legalText?.hasApiKey),
       lovdataPublicData: Boolean(deps.legalText),
       ocr: Boolean(deps.ocrStatus?.tesseract),
+      aiExtraction: Boolean(deps.aiExtraction),
       mvaSubmission: Boolean(deps.vatSubmission?.active),
       errorMonitoring: Boolean(deps.errorMonitor?.active),
       stripeSync: Boolean(deps.stripe?.hasApiKey),
@@ -1578,6 +1581,112 @@ export function createApiServer(deps: ApiDeps): express.Express {
           });
         });
         res.type('html').send(doc.html);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Salgsdokumentet som EKTE PDF (nedlasting/forhåndsvisning). Samme § 5-1-1-innhold
+  // som HTML-visningen — bygget fra den delte modellen. Hver gjengivelse auditlogges.
+  app.get(
+    '/api/organizations/:orgId/invoices/:invoiceId/pdf',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const view = await loadInvoiceView(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          invoiceId: req.params.invoiceId!,
+        });
+        const pdf = renderInvoicePdf(view);
+        await withTransaction(deps.db, async (client) => {
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'invoice.pdf_rendered',
+            entityType: 'invoice',
+            entityId: req.params.invoiceId!,
+            newValue: { invoiceNumber: view.invoiceNumber, kind: view.kind },
+          });
+        });
+        res.setHeader('Content-Disposition', `inline; filename="${view.title}-${view.invoiceNumber}.pdf"`);
+        res.type('application/pdf').send(pdf);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Send salgsdokumentet til kunden som e-post med PDF-vedlegg. Krever konfigurert
+  // e-postsender OG at mottaker finnes (kundens e-post eller eksplisitt `to`).
+  app.post(
+    '/api/organizations/:orgId/invoices/:invoiceId/send',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.email || !deps.email.configured) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message: 'Utgående e-post er ikke konfigurert (REKNAREN_SMTP_* / REKNAREN_RESEND_API_KEY + REKNAREN_REMINDER_FROM mangler).',
+            },
+          });
+          return;
+        }
+        const body = z
+          .object({
+            to: z.string().email().optional(),
+            message: z.string().max(4000).optional(),
+          })
+          .parse(req.body ?? {});
+        const view = await loadInvoiceView(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          invoiceId: req.params.invoiceId!,
+        });
+        const to = body.to ?? view.customerEmail;
+        if (!to) {
+          res.status(400).json({
+            error: {
+              code: 'CUSTOMER_EMAIL_MISSING',
+              message: 'Kunden mangler e-postadresse. Legg til e-post på kunden, eller oppgi mottaker i «to».',
+            },
+          });
+          return;
+        }
+        const pdf = renderInvoicePdf(view);
+        const subject = `${view.title} ${view.invoiceNumber} fra ${view.orgName}`;
+        const text =
+          body.message?.trim() ||
+          [
+            `Hei ${view.customerName},`,
+            '',
+            `Vedlagt følger ${view.title.toLowerCase()} ${view.invoiceNumber} fra ${view.orgName}.`,
+            `${view.grandLabel}: ${view.grossTotal} kr.`,
+            '',
+            'Med vennlig hilsen',
+            view.orgName,
+          ].join('\n');
+        await deps.email.send({
+          to,
+          subject,
+          text,
+          attachments: [
+            { filename: `${view.title}-${view.invoiceNumber}.pdf`, content: pdf, contentType: 'application/pdf' },
+          ],
+        });
+        await withTransaction(deps.db, async (client) => {
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'invoice.sent',
+            entityType: 'invoice',
+            entityId: req.params.invoiceId!,
+            newValue: { to, invoiceNumber: view.invoiceNumber, kind: view.kind },
+          });
+        });
+        res.json({ sent: true, to, invoiceNumber: view.invoiceNumber });
       } catch (err) {
         next(err);
       }

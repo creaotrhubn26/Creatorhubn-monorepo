@@ -25,11 +25,20 @@ export class EmailNotConfiguredError extends EmailError {
   }
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  /** MIME-type, f.eks. 'application/pdf'. */
+  contentType: string;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   /** Ren tekst. */
   text: string;
+  /** Valgfrie vedlegg (f.eks. faktura-PDF). */
+  attachments?: EmailAttachment[];
 }
 
 export interface EmailPort {
@@ -76,6 +85,15 @@ export class ResendEmailClient implements EmailPort {
           to: message.to,
           subject: message.subject,
           text: message.text,
+          ...(message.attachments?.length
+            ? {
+                attachments: message.attachments.map((a) => ({
+                  filename: a.filename,
+                  content: a.content.toString('base64'),
+                  content_type: a.contentType,
+                })),
+              }
+            : {}),
         }),
         signal: controller.signal,
       });
@@ -100,7 +118,13 @@ export interface SmtpConfig {
 
 /** Minimal transport-kontrakt (nodemailer) — injiserbar for test. */
 export interface MailTransport {
-  sendMail(opts: { from: string; to: string; subject: string; text: string }): Promise<unknown>;
+  sendMail(opts: {
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+    attachments?: { filename: string; content: Buffer; contentType: string }[];
+  }): Promise<unknown>;
 }
 
 /**
@@ -131,7 +155,13 @@ export class SmtpEmailClient implements EmailPort {
         : await defaultNodemailerTransport(c);
     }
     try {
-      await this.transport.sendMail({ from: c.from, to: message.to, subject: message.subject, text: message.text });
+      await this.transport.sendMail({
+        from: c.from,
+        to: message.to,
+        subject: message.subject,
+        text: message.text,
+        ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+      });
     } catch (err) {
       throw new EmailError(`SMTP-sending feilet: ${err instanceof Error ? err.message : 'ukjent feil'}`);
     }
