@@ -24,6 +24,7 @@ import { materializePost } from './campaignDirector';
 import SystemArchDialog from './SystemArchDialog';
 import MotionStingDialog from './MotionStingDialog';
 import { motionHtmlForScene, type Archetype } from './motionReveal.js';
+import { sceneLayoutForValues, buildSequenceHtml } from './motionSequence.js';
 import { aiSuggestMotion } from './motionAI.js';
 import { loadPresets, savePreset, type MotionPreset } from './motionPresets.js';
 import type { MotionLayoutOpts } from './motionSting.js';
@@ -928,7 +929,8 @@ export function InfographicStudioView(
   // innholdet inn i 9:16 / 1:1 / 16:9 og PNG-en får eksakt de dimensjonene.
   const [fmt, setFmt] = useState<'native' | '9:16' | '4:5' | '1:1' | '16:9'>('native');
   // Hovedvisning: Still (infographic) vs Motion (animert sting av samme data).
-  const [motionMode, setMotionMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'still' | 'motion' | 'film'>('still');
+  const motionMode = previewMode !== 'still';
   const [mainArch, setMainArch] = useState<Archetype | null>(null);
   // Fulle motion-kontroller inline i hovedvisningen (tempo/tema/luft/preset/AI).
   const [motionPlace, setMotionPlace] = useState<MotionLayoutOpts>({ theme: 'dark', density: 'normal' });
@@ -1236,6 +1238,15 @@ export function InfographicStudioView(
     if (!p) return;
     setMainArch(p.arch); setFmt(p.format === '9:16' ? '9:16' : p.format === '1:1' ? '1:1' : '16:9'); setMotionPlace(p.place); setMotionTempo(p.tempo);
   };
+  // «Data-film»: alle scener flettet til ÉN sammenhengende animasjon m/ overganger.
+  const sequenceMotion = useMemo(() => {
+    const layouts = scenes.map((sc) => {
+      const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+      return sceneLayoutForValues(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key) }).layout;
+    });
+    return buildSequenceHtml(layouts, { accent: sceneAccent(scene), format: motionFormat, place: motionPlace, transitionMs: 550 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenes, motionFormat, motionPlace, accent, dataMap]);
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -1485,6 +1496,28 @@ export function InfographicStudioView(
       if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Motion-render: ' + m + ' — krever Playwright-runtime.'); }
       else setMsg('Motion-render feilet: ' + m);
     } finally { setBusy(false); setShowMotion(false); }
+  };
+
+  // Data-film: ÉN sammenhengende motion av alle scener → ÉN ProRes → Resolve.
+  const sendSequenceToResolve = async () => {
+    if (busy) return;
+    setBusy(true); setNeedsPlaywright(false);
+    try {
+      const st = await playwrightStatus().catch(() => null);
+      if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å rendre.'); return; }
+      setMsg('Rendrer data-film → ProRes 4444 …');
+      const out = await invoke<string>('render_infographic', { html: sequenceMotion.html, durationSec: sequenceMotion.total / 1000, name: `datafilm-${Date.now()}`, fps, scale, exitSec: 0, frame: `${mw}x${mh}`, easing: 'linear', entrance: 'none' });
+      setMsg('Legger data-film i Resolve …');
+      const overlays = [{ path: out, atSec: scenes[0]?.atSec ?? 0, durationSec: sequenceMotion.total / 1000, track: overlayTrack, posX: 50, posY: 50, fps }];
+      const summary = await executeScript('place_overlay', { overlays });
+      const errEvt = summary.events.find((e) => e.type === 'error');
+      if (!summary.succeeded || errEvt) { setMsg('Rendret, men ikke plassert: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?')); void systemOpen(out).catch(() => {}); }
+      else setMsg(`Data-film (${scenes.length} scener, ${(sequenceMotion.total / 1000).toFixed(1)}s) sendt til Resolve.`);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Film-render: ' + m + ' — krever Playwright-runtime.'); }
+      else setMsg('Film-render feilet: ' + m);
+    } finally { setBusy(false); }
   };
 
   // Multi-scene: rendrer ALLE scener som Motion (hver auto-utledet arketype) og
@@ -2168,7 +2201,7 @@ export function InfographicStudioView(
               {/* Ramme: naturlig = fyll boksen; ellers vis eksakt sosialt forhold. */}
               <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', background: bgImage ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', ...(fmt === 'native' ? { width: '100%', height: '100%' } : { height: '100%', maxWidth: '100%', aspectRatio: String(fmtAspect()), borderRadius: 8, boxShadow: `0 0 0 1px ${D.line}` }) }}>
                 {bgImage && <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />}
-                <iframe ref={iframeRef} title="preview" srcDoc={motionMode ? motionSrcDoc : srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 140 : 0, border: 0, background: 'transparent' }} />
+                <iframe ref={iframeRef} title="preview" srcDoc={previewMode === 'film' ? sequenceMotion.html : previewMode === 'motion' ? motionSrcDoc : srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 140 : 0, border: 0, background: 'transparent' }} />
                 {/* Scene-brødsmule (som konseptets «Scene 03 · Main Stats»). */}
                 <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, background: 'rgba(11,17,32,0.7)', border: `1px solid ${D.line}`, fontSize: 10.5, color: D.soft, pointerEvents: 'none' }}>
                   <span style={{ display: 'inline-flex', color: tpl.style === 'hud' ? D.teal : D.accent }}>{tplIcon(tpl.id, 12)}</span>
@@ -2177,9 +2210,9 @@ export function InfographicStudioView(
                 {/* Still ⇄ Motion i hovedvisningen + inline arketype-strip. */}
                 <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                   <div style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 8, background: 'rgba(11,17,32,0.78)', border: `1px solid ${D.line}` }}>
-                    {([['still', 'Still'], ['motion', 'Motion']] as const).map(([v, l]) => {
-                      const on = (v === 'motion') === motionMode;
-                      return <span key={v} onClick={() => setMotionMode(v === 'motion')} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', color: on ? '#04121a' : D.soft, background: on ? D.accent : 'transparent' }}>{l}</span>;
+                    {([['still', 'Still'], ['motion', 'Motion'], ['film', 'Film']] as const).map(([v, l]) => {
+                      const on = previewMode === v;
+                      return <span key={v} onClick={() => setPreviewMode(v)} title={v === 'film' ? 'Alle scener flettet til én sammenhengende data-film' : ''} style={{ fontSize: 11, fontWeight: 700, padding: '4px 11px', borderRadius: 6, cursor: 'pointer', color: on ? '#04121a' : D.soft, background: on ? D.accent : 'transparent' }}>{l}</span>;
                     })}
                   </div>
                   {motionMode && (() => {
@@ -2189,12 +2222,17 @@ export function InfographicStudioView(
                     const dLbl = motionPlace.density === 'tight' ? 'Tett' : motionPlace.density === 'airy' ? 'Luftig' : 'Normal';
                     return (
                       <>
-                        <div style={cluster}>
-                          {([['auto', 'Auto'], ['sting', 'Sting'], ['stat', 'Stat'], ['quote', 'Sitat'], ['compare', 'Sammenlign'], ['list', 'Liste']] as const).map(([v, l]) => {
-                            const on = v === 'auto' ? mainArch === null : mainArch === v;
-                            return <span key={v} onClick={() => setMainArch(v === 'auto' ? null : (v as Archetype))} style={{ ...chip, color: on ? D.accent : D.soft, background: on ? `${D.accent}22` : 'transparent' }}>{l}</span>;
-                          })}
-                        </div>
+                        {previewMode === 'motion' && (
+                          <div style={cluster}>
+                            {([['auto', 'Auto'], ['sting', 'Sting'], ['stat', 'Stat'], ['quote', 'Sitat'], ['compare', 'Sammenlign'], ['list', 'Liste']] as const).map(([v, l]) => {
+                              const on = v === 'auto' ? mainArch === null : mainArch === v;
+                              return <span key={v} onClick={() => setMainArch(v === 'auto' ? null : (v as Archetype))} style={{ ...chip, color: on ? D.accent : D.soft, background: on ? `${D.accent}22` : 'transparent' }}>{l}</span>;
+                            })}
+                          </div>
+                        )}
+                        {previewMode === 'film' && (
+                          <div style={{ ...cluster, color: D.soft, fontSize: 10.5 }}><span style={{ padding: '3px 8px' }}>{scenes.length} scener · {(sequenceMotion.total / 1000).toFixed(1)}s · overganger</span></div>
+                        )}
                         <div style={cluster}>
                           <span onClick={runMainAi} title="La AI velge arketype + caption fra data" style={{ ...chip, color: aiMainBusy ? D.soft : D.accent, fontWeight: 700 }}>{aiMainBusy ? '● …' : '✨ AI'}</span>
                           <span onClick={() => setMotionTempo((t) => (t === 'fast' ? 'normal' : t === 'normal' ? 'slow' : 'fast'))} title="Tempo" style={chip}>⏱ {tLbl}</span>
@@ -2209,7 +2247,7 @@ export function InfographicStudioView(
                             {motionPresets.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
                           </select>
                           <span onClick={saveMainPreset} title="Lagre gjeldende stil som preset" style={chip}>💾</span>
-                          <span onClick={() => void sendMotionToResolve(mainMotion.html, mainMotion.durationSec, `${mw}x${mh}`)} title="Rendrer denne scenens motion → ProRes 4444 → Resolve" style={{ ...chip, background: D.accent, color: '#04121a', fontWeight: 700 }}>⤓ Resolve</span>
+                          <span onClick={() => (previewMode === 'film' ? void sendSequenceToResolve() : void sendMotionToResolve(mainMotion.html, mainMotion.durationSec, `${mw}x${mh}`))} title={previewMode === 'film' ? 'Rendrer HELE data-filmen → ProRes 4444 → Resolve' : 'Rendrer denne scenens motion → ProRes 4444 → Resolve'} style={{ ...chip, background: D.accent, color: '#04121a', fontWeight: 700 }}>⤓ {previewMode === 'film' ? 'Film' : 'Resolve'}</span>
                         </div>
                       </>
                     );
