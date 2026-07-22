@@ -1451,6 +1451,21 @@ type RoleRoomProjectWorkspaceState = {
   const selectionGoogleStatusRequestRef = useRef(0);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
   const lastProducerMediaFocusRef = useRef<ClientPortalWorkspaceFocus | null>(null);
+  // Stabil identitet: en ny inline-callback her hver render får ProducerMedia-
+  // Panels emit-effekt (som har callbacken i dep-listen) til å re-fyre hver
+  // parent-render og pushe identisk fokus opp igjen → render-løkke i klient-
+  // portalen. useCallback bryter det. Den funksjonelle guarden returnerer
+  // samme referanse ved uendret fokus så React hopper over re-render.
+  const handleProducerMediaFocusChange = useCallback((focus: ClientPortalWorkspaceFocus) => {
+    setProducerMediaFocus((previous) => (
+      previous?.workspace === focus.workspace
+      && previous?.sectionId === focus.sectionId
+      && previous?.pageId === focus.pageId
+      && previous?.artifactId === focus.artifactId
+        ? previous
+        : focus
+    ));
+  }, []);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
@@ -12941,16 +12956,7 @@ type RoleRoomProjectWorkspaceState = {
                         initialSectionId={producerMediaFocus?.sectionId}
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
-                        onWorkspaceFocusChange={(focus) => {
-                          setProducerMediaFocus((previous) => (
-                            previous?.workspace === focus.workspace
-                            && previous?.sectionId === focus.sectionId
-                            && previous?.pageId === focus.pageId
-                            && previous?.artifactId === focus.artifactId
-                              ? previous
-                              : focus
-                          ));
-                        }}
+                        onWorkspaceFocusChange={handleProducerMediaFocusChange}
                         onUnsavedStateChange={(hasUnsaved, reason) => {
                           setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
                         }}
@@ -13459,16 +13465,7 @@ type RoleRoomProjectWorkspaceState = {
                       : undefined
                   )
                 }
-                onWorkspaceFocusChange={(focus) => {
-                  setProducerMediaFocus((previous) => (
-                    previous?.workspace === focus.workspace
-                    && previous?.sectionId === focus.sectionId
-                    && previous?.pageId === focus.pageId
-                    && previous?.artifactId === focus.artifactId
-                      ? previous
-                      : focus
-                  ));
-                }}
+                onWorkspaceFocusChange={handleProducerMediaFocusChange}
                 onUnsavedStateChange={(hasUnsaved, reason) => {
                   setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
                 }}

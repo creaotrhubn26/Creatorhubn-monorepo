@@ -2011,6 +2011,13 @@ export default function ProducerMediaPanel({
   const savedPlanningSnapshotRef = useRef<string>('');
   const mobileWorkspaceDraftHydratedRef = useRef(false);
   const appliedInitialWorkspaceFocusKeyRef = useRef<string>('');
+  // Verdibasert idempotens-vakt mot en render-løkke i klient-portalen:
+  // activeSection/activePage er memo-er hvis identitet endres når
+  // workspaceSections rebygges, så URL-sync-effekten kan re-fyre uten at den
+  // *semantiske* verdien har endret seg. (Emit-effektens tilsvarende guard
+  // ligger nå på main som `lastReportedWorkspaceFocusRef`.) Denne ref-en sørger
+  // for at vi bare skriver URL når faktisk innhold endres.
+  const lastWrittenClientPortalUrlRef = useRef<string | null>(null);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
 
@@ -2829,6 +2836,16 @@ export default function ProducerMediaPanel({
     if (currentUrl === nextUrl) {
       return;
     }
+    // Ekstra vakt: hvis vi allerede har skrevet nøyaktig denne URL-en, ikke
+    // skriv igjen. Beskytter mot en flom av replaceState hvis buildClientPortal-
+    // Url og bar-URL-en aldri blir helt like (f.eks. path-normalisering) mens
+    // effekten re-fyrer pga. memo-identitets-churn. En replaceState-flom
+    // trigger analytics-bibliotekenes history-patch → «Throttling navigation»
+    // + synlig URL-risting.
+    if (lastWrittenClientPortalUrlRef.current === nextUrl) {
+      return;
+    }
+    lastWrittenClientPortalUrlRef.current = nextUrl;
     window.history.replaceState({}, '', nextUrl);
   }, [activePage, activeSection, activeWorkspace, focusedArtifactId, isClientPortalView, projectId]);
 
