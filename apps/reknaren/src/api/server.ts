@@ -67,7 +67,7 @@ import type { ObjectStorage } from '../storage/port.js';
 import { recordAuditEvent } from '../audit/audit.js';
 import { withTransaction } from '../db/pool.js';
 import { sha256Hex } from '../documents/service.js';
-import { DomainError } from '../shared/errors.js';
+import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
 import { issueToken, resolveAuthSecret, verifyToken, type AuthTokenPayload } from './auth.js';
@@ -2044,34 +2044,173 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
-  // Automatisk bank-feed (PSD2/open banking): hent transaksjoner fra aggregatoren
-  // og kjør dem gjennom samme idempotente import + matching som CSV. Ærlig 503 uten
-  // konfigurert feed (manuell CSV-import er da veien). `connectionId` = aggregatorens
-  // konto-ID (opprettet i samtykkeflyten).
+  // Ærlig 503-vakt for alle bank-feed-endepunkt.
+  const bankFeedUnavailable = (res: Response): boolean => {
+    if (!deps.bankFeed || !deps.bankFeed.configured) {
+      res.status(503).json({
+        error: {
+          code: 'INTEGRATION_UNAVAILABLE',
+          message:
+            'Bank-feed er ikke konfigurert (REKNAREN_GOCARDLESS_SECRET_ID + REKNAREN_GOCARDLESS_SECRET_KEY mangler). Bruk manuell CSV-import.',
+        },
+      });
+      return true;
+    }
+    return false;
+  };
+
+  // Steg 1 av samtykkeflyten: list banker aggregatoren støtter (default Norge).
+  app.get(
+    '/api/organizations/:orgId/bank-feed/institutions',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (bankFeedUnavailable(res)) return;
+        const country = typeof req.query.country === 'string' ? req.query.country : 'NO';
+        res.json(await deps.bankFeed!.listInstitutions(country));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Steg 2: start samtykkeflyten mot valgt bank for en konkret bankkonto → lenke
+  // brukeren besøker for å logge inn i banken. Requisition-ID lagres på kontoen.
+  app.post(
+    '/api/organizations/:orgId/bank-accounts/:bankAccountId/feed/connect',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (bankFeedUnavailable(res)) return;
+        const body = z
+          .object({ institutionId: z.string().min(1).max(200), redirectUrl: z.string().url().optional() })
+          .parse(req.body);
+        const acct = await deps.db.query(
+          `SELECT id FROM bank_accounts WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+          [req.params.bankAccountId, req.params.orgId],
+        );
+        if (!acct.rowCount) throw new NotFoundError('Bankkontoen finnes ikke eller er frakoblet.');
+        const redirectUrl = body.redirectUrl ?? `${(deps.appBaseUrl ?? 'https://ledgerly-coss.onrender.com').replace(/\/$/, '')}/bank/callback`;
+        const req_ = await deps.bankFeed!.createRequisition({
+          institutionId: body.institutionId,
+          redirectUrl,
+          reference: `${req.params.orgId}:${req.params.bankAccountId}`,
+        });
+        await withTransaction(deps.db, async (client) => {
+          await client.query(`UPDATE bank_accounts SET feed_requisition_id = $3 WHERE id = $1 AND organization_id = $2`, [
+            req.params.bankAccountId,
+            req.params.orgId,
+            req_.requisitionId,
+          ]);
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'bank_feed.requisition_created',
+            entityType: 'bank_account',
+            entityId: req.params.bankAccountId!,
+            newValue: { requisitionId: req_.requisitionId, institutionId: body.institutionId },
+          });
+        });
+        res.status(201).json(req_);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Steg 3: etter at brukeren har gitt samtykke i banken — hent konto-ID-ene
+  // requisitionen gir tilgang til og lagre den valgte som feed-kobling på kontoen.
+  app.post(
+    '/api/organizations/:orgId/bank-accounts/:bankAccountId/feed/link',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (bankFeedUnavailable(res)) return;
+        const body = z
+          .object({ requisitionId: z.string().min(1).max(200).optional(), accountId: z.string().min(1).max(200).optional() })
+          .parse(req.body ?? {});
+        const acct = await deps.db.query(
+          `SELECT feed_requisition_id FROM bank_accounts WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+          [req.params.bankAccountId, req.params.orgId],
+        );
+        if (!acct.rowCount) throw new NotFoundError('Bankkontoen finnes ikke eller er frakoblet.');
+        const requisitionId = body.requisitionId ?? acct.rows[0].feed_requisition_id;
+        if (!requisitionId) throw new ValidationError('Ingen samtykke startet. Kjør /feed/connect først.');
+        const { status, accountIds } = await deps.bankFeed!.getRequisitionAccounts(requisitionId);
+        // Velg oppgitt konto, ellers første tilknyttede.
+        const chosen = body.accountId && accountIds.includes(body.accountId) ? body.accountId : accountIds[0];
+        if (!chosen) {
+          // Samtykke ikke fullført enda (status ≠ LN) — meld ærlig tilbake uten å lagre.
+          res.status(409).json({
+            error: {
+              code: 'REQUISITION_NOT_LINKED',
+              message: `Samtykket er ikke fullført enda (status ${status}). Fullfør bank-innloggingen og prøv igjen.`,
+            },
+            status,
+            accountIds,
+          });
+          return;
+        }
+        await withTransaction(deps.db, async (client) => {
+          await client.query(`UPDATE bank_accounts SET feed_connection_id = $3 WHERE id = $1 AND organization_id = $2`, [
+            req.params.bankAccountId,
+            req.params.orgId,
+            chosen,
+          ]);
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'bank_feed.account_linked',
+            entityType: 'bank_account',
+            entityId: req.params.bankAccountId!,
+            newValue: { connectionId: chosen },
+          });
+        });
+        res.json({ linked: true, status, connectionId: chosen, accountIds });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Steg 4 (og gjentakende): hent transaksjoner fra aggregatoren og kjør dem gjennom
+  // samme idempotente import + matching som CSV. `connectionId` = aggregatorens
+  // konto-ID; utelates den, brukes den lagrede koblingen fra /feed/link.
   app.post(
     '/api/organizations/:orgId/bank-accounts/:bankAccountId/feed/sync',
     requireAuth,
     requireOrgPermission('bank.reconcile'),
     async (req: AuthedRequest, res, next) => {
       try {
-        if (!deps.bankFeed || !deps.bankFeed.configured) {
-          res.status(503).json({
+        if (bankFeedUnavailable(res)) return;
+        const body = z
+          .object({
+            connectionId: z.string().min(1).max(200).optional(),
+            sinceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body ?? {});
+        let connectionId = body.connectionId;
+        if (!connectionId) {
+          const acct = await deps.db.query(
+            `SELECT feed_connection_id FROM bank_accounts WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+            [req.params.bankAccountId, req.params.orgId],
+          );
+          connectionId = acct.rows[0]?.feed_connection_id ?? undefined;
+        }
+        if (!connectionId) {
+          res.status(400).json({
             error: {
-              code: 'INTEGRATION_UNAVAILABLE',
-              message:
-                'Bank-feed er ikke konfigurert (REKNAREN_GOCARDLESS_SECRET_ID + REKNAREN_GOCARDLESS_SECRET_KEY mangler). Bruk manuell CSV-import.',
+              code: 'FEED_NOT_LINKED',
+              message: 'Bankkontoen er ikke koblet til en bank-feed. Kjør /feed/connect + /feed/link, eller oppgi connectionId.',
             },
           });
           return;
         }
-        const body = z
-          .object({
-            connectionId: z.string().min(1).max(200),
-            sinceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-          })
-          .parse(req.body);
-        const feed = await deps.bankFeed.fetchTransactions({
-          connectionId: body.connectionId,
+        const feed = await deps.bankFeed!.fetchTransactions({
+          connectionId,
           ...(body.sinceDate ? { sinceDate: body.sinceDate } : {}),
         });
         const result = await importBankTransactions(deps.db, {

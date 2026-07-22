@@ -105,6 +105,40 @@ describe('GoCardlessBankFeedProvider', () => {
     expect(calls[1]!.url).toContain('date_from=2026-02-01');
   });
 
+  it('lister institusjoner, oppretter requisition og henter konto-ID-er', async () => {
+    const { impl, calls } = fakeFetch((url, init) => {
+      if (url.endsWith('/token/new/')) return { status: 200, body: { access: 'tok' } };
+      if (url.includes('/institutions/?country=no'))
+        return { status: 200, body: [{ id: 'DNB_DNBANOKK', name: 'DNB', bic: 'DNBANOKK' }, { id: 'x' /* mangler navn */ }] };
+      if (url.endsWith('/requisitions/') && init.method === 'POST')
+        return { status: 201, body: { id: 'req-1', link: 'https://ob.gocardless.com/psd2/start/req-1/DNB' } };
+      if (url.includes('/requisitions/req-1/'))
+        return { status: 200, body: { status: 'LN', accounts: ['acc-a', 'acc-b'] } };
+      return { status: 404 };
+    });
+    const p = new GoCardlessBankFeedProvider({ secretId: 'id', secretKey: 'key' }, impl);
+
+    const banks = await p.listInstitutions('NO');
+    expect(banks).toEqual([{ id: 'DNB_DNBANOKK', name: 'DNB', bic: 'DNBANOKK' }]); // uten navn droppet
+
+    const link = await p.createRequisition({ institutionId: 'DNB_DNBANOKK', redirectUrl: 'https://app/cb', reference: 'org:acct' });
+    expect(link).toEqual({ requisitionId: 'req-1', link: 'https://ob.gocardless.com/psd2/start/req-1/DNB' });
+    const reqBody = JSON.parse(calls.find((c) => c.url.endsWith('/requisitions/'))!.body as string);
+    expect(reqBody).toMatchObject({ institution_id: 'DNB_DNBANOKK', redirect: 'https://app/cb', reference: 'org:acct' });
+
+    const accts = await p.getRequisitionAccounts('req-1');
+    expect(accts).toEqual({ status: 'LN', accountIds: ['acc-a', 'acc-b'] });
+  });
+
+  it('linking-metodene er også ærlig inaktive uten legitimasjon', async () => {
+    const p = new GoCardlessBankFeedProvider(undefined, fakeFetch(() => ({ status: 200, body: {} })).impl);
+    await expect(p.listInstitutions('NO')).rejects.toBeInstanceOf(BankFeedNotConfiguredError);
+    await expect(p.createRequisition({ institutionId: 'x', redirectUrl: 'u', reference: 'r' })).rejects.toBeInstanceOf(
+      BankFeedNotConfiguredError,
+    );
+    await expect(p.getRequisitionAccounts('req')).rejects.toBeInstanceOf(BankFeedNotConfiguredError);
+  });
+
   it('401 fra aggregatoren → NotConfigured; 500 → BankFeedError', async () => {
     const unauth = new GoCardlessBankFeedProvider(
       { secretId: 'id', secretKey: 'key' },

@@ -41,10 +41,41 @@ export interface BankFeedResult {
   sinceDate?: string;
 }
 
+/** En bank hos aggregatoren, til bank-velgeren i samtykkeflyten. */
+export interface BankInstitution {
+  id: string;
+  name: string;
+  bic?: string;
+  logo?: string;
+}
+
+/** Resultat av å opprette en samtykke-forespørsel (requisition). */
+export interface RequisitionLink {
+  requisitionId: string;
+  /** URL brukeren må besøke for å logge inn i banken og gi samtykke. */
+  link: string;
+}
+
+/** Status + konto-ID-er en fullført requisition peker på. */
+export interface RequisitionAccounts {
+  status: string;
+  accountIds: string[];
+}
+
 export interface BankFeedProvider {
   readonly name: string;
   /** Er feed-en konfigurert? Styrer ærlig status. */
   readonly configured: boolean;
+  /** Lister banker aggregatoren støtter i et land (ISO-2, f.eks. 'NO'). */
+  listInstitutions(country: string): Promise<BankInstitution[]>;
+  /** Starter samtykkeflyten mot en valgt bank → lenke brukeren besøker. */
+  createRequisition(params: {
+    institutionId: string;
+    redirectUrl: string;
+    reference: string;
+  }): Promise<RequisitionLink>;
+  /** Henter konto-ID-ene en (forhåpentlig fullført) requisition gir tilgang til. */
+  getRequisitionAccounts(requisitionId: string): Promise<RequisitionAccounts>;
   /** Henter normaliserte transaksjoner for en tilkoblet konto. */
   fetchTransactions(params: { connectionId: string; sinceDate?: string }): Promise<BankFeedResult>;
 }
@@ -166,12 +197,59 @@ export class GoCardlessBankFeedProvider implements BankFeedProvider {
     return this.token;
   }
 
-  async fetchTransactions(params: { connectionId: string; sinceDate?: string }): Promise<BankFeedResult> {
+  private ensureConfigured(): void {
     if (!this.configured) {
       throw new BankFeedNotConfiguredError(
         'Bank-feed er ikke konfigurert (REKNAREN_GOCARDLESS_SECRET_ID + REKNAREN_GOCARDLESS_SECRET_KEY mangler).',
       );
     }
+  }
+
+  async listInstitutions(country: string): Promise<BankInstitution[]> {
+    this.ensureConfigured();
+    const token = await this.ensureToken();
+    const body = (await this.request(`/institutions/?country=${encodeURIComponent(country.toLowerCase())}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${token}` },
+    })) as Array<{ id?: string; name?: string; bic?: string; logo?: string }>;
+    return (Array.isArray(body) ? body : [])
+      .filter((i): i is { id: string; name: string; bic?: string; logo?: string } => Boolean(i.id && i.name))
+      .map((i) => ({ id: i.id, name: i.name, ...(i.bic ? { bic: i.bic } : {}), ...(i.logo ? { logo: i.logo } : {}) }));
+  }
+
+  async createRequisition(params: {
+    institutionId: string;
+    redirectUrl: string;
+    reference: string;
+  }): Promise<RequisitionLink> {
+    this.ensureConfigured();
+    const token = await this.ensureToken();
+    const body = (await this.request('/requisitions/', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        institution_id: params.institutionId,
+        redirect: params.redirectUrl,
+        reference: params.reference,
+        user_language: 'NO',
+      }),
+    })) as { id?: string; link?: string };
+    if (!body.id || !body.link) throw new BankFeedError('GoCardless returnerte ikke requisition-ID/lenke.');
+    return { requisitionId: body.id, link: body.link };
+  }
+
+  async getRequisitionAccounts(requisitionId: string): Promise<RequisitionAccounts> {
+    this.ensureConfigured();
+    const token = await this.ensureToken();
+    const body = (await this.request(`/requisitions/${encodeURIComponent(requisitionId)}/`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${token}` },
+    })) as { status?: string; accounts?: string[] };
+    return { status: body.status ?? 'UNKNOWN', accountIds: Array.isArray(body.accounts) ? body.accounts : [] };
+  }
+
+  async fetchTransactions(params: { connectionId: string; sinceDate?: string }): Promise<BankFeedResult> {
+    this.ensureConfigured();
     const token = await this.ensureToken();
     const query = params.sinceDate ? `?date_from=${encodeURIComponent(params.sinceDate)}` : '';
     const body = (await this.request(`/accounts/${encodeURIComponent(params.connectionId)}/transactions/${query}`, {
@@ -191,7 +269,19 @@ export class GoCardlessBankFeedProvider implements BankFeedProvider {
 export class UnconfiguredBankFeedProvider implements BankFeedProvider {
   readonly name = 'none';
   readonly configured = false;
-  async fetchTransactions(): Promise<BankFeedResult> {
+  private fail(): never {
     throw new BankFeedNotConfiguredError('Ingen bank-feed er konfigurert. Bruk manuell CSV-import.');
+  }
+  async listInstitutions(): Promise<BankInstitution[]> {
+    this.fail();
+  }
+  async createRequisition(): Promise<RequisitionLink> {
+    this.fail();
+  }
+  async getRequisitionAccounts(): Promise<RequisitionAccounts> {
+    this.fail();
+  }
+  async fetchTransactions(): Promise<BankFeedResult> {
+    this.fail();
   }
 }
