@@ -197,6 +197,9 @@ function bankCallbackHtml(opts: { ok: boolean; error?: string | undefined; code?
 </div></body></html>`;
 }
 
+/** Nøkkelord som driver Gmail-søket etter bilag (norsk + engelsk). */
+const BILAG_KEYWORDS = ['faktura', 'kvittering', 'kreditnota', 'ordrebekreftelse', 'invoice', 'receipt', 'order confirmation'];
+
 export function createApiServer(deps: ApiDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
@@ -828,6 +831,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
         const gmail = (deps.gmailAdapterFactory ?? (() => new SandboxGmailAdapter()))();
         const messages = await gmail.searchMessages({
           labels: body.labels,
+          keywords: BILAG_KEYWORDS,
           ...(body.senders ? { senders: body.senders } : {}),
           ...(body.afterDate ? { afterDate: body.afterDate } : {}),
         });
@@ -887,6 +891,43 @@ export function createApiServer(deps: ApiDeps): express.Express {
             aiFilter: Boolean(deps.emailClassifier?.available),
           }),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Importer KUN de valgte meldingene fra en smart skanning → gjennom bilags-pipelinen.
+  app.post(
+    '/api/organizations/:orgId/gmail/import-selected',
+    requireAuth,
+    requireOrgPermission('integrations.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            labels: z.array(z.string().min(1)).min(1).max(20),
+            messageIds: z.array(z.string().min(1)).min(1).max(200),
+            senders: z.array(z.string()).optional(),
+            afterDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body);
+        const gmail = (deps.gmailAdapterFactory ?? (() => new SandboxGmailAdapter()))();
+        const vatStatus = await orgVatStatus(deps.db, req.params.orgId!);
+        const summary = await ingestFromGmail(pipelineDeps, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          gmail,
+          filter: {
+            labels: body.labels,
+            keywords: BILAG_KEYWORDS,
+            ...(body.senders ? { senders: body.senders } : {}),
+            ...(body.afterDate ? { afterDate: body.afterDate } : {}),
+          },
+          vatStatus,
+          onlyMessageIds: body.messageIds,
+        });
+        res.json(toJson({ ...summary, integrationMode: deps.gmailMode ?? 'sandbox' }));
       } catch (err) {
         next(err);
       }

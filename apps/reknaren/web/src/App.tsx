@@ -66,7 +66,7 @@ type Screen =
 const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
   { key: 'overview', label: 'Oversikt', icon: 'overview' },
   { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
-  { key: 'gmail', label: 'Gmail-import', icon: 'mail' },
+  { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
   { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
   { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
   { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },

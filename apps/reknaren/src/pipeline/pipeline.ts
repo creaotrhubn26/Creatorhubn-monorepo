@@ -73,6 +73,8 @@ export async function ingestFromGmail(
     gmail: GmailPort;
     filter: GmailSearchFilter;
     vatStatus: 'registered' | 'not_registered' | 'pending';
+    /** Om satt: importer KUN disse meldingene (fra en tidligere smart skanning). */
+    onlyMessageIds?: string[];
   },
 ): Promise<GmailIngestSummary> {
   let messages;
@@ -100,8 +102,10 @@ export async function ingestFromGmail(
     throw err;
   }
 
+  const only = params.onlyMessageIds ? new Set(params.onlyMessageIds) : null;
+  const selected = only ? messages.filter((m) => only.has(m.messageId)) : messages;
   const imported: IngestResultItem[] = [];
-  for (const message of messages) {
+  for (const message of selected) {
     for (const attachment of message.attachments) {
       const content = await params.gmail.fetchAttachment(attachment);
       const item = await processIncomingDocument(deps, {

@@ -697,40 +697,53 @@ export function DocumentDetailScreen({
 
 /* ── Gmail-import (sandbox) ────────────────────────────────────────────── */
 
-export function GmailScreen({
-  orgId,
-  onOpenDocument,
-}: {
-  orgId: string;
-  onOpenDocument: (id: string) => void;
-}) {
-  const [labels, setLabels] = useState('Regnskap');
+interface ScanCandidate {
+  messageId: string;
+  from: string;
+  subject: string;
+  date: string;
+  attachments: { filename: string; mimeType: string }[];
+  decision: 'import' | 'review';
+  confidence: number;
+  documentType: string;
+  vendorGuess: string | null;
+  reason: string;
+  source: 'heuristic' | 'ai';
+}
+interface ScanResult {
+  scanned: number;
+  candidates: ScanCandidate[];
+  skipped: number;
+  mode: string;
+  aiFilter: boolean;
+}
+
+export function GmailScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDocument: (id: string) => void }) {
+  const [labels, setLabels] = useState('INBOX');
   const [afterDate, setAfterDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [imported, setImported] = useState<{ documentId: string; filename: string; status: string }[] | null>(null);
   const toast = useToast();
-  const [result, setResult] = useState<{
-    scannedMessages: number;
-    connectionState: string;
-    integrationMode: string;
-    importedDocuments: { documentId: string; filename: string; status: string }[];
-  } | null>(null);
 
-  const runImport = async () => {
+  const labelList = () => labels.split(',').map((l) => l.trim()).filter(Boolean);
+
+  const runScan = async () => {
     setBusy(true);
     setError(null);
+    setImported(null);
     try {
-      const body: Record<string, unknown> = {
-        labels: labels.split(',').map((l) => l.trim()).filter(Boolean),
-      };
+      const body: Record<string, unknown> = { labels: labelList() };
       if (afterDate) body['afterDate'] = afterDate;
-      const res = await api<NonNullable<typeof result>>(
-        'POST',
-        `/api/organizations/${orgId}/gmail/import`,
-        body,
-      );
-      setResult(res);
-      toast(`Skannet ${res.scannedMessages} meldinger, ${res.importedDocuments.length} dokumenter behandlet`, 'ok');
+      const res = await api<ScanResult>('POST', `/api/organizations/${orgId}/gmail/scan`, body);
+      setScan(res);
+      // forhåndsvelg alt filteret er sikker på (import)
+      const pre: Record<string, boolean> = {};
+      for (const c of res.candidates) pre[c.messageId] = c.decision === 'import';
+      setSelected(pre);
+      toast(`Skannet ${res.scanned} e-poster · ${res.candidates.length} mulige bilag`, 'ok');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -738,23 +751,45 @@ export function GmailScreen({
     }
   };
 
+  const importSelected = async () => {
+    const ids = Object.keys(selected).filter((k) => selected[k]);
+    if (ids.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = { labels: labelList(), messageIds: ids };
+      if (afterDate) body['afterDate'] = afterDate;
+      const res = await api<{ importedDocuments: { documentId: string; filename: string; status: string }[] }>(
+        'POST',
+        `/api/organizations/${orgId}/gmail/import-selected`,
+        body,
+      );
+      setImported(res.importedDocuments);
+      toast(`${res.importedDocuments.length} bilag hentet inn — klare til kontroll`, 'ok');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
   return (
     <div>
       <div className="page-head">
-        <h1>Gmail-import</h1>
+        <h1>Skann e-post</h1>
         <p className="subtitle">
-          Vi leser kun e-post innenfor etikettene og perioden du velger — aldri hele postkassen. Du
-          kan koble fra når som helst.
+          Reknaren leser innboksen din og finner selv hvilke e-poster som er fakturaer og kvitteringer
+          — resten (nyhetsbrev, varsler) lukes ut. Du bekrefter hva som skal hentes inn.
         </p>
       </div>
-      <div className="notice">
-        <strong>Sandbox:</strong> Ekte Gmail-tilkobling er ikke aktivert ennå (krever Google
-        OAuth-oppsett). Importen under kjører mot et realistisk testdatasett.
-      </div>
+      {error && <div className="error">{error}</div>}
+
       <div className="panel">
         <div className="row">
           <div>
-            <label htmlFor="labels">Etiketter (kommaseparert)</label>
+            <label htmlFor="labels">Etiketter/mapper</label>
             <input id="labels" value={labels} onChange={(e) => setLabels(e.target.value)} />
           </div>
           <div>
@@ -762,53 +797,102 @@ export function GmailScreen({
             <input id="after" placeholder="ÅÅÅÅ-MM-DD" value={afterDate} onChange={(e) => setAfterDate(e.target.value)} />
           </div>
           <div>
-            <button className="primary" disabled={busy} onClick={runImport}>
-              {busy ? 'Importerer…' : 'Importer'}
+            <button className="primary" disabled={busy} onClick={runScan}>
+              {busy ? 'Skanner…' : 'Skann e-post'}
             </button>
           </div>
         </div>
       </div>
-      {error && <div className="error">{error}</div>}
-      {result && (
+
+      {scan && (
         <>
-          <h2>
-            Resultat{' '}
-            <span className="badge neutral plain">{result.scannedMessages} meldinger skannet</span>
-          </h2>
-          {result.importedDocuments.length === 0 ? (
-            <EmptyState
-              icon="📭"
-              title="Ingen dokumenter funnet"
-              desc="Prøv en annen etikett eller datoperiode. Vi leter etter fakturaer, kvitteringer og kreditnotaer."
-            />
+          <div className="threshold-head">
+            <h2>Fant {scan.candidates.length} mulige bilag</h2>
+            <span className="badge accent">
+              {scan.aiFilter ? 'Smart AI-filter' : 'Filter'} · {scan.skipped} luket ut
+            </span>
+          </div>
+          {scan.candidates.length === 0 ? (
+            <EmptyState icon="📭" title="Ingen bilag funnet" desc="Prøv en annen etikett eller datoperiode." />
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Fil</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.importedDocuments.map((doc) => (
-                    <tr
-                      key={doc.documentId}
-                      className="clickable"
-                      tabIndex={0}
-                      onClick={() => onOpenDocument(doc.documentId)}
-                      onKeyDown={(e) => e.key === 'Enter' && onOpenDocument(doc.documentId)}
-                    >
-                      <td>{doc.filename}</td>
-                      <td>
-                        <StatusBadge status={doc.status} />
-                      </td>
+            <>
+              <div className="actions" style={{ marginTop: 0 }}>
+                <button className="primary" disabled={busy || selectedCount === 0} onClick={importSelected}>
+                  {busy ? 'Henter inn…' : `Hent inn valgte (${selectedCount})`}
+                </button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Avsender / bilag</th>
+                      <th>Reknaren mener</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {scan.candidates.map((c) => (
+                      <tr key={c.messageId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={!!selected[c.messageId]}
+                            onChange={(e) => setSelected((p) => ({ ...p, [c.messageId]: e.target.checked }))}
+                            aria-label="Velg bilag"
+                          />
+                        </td>
+                        <td>
+                          <div className="primary-line">{c.vendorGuess ?? c.subject}</div>
+                          <div className="secondary-line">{c.subject}</div>
+                          <div className="secondary-line">{c.attachments.map((a) => a.filename).join(', ')}</div>
+                        </td>
+                        <td>
+                          <span className={`badge ${c.decision === 'import' ? 'ok' : 'accent'}`}>
+                            {c.decision === 'import' ? 'Bilag' : 'Usikker'} · {(c.confidence * 100) | 0}%
+                          </span>
+                          <div className="secondary-line" style={{ maxWidth: 420 }}>
+                            {c.reason}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
+        </>
+      )}
+
+      {imported && imported.length > 0 && (
+        <>
+          <h2>Hentet inn</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fil</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {imported.map((doc) => (
+                  <tr
+                    key={doc.documentId}
+                    className="clickable"
+                    tabIndex={0}
+                    onClick={() => onOpenDocument(doc.documentId)}
+                    onKeyDown={(e) => e.key === 'Enter' && onOpenDocument(doc.documentId)}
+                  >
+                    <td>{doc.filename}</td>
+                    <td>
+                      <StatusBadge status={doc.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </div>
