@@ -327,7 +327,12 @@ export async function executeProbeRun(
       noteUsage(engine.engineId, probeAnswer.usage);
       const answer = probeAnswer.text;
       const mentioned = extractBrandMentions(answer, allBrands);
-      const urls = extractUrls(answer);
+      // Kilder = URL-er inline i teksten + motorens eget kildefelt
+      // (Perplexity `citations`/`search_results`), deduplisert.
+      const urls = Array.from(new Set([
+        ...extractUrls(answer),
+        ...(probeAnswer.citedUrls ?? []),
+      ]));
       const targetMention = mentioned.find((m) => m.name === promptSet.targetBrand);
       const discovered = await extractDiscoveredBrands(answer, allBrands, (u) =>
         noteUsage("anthropic-extraction", u),
