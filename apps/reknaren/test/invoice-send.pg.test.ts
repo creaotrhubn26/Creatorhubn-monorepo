@@ -167,3 +167,27 @@ describe('Faktura-utsending', () => {
     expect(res.body.error.code).toBe('INTEGRATION_UNAVAILABLE');
   });
 });
+
+describe('EHF / PEPPOL', () => {
+  it('genererer nedlastbar EHF-XML (BIS 3.0) for utstedt faktura', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/invoices/${invoiceId}/ehf`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.headers['content-type']).toContain('application/xml');
+    expect(res.headers['content-disposition']).toContain('EHF-1.xml');
+    expect(res.text).toContain('urn:fdc:peppol.eu:2017:poacc:billing:3.0');
+    expect(res.text).toContain('<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>');
+    expect(res.text).toContain('<cbc:EndpointID schemeID="0192">923609016</cbc:EndpointID>'); // mottaker
+    expect(res.text).toContain('<cbc:PayableAmount currencyID="NOK">6250.00</cbc:PayableAmount>');
+  });
+
+  it('svarer 503 på EHF-sending uten konfigurert aksesspunkt', async () => {
+    const res = await request(app)
+      .post(`/api/organizations/${orgId}/invoices/${invoiceId}/ehf/send`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(503);
+    expect(res.body.error.code).toBe('INTEGRATION_UNAVAILABLE');
+  });
+});

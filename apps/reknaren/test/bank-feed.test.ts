@@ -8,7 +8,7 @@ import {
 } from '../src/bank/feed.js';
 
 function fakeFetch(routes: (url: string, init: { method: string; body?: string }) => { status: number; body?: unknown }) {
-  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }> = [];
+  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body?: string | undefined }> = [];
   const impl = async (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
     calls.push({ url, method: init.method, headers: init.headers, body: init.body });
     const r = routes(url, init);

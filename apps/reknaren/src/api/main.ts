@@ -16,6 +16,7 @@ import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.
 import { StripeApiClient } from '../integrations/stripe.js';
 import { ResendEmailClient, SmtpEmailClient } from '../integrations/email.js';
 import { GoCardlessBankFeedProvider, UnconfiguredBankFeedProvider } from '../bank/feed.js';
+import { UnconfiguredPeppolAccessPoint } from '../invoicing/ehf.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -63,6 +64,9 @@ const app = createApiServer({
   bankFeed: config.bankFeed
     ? new GoCardlessBankFeedProvider(config.bankFeed)
     : new UnconfiguredBankFeedProvider(),
+  // EHF/PEPPOL: XML-generering + nedlasting virker alltid; overføring via
+  // aksesspunkt er ikke aktiv uten avtale (ærlig no-op).
+  peppol: new UnconfiguredPeppolAccessPoint(),
   // Hodeløs cron-synk: token + org-bootstrap.
   cronSecret: config.cronSecret,
   bootstrapOrg: config.bootstrapOrg,

@@ -39,6 +39,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { renderInvoiceDocument } from '../invoicing/document.js';
 import { loadInvoiceView } from '../invoicing/view.js';
 import { renderInvoicePdf } from '../invoicing/pdf.js';
+import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoicing/ehf.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
   approveAndPost,
@@ -112,6 +113,8 @@ export interface ApiDeps {
   stripe?: StripeReadPort | undefined;
   /** Bank-feed (PSD2/open banking). Uten aggregator-legitimasjon er feed ærlig inaktiv. */
   bankFeed?: BankFeedProvider | undefined;
+  /** PEPPOL-aksesspunkt for EHF-overføring. Uten avtale er sending ærlig inaktiv. */
+  peppol?: PeppolAccessPoint | undefined;
   /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
   cronSecret?: string | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
@@ -795,7 +798,17 @@ export function createApiServer(deps: ApiDeps): express.Express {
               openPublicData: true,
             }
         : { mode: 'not_configured', active: false, note: 'Lovdata-klient er ikke konfigurert i dette miljøet.' },
-      ehf: { mode: 'not_implemented', active: false },
+      ehf: deps.peppol?.configured
+        ? {
+            mode: 'peppol_access_point',
+            active: true,
+            note: 'EHF (PEPPOL BIS Billing 3.0) UBL-XML kan genereres OG sendes via konfigurert aksesspunkt.',
+          }
+        : {
+            mode: 'xml_export_only',
+            active: true,
+            note: 'EHF (PEPPOL BIS Billing 3.0) UBL-XML kan genereres og lastes ned (…/invoices/:id/ehf). Overføring via aksesspunkt er ikke konfigurert — last opp XML-en hos ditt aksesspunkt.',
+          },
       altinn: deps.vatSubmission
         ? deps.vatSubmission.active
           ? {
@@ -1701,6 +1714,92 @@ export function createApiServer(deps: ApiDeps): express.Express {
           });
         });
         res.json({ sent: true, to, invoiceNumber: view.invoiceNumber });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // EHF / PEPPOL BIS Billing 3.0 — salgsfakturaen som UBL-XML for nedlasting.
+  // Kan lastes opp hos et hvilket som helst aksesspunkt eller sendes til offentlig
+  // sektor. Bygges deterministisk fra fakturadataene. Auditlogges.
+  app.get(
+    '/api/organizations/:orgId/invoices/:invoiceId/ehf',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const data = await loadInvoiceEhf(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          invoiceId: req.params.invoiceId!,
+        });
+        const xml = renderEhfXml(data);
+        await withTransaction(deps.db, async (client) => {
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'invoice.ehf_rendered',
+            entityType: 'invoice',
+            entityId: req.params.invoiceId!,
+            newValue: { invoiceNumber: data.invoiceNumber },
+          });
+        });
+        res.setHeader('Content-Disposition', `attachment; filename="EHF-${data.invoiceNumber}.xml"`);
+        res.type('application/xml').send(xml);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Send EHF-fakturaen via PEPPOL-aksesspunkt. Ærlig 503 uten aksesspunkt-avtale;
+  // 400 når mottaker mangler organisasjonsnummer (kreves som PEPPOL-adresse).
+  app.post(
+    '/api/organizations/:orgId/invoices/:invoiceId/ehf/send',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.peppol || !deps.peppol.configured) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message:
+                'PEPPOL-aksesspunkt er ikke konfigurert. Last ned EHF-XML (…/ehf) og send den via ditt aksesspunkt.',
+            },
+          });
+          return;
+        }
+        const data = await loadInvoiceEhf(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          invoiceId: req.params.invoiceId!,
+        });
+        if (!data.buyer.orgNumber) {
+          res.status(400).json({
+            error: {
+              code: 'RECIPIENT_ORG_NUMBER_MISSING',
+              message: 'Mottaker mangler organisasjonsnummer — kreves som PEPPOL-adresse for EHF-sending.',
+            },
+          });
+          return;
+        }
+        const xml = renderEhfXml(data);
+        await deps.peppol.send({
+          xml,
+          recipientOrgNumber: data.buyer.orgNumber,
+          invoiceNumber: data.invoiceNumber,
+        });
+        await withTransaction(deps.db, async (client) => {
+          await recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'invoice.ehf_sent',
+            entityType: 'invoice',
+            entityId: req.params.invoiceId!,
+            newValue: { invoiceNumber: data.invoiceNumber, recipient: data.buyer.orgNumber },
+          });
+        });
+        res.json({ sent: true, invoiceNumber: data.invoiceNumber, recipient: data.buyer.orgNumber });
       } catch (err) {
         next(err);
       }
