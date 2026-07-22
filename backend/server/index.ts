@@ -475,6 +475,7 @@ import { setupAdminSocialConnectionsStatusRoutes } from "./admin-social-connecti
 import { setupAdminCompetitorReportRoutes } from "./admin-competitor-report-routes";
 import { setupAdminResendStatusRoutes } from "./admin-resend-status-routes";
 import { setupAdminMigrationsRoutes } from "./admin-room-migrations-routes";
+import { setupJobQueueRoutes, startBackgroundJobs } from "./job-handlers.js";
 import { setupPresenceHeartbeatRoutes } from "./presence-heartbeat-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
 import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
@@ -852,6 +853,9 @@ import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
+import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-routes";
+import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-config-routes";
+import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
@@ -863,6 +867,7 @@ import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-exam
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
 import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
+import { registerLeadgridDemoRequestRoutes } from "./leadgrid-demo-request-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -17074,21 +17079,16 @@ setupAdminResendStatusRoutes({
   app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
 });
 
-// ── Jobb-kø (0400): tunge operasjoner overlever deploy-restart.
-// Handlers registreres og worker startes her; innsyn i Admin Room.
-import("./job-handlers.js")
-  .then(({ startBackgroundJobs, setupJobQueueRoutes }) => {
-    startBackgroundJobs(pool);
-    setupJobQueueRoutes({
-      app,
-      pool,
-      activeSessions,
-      isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
-    });
-  })
-  .catch((err) => {
-    console.error("[job-queue] oppstart feilet:", String(err).slice(0, 200));
-  });
+// ── Jobb-kø (0400): innsyns-ruten MÅ registreres synkront — en async
+// import ville landet bak catch-all-404-en lengre ned og blitt død
+// rute (fanget 19.07: /api/admin-room/jobs ga 404). Worker startes i
+// listen-callbacken sammen med de andre bakgrunnsarbeiderne.
+setupJobQueueRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
 
 // ── Migrations — admin-trigger av migrate.sh fra Admin Room
 setupAdminMigrationsRoutes({
@@ -25063,6 +25063,26 @@ setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
 setupControlCenterRoutes({ app, pool, activeSessions });
 // Lead Map module pricing-admin
 setupAdminLeadMapPricingRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid offentlig pris-config (én sannhetskilde: landing + admin + iPad)
+registerLeadgridPricingConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid experience-media (mockup-innhold i scrollfilmen, super-admin-styrt)
+registerLeadgridExperienceConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+registerLeadgridTestimonialsRoutes({
   app,
   pool,
   activeSessions,
@@ -66583,6 +66603,7 @@ registerLeadgridCrashRoutes({ app, pool, requireUserSession });
 
 // «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
 registerLeadgridSignupInterestRoutes({ app, pool });
+registerLeadgridDemoRequestRoutes({ app, pool });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
@@ -75323,6 +75344,8 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   // refresh-e tokens innen 7 dager av expiry. Hindrer at en konto som
   // ikke brukes regelmessig ender opp med expired token. Disabled hvis
   // META_APP_ID/SECRET ikke er satt.
+  // Jobb-kø (0400): handlers + worker (claim/heartbeat/stale-reclaim).
+  startBackgroundJobs(pool);
   startTokenRefreshWorker(pool);
   // LinkedIn-insights polling: 1-time sweep mot /v2/socialActions for
   // post-level engagement (likes + comments). LinkedIn har ingen webhooks

@@ -3,6 +3,8 @@
  * hver rolle / hver bruker ser på sitt prosjekt.
  */
 
+import { roleRoomAgentDefaultHeaders } from './roleRoomAgentService';
+
 export type TabConfigTargetType = 'role' | 'user';
 
 /** Nivå-kart: fane-nøkkel → 'view' | 'manage'. Fane som mangler = Skjult. */
@@ -61,10 +63,14 @@ export interface SeatStatusResponse {
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  // The Role Room-endepunkter autentiserer på Bearer-token (apiKeyAuth) —
+  // cookies alene gir 401. roleRoomAgentDefaultHeaders() legger på token +
+  // x-role-room-user-id fra sesjonen; tom i klient-portal (cookies flyter
+  // videre), satt i produsent-kontekst.
   const res = await fetch(url, {
     ...init,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders(), ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');

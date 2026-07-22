@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { executeScript } from "../api";
 import { feedPlanThumbnailService } from "../services/feedPlanThumbnailService";
 import { PhoneMockup } from "./PhoneMockup";
@@ -1056,8 +1057,26 @@ export function ThumbnailCreator({
                             border: "1px solid rgba(160,48,192,0.20)",
                             fontSize: 10, color: "var(--text-2)" }}>
               {multiAspectResults.map(r => (
-                <div key={r.aspect}>
-                  {r.aspect}: {r.candidates.length} kandidater
+                <div key={r.aspect} style={{ marginBottom: 6 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                    {r.aspect}: {r.candidates.length} kandidater
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {r.candidates.map((c, i) => (
+                      <button key={i}
+                              onClick={() => void openPath(c.path).catch(() => {})}
+                              title={`Vis i Finder — ${c.path}`}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 4,
+                                background: "transparent",
+                                border: "1px solid rgba(160,48,192,0.35)",
+                                color: "var(--text-1)", borderRadius: 3,
+                                padding: "2px 6px", fontSize: 9.5, cursor: "pointer",
+                              }}>
+                        {c.layout} · {c.sourceFrameSec}s
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1218,6 +1237,13 @@ function ThumbnailDesignOverlay({
   onSelectElement: (id: string | null) => void;
   onElementChange: (id: string, patch: Partial<FreeElement>) => void;
 }) {
+  // Bakgrunns-video må scrubbe sammen med frameSec (ikke bare på
+  // onLoadedMetadata) slik at forhåndsvisningen følger picker-sliden.
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (bgVideoRef.current) bgVideoRef.current.currentTime = frameSec;
+  }, [frameSec]);
+
   // I "free"-modus: ingen template-bakgrunn, kun custom bg + frie tekst-element
   const isFree = layout === "free";
   const bg = isFree ? "#0a0518" : (layout === "bold" ? accentColor : backgroundColor);
@@ -1239,6 +1265,7 @@ function ThumbnailDesignOverlay({
     >
       {showVideoBackground && (
         <video
+          ref={bgVideoRef}
           src={videoSrc}
           style={{
             position: "absolute", inset: 0,

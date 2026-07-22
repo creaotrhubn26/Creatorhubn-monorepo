@@ -139,8 +139,8 @@ const CINEMATIC_RUNTIME: string[] = [
   '    c.innerHTML = \'<svg width="26" height="26" viewBox="0 0 24 24" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.45))"><path d="M5 2l15 8-6.5 1.7L10 20z" fill="#fff" stroke="#1d1b19" stroke-width="1.3" stroke-linejoin="round"/></svg>\';',
   '    document.documentElement.appendChild(c);',
   '    window.__paMove = (x, y) => { const e = document.getElementById("__pa_cur"); if (e) { e.style.left = x + "px"; e.style.top = y + "px"; } };',
-  '    window.__paRipple = (x, y) => { const r = document.createElement("div"); r.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:2147483646;width:12px;height:12px;margin:-6px 0 0 -6px;border:3px solid #ef8a5d;border-radius:50%;pointer-events:none;opacity:.95;transition:all .55s ease-out`; document.documentElement.appendChild(r); requestAnimationFrame(() => { r.style.width = "64px"; r.style.height = "64px"; r.style.margin = "-32px 0 0 -32px"; r.style.opacity = "0"; }); setTimeout(() => r.remove(), 650); };',
-  '    window.__paGlow = (x, y, w, h) => { const g = document.createElement("div"); g.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483645;border:3px solid #ef8a5d;border-radius:8px;box-shadow:0 0 0 4px rgba(239,138,93,.22);pointer-events:none;transition:opacity .4s`; document.documentElement.appendChild(g); setTimeout(() => { g.style.opacity = "0"; setTimeout(() => g.remove(), 400); }, 1500); };',
+  '    window.__paRipple = (x, y) => { const r = document.createElement("div"); r.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:2147483646;width:12px;height:12px;margin:-6px 0 0 -6px;border:3px solid #8b5cf6;border-radius:50%;pointer-events:none;opacity:.95;transition:all .55s ease-out`; document.documentElement.appendChild(r); requestAnimationFrame(() => { r.style.width = "64px"; r.style.height = "64px"; r.style.margin = "-32px 0 0 -32px"; r.style.opacity = "0"; }); setTimeout(() => r.remove(), 650); };',
+  '    window.__paGlow = (x, y, w, h) => { const g = document.createElement("div"); g.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483645;border:3px solid #8b5cf6;border-radius:8px;box-shadow:0 0 0 4px rgba(139,92,246,.22);pointer-events:none;transition:opacity .4s`; document.documentElement.appendChild(g); setTimeout(() => { g.style.opacity = "0"; setTimeout(() => g.remove(), 400); }, 1500); };',
   '    // Push-in: skaler body med origin i elementets senter (det punktet står stille',
   '    // i viewporten, så peker + element holder seg justert under zoomen).',
   '    window.__paZoom = (vx, vy, sc) => { const b = document.body; if (!b) return; const ox = vx + (window.scrollX || 0), oy = vy + (window.scrollY || 0); b.style.transition = "transform 1s cubic-bezier(.4,0,.2,1)"; b.style.transformOrigin = ox + "px " + oy + "px"; b.style.transform = "scale(" + sc + ")"; };',
@@ -534,12 +534,12 @@ export function buildScriptHtml(project: DemoProject): string {
   @page { margin: 22mm 18mm; }
   * { box-sizing: border-box; }
   body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: #1d1b19; margin: 0; }
-  header { border-bottom: 2px solid #ef8a5d; padding-bottom: 12px; margin-bottom: 18px; }
+  header { border-bottom: 2px solid #8b5cf6; padding-bottom: 12px; margin-bottom: 18px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .sub { color: #6b6358; font-size: 12px; }
   .scene { border: 1px solid #eae5dd; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; page-break-inside: avoid; }
   .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .num { background: #ef8a5d; color: #fff; font-weight: 700; font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
+  .num { background: #8b5cf6; color: #fff; font-weight: 700; font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
   h2 { font-size: 14px; margin: 0; }
   .meta { margin-left: auto; color: #9a9186; font-size: 11px; }
   .grid { display: grid; grid-template-columns: 70px 1fr; gap: 3px 10px; font-size: 12.5px; }
@@ -583,11 +583,11 @@ export function buildBrainHtml(brain: ProductBrain, projectName: string, url: st
   @page { margin: 20mm 16mm; }
   * { box-sizing: border-box; }
   body { font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: #1d1b19; margin: 0; }
-  header { border-bottom: 2px solid #ef8a5d; padding-bottom: 12px; margin-bottom: 16px; }
+  header { border-bottom: 2px solid #8b5cf6; padding-bottom: 12px; margin-bottom: 16px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .sub { color: #6b6358; font-size: 12px; }
   .rec { background: #fdeee6; border: 1px solid #f3d3c1; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
-  .rec b { color: #3a2f2a; }
+  .rec b { color: #241d42; }
   h2 { font-size: 14px; margin: 16px 0 6px; }
   .grps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
   .grp h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #9a9186; margin: 8px 0 4px; }
@@ -637,7 +637,7 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
     startScrollPct: s.startScrollPct ?? 0,
   }));
   const b = project.branding || {};
-  const accent = (b.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(b.brandColor)) ? b.brandColor : '#ef8a5d';
+  const accent = (b.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(b.brandColor)) ? b.brandColor : '#8b5cf6';
   const brandName = b.brandName || project.name;
   const logo = b.logoUrl ? `<img src="${esc(b.logoUrl)}" alt="" style="height:22px;width:auto;border-radius:4px">` : `<span style="color:var(--accent)">▶</span>`;
   const watermark = b.hidePoweredBy ? '' : `<a href="https://theroleroom.com" target="_blank" style="margin-left:auto;font-size:11px;color:var(--soft);text-decoration:none;opacity:.8">Powered by Product Demo Studio</a>`;
@@ -658,7 +658,7 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
   .screen iframe, .screen img { position:absolute; inset:0; width:100%; height:100%; border:0; object-fit:cover; object-position:top; }
   .livenote { position:absolute; left:0; right:0; bottom:0; background:rgba(29,27,25,.85); color:#fff; font-size:11px; padding:5px 10px; text-align:center; }
   .hot { position:absolute; border:2px solid var(--accent); border-radius:10px; box-shadow:0 0 0 9999px rgba(0,0,0,.30); cursor:pointer; animation:pulse 1.6s infinite; }
-  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 0 rgba(239,138,93,.5);} 50%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 10px rgba(239,138,93,0);} }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 0 rgba(139,92,246,.5);} 50%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 10px rgba(139,92,246,0);} }
   .tip { position:absolute; max-width:260px; background:#fff; color:var(--ink); border-radius:10px; padding:11px 13px; box-shadow:0 8px 24px rgba(0,0,0,.25); font-size:13px; z-index:5; }
   .tip b { display:block; color:var(--accent); font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
   footer { display:flex; align-items:center; gap:14px; padding:14px 18px; background:#fff; border-top:1px solid var(--line); }
@@ -747,7 +747,7 @@ export function renderThumbnail(project: DemoProject, format: DemoProject['forma
 
   // Bakgrunn — diagonal gradient.
   const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, '#2f2a26'); g.addColorStop(1, '#ef8a5d');
+  g.addColorStop(0, '#241d42'); g.addColorStop(1, '#8b5cf6');
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
 
   const pad = Math.round(w * 0.07);

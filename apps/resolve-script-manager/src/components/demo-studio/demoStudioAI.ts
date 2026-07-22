@@ -1271,7 +1271,7 @@ export async function generateInfographic(params: {
   width?: number;
   height?: number;
 }): Promise<string> {
-  const { kind, context, title, brandColor = '#ef8a5d', logoUrl, width = 1080, height = 1350 } = params;
+  const { kind, context, title, brandColor = '#8b5cf6', logoUrl, width = 1080, height = 1350 } = params;
   const layoutHint: Record<InfographicKind, string> = {
     overview: 'Tittel øverst, 3–5 nøkkelpunkter som kort med ikon-aktige former, ett fremhevet bevis-tall stort.',
     features: 'Rutenett av funksjons-kort (2 kolonner): hver med kort tittel + hva den løser.',

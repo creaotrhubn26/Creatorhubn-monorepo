@@ -230,10 +230,15 @@ function CastingStandaloneAppContent() {
       return;
     }
 
-    syncSiteSeo({
-      hostname: window.location.hostname,
-      pathname: window.location.pathname,
-    });
+    // Leadgrid-dedikert host: siteSeo kjenner kun Role Room/CreatorHub og
+    // ville satt «CreatorHub Norge | …»-tittelen oppå Leadgrid-sidenes egen
+    // SEO (denne foreldre-effekten kjører ETTER sidenes effekter).
+    if (!isLeadgridDedicatedHost(window.location.hostname)) {
+      syncSiteSeo({
+        hostname: window.location.hostname,
+        pathname: window.location.pathname,
+      });
+    }
 
     trackMarketingPageView(window.location.pathname);
   }, [isEducationPath, competitorKey, studentPageKey, isPressKitPath]);
@@ -252,6 +257,9 @@ function CastingStandaloneAppContent() {
     if (!leadgridHost) return p;
     if (p === '/' || p === '') return '/leadgrid';
     if (p.startsWith('/leadgrid')) return p;
+    // Vanlige aliaser pa ren host -> kjente sider.
+    if (p === '/importer' || p === '/importer/') return '/leadgrid/import';
+    if (p === '/demo' || p === '/demo/') return '/leadgrid';
     return `/leadgrid${p}`;
   })();
 
@@ -360,6 +368,15 @@ function CastingStandaloneAppContent() {
   if (leadgridPath === '/leadgrid/utviklere/soknad' ||
       leadgridPath === '/leadgrid/utviklere/soknad/') {
     return <LeadgridDeveloperApplicationPage />;
+  }
+
+  // Leadgrid-dedikert host: ukjente stier skal ALDRI falle gjennom til
+  // Role Room-innholdet (leadgrid.no/demo viste film-landingen). Kjente
+  // unntak (/c/-portal, /superadmin, consent) er matchet over; auth-stier
+  // slippes gjennom som sikkerhetsventil.
+  if (leadgridHost && !localeCtx.pathname.startsWith('/auth')
+      && !localeCtx.pathname.startsWith('/oauth')) {
+    return <LeadgridLanding />;
   }
 
   if (competitorKey) {
@@ -897,6 +914,25 @@ export default function CastingStandaloneApp() {
       return;
     }
 
+    // Leadgrid-dedikert host: Leadgrid eier tittel + favicon. Sidene
+    // setter egen tittel - denne effekten skal ikke overskrive den med
+    // Role Room-branding (jf. fanetittel-buggen pa leadgrid.no).
+    // Statisk index.html-tittel ("CreatorHub Norge | ...") regnes ogsaa som
+    // ikke-satt: sider uten egen SEO (f.eks. /connectors) ble staaende
+    // med CreatorHub-tittelen.
+    if (isLeadgridDedicatedHost(window.location.hostname)) {
+      if (
+        !document.title
+        || document.title === ROLE_ROOM_DOCUMENT_TITLE
+        || document.title.startsWith('CreatorHub Norge')
+      ) {
+        document.title = 'Leadgrid \u2014 Kartbasert CRM for feltsalg';
+      }
+      upsertHeadLink('icon', '/leadgrid/app/kart.png');
+      upsertHeadLink('shortcut icon', '/leadgrid/app/kart.png');
+      upsertHeadLink('apple-touch-icon', '/leadgrid/app/kart.png');
+      return;
+    }
     document.title = ROLE_ROOM_DOCUMENT_TITLE;
     upsertHeadLink('icon', ROLE_ROOM_FAVICON_URL);
     upsertHeadLink('shortcut icon', ROLE_ROOM_FAVICON_URL);

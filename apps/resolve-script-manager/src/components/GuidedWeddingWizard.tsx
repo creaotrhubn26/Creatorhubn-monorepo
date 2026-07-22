@@ -657,7 +657,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
               <button onClick={onClose} disabled={backupBusy}>Avbryt</button>
-              <button className="primary" disabled={cameras.length === 0 || sourceScanBusy || backupBusy}
+              <button className="primary" disabled={sources.length === 0 || sourceScanBusy || backupBusy}
                       onClick={async () => {
                 recordLearning(`Steg 1: ${cameras.length} kameraer, ${sources.length} kilder, backup=${wantBackup}`);
 
@@ -713,7 +713,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                   setBackupBusy(false);
                 }
 
-                if (cameras.length > 0 && sources[0]) setFolder(sources[0].path);
+                // Tillat å gå videre så lenge minst én kilde-mappe er lagt til,
+                // selv om ingen kamera-metadata ble oppdaget i skanningen.
+                if (sources[0]) setFolder(sources[0].path);
                 setStep("material");
               }}>
                 {wantBackup && backupTarget && !backupResult
@@ -1144,7 +1146,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
 - reason (1 setning på norsk hvorfor)
 
 KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
-                    model: "claude-opus-4-7",
+                    model: "claude-opus-4-8",
                     maxTokens: 800,
                     tools: [{
                       name: "suggest_songs",
@@ -1306,7 +1308,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                                 gap: 12 }}>
                   {faceClusters.slice(0, 18).map((c) => {
                     const thumbUrl = c.thumbnail.startsWith("/")
-                      ? `http://asset.localhost${c.thumbnail}` : c.thumbnail;
+                      ? convertFileSrc(c.thumbnail) : c.thumbnail;
                     return (
                       <div key={c.id} style={{ background: "rgba(0,0,0,0.3)",
                                                  padding: 8, borderRadius: 6 }}>
@@ -1446,7 +1448,10 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                       onClick={async () => {
                 if (!scanResult) return;
                 const firstClip = (scanResult as unknown as { clips?: Array<{ path: string }> }).clips?.[0]?.path;
-                if (!firstClip) return;
+                if (!firstClip) {
+                  setLiveError("Fant ingen klipp i skanningen — legg til kilde-mapper med video før du starter.");
+                  return;
+                }
                 setLiveRunning(true);
                 setLiveError(null);
                 setLivePct(0);

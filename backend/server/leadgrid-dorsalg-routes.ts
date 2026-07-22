@@ -249,6 +249,183 @@ export function registerLeadgridDorsalgRoutes(deps: {
     }
   });
 
+  // ─── Dagsmål + budsjett (2026-07-19): leder styrer per team/org ──────
+
+  // Lat schema-guard: mål-tabellen kan mangle før mig 0402 er kjørt på
+  // en gitt DB (Render vs Neon rekkefølge) — CREATE IF NOT EXISTS én gang
+  // så endepunktene aldri 500-er på «relation does not exist».
+  let maalTableEnsured = false;
+  async function ensureMaalTable(): Promise<void> {
+    if (maalTableEnsured) return;
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS leadgrid_dorsalg_maal (
+         org_id              VARCHAR(255) NOT NULL,
+         team_id             TEXT NOT NULL DEFAULT '',
+         dagsmal_per_selger  INTEGER NOT NULL DEFAULT 3,
+         budsjett_per_selger INTEGER,
+         updated_by          VARCHAR(255),
+         updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         PRIMARY KEY (org_id, team_id)
+       )`,
+    );
+    maalTableEnsured = true;
+  }
+
+  /// Finn team-id-en en selger tilhører (member_user_ids JSONB-array
+  /// inneholder uid), eller null. Første treff vinner.
+  async function teamForUser(orgId: string, userId: string): Promise<string | null> {
+    try {
+      const r = await pool.query(
+        `SELECT id FROM leadgrid_sales_teams
+          WHERE organization_id = $1
+            AND (member_user_ids @> to_jsonb($2::text) OR leader_user_id = $2)
+          ORDER BY updated_at DESC
+          LIMIT 1`,
+        [orgId, userId],
+      );
+      return r.rows[0]?.id ? String(r.rows[0].id) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /// Resolve en selgers dagsmål + budsjett: team-innstilling vinner over
+  /// org-default; ingen rader → default 3 salg, ingen kr-budsjett.
+  async function resolveMaal(
+    orgId: string,
+    userId: string,
+  ): Promise<{ dagsmal: number; budsjett: number | null; kilde: "team" | "org" | "default" }> {
+    await ensureMaalTable();
+    const teamId = await teamForUser(orgId, userId);
+    const rows = await pool.query(
+      `SELECT team_id, dagsmal_per_selger, budsjett_per_selger
+         FROM leadgrid_dorsalg_maal
+        WHERE org_id = $1 AND team_id = ANY($2::text[])`,
+      [orgId, [teamId ?? "", ""]],
+    );
+    const byTeam = new Map<string, { dagsmal: number; budsjett: number | null }>(
+      rows.rows.map((r) => [
+        String(r.team_id),
+        { dagsmal: Number(r.dagsmal_per_selger), budsjett: r.budsjett_per_selger == null ? null : Number(r.budsjett_per_selger) },
+      ]),
+    );
+    if (teamId && byTeam.has(teamId)) {
+      const m = byTeam.get(teamId)!;
+      return { dagsmal: m.dagsmal, budsjett: m.budsjett, kilde: "team" };
+    }
+    if (byTeam.has("")) {
+      const m = byTeam.get("")!;
+      return { dagsmal: m.dagsmal, budsjett: m.budsjett, kilde: "org" };
+    }
+    return { dagsmal: 3, budsjett: null, kilde: "default" };
+  }
+
+  // GET /api/leadgrid/dorsalg/maal — callerens resolverte dagsmål/budsjett
+  // + (for ledere) org-default + per-team-innstillinger for redigering.
+  app.get("/api/leadgrid/dorsalg/maal", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const mitt = await resolveMaal(orgId, session.userId);
+      const leder = await isLeader(orgId, session.userId);
+      if (!leder) {
+        return res.json({
+          canManage: false,
+          mittDagsmal: mitt.dagsmal,
+          mittBudsjett: mitt.budsjett,
+        });
+      }
+      // Leder: alle team + deres mål (join så team uten rad viser default).
+      const teams = await pool.query(
+        `SELECT t.id, t.name,
+                m.dagsmal_per_selger, m.budsjett_per_selger
+           FROM leadgrid_sales_teams t
+           LEFT JOIN leadgrid_dorsalg_maal m
+             ON m.org_id = t.organization_id AND m.team_id = t.id
+          WHERE t.organization_id = $1
+          ORDER BY t.name`,
+        [orgId],
+      );
+      const orgRow = await pool.query(
+        `SELECT dagsmal_per_selger, budsjett_per_selger
+           FROM leadgrid_dorsalg_maal WHERE org_id = $1 AND team_id = ''`,
+        [orgId],
+      );
+      const o = orgRow.rows[0];
+      return res.json({
+        canManage: true,
+        mittDagsmal: mitt.dagsmal,
+        mittBudsjett: mitt.budsjett,
+        orgDefault: {
+          dagsmal: o ? Number(o.dagsmal_per_selger) : 3,
+          budsjett: o?.budsjett_per_selger == null ? null : Number(o.budsjett_per_selger),
+          erSatt: !!o,
+        },
+        perTeam: teams.rows.map((r) => ({
+          teamId: String(r.id),
+          navn: r.name as string,
+          dagsmal: r.dagsmal_per_selger == null ? null : Number(r.dagsmal_per_selger),
+          budsjett: r.budsjett_per_selger == null ? null : Number(r.budsjett_per_selger),
+        })),
+      });
+    } catch (err) {
+      console.error("[leadgrid-dorsalg] maal-get feilet:", (err as Error).message);
+      return res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  // PUT /api/leadgrid/dorsalg/maal — leder setter org-default (teamId
+  // tom/utelatt) eller et teams mål. Upsert på (org_id, team_id).
+  app.put("/api/leadgrid/dorsalg/maal", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!(await isLeader(orgId, session.userId))) {
+        return res.status(403).json({ error: "ikke_leder" });
+      }
+      await ensureMaalTable();
+      const b = req.body ?? {};
+      const teamId = typeof b.teamId === "string" ? b.teamId.trim() : "";
+      // team_id må tilhøre org-en (IDOR-vern) — tom = org-default.
+      if (teamId) {
+        const owns = await pool.query(
+          `SELECT 1 FROM leadgrid_sales_teams
+            WHERE organization_id = $1 AND id = $2`,
+          [orgId, teamId],
+        );
+        if (owns.rowCount === 0) return res.status(400).json({ error: "ukjent_team" });
+      }
+      const dagsmalRaw = Number(b.dagsmalPerSelger);
+      if (!Number.isFinite(dagsmalRaw) || dagsmalRaw < 0 || dagsmalRaw > 100) {
+        return res.status(400).json({ error: "ugyldig_dagsmal" });
+      }
+      const dagsmal = Math.round(dagsmalRaw);
+      let budsjett: number | null = null;
+      if (b.budsjettPerSelger != null && b.budsjettPerSelger !== "") {
+        const v = Number(b.budsjettPerSelger);
+        if (!Number.isFinite(v) || v < 0) return res.status(400).json({ error: "ugyldig_budsjett" });
+        budsjett = Math.round(v);
+      }
+      await pool.query(
+        `INSERT INTO leadgrid_dorsalg_maal
+           (org_id, team_id, dagsmal_per_selger, budsjett_per_selger, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (org_id, team_id) DO UPDATE
+           SET dagsmal_per_selger = EXCLUDED.dagsmal_per_selger,
+               budsjett_per_selger = EXCLUDED.budsjett_per_selger,
+               updated_by = EXCLUDED.updated_by,
+               updated_at = NOW()`,
+        [orgId, teamId, dagsmal, budsjett, session.userId],
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[leadgrid-dorsalg] maal-put feilet:", (err as Error).message);
+      return res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   // GET /api/leadgrid/dorsalg/status — alle statuser for callerens org.
   app.get("/api/leadgrid/dorsalg/status", async (req, res) => {
     const session = requireUserSession(req, res);
@@ -701,6 +878,9 @@ export function registerLeadgridDorsalgRoutes(deps: {
       const verdiBySelger = new Map<string, number>(
         selgerVerdi.rows.map((r) => [String(r.set_by), Number(r.verdi ?? 0)]),
       );
+      // Callerens resolverte dagsmål/budsjett (team-først) — driver
+      // milepæl-feiringen på kartet og progresjonen i «Min profil».
+      const mittMaal = await resolveMaal(orgId, session.userId);
       const t = totals.rows[0] ?? {};
       const m = meg.rows[0] ?? {};
       return res.json({
@@ -711,6 +891,8 @@ export function registerLeadgridDorsalgRoutes(deps: {
         iDag: t.i_dag ?? 0,
         vunnetIDag: t.vunnet_i_dag ?? 0,
         denneUka: t.denne_uka ?? 0,
+        dagsmal: mittMaal.dagsmal,
+        budsjett: mittMaal.budsjett,
         meg: {
           vunnet: m.vunnet ?? 0,
           avslatt: m.avslatt ?? 0,

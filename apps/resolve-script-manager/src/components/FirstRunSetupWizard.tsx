@@ -126,7 +126,15 @@ export function FirstRunSetupWizard({ onClose }: Props) {
       updateStep(stepKey, "running", `Installerer via ${manager}…`);
       setError(null);
       try {
-        await executeScript("install_dependency", { manager, packages }, false);
+        const summary = await executeScript("install_dependency", { manager, packages }, false);
+        if (!summary.succeeded) {
+          const errEvent = summary.events.find((e) => e.type === "error");
+          const detail = (errEvent?.message)
+            || `exit-kode ${summary.exit_code ?? "ukjent"}`;
+          updateStep(stepKey, "failed", detail);
+          setError("Installering feilet: " + detail);
+          return;
+        }
         updateStep(stepKey, "ok", `${packages.join(", ")} installert`);
         // Re-check then advance
         const r = await runCheck();
@@ -174,10 +182,11 @@ export function FirstRunSetupWizard({ onClose }: Props) {
       localStorage.setItem("trrpa.settings", JSON.stringify(settings));
       await updateAppSettings(settingsToEnvVars(settings));
       updateStep("anthropicKey", "ok", "API-nøkkel lagret");
+      // Gå kun videre når lagringen faktisk lyktes.
+      setStage("resolve");
     } catch (e) {
       setError("Kunne ikke lagre: " + (e instanceof Error ? e.message : String(e)));
     }
-    setStage("resolve");
   }, [anthropicKey, updateStep]);
 
   const finishWizard = useCallback(() => {

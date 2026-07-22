@@ -182,7 +182,7 @@ const FAQS: { q: string; a: string }[] = [
   { q: 'Hva er en AI-kall?', a: 'Hver Claude-prompt, Whisper-transkripsjon eller AI-research teller som én kall. Solo Free har 100/mnd, Pro har 1000, Agency har 10 000.' },
   { q: 'Kan jeg bytte plan?', a: 'Ja, når som helst. Du betaler bare differansen for resten av perioden.' },
   { q: 'Hva med GDPR / data?', a: 'All data lagres i EU (Neon/AWS Frankfurt). Vi er GDPR-compliant og kan eksportere/slette alt på 24t.' },
-  { q: 'Hvor mye sparer jeg vs HubSpot?', a: 'Sammenlignet med HubSpot Sales Hub Professional (1 850 kr/mnd) sparer du 1 051 kr/mnd på Solo Pro — og du får Momentum Engine, Voice Memo og native iPad-app som de ikke har.' },
+  { q: 'Hvor mye sparer jeg vs HubSpot?', a: 'Sammenlignet med HubSpot Sales Hub Professional (1 850 kr/mnd) sparer du 1 051 kr/mnd på Solo Pro. I tillegg får du Momentum Engine, Voice Memo og native iPad-app som de ikke har.' },
   { q: "Hva betyr 'Coming Q3 2026' på Salesforce/HubSpot-connectors?", a: 'Vi har bygget Public API v1 (OpenAPI 3.1) og forberedt arkitekturen. Connectors lanseres i juli-september 2026.' },
 ];
 
@@ -219,13 +219,13 @@ export default function LeadgridPricingPage() {
   const [calculatorLeads, setCalculatorLeads] = useState(50);
 
   useEffect(() => {
-    trackPageView('/leadgrid/pricing', 'Leadgrid Priser — Solo Free, Solo Pro 799, Agency 2999');
+    trackPageView('/leadgrid/pricing', 'Leadgrid Priser: Solo Free, Solo Pro 799, Agency 2999');
     trackEvent('leadgrid_pricing_view', {
       referrer: document.referrer || 'direct',
       utm_source: new URLSearchParams(window.location.search).get('utm_source') ?? null,
       utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign') ?? null,
     });
-    document.title = 'Leadgrid Priser — Solo Free, Solo Pro 799, Agency 2999 NOK/mnd';
+    document.title = 'Leadgrid Priser: Solo Free, Solo Pro 799, Agency 2999 NOK/mnd';
     const desc = document.querySelector('meta[name="description"]');
     const content = 'Velg ditt nivå: Solo Free (gratis), Solo Pro 799 kr/mnd eller Agency 2999 kr/mnd. Native iPad-app, Momentum Engine, Voice Memo og AI inkludert.';
     if (desc) desc.setAttribute('content', content);
@@ -235,12 +235,12 @@ export default function LeadgridPricingPage() {
       m.content = content;
       document.head.appendChild(m);
     }
-    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://theroleroom.com/leadgrid/pricing' });
-    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid Priser — fra 799 NOK/mnd' });
+    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://leadgrid.no/priser' });
+    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid Priser: fra 799 NOK/mnd' });
     setMetaTagByAttr('meta', 'property', 'og:description', { content });
     setMetaTagByAttr('meta', 'property', 'og:type', { content: 'website' });
-    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://theroleroom.com/leadgrid/pricing' });
-    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://theroleroom.com/leadgrid/og-image.png' });
+    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://leadgrid.no/priser' });
+    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://leadgrid.no/leadgrid/og-image.png' });
 
     injectJsonLd('leadgrid-pricing-offers', {
       '@context': 'https://schema.org',
@@ -772,7 +772,7 @@ function CalculatorResult({ leads, yearly }: { leads: number; yearly: boolean })
           {recommended.name}
         </Typography>
         <Typography sx={{ color: PALETTE.text, fontSize: 18 }}>
-          — {price === 0 ? 'Gratis' : `${price} kr/mnd`}
+          {price === 0 ? 'Gratis' : `${price} kr/mnd`}
         </Typography>
       </Stack>
       <Typography variant="caption" sx={{ color: PALETTE.textFaint, display: 'block', mt: 1 }}>

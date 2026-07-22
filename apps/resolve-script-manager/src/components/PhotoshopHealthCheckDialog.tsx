@@ -154,11 +154,19 @@ const CHECKS: CheckDef[] = [
     description: "Backend kan parse .psd-filer uten Photoshop",
     run: async () => {
       const home = (await invoke<string>("get_app_data_dir").catch(() => "/tmp")) || "/tmp";
-      const r = await indexDirectory(home, 1).catch(() => []);
-      return {
-        state: "ok",
-        message: `Indekserte ${r.length} PSD i app data dir (test-skanning)`,
-      };
+      try {
+        const r = await indexDirectory(home, 1);
+        return {
+          state: "ok",
+          message: `Indekserte ${r.length} PSD i app data dir (test-skanning)`,
+        };
+      } catch (err) {
+        return {
+          state: "fail",
+          message: `PSD-indekserer feilet: ${(err as Error).message ?? String(err)}`,
+          fix: "Sjekk at Rust-backend er bygget og at .psd-parseren er tilgjengelig",
+        };
+      }
     },
   },
   {

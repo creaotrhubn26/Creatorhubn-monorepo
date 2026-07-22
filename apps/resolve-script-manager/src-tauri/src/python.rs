@@ -139,6 +139,11 @@ pub async fn spawn_python(
         _ => PathBuf::from("python3"),
     };
     let mut cmd = Command::new(&python_bin);
+    // Hindre at Python skriver .pyc-bytekode inn i den signerte app-bundelen.
+    // `import bridge` o.l. cacher ellers til Resources/_up_/python/__pycache__,
+    // som legger en fil til den forseglede bundelen → kode-signaturen brytes →
+    // Gatekeeper melder «damaged». Bytekode-cache gir null gevinst her.
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
     cmd.arg(&script_path);
     // Inject user-configured env vars (ANTHROPIC_API_KEY, HF_TOKEN, RESOLVE_*)
     if let Some(settings) = app.try_state::<AppSettings>() {

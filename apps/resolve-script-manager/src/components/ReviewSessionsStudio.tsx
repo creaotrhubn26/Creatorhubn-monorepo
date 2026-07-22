@@ -18,7 +18,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import GroupsIcon from "@mui/icons-material/Groups";
 import CheckIcon from "@mui/icons-material/Check";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { reviewService } from "../services/reviewService";
 import {
   DEFAULT_VISIBILITY,
@@ -142,7 +142,8 @@ export function ReviewSessionsStudio({ open, onClose, projectId, agentKind }: Pr
   const handleOpenInBrowser = async (session: ReviewSession) => {
     const url = reviewService.publicUrlFor(session.token);
     try {
-      await openPath(url);
+      // http(s)-lenke → openUrl (openPath er for lokale filstier).
+      await openUrl(url);
     } catch (e) {
       setError(`Kunne ikke åpne: ${(e as Error).message}`);
     }

@@ -32,7 +32,7 @@ import type {
 } from "./role-room-ads-sync.js";
 import { externalFetch } from "./external-api.js";
 
-const GOOGLE_ADS_API_VERSION = "v18";
+const GOOGLE_ADS_API_VERSION = "v23"; // v17-v19 pensjonert (404) per 19.07.2026
 const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 
 export interface GoogleAdsInsightsRow {

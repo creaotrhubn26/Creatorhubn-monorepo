@@ -249,13 +249,16 @@ describe('Sprint A.7 — POST /api/sfx/library/reload', () => {
     expect(res.body.sampleCount).toBe(3);
   });
 
-  it('returnerer 500 hvis library-fila er korrupt', async () => {
+  it('korrupt library-fil gir graceful fallback: 200 med tomt bibliotek', async () => {
+    // Endret med vilje i _sfx-clap: uparsbar JSON behandles som tomt
+    // bibliotek (null-state) i stedet for å velte reload — 500 er
+    // forbeholdt gyldig JSON med ugyldig skjema.
     fs.writeFileSync(tmpFile, '{ ikke gyldig json');
     const fakeEmbedder: TextEmbedder = async () => makeUnitVector(0);
     const app = buildApp({ embedder: fakeEmbedder, libraryPath: tmpFile });
     const res = await request(app).post('/api/sfx/library/reload');
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe('library_reload_failed');
+    expect(res.status).toBe(200);
+    expect(res.body.sampleCount).toBe(0);
   });
 });
 

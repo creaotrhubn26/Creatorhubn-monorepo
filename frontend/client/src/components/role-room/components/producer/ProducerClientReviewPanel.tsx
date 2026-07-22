@@ -13,6 +13,8 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -114,6 +116,7 @@ import {
   normalizeProducerProjectPlanning,
 } from '../../utils/producerProjectPlanning';
 import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { CollapsibleSection } from '../CollapsibleSection';
 
 interface ProducerClientReviewPanelProps {
   projectId: string;
@@ -480,7 +483,7 @@ function buildReviewClientInviteEmailSubject(
   }
   const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
   if (contentLogicMomentKind) {
-    return `${projectName} · Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
+    return `${projectName} · Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
   }
   return `${projectName} · Klientreview · ${review.title}`;
 }
@@ -521,6 +524,11 @@ export default function ProducerClientReviewPanel({
   // Klient-samtykker: hvilke plattformer klienten har godkjent tilgang til.
   // Endrer seg sjelden — henter ved mount + sakte poll (30 sek) så et nytt
   // samtykke dukker opp uten reload.
+  // Godkjenning-visning: skiller «Grunnlag & blokkeringer» (status,
+  // prosjektgrunnlag, åpne blokkeringer, retning) fra «Reviews &
+  // beslutninger» (mobilreview + selve review-lista) så alt ikke ligger i
+  // én lang scroll. Begge holdes montert (display-toggle).
+  const [reviewView, setReviewView] = useState<'grunnlag' | 'reviews'>('grunnlag');
   const [clientConsents, setClientConsents] = useState<ProducerClientConsent[]>([]);
   useEffect(() => {
     if (!projectId) return;
@@ -1692,7 +1700,7 @@ export default function ProducerClientReviewPanel({
     const eyebrow = accountAccessPlatforms.length > 0
       ? `[Kontotilgang · ${accountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' / ')}]`
       : contentLogicMomentKind
-      ? `[Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
+      ? `[Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
       : `[${getProducerReviewTypeLabel(review.review_type)}]`;
     const actionLabel = getReviewClientInviteActionLabel(contentLogicMomentKind, review);
     return [
@@ -2398,6 +2406,33 @@ export default function ProducerClientReviewPanel({
         </Stack>
       </Stack>
 
+      {/* Godkjenning-faner: grunnlag/blokkeringer vs. selve reviews — jf.
+          Daniels ønske om at Godkjenning ikke skal være én lang scroll. */}
+      <Tabs
+        value={reviewView}
+        onChange={(_event, next) => setReviewView(next)}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        sx={{
+          borderBottom: '1px solid rgba(148,163,184,0.18)',
+          minHeight: 44,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 800,
+            fontSize: '0.9rem',
+            color: 'rgba(226,232,240,0.78)',
+            minHeight: 44,
+          },
+          '& .Mui-selected': { color: '#f8fafc' },
+          '& .MuiTabs-indicator': { backgroundColor: '#c084fc', height: 3 },
+        }}
+      >
+        <Tab value="grunnlag" label="Grunnlag & blokkeringer" />
+        <Tab value="reviews" label="Reviews & beslutninger" />
+      </Tabs>
+
+      <Box sx={{ display: reviewView === 'grunnlag' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
+
       <Box
         sx={{
           p: 1.25,
@@ -2465,34 +2500,20 @@ export default function ProducerClientReviewPanel({
         )}
       </Box>
 
-      <Box
-        sx={{
-          p: 1.25,
-          borderRadius: 1.5,
-          border: '1px solid rgba(148,163,184,0.2)',
-          background: 'rgba(15,23,42,0.52)',
-        }}
+      <CollapsibleSection
+        title="Åpne blokkeringer"
+        summary="Dette stopper videre arbeid akkurat nå"
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between">
-          <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Åpne blokkeringer
-            </Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.84rem', mt: 0.35 }}>
-              Dette stopper videre arbeid akkurat nå.
-            </Typography>
-          </Box>
-          {onOpenMedia ? (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
-              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' }, minHeight: 44 }}
-            >
-              Åpne grunnlag
-            </Button>
-          ) : null}
-        </Stack>
+        {onOpenMedia ? (
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
+            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, mb: 1 }}
+          >
+            Åpne grunnlag
+          </Button>
+        ) : null}
         {activeClientGroundingReviews.length > 0 ? (
           <Stack spacing={0.9} sx={{ mt: 1.1 }}>
             {activeClientGroundingReviews.map((review) => (
@@ -2583,21 +2604,14 @@ export default function ProducerClientReviewPanel({
             ))}
           </Stack>
         ) : null}
-      </Box>
+      </CollapsibleSection>
 
       {strategySnapshot.length > 0 || clientMoments.length > 0 ? (
-        <Box
-          sx={{
-            p: 1.25,
-            borderRadius: 1.5,
-            border: '1px solid rgba(148,163,184,0.2)',
-            background: 'rgba(15,23,42,0.52)',
-          }}
+        <CollapsibleSection
+          title="Retning og neste klientpunkter"
+          summary="Strategi-signaler og neste klientpunkter"
         >
           <Stack spacing={1}>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Retning og neste klientpunkter
-            </Typography>
             {strategySnapshot.length > 0 ? (
               <Stack direction="row" spacing={0.75} flexWrap="wrap">
                 {strategySnapshot.map((item) => (
@@ -2653,7 +2667,7 @@ export default function ProducerClientReviewPanel({
                           <Stack direction="row" spacing={0.65} flexWrap="wrap" sx={{ mb: 0.45 }}>
                             <Chip
                               size="small"
-                              label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                              label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                               sx={{
                                 bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
                                 color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
@@ -2735,7 +2749,7 @@ export default function ProducerClientReviewPanel({
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                             >
                               {isContentLogicMoment
-                                ? 'Åpne Content Logic'
+                                ? 'Åpne Innholdsplan'
                                 : isAccountAccessMoment
                                   ? 'Åpne kontotilgang'
                                   : 'Åpne brief og materiale'}
@@ -2763,7 +2777,7 @@ export default function ProducerClientReviewPanel({
               </Typography>
             )}
           </Stack>
-        </Box>
+        </CollapsibleSection>
       ) : null}
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -2926,6 +2940,9 @@ export default function ProducerClientReviewPanel({
         </Stack>
       )}
 
+      </Box>
+
+      <Box sx={{ display: reviewView === 'reviews' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
       <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
 
       <Stack spacing={1.2}>
@@ -3048,7 +3065,7 @@ export default function ProducerClientReviewPanel({
               ? getAgreementSignatureTone(linkedAgreement.google_signature)
               : null;
             const reviewMetaLine = [
-              isContentLogicReview ? 'Content Logic' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
+              isContentLogicReview ? 'Innholdsplan' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
               isAccountAccessReview ? `Plattform: ${linkedAccountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' · ')}` : '',
               isContentLogicReview ? `Fokus: ${contentLogicMomentLabel}` : entityLabel ? `Mål: ${entityLabel}` : '',
               review.due_at ? `Frist: ${new Date(review.due_at).toLocaleString('nb-NO')}` : '',
@@ -3106,7 +3123,7 @@ export default function ProducerClientReviewPanel({
                       <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
                         <Chip
                           size="small"
-                          label="Content Logic"
+                          label="Innholdsplan"
                           sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
                         />
                         <Chip
@@ -3375,7 +3392,7 @@ export default function ProducerClientReviewPanel({
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
                           {isContentLogicReview
-                            ? 'Åpne Content Logic'
+                            ? 'Åpne Innholdsplan'
                             : isAccountAccessReview
                               ? 'Åpne kontotilgang'
                             : isDeliveryManagedReview
@@ -3564,6 +3581,7 @@ export default function ProducerClientReviewPanel({
           </Box>
         )}
       </Stack>
+      </Box>
     </Box>
   );
 }
