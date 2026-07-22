@@ -60,6 +60,7 @@ import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
 import type { BankFeedProvider } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
+import { reconciliationStatus } from '../bank/reconciliation.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
@@ -2457,6 +2458,20 @@ export function createApiServer(deps: ApiDeps): express.Express {
       next(err);
     }
   });
+
+  // Bankavstemmings-status — «er du ferdig?». Ren lesing.
+  app.get(
+    '/api/organizations/:orgId/bank/reconciliation-status',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.json(toJson(await reconciliationStatus(deps.db, { organizationId: req.params.orgId! })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   app.get(
     '/api/organizations/:orgId/bank/transactions',

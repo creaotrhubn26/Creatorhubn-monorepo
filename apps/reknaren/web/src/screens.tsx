@@ -846,9 +846,22 @@ export function BankScreen({ orgId }: { orgId: string }) {
     name: string;
     bic?: string;
   }
+  interface Recon {
+    accounts: {
+      bankAccountId: string;
+      name: string;
+      total: number;
+      matched: number;
+      unmatched: number;
+      pendingSuggestions: number;
+      done: boolean;
+    }[];
+    allDone: boolean;
+  }
   const accounts = useLoad(() => api<Account[]>('GET', `/api/organizations/${orgId}/bank-accounts`), [orgId]);
   const txs = useLoad(() => api<BankTx[]>('GET', `/api/organizations/${orgId}/bank/transactions`), [orgId]);
   const matches = useLoad(() => api<Match[]>('GET', `/api/organizations/${orgId}/bank/matches`), [orgId]);
+  const recon = useLoad(() => api<Recon>('GET', `/api/organizations/${orgId}/bank/reconciliation-status`), [orgId]);
   // Bank-feed: last institusjoner, men fang 503 (feed ikke konfigurert) ærlig.
   const feed = useLoad(async () => {
     try {
@@ -944,6 +957,7 @@ export function BankScreen({ orgId }: { orgId: string }) {
       );
       txs.reload();
       matches.reload();
+      recon.reload();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -967,6 +981,7 @@ export function BankScreen({ orgId }: { orgId: string }) {
       );
       txs.reload();
       matches.reload();
+      recon.reload();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -991,6 +1006,7 @@ export function BankScreen({ orgId }: { orgId: string }) {
       }
       txs.reload();
       matches.reload();
+      recon.reload();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -1008,6 +1024,47 @@ export function BankScreen({ orgId }: { orgId: string }) {
         </p>
       </div>
       {error && <div className="error">{error}</div>}
+
+      {recon.data &&
+        (() => {
+          const st = recon.data.accounts.find((a) => a.bankAccountId === bankAccountId);
+          if (!st || st.total === 0) return null;
+          const pct = st.total > 0 ? Math.round((st.matched / st.total) * 100) : 0;
+          const remaining = st.unmatched;
+          return (
+            <div className={`panel threshold-panel ${st.done ? 'ok' : remaining > 0 ? 'warn' : 'accent'}`}>
+              <div className="threshold-head">
+                <h2>Bankavstemming</h2>
+                <span className={`badge ${st.done ? 'ok' : 'accent'}`}>
+                  {st.done ? 'Ferdig ✓' : `${remaining + st.pendingSuggestions} igjen`}
+                </span>
+              </div>
+              {st.done ? (
+                <p className="subtitle">
+                  Alt som har skjedd i banken er ført i regnskapet. Perioden er avstemt — du er ferdig! 🎉
+                </p>
+              ) : (
+                <>
+                  <div className="threshold-bar">
+                    <div className={`threshold-fill ${remaining > 0 ? 'warn' : 'ok'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="threshold-nums">
+                    <strong>
+                      {st.matched} av {st.total}
+                    </strong>{' '}
+                    transaksjoner avstemt · {pct}%
+                  </div>
+                  <p className="subtitle">
+                    {remaining > 0 && `${remaining} transaksjon${remaining > 1 ? 'er' : ''} er ikke avstemt ennå. `}
+                    {st.pendingSuggestions > 0 &&
+                      `${st.pendingSuggestions} forslag venter på din godkjenning nedenfor. `}
+                    Når alt er koblet og bekreftet, sier vi ifra at du er ferdig.
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
       <div className="panel">
         <h2>Bankkontoer</h2>
