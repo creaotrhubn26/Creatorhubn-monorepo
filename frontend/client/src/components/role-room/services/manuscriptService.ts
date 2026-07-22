@@ -1860,7 +1860,14 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts?projectId=${encodeURIComponent(projectId)}`);
+        // Send Bearer-token som alle andre manuscript-kall (theroleroom.com
+        // autentiserer via Authorization-header, ikke cookie). Uten dette
+        // svarer requireUserSession 401 selv for innlogget produsent, og
+        // useProjectProductionEstimate feiler.
+        const response = await fetch(
+          `/api/casting/manuscripts?projectId=${encodeURIComponent(projectId)}`,
+          { headers: getAuthHeaders() },
+        );
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts');
