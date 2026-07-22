@@ -48,6 +48,7 @@ import {
 } from '../pipeline/pipeline.js';
 import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
+import type { BankFeedProvider } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
@@ -109,6 +110,8 @@ export interface ApiDeps {
   errorMonitor?: ErrorMonitor | undefined;
   /** Stripe-lesing (kun LES) for inntektssynk. Uten nøkkel er synk ærlig inaktiv. */
   stripe?: StripeReadPort | undefined;
+  /** Bank-feed (PSD2/open banking). Uten aggregator-legitimasjon er feed ærlig inaktiv. */
+  bankFeed?: BankFeedProvider | undefined;
   /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
   cronSecret?: string | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
@@ -734,6 +737,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       mvaSubmission: Boolean(deps.vatSubmission?.active),
       errorMonitoring: Boolean(deps.errorMonitor?.active),
       stripeSync: Boolean(deps.stripe?.hasApiKey),
+      bankFeed: Boolean(deps.bankFeed?.configured),
       gmail: false, // alltid sandbox i MVP
     };
     const status = dbUp ? 'ok' : 'down';
@@ -754,7 +758,17 @@ export function createApiServer(deps: ApiDeps): express.Express {
         active: false,
         note: 'Gmail kjører mot sandbox-adapter. Ekte OAuth-tilkobling krever Google Cloud-prosjekt og klienthemmeligheter (se docs/integration-status.md).',
       },
-      bank: { mode: 'manual_csv', active: true, note: 'Manuell CSV-import med deterministisk matching. Ingen PSD2-/open banking-tilkobling.' },
+      bank: deps.bankFeed?.configured
+        ? {
+            mode: 'psd2_gocardless',
+            active: true,
+            note: 'Automatisk bank-feed via GoCardless Bank Account Data (PSD2). Transaksjoner hentes og kjøres gjennom samme idempotente import + deterministiske matching som CSV. Manuell CSV-import er fortsatt tilgjengelig.',
+          }
+        : {
+            mode: 'manual_csv',
+            active: true,
+            note: 'Manuell CSV-import med deterministisk matching. Ingen PSD2-/open banking-tilkobling (sett REKNAREN_GOCARDLESS_SECRET_ID + _SECRET_KEY for automatisk feed).',
+          },
       ocr: deps.aiExtraction
         ? { mode: 'ai_claude', active: true, note: 'AI-bilagslesing (Claude vision) aktiv: foto/PDF → strukturerte felt. Sumvalidering + menneskelig godkjenning uendret; avvik går til kontrollkø.' }
         : deps.ocrStatus?.tesseract
@@ -1827,6 +1841,53 @@ export function createApiServer(deps: ApiDeps): express.Express {
           bankAccountId: req.params.bankAccountId!,
         });
         res.status(201).json(toJson({ ...result, suggestions }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Automatisk bank-feed (PSD2/open banking): hent transaksjoner fra aggregatoren
+  // og kjør dem gjennom samme idempotente import + matching som CSV. Ærlig 503 uten
+  // konfigurert feed (manuell CSV-import er da veien). `connectionId` = aggregatorens
+  // konto-ID (opprettet i samtykkeflyten).
+  app.post(
+    '/api/organizations/:orgId/bank-accounts/:bankAccountId/feed/sync',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.bankFeed || !deps.bankFeed.configured) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message:
+                'Bank-feed er ikke konfigurert (REKNAREN_GOCARDLESS_SECRET_ID + REKNAREN_GOCARDLESS_SECRET_KEY mangler). Bruk manuell CSV-import.',
+            },
+          });
+          return;
+        }
+        const body = z
+          .object({
+            connectionId: z.string().min(1).max(200),
+            sinceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          })
+          .parse(req.body);
+        const feed = await deps.bankFeed.fetchTransactions({
+          connectionId: body.connectionId,
+          ...(body.sinceDate ? { sinceDate: body.sinceDate } : {}),
+        });
+        const result = await importBankTransactions(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          bankAccountId: req.params.bankAccountId!,
+          transactions: feed.transactions,
+        });
+        const suggestions = await suggestMatches(deps.db, {
+          organizationId: req.params.orgId!,
+          bankAccountId: req.params.bankAccountId!,
+        });
+        res.status(201).json(toJson({ ...result, fetched: feed.transactions.length, suggestions }));
       } catch (err) {
         next(err);
       }

@@ -15,6 +15,7 @@ import { MaskinportenClient } from '../integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
 import { StripeApiClient } from '../integrations/stripe.js';
 import { ResendEmailClient, SmtpEmailClient } from '../integrations/email.js';
+import { GoCardlessBankFeedProvider, UnconfiguredBankFeedProvider } from '../bank/feed.js';
 import { LocalObjectStorage } from '../storage/local.js';
 import { createApiServer } from './server.js';
 
@@ -57,6 +58,11 @@ const app = createApiServer({
   errorMonitor,
   // Stripe-inntektssynk (kun LES). Inaktiv uten REKNAREN_STRIPE_SECRET_KEY.
   stripe: new StripeApiClient(config.stripeSecretKey),
+  // Bank-feed (PSD2/open banking via GoCardless). Inaktiv uten GOCARDLESS-hemmeligheter
+  // — manuell CSV-import fungerer uansett.
+  bankFeed: config.bankFeed
+    ? new GoCardlessBankFeedProvider(config.bankFeed)
+    : new UnconfiguredBankFeedProvider(),
   // Hodeløs cron-synk: token + org-bootstrap.
   cronSecret: config.cronSecret,
   bootstrapOrg: config.bootstrapOrg,

@@ -61,6 +61,12 @@ export interface ProductConfig {
   anthropicApiKey?: string | undefined;
   /** Claude-modell for bilagslesing (default claude-sonnet-4-6). */
   aiModel: string;
+  /**
+   * GoCardless Bank Account Data (PSD2/open banking) for automatisk bank-feed.
+   * Bygges kun når BEGGE hemmeligheter finnes. Udefinert = feed ikke aktiv
+   * (manuell CSV-import fungerer uansett).
+   */
+  bankFeed?: { secretId: string; secretKey: string } | undefined;
 }
 
 const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
@@ -137,5 +143,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     appBaseUrl: env.REKNAREN_APP_URL,
     anthropicApiKey: env.REKNAREN_ANTHROPIC_API_KEY,
     aiModel: env.REKNAREN_AI_MODEL ?? 'claude-sonnet-4-6',
+    bankFeed:
+      env.REKNAREN_GOCARDLESS_SECRET_ID && env.REKNAREN_GOCARDLESS_SECRET_KEY
+        ? { secretId: env.REKNAREN_GOCARDLESS_SECRET_ID, secretKey: env.REKNAREN_GOCARDLESS_SECRET_KEY }
+        : undefined,
   };
 }
