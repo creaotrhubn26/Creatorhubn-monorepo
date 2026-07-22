@@ -23,7 +23,7 @@ import CampaignDirectorView from './CampaignDirectorView';
 import { materializePost } from './campaignDirector';
 import SystemArchDialog from './SystemArchDialog';
 import MotionStingDialog from './MotionStingDialog';
-import { motionHtmlForScene } from './motionReveal.js';
+import { motionHtmlForScene, type Archetype } from './motionReveal.js';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -924,6 +924,9 @@ export function InfographicStudioView(
   // 'native' = malens naturlige størrelse (bakoverkompatibelt). Ellers komponeres
   // innholdet inn i 9:16 / 1:1 / 16:9 og PNG-en får eksakt de dimensjonene.
   const [fmt, setFmt] = useState<'native' | '9:16' | '4:5' | '1:1' | '16:9'>('native');
+  // Hovedvisning: Still (infographic) vs Motion (animert sting av samme data).
+  const [motionMode, setMotionMode] = useState(false);
+  const [mainArch, setMainArch] = useState<Archetype | null>(null);
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
@@ -1198,6 +1201,15 @@ export function InfographicStudioView(
   // kaller setProgress(1) INNE i iframen (robust i WKWebView) i stedet for at
   // foreldre må lese contentDocument (som feiler → kortene sto frosset på p=0).
   const formatSrcDoc = useMemo(() => `<script>window.__CFG__=${cfgScript(config)};window.__igFreeze=1;</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
+
+  // Motion i HOVEDVISNINGEN: samme scene-data → animert sting rett i preview-en
+  // (samme setProgress-kontrakt som still, så play()/scrub virker uendret).
+  const motionFormat = (fmt === '9:16' ? '9:16' : fmt === '1:1' ? '1:1' : '16:9') as '16:9' | '9:16' | '1:1';
+  const motionSrcDoc = useMemo(
+    () => motionHtmlForScene(fieldVals(scene, tpl), { templateId: tpl.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(scene), order: tpl.fields.map((f) => f.key), format: motionFormat, arch: mainArch ?? undefined }).html,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scene, tpl, accent, logo, mainArch, motionFormat, dataMap],
+  );
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -2130,11 +2142,29 @@ export function InfographicStudioView(
               {/* Ramme: naturlig = fyll boksen; ellers vis eksakt sosialt forhold. */}
               <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', background: bgImage ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', ...(fmt === 'native' ? { width: '100%', height: '100%' } : { height: '100%', maxWidth: '100%', aspectRatio: String(fmtAspect()), borderRadius: 8, boxShadow: `0 0 0 1px ${D.line}` }) }}>
                 {bgImage && <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />}
-                <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 140 : 0, border: 0, background: 'transparent' }} />
+                <iframe ref={iframeRef} title="preview" srcDoc={motionMode ? motionSrcDoc : srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 140 : 0, border: 0, background: 'transparent' }} />
                 {/* Scene-brødsmule (som konseptets «Scene 03 · Main Stats»). */}
                 <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, background: 'rgba(11,17,32,0.7)', border: `1px solid ${D.line}`, fontSize: 10.5, color: D.soft, pointerEvents: 'none' }}>
                   <span style={{ display: 'inline-flex', color: tpl.style === 'hud' ? D.teal : D.accent }}>{tplIcon(tpl.id, 12)}</span>
                   Scene {sel + 1} · {scene.name || tpl.name}
+                </div>
+                {/* Still ⇄ Motion i hovedvisningen + inline arketype-strip. */}
+                <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 8, background: 'rgba(11,17,32,0.78)', border: `1px solid ${D.line}` }}>
+                    {([['still', 'Still'], ['motion', 'Motion']] as const).map(([v, l]) => {
+                      const on = (v === 'motion') === motionMode;
+                      return <span key={v} onClick={() => setMotionMode(v === 'motion')} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', color: on ? '#04121a' : D.soft, background: on ? D.accent : 'transparent' }}>{l}</span>;
+                    })}
+                  </div>
+                  {motionMode && (
+                    <div style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 8, background: 'rgba(11,17,32,0.78)', border: `1px solid ${D.line}`, flexWrap: 'wrap', maxWidth: 288, justifyContent: 'flex-end' }}>
+                      {([['auto', 'Auto'], ['sting', 'Sting'], ['stat', 'Stat'], ['quote', 'Sitat'], ['compare', 'Sammenlign'], ['list', 'Liste']] as const).map(([v, l]) => {
+                        const on = v === 'auto' ? mainArch === null : mainArch === v;
+                        return <span key={v} onClick={() => setMainArch(v === 'auto' ? null : (v as Archetype))} style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', color: on ? D.accent : D.soft, background: on ? `${D.accent}22` : 'transparent' }}>{l}</span>;
+                      })}
+                      <span onClick={() => setShowMotion(true)} title="Avanserte Motion-kontroller (layout, tempo, tema, presets, Send til Resolve)" style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', color: D.accent }}>⚙ Avansert</span>
+                    </div>
+                  )}
                 </div>
                 {/* Linjaler + safe-frame (stiplet) for presis plassering. */}
                 {showGuides && <>

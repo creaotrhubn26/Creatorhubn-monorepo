@@ -409,9 +409,9 @@ export interface SceneMotion { html: string; durationSec: number; archetype: Arc
  */
 export function motionHtmlForScene(
   values: Record<string, string>,
-  opts: { templateId?: string; brandName?: string; accent?: string; order?: string[]; format?: StingFormat; theme?: 'dark' | 'light' } = {},
+  opts: { templateId?: string; brandName?: string; accent?: string; order?: string[]; format?: StingFormat; theme?: 'dark' | 'light'; arch?: Archetype } = {},
 ): SceneMotion {
-  const arch = pickArchetype(opts.templateId || '', values);
+  const arch = opts.arch || pickArchetype(opts.templateId || '', values);
   const accent = opts.accent || '#8b5cf6';
   const brandName = opts.brandName || 'Merkevare';
   const place: MotionLayoutOpts = { theme: opts.theme };
