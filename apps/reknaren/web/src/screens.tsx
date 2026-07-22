@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRef } from 'react';
-import { api, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
+import { api, ApiError, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
 import { useLoad, type ViewMode } from './App';
 import { DimensionSelect } from './screens-dimensions';
 import { PostingLines } from './screens-pro';
@@ -782,15 +782,43 @@ export function BankScreen({ orgId }: { orgId: string }) {
     explanation: string;
     status: string;
   }
+  interface Account {
+    id: string;
+    name: string;
+    ibanOrAccount: string;
+    status: string;
+    feedLinked: boolean;
+    feedPending: boolean;
+  }
+  interface Institution {
+    id: string;
+    name: string;
+    bic?: string;
+  }
+  const accounts = useLoad(() => api<Account[]>('GET', `/api/organizations/${orgId}/bank-accounts`), [orgId]);
   const txs = useLoad(() => api<BankTx[]>('GET', `/api/organizations/${orgId}/bank/transactions`), [orgId]);
   const matches = useLoad(() => api<Match[]>('GET', `/api/organizations/${orgId}/bank/matches`), [orgId]);
+  // Bank-feed: last institusjoner, men fang 503 (feed ikke konfigurert) ærlig.
+  const feed = useLoad(async () => {
+    try {
+      return { available: true, institutions: await api<Institution[]>('GET', `/api/organizations/${orgId}/bank-feed/institutions?country=NO`) };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) return { available: false, institutions: [] as Institution[] };
+      throw err;
+    }
+  }, [orgId]);
   const toast = useToast();
   const [accountName, setAccountName] = useState('Driftskonto');
   const [accountNo, setAccountNo] = useState('');
-  const [bankAccountId, setBankAccountId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [institutionId, setInstitutionId] = useState('');
   const [csv, setCsv] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const accountList = accounts.data ?? [];
+  const bankAccountId = selectedId ?? accountList[0]?.id ?? null;
+  const activeAccount = accountList.find((a) => a.id === bankAccountId) ?? null;
 
   const createAccount = async () => {
     setBusy(true);
@@ -800,8 +828,71 @@ export function BankScreen({ orgId }: { orgId: string }) {
         name: accountName,
         ibanOrAccount: accountNo,
       });
-      setBankAccountId(res.id);
+      setSelectedId(res.id);
+      setAccountNo('');
+      await accounts.reload();
       toast('Bankkonto opprettet', 'ok');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connectBank = async () => {
+    if (!bankAccountId || !institutionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ link: string; requisitionId: string }>(
+        'POST',
+        `/api/organizations/${orgId}/bank-accounts/${bankAccountId}/feed/connect`,
+        { institutionId },
+      );
+      window.open(res.link, '_blank', 'noopener');
+      toast('Logg inn i banken i den nye fanen. Kom tilbake hit og trykk «Fullfør kobling».', 'info');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeLink = async () => {
+    if (!bankAccountId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ linked: boolean; status: string }>(
+        'POST',
+        `/api/organizations/${orgId}/bank-accounts/${bankAccountId}/feed/link`,
+        {},
+      );
+      toast(res.linked ? 'Banken er koblet ✓' : `Samtykke ikke fullført (${res.status})`, res.linked ? 'ok' : 'info');
+      await accounts.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncFeed = async () => {
+    if (!bankAccountId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ imported: number; skippedDuplicates: number; fetched: number; suggestions: unknown[] }>(
+        'POST',
+        `/api/organizations/${orgId}/bank-accounts/${bankAccountId}/feed/sync`,
+        {},
+      );
+      toast(
+        `Hentet ${res.fetched} — importerte ${res.imported} (${res.skippedDuplicates} duplikater), ${res.suggestions.length} matchforslag`,
+        'ok',
+      );
+      txs.reload();
+      matches.reload();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -867,27 +958,106 @@ export function BankScreen({ orgId }: { orgId: string }) {
       </div>
       {error && <div className="error">{error}</div>}
 
-      {!bankAccountId && (
-        <div className="panel">
-          <h2>Koble til bankkonto (manuell import)</h2>
-          <p className="subtitle">
-            Automatisk banktilkobling kommer senere — foreløpig limer du inn kontoutskriften som CSV.
-          </p>
-          <div className="row">
+      <div className="panel">
+        <h2>Bankkontoer</h2>
+        <div className="row">
+          {accountList.length > 0 && (
             <div>
-              <label htmlFor="bn">Navn</label>
-              <input id="bn" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+              <label htmlFor="bacc">Aktiv konto</label>
+              <select id="bacc" value={bankAccountId ?? ''} onChange={(e) => setSelectedId(e.target.value)}>
+                {accountList.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} · {a.ibanOrAccount}
+                    {a.feedLinked ? ' — tilkoblet' : a.feedPending ? ' — venter fullføring' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div>
-              <label htmlFor="ba">Kontonummer/IBAN</label>
-              <input id="ba" value={accountNo} onChange={(e) => setAccountNo(e.target.value)} />
-            </div>
-            <div>
-              <button className="primary" disabled={busy || !accountNo} onClick={createAccount}>
-                Opprett
-              </button>
-            </div>
+          )}
+          <div>
+            <label htmlFor="bn">Nytt kontonavn</label>
+            <input id="bn" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
           </div>
+          <div>
+            <label htmlFor="ba">Kontonummer/IBAN</label>
+            <input id="ba" value={accountNo} onChange={(e) => setAccountNo(e.target.value)} />
+          </div>
+          <div>
+            <button className="primary" disabled={busy || !accountNo} onClick={createAccount}>
+              Legg til konto
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {bankAccountId && feed.data?.available && (
+        <div className="panel">
+          <h2>Automatisk bank-feed (PSD2)</h2>
+          {activeAccount?.feedLinked ? (
+            <>
+              <p className="subtitle">
+                Denne kontoen er koblet til banken. Hent nye transaksjoner — de kjøres gjennom samme
+                avstemming og godkjenning som import.
+              </p>
+              <div className="actions">
+                <button className="primary" disabled={busy} onClick={syncFeed}>
+                  {busy ? 'Henter…' : 'Synk nå'}
+                </button>
+              </div>
+            </>
+          ) : activeAccount?.feedPending ? (
+            <>
+              <p className="subtitle">
+                Samtykke mottatt fra banken. Trykk «Fullfør kobling» for å lagre koblingen, så kan du synke.
+              </p>
+              <div className="actions">
+                <button className="primary" disabled={busy} onClick={completeLink}>
+                  {busy ? 'Fullfører…' : 'Fullfør kobling'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="subtitle">
+                Velg banken din, logg inn og gi samtykke — så henter Reknaren transaksjonene automatisk.
+                Ingenting bokføres uten din godkjenning.
+              </p>
+              <div className="row">
+                <div>
+                  <label htmlFor="inst">Bank</label>
+                  <select id="inst" value={institutionId} onChange={(e) => setInstitutionId(e.target.value)}>
+                    <option value="">Velg bank…</option>
+                    {(feed.data?.institutions ?? []).map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                        {i.bic ? ` (${i.bic})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <button className="primary" disabled={busy || !institutionId} onClick={connectBank}>
+                    Koble bank
+                  </button>
+                </div>
+                <div>
+                  <button disabled={busy} onClick={completeLink} title="Trykk her etter at du har logget inn i banken">
+                    Fullfør kobling
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {bankAccountId && feed.data && !feed.data.available && (
+        <div className="panel">
+          <h2>Automatisk bank-feed</h2>
+          <p className="subtitle">
+            Automatisk banktilkobling (PSD2) er ikke aktivert i dette miljøet. Du kan importere
+            kontoutskrift som CSV under.
+          </p>
         </div>
       )}
 

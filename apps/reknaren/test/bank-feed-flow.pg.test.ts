@@ -135,6 +135,16 @@ describe('Bank-feed samtykkeflyt', () => {
     expect(again.body).toMatchObject({ imported: 0, skippedDuplicates: 2 });
   });
 
+  it('lister bankkontoer med feed-status (til UI-velgeren)', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/bank-accounts`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const acc = res.body.find((a: { id: string }) => a.id === bankAccountId);
+    expect(acc).toMatchObject({ name: 'Driftskonto', feedLinked: true, feedPending: false });
+    expect(acc.ibanOrAccount).toBeTruthy();
+  });
+
   it('sync på en ikke-koblet konto svarer 400 FEED_NOT_LINKED', async () => {
     const fresh = await request(app)
       .post(`/api/organizations/${orgId}/bank-accounts`)

@@ -2041,6 +2041,36 @@ export function createApiServer(deps: ApiDeps): express.Express {
   );
 
   // ── Bank og avstemming ───────────────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/bank-accounts',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const rows = await deps.db.query(
+          `SELECT id, name, iban_or_account, ledger_account_number, status,
+                  (feed_connection_id IS NOT NULL) AS feed_linked,
+                  (feed_pending_code IS NOT NULL) AS feed_pending
+           FROM bank_accounts WHERE organization_id = $1 ORDER BY created_at`,
+          [req.params.orgId],
+        );
+        res.json(
+          rows.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            ibanOrAccount: r.iban_or_account,
+            ledgerAccountNumber: r.ledger_account_number,
+            status: r.status,
+            feedLinked: r.feed_linked,
+            feedPending: r.feed_pending,
+          })),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   app.post(
     '/api/organizations/:orgId/bank-accounts',
     requireAuth,
