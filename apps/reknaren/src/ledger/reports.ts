@@ -98,6 +98,65 @@ export async function incomeStatement(db: Db, filter: ReportFilter): Promise<Inc
   return { revenueMinor: revenue, expenseMinor: expense, resultMinor: revenue - expense, byAccount: pnl };
 }
 
+export interface VatThreshold {
+  asOf: string;
+  windowFrom: string;
+  thresholdMinor: bigint;
+  taxableTurnoverMinor: bigint;
+  remainingMinor: bigint;
+  /** Prosent av terskelen (én desimal), kan overstige 100. */
+  pct: number;
+  crossed: boolean;
+  monthly: { month: string; minor: bigint }[];
+}
+
+/**
+ * Terskel for MVA-registreringsplikt: avgiftspliktig omsetning over 50 000 kr i en
+ * LØPENDE 12-måneders periode (mval. § 2-1). Vi summerer salgsinntekt (konto
+ * 3000–3799 — omsetning, ikke annen driftsinntekt/tilskudd) fra bokførte
+ * posteringer i vinduet (asOf−12 mnd, asOf]. Terskelen gjelder AVGIFTSPLIKTIG
+ * omsetning; salg som er unntatt mva må trekkes fra — det synliggjøres i UI-et.
+ */
+export async function vatRegistrationThreshold(
+  db: Db,
+  params: { organizationId: string; asOf: string },
+): Promise<VatThreshold> {
+  const THRESHOLD = 5_000_000n; // 50 000 kr i øre
+  const totalSql = `
+    SELECT COALESCE(SUM(l.credit_minor - l.debit_minor), 0)::TEXT AS net,
+           ($2::date - INTERVAL '12 months')::date::text AS window_from
+    FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
+    WHERE l.organization_id = $1
+      AND l.account_number ~ '^[0-9]{4}$' AND l.account_number::int BETWEEN 3000 AND 3799
+      AND e.entry_date > ($2::date - INTERVAL '12 months') AND e.entry_date <= $2::date`;
+  const monthlySql = `
+    SELECT to_char(date_trunc('month', e.entry_date), 'YYYY-MM') AS month,
+           COALESCE(SUM(l.credit_minor - l.debit_minor), 0)::TEXT AS net
+    FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
+    WHERE l.organization_id = $1
+      AND l.account_number ~ '^[0-9]{4}$' AND l.account_number::int BETWEEN 3000 AND 3799
+      AND e.entry_date > ($2::date - INTERVAL '12 months') AND e.entry_date <= $2::date
+    GROUP BY 1 ORDER BY 1`;
+  const [total, monthly] = await Promise.all([
+    db.query(totalSql, [params.organizationId, params.asOf]),
+    db.query(monthlySql, [params.organizationId, params.asOf]),
+  ]);
+  const raw = BigInt(total.rows[0].net);
+  const turnover = raw < 0n ? 0n : raw;
+  const remaining = THRESHOLD > turnover ? THRESHOLD - turnover : 0n;
+  const pct = Math.round(Number((turnover * 1000n) / THRESHOLD)) / 10;
+  return {
+    asOf: params.asOf,
+    windowFrom: total.rows[0].window_from,
+    thresholdMinor: THRESHOLD,
+    taxableTurnoverMinor: turnover,
+    remainingMinor: remaining,
+    pct,
+    crossed: turnover >= THRESHOLD,
+    monthly: monthly.rows.map((m) => ({ month: m.month, minor: BigInt(m.net) })),
+  };
+}
+
 export interface BalanceSheet {
   assetsMinor: bigint;
   liabilitiesMinor: bigint;

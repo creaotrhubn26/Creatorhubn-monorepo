@@ -1324,6 +1324,17 @@ export function VatScreen({ orgId }: { orgId: string }) {
     () => api<VatReport>('GET', `/api/organizations/${orgId}/vat/report?from=${from}&to=${to}`),
     [orgId, from, to],
   );
+  interface Threshold {
+    taxableTurnoverMinor: string;
+    thresholdMinor: string;
+    remainingMinor: string;
+    pct: number;
+    crossed: boolean;
+    windowFrom: string;
+    asOf: string;
+    vatStatus: string;
+  }
+  const threshold = useLoad(() => api<Threshold>('GET', `/api/organizations/${orgId}/vat/threshold`), [orgId]);
   const r = report.data;
   return (
     <div>
@@ -1334,6 +1345,48 @@ export function VatScreen({ orgId }: { orgId: string }) {
           signeringshandling og er ikke aktivert ennå.
         </p>
       </div>
+
+      {threshold.data && (() => {
+        const t = threshold.data;
+        const registered = t.vatStatus === 'registered';
+        const pct = Math.min(100, t.pct);
+        const kind = registered ? 'ok' : t.crossed ? 'danger' : t.pct >= 75 ? 'warn' : 'accent';
+        const headline = registered
+          ? 'Virksomheten er MVA-registrert'
+          : t.crossed
+            ? 'Registreringsplikt inntruffet'
+            : t.pct >= 75
+              ? 'Nærmer deg terskelen'
+              : 'Under registreringsterskelen';
+        const body = registered
+          ? 'Du fører utgående mva på salg og sender MVA-melding. Terskelen er ikke lenger relevant.'
+          : t.crossed
+            ? `Du har passert 50 000 kr avgiftspliktig omsetning siste 12 måneder. Du er pliktig å registrere virksomheten i MVA-registeret (Samordnet registermelding i Altinn) og beregne mva fra og med det salget som brakte deg over.`
+            : `${kr(t.remainingMinor)} igjen til registreringsplikt (50 000 kr avgiftspliktig omsetning siste 12 mnd). Du kan også registrere deg frivillig.`;
+        return (
+          <div className={`panel threshold-panel ${kind}`}>
+            <div className="threshold-head">
+              <h2>MVA-registreringsterskel</h2>
+              <span className={`badge ${kind}`}>{headline}</span>
+            </div>
+            <div className="threshold-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <div className={`threshold-fill ${kind}`} style={{ width: `${pct}%` }} />
+            </div>
+            <div className="threshold-nums">
+              <strong>{kr(t.taxableTurnoverMinor)}</strong> av {kr(t.thresholdMinor)} · {t.pct}%
+              <span className="threshold-window"> (siden {t.windowFrom})</span>
+            </div>
+            <p className="subtitle">{body}</p>
+            {!registered && (
+              <p className="hint">
+                Vi summerer salgsinntekt (konto 3000–3799) siste 12 måneder. Terskelen gjelder
+                avgiftspliktig omsetning — er noe av salget unntatt mva (helse, undervisning, finans),
+                teller det ikke med.
+              </p>
+            )}
+          </div>
+        );
+      })()}
       <div className="row" style={{ maxWidth: 460 }}>
         <div>
           <label htmlFor="vfrom">Fra</label>

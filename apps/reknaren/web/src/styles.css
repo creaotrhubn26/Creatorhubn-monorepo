@@ -287,3 +287,18 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
 .org-choice:hover { border-color: var(--accent, #1f4d3a); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
 .org-choice-name { font-weight: 700; font-size: 15px; }
 .org-choice-meta { font-size: 12px; color: #666; }
+
+/* MVA-registreringsterskel */
+.threshold-panel { border-left: 4px solid var(--accent, #1f4d3a); }
+.threshold-panel.ok { border-left-color: #1f7a4d; }
+.threshold-panel.warn { border-left-color: #b0913b; }
+.threshold-panel.danger { border-left-color: #b3402f; }
+.threshold-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.threshold-head h2 { margin: 0; }
+.threshold-bar { height: 12px; border-radius: 999px; background: #eee; overflow: hidden; margin: 12px 0 8px; }
+.threshold-fill { height: 100%; border-radius: 999px; background: var(--accent, #1f4d3a); transition: width .3s; }
+.threshold-fill.ok { background: #1f7a4d; }
+.threshold-fill.warn { background: #b0913b; }
+.threshold-fill.danger { background: #b3402f; }
+.threshold-nums { font-size: 14px; }
+.threshold-window { color: #888; }

@@ -17,6 +17,7 @@ import {
   incomeStatement,
   subledger,
   trialBalance,
+  vatRegistrationThreshold,
 } from '../ledger/reports.js';
 import {
   createOrganization,
@@ -1264,6 +1265,28 @@ export function createApiServer(deps: ApiDeps): express.Express {
           })
           .parse(req.query);
         res.json(toJson(await buildVatReport(deps.db, req.params.orgId!, q.from, q.to)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // MVA-registreringsterskel: løpende 12-mnd avgiftspliktig omsetning mot 50 000 kr.
+  app.get(
+    '/api/organizations/:orgId/vat/threshold',
+    requireAuth,
+    requireOrgPermission('vat.view'),
+    async (req, res, next) => {
+      try {
+        const q = z
+          .object({ asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+          .parse(req.query);
+        const asOf = q.asOf ?? new Date().toISOString().slice(0, 10);
+        const [threshold, org] = await Promise.all([
+          vatRegistrationThreshold(deps.db, { organizationId: req.params.orgId!, asOf }),
+          deps.db.query(`SELECT vat_status FROM organizations WHERE id = $1`, [req.params.orgId]),
+        ]);
+        res.json(toJson({ ...threshold, vatStatus: org.rows[0]?.vat_status ?? 'not_registered' }));
       } catch (err) {
         next(err);
       }
