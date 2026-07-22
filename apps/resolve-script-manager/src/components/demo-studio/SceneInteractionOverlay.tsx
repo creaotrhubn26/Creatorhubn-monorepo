@@ -15,7 +15,7 @@
 
 import type { DemoActionType, DemoDevice, DemoRenderOptions } from './demoStudioModel';
 
-const ACCENT = '#ef8a5d';
+const ACCENT = '#8b5cf6';
 
 /** Keyframes for animert cursor/ripple/puls. */
 const ANIM_CSS = `
@@ -98,7 +98,7 @@ export function SceneInteractionOverlay({ hotspot, render, device, actionType, a
             <div style={{
               position: 'absolute', left: `${cx}%`, top: `${cy}%`,
               width: 36, height: 36, marginLeft: -18, marginTop: -18, borderRadius: '50%',
-              background: 'rgba(239,138,93,0.30)', border: `2px solid ${ACCENT}`,
+              background: 'rgba(139,92,246,0.28)', border: `2px solid ${ACCENT}`,
             }} />
           )}
           {/* Syntetisk muspeker (desktop) — glir inn mot hotspot */}

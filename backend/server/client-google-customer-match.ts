@@ -19,7 +19,7 @@ import {
 } from "./role-room-ads-oauth.js";
 import { externalFetch } from "./external-api.js";
 
-const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v18";
+const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v23"; // v18 pensjonert (404) per 19.07.2026
 
 function googleHash(value: string): string {
   return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "The Role Room Post Agent",
-  "version": "0.3.16",
+  "version": "0.3.51",
   "identifier": "no.creatorhubn.roleroom-post-agent",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -57,6 +57,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://creatorhubn.com/api/post-agent/update/{{target}}-{{arch}}",
         "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/latest/download/post-agent-{{target}}-{{arch}}.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZEMDIyRDJEQzA1MDU0QUQKUldTdFZGREFMUzBDL2FmM0tQTGtOUFJ5bW05amJIUEtFajJJQVN2RWdDTVpBbGxNdXpHVUZmcnQK",

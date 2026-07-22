@@ -25,6 +25,9 @@ export interface GeoProbeAnswer {
   text: string;
   /** Token-forbruk fra API-svaret; null når leverandøren ikke rapporterer det. */
   usage: { inputTokens: number; outputTokens: number } | null;
+  /** Kilder motoren oppga i et eget felt (Perplexity `citations`), utover
+   *  URL-er som ligger inline i teksten. Tom for motorer uten kildefelt. */
+  citedUrls?: string[];
 }
 
 export interface GeoProbeEngine {
@@ -127,6 +130,8 @@ class PerplexityEngine implements GeoProbeEngine {
     const result = await callExternalApi<{
       choices?: Array<{ message?: { content?: string } }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
+      citations?: string[];
+      search_results?: Array<{ url?: string }>;
     }>("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       timeoutMs: PROBE_TIMEOUT_MS,
@@ -145,7 +150,15 @@ class PerplexityEngine implements GeoProbeEngine {
       }),
     });
     if (!result.ok) return null;
-    return toAnswer(result.data);
+    // Perplexity legger kildene i `citations` (eldre) / `search_results`
+    // (nyere sonar) — ikke inline i teksten. Fang begge så cited_urls fylles.
+    const citedUrls = [
+      ...(Array.isArray(result.data.citations) ? result.data.citations : []),
+      ...(Array.isArray(result.data.search_results)
+        ? result.data.search_results.map((s) => s?.url).filter((u): u is string => typeof u === "string")
+        : []),
+    ];
+    return toAnswer(result.data, citedUrls);
   }
 }
 
@@ -153,7 +166,7 @@ class PerplexityEngine implements GeoProbeEngine {
 function toAnswer(data: {
   choices?: Array<{ message?: { content?: string } }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
-}): GeoProbeAnswer | null {
+}, citedUrls?: string[]): GeoProbeAnswer | null {
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) return null;
   return {
@@ -164,6 +177,7 @@ function toAnswer(data: {
           outputTokens: data.usage.completion_tokens ?? 0,
         }
       : null,
+    citedUrls: citedUrls && citedUrls.length > 0 ? citedUrls : undefined,
   };
 }
 

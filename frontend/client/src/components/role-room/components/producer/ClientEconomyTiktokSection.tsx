@@ -25,6 +25,7 @@ import ClientTiktokLeadsPanel from './ClientTiktokLeadsPanel';
 import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
 import ClientTiktokSpendPanel from './ClientTiktokSpendPanel';
 import ClientAdsPermissionsPanel from './ClientAdsPermissionsPanel';
+import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
 
 interface Props {
   /** Prosjektet klienten ser sin Economy-tab for. */
@@ -59,6 +60,7 @@ export default function ClientEconomyTiktokSection({ clientProjectId }: Props) {
     setLoading(true);
     fetch(`/api/role-room/ads-configs/by-project?clientProjectId=${encodeURIComponent(clientProjectId)}`, {
       credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
     })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {

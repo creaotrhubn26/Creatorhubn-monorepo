@@ -620,7 +620,7 @@ function ItemEditPanel({ item, onChange, onChangeStyle, onApplyPreset }: {
       <div>
         <div style={SECTION_TITLE}>POSISJON</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
-          {(Object.keys(POSITION_LABELS) as LowerThirdPosition[]).slice(0, 6).map(p => (
+          {(Object.keys(POSITION_LABELS) as LowerThirdPosition[]).map(p => (
             <button key={p}
                     onClick={() => onChange({ position: p })}
                     style={{

@@ -372,7 +372,7 @@ export const ACTION_MATCH_LABELS: Record<ActionMatch, string> = {
   match: 'Match', warning: 'Warning', unverified: 'Ikke verifisert',
 };
 export const ACTION_MATCH_COLORS: Record<ActionMatch, string> = {
-  match: '#10b981', warning: '#f59e0b', unverified: '#9a9186',
+  match: '#10b981', warning: '#f59e0b', unverified: '#9a94a8',
 };
 
 function normalizeSelector(s: string): string {
@@ -453,6 +453,37 @@ export const DEVICE_LABELS: Record<DemoDevice, string> = {
 
 export function viewportForDevice(device: DemoDevice): DemoViewport {
   return device === 'macbook' ? 'desktop' : device === 'ipad' ? 'tablet' : 'mobile';
+}
+
+// ── Format ↔ enhets-orientering: fang «filmer bredt, eksporterer smalt» før Export ──
+export type Orientation = 'landscape' | 'portrait' | 'square';
+
+export function formatOrientation(format: DemoProject['format']): Orientation {
+  return format === '16:9' ? 'landscape' : format === '1:1' ? 'square' : 'portrait'; // 9:16, 4:5 → stående
+}
+export function sceneOrientation(scene: Pick<DemoScene, 'device' | 'orientation'>): Orientation {
+  if (scene.device === 'macbook') return 'landscape';
+  if (scene.device === 'iphone') return 'portrait';
+  return scene.orientation ?? 'portrait'; // iPad følger sin egen orientering
+}
+
+export interface FormatMismatch {
+  formatOrientation: Exclude<Orientation, 'square'>;
+  conflicting: number;                 // antall scener i konflikt med formatet
+  total: number;
+  suggestFormat: DemoProject['format']; // format som matcher flertallet av scenene
+}
+
+/** Returner en mismatch hvis noen scener har motsatt orientering av eksport-formatet
+ *  (f.eks. MacBook-scener [liggende] mot 9:16 [stående] → innhold beskjæres). null = ok. */
+export function detectFormatMismatch(scenes: DemoScene[], format: DemoProject['format']): FormatMismatch | null {
+  const fo = formatOrientation(format);
+  if (fo === 'square' || scenes.length === 0) return null; // 1:1 passer alt
+  const conflicting = scenes.filter((s) => sceneOrientation(s) !== fo).length;
+  if (conflicting === 0) return null;
+  const landscape = scenes.filter((s) => sceneOrientation(s) === 'landscape').length;
+  const suggestFormat: DemoProject['format'] = landscape > scenes.length / 2 ? '16:9' : '9:16';
+  return { formatOrientation: fo, conflicting, total: scenes.length, suggestFormat };
 }
 
 /** Enkel, kollisjonssikker-nok id uten eksterne deps (Math.random unngås ikke

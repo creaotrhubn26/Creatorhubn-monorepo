@@ -150,6 +150,9 @@ export default function App() {
       onProgress: (fraction: number, status: "downloading" | "finished") => void,
     ) => Promise<void>;
   } | null>(null);
+  // Synlig updater-status (aldri stille feil): «checking» / feilmelding /
+  // «ingen oppdatering» — vises som et lite banner + logges i hendelses-strømmen.
+  const [updateStatus, setUpdateStatus] = useState<{ kind: "checking" | "none" | "error"; message?: string } | null>(null);
   const [agentEditorConfig, setAgentEditorConfig] = useState<AgentConfig | null>(null);
   const [agentSourcePath, setAgentSourcePath] = useState<string>("");
   // Ekte app-versjon fra Tauri (ikke hardkodet) — vises i footer + innstillinger.
@@ -352,22 +355,25 @@ export default function App() {
       // dialogens progress-bar. notifyNone=true betyr "menu trigget,
       // si fra hvis det ikke er noe nytt"; auto-check skipper det.
       const runUpdateCheck = async (notifyNone: boolean) => {
+        setUpdateStatus({ kind: "checking" });
         try {
           const updater = await import("@tauri-apps/plugin-updater");
           const update = await updater.check();
           if (!update) {
+            setUpdateStatus(notifyNone ? { kind: "none" } : null);
             if (notifyNone) {
               setEvents((prev) => [
                 ...prev,
-                { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
+                { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "Ingen oppdatering — du har nyeste versjon." },
               ]);
             }
             return;
           }
+          setUpdateStatus(null);
           setEvents((prev) => [
             ...prev,
             { type: "log", ts: Date.now() / 1000, runId: "n/a",
-              message: `Update available: v${update.version}` },
+              message: `Oppdatering tilgjengelig: v${update.version}` },
           ]);
           // Hold update-objektet i closure til brukeren klikker "Last ned".
           // downloadAndInstall tar en progress-callback med events:
@@ -394,8 +400,15 @@ export default function App() {
             },
           });
         } catch (e) {
-          // Updater not configured (no endpoint/pubkey) — silent i dev
-          console.warn("[updater] not available:", e);
+          // ALDRI stille: vis den faktiske feilen (banner + hendelseslogg) så
+          // updater-problemer er synlige og diagnostiserbare.
+          const message = e instanceof Error ? e.message : String(e);
+          console.warn("[updater] check failed:", e);
+          setUpdateStatus({ kind: "error", message });
+          setEvents((prev) => [
+            ...prev,
+            { type: "log", ts: Date.now() / 1000, runId: "n/a", message: `Oppdaterings-sjekk feilet: ${message}` },
+          ]);
         }
       };
       listen("menu://check-updates", () => void runUpdateCheck(true))
@@ -920,7 +933,14 @@ export default function App() {
           >
             {showMediaPool ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
-          <span className="footer-version">{appVersion ? `v${appVersion}` : ""}</span>
+          <button
+            className="footer-version"
+            onClick={() => void import("@tauri-apps/api/event").then(({ emit }) => emit("menu://check-updates"))}
+            title="Se etter oppdateringer"
+            style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}
+          >
+            {appVersion ? `v${appVersion} ↻` : "Se etter oppdateringer"}
+          </button>
         </span>
       </footer>
 
@@ -1161,11 +1181,33 @@ export default function App() {
         <FeedbackDialog onClose={() => setShowFeedback(false)} />
       )}
 
+      {updateStatus && (
+        <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 9999, maxWidth: 620,
+          display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 10, fontSize: 13,
+          background: updateStatus.kind === "error" ? "#3a1518" : "#141b2b",
+          border: `1px solid ${updateStatus.kind === "error" ? "#7a2b30" : "#2a3350"}`,
+          color: updateStatus.kind === "error" ? "#f0a89f" : "#c4d0e4", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}>
+          {updateStatus.kind === "checking" && <span>Ser etter oppdatering…</span>}
+          {updateStatus.kind === "none" && <span>✓ Du har nyeste versjon.</span>}
+          {updateStatus.kind === "error" && (<>
+            <span style={{ flex: 1 }}>⚠ Oppdaterings-sjekk feilet: {updateStatus.message}</span>
+            <button onClick={() => { setUpdateStatus(null); void import("@tauri-apps/api/event").then(({ emit }) => emit("menu://check-updates")); }}
+              style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid #7a2b30", background: "transparent", color: "#f0a89f", cursor: "pointer", fontWeight: 600 }}>Prøv igjen</button>
+          </>)}
+          <button onClick={() => setUpdateStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16, opacity: 0.6, lineHeight: 1 }}>×</button>
+        </div>
+      )}
       {updateInfo && (
         <UpdaterDialog
           version={updateInfo.version}
           notes={updateInfo.notes}
           onDownload={updateInfo.runDownload}
+          onRelaunch={async () => {
+            // Krever tauri-plugin-process (registrert i lib.rs) + process-
+            // tillatelse i capabilities. relaunch() avslutter og starter appen.
+            const { relaunch } = await import("@tauri-apps/plugin-process");
+            await relaunch();
+          }}
           onDismiss={() => setUpdateInfo(null)}
         />
       )}

@@ -28,6 +28,13 @@ function makeFakePool(opts: {
     query: async (sql: string, params?: unknown[]) => {
       queryCount++;
       const s = sql.toLowerCase();
+      // BOLA-gaten (canAccessRoleRoomProject): testbrukeren eier prosjektet.
+      if (s.includes("from casting_projects")) {
+        return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      }
+      if (s.includes("from casting_user_roles")) {
+        return { rows: [], rowCount: 0 };
+      }
       if (s.includes("insert into role_room_agent_threads")) {
         return { rows: opts.createdThread ? [opts.createdThread] : [], rowCount: 1 };
       }

@@ -62,7 +62,9 @@ describe('loadConnectedPlatforms', () => {
     } as unknown as Parameters<typeof loadConnectedPlatforms>[0];
 
     const platforms = await loadConnectedPlatforms(throwingPool, 'proj-x', NOW);
-    expect(platforms.map((p) => p.platform)).toEqual(PLATFORM_ORDER);
+    // Google Workspace skjules som standard (DEFAULT_HIDDEN_PLATFORMS) når
+    // ingen settings-rad finnes — resten i fast rekkefølge.
+    expect(platforms.map((p) => p.platform)).toEqual(PLATFORM_ORDER.filter((k) => k !== 'google'));
     // Alt skal være not_connected (ingen tokens lekket, ingen krasj).
     expect(platforms.every((p) => p.status === 'not_connected')).toBe(true);
     expect(platforms.every((p) => p.accountName === null)).toBe(true);
@@ -116,9 +118,9 @@ describe('loadConnectedPlatforms', () => {
     // Facebook avledet fra IG-siden
     expect(byKey.facebook.status).toBe('connected');
     expect(byKey.facebook.accountName).toBe('Northwind Drilling');
-    // Ingen TikTok/Google-rad → not_connected
+    // Ingen TikTok-rad → not_connected; Google er skjult som standard
     expect(byKey.tiktok.status).toBe('not_connected');
-    expect(byKey.google.status).toBe('not_connected');
+    expect(byKey.google).toBeUndefined();
   });
 });
 
@@ -149,23 +151,27 @@ describe('revokeProjectPlatformConnection', () => {
     expect(calls[0].sql).toMatch(/role_room_instagram_connections/);
   });
 
-  it('TikTok/LinkedIn/Google revokes bruker-scopet på produsenten', async () => {
+  it('TikTok/LinkedIn/Google revokes PROSJEKT-scopet — aldri på produsentens user_id', async () => {
+    // Endret med vilje: klient-eide koblinger er project_id-scopede
+    // (mig 0337–0343); revoke på user_id ville truffet produsentens
+    // globale kobling på tvers av prosjekter.
     for (const [platform, table] of [
       ['tiktok', 'role_room_tiktok_connections'],
       ['linkedin', 'role_room_linkedin_connections'],
-      ['google', 'role_room_google_connections'],
+      ['google', 'role_room_client_google_connections'],
     ] as const) {
       const { pool, calls } = recordingPool();
       await revokeProjectPlatformConnection(pool, 'proj-1', 'producer-1', platform);
       expect(calls[0].sql).toMatch(new RegExp(table));
-      expect(calls[0].params).toEqual(['producer-1']);
+      expect(calls[0].params).toEqual(['proj-1']);
     }
   });
 
-  it('bruker-scopet plattform uten produsent-id gjør ingenting', async () => {
+  it('prosjekt-scopet revoke virker også uten produsent-id', async () => {
     const { pool, calls } = recordingPool();
     await revokeProjectPlatformConnection(pool, 'proj-1', null, 'tiktok');
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].params).toEqual(['proj-1']);
   });
 
   it('svelger feil når tabellen mangler (best-effort)', async () => {

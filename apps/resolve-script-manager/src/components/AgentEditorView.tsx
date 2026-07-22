@@ -231,10 +231,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       setMultiAspectExporting(false);
     }
   };
-  // Project-id for persistence av lower-thirds. Hentes via tilstand
-  // som settes når user åpner agent fra HomeView; for nå fallback til
-  // hardkodet test-id slik at button funker uten Role Room-context.
-  const projectIdForStudio = "test-project-default";
+  // Project-id for persistence av lower-thirds/kommentarer. Utledes fra
+  // source-video-stien (samme konvensjon som CreativeEditorView) slik at
+  // hvert reelt prosjekt får sin egen bøtte i stedet for å dele én
+  // hardkodet test-id. Faller kun tilbake til placeholder hvis ingen
+  // source-path finnes.
+  const projectIdForStudio =
+    sourcePath?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "")
+    || "test-project-default";
 
   // Poll for thread-count + unread mentions hver 15 sek (etter
   // projectIdForStudio er deklarert)
@@ -363,7 +367,8 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         messages: nextHistory,
         maxTokens: 800,
       });
-      setChatMessages(prev => [...prev, userMsg, { role: "assistant", content: reply }]);
+      // userMsg ble allerede lagt til over — append KUN assistant-svaret
+      setChatMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       setChatError((err as Error).message);
       setChatMessages(prev => prev.slice(0, -1)); // rull tilbake user-melding

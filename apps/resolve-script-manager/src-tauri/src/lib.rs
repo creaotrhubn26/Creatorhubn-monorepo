@@ -90,7 +90,7 @@ async fn claude_chat(
         return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY. Logg inn fra Settings.".into());
     }
 
-    let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
+    let model = model.unwrap_or_else(|| "claude-opus-4-8".to_string());
     let max_tokens = max_tokens.unwrap_or(1024);
     let mut body = serde_json::json!({
         "model": model,
@@ -476,6 +476,9 @@ async fn ad_film_regenerate_shot(
     };
 
     let mut cmd = std::process::Command::new(&python_bin);
+    // Hindre .pyc-skriving inn i den signerte bundelen (bryter kode-signaturen
+    // → Gatekeeper «damaged»). Samme grunn som i python::spawn_python.
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
     cmd.arg(&script)
         .arg("--spec")
         .arg(&spec_path)
@@ -902,6 +905,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .manage(CardWatcherState::default())
         .manage(RunningScriptsState::default())
@@ -938,7 +942,10 @@ pub fn run() {
             // Forward menu events to frontend as "menu://<id>" events
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().0.as_str();
-                let event_name = format!("menu://{}", id.trim_start_matches("menu_"));
+                // Frontend lytter på bindestrek-navn (menu://check-updates); meny-
+                // id-ene bruker understrek (menu_check_updates) → konverter, ellers
+                // matcher ikke event-navnet og meny-klikk gjør ingenting.
+                let event_name = format!("menu://{}", id.trim_start_matches("menu_").replace('_', "-"));
                 if let Err(err) = app_handle.emit(&event_name, ()) {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
                 }

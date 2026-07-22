@@ -497,7 +497,7 @@ pub async fn render_infographic(
         return Ok(cached.to_string_lossy().to_string());
     }
 
-    let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64;
+    let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 3600.0) as i64;
     // Reell klipp-lengde etter clamp — fade-timing MÅ bruke denne, ikke det
     // ukappede duration_sec (ellers havner fade-ut feil for korte/lange klipp).
     let real_dur = frames as f64 / fps;
@@ -551,7 +551,7 @@ pub async fn export_infographic(
     let entrance = entrance.unwrap_or_else(|| "none".into());
     let metadata = metadata.unwrap_or_default();
     let is_still = format == "png";
-    let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64 };
+    let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 3600.0) as i64 };
     // Reell klipp-lengde etter clamp — fade-timing bruker denne (ikke duration_sec).
     let real_dur = frames as f64 / fps;
     let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "export_infographic").await?;

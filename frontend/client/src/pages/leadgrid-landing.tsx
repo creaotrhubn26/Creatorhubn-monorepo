@@ -59,9 +59,11 @@ import {
   WorkspacesOutlined,
   DoorFrontOutlined,
   DirectionsCarFilledOutlined,
+  VerifiedOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
+import { DEFAULT_PRICING_CONFIG, type LeadgridPricingConfig } from '@shared/leadgridPricingConfig';
 
 const PALETTE = {
   bg: 'var(--lgl-bg, #0b0518)',
@@ -92,7 +94,7 @@ const STEPS = [
   },
   {
     n: '3', Icon: SendOutlined, title: 'Følg opp',
-    desc: 'Automatiser e-post, SMS og oppgaver — og få påminnelser som driver resultat.',
+    desc: 'Automatiser e-post, SMS og oppgaver, og få påminnelser som driver resultat.',
   },
   {
     n: '4', Icon: EventAvailableOutlined, title: 'Book møter',
@@ -100,7 +102,7 @@ const STEPS = [
   },
   {
     n: '5', Icon: EmojiEventsOutlined, title: 'Lukk avtaler',
-    desc: 'Flytt leads i pipelinen og vinn flere kunder — igjen og igjen.',
+    desc: 'Flytt leads i pipelinen og vinn flere kunder, igjen og igjen.',
   },
 ];
 
@@ -123,23 +125,16 @@ const ECOSYSTEM = [
 // rendres seksjonen ikke i det hele tatt. Vi vil ikke ha falske sitater.
 const TESTIMONIALS: { quote: string; name: string; role: string }[] = [];
 
-const PRICING = [
-  {
-    name: 'Solo Free', price: 0, popular: false,
-    blurb: 'Gratis for solo-selgere. Kom i gang på 2 min.',
-    perks: ['1 kunde · 3 auto-onboards/mnd', 'Kart, Kanban og filtre', 'Native iPad-app', 'Intelligence + Momentum Engine'],
-  },
-  {
-    name: 'Solo Pro', price: 799, popular: true,
-    blurb: 'Full Leadgrid for én selger — alle AI-features.',
-    perks: ['Alt i Solo Free', 'Forecasting + Market Scan', 'Voice Memo + AI-møtenotater', '1 000 AI-kall/mnd'],
-  },
-  {
-    name: 'Agency', price: 2999, popular: false,
-    blurb: 'For salgs-team med flere selgere.',
-    perks: ['Alt i Solo Pro', 'Multi-bruker (5 inkl.) + team-roller', 'Territorie-grids m/ geofence', 'White-label klient-portal'],
-  },
-];
+// Pris-config-form + default: kanonisk kilde i @shared/leadgridPricingConfig
+// (delt med admin-editoren). Landing leser fra /api/leadgrid/pricing-config;
+// DEFAULT er kun fallback så siden aldri står tom om API-et er nede.
+
+// Ikoner kan ikke ligge i JSON — mappes fra modul-key.
+const MODULE_ICONS: Record<string, SvgIconComponent> = {
+  dorsalg: DoorFrontOutlined,
+  kvalitet: VerifiedOutlined,
+  go: DirectionsCarFilledOutlined,
+};
 
 // ────────────────────────────────────────────────────────────
 // Komponent
@@ -183,18 +178,26 @@ export default function LeadgridLanding() {
     try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
   });
   const [expStartOpen, setExpStartOpen] = useState(false);
+  // «Book demo» — én dialog, åpnes fra alle CTA-er via custom-event
+  // (unngår prop-threading gjennom header/hero/final-seksjonene).
+  const [demoOpen, setDemoOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setDemoOpen(true);
+    window.addEventListener('leadgrid:book-demo', open);
+    return () => window.removeEventListener('leadgrid:book-demo', open);
+  }, []);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
-    trackPageView('/leadgrid', 'Leadgrid — Gjør kartet om til kunder');
+    trackPageView('/leadgrid', 'Leadgrid: Gjør kartet om til kunder');
     trackEvent('leadgrid_landing_view', {
       referrer: document.referrer || 'direct',
       utm_source: new URLSearchParams(window.location.search).get('utm_source') ?? null,
       utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign') ?? null,
     });
     // Side-tittel + meta beskrivelse for SEO
-    document.title = 'Leadgrid — Gjør kartet om til kunder';
+    document.title = 'Leadgrid: Gjør kartet om til kunder';
     const desc = document.querySelector('meta[name="description"]');
-    const content = 'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads — alt i ett visuelt system.';
+    const content = 'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads, alt i ett visuelt system.';
     if (desc) desc.setAttribute('content', content);
     else {
       const m = document.createElement('meta');
@@ -205,7 +208,7 @@ export default function LeadgridLanding() {
     // Canonical
     setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://leadgrid.no' });
     // Open Graph
-    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
+    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid: Gjør kartet om til kunder' });
     setMetaTagByAttr('meta', 'property', 'og:description', { content });
     setMetaTagByAttr('meta', 'property', 'og:type', { content: 'website' });
     setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://leadgrid.no' });
@@ -214,7 +217,7 @@ export default function LeadgridLanding() {
     setMetaTagByAttr('meta', 'property', 'og:locale', { content: 'nb_NO' });
     // Twitter Cards
     setMetaTagByAttr('meta', 'name', 'twitter:card', { content: 'summary_large_image' });
-    setMetaTagByAttr('meta', 'name', 'twitter:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
+    setMetaTagByAttr('meta', 'name', 'twitter:title', { content: 'Leadgrid: Gjør kartet om til kunder' });
     setMetaTagByAttr('meta', 'name', 'twitter:description', { content });
     setMetaTagByAttr('meta', 'name', 'twitter:image', { content: 'https://leadgrid.no/leadgrid/og-image.png' });
 
@@ -275,12 +278,12 @@ export default function LeadgridLanding() {
         {
           '@type': 'Question',
           name: 'Hvordan kommer jeg i gang?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Trykk Start gratis — du oppgir bare e-post og bedriftsnavn. Vi setter opp alt og du legger til din første kunde innen 2 minutter.' },
+          acceptedAnswer: { '@type': 'Answer', text: 'Trykk Start gratis. Du oppgir bare e-post og bedriftsnavn. Vi setter opp alt, og du legger til din første kunde innen 2 minutter.' },
         },
         {
           '@type': 'Question',
           name: 'Trenger kunden min konto for å se sin portal?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord — bare klikke på lenken i e-posten.' },
+          acceptedAnswer: { '@type': 'Answer', text: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord, bare klikk på lenken i e-posten.' },
         },
         {
           '@type': 'Question',
@@ -297,12 +300,17 @@ export default function LeadgridLanding() {
       color: PALETTE.text,
       minHeight: '100vh',
       fontFamily: '-apple-system, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif',
-      overflowX: 'hidden',
+      // 'clip' og IKKE 'hidden': overflow-x hidden gjør boksen til
+      // scroll-container (overflow-y computes til auto) → position:sticky i
+      // LeadgridExperience fester seg mot boksen i stedet for viewporten og
+      // scroll-filmen blir svart. 'clip' klipper uten scroll-container.
+      overflowX: 'clip',
     }}>
       {designMode && <WorkspaceDesignOverlay workspace="leadgrid" targetFile="frontend/client/src/pages/leadgrid-landing.tsx" onClose={() => setDesignMode(false)} />}
       <StickyHeader />
       <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
+      <BookDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} />
       <HeroSection />
       <TrustStrip />
       <HowItWorksSection />
@@ -339,7 +347,7 @@ function StickyHeader() {
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box
               component="img"
-              src="/leadgrid/logo.png"
+              src="/leadgrid/logo.webp"
               alt="Leadgrid"
               sx={{ width: 36, height: 36, borderRadius: 1 }}
             />
@@ -397,7 +405,7 @@ function StickyHeader() {
                 '&:hover': { bgcolor: PALETTE.accentBright },
               }}
               endIcon={<SendOutlined sx={{ fontSize: 16 }} />}
-              href="#demo"
+              onClick={() => window.dispatchEvent(new Event('leadgrid:book-demo'))}
             >
               Book demo
             </Button>
@@ -486,7 +494,7 @@ function HeroSection() {
               }}
             >
               Leadgrid hjelper team med å finne, organisere, følge opp
-              og vinne lokale leads — alt i ett visuelt system.
+              og vinne lokale leads, alt i ett visuelt system.
             </Typography>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={3}>
@@ -624,7 +632,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
       setError(null);
       alert(
         data.magic_link_sent
-          ? 'Sjekk e-posten din — vi sendte deg en magic link til Leadgrid.'
+          ? 'Sjekk e-posten din. Vi sendte deg en magic link til Leadgrid.'
           : 'Klar! Gå til /leadgrid/welcome for å komme i gang.',
       );
       onClose();
@@ -738,6 +746,114 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
+// ────────────────────────────────────────────────────────────
+// Book demo dialog — fungerende booking (POST /api/leadgrid/demo-request)
+// ────────────────────────────────────────────────────────────
+
+const lgField = {
+  '& .MuiOutlinedInput-root': {
+    color: '#fff',
+    '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+    '&:hover fieldset': { borderColor: PALETTE.accent },
+    '&.Mui-focused fieldset': { borderColor: PALETTE.accent },
+  },
+} as const;
+
+function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
+  const [preferred, setPreferred] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const canSend = email.includes('@') && email.includes('.');
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/leadgrid/demo-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(), email: email.trim(), company: company.trim(),
+          preferred: preferred.trim(), note: note.trim(),
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
+      try { trackEvent('leadgrid_demo_requested', { has_company: !!company.trim() }); } catch { /* */ }
+      setDone(true);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+    setSubmitting(false);
+  }
+
+  function close() {
+    setDone(false); setError(null); setSubmitting(false);
+    setName(''); setEmail(''); setCompany(''); setPreferred(''); setNote('');
+    onClose();
+  }
+
+  return (
+    <Dialog
+      open={open} onClose={close} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { bgcolor: '#0a0512', color: '#fff', border: '1px solid rgba(167, 139, 250, 0.20)', borderRadius: 3 } }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>Book demo</Typography>
+        <Typography variant="h5" fontWeight={700}>{done ? 'Takk!' : 'Se Leadgrid i felten'}</Typography>
+        {!done && (
+          <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
+            15 minutter, tilpasset deres område. Vi tar kontakt for å avtale tidspunkt.
+          </Typography>
+        )}
+      </DialogTitle>
+      <DialogContent>
+        {done ? (
+          <Alert severity="success" sx={{ mb: 1 }}>
+            Vi har mottatt forespørselen din og tar kontakt på <b>{email}</b> for å avtale demo.
+          </Alert>
+        ) : (
+          <>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField fullWidth required label="E-post" type="email" value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="ola@bedrift.no"
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth label="Navn" value={name}
+                onChange={(e) => setName(e.target.value)}
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth label="Firma" value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth label="Ønsket tidspunkt (valgfritt)" value={preferred}
+                onChange={(e) => setPreferred(e.target.value)} placeholder="F.eks. torsdag formiddag"
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth multiline minRows={2} label="Hva vil dere se? (valgfritt)" value={note}
+                onChange={(e) => setNote(e.target.value)}
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+            </Stack>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ p: 3, pt: 1 }}>
+        <Button onClick={close} sx={{ color: PALETTE.textMuted }}>{done ? 'Lukk' : 'Avbryt'}</Button>
+        {!done && (
+          <Button variant="contained" disabled={!canSend || submitting} onClick={submit}
+            sx={{ bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700, px: 3, borderRadius: 999, '&:hover': { bgcolor: PALETTE.accentBright } }}>
+            {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Send forespørsel'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 /**
  * Device-mockup-komposisjon: CSS-baserte device-frames — INGEN PNG-er
  * med hvite border. iPad foran-venstre, iPhone foran-høyre, og en
@@ -769,181 +885,48 @@ function DeviceComposition() {
         },
       }}
     >
-      {/* Hovedskjerm: stylized browser/desktop view av Lead Map */}
-      <MockupBrowser />
-      {/* iPad foran-venstre */}
-      <MockupTablet />
-      {/* iPhone foran-høyre */}
-      <MockupPhone />
-    </Box>
-  );
-}
-
-/** Browser-window (sentral): Leadgrid Lead Map med kart-pins */
-function MockupBrowser() {
-  return (
-    <Box
-      sx={{
-        position: 'relative',
-        width: { xs: '90%', md: '85%' },
-        maxWidth: 560,
-        aspectRatio: '16 / 10',
-        borderRadius: 3,
-        bgcolor: '#0a0512',
-        border: '1px solid rgba(167, 139, 250, 0.20)',
-        boxShadow: '0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04) inset',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Window-bar */}
-      <Box sx={{
-        height: 28, display: 'flex', alignItems: 'center', px: 1.5, gap: 0.8,
-        bgcolor: 'rgba(0,0,0,0.4)', borderBottom: '1px solid rgba(255,255,255,0.04)',
-      }}>
-        {['#ff6058', '#febc2e', '#28c941'].map((c) => (
-          <Box key={c} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c }} />
-        ))}
-      </Box>
-      {/* Map-area med "kart"-gradient + pins */}
-      <Box sx={{
-        position: 'relative', height: 'calc(100% - 28px)',
-        background: `
-          radial-gradient(ellipse 40% 30% at 30% 40%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
-          radial-gradient(ellipse 30% 25% at 70% 60%, rgba(124, 58, 237, 0.10) 0%, transparent 60%),
-          linear-gradient(135deg, #0d0719 0%, #1a0a2e 100%)
-        `,
-      }}>
-        {/* Grid-lines for "kart"-følelse */}
-        <Box sx={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `
-            linear-gradient(rgba(167, 139, 250, 0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(167, 139, 250, 0.06) 1px, transparent 1px)
-          `,
-          backgroundSize: '30px 30px',
-        }} />
-        {/* Pins */}
-        {[
-          { x: '20%', y: '30%', color: PALETTE.accent },
-          { x: '45%', y: '55%', color: PALETTE.accentBright },
-          { x: '65%', y: '35%', color: PALETTE.accent },
-          { x: '78%', y: '70%', color: '#9be15d' },
-          { x: '35%', y: '78%', color: PALETTE.accentBright },
-        ].map((p, i) => (
-          <Box key={i} sx={{
-            position: 'absolute', left: p.x, top: p.y,
-            width: 14, height: 14, borderRadius: '50% 50% 50% 0',
-            bgcolor: p.color, transform: 'rotate(-45deg)',
-            boxShadow: `0 0 16px ${p.color}aa, 0 0 0 3px ${p.color}33`,
-          }} />
-        ))}
-      </Box>
-    </Box>
-  );
-}
-
-/** iPad — foran-venstre, lett vippet */
-function MockupTablet() {
-  return (
-    <Box
-      sx={{
-        position: 'absolute',
-        left: { xs: '0%', md: '-6%' },
-        top: { xs: '8%', md: '10%' },
-        width: { xs: '30%', md: '28%' },
-        aspectRatio: '3 / 4',
-        borderRadius: 2.5,
-        bgcolor: '#0a0512',
-        border: '1px solid rgba(167, 139, 250, 0.18)',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        transform: 'rotate(-4deg)',
-        overflow: 'hidden',
-        p: 0.5,
-      }}
-    >
-      <Box sx={{
-        width: '100%', height: '100%',
-        borderRadius: 1.5,
-        background: `
-          radial-gradient(circle at 30% 25%, rgba(167, 139, 250, 0.18) 0%, transparent 50%),
-          linear-gradient(180deg, #0d0719 0%, #050211 100%)
-        `,
-        display: 'flex', flexDirection: 'column', p: 1, gap: 0.6,
-      }}>
-        {/* Stilisert "Min dag"-header */}
-        <Box sx={{ height: 6, width: '40%', bgcolor: PALETTE.accent, borderRadius: 2, opacity: 0.8 }} />
-        <Box sx={{ height: 4, width: '70%', bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2 }} />
-        {/* Lead-cards */}
-        {[1, 2, 3].map((i) => (
-          <Box key={i} sx={{
-            mt: 0.4, p: 0.6, borderRadius: 0.8,
-            bgcolor: 'rgba(167, 139, 250, 0.08)',
-            border: '1px solid rgba(167, 139, 250, 0.10)',
-            display: 'flex', gap: 0.5,
-          }}>
-            <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: PALETTE.accent, opacity: 0.7 }} />
-            <Box sx={{ flex: 1 }}>
-              <Box sx={{ height: 3, width: '60%', bgcolor: 'rgba(255,255,255,0.14)', borderRadius: 1 }} />
-              <Box sx={{ mt: 0.3, height: 2, width: '40%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
-            </Box>
-          </Box>
-        ))}
-      </Box>
-    </Box>
-  );
-}
-
-/** iPhone — foran-høyre, lett vippet motsatt */
-function MockupPhone() {
-  return (
-    <Box
-      sx={{
-        position: 'absolute',
-        right: { xs: '0%', md: '-4%' },
-        bottom: { xs: '5%', md: '8%' },
-        width: { xs: '22%', md: '20%' },
-        aspectRatio: '1 / 2.05',
-        borderRadius: 3,
-        bgcolor: '#0a0512',
-        border: '1px solid rgba(167, 139, 250, 0.18)',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
-        transform: 'rotate(6deg)',
-        overflow: 'hidden',
-        p: 0.4,
-        // Notch
-        '&::before': {
-          content: '""',
+      {/* Ekte app-skjermbilder i ekte Apple-rammer (frameit) — samme
+          cardinal rule som ellers: aldri tegnede liksom-UI-er. */}
+      <Box
+        component="img"
+        src="/leadgrid/hero/macbook.webp"
+        alt="Leadgrid Salgsledelse på MacBook"
+        sx={{
+          position: 'relative',
+          width: { xs: '96%', md: '100%' },
+          maxWidth: 640,
+          height: 'auto',
+          filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.6))',
+        }}
+      />
+      <Box
+        component="img"
+        src="/leadgrid/hero/ipad.webp"
+        alt="Leadgrid-kartet på iPad"
+        sx={{
           position: 'absolute',
-          top: 6, left: '50%', transform: 'translateX(-50%)',
-          width: '40%', height: 10, borderRadius: 6, bgcolor: '#000', zIndex: 2,
-        },
-      }}
-    >
-      <Box sx={{
-        width: '100%', height: '100%',
-        borderRadius: 2,
-        background: 'linear-gradient(180deg, #0d0719 0%, #050211 100%)',
-        display: 'flex', flexDirection: 'column', p: 0.8, gap: 0.5, pt: 2,
-      }}>
-        {/* Lead-list */}
-        {[1, 2, 3, 4].map((i) => (
-          <Box key={i} sx={{
-            p: 0.4, borderRadius: 0.6,
-            bgcolor: 'rgba(167, 139, 250, 0.08)',
-            display: 'flex', gap: 0.4, alignItems: 'center',
-          }}>
-            <Box sx={{
-              width: 8, height: 8, borderRadius: '50% 50% 50% 0',
-              bgcolor: i === 1 ? '#9be15d' : PALETTE.accent,
-              transform: 'rotate(-45deg)',
-            }} />
-            <Box sx={{ flex: 1 }}>
-              <Box sx={{ height: 2.5, width: '70%', bgcolor: 'rgba(255,255,255,0.16)', borderRadius: 1 }} />
-              <Box sx={{ mt: 0.2, height: 1.8, width: '45%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
-            </Box>
-          </Box>
-        ))}
-      </Box>
+          left: { xs: '-2%', md: '-6%' },
+          bottom: { xs: '4%', md: '2%' },
+          width: { xs: '44%', md: '42%' },
+          height: 'auto',
+          transform: 'rotate(-4deg)',
+          filter: 'drop-shadow(0 25px 50px rgba(0,0,0,0.65))',
+        }}
+      />
+      <Box
+        component="img"
+        src="/leadgrid/hero/iphone.webp"
+        alt="Dagens agenda i Leadgrid på iPhone"
+        sx={{
+          position: 'absolute',
+          right: { xs: '-1%', md: '-3%' },
+          bottom: { xs: '2%', md: '0%' },
+          width: { xs: '20%', md: '19%' },
+          height: 'auto',
+          transform: 'rotate(6deg)',
+          filter: 'drop-shadow(0 25px 50px rgba(0,0,0,0.65))',
+        }}
+      />
     </Box>
   );
 }
@@ -1116,7 +1099,7 @@ function FeatureGridSection() {
         />
         <FeatureCard
           title="AI-pitch og oppfølging"
-          desc="Få hjelp til å skrive personlige, førsteinntrykk og oppfølgings-e-poster som faktisk får svar."
+          desc="Få hjelp til å skrive personlige førsteinntrykk og oppfølgings-e-poster som faktisk får svar."
           Icon={AutoFixHighOutlined}
           accent="#9be15d"
         />
@@ -1134,18 +1117,18 @@ function FeatureGridSection() {
         />
         <FeatureCard
           title="Dørsalg & verving"
-          desc="Egen dørsalg-modus: alle adressene i området på kartet, farget etter utfall. Registrer salget på døra med produkt, bidrag og kundebekreftelse — og kvalitetsavdelingen verifiserer hvert salg."
+          desc="Egen dørsalg-modus: alle adressene i området på kartet, farget etter utfall. Registrer salget på døra med produkt, bidrag og kundebekreftelse, og kvalitetsavdelingen verifiserer hvert salg."
           Icon={DoorFrontOutlined}
           accent="#c084fc"
         />
         <FeatureCard
-          title="Leadgrid Go — elektronisk kjørebok"
+          title="Leadgrid Go: elektronisk kjørebok"
           desc="Automatisk trip-logg med kjøregodtgjørelse, ekte bomkostnad og Skatteetaten-klar rapport. Flåteoversikt, EU-kontroll og bilbooking for hele organisasjonen."
           Icon={DirectionsCarFilledOutlined}
           accent="#5eead4"
         />
         <FeatureCard
-          title="Alt du trenger — samlet på ett sted"
+          title="Alt du trenger, samlet på ett sted"
           desc="Leadgrid samler kart, data, kommunikasjon og pipeline i én plattform som hjelper teamet ditt å jobbe smartere og vinne flere kunder."
           Icon={WorkspacesOutlined}
           accent="#a78bfa"
@@ -1274,14 +1257,27 @@ function EcosystemSection() {
 // Testimonials
 // ────────────────────────────────────────────────────────────
 
+type LgTestimonial = { id?: string; quote: string; name: string; role: string; rating?: number };
+
 function TestimonialsSection() {
-  // Ingen ekte testimonials ennå → render ikke seksjonen i det hele tatt
-  if (TESTIMONIALS.length === 0) return null;
+  // Aktiverbart: henter GODKJENTE omtaler fra backend. Seksjonen er skjult til
+  // minst én er godkjent (super-admin godkjenner innsendte kunde-omtaler).
+  const [items, setItems] = useState<LgTestimonial[]>(TESTIMONIALS);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/leadgrid/testimonials')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => { if (alive && Array.isArray(d?.testimonials)) setItems(d.testimonials); })
+      .catch(() => { /* behold (tom) fallback */ });
+    return () => { alive = false; };
+  }, []);
+  if (items.length === 0) return null;
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
+      <SectionTitle title="Hva kundene sier" />
       <Grid container spacing={3}>
-        {TESTIMONIALS.map((t) => (
-          <Grid item xs={12} md={4} key={t.name}>
+        {items.map((t, i) => (
+          <Grid item xs={12} md={4} key={t.id ?? `${t.name}-${i}`}>
             <Card sx={{
               height: '100%',
               bgcolor: PALETTE.card,
@@ -1387,7 +1383,7 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
                 <Typography sx={{ fontWeight: 700, fontSize: 22 }}>1 300–1 800 kr</Typography>
               </Stack>
               <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
-                per bruker/mnd — + oppsett og integrasjoner
+                per bruker/mnd, pluss oppsett og integrasjoner
               </Typography>
             </Card>
           </Grid>
@@ -1400,13 +1396,13 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
             }}>
               <Typography sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>Med Leadgrid</Typography>
               <Typography sx={{ color: PALETTE.accentBright, fontSize: 13, mb: 3 }}>
-                Alt i ett — én norsk pris
+                Alt i ett, én norsk pris
               </Typography>
               <Stack spacing={1.5} flexGrow={1}>
                 {[
-                  'Alt over — innebygd, ingen tillegg',
+                  'Alt over innebygd, ingen tillegg',
                   'Pondus-coaching med per-manus-score',
-                  'Akademi — lær opp dine egne selgere',
+                  'Akademi: lær opp dine egne selgere',
                   'Salgsledelse: provisjon, konkurranser & premier',
                   'Native iPad, Apple Watch & Mac',
                 ].map((f) => (
@@ -1438,7 +1434,7 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
 
         <Typography sx={{ color: PALETTE.textFaint, fontSize: 12, textAlign: 'center', mt: 3, maxWidth: 760, mx: 'auto' }}>
           Prisene til venstre er typiske markedspriser (2025) for tilsvarende frittstående verktøy,
-          vist som kategorier — ikke navngitte leverandører. Faktisk stabel-kostnad varierer med
+          vist som kategorier, ikke navngitte leverandører. Faktisk stabel-kostnad varierer med
           sete-minimum, oppsett og integrasjoner.
         </Typography>
       </Container>
@@ -1447,13 +1443,29 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
 }
 
 function PricingSection() {
+  // Én sannhetskilde: super-admin redigerer, landing leser. Fallback til
+  // lokal default så seksjonen aldri står tom om API-et svikter.
+  const [config, setConfig] = useState<LeadgridPricingConfig>(DEFAULT_PRICING_CONFIG);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/leadgrid/pricing-config')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: LeadgridPricingConfig) => {
+        if (alive && data?.tiers?.length) setConfig(data);
+      })
+      .catch(() => { /* behold default */ });
+    return () => { alive = false; };
+  }, []);
+
+  const activeModules = config.modules.filter((m) => m.active);
+
   return (
     <Box id="priser" sx={{ py: { xs: 8, md: 12 }, bgcolor: PALETTE.bgAlt }}>
       <Container maxWidth="lg">
         <SectionTitle title="Enkel og transparent prising" />
         <Grid container spacing={3} alignItems="stretch">
-          {PRICING.map((p) => (
-            <Grid item xs={12} md={4} key={p.name}>
+          {config.tiers.map((p) => (
+            <Grid item xs={12} md={4} key={p.key}>
               <Card sx={{
                 height: '100%',
                 bgcolor: p.popular ? 'rgba(167, 139, 250, 0.10)' : PALETTE.card,
@@ -1482,7 +1494,7 @@ function PricingSection() {
                   {p.name}
                 </Typography>
                 <Typography sx={{ color: PALETTE.textMuted, fontSize: 13.5, mb: 3 }}>
-                  {p.blurb}
+                  {p.tagline}
                 </Typography>
                 <Stack direction="row" alignItems="baseline" spacing={1} mb={1}>
                   <Typography sx={{ fontWeight: 700, fontSize: 40, lineHeight: 1 }}>
@@ -1495,10 +1507,10 @@ function PricingSection() {
                   )}
                 </Stack>
                 <Typography sx={{ color: PALETTE.textFaint, fontSize: 12, mb: 3 }}>
-                  {p.price === 0 ? 'Ingen kortkrav, ingen binding.' : 'Rimeligere ved årlig fakturering. Ingen binding.'}
+                  {p.priceNote}
                 </Typography>
                 <Stack spacing={1} mb={3} flexGrow={1}>
-                  {p.perks.map((perk) => (
+                  {p.features.map((perk) => (
                     <Stack direction="row" spacing={1} key={perk} alignItems="flex-start">
                       <CheckCircleOutlineOutlined sx={{ fontSize: 18, color: PALETTE.accent, mt: 0.2 }} />
                       <Typography sx={{ fontSize: 14, color: PALETTE.text }}>
@@ -1525,7 +1537,7 @@ function PricingSection() {
                   }}
                   href="/"
                 >
-                  {p.name === 'Agency' ? 'Kontakt oss' : 'Start gratis'}
+                  {p.cta}
                 </Button>
               </Card>
             </Grid>
@@ -1546,6 +1558,72 @@ function PricingSection() {
             </Grid>
           ))}
         </Grid>
+        {/* Tilleggsmoduler — feltsalg-spesifikke produkter som slås på
+            oppå en plan. Speiler entitlement-matrisen (addOn Starter/Pro). */}
+        <Box sx={{ mt: 7 }}>
+          <Typography sx={{
+            textAlign: 'center', fontSize: 13, fontWeight: 700,
+            letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: PALETTE.textFaint, mb: 3,
+          }}>
+            Tillegg for feltsalg
+          </Typography>
+          <Grid container spacing={2}>
+            {activeModules.map((a) => {
+              const Icon = MODULE_ICONS[a.key] ?? VerifiedOutlined;
+              return (
+              <Grid item xs={12} md={4} key={a.key}>
+                <Card sx={{
+                  height: '100%', bgcolor: PALETTE.card,
+                  border: `1px solid ${PALETTE.cardBorder}`, borderRadius: 3,
+                  boxShadow: 'none',
+                }}>
+                  <CardContent sx={{ p: 3 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" mb={1.5}>
+                      <Box sx={{
+                        width: 40, height: 40, borderRadius: 2,
+                        bgcolor: `${a.accent}22`, border: `1px solid ${a.accent}40`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Icon sx={{ fontSize: 22, color: a.accent }} />
+                      </Box>
+                      <Typography sx={{ fontWeight: 600, fontSize: 17, color: PALETTE.text }}>
+                        {a.title}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ color: PALETTE.textMuted, fontSize: 14, lineHeight: 1.55, mb: 2 }}>
+                      {a.desc}
+                    </Typography>
+                    <Stack direction="row" alignItems="baseline" spacing={1}>
+                      <Typography sx={{ fontWeight: 700, fontSize: 24, color: a.accent, lineHeight: 1 }}>
+                        kr {a.priceSoloPro}
+                      </Typography>
+                      <Typography sx={{ color: PALETTE.textFaint, fontSize: 13 }}>
+                        /mnd på Solo Pro
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
+                      kr {a.priceAgency}/mnd på Agency
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              );
+            })}
+          </Grid>
+          {config.bundle.active && (
+            <Typography sx={{
+              textAlign: 'center', fontSize: 13.5, color: PALETTE.textMuted, mt: 2.5,
+            }}>
+              {config.bundle.label}: <Box component="span" sx={{ fontWeight: 700, color: PALETTE.text }}>kr {config.bundle.priceAgency}/mnd</Box>. Spar mot enkeltmoduler.
+            </Typography>
+          )}
+          <Typography sx={{
+            textAlign: 'center', fontSize: 13, color: PALETTE.textFaint, mt: 1,
+          }}>
+            Tilleggsmoduler aktiveres på Solo Pro og Agency.
+          </Typography>
+        </Box>
         <Box sx={{ mt: 5, textAlign: 'center' }}>
           <Button
             href="/leadgrid/pricing"
@@ -1613,7 +1691,7 @@ function FinalCtaSection() {
             fontSize: { xs: 15, md: 17 },
             mb: 4, maxWidth: 600, mx: 'auto',
           }}>
-            Start gratis i dag — og se forskjellen på kartet.
+            Se Leadgrid på ditt eget område. Vi tar en kort demo — så ser du forskjellen på kartet.
           </Typography>
           <Button
             variant="contained"
@@ -1629,8 +1707,10 @@ function FinalCtaSection() {
               fontSize: 16,
               '&:hover': { bgcolor: PALETTE.accentBright },
             }}
-            onClick={() => trackEvent('leadgrid_book_demo_clicked', { cta_location: 'final' })}
-            href="/"
+            onClick={() => {
+              trackEvent('leadgrid_book_demo_clicked', { cta_location: 'final' });
+              window.dispatchEvent(new Event('leadgrid:book-demo'));
+            }}
           >
             Book demo
           </Button>
@@ -1656,7 +1736,7 @@ function Footer() {
             <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
               <Box
                 component="img"
-                src="/leadgrid/logo.png"
+                src="/leadgrid/logo.webp"
                 alt="Leadgrid"
                 sx={{ width: 36, height: 36, borderRadius: 1 }}
               />

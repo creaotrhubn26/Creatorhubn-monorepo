@@ -853,6 +853,9 @@ import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
+import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-routes";
+import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-config-routes";
+import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
@@ -864,6 +867,7 @@ import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-exam
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
 import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
+import { registerLeadgridDemoRequestRoutes } from "./leadgrid-demo-request-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -25059,6 +25063,26 @@ setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
 setupControlCenterRoutes({ app, pool, activeSessions });
 // Lead Map module pricing-admin
 setupAdminLeadMapPricingRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid offentlig pris-config (én sannhetskilde: landing + admin + iPad)
+registerLeadgridPricingConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid experience-media (mockup-innhold i scrollfilmen, super-admin-styrt)
+registerLeadgridExperienceConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+registerLeadgridTestimonialsRoutes({
   app,
   pool,
   activeSessions,
@@ -66579,6 +66603,7 @@ registerLeadgridCrashRoutes({ app, pool, requireUserSession });
 
 // «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
 registerLeadgridSignupInterestRoutes({ app, pool });
+registerLeadgridDemoRequestRoutes({ app, pool });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
