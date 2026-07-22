@@ -26,7 +26,7 @@ import MotionStingDialog from './MotionStingDialog';
 import { motionHtmlForScene, type Archetype } from './motionReveal.js';
 import { sceneLayoutForValues, buildSequenceHtml, outroLayoutFor, TRANS_KINDS, CAM_KINDS, TRANS_LABEL, CAM_LABEL, type TransKind, type CamKind } from './motionSequence.js';
 import { aiSuggestMotion, aiDirectFilm } from './motionAI.js';
-import { loadPresets, savePreset, type MotionPreset } from './motionPresets.js';
+import { loadPresets, savePreset, deletePreset, type MotionPreset } from './motionPresets.js';
 import type { MotionLayoutOpts } from './motionSting.js';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
@@ -307,7 +307,7 @@ function maxSceneId(scenes: Scene[] | undefined): number {
 // ── Persistering: hele studio-tilstanden overlever reload (før: alt i useState
 //    → tapt ved refresh). Nøklet pr. prosjekt så flere demoer holdes adskilt. ──
 const LS_PREFIX = 'trrpa.infographicStudio.';
-interface StudioState { scenes: Scene[]; sel: number; accent: string; logo: string; dataText: string; palette: string[]; liveUrl?: string }
+interface StudioState { scenes: Scene[]; sel: number; accent: string; logo: string; dataText: string; palette: string[]; liveUrl?: string; liveAt?: string }
 function loadStudio(key: string): StudioState | null {
   try { const raw = localStorage.getItem(LS_PREFIX + key); return raw ? (JSON.parse(raw) as StudioState) : null; } catch { return null; }
 }
@@ -887,12 +887,16 @@ export function InfographicStudioView(
   const effDur = (sc: Scene, t: InfographicTemplate) => (sc.durSec != null && sc.durSec > 0 ? sc.durSec : t.durationSec);
   // Sosialt format → eksakte lerret-dimensjoner («WxH») eller 'native'. Kvalitets-
   // multiplikator fra oppløsnings-valget (1080p→×1, 1440p→×1.5, 4K→×2).
-  const frameArg = (): string => {
+  const frameArg = (s: number = scale): string => {
     if (fmt === 'native') return 'native';
     const base = fmt === '9:16' ? [1080, 1920] : fmt === '4:5' ? [1080, 1350] : fmt === '1:1' ? [1080, 1080] : [1920, 1080];
-    const mult = scale >= 4 ? 2 : scale >= 3 ? 1.5 : 1;
+    const mult = s >= 4 ? 2 : s >= 3 ? 1.5 : 1;
     return `${Math.round(base[0] * mult)}x${Math.round(base[1] * mult)}`;
   };
+  // Ærlig kvalitets-etikett/-tooltip pr. skala (labels var feil: «1440p» ga 1620p,
+  // og «native» er en oppskalering av malens variable bredde — ikke en fast oppløsning).
+  const qualityLabel = (s: number): string => (s >= 4 ? 'Maks' : s >= 3 ? 'Høy' : 'Standard');
+  const qualityTip = (s: number): string => (fmt === 'native' ? `≈${s}× malens størrelse` : frameArg(s).replace('x', '×'));
   const fmtAspect = (): number => (fmt === '9:16' ? 9 / 16 : fmt === '4:5' ? 4 / 5 : fmt === '16:9' ? 16 / 9 : 1);
   // «Innsikt»: hent aggregert bevis fra backend på at modellen lærer i drift.
   const loadInsight = async () => {
@@ -911,7 +915,10 @@ export function InfographicStudioView(
   // Live datakilde: URL (JSON/CSV) hentet via Rust (ingen CORS) → dataText.
   const [liveUrl, setLiveUrl] = useState(initial.current?.liveUrl || '');
   const [liveBusy, setLiveBusy] = useState(false);
-  const [liveAt, setLiveAt] = useState<string | null>(null);
+  const [liveAt, setLiveAt] = useState<string | null>(initial.current?.liveAt ?? null);
+  // URL som «sist hentet»-stemplet gjelder for — endres URL-en, blir stemplet foreldet.
+  const liveFetchedUrl = useRef(initial.current?.liveUrl || '');
+  useEffect(() => { if (liveUrl !== liveFetchedUrl.current) setLiveAt(null); }, [liveUrl]);
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
   const [palette, setPalette] = useState<string[]>(initial.current?.palette?.length ? initial.current.palette : ['#2dd4bf', '#3b82f6', '#ffffff', '#1f2d4a', '#f59e0b', '#a855f7']);
@@ -1087,9 +1094,9 @@ export function InfographicStudioView(
   // Autolagre (debounced) — hele tilstanden overlever reload. Setter lastSavedAt
   // for «Autolagret»-indikatoren i toppen.
   useEffect(() => {
-    const h = setTimeout(() => { saveStudio(storeKey, { scenes, sel, accent, logo, dataText, palette, liveUrl }); setLastSavedAt(Date.now()); }, 400);
+    const h = setTimeout(() => { saveStudio(storeKey, { scenes, sel, accent, logo, dataText, palette, liveUrl, liveAt: liveAt ?? undefined }); setLastSavedAt(Date.now()); }, 400);
     return () => clearTimeout(h);
-  }, [scenes, sel, accent, logo, dataText, palette, liveUrl, storeKey]);
+  }, [scenes, sel, accent, logo, dataText, palette, liveUrl, liveAt, storeKey]);
   // Tikk hvert 20. sekund så «autolagret»-teksten («… siden») holdes fersk.
   useEffect(() => { const id = window.setInterval(() => setNowTick((t) => t + 1), 20000); return () => window.clearInterval(id); }, []);
   const savedAgo = useMemo(() => {
@@ -1113,6 +1120,7 @@ export function InfographicStudioView(
       const keys = Object.keys(parseDataSource(out));
       const rows = parseDataRows(out).rows.length;
       setLiveAt(new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }));
+      liveFetchedUrl.current = liveUrl; // stemplet gjelder denne URL-en
       if (data?.truncated) {
         // Avkuttet ved 512K tegn → resten mangler (og avkuttet JSON blir ugyldig).
         setMsg('⚠ Datakilden ble avkuttet ved 512K tegn — bruk et filtrert API-uttrekk eller et mindre datasett. Dataen under er ufullstendig.');
@@ -1169,7 +1177,9 @@ export function InfographicStudioView(
   };
   const moveScene = (i: number, dir: -1 | 1) => {
     const j = i + dir; if (j < 0 || j >= scenes.length) return;
-    setScenes((ss) => { const n = [...ss]; const [x] = n.splice(i, 1); n.splice(j, 0, x); return n; });
+    // Bytt BÅDE array-posisjon og atSec, så scenen flyttes i tid også (filmen og
+    // tidslinja er atSec-drevet nå) — ellers ville ◄► kun endre strip-rekkefølgen.
+    setScenes((ss) => { const n = [...ss]; const ai = n[i].atSec; n[i] = { ...n[i], atSec: n[j].atSec }; n[j] = { ...n[j], atSec: ai }; const [x] = n.splice(i, 1); n.splice(j, 0, x); return n; });
     setSel(j);
   };
 
@@ -1258,11 +1268,24 @@ export function InfographicStudioView(
   const runMainAi = async () => {
     if (aiMainBusy) return;
     setAiMainBusy(true);
-    try { const s = await aiSuggestMotion(fieldVals(scene, tpl), { templateId: tpl.id }); setMainArch(s.archetype); setMotionCaption(s.caption); } catch { /* */ } finally { setAiMainBusy(false); }
+    try {
+      const s = await aiSuggestMotion(fieldVals(scene, tpl), { templateId: tpl.id });
+      setMainArch(s.archetype);
+      if (s.caption) setMotionCaption(s.caption); // ikke tøm eksisterende caption ved heuristikk-fallback
+      setMsg(s.fromAi ? `✨ AI valgte «${s.archetype}»${s.caption ? ` — «${s.caption}»` : ''}` : `Foreslo «${s.archetype}» (heuristikk — AI ikke koblet til)`);
+    } catch { setMsg('Kunne ikke hente AI-forslag — prøv igjen.'); }
+    finally { setAiMainBusy(false); }
   };
   const saveMainPreset = () => {
     const name = window.prompt('Navn på stil-preset:')?.trim();
     if (name) setMotionPresets(savePreset({ name, arch: mainArch ?? 'sting', format: motionFormat, place: motionPlace, tempo: motionTempo }));
+  };
+  const deleteMainPreset = () => {
+    if (!motionPresets.length) return;
+    const name = window.prompt(`Slett hvilken preset?\n${motionPresets.map((p) => '• ' + p.name).join('\n')}`)?.trim();
+    if (!name) return;
+    if (motionPresets.some((p) => p.name === name)) { setMotionPresets(deletePreset(name)); setMsg(`Slettet preset «${name}».`); }
+    else setMsg('Fant ingen preset med det navnet.');
   };
   const applyMainPreset = (name: string) => {
     const p = motionPresets.find((x) => x.name === name);
@@ -1272,16 +1295,22 @@ export function InfographicStudioView(
   // «Data-film»: alle scener flettet til ÉN sammenhengende animasjon m/ overganger
   // (pr-scene overgang + kamera), valgfri merkevare-outro på slutten.
   const sequenceMotion = useMemo(() => {
-    const baseLayouts = scenes.map((sc) => {
+    // Filmen komponeres i atSec-rekkefølge → samme rekkefølge som tidslinja viser
+    // og «Spill alt» spiller (lukker film↔visning-divergensen).
+    const sorted = [...scenes].sort((a, b) => (a.atSec - b.atSec) || 0);
+    const baseLayouts = sorted.map((sc) => {
       const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
       return sceneLayoutForValues(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key) }).layout;
     });
-    const fx = scenes.map((sc) => ({ trans: sc.trans, cam: sc.cam, len: sc.transLen }));
+    const fx = sorted.map((sc) => ({ trans: sc.trans, cam: sc.cam, len: sc.transLen }));
     const layouts = filmOutro
       ? [...baseLayouts, outroLayoutFor({ brandName: project?.name || 'Merkevare', cta: outroCta.trim() || undefined, mark: '◆' })]
       : baseLayouts;
     const fxAll = filmOutro ? [...fx, { trans: 'morph' as TransKind, cam: 'in' as CamKind }] : fx;
-    return buildSequenceHtml(layouts, { accent: sceneAccent(scene), format: motionFormat, place: motionPlace, transitionMs: 550, fx: fxAll });
+    // autoplay=false: transporten (play/scrub) er ENESTE driver i film-modus, så
+    // ingen selv-avspilling som slåss med setProgress. Render kaller setProgress selv.
+    const res = buildSequenceHtml(layouts, { accent: sceneAccent(scene), format: motionFormat, place: motionPlace, transitionMs: 550, fx: fxAll, autoplay: false });
+    return { ...res, sortedIds: sorted.map((s) => s.id), filmStarts: res.timeline.starts, filmTotals: layouts.map((l) => l.total), filmTotal: res.total };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenes, motionFormat, motionPlace, accent, dataMap, filmOutro, outroCta]);
 
@@ -1372,6 +1401,9 @@ export function InfographicStudioView(
     // Autoplay KUN når brukeren nettopp valgte en scene — ikke midt i «Spill alt»
     // eller rett etter en scrub (der posisjonen styres av playAll/scrub-effekten).
     window.setTimeout(() => {
+      // Film-modus: IKKE enkelt-scene-play() (den ville drive filmens globale
+      // setProgress med lokal scene-progresjon). Sett bare filmen til spillehodet.
+      if (previewMode === 'film') { if (!playingAllRef.current) filmSeek(scrubT); return; }
       if (playingAllRef.current || performance.now() - recentScrubRef.current < 700) return;
       play();
     }, 250);
@@ -1407,24 +1439,46 @@ export function InfographicStudioView(
     let best = 0; for (let i = 0; i < scenes.length; i++) if (scenes[i].atSec <= t) best = i;
     return { index: best, p: 1 };
   };
+  // Film-modus: map arrangement-tid t → GLOBAL film-progresjon og driv filmens
+  // egen setProgress (som forventer 0..1 over HELE filmen), ikke lokal scene-p.
+  const filmSeek = (t: number) => {
+    const sm = sequenceMotion;
+    if (!sm.filmTotal || sm.filmTotal <= 0) return;
+    const { index, p } = sceneAtTime(t);
+    const id = scenes[index]?.id;
+    const si = id ? sm.sortedIds.indexOf(id) : -1;
+    if (si < 0) { setPreviewProgress(0); return; }
+    const globalMs = sm.filmStarts[si] + p * sm.filmTotals[si];
+    setPreviewProgress(globalMs / sm.filmTotal);
+  };
   const scrubTo = (t: number) => {
     recentScrubRef.current = performance.now(); // marker: undertrykk autoplay ved evt. iframe-reload
-    setScrubT(t); const { index, p } = sceneAtTime(t);
-    if (index !== sel) setSel(index); else applyScrubFrame(scenes[index], p);
+    setScrubT(t);
+    if (previewMode === 'film') {
+      // Driv den sammenhengende filmen globalt; bytt kun valgt scene (for inspektøren).
+      filmSeek(t); const { index } = sceneAtTime(t); if (index !== sel) setSel(index);
+    } else {
+      const { index, p } = sceneAtTime(t);
+      if (index !== sel) setSel(index); else applyScrubFrame(scenes[index], p);
+    }
     // Manuell scrub → sett lyd-posisjon (under avspilling styrer <audio> seg selv).
     if (!playingAllRef.current && audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = Math.max(0, Math.min(audioDur || t, t)); } catch { /* seek race */ } }
   };
   // Når scrub bytter scene, vent på ny iframe-load og sett progresjonen (m/ easing+inngang).
-  useEffect(() => { if (playingAll || scrubT > 0) { const { p } = sceneAtTime(scrubT); const h = setTimeout(() => applyScrubFrame(scene, p), 60); return () => clearTimeout(h); }
+  // Film-modus hopper over: filmens iframe avhenger ikke av sel, og en per-scene
+  // applyScrubFrame ville drive filmens globale setProgress med lokal progresjon.
+  useEffect(() => { if (previewMode !== 'film' && (playingAll || scrubT > 0)) { const { p } = sceneAtTime(scrubT); const h = setTimeout(() => applyScrubFrame(scene, p), 60); return () => clearTimeout(h); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
   const stopPlayAll = () => { if (playAllRef.current) cancelAnimationFrame(playAllRef.current); playAllRef.current = null; playingAllRef.current = false; setPlayingAll(false); try { audioElRef.current?.pause(); } catch { /* noop */ } };
   const playAll = () => {
     stopPlayAll(); playingAllRef.current = true; setPlayingAll(true);
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; } // stopp enkelt-scene-loop
-    // Start musikk fra spillehode-posisjonen (synk med den visuelle filmen).
-    if (audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = Math.max(0, Math.min(audioDur || scrubT, scrubT)); void audioElRef.current.play(); } catch { /* autoplay/seek */ } }
-    let t0 = performance.now();
+    // Spill fra spillehodet (ikke fra 0), så bilde + lyd starter samme sted. Ved
+    // spillehode på/etter slutten starter vi forfra.
+    const startAt = scrubT >= totalDur - 0.05 ? 0 : Math.max(0, scrubT);
+    if (audioElRef.current && audioUrl) { try { audioElRef.current.currentTime = Math.max(0, Math.min(audioDur || startAt, startAt)); void audioElRef.current.play(); } catch { /* autoplay/seek */ } }
+    let t0 = performance.now() - startAt * 1000;
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (t >= totalDur) {
@@ -1618,7 +1672,10 @@ export function InfographicStudioView(
         // fps = klippets EGEN bildefrekvens (.mov ble rendret med denne). place_overlay
         // MÅ bruke den for source-out-punktet — ikke timeline-fps — ellers kuttes/
         // overskytes alfa-klippet på alle ikke-30fps-timelines.
-        overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50, fps });
+        // posX/posY forankrer bare meningsfullt i 'native' (tett-croppet overlay). I
+        // sosialt WxH-format er klippet et fullrammes lerret → pan/tilt ville skjøvet
+        // HELE lerretet (inkl. innhold) delvis ut av rammen. Tving 50/50 der.
+        overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: fmt === 'native' ? (sc.posX ?? 50) : 50, posY: fmt === 'native' ? (sc.posY ?? 50) : 50, fps });
         recordTemplateUsage(t.id); // implisitt: brukt mal = smak-signal (uten klikk)
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
@@ -1678,6 +1735,9 @@ export function InfographicStudioView(
     try {
       const st = await playwrightStatus().catch(() => null);
       if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å rendre.'); return; }
+      // Render-taket er 3600 frames; varsle hvis filmen ville blitt kuttet.
+      const filmSec = sequenceMotion.total / 1000;
+      if (filmSec * fps > 3600) { setMsg(`Filmen er ${filmSec.toFixed(0)}s ved ${fps}fps (> ${Math.floor(3600 / fps)}s-taket) — vil bli kuttet. Senk fps eller del opp.`); setBusy(false); return; }
       setMsg('Rendrer data-film → ProRes 4444 …');
       const out = await invoke<string>('render_infographic', { html: sequenceMotion.html, durationSec: sequenceMotion.total / 1000, name: `datafilm-${Date.now()}`, fps, scale, exitSec: 0, frame: `${mw}x${mh}`, easing: 'linear', entrance: 'none' });
       setMsg('Legger data-film i Resolve …');
@@ -1708,10 +1768,10 @@ export function InfographicStudioView(
         if (cancelRef.current) { setMsg(`Avbrutt etter ${i} av ${scenes.length} scener.`); return; }
         const sc = scenes[i];
         const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
-        const m = motionHtmlForScene(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key), format: '16:9', place: motionPlace, tempo: motionTempoK });
+        const m = motionHtmlForScene(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key), format: motionFormat, place: motionPlace, tempo: motionTempoK });
         setRenderProgress({ done: i, total: scenes.length });
         setMsg(`Rendrer motion ${i + 1}/${scenes.length} (${m.archetype}) …`);
-        const out = await invoke<string>('render_infographic', { html: m.html, durationSec: m.durationSec, name: `motion-${sc.id}-${Date.now()}`, fps, scale, exitSec: 0, frame: '1920x1080', easing: 'linear', entrance: 'none' });
+        const out = await invoke<string>('render_infographic', { html: m.html, durationSec: m.durationSec, name: `motion-${sc.id}-${Date.now()}`, fps, scale, exitSec: 0, frame: `${mw}x${mh}`, easing: 'linear', entrance: 'none' });
         overlays.push({ path: out, atSec: sc.atSec, durationSec: m.durationSec, track: overlayTrack, posX: 50, posY: 50, fps });
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
@@ -1808,7 +1868,7 @@ export function InfographicStudioView(
       setAiLastPick({ desc: `nettside: ${brand?.brandName || url}`, tplId: r.tplId });
       const picked = INFOGRAPHIC_TEMPLATES.find((t) => t.id === r.tplId);
       const nFeat = evidence?.features?.length || 0;
-      setMsg(`«${picked?.name || r.tplId}» fylt fra ${brand?.brandName || url}${nFeat ? ` (${nFeat} tjenester forstått)` : ''}${brand?.logoUrl ? ' + logo' : ''}${sitePalette.length >= 2 ? ` + ${sitePalette.length}-farge palett` : brand?.brandColor ? ' + merkefarge' : ''}${siteFonts.length ? ` + font «${siteFonts[0]}»` : ''}${r.reason ? ` — ${r.reason}` : ''}`);
+      setMsg(`«${picked?.name || r.tplId}» fylt fra ${brand?.brandName || url}${nFeat ? ` (${nFeat} tjenester forstått)` : ''}${brand?.logoUrl ? ' + logo' : ''}${sitePalette.length >= 2 ? ` + ${sitePalette.length}-farge palett` : brand?.brandColor ? ' + merkefarge' : ''}${siteFonts.length ? ` + oppdaget font «${siteFonts[0]}»` : ''}${r.reason ? ` — ${r.reason}` : ''}`);
     } catch (e) {
       setMsg('Feil ved «Fra nettside»: ' + (e instanceof Error ? e.message : String(e)));
     } finally { setAiBusy(false); }
@@ -1829,13 +1889,13 @@ export function InfographicStudioView(
     if (rows.length < 2) { setMsg('Trenger minst 2 datarader (JSON-array eller CSV med flere verdi-rader).'); return; }
     const fields = tpl.fields.filter((f) => !isIconField(f.key));
     const built: Scene[] = rows.map((row, i) => {
-      const bindings: Record<string, string> = {};
-      // Bind malens felt til kolonner i rekkefølge (så mange som finnes).
-      fields.forEach((f, j) => { if (headers[j]) bindings[f.key] = headers[j]; });
+      // Bak radens verdier RETT inn i values. IKKE sett bindings — de ville i
+      // fieldVals overstyre pr-rad-verdiene med dataMap (som kun har rad 0) →
+      // alle scener ville vist rad 0. Per-rad values er sannheten her.
       const values: Record<string, string> = {};
       fields.forEach((f, j) => { if (headers[j]) values[f.key] = row[headers[j]] ?? ''; });
       const at = i * effDur(scene, tpl);
-      return { id: `s${_sid++}`, tplId: tpl.id, values, atSec: at, bindings };
+      return { id: `s${_sid++}`, tplId: tpl.id, values, atSec: at, bindings: {} };
     });
     setScenes(built); setSel(0);
     setMsg(`Laget ${built.length} scener — én per datarad (${tpl.name}).`);
@@ -2040,8 +2100,8 @@ export function InfographicStudioView(
                       </div>
                     )}
                     {siteBrand.fonts.length > 0 && (
-                      <div style={{ fontSize: 10, color: D.soft, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <TextFieldsIcon style={{ fontSize: 13 }} /> {siteBrand.fonts.join(' · ')}
+                      <div style={{ fontSize: 10, color: D.soft, display: 'flex', alignItems: 'center', gap: 5 }} title="Malene bruker bundlet font (Inter) for offline-robusthet — nettside-fonten brukes ikke i selve infographic-en">
+                        <TextFieldsIcon style={{ fontSize: 13 }} /> {siteBrand.fonts.join(' · ')} <span style={{ color: D.faint }}>· kun oppdaget</span>
                       </div>
                     )}
                   </div>
@@ -2293,8 +2353,8 @@ export function InfographicStudioView(
             </div>
             <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Oppløsning</div>
             <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-              {[[2, '1080p'], [3, '1440p'], [4, '4K']].map(([sc, lbl]) => (
-                <button key={String(sc)} onClick={() => setScale(sc as number)} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: scale === sc ? D.accent : D.panel2, border: `1px solid ${scale === sc ? D.accent : D.line}` }}>{lbl}</button>
+              {[2, 3, 4].map((sc) => (
+                <button key={sc} onClick={() => setScale(sc)} title={`${qualityLabel(sc)} · ${qualityTip(sc)}`} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: scale === sc ? D.accent : D.panel2, border: `1px solid ${scale === sc ? D.accent : D.line}` }}>{qualityLabel(sc)}</button>
               ))}
             </div>
             <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Bildefrekvens</div>
@@ -2324,7 +2384,7 @@ export function InfographicStudioView(
                 <button key={tr} onClick={() => setOverlayTrack(tr)} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: overlayTrack === tr ? D.accent : D.panel2, border: `1px solid ${overlayTrack === tr ? D.accent : D.line}` }}>V{tr}</button>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: D.soft, lineHeight: 1.5 }}>Alle {scenes.length} scener rendres ({scale === 4 ? '4K' : scale === 3 ? '1440p' : '1080p'}, {fps}fps) + plasseres på spor V{overlayTrack} ved riktig tid med <b style={{ color: D.ink }}>Send to Resolve</b>.</div>
+            <div style={{ fontSize: 11, color: D.soft, lineHeight: 1.5 }}>Alle {scenes.length} scener rendres ({qualityLabel(scale)} · {qualityTip(scale)}, {fps}fps) + plasseres på spor V{overlayTrack} ved riktig tid med <b style={{ color: D.ink }}>Send to Resolve</b>.</div>
           </>)}
         </div>
 
@@ -2439,6 +2499,7 @@ export function InfographicStudioView(
                             {motionPresets.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
                           </select>
                           <span onClick={saveMainPreset} title="Lagre gjeldende stil som preset" style={chip}>💾</span>
+                          {motionPresets.length > 0 && <span onClick={deleteMainPreset} title="Slett en preset" style={chip}>🗑</span>}
                           <span onClick={() => (previewMode === 'film' ? void sendSequenceToResolve() : void sendMotionToResolve(mainMotion.html, mainMotion.durationSec, `${mw}x${mh}`))} title={previewMode === 'film' ? 'Rendrer HELE data-filmen → ProRes 4444 → Resolve' : 'Rendrer denne scenens motion → ProRes 4444 → Resolve'} style={{ ...chip, background: D.accent, color: '#04121a', fontWeight: 700 }}>⤓ {previewMode === 'film' ? 'Film' : 'Resolve'}</span>
                         </div>
                       </>
