@@ -262,6 +262,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         error: "client_project_id, client_name, client_website_url og actions er påkrevd",
       });
     }
+    // `client_project_id` er en UUID-kolonne. En slug (f.eks. casting-prosjekt-
+    // ID `medside-…`) kaster «invalid input syntax for type uuid» i INSERTen
+    // ($1::uuid) → 500. Returner heller en tydelig 400 for ikke-UUID.
+    if (!UUID_RE.test(clientProjectId)) {
+      return res.status(400).json({ error: "client_project_id må være en gyldig UUID" });
+    }
 
     try {
       // Upsert config
