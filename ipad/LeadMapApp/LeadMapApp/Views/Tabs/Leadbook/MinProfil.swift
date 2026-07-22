@@ -25,6 +25,7 @@ struct MinProfilSheet: View {
     @State private var dorsalgMeg: KartverketService.DorsalgStats.Meg?
     @State private var showEditProfile = false
     @State private var showLogoutConfirm = false
+    @State private var showFeedback = false
     @State private var photoItem: PhotosPickerItem?
     @State private var localPortrait: UIImage?
 
@@ -152,6 +153,9 @@ struct MinProfilSheet: View {
                         Link(destination: URL(string: "https://leadgrid.no/personvern")!) {
                             Label("Personvern", systemImage: "lock.shield.fill")
                         }
+                        Button {
+                            showFeedback = true
+                        } label: { Label("Hva synes du om Leadgrid?", systemImage: "star.bubble.fill") }
                         Divider()
                         Button(role: .destructive) {
                             showLogoutConfirm = true
@@ -169,6 +173,11 @@ struct MinProfilSheet: View {
                     appState.signOut()
                 }
                 Button("Avbryt", role: .cancel) {}
+            }
+            .sheet(isPresented: $showFeedback) {
+                if let api = appState.api {
+                    LeadgridFeedbackSheet(api: api)
+                }
             }
             .sheet(isPresented: $showEditProfile) {
                 EditMyProfileSheet(profile: myProfile) { updated in
