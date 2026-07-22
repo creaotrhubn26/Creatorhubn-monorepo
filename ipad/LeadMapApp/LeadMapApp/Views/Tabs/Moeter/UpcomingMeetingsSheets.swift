@@ -321,19 +321,6 @@ struct UpcomingMeetingDetailSheet: View {
         return parts.prefix(2).compactMap { $0.first }.map { String($0) }.joined()
     }
 
-    private func iconCircleBtn(icon: String, color: Color) -> some View {
-        Button {} label: {
-            ZStack {
-                Circle().fill(color.opacity(0.22))
-                Image(systemName: icon)
-                    .font(.appScaled(size: 12, weight: .bold))
-                    .foregroundStyle(color)
-            }
-            .frame(width: 32, height: 32)
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: prep status
 
     private var prepStatusCard: some View {

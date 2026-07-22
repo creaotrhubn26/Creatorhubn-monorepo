@@ -3395,24 +3395,29 @@ private struct FilterChip: View {
 
 private struct NextActionsCard: View {
     let leads: [LeadModel]
+    @State private var showAll = false
+    @State private var openLead: LeadModel?
 
-    private var topLeads: [LeadModel] {
-        Array(leads
-            .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
-            .prefix(4))
+    private var sortedLeads: [LeadModel] {
+        leads.sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
     }
+    private var topLeads: [LeadModel] { Array(sortedLeads.prefix(4)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Neste handlinger").font(.headline).foregroundStyle(.white)
                 Spacer()
-                Text("Se alle (\(leads.count))")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                Button { showAll = true } label: {
+                    Text("Se alle (\(leads.count))")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
+                .buttonStyle(.plain)
+                .disabled(leads.isEmpty)
             }
             ForEach(topLeads, id: \.id) { lead in
-                NextActionRow(lead: lead)
+                NextActionRow(lead: lead, onOpen: { openLead = $0 })
             }
             if topLeads.isEmpty {
                 Text("Ingen oppfølginger akkurat nå")
@@ -3424,6 +3429,30 @@ private struct NextActionsCard: View {
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showAll) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(sortedLeads, id: \.id) { lead in
+                            NextActionRow(lead: lead, onOpen: { openLead = $0 })
+                                .padding(.horizontal, 4)
+                        }
+                    }
+                    .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Alle oppfølginger (\(leads.count))")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
+        .sheet(item: $openLead) { lead in
+            LeadDetailSheet(lead: lead)
+        }
     }
 }
 
@@ -3596,6 +3625,16 @@ private struct PipelineOverviewCard: View {
 
     private var maxCount: Int { max(stages.map(\.count).max() ?? 1, 1) }
 
+    @State private var showReport = false
+
+    private var pipelineReport: String {
+        var lines = ["Pipeline-rapport", "Totalt \(leads.count) leads", ""]
+        lines.append(contentsOf: stages.map { s in
+            "\(s.name): \(s.count)" + (s.trend.map { " (\($0))" } ?? "")
+        })
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -3607,17 +3646,43 @@ private struct PipelineOverviewCard: View {
                 ForEach(stages) { stageRow($0) }
             }
             Divider().background(Brand.stroke).padding(.top, 4)
-            HStack {
-                Spacer()
-                Text("Se full pipeline rapport").font(.appScaled(size: 12, weight: .semibold))
-                Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
-                Spacer()
+            Button { showReport = true } label: {
+                HStack {
+                    Spacer()
+                    Text("Se full pipeline rapport").font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
+                    Spacer()
+                }
+                .foregroundStyle(Brand.purpleLight).padding(.top, 2)
             }
-            .foregroundStyle(Brand.purpleLight).padding(.top, 2)
+            .buttonStyle(.plain)
         }
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showReport) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(stages) { stageRow($0) }
+                    }
+                    .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Pipeline-rapport")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { showReport = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        ShareLink(item: pipelineReport) {
+                            Label("Del", systemImage: "square.and.arrow.up")
+                        }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 
     private func stageRow(_ stage: Stage) -> some View {
@@ -3688,18 +3753,49 @@ private struct ActivityTodayCard: View {
                 row(icon: "mappin.and.ellipse", color: Brand.orange, label: "Besøk", value: visits)
             }
             Divider().background(Brand.stroke).padding(.top, 4)
-            HStack {
-                Spacer()
-                Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
-                Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
-                Spacer()
+            Button { showAll = true } label: {
+                HStack {
+                    Spacer()
+                    Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
+                    Spacer()
+                }
+                .foregroundStyle(Brand.purpleLight).padding(.top, 2)
             }
-            .foregroundStyle(Brand.purpleLight).padding(.top, 2)
+            .buttonStyle(.plain)
         }
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showAll) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        row(icon: "phone.fill", color: Brand.blue, label: "Telefoner", value: calls)
+                        row(icon: "envelope.fill", color: Brand.purple, label: "E-poster", value: emails)
+                        row(icon: "calendar", color: Brand.green, label: "Møter", value: meetings)
+                        row(icon: "mappin.and.ellipse", color: Brand.orange, label: "Besøk", value: visits)
+                    }
+                    .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Aktivitet i dag")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        ShareLink(item: "Aktivitet i dag\nTelefoner: \(calls)\nE-poster: \(emails)\nMøter: \(meetings)\nBesøk: \(visits)") {
+                            Label("Del", systemImage: "square.and.arrow.up")
+                        }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
+
+    @State private var showAll = false
 
     private func row(icon: String, color: Color, label: String, value: Int) -> some View {
         HStack(spacing: 12) {
@@ -5750,6 +5846,7 @@ struct RecentActivitiesPopover: View {
     /// Når data sist ble hentet — driver den EKTE «Oppdatert …»-teksten i
     /// footeren (før: hardkodet «Oppdaterte data for 2 min siden»).
     var lastUpdated: Date? = nil
+    @State private var showAllActivities = false
 
     private var lastUpdatedLabel: String? {
         guard let lastUpdated else { return nil }
@@ -5766,9 +5863,12 @@ struct RecentActivitiesPopover: View {
             HStack {
                 Text("Aktivitet").font(.headline).foregroundStyle(.white)
                 Spacer()
-                Text("Se alle")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                Button { showAllActivities = true } label: {
+                    Text("Se alle")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
+                .buttonStyle(.plain)
             }
             .padding(16)
 
@@ -5811,6 +5911,22 @@ struct RecentActivitiesPopover: View {
             }
         }
         .background(Brand.card)
+        .sheet(isPresented: $showAllActivities) {
+            NavigationStack {
+                ScrollView {
+                    RecentActivitiesCard(leads: leads, embedded: true)
+                        .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Alle aktiviteter")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAllActivities = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -5906,6 +6022,7 @@ private struct TipsRow: View {
 private struct RecentActivitiesCard: View {
     let leads: [LeadModel]
     var embedded: Bool = false  // true = vises inni popover (uten ramme/tittel)
+    @State private var showAll = false
 
     private struct Event: Identifiable {
         let id = UUID()
@@ -5971,9 +6088,12 @@ private struct RecentActivitiesCard: View {
                 HStack {
                     Text("Siste aktiviteter").font(.headline).foregroundStyle(.white)
                     Spacer()
-                    Text("Se alle")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
+                    Button { showAll = true } label: {
+                        Text("Se alle")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(Brand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             if events.isEmpty {
@@ -6020,13 +6140,16 @@ private struct RecentActivitiesCard: View {
             }
             if !embedded {
                 Divider().background(Brand.stroke).padding(.top, 4)
-                HStack {
-                    Spacer()
-                    Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
-                    Spacer()
+                Button { showAll = true } label: {
+                    HStack {
+                        Spacer()
+                        Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
+                        Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(Brand.purpleLight).padding(.top, 2)
                 }
-                .foregroundStyle(Brand.purpleLight).padding(.top, 2)
+                .buttonStyle(.plain)
             }
         }
         .padding(16)
@@ -6035,6 +6158,22 @@ private struct RecentActivitiesCard: View {
         .overlay(
             embedded ? nil : RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1)
         )
+        .sheet(isPresented: $showAll) {
+            NavigationStack {
+                ScrollView {
+                    RecentActivitiesCard(leads: leads, embedded: true)
+                        .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Alle aktiviteter")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 }
 
