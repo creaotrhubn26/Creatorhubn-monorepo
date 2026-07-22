@@ -570,7 +570,15 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     }
   });
 
-  app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res, next) => {
+    // `/:projectId/approval-policy` er en egen, mildere-gatet rute registrert
+    // lenger ned. Express matcher denne generiske `:platform`-ruten først (samme
+    // to-segments-form), så uten dette fall-through-et ble approval-policy tolket
+    // som platform="approval-policy" → 400 + admin-gate for klient-flaten. Slipp
+    // den videre til riktig handler.
+    if (req.params.platform === "approval-policy") {
+      return next();
+    }
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({
@@ -608,7 +616,11 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     });
   });
 
-  app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res, next) => {
+    // Se GET-ruten over: slipp `/approval-policy` videre til sin egen PUT-rute.
+    if (req.params.platform === "approval-policy") {
+      return next();
+    }
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({
