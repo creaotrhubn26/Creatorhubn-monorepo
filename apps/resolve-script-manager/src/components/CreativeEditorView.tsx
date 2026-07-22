@@ -1499,7 +1499,7 @@ Du MÅ kalle generate_alternate_edit-verktøyet med en re-ordned pickOrder + rat
       const resp: any = await invoke("claude_chat", {
         messages: [{ role: "user", content: `Generer ${variant}-versjon. Du må kalle generate_alternate_edit-tool.` }],
         system: systemPrompt,
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         maxTokens: 800,
         tools: [{
           name: "generate_alternate_edit",
@@ -1590,7 +1590,7 @@ Du MÅ kalle generate_suggestions-tool med en array på akkurat 3 forslag.`;
       const resp: any = await invoke("claude_chat", {
         messages: [{ role: "user", content: "Gi 3 konkrete forbedringsforslag for denne sekvensen." }],
         system: systemPrompt,
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         maxTokens: 1200,
         tools: [{
           name: "generate_suggestions",
@@ -1792,7 +1792,7 @@ Du MÅ kalle apply_couple_wishes-tool med:
       const resp: any = await invoke("claude_chat", {
         messages: [{ role: "user", content: "Oversett bryllupsparets wishes til edit-handlinger." }],
         system: systemPrompt,
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         maxTokens: 1500,
         tools: [{
           name: "apply_couple_wishes",
@@ -1902,12 +1902,18 @@ Du MÅ kalle apply_couple_wishes-tool med:
       // Send editorens in-memory state inkludert PICKS-arrayen direkte.
       // Scriptene foretrekker payload over disk-cache hvis tilgjengelig
       // (forhindrer at en eldre cached extraction overrider editorens state).
+      // Look/lysstyrke/overganger/lyd MÅ følge med på ALLE eksport-ruter (før var de
+      // kun på MP4-grenen → Resolve/EDL/FCPXML mistet dem stille).
       const editorStateParams = {
         picks: payload.picks,
         sourceVideo: payload.sourceVideo,
         pickOverrides,
         pickOrder: activePickOrder ?? undefined,
         excludedChapters: excluded,
+        colorLook: lookPack !== "none" ? lookPack : undefined,
+        brightness: brightnessAdjust || undefined,
+        pickTransitions: Object.keys(pickTransitions).length > 0 ? pickTransitions : undefined,
+        customAudios: customAudios.length > 0 ? customAudios.map(a => ({ path: a.path, startSec: a.startSec, volume: a.volume })) : undefined,
       };
 
       // ─── Route per export-kind ───
@@ -1978,6 +1984,7 @@ Du MÅ kalle apply_couple_wishes-tool med:
         mainSongTitle: activeSong?.title,
         aspectRatio: preset.aspect ?? aspectRatio,
         colorLook: lookPack !== "none" ? lookPack : undefined,
+        brightness: brightnessAdjust || undefined,
         targetDurationSec: preset.duration,
         pickOverrides,
         pickOrder: activePickOrder ?? undefined,
@@ -1998,7 +2005,7 @@ Du MÅ kalle apply_couple_wishes-tool med:
         throw new Error((errEvent?.value as any)?.message ?? "Export failed (no output path)");
       }
     } catch (e: any) {
-      setExportError(typeof e === "string" ? e : (e?.message ?? "Ukjent feil"));
+      setExportError("Eksport feilet: " + (typeof e === "string" ? e : (e?.message ?? "Ukjent feil")));
     } finally {
       setExportBusy(false);
     }
@@ -2156,7 +2163,7 @@ Du MÅ kalle analyze_narrative_flow-tool med evaluations-array som inkluderer AL
       const resp: any = await invoke("claude_chat", {
         messages: [{ role: "user", content: `Analyser flyt i sekvensen. Kall analyze_narrative_flow-tool med alle ${filteredPicks.length} picks.` }],
         system: systemPrompt,
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         maxTokens: 2000,
         tools: [{
           name: "analyze_narrative_flow",
@@ -2254,7 +2261,7 @@ ${ctxLines.join("\n")}`;
       const resp: any = await invoke("claude_chat", {
         messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
         system: systemPrompt,
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         maxTokens: 600,
       });
       const blocks = resp?.content ?? [];
@@ -3110,7 +3117,7 @@ ${ctxLines.join("\n")}`;
               <button
                 onClick={() => {
                   setLivePreviewMode(v => !v);
-                  if (!livePreviewMode) livePreview.setEnabled(true);
+                  livePreview.setEnabled(!livePreviewMode); // slå AV bakgrunns-render når man går tilbake til source
                 }}
                 style={{
                   marginLeft: 8,
@@ -3758,15 +3765,22 @@ ${ctxLines.join("\n")}`;
             <ToolButton Icon={CropIcon} label="Stabilisering"
                         onClick={async () => {
                           if (!focusedPick || stabilizingPick) return;
-                          setStabilizingPick(true);
+                          setStabilizingPick(true); setExportError(null);
                           try {
-                            await executeScript("stabilize_clip", {
+                            // Tiered stabilisering: Gyroflow (gyrodata) → ffmpeg vid.stab → deshake.
+                            const summary = await executeScript("stabilize_clip", {
                               videoPath: payload?.sourceVideo,
                               startSec: focusedPick.startSec,
                               endSec: focusedPick.endSec,
+                              strength: 0.5,
                             }, false);
-                          } catch (e) {
-                            console.warn("Stabilization failed:", e);
+                            const errEvent = summary.events.find(e => e.type === "error");
+                            if (errEvent) throw new Error((errEvent.value as any)?.message ?? "Stabilisering feilet");
+                            const r = summary.events.find(e => e.type === "result")?.value as { outputPath?: string; method?: string } | undefined;
+                            if (r?.outputPath) setExportResult({ outputPath: `Stabilisert (${r.method}): ${r.outputPath}`, durationSec: 0 });
+                            else throw new Error("Stabilisering ga ingen fil");
+                          } catch (e: any) {
+                            setExportError("Stabilisering feilet: " + (typeof e === "string" ? e : (e?.message ?? "ukjent feil")));
                           } finally {
                             setStabilizingPick(false);
                           }
@@ -3822,7 +3836,7 @@ ${ctxLines.join("\n")}`;
           )}
           {exportError && (
             <div className="ce-export-error">
-              ⚠ Eksport feilet: {exportError}
+              ⚠ {exportError}
               <button onClick={() => setExportError(null)}>×</button>
             </div>
           )}
@@ -3851,7 +3865,6 @@ ${ctxLines.join("\n")}`;
               title="Åpne onboarding-wizard"
               style={{ marginLeft: "auto", marginRight: 4, fontSize: 14 }}
             >🧙</button>
-            <button className="ce-claude-close">✕</button>
           </div>
 
           {/* Agent tabs */}
