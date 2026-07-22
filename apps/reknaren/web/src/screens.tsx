@@ -862,6 +862,13 @@ export function BankScreen({ orgId }: { orgId: string }) {
   const txs = useLoad(() => api<BankTx[]>('GET', `/api/organizations/${orgId}/bank/transactions`), [orgId]);
   const matches = useLoad(() => api<Match[]>('GET', `/api/organizations/${orgId}/bank/matches`), [orgId]);
   const recon = useLoad(() => api<Recon>('GET', `/api/organizations/${orgId}/bank/reconciliation-status`), [orgId]);
+  interface BankCategory {
+    key: string;
+    label: string;
+    direction: 'in' | 'out';
+  }
+  const cats = useLoad(() => api<BankCategory[]>('GET', `/api/organizations/${orgId}/bank/categories`), [orgId]);
+  const [catChoice, setCatChoice] = useState<Record<string, string>>({});
   // Bank-feed: last institusjoner, men fang 503 (feed ikke konfigurert) ærlig.
   const feed = useLoad(async () => {
     try {
@@ -1006,6 +1013,28 @@ export function BankScreen({ orgId }: { orgId: string }) {
       }
       txs.reload();
       matches.reload();
+      recon.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const categorize = async (txId: string, category: string) => {
+    if (!category) return;
+    setError(null);
+    try {
+      const r = await api<{ entryNumber: number }>(
+        'POST',
+        `/api/organizations/${orgId}/bank/transactions/${txId}/categorize`,
+        { category },
+      );
+      toast(`Bokført som bilag nr. ${r.entryNumber}`, 'ok');
+      setCatChoice((prev) => {
+        const next = { ...prev };
+        delete next[txId];
+        return next;
+      });
+      txs.reload();
       recon.reload();
     } catch (err) {
       setError((err as Error).message);
@@ -1247,22 +1276,54 @@ export function BankScreen({ orgId }: { orgId: string }) {
                 <th>Beskrivelse</th>
                 <th className="num">Beløp</th>
                 <th>Status</th>
+                <th>Kategoriser (uten bilag)</th>
               </tr>
             </thead>
             <tbody>
-              {(txs.data ?? []).map((t) => (
-                <tr key={t.id}>
-                  <td>{t.booked_date}</td>
-                  <td>
-                    <div className="primary-line">{t.description}</div>
-                    {t.counterparty && <div className="secondary-line">{t.counterparty}</div>}
-                  </td>
-                  <td className="num">{kr(t.amount_minor)}</td>
-                  <td>
-                    <StatusBadge status={t.status} />
-                  </td>
-                </tr>
-              ))}
+              {(txs.data ?? []).map((t) => {
+                const dir = BigInt(t.amount_minor) >= 0n ? 'in' : 'out';
+                const options = (cats.data ?? []).filter((c) => c.direction === dir);
+                return (
+                  <tr key={t.id}>
+                    <td>{t.booked_date}</td>
+                    <td>
+                      <div className="primary-line">{t.description}</div>
+                      {t.counterparty && <div className="secondary-line">{t.counterparty}</div>}
+                    </td>
+                    <td className="num">{kr(t.amount_minor)}</td>
+                    <td>
+                      <StatusBadge status={t.status} />
+                    </td>
+                    <td>
+                      {t.status === 'unmatched' ? (
+                        <div className="actions" style={{ marginTop: 0 }}>
+                          <select
+                            value={catChoice[t.id] ?? ''}
+                            onChange={(e) => setCatChoice((p) => ({ ...p, [t.id]: e.target.value }))}
+                            aria-label="Velg kategori"
+                          >
+                            <option value="">Velg …</option>
+                            {options.map((c) => (
+                              <option key={c.key} value={c.key}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="primary"
+                            disabled={!catChoice[t.id]}
+                            onClick={() => categorize(t.id, catChoice[t.id] ?? '')}
+                          >
+                            Bokfør
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="secondary-line">–</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

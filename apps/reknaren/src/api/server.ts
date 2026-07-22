@@ -61,6 +61,7 @@ import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank
 import type { BankFeedProvider } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { reconciliationStatus } from '../bank/reconciliation.js';
+import { bankCategoriesFor, categorizeBankTransaction } from '../bank/categorize.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
@@ -2467,6 +2468,43 @@ export function createApiServer(deps: ApiDeps): express.Express {
     async (req: AuthedRequest, res, next) => {
       try {
         res.json(toJson(await reconciliationStatus(deps.db, { organizationId: req.params.orgId! })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Guidede kategorier for kontering av banklinjer uten bilag (avhenger av org.form).
+  app.get(
+    '/api/organizations/:orgId/bank/categories',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const org = await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId]);
+        const orgForm = org.rows[0]?.org_form ?? 'AS';
+        res.json(bankCategoriesFor(orgForm));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Konterer én banktransaksjon uten bilag etter valgt kategori (gebyr/rente/skatt/…).
+  app.post(
+    '/api/organizations/:orgId/bank/transactions/:txId/categorize',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ category: z.string().min(1).max(40) }).parse(req.body);
+        const result = await categorizeBankTransaction(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          transactionId: req.params.txId!,
+          category: body.category,
+        });
+        res.status(201).json(toJson(result));
       } catch (err) {
         next(err);
       }
