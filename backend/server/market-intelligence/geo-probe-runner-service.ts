@@ -645,3 +645,100 @@ export async function computeReport(
     discoveredBrands,
   };
 }
+
+// ── Kildekartlegging: hvor AI henter svarene sine ────────────────────
+// Aggregerer cited_urls fra siste kjøring per vert (domene). Svarer på
+// «hvilke nettsteder må målmerket være til stede på for å bli sitert» —
+// veikartet for ekstern synlighet, ikke gjetting. Målmerkets eget domene
+// flagges så vi ser om egne sider i det hele tatt blir referert.
+export interface GeoCitedSource {
+  host: string;
+  citations: number;
+  isTargetDomain: boolean;
+  exampleUrls: string[];
+  brandsSeen: string[];
+}
+export interface GeoCitedSourcesReport {
+  promptSet: { id: string; name: string; targetBrand: string; targetDomain: string | null };
+  latestRunId: string | null;
+  totalCitations: number;
+  targetDomainCited: boolean;
+  sources: GeoCitedSource[];
+}
+
+function hostOf(raw: string): string | null {
+  try {
+    return new URL(raw).host.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export async function computeCitedSources(
+  pool: Pool,
+  setId: string,
+  workspaceOwnerUserId: string,
+): Promise<GeoCitedSourcesReport | null> {
+  const loaded = await getPromptSet(pool, setId, workspaceOwnerUserId);
+  if (!loaded) return null;
+  const { promptSet } = loaded;
+  const targetHost = promptSet.targetDomain
+    ? promptSet.targetDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "").toLowerCase()
+    : null;
+
+  const runs = await pool.query<{ id: string }>(
+    `SELECT id::text FROM geo_probe_runs
+      WHERE prompt_set_id = $1::uuid AND status IN ('completed','partial')
+      ORDER BY started_at DESC LIMIT 1`,
+    [setId],
+  );
+  const latestRunId = runs.rows[0]?.id ?? null;
+  const base = {
+    promptSet: { id: promptSet.id, name: promptSet.name, targetBrand: promptSet.targetBrand, targetDomain: promptSet.targetDomain },
+    latestRunId,
+    totalCitations: 0,
+    targetDomainCited: false,
+    sources: [] as GeoCitedSource[],
+  };
+  if (!latestRunId) return base;
+
+  const results = await pool.query<{ cited_urls: string[]; mentioned_brands: BrandMention[] }>(
+    `SELECT cited_urls, mentioned_brands FROM geo_probe_results WHERE run_id = $1::uuid`,
+    [latestRunId],
+  );
+
+  const hostMap = new Map<string, { host: string; citations: number; urls: Set<string>; brands: Set<string> }>();
+  let total = 0;
+  for (const r of results.rows) {
+    const urls = Array.isArray(r.cited_urls) ? r.cited_urls : [];
+    const brands = (Array.isArray(r.mentioned_brands) ? r.mentioned_brands : []).map((m) => m.name);
+    for (const u of urls) {
+      const host = hostOf(String(u));
+      if (!host) continue;
+      total++;
+      const entry = hostMap.get(host) ?? { host, citations: 0, urls: new Set<string>(), brands: new Set<string>() };
+      entry.citations++;
+      if (entry.urls.size < 3) entry.urls.add(String(u));
+      brands.forEach((b) => entry.brands.add(b));
+      hostMap.set(host, entry);
+    }
+  }
+
+  const sources: GeoCitedSource[] = [...hostMap.values()]
+    .sort((a, b) => b.citations - a.citations)
+    .slice(0, 30)
+    .map((e) => ({
+      host: e.host,
+      citations: e.citations,
+      isTargetDomain: targetHost !== null && e.host === targetHost,
+      exampleUrls: [...e.urls],
+      brandsSeen: [...e.brands],
+    }));
+
+  return {
+    ...base,
+    totalCitations: total,
+    targetDomainCited: targetHost !== null && hostMap.has(targetHost),
+    sources,
+  };
+}
