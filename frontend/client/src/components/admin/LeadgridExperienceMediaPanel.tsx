@@ -42,7 +42,7 @@ function MockupPreview({ scene, image, video }: { scene: ExperienceSceneInfo; im
   if (scene.kind === 'framed') {
     // Watch: media bak transparent ramme, klippet til skjerm-rektangelet.
     return (
-      <Box sx={{ position: 'relative', width: 150, aspectRatio: '560 / 880' }}>
+      <Box sx={{ position: 'relative', width: 150, aspectRatio: '457 / 789' }}>
         <Box sx={{ position: 'absolute', ...WATCH_SCREEN_RECT, overflow: 'hidden', borderRadius: '13%', bgcolor: '#0b0518' }}>
           {media}
         </Box>

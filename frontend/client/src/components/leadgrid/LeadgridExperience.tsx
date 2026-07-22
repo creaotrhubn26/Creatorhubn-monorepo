@@ -134,7 +134,7 @@ const SCENES: Scene[] = [
     // ev. `video: '/leadgrid/…​.mp4'` for animert skjerm. `bezel` = rammen.
     id: 'watch', kind: 'framed',
     image: '/leadgrid/scenes/watch-screen-default.webp',
-    bezel: '/leadgrid/scenes/watch-bezel.webp',
+    bezel: '/leadgrid/scenes/watch-frame-fal.webp',
     bg: '/leadgrid/scenes/watch-bg.webp',
     eyebrow: 'Ute i feltet', title: 'Et blikk på håndleddet.',
     body: 'Ny lead tildelt deg, rett på Apple Watch. Du trenger aldri stoppe opp midt i feltet.',
@@ -374,8 +374,9 @@ function CinematicVisual({ image, scale }: { image: string; scale: MotionValue<n
 // `bezel` = transparent enhets-ramme (body/reim/crown m/ gjennomsiktig
 // skjerm). `image`/`video` = det som vises INNE i skjermen — bytt fritt
 // mellom bilde, GIF (bare .gif i `image`) eller mp4 (`video`).
-// Skjerm-rektangelet er målt mot watch-bezel.webp (560×880).
-const WATCH_SCREEN = { left: '9%', top: '20.8%', width: '82%', height: '61%' } as const;
+// Skjerm-rektangelet er målt mot watch-frame-fal.webp (457×789, fotoreal render).
+// Litt større enn selve hullet så media over-dekker; rammen masker kantene.
+const WATCH_SCREEN = { left: '11%', top: '23%', width: '76.5%', height: '53.5%' } as const;
 
 function FramedVisual({
   bezel, image, video, y, narrow, align, reduced, active,
@@ -417,7 +418,7 @@ function FramedVisual({
         }}
       />
       {/* container med enhets-forhold; skjerm-media bak, transparent ramme over */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '560 / 880' }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '457 / 789' }}>
         <div
           style={{
             position: 'absolute', ...WATCH_SCREEN, overflow: 'hidden',

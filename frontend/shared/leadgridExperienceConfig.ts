@@ -43,7 +43,7 @@ export const EXPERIENCE_SCENE_MANIFEST: ExperienceSceneInfo[] = [
   { id: 'kart', title: 'Kartet', kind: 'device', landscape: true, defaultImage: '/leadgrid/app/tour-kart-poster.webp', defaultVideo: '/leadgrid/app/tour-kart.mp4' },
   { id: 'leads', title: 'Leads', kind: 'device', defaultImage: '/leadgrid/app/leads.webp' },
   { id: 'moter', title: 'Møter', kind: 'device', defaultImage: '/leadgrid/app/moter.webp' },
-  { id: 'watch', title: 'Apple Watch', kind: 'framed', defaultImage: '/leadgrid/scenes/watch-screen-default.webp', bezel: '/leadgrid/scenes/watch-bezel.webp' },
+  { id: 'watch', title: 'Apple Watch', kind: 'framed', defaultImage: '/leadgrid/scenes/watch-screen-default.webp', bezel: '/leadgrid/scenes/watch-frame-fal.webp' },
   { id: 'dorsalg', title: 'Dørsalg', kind: 'device', landscape: true, defaultImage: '/leadgrid/app/tour-dorsalg-poster.webp', defaultVideo: '/leadgrid/app/tour-dorsalg.mp4' },
   { id: 'kvalitet', title: 'Kvalitet', kind: 'device', landscape: true, defaultImage: '/leadgrid/app/tour-kvalitet-poster.webp', defaultVideo: '/leadgrid/app/tour-kvalitet.mp4' },
   { id: 'go', title: 'Leadgrid Go', kind: 'device', defaultImage: '/leadgrid/app/tour-kjorebok-poster.webp', defaultVideo: '/leadgrid/app/tour-kjorebok.mp4' },
@@ -53,4 +53,4 @@ export const EXPERIENCE_SCENE_MANIFEST: ExperienceSceneInfo[] = [
 ];
 
 /** Skjerm-rektangel (%) for watch-slot — matcher watch-bezel.webp (560×880). */
-export const WATCH_SCREEN_RECT = { left: '9%', top: '20.8%', width: '82%', height: '61%' } as const;
+export const WATCH_SCREEN_RECT = { left: '11%', top: '23%', width: '76.5%', height: '53.5%' } as const;
