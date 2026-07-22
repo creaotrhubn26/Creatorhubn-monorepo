@@ -490,6 +490,17 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [projectTabOverride, setProjectTabOverride] = useState<string[] | null>(null);
   useEffect(() => {
     if (!selectedProjectId) { setProjectTabOverride(null); return; }
+    // Klient-portalen (?portal=client) autentiserer med invitasjons-Bearer-token,
+    // ikke cookie-sesjonen dette endepunktet krever (getUserIdFromRequest). my-tabs
+    // er dessuten en medlems-konfigurasjon uten mening for klienter — de bruker
+    // uansett plattform-defaults. Hopp over kallet for å unngå støyende 401-er.
+    let isClientPortal = false;
+    if (typeof window !== 'undefined') {
+      try {
+        isClientPortal = new URLSearchParams(window.location.search).get('portal') === 'client';
+      } catch { /* ignorer */ }
+    }
+    if (isClientPortal) { setProjectTabOverride(null); return; }
     let cancelled = false;
     void (async () => {
       try {
