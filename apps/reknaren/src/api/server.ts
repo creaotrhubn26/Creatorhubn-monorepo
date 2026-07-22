@@ -89,6 +89,8 @@ export interface ApiDeps {
   extractor?: DocumentExtractor | undefined;
   /** Faktisk OCR-tilgjengelighet, til ærlig integrasjonsstatus. */
   ocrStatus?: { tesseract: boolean; pdftotext: boolean } | undefined;
+  /** Om AI-bilagslesing (Claude) er aktiv (nøkkel konfigurert). */
+  aiExtraction?: boolean | undefined;
   /** Oppslag mot MVA-registeret (Brreg åpne data). Uten denne er kontrollen utilgjengelig. */
   vatRegister?: VatRegisterLookup | undefined;
   /**
@@ -750,9 +752,11 @@ export function createApiServer(deps: ApiDeps): express.Express {
         note: 'Gmail kjører mot sandbox-adapter. Ekte OAuth-tilkobling krever Google Cloud-prosjekt og klienthemmeligheter (se docs/integration-status.md).',
       },
       bank: { mode: 'manual_csv', active: true, note: 'Manuell CSV-import med deterministisk matching. Ingen PSD2-/open banking-tilkobling.' },
-      ocr: deps.ocrStatus?.tesseract
-        ? { mode: 'tesseract', active: true, note: `Tesseract (nor+eng) for bilder${deps.ocrStatus.pdftotext ? ', pdftotext for PDF' : ''}. Kvalitet avhenger av bildekvalitet — avvik går til kontrollkø.` }
-        : { mode: 'deterministic_text', active: false, note: 'tesseract-ocr er ikke installert på verten — skannede bilder tolkes ikke. Installer tesseract-ocr + tesseract-ocr-nor.' },
+      ocr: deps.aiExtraction
+        ? { mode: 'ai_claude', active: true, note: 'AI-bilagslesing (Claude vision) aktiv: foto/PDF → strukturerte felt. Sumvalidering + menneskelig godkjenning uendret; avvik går til kontrollkø.' }
+        : deps.ocrStatus?.tesseract
+          ? { mode: 'tesseract', active: true, note: `Tesseract (nor+eng) for bilder${deps.ocrStatus.pdftotext ? ', pdftotext for PDF' : ''}. Kvalitet avhenger av bildekvalitet — avvik går til kontrollkø.` }
+          : { mode: 'deterministic_text', active: false, note: 'Verken AI (REKNAREN_ANTHROPIC_API_KEY) eller tesseract-ocr er tilgjengelig — kun tekstbaserte bilag tolkes.' },
       brreg: deps.vatRegister
         ? { mode: 'open_api', active: true, note: 'Oppslag mot Enhetsregisteret (data.brreg.no) for MVA-registerkontroll. Åpne data, ingen nøkkel.' }
         : { mode: 'not_configured', active: false, note: 'MVA-registerkontroll er ikke konfigurert i dette miljøet.' },

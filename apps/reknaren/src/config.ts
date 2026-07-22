@@ -57,6 +57,10 @@ export interface ProductConfig {
   allowedEmails: string[];
   /** Basis-URL for magiske lenker (REKNAREN_APP_URL). */
   appBaseUrl?: string | undefined;
+  /** Anthropic API-nøkkel for AI-bilagslesing. Udefinert = AI-uttrekk ikke aktivt. */
+  anthropicApiKey?: string | undefined;
+  /** Claude-modell for bilagslesing (default claude-sonnet-4-6). */
+  aiModel: string;
 }
 
 const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
@@ -131,5 +135,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     bootstrapOrg: loadBootstrapOrg(env),
     allowedEmails: parseAllowlist(env.REKNAREN_ALLOWED_EMAILS),
     appBaseUrl: env.REKNAREN_APP_URL,
+    anthropicApiKey: env.REKNAREN_ANTHROPIC_API_KEY,
+    aiModel: env.REKNAREN_AI_MODEL ?? 'claude-sonnet-4-6',
   };
 }

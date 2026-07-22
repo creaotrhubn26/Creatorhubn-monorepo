@@ -7,6 +7,7 @@ import { initSentry } from '../ops/sentry.js';
 import { createPool } from '../db/pool.js';
 import { DeterministicTextExtractor } from '../pipeline/extract.js';
 import { isOcrAvailable, OcrExtractor } from '../pipeline/ocr.js';
+import { ClaudeDocumentExtractor } from '../pipeline/ai-extract.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
 import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { LovdataApiClient } from '../integrations/lovdata.js';
@@ -29,13 +30,21 @@ const rules = buildNorwegianRuleRegister();
 const storage = new LocalObjectStorage(config.storageDir);
 const webDistDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist');
 const ocrStatus = await isOcrAvailable();
+// Bilagslesing: AI (Claude vision) når nøkkel finnes, ellers Tesseract-OCR, ellers
+// deterministisk tekstparser. Alle bak samme port — pipelinen er uendret.
+const extractor = config.anthropicApiKey
+  ? new ClaudeDocumentExtractor(config.anthropicApiKey, config.aiModel)
+  : ocrStatus.tesseract
+    ? new OcrExtractor()
+    : new DeterministicTextExtractor();
 const app = createApiServer({
   db,
   rules,
   storage,
   webDistDir: existsSync(webDistDir) ? webDistDir : undefined,
-  extractor: ocrStatus.tesseract ? new OcrExtractor() : new DeterministicTextExtractor(),
+  extractor,
   ocrStatus,
+  aiExtraction: Boolean(config.anthropicApiKey),
   // Åpne data fra Brønnøysundregistrene — ekte klient, ingen nøkkel kreves.
   vatRegister: new BrregVatRegisterClient(),
   // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
