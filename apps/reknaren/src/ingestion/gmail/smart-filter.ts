@@ -212,6 +212,17 @@ export class SmartGmailFilter {
     if (!sig.hasPdf && sig.attachmentNames.length === 0) {
       return { decision: 'skip', confidence: 0.95, documentType: 'unknown', reason: 'Ingen vedlegg', source: 'heuristic' };
     }
+    // Svært sterke signaler (f.eks. «Receipt from X» + Invoice-PDF) → import uten AI.
+    // AI-en spares til de genuint tvilsomme — raskere og billigere, like presist.
+    if (h.score >= 5 && h.negatives.length === 0) {
+      return {
+        decision: 'import',
+        confidence: 0.9,
+        documentType: 'unknown',
+        reason: `Tydelig bilag: ${h.positives.join(', ')}`,
+        source: 'heuristic',
+      };
+    }
     // Klar støy (sterke negative, ingen positive) → hopp over uten AI.
     if (h.negatives.length > 0 && h.positives.length === 0) {
       return {

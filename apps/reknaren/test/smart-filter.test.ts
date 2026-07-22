@@ -22,6 +22,14 @@ const newsletter: EmailSignals = {
   attachmentNames: [],
   hasPdf: false,
 };
+// Svake signaler (bare PDF-vedlegg, ingen nøkkelord) → havner i AI-laget.
+const ambiguous: EmailSignals = {
+  from: 'kontakt@ukjentfirma.no',
+  subject: 'Dokument til deg',
+  snippet: 'Se vedlagt dokument.',
+  attachmentNames: ['vedlegg.pdf'],
+  hasPdf: true,
+};
 
 describe('heuristicScore', () => {
   it('løfter tydelige bilag, straffer markedsføring', () => {
@@ -67,26 +75,36 @@ describe('SmartGmailFilter', () => {
     expect(v.source).toBe('heuristic');
   });
 
-  it('med AI: høy konfidens bilag → import; ikke-bilag → skip', async () => {
-    const imp = await new SmartGmailFilter(stubClassifier({ confidence: 0.95 })).evaluate(faktura);
+  it('tvilsom e-post + AI: høy konfidens bilag → import; ikke-bilag → skip', async () => {
+    const imp = await new SmartGmailFilter(stubClassifier({ confidence: 0.95 })).evaluate(ambiguous);
     expect(imp.decision).toBe('import');
     expect(imp.source).toBe('ai');
 
     const skip = await new SmartGmailFilter(
       stubClassifier({ isAccountingDocument: false, documentType: 'unknown', confidence: 0.9 }),
-    ).evaluate(faktura);
+    ).evaluate(ambiguous);
     expect(skip.decision).toBe('skip');
   });
 
-  it('med AI: middels konfidens → review (mennesket bekrefter)', async () => {
-    const v = await new SmartGmailFilter(stubClassifier({ confidence: 0.6 })).evaluate(faktura);
+  it('tvilsom e-post + AI: middels konfidens → review (mennesket bekrefter)', async () => {
+    const v = await new SmartGmailFilter(stubClassifier({ confidence: 0.6 })).evaluate(ambiguous);
     expect(v.decision).toBe('review');
   });
 
-  it('uten AI: sterk heuristikk → import', async () => {
-    const v = await new SmartGmailFilter().evaluate(faktura);
+  it('tydelig bilag → import via heuristikk UTEN AI-kall (spar tid)', async () => {
+    // med klassifiserer tilstede, men sterke signaler → hopp over AI.
+    let aiCalls = 0;
+    const spy: EmailClassifier = {
+      available: true,
+      async classify() {
+        aiCalls++;
+        return { isAccountingDocument: true, documentType: 'invoice', confidence: 0.9, reason: '' };
+      },
+    };
+    const v = await new SmartGmailFilter(spy).evaluate(faktura);
     expect(v.decision).toBe('import');
     expect(v.source).toBe('heuristic');
+    expect(aiCalls).toBe(0);
   });
 });
 
