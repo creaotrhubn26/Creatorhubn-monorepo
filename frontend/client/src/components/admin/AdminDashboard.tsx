@@ -52,6 +52,7 @@ import {
   Storage,
   Business,
   AttachMoney,
+  Language,
   TrendingUp,
   History,
   ManageAccounts,
@@ -107,6 +108,7 @@ import {
   queryClient,
 } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
+import LeadgridAdminSection from './LeadgridAdminSection';
 import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import EditingPartnersAdminPanel from './EditingPartnersAdminPanel';
@@ -1399,6 +1401,7 @@ export default function AdminDashboard({
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
+    { id: 'leadgrid', label: 'Leadgrid', icon: Language },
     { id: 'user-costs', label: 'Bruker-kostnader', icon: AttachMoney },
     { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
@@ -3568,6 +3571,8 @@ export default function AdminDashboard({
             initialSection={priceManagementSection}
           />
         );
+      case 'leadgrid':
+        return <LeadgridAdminSection />;
       case 'user-costs':
         return <UserCostOverviewPanel />;
       case 'secrets-rotation':
