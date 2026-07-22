@@ -134,6 +134,58 @@ export interface ApiDeps {
   appBaseUrl?: string | undefined;
 }
 
+/** Merkevaret HTML-svar for bank-samtykke-redirecten (/bank/callback). */
+function bankCallbackHtml(opts: { ok: boolean; error?: string | undefined; code?: string | undefined }): string {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const GREEN = '#1f4d3a';
+  const GOLD = '#b0913b';
+  let heading: string;
+  let body: string;
+  let icon: string;
+  if (opts.error) {
+    icon = '⚠️';
+    heading = 'Samtykket ble ikke fullført';
+    body = `Banken avbrøt eller avviste tilgangen${opts.error ? ` (<code>${esc(opts.error)}</code>)` : ''}. Du kan lukke dette vinduet og prøve «Koble bank» på nytt i Reknaren.`;
+  } else if (opts.ok) {
+    icon = '✅';
+    heading = 'Banken er koblet';
+    body =
+      'Samtykket er registrert. Gå tilbake til <strong>Reknaren</strong> og trykk <strong>«Fullfør kobling»</strong> på bankkontoen — så henter vi transaksjonene. Du kan lukke dette vinduet.';
+  } else if (opts.code) {
+    icon = '📋';
+    heading = 'Nesten i mål';
+    body = `Vi klarte ikke å koble svaret til en bankkonto automatisk. Kopiér denne koden inn i «Fullfør kobling» i Reknaren:<br><br><code style="user-select:all;word-break:break-all;background:#f3f0e8;padding:8px 12px;border-radius:8px;display:inline-block">${esc(opts.code)}</code>`;
+  } else {
+    icon = '❔';
+    heading = 'Mangler informasjon fra banken';
+    body = 'Redirecten manglet forventet informasjon. Lukk vinduet og prøv «Koble bank» på nytt i Reknaren.';
+  }
+  return `<!doctype html>
+<html lang="nb"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reknaren — bank-kobling</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         font-family:-apple-system,'Segoe UI',Roboto,sans-serif; background:${GREEN}; color:#1a1a1a; padding:24px; }
+  .card { background:#fff; max-width:460px; width:100%; border-radius:20px; padding:40px 36px;
+          box-shadow:0 20px 60px rgba(0,0,0,.25); text-align:center; }
+  .mono { width:44px; height:44px; border-radius:12px; background:${GREEN}; color:${GOLD};
+          font-weight:800; font-size:24px; display:inline-flex; align-items:center; justify-content:center; margin-bottom:18px; }
+  .icon { font-size:40px; margin-bottom:8px; }
+  h1 { font-size:22px; margin:6px 0 12px; color:${GREEN}; }
+  p { font-size:15px; line-height:1.55; color:#333; margin:0; }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  .brand { margin-top:26px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:${GOLD}; font-weight:700; }
+</style></head>
+<body><div class="card">
+  <div class="mono">R</div>
+  <div class="icon">${icon}</div>
+  <h1>${heading}</h1>
+  <p>${body}</p>
+  <div class="brand">Reknaren</div>
+</div></body></html>`;
+}
+
 export function createApiServer(deps: ApiDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
@@ -2138,17 +2190,20 @@ export function createApiServer(deps: ApiDeps): express.Express {
           })
           .parse(req.body ?? {});
         const acct = await deps.db.query(
-          `SELECT feed_requisition_id FROM bank_accounts WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+          `SELECT feed_requisition_id, feed_pending_code FROM bank_accounts
+           WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
           [req.params.bankAccountId, req.params.orgId],
         );
         if (!acct.rowCount) throw new NotFoundError('Bankkontoen finnes ikke eller er frakoblet.');
         const requisitionId = body.requisitionId ?? acct.rows[0].feed_requisition_id ?? undefined;
-        if (!requisitionId && !body.code) {
-          throw new ValidationError('Mangler fullførings-token. Oppgi «code» (fra redirect) eller kjør /feed/connect først.');
+        // Code kan komme eksplisitt, ellers fra det /bank/callback mellomlagret.
+        const code = body.code ?? acct.rows[0].feed_pending_code ?? undefined;
+        if (!requisitionId && !code) {
+          throw new ValidationError('Mangler fullførings-token. Fullfør bank-innloggingen (redirect), eller kjør /feed/connect først.');
         }
         const { status, accountIds } = await deps.bankFeed!.completeConsent({
           ...(requisitionId ? { requisitionId } : {}),
-          ...(body.code ? { code: body.code } : {}),
+          ...(code ? { code } : {}),
         });
         // Velg oppgitt konto, ellers første tilknyttede.
         const chosen = body.accountId && accountIds.includes(body.accountId) ? body.accountId : accountIds[0];
@@ -2165,11 +2220,11 @@ export function createApiServer(deps: ApiDeps): express.Express {
           return;
         }
         await withTransaction(deps.db, async (client) => {
-          await client.query(`UPDATE bank_accounts SET feed_connection_id = $3 WHERE id = $1 AND organization_id = $2`, [
-            req.params.bankAccountId,
-            req.params.orgId,
-            chosen,
-          ]);
+          await client.query(
+            `UPDATE bank_accounts SET feed_connection_id = $3, feed_pending_code = NULL
+             WHERE id = $1 AND organization_id = $2`,
+            [req.params.bankAccountId, req.params.orgId, chosen],
+          );
           await recordAuditEvent(client, {
             organizationId: req.params.orgId!,
             actor: { userId: req.auth!.userId, role: req.orgRole! },
@@ -2239,6 +2294,36 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // Redirect-mål etter bank-samtykke. UAUTENTISERT (frisk nettlesernavigasjon fra
+  // banken uten Bearer-token) — vi kan derfor ikke fullføre koblingen her. I stedet
+  // mellomlagrer vi `code` på bankkontoen (nøkkel = `state`=orgId:bankAccountId), og
+  // den innloggede brukeren trykker «Fullfør kobling» i Reknaren (POST …/feed/link),
+  // som plukker opp den lagrede code-en. Ingen sensitive data vises.
+  app.get('/bank/callback', async (req, res, next) => {
+    try {
+      const q = req.query as Record<string, unknown>;
+      const code = typeof q.code === 'string' ? q.code : undefined;
+      const state = typeof q.state === 'string' ? q.state : typeof q.ref === 'string' ? q.ref : undefined;
+      const error = typeof q.error === 'string' ? q.error : undefined;
+      let stored = false;
+      if (!error && code && state && /^[0-9a-f-]{36}:[0-9a-f-]{36}$/i.test(state)) {
+        const [orgId, bankAccountId] = state.split(':');
+        // Bare mellomlagre når det finnes en påbegynt samtykkeflyt for kontoen.
+        const upd = await deps.db.query(
+          `UPDATE bank_accounts SET feed_pending_code = $3
+           WHERE id = $2 AND organization_id = $1 AND status = 'active' AND feed_requisition_id IS NOT NULL`,
+          [orgId, bankAccountId, code],
+        );
+        stored = (upd.rowCount ?? 0) > 0;
+      }
+      // GoCardless-flyten har ingen code (fullføres via lagret requisition) → også ok.
+      const ok = !error && (stored || (Boolean(state) && !code));
+      res.status(200).type('html').send(bankCallbackHtml({ ok, error, code: stored ? undefined : code }));
+    } catch (err) {
+      next(err);
+    }
+  });
 
   app.get(
     '/api/organizations/:orgId/bank/transactions',

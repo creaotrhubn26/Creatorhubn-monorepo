@@ -13,6 +13,7 @@ import type {
   BankFeedProvider,
   BankFeedResult,
   BankInstitution,
+  ConsentCompletion,
   RequisitionAccounts,
   RequisitionLink,
 } from '../src/bank/feed.js';
@@ -31,7 +32,9 @@ class StubBankFeed implements BankFeedProvider {
     this.lastReference = p.reference;
     return { requisitionId: 'req-1', link: 'https://ob.example/start/req-1' };
   }
-  async completeConsent(): Promise<RequisitionAccounts> {
+  lastCompletion?: ConsentCompletion;
+  async completeConsent(p: ConsentCompletion): Promise<RequisitionAccounts> {
+    this.lastCompletion = p;
     return { status: 'LN', accountIds: ['acc-1', 'acc-2'] };
   }
   async fetchTransactions(): Promise<BankFeedResult> {
@@ -156,5 +159,67 @@ describe('Bank-feed samtykkeflyt', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({})
       .expect(503);
+  });
+});
+
+describe('Bank-callback (redirect etter samtykke)', () => {
+  let acctId: string;
+
+  it('connect + callback mellomlagrer code → link plukker den opp uten manuell koding', async () => {
+    const acct = await request(app)
+      .post(`/api/organizations/${orgId}/bank-accounts`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Callback-konto', ibanOrAccount: 'NO9386011117456' })
+      .expect(201);
+    acctId = acct.body.id;
+    // connect setter feed_requisition_id (kreves for at callback lagrer code-en)
+    await request(app)
+      .post(`/api/organizations/${orgId}/bank-accounts/${acctId}/feed/connect`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ institutionId: 'DNB_DNBANOKK' })
+      .expect(201);
+
+    // UAUTENTISERT redirect fra banken → HTML + mellomlagret code
+    const cb = await request(app)
+      .get('/bank/callback')
+      .query({ code: 'consent-code-xyz', state: `${orgId}:${acctId}` })
+      .expect(200);
+    expect(cb.headers['content-type']).toContain('text/html');
+    expect(cb.text).toContain('Banken er koblet');
+    expect(cb.text).not.toContain('consent-code-xyz'); // code vises ikke når den er lagret
+    const stored = await db.query(`SELECT feed_pending_code FROM bank_accounts WHERE id = $1`, [acctId]);
+    expect(stored.rows[0].feed_pending_code).toBe('consent-code-xyz');
+
+    // link uten body → bruker lagret code, og nullstiller den etterpå
+    const link = await request(app)
+      .post(`/api/organizations/${orgId}/bank-accounts/${acctId}/feed/link`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(200);
+    expect(link.body).toMatchObject({ linked: true, connectionId: 'acc-1' });
+    expect(feed.lastCompletion?.code).toBe('consent-code-xyz');
+    const after = await db.query(
+      `SELECT feed_connection_id, feed_pending_code FROM bank_accounts WHERE id = $1`,
+      [acctId],
+    );
+    expect(after.rows[0].feed_connection_id).toBe('acc-1');
+    expect(after.rows[0].feed_pending_code).toBeNull();
+  });
+
+  it('callback med error viser avbrutt-side og lagrer ingenting', async () => {
+    const cb = await request(app)
+      .get('/bank/callback')
+      .query({ error: 'access_denied', state: `${orgId}:${acctId}` })
+      .expect(200);
+    expect(cb.text).toContain('Samtykket ble ikke fullført');
+    expect(cb.text).toContain('access_denied');
+  });
+
+  it('callback med ukjent state lagrer ingenting, men viser code for manuell fullføring', async () => {
+    const cb = await request(app)
+      .get('/bank/callback')
+      .query({ code: 'orphan-code', state: '00000000-0000-0000-0000-000000000000:11111111-1111-1111-1111-111111111111' })
+      .expect(200);
+    expect(cb.text).toContain('orphan-code'); // fallback: vis code til manuell liming
   });
 });
