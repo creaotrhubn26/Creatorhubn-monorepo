@@ -1583,6 +1583,23 @@ type RoleRoomProjectWorkspaceState = {
     setHasAnyUnsavedChanges(Object.keys(unsavedProjectSwitchStateRef.current).length > 0);
   }, []);
 
+  // Stabile onUnsavedStateChange-handlere per kilde. Inline-varianter ga ny
+  // identitet hver render; siden barna (ProducerMediaPanel/StoryboardTabView/
+  // ManuscriptPanel) har callbacken i dep-listen til en useEffect, rev den
+  // effekten seg ned + kjørte på nytt hver parent-render (kalte setter to
+  // ganger per render). Ingen løkke i dag (setUnsavedProjectSwitchSource er
+  // stabil + idempotent), men unødvendig churn — stabil identitet fjerner den
+  // for alle konsumenter samtidig.
+  const handleProjectRoomUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+  const handleStoryLogicUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+  const handleManuscriptUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+
   useBeforeUnloadIfDirty({
     isDirty: hasAnyUnsavedChanges,
     message: 'Du har endringer som ikke er lagret i Casting Planner. Forlate likevel?',
@@ -12957,9 +12974,7 @@ type RoleRoomProjectWorkspaceState = {
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
                         onWorkspaceFocusChange={handleProducerMediaFocusChange}
-                        onUnsavedStateChange={(hasUnsaved, reason) => {
-                          setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
-                        }}
+                        onUnsavedStateChange={handleProjectRoomUnsavedChange}
                         onProjectUpdated={async (updatedProject) => {
                           setCurrentProject(updatedProject);
                           await loadProjects();
@@ -13183,9 +13198,7 @@ type RoleRoomProjectWorkspaceState = {
                     key={currentProject?.id ?? 'no-project'}
                     projectId={currentProject?.id}
                     onSave={handleStoryLogicSave}
-                    onUnsavedStateChange={(hasUnsaved, reason) => {
-                      setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
-                    }}
+                    onUnsavedStateChange={handleStoryLogicUnsavedChange}
                     onNavigateToStoryWriter={() => {
                       if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
                       startTransition(() => setStoryArcView('story-writer'));
@@ -13285,9 +13298,7 @@ type RoleRoomProjectWorkspaceState = {
                       }}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
-                      onUnsavedStateChange={(hasUnsaved, reason) => {
-                        setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
-                      }}
+                      onUnsavedStateChange={handleManuscriptUnsavedChange}
                       onSendToApproval={() => {
                         if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
                         if (isContentProducerMode) {
@@ -13466,9 +13477,7 @@ type RoleRoomProjectWorkspaceState = {
                   )
                 }
                 onWorkspaceFocusChange={handleProducerMediaFocusChange}
-                onUnsavedStateChange={(hasUnsaved, reason) => {
-                  setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
-                }}
+                onUnsavedStateChange={handleProjectRoomUnsavedChange}
                 onProjectUpdated={async (updatedProject) => {
                   setCurrentProject(updatedProject);
                   await loadProjects();
