@@ -63,6 +63,7 @@ import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
+import { parseSaft } from '../saft/import.js';
 import { newId } from '../shared/ids.js';
 import type { RuleRegister } from '../rules/register.js';
 import type { ObjectStorage } from '../storage/port.js';
@@ -1476,6 +1477,44 @@ export function createApiServer(deps: ApiDeps): express.Express {
             `attachment; filename="saf-t_${q.from}_${q.to}.xml"`,
           )
           .send(xml);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // SAF-T-import (forhåndsvisning): les en SAF-T-fil fra et annet system (Fiken m.fl.)
+  // og vis hva som finnes — kontoplan, kunder, leverandører, saldoer + balansekontroll.
+  // REN LESING; ingenting bokføres her.
+  app.post(
+    '/api/organizations/:orgId/saft-import/preview',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ xml: z.string().min(1).max(40_000_000) }).parse(req.body);
+        const preview = parseSaft(body.xml);
+        res.json(
+          toJson({
+            company: preview.company,
+            companyOrgNumber: preview.companyOrgNumber,
+            periodStart: preview.periodStart,
+            periodEnd: preview.periodEnd,
+            software: preview.software,
+            counts: {
+              accounts: preview.accounts.length,
+              customers: preview.customers.length,
+              suppliers: preview.suppliers.length,
+            },
+            totalDebitMinor: preview.totalDebitMinor,
+            totalCreditMinor: preview.totalCreditMinor,
+            balanced: preview.balanced,
+            // send et utvalg for visning (ikke hele filen)
+            accountsSample: preview.accounts.slice(0, 200),
+            customers: preview.customers.slice(0, 200),
+            suppliers: preview.suppliers.slice(0, 200),
+          }),
+        );
       } catch (err) {
         next(err);
       }

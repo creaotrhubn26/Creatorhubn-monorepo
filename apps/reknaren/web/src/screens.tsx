@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRef } from 'react';
+import type { ChangeEvent } from 'react';
 import { api, ApiError, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
 import { useLoad, type ViewMode } from './App';
 import { DimensionSelect } from './screens-dimensions';
@@ -1524,6 +1525,168 @@ export function VatScreen({ orgId }: { orgId: string }) {
 }
 
 /* ── Skatt og reserver ─────────────────────────────────────────────────── */
+
+/* ── Importer fra Fiken (SAF-T) ─────────────────────────────────────────── */
+
+interface SaftParty {
+  name: string;
+  orgNumber: string | null;
+  closingMinor: string;
+}
+interface SaftPreview {
+  company: string | null;
+  companyOrgNumber: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  software: string | null;
+  counts: { accounts: number; customers: number; suppliers: number };
+  totalDebitMinor: string;
+  totalCreditMinor: string;
+  balanced: boolean;
+  accountsSample: { number: string; name: string; closingMinor: string }[];
+  customers: SaftParty[];
+  suppliers: SaftParty[];
+}
+
+export function SaftImportScreen({ orgId }: { orgId: string }) {
+  const [preview, setPreview] = useState<SaftPreview | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFileName(f.name);
+    setBusy(true);
+    setError(null);
+    setPreview(null);
+    try {
+      const xml = await f.text();
+      const p = await api<SaftPreview>('POST', `/api/organizations/${orgId}/saft-import/preview`, { xml });
+      setPreview(p);
+      toast('Fila ble lest ✓', 'ok');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Importer fra Fiken</h1>
+        <p className="subtitle">
+          Flytt regnskapet uten å slette noe hos Fiken. Eksporter en SAF-T-fil i Fiken (Regnskap →
+          eksport → SAF-T) — den er gratis og inneholder hele regnskapet — og last den opp her.
+        </p>
+      </div>
+      {error && <div className="error">{error}</div>}
+
+      <div className="panel">
+        <h2>1. Last opp SAF-T-fila</h2>
+        <p className="subtitle">Vi leser fila og viser deg hva som finnes før noe importeres.</p>
+        <input type="file" accept=".xml,text/xml,application/xml" onChange={onFile} disabled={busy} aria-label="SAF-T-fil" />
+        {fileName && <p className="hint">Valgt fil: {fileName}</p>}
+        {busy && <p className="hint">Leser fila …</p>}
+      </div>
+
+      {preview && (
+        <>
+          <div className="panel threshold-panel">
+            <div className="threshold-head">
+              <h2>2. Forhåndsvisning</h2>
+              <span className={`badge ${preview.balanced ? 'ok' : 'accent'}`}>
+                {preview.balanced ? 'Balanserer ✓' : 'Balanserer ikke'}
+              </span>
+            </div>
+            <p className="subtitle">
+              {preview.company ?? 'Ukjent virksomhet'}
+              {preview.companyOrgNumber ? ` · ${preview.companyOrgNumber}` : ''}
+              {preview.software ? ` · fra ${preview.software}` : ''}
+              {preview.periodStart ? ` · periode ${preview.periodStart}–${preview.periodEnd}` : ''}
+            </p>
+            <div className="cards">
+              <div className="card">
+                <div className="label">Kontoer</div>
+                <div className="value">{preview.counts.accounts}</div>
+              </div>
+              <div className="card">
+                <div className="label">Kunder</div>
+                <div className="value">{preview.counts.customers}</div>
+              </div>
+              <div className="card">
+                <div className="label">Leverandører</div>
+                <div className="value">{preview.counts.suppliers}</div>
+              </div>
+              <div className="card">
+                <div className="label">Sum debet / kredit</div>
+                <div className="value">{kr(preview.totalDebitMinor)}</div>
+                <div className="hint">Kredit: {kr(preview.totalCreditMinor)}</div>
+              </div>
+            </div>
+            <p className="hint">
+              Neste steg blir å bokføre åpningsbalansen fra disse tallene (kommer straks). Du får
+              bekrefte før noe føres — «brukervennlig først, men alt skal stemme».
+            </p>
+          </div>
+
+          <h2>Kontoplan med saldo</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Konto</th>
+                  <th>Navn</th>
+                  <th className="num">Sluttsaldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.accountsSample
+                  .filter((a) => a.closingMinor !== '0')
+                  .map((a) => (
+                    <tr key={a.number}>
+                      <td>{a.number}</td>
+                      <td>{a.name}</td>
+                      <td className="num">{kr(a.closingMinor)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {preview.customers.length > 0 && (
+            <>
+              <h2>Kunder</h2>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Navn</th>
+                      <th>Org.nr</th>
+                      <th className="num">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.customers.map((c, i) => (
+                      <tr key={i}>
+                        <td>{c.name}</td>
+                        <td>{c.orgNumber ?? '–'}</td>
+                        <td className="num">{kr(c.closingMinor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export function TaxScreen({ orgId }: { orgId: string }) {
   const defaults = thisYear();

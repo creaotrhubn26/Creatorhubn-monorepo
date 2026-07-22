@@ -7,6 +7,7 @@ import {
   GmailScreen,
   OverviewScreen,
   ReportsScreen,
+  SaftImportScreen,
   TaxScreen,
   VatScreen,
 } from './screens';
@@ -59,6 +60,7 @@ type Screen =
   | { name: 'audit' }
   | { name: 'invoicing' }
   | { name: 'dimensions' }
+  | { name: 'saft-import' }
   | { name: 'org' };
 
 const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
@@ -71,6 +73,7 @@ const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = 
   { key: 'vat', label: 'MVA', icon: 'percent' },
   { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
   { key: 'reports', label: 'Rapporter', icon: 'chart' },
+  { key: 'saft-import', label: 'Importer fra Fiken', icon: 'inbox' },
   { key: 'org', label: 'Virksomhet', icon: 'shield' },
 ];
 
@@ -248,6 +251,7 @@ export default function App() {
           {screen.name === 'org' && <OrgSettingsScreen orgId={orgId} />}
           {screen.name === 'reports' && <ReportsScreen orgId={orgId} />}
           {screen.name === 'vat' && <VatScreen orgId={orgId} />}
+          {screen.name === 'saft-import' && <SaftImportScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}
           {screen.name === 'ledger' && <LedgerScreen orgId={orgId} />}
           {screen.name === 'journal' && <JournalScreen orgId={orgId} />}
