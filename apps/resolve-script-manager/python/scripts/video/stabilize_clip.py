@@ -88,6 +88,39 @@ def _trim_args(start: Any, end: Any) -> list[str]:
     return []
 
 
+def _place_in_resolve(path: str) -> dict[str, Any]:
+    """Importer det stabiliserte klippet i media pool + legg på gjeldende timeline.
+    Merk: Resolve's EGEN stabilisator er IKKE eksponert i scripting-API-et — dette
+    plasserer det ferdig-stabiliserte klippet (fra motoren) rett inn i editoren."""
+    try:
+        conn = bridge.ResolveConnection()
+        if not conn.connect() or not conn.require_project():
+            return {"placed": False, "placeError": "Resolve/prosjekt ikke tilgjengelig"}
+        project = conn.project
+        media_pool = conn.media_pool or project.GetMediaPool()
+        clips = media_pool.ImportMedia([path]) or []
+        if not clips:
+            return {"placed": False, "placeError": "ImportMedia ga ingen klipp"}
+        timeline = project.GetCurrentTimeline()
+        if timeline:
+            res = media_pool.AppendToTimeline([clips[0]])
+            return {"placed": bool(res), "placeError": None if res else "AppendToTimeline feilet"}
+        return {"placed": True, "placeError": None, "placeNote": "Importert til media pool (ingen timeline åpen)"}
+    except Exception as exc:  # noqa: BLE001
+        return {"placed": False, "placeError": str(exc)}
+
+
+def _finish(out: str, method: str, params: dict[str, Any], extra: dict[str, Any] | None = None) -> None:
+    bridge.progress(100, 100, "Ferdig.")
+    payload: dict[str, Any] = {"outputPath": out, "method": method}
+    if extra:
+        payload.update(extra)
+    if params.get("placeInResolve"):
+        bridge.progress(100, 100, "Legger i Resolve …")
+        payload.update(_place_in_resolve(out))
+    bridge.result(payload)
+
+
 def run(params: dict[str, Any], dry_run: bool) -> None:
     src = (params.get("videoPath") or params.get("sourceVideo") or params.get("inputPath") or "").strip()
     if not src or not os.path.isfile(src):
@@ -146,8 +179,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             r = None
             bridge.warn(f"gyroflow kastet: {exc}")
         if r is not None and r.returncode == 0 and os.path.isfile(out):
-            bridge.progress(100, 100, "Ferdig.")
-            bridge.result({"outputPath": out, "method": "gyroflow", "strength": strength})
+            _finish(out, "gyroflow", params, {"strength": strength})
             return
         bridge.warn("gyroflow feilet → faller tilbake til ffmpeg.")
         chosen = "vidstab" if _has_vidstab(ffmpeg) else "deshake"
@@ -174,8 +206,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             except OSError:
                 pass
             if r2.returncode == 0 and os.path.isfile(out):
-                bridge.progress(100, 100, "Ferdig.")
-                bridge.result({"outputPath": out, "method": "vidstab", "strength": strength, "zoomPct": zoom})
+                _finish(out, "vidstab", params, {"strength": strength, "zoomPct": zoom})
                 return
             bridge.warn(f"vidstabtransform feilet → deshake: {(r2.stderr or '')[-200:]}")
         else:
@@ -193,8 +224,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     if r.returncode != 0 or not os.path.isfile(out):
         bridge.error(f"deshake feilet: {(r.stderr or '')[-300:]}")
         sys.exit(1)
-    bridge.progress(100, 100, "Ferdig.")
-    bridge.result({"outputPath": out, "method": "deshake", "strength": strength})
+    _finish(out, "deshake", params, {"strength": strength})
 
 
 if __name__ == "__main__":

@@ -2967,7 +2967,7 @@
       "name": "Stabilize clip (tiered)",
       "category": "video",
       "scriptPath": "scripts/video/stabilize_clip.py",
-      "description": "Stabiliser et klipp/segment. Auto-velger beste tilgjengelige metode: Gyroflow (hvis kamera-gyrodata + CLI finnes) → ffmpeg vid.stab 2-pass → ffmpeg deshake (alltid tilgjengelig). Ingen gimbal/gyro påkrevd for ffmpeg-nivåene. Output: <input>_stabilized.mp4.",
+      "description": "Stabiliser et klipp/segment. Auto-velger beste tilgjengelige metode: Gyroflow (hvis kamera-gyrodata + CLI finnes) → ffmpeg vid.stab 2-pass → ffmpeg deshake (alltid tilgjengelig). Ingen gimbal/gyro påkrevd for ffmpeg-nivåene. Med placeInResolve importeres det stabiliserte klippet rett på gjeldende Resolve-timeline (Resolve's egen stabilisator er ikke eksponert i API-et). Output: <input>_stabilized.mp4.",
       "requiredInputs": [
         {
           "key": "videoPath",
@@ -2979,6 +2979,12 @@
           "key": "strength",
           "label": "Styrke 0..1 (default 0.5)",
           "type": "number",
+          "required": false
+        },
+        {
+          "key": "placeInResolve",
+          "label": "Legg stabilisert klipp på Resolve-timeline",
+          "type": "boolean",
           "required": false
         }
       ],
