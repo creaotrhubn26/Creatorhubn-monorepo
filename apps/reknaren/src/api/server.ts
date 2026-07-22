@@ -19,6 +19,7 @@ import {
   trialBalance,
   vatRegistrationThreshold,
 } from '../ledger/reports.js';
+import { runHealthCheck } from '../ledger/health-check.js';
 import {
   createOrganization,
   ensureUser,
@@ -1287,6 +1288,21 @@ export function createApiServer(deps: ApiDeps): express.Express {
           deps.db.query(`SELECT vat_status FROM organizations WHERE id = $1`, [req.params.orgId]),
         ]);
         res.json(toJson({ ...threshold, vatStatus: org.rows[0]?.vat_status ?? 'not_registered' }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Regnskapshelse — «har du gjort en feil?». Ren lesing, plain-språk + hurtigknapper.
+  app.get(
+    '/api/organizations/:orgId/health-check',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const asOf = new Date().toISOString().slice(0, 10);
+        res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
       } catch (err) {
         next(err);
       }

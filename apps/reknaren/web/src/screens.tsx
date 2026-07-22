@@ -74,14 +74,29 @@ function AccountLabel({ number, info }: { number: string; info: AccountInfo | un
 
 /* ── Oversikt: operativt kontrollsenter ────────────────────────────────── */
 
+interface HealthIssue {
+  id: string;
+  severity: 'error' | 'warning' | 'info';
+  title: string;
+  detail: string;
+  actionLabel?: string;
+  actionScreen?: string;
+}
+
 export function OverviewScreen({
   orgId,
   onOpenDocument,
+  onNavigate,
 }: {
   orgId: string;
   onOpenDocument: (id: string) => void;
+  onNavigate?: (screen: string) => void;
 }) {
   const { from, to } = thisYear();
+  const health = useLoad(
+    () => api<{ issues: HealthIssue[]; okCount: number }>('GET', `/api/organizations/${orgId}/health-check`),
+    [orgId],
+  );
   const docs = useLoad(() => api<DocumentRow[]>('GET', `/api/organizations/${orgId}/documents`), [orgId]);
   const tax = useLoad(
     () =>
@@ -107,6 +122,41 @@ export function OverviewScreen({
         <h1>Oversikt</h1>
         <p className="subtitle">Det viktigste først: hva trenger oppmerksomhet nå.</p>
       </div>
+
+      {!health.loading && health.data && (
+        <div className="panel health-panel">
+          <div className="threshold-head">
+            <h2>Regnskapshelse</h2>
+            {health.data.issues.length === 0 ? (
+              <span className="badge ok">Alt ser bra ut ✓</span>
+            ) : (
+              <span className="badge accent">{health.data.issues.length} ting å se på</span>
+            )}
+          </div>
+          {health.data.issues.length === 0 ? (
+            <p className="subtitle">
+              Vi fant ingenting som haster. Vi sjekker fortløpende om noe ser feil ut, så du kan slappe av.
+            </p>
+          ) : (
+            <ul className="health-list">
+              {health.data.issues.map((iss) => (
+                <li key={iss.id} className={`health-item ${iss.severity}`}>
+                  <div className="health-dot" aria-hidden="true" />
+                  <div className="health-body">
+                    <div className="health-title">{iss.title}</div>
+                    <div className="health-detail">{iss.detail}</div>
+                  </div>
+                  {iss.actionLabel && iss.actionScreen && onNavigate && (
+                    <button className="primary health-action" onClick={() => onNavigate(iss.actionScreen!)}>
+                      {iss.actionLabel}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {docs.loading ? (
         <div className="cards">
           <CardSkeleton />

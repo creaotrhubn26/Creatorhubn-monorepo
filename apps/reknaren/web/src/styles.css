@@ -307,3 +307,18 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
 .org-switcher { margin: 4px 10px 12px; }
 .org-switcher label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #888; margin: 0 0 3px; display: block; }
 .org-switcher select { width: 100%; font-weight: 600; }
+
+/* Regnskapshelse */
+.health-panel .threshold-head { margin-bottom: 6px; }
+.health-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.health-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border, #e6e6e6); border-radius: 12px; background: #fff; }
+.health-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; background: #888; }
+.health-item.error .health-dot { background: #b3402f; }
+.health-item.warning .health-dot { background: #b0913b; }
+.health-item.info .health-dot { background: #3a6ea5; }
+.health-item.error { border-left: 3px solid #b3402f; }
+.health-item.warning { border-left: 3px solid #b0913b; }
+.health-body { flex: 1; }
+.health-title { font-weight: 700; font-size: 14px; }
+.health-detail { font-size: 13px; color: #555; margin-top: 2px; line-height: 1.45; }
+.health-action { flex: 0 0 auto; align-self: center; white-space: nowrap; }

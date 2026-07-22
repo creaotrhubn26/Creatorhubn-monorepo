@@ -225,7 +225,13 @@ export default function App() {
           </button>
         </aside>
         <main className="main">
-          {screen.name === 'overview' && <OverviewScreen orgId={orgId} onOpenDocument={openDocument} />}
+          {screen.name === 'overview' && (
+            <OverviewScreen
+              orgId={orgId}
+              onOpenDocument={openDocument}
+              onNavigate={(name) => setScreen({ name } as Screen)}
+            />
+          )}
           {screen.name === 'documents' && <DocumentsScreen orgId={orgId} onOpen={openDocument} />}
           {screen.name === 'document' && (
             <DocumentDetailScreen
