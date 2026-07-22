@@ -97,12 +97,12 @@ struct LeadgridTabHeader<Extra: View>: View {
 
     /// Toppkandidatene til «Neste handlinger»-popoveren (samme regel som
     /// Oversikt hadde): oppfølging satt, møte booket eller score >= 70.
-    private var topActions: [LeadModel] {
-        Array(leads
+    private var allActions: [LeadModel] {
+        leads
             .filter { $0.nextFollowUpAt != nil || $0.status == .meetingBooked || ($0.leadScore ?? 0) >= 70 }
             .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
-            .prefix(8))
     }
+    private var topActions: [LeadModel] { Array(allActions.prefix(8)) }
 
     /// Ekte badge-tall: oppfølginger som forfaller innen 3 dager
     /// (LeadgridHeaderLive — samme semantikk som Oversikts gamle teller).
@@ -484,7 +484,7 @@ struct LeadgridTabHeader<Extra: View>: View {
     }
 
     private var nextActionsPopoverContent: some View {
-        NextActionsPopover(leads: topActions, totalCount: leads.count)
+        NextActionsPopover(leads: topActions, allLeads: allActions, totalCount: allActions.count)
             .adaptivePopoverFrame(width: 420, height: 560)
             .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
     }

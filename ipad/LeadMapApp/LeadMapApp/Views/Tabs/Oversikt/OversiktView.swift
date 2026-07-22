@@ -3429,6 +3429,27 @@ private struct NextActionsCard: View {
 
 struct NextActionRow: View {
     let lead: LeadModel
+    /// Åpne lead-detaljen. Hele raden kaller denne; handlings-pillen kaller
+    /// den kun som fallback når vi ikke har telefon/e-post å handle på.
+    var onOpen: (LeadModel) -> Void = { _ in }
+    @Environment(\.openURL) private var openURL
+
+    /// Handlings-pillen utfører den konkrete neste-handlingen:
+    /// Ring → tel:, E-post → mailto:, Møte/Planlegg → åpne lead-detaljen.
+    private func performAction() {
+        switch lead.status {
+        case .interested:
+            if let email = lead.email, !email.isEmpty,
+               let url = URL(string: "mailto:\(email)") { openURL(url); return }
+            onOpen(lead)
+        case .meetingBooked, .return:
+            onOpen(lead)
+        default:
+            if let phone = lead.phone, !phone.isEmpty,
+               let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") { openURL(url); return }
+            onOpen(lead)
+        }
+    }
 
     private var statusBadge: (label: String, color: Color)? {
         let score = lead.leadScore ?? 0
@@ -3517,21 +3538,26 @@ struct NextActionRow: View {
                 Text(actionTime)
                     .font(.appScaled(size: 11, weight: .medium))
                     .foregroundStyle(Brand.textSecondary)
-                Text(actionLabel)
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 7)
-                    .background(
-                        LinearGradient(
-                            colors: [Brand.purple, Brand.purpleLight],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 9)
-                    )
-                    .shadow(color: Brand.purple.opacity(0.4), radius: 6, y: 2)
+                Button { performAction() } label: {
+                    Text(actionLabel)
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(
+                            LinearGradient(
+                                colors: [Brand.purple, Brand.purpleLight],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
+                        .shadow(color: Brand.purple.opacity(0.4), radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 6).padding(.horizontal, 4)
+        .contentShape(Rectangle())
+        .onTapGesture { onOpen(lead) }
     }
 }
 
@@ -5644,7 +5670,14 @@ struct AnalysePopover: View {
 
 struct NextActionsPopover: View {
     let leads: [LeadModel]
+    var allLeads: [LeadModel] = []
     let totalCount: Int
+
+    @State private var openLead: LeadModel?
+    @State private var showAll = false
+
+    /// Vis topp-8 som standard; «Se alle» utvider til hele køen.
+    private var displayed: [LeadModel] { showAll ? allLeads : leads }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5658,9 +5691,16 @@ struct NextActionsPopover: View {
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
-                Text("Se alle")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                if allLeads.count > leads.count {
+                    Button {
+                        showAll.toggle()
+                    } label: {
+                        Text(showAll ? "Vis færre" : "Se alle")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(Brand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(16)
 
@@ -5668,7 +5708,7 @@ struct NextActionsPopover: View {
 
             ScrollView {
                 VStack(spacing: 10) {
-                    if leads.isEmpty {
+                    if displayed.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.appScaled(size: 28))
@@ -5683,8 +5723,8 @@ struct NextActionsPopover: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                     } else {
-                        ForEach(leads, id: \.id) { lead in
-                            NextActionRow(lead: lead)
+                        ForEach(displayed, id: \.id) { lead in
+                            NextActionRow(lead: lead, onOpen: { openLead = $0 })
                                 .padding(.horizontal, 4)
                         }
                     }
@@ -5695,6 +5735,9 @@ struct NextActionsPopover: View {
             }
         }
         .background(Brand.card)
+        .sheet(item: $openLead) { lead in
+            LeadDetailSheet(lead: lead)
+        }
     }
 }
 
