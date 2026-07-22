@@ -178,6 +178,14 @@ export default function LeadgridLanding() {
     try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
   });
   const [expStartOpen, setExpStartOpen] = useState(false);
+  // «Book demo» — én dialog, åpnes fra alle CTA-er via custom-event
+  // (unngår prop-threading gjennom header/hero/final-seksjonene).
+  const [demoOpen, setDemoOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setDemoOpen(true);
+    window.addEventListener('leadgrid:book-demo', open);
+    return () => window.removeEventListener('leadgrid:book-demo', open);
+  }, []);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
     trackPageView('/leadgrid', 'Leadgrid: Gjør kartet om til kunder');
@@ -302,6 +310,7 @@ export default function LeadgridLanding() {
       <StickyHeader />
       <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
+      <BookDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} />
       <HeroSection />
       <TrustStrip />
       <HowItWorksSection />
@@ -396,7 +405,7 @@ function StickyHeader() {
                 '&:hover': { bgcolor: PALETTE.accentBright },
               }}
               endIcon={<SendOutlined sx={{ fontSize: 16 }} />}
-              href="#demo"
+              onClick={() => window.dispatchEvent(new Event('leadgrid:book-demo'))}
             >
               Book demo
             </Button>
@@ -732,6 +741,114 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
         >
           {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Fortsett til Stripe'}
         </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Book demo dialog — fungerende booking (POST /api/leadgrid/demo-request)
+// ────────────────────────────────────────────────────────────
+
+const lgField = {
+  '& .MuiOutlinedInput-root': {
+    color: '#fff',
+    '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+    '&:hover fieldset': { borderColor: PALETTE.accent },
+    '&.Mui-focused fieldset': { borderColor: PALETTE.accent },
+  },
+} as const;
+
+function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
+  const [preferred, setPreferred] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const canSend = email.includes('@') && email.includes('.');
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/leadgrid/demo-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(), email: email.trim(), company: company.trim(),
+          preferred: preferred.trim(), note: note.trim(),
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
+      try { trackEvent('leadgrid_demo_requested', { has_company: !!company.trim() }); } catch { /* */ }
+      setDone(true);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+    setSubmitting(false);
+  }
+
+  function close() {
+    setDone(false); setError(null); setSubmitting(false);
+    setName(''); setEmail(''); setCompany(''); setPreferred(''); setNote('');
+    onClose();
+  }
+
+  return (
+    <Dialog
+      open={open} onClose={close} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { bgcolor: '#0a0512', color: '#fff', border: '1px solid rgba(167, 139, 250, 0.20)', borderRadius: 3 } }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>Book demo</Typography>
+        <Typography variant="h5" fontWeight={700}>{done ? 'Takk!' : 'Se Leadgrid i felten'}</Typography>
+        {!done && (
+          <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
+            15 minutter, tilpasset deres område. Vi tar kontakt for å avtale tidspunkt.
+          </Typography>
+        )}
+      </DialogTitle>
+      <DialogContent>
+        {done ? (
+          <Alert severity="success" sx={{ mb: 1 }}>
+            Vi har mottatt forespørselen din og tar kontakt på <b>{email}</b> for å avtale demo.
+          </Alert>
+        ) : (
+          <>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField fullWidth required label="E-post" type="email" value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="ola@bedrift.no"
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth label="Navn" value={name}
+                onChange={(e) => setName(e.target.value)}
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth label="Firma" value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth label="Ønsket tidspunkt (valgfritt)" value={preferred}
+                onChange={(e) => setPreferred(e.target.value)} placeholder="F.eks. torsdag formiddag"
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth multiline minRows={2} label="Hva vil dere se? (valgfritt)" value={note}
+                onChange={(e) => setNote(e.target.value)}
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+            </Stack>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ p: 3, pt: 1 }}>
+        <Button onClick={close} sx={{ color: PALETTE.textMuted }}>{done ? 'Lukk' : 'Avbryt'}</Button>
+        {!done && (
+          <Button variant="contained" disabled={!canSend || submitting} onClick={submit}
+            sx={{ bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700, px: 3, borderRadius: 999, '&:hover': { bgcolor: PALETTE.accentBright } }}>
+            {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Send forespørsel'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
@@ -1561,7 +1678,7 @@ function FinalCtaSection() {
             fontSize: { xs: 15, md: 17 },
             mb: 4, maxWidth: 600, mx: 'auto',
           }}>
-            Start gratis i dag, og se forskjellen på kartet.
+            Se Leadgrid på ditt eget område. Vi tar en kort demo — så ser du forskjellen på kartet.
           </Typography>
           <Button
             variant="contained"
@@ -1577,8 +1694,10 @@ function FinalCtaSection() {
               fontSize: 16,
               '&:hover': { bgcolor: PALETTE.accentBright },
             }}
-            onClick={() => trackEvent('leadgrid_book_demo_clicked', { cta_location: 'final' })}
-            href="/"
+            onClick={() => {
+              trackEvent('leadgrid_book_demo_clicked', { cta_location: 'final' });
+              window.dispatchEvent(new Event('leadgrid:book-demo'));
+            }}
           >
             Book demo
           </Button>
