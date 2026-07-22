@@ -85,7 +85,13 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [verifyingMagic, setVerifyingMagic] = useState(false);
   const [orgId, setOrg] = useState<string | null>(getOrgId());
+  const [addingOrg, setAddingOrg] = useState(false);
   const [screen, setScreen] = useState<Screen>({ name: 'overview' });
+  const switchOrg = (id: string) => {
+    setOrgId(id);
+    setOrg(id);
+    setScreen({ name: 'overview' });
+  };
   const [viewMode, setViewMode] = useState<ViewMode>(
     (sessionStorage.getItem('reknaren.viewMode') as ViewMode) ?? 'simple',
   );
@@ -140,6 +146,16 @@ export default function App() {
         }}
       />
     );
+  if (addingOrg)
+    return (
+      <OrgSetupScreen
+        onDone={(id) => {
+          switchOrg(id);
+          setAddingOrg(false);
+        }}
+        onCancel={() => setAddingOrg(false)}
+      />
+    );
 
   const openDocument = (id: string) => setScreen({ name: 'document', id });
 
@@ -151,6 +167,7 @@ export default function App() {
             <LogoMark />
             <div className="name">Reknaren</div>
           </div>
+          <OrgSwitcher currentId={orgId} onSwitch={switchOrg} onAdd={() => setAddingOrg(true)} />
           <nav aria-label="Hovedmeny">
             {NAV.map((item) => (
               <button
@@ -297,6 +314,43 @@ interface MyOrg {
   orgForm: string;
   orgNumber: string | null;
   role: string;
+}
+
+/** Bytt mellom virksomhetene du er medlem av, eller legg til en ny. */
+function OrgSwitcher({
+  currentId,
+  onSwitch,
+  onAdd,
+}: {
+  currentId: string;
+  onSwitch: (id: string) => void;
+  onAdd: () => void;
+}) {
+  const orgs = useLoad(() => api<MyOrg[]>('GET', '/api/organizations'), []);
+  const list = orgs.data ?? [];
+  const hasCurrent = list.some((o) => o.id === currentId);
+  return (
+    <div className="org-switcher">
+      <label htmlFor="orgswitch">Virksomhet</label>
+      <select
+        id="orgswitch"
+        value={currentId}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === '__add__') onAdd();
+          else if (v !== currentId) onSwitch(v);
+        }}
+      >
+        {!hasCurrent && <option value={currentId}>Aktiv virksomhet</option>}
+        {list.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+        <option value="__add__">+ Legg til virksomhet …</option>
+      </select>
+    </div>
+  );
 }
 
 /** Etter innlogging: velg blant virksomhetene du er medlem av, eller opprett ny. */

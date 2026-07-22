@@ -302,3 +302,8 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
 .threshold-fill.danger { background: #b3402f; }
 .threshold-nums { font-size: 14px; }
 .threshold-window { color: #888; }
+
+/* Virksomhetsbytter i sidefeltet */
+.org-switcher { margin: 4px 10px 12px; }
+.org-switcher label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #888; margin: 0 0 3px; display: block; }
+.org-switcher select { width: 100%; font-weight: 600; }
