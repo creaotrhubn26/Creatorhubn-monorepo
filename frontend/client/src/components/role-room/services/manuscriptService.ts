@@ -199,6 +199,7 @@ async function deleteDemoManuscriptEverywhere(id: string, isDbAvailable: boolean
     try {
       await fetch(`/api/casting/manuscripts/${id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
     } catch (error) {
       console.warn('Could not delete legacy demo manuscript from database:', error);
@@ -465,7 +466,7 @@ async function fetchDialogueFromDatabase(manuscriptId: string, isDbAvailable: bo
 async function postDemoActToDatabase(act: Act): Promise<void> {
   const response = await fetch('/api/casting/acts', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(act),
   });
 
@@ -481,7 +482,7 @@ async function postDemoActToDatabase(act: Act): Promise<void> {
 async function postDemoSceneToDatabase(scene: SceneBreakdown): Promise<void> {
   const response = await fetch('/api/casting/scenes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(scene),
   });
 
@@ -497,7 +498,7 @@ async function postDemoSceneToDatabase(scene: SceneBreakdown): Promise<void> {
 async function postDemoDialogueToDatabase(dialogue: DialogueLine): Promise<void> {
   const response = await fetch('/api/casting/dialogue', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(dialogue),
   });
 
@@ -518,6 +519,7 @@ async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: bool
     for (const line of databaseDialogue) {
       const response = await fetch(`/api/casting/dialogue/${line.id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       if (!response.ok && response.status !== 404) {
         throw new Error(`Failed to delete legacy demo dialogue: ${response.statusText}`);
@@ -531,6 +533,7 @@ async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: bool
     for (const scene of databaseScenes) {
       const response = await fetch(`/api/casting/scenes/${scene.id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       if (!response.ok && response.status !== 404) {
         throw new Error(`Failed to delete legacy demo scene: ${response.statusText}`);
@@ -544,6 +547,7 @@ async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: bool
     for (const act of databaseActs) {
       const response = await fetch(`/api/casting/acts/${act.id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       if (!response.ok && response.status !== 404) {
         throw new Error(`Failed to delete legacy demo act: ${response.statusText}`);
@@ -595,7 +599,7 @@ async function ensureDemoDataIntegrity(
     if (!databaseManuscript) {
       const response = await fetch('/api/casting/manuscripts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(resolvedManuscript),
       });
 
@@ -609,7 +613,7 @@ async function ensureDemoDataIntegrity(
     } else {
       const response = await fetch(`/api/casting/manuscripts/${resolvedManuscript.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(resolvedManuscript),
       });
 
@@ -1929,7 +1933,7 @@ class ManuscriptService {
       try {
         const response = await fetch('/api/casting/manuscripts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(manuscript),
         });
         
@@ -1964,7 +1968,7 @@ class ManuscriptService {
       try {
         const response = await fetch(`/api/casting/manuscripts/${manuscript.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(manuscript),
           signal,
         });
@@ -2017,7 +2021,7 @@ class ManuscriptService {
   ): Promise<{ lockedBy: string | null; lockedAt: string | null; expiresAt: string | null; held: boolean; isExpired: boolean }> {
     const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/lock`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ force: options?.force === true }),
     });
     if (response.status === 409) {
@@ -2082,7 +2086,7 @@ class ManuscriptService {
   ): Promise<Array<{ userId: string; displayName: string; lastSeenAt: string }>> {
     const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/presence`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ displayName }),
     });
     if (!response.ok) return [];
@@ -2160,7 +2164,7 @@ class ManuscriptService {
       try {
         const response = await fetch('/api/casting/scenes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(scene),
         });
         
@@ -2250,7 +2254,7 @@ class ManuscriptService {
       try {
         const response = await fetch('/api/casting/dialogue', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(dialogue),
         });
         
@@ -2342,7 +2346,7 @@ class ManuscriptService {
       try {
         const response = await fetch('/api/casting/revisions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(revision),
         });
         
@@ -2834,7 +2838,7 @@ class ManuscriptService {
       try {
         const response = await fetch('/api/casting/acts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(act),
         });
         
@@ -2869,7 +2873,7 @@ class ManuscriptService {
       try {
         const response = await fetch(`/api/casting/acts/${act.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(act),
         });
         

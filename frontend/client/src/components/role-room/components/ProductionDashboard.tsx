@@ -121,10 +121,18 @@ export function ProductionDashboard({
     );
   }
 
-  const confirmedCandidates = project.candidates.filter(c => c.status === 'confirmed').length;
-  const selectedCandidates = project.candidates.filter(c => c.status === 'selected').length;
+  // Array-felt på prosjekt-DTO-en er ikke garantert til stede (enkelte API-
+  // varianter utelater tomme lister) — uten guard kastet .filter/.length/.map i
+  // render «Cannot read properties of undefined» og krasjet hele fanen via
+  // ErrorBoundary. Normaliser til tomme lister.
+  const candidateList = project.candidates ?? [];
+  const roleList = project.roles ?? [];
+  const locationList = project.locations ?? [];
+  const shotListEntries = project.shotLists ?? [];
+  const confirmedCandidates = candidateList.filter(c => c.status === 'confirmed').length;
+  const selectedCandidates = candidateList.filter(c => c.status === 'selected').length;
   const readyForScene = confirmedCandidates + selectedCandidates;
-  const totalCandidates = project.candidates.length;
+  const totalCandidates = candidateList.length;
   const progress = totalCandidates > 0 ? (readyForScene / totalCandidates) * 100 : 0;
 
   return (
@@ -182,7 +190,7 @@ export function ProductionDashboard({
             <CardContent sx={{ textAlign: 'center', py: 2 }}>
               <LocationIcon sx={{ fontSize: 32, color: '#ffb800', mb: 1 }} />
               <Typography variant="h4" sx={{ color: '#ffb800', fontWeight: 700 }}>
-                {project.locations.length}
+                {locationList.length}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Lokasjoner
@@ -195,7 +203,7 @@ export function ProductionDashboard({
             <CardContent sx={{ textAlign: 'center', py: 2 }}>
               <VideocamIcon sx={{ fontSize: 32, color: 'var(--role-cyan, #00d4ff)', mb: 1 }} />
               <Typography variant="h4" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700 }}>
-                {project.shotLists.reduce((sum, sl) => sum + sl.shots.length, 0)}
+                {shotListEntries.reduce((sum, sl) => sum + (sl.shots?.length ?? 0), 0)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Innstillinger
@@ -242,7 +250,7 @@ export function ProductionDashboard({
               sx={{ bgcolor: 'rgba(139, 92, 246, 0.2)', color: 'var(--role-violet, #8b5cf6)' }}
             />
             <Chip
-              label={`${project.roles.length} roller`}
+              label={`${roleList.length} roller`}
               size="small"
               sx={{ bgcolor: 'rgba(255, 184, 0, 0.2)', color: '#ffb800' }}
             />
@@ -337,14 +345,14 @@ export function ProductionDashboard({
         </Box>
       </Box>
 
-      {project.candidates.length > 0 && (
+      {candidateList.length > 0 && (
         <>
           <Divider sx={{ my: 3, borderColor: 'rgba(255,255,255,0.1)' }} />
           <Typography variant="subtitle1" sx={{ mb: 2, color: '#fff', fontWeight: 600 }}>
             Nylige kandidater
           </Typography>
           <Stack spacing={1}>
-            {project.candidates.slice(0, 5).map((candidate) => (
+            {candidateList.slice(0, 5).map((candidate) => (
               <Box
                 key={candidate.id}
                 sx={{
@@ -382,7 +390,7 @@ export function ProductionDashboard({
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {candidate.assignedRoles
-                        .map(rid => project.roles.find(r => r.id === rid)?.name)
+                        .map(rid => roleList.find(r => r.id === rid)?.name)
                         .filter(Boolean)
                         .join(', ') || 'Ingen roller'}
                     </Typography>
