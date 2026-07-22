@@ -67,7 +67,12 @@ select, input[type="text"] {
 }
 select:focus, input:focus { outline: none; border-color: var(--accent); }
 
-.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+/* grid-template-columns: uten dette blir den implisitte kolonnen innholds-
+   bredde (auto) → grid-items som ikke selv setter width (Demo Studio-fanenes
+   flex-rot: display:flex, height:100%, ingen width) fyller ikke → mørk .app-bg
+   vises på høyre side. minmax(0,1fr) tvinger full container-bredde + hindrer
+   overflow-utblåsning. */
+.app { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); height: 100vh; }
 
 .header {
   display: flex;

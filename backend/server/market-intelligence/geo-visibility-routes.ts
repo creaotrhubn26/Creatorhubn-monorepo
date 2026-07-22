@@ -31,7 +31,7 @@ import {
   listPromptSets,
   setPromptEnabled,
 } from "./geo-prompt-set-service.js";
-import { computeReport, resumeStaleProbeRuns } from "./geo-probe-runner-service.js";
+import { computeCitedSources, computeReport, resumeStaleProbeRuns } from "./geo-probe-runner-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -177,6 +177,21 @@ export function registerGeoVisibilityRoutes({
     } catch (err) {
       console.error("[geo-visibility] report failed", err);
       return res.status(500).json({ error: "report_failed" });
+    }
+  });
+
+  // Kildekartlegging: hvilke nettsteder AI siterer i denne kategorien —
+  // veikartet for hvor målmerket må være til stede for å bli sitert.
+  app.get("/api/geo-visibility/prompt-sets/:id/sources", async (req, res) => {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    try {
+      const sources = await computeCitedSources(pool, req.params.id, session.userId);
+      if (!sources) return res.status(404).json({ error: "not_found" });
+      return res.json({ sources });
+    } catch (err) {
+      console.error("[geo-visibility] sources failed", err);
+      return res.status(500).json({ error: "sources_failed" });
     }
   });
 

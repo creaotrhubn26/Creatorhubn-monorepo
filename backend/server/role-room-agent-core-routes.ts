@@ -1198,6 +1198,165 @@ export function setupRoleRoomAgentCoreRoutes(
     }
   });
 
+  // ── GSC-innsikt: ekte søkedata inn i strategigrunnlaget ────────────
+  // «Koblet riktig» skal bety noe: når Google-koblingen har webmasters-
+  // tilgang og domenet ligger i Search Console, henter vi topp-søkeord
+  // (siste 90 dager) som agenten kan bygge strategi på. Read-only.
+  app.get("/api/role-room/agent/gsc-insights/:projectId", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId ?? "");
+    const domain = String(req.query.domain ?? "").trim().toLowerCase()
+      .replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    if (!projectId || !domain) {
+      return res.status(400).json({ success: false, error: "projectId og domain er påkrevd." });
+    }
+    try {
+      const { row, source } = await resolveProjectGoogleConnection(projectId, session.userId);
+      if (!row) {
+        return res.status(409).json({
+          success: false, needsConnect: true,
+          error: "Ingen Google-kobling — koble til Google i Kontotilgang først.",
+        });
+      }
+      let accessToken: string;
+      try {
+        accessToken = (await ensureFreshGoogleAccessToken(pool, row)).accessToken;
+      } catch {
+        return res.status(409).json({
+          success: false, needsReauth: true,
+          error: "Google-koblingen må fornyes — koble til på nytt i Kontotilgang.",
+        });
+      }
+      const end = new Date();
+      const start = new Date(end.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const candidates = [`sc-domain:${domain}`, `https://${domain}/`, `https://www.${domain}/`];
+      for (const siteUrl of candidates) {
+        const r = await fetch(
+          `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              startDate: fmt(start), endDate: fmt(end),
+              dimensions: ["query"], rowLimit: 12,
+            }),
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+        if (r.status === 401) {
+          return res.status(409).json({
+            success: false, needsReauth: true,
+            error: "Google-koblingen mangler Search Console-tilgang — koble til på nytt.",
+          });
+        }
+        if (!r.ok) continue; // 403/404 = ikke tilgang til akkurat denne site-varianten
+        const body = (await r.json().catch(() => null)) as {
+          rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }>;
+        } | null;
+        return res.json({
+          success: true,
+          siteUrl,
+          connectionSource: source,
+          usedGoogleEmail: row.google_email ?? null,
+          period: { from: fmt(start), to: fmt(end) },
+          rows: (body?.rows ?? []).map((x) => ({
+            query: x.keys?.[0] ?? "",
+            clicks: x.clicks ?? 0,
+            impressions: x.impressions ?? 0,
+            ctr: x.ctr ?? 0,
+            position: x.position ?? 0,
+          })),
+        });
+      }
+      return res.status(404).json({
+        success: false, siteNotInGsc: true,
+        error: `${domain} ligger ikke i Search Console for den koblede kontoen — kjør GSC-oppsettet først (eller koble klientens konto).`,
+      });
+    } catch (err) {
+      console.error("[gsc-insights] failed", err);
+      return res.status(500).json({ success: false, error: "gsc_insights_failed" });
+    }
+  });
+
+  // ── Økonomisk ramme for strategi: budsjett + påslag + kontrakt ─────
+  // En Google Ads-/betalt-anbefaling er verdiløs uten taket. Samler det
+  // agenten trenger for å holde seg innenfor: inneværende periodes
+  // budsjett-cap (klienten setter det), påslags-raten (annonsekostnad
+  // faktureres m/ påslag — hver Ads-krone har fakturakonsekvens), og
+  // kontraktens betalingsmodell fra det siste kontrakt-skannet.
+  app.get("/api/role-room/agent/economy-context/:projectId", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId ?? "");
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    try {
+      const now = new Date();
+      const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const [{ getBudget, computeBudgetStatus }, { MANAGEMENT_FEE_RATE }, { sumSpendForProjectPeriod }] = await Promise.all([
+        import("./role-room-ads-budget.js"),
+        import("./role-room-ads-shared.js"),
+        import("./role-room-ads-db.js"),
+      ]);
+      const budgetRow = await getBudget(pool, projectId, period).catch(() => null);
+      // Faktisk forbruk hittil i perioden — «gjenstår» = tak − brukt, ikke
+      // hele taket. Det er DET beløpet en ny Ads-anbefaling må holdes under.
+      const actualSpendNok = await sumSpendForProjectPeriod(pool, projectId, period).catch(() => 0);
+      const budgetStatus = budgetRow
+        ? computeBudgetStatus({
+            hasBudget: true,
+            maxSpendNok: budgetRow.maxSpendNok,
+            approvedOverageNok: budgetRow.approvedOverageNok,
+            actualSpendNok,
+            overageRequestedNok: budgetRow.overageRequestedNok,
+          })
+        : null;
+      const scan = await getLatestContractScan(pool, projectId).catch(() => null);
+      const contract = scan
+        ? {
+            supplier: scan.economics.supplier,
+            client: scan.economics.client,
+            totalAmount: scan.economics.totalAmount,
+            currency: scan.economics.currency,
+            invoicing: scan.economics.invoicing,
+            paymentTerms: scan.economics.paymentTerms.map((t) => ({ label: t.label, amount: t.amount, trigger: t.trigger })),
+            scannedAt: scan.scannedAt,
+            missingPoints: scan.missingPoints,
+          }
+        : null;
+      return res.json({
+        success: true,
+        period,
+        budget: budgetRow
+          ? {
+              maxSpendNok: budgetRow.maxSpendNok,
+              autoPauseOnCap: budgetRow.autoPauseOnCap ?? false,
+              // Hard budsjettvakt: gjenstående ramme og om taket alt er nådd.
+              actualSpendNok: budgetStatus?.actualSpendNok ?? 0,
+              effectiveCapNok: budgetStatus?.effectiveCapNok ?? budgetRow.maxSpendNok,
+              remainingNok: budgetStatus?.remainingNok ?? budgetRow.maxSpendNok,
+              isOverBudget: budgetStatus?.isOverBudget ?? false,
+              isNearBudget: budgetStatus?.isNearBudget ?? false,
+            }
+          : null,
+        markupRate: MANAGEMENT_FEE_RATE,
+        contract,
+      });
+    } catch (err) {
+      console.error("[economy-context] failed", err);
+      return res.status(500).json({ success: false, error: "economy_context_failed" });
+    }
+  });
+
   // ── OAuth-fasen (doc 14): Meta Pixel via Marketing API ─────────────
   // Bruker prosjektets eksisterende Meta-kobling (ads_management er
   // allerede i scopene). Pixelen KOBLES, aldri aktiveres — annonse-
@@ -1300,7 +1459,107 @@ export function setupRoleRoomAgentCoreRoutes(
       // verified forblir false — ærlig «kunne ikke verifisere»
     }
 
-    return res.json({ success: true, google, meta });
+    // Hva koblingene faktisk STYRER — «koblet» sier ingenting om hvilke
+    // ressurser. GA4-property/måle-ID leses fra KPI-konfigen agenten selv
+    // registrerte ved ga4-setup; GSC-siter og YouTube-kanaler hentes live
+    // fra Google (det Google faktisk viser); Meta-sider fra Graph.
+    // gscError 'needs_reauth' = koblingen mangler webmasters-scopet
+    // (samtykke fra før scope-utvidelsen). Alt er best-effort berikelse.
+    const manages: {
+      ga4PropertyId: string | null;
+      ga4MeasurementId: string | null;
+      gscSites: string[];
+      gscError: "needs_reauth" | "unavailable" | null;
+      youtubeChannels: string[];
+      metaPages: string[];
+      igUsername: string | null;
+      facebookPageName: string | null;
+    } = {
+      ga4PropertyId: null, ga4MeasurementId: null, gscSites: [], gscError: null,
+      youtubeChannels: [], metaPages: [], igUsername: null, facebookPageName: null,
+    };
+    if (projectId) {
+      const { getKpiSourceConfigValue } = await import("./role-room-kpi-source-config.js");
+      manages.ga4PropertyId = await getKpiSourceConfigValue(pool, projectId, "google_analytics", "property_id");
+      manages.ga4MeasurementId = await getKpiSourceConfigValue(pool, projectId, "google_analytics", "measurement_id");
+    }
+    if (google.connected) {
+      try {
+        const { row } = await resolveProjectGoogleConnection(projectId, session.userId);
+        if (row) {
+          const fresh = await ensureFreshGoogleAccessToken(pool, row);
+          const authHeader = { Authorization: `Bearer ${fresh.accessToken}` };
+          const [sitesRes, channelsRes] = await Promise.all([
+            fetch("https://www.googleapis.com/webmasters/v3/sites", {
+              headers: authHeader, signal: AbortSignal.timeout(8000),
+            }).catch(() => null),
+            fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true&maxResults=10", {
+              headers: authHeader, signal: AbortSignal.timeout(8000),
+            }).catch(() => null),
+          ]);
+          if (sitesRes?.ok) {
+            const body = (await sitesRes.json().catch(() => null)) as {
+              siteEntry?: Array<{ siteUrl?: string; permissionLevel?: string }>;
+            } | null;
+            manages.gscSites = (body?.siteEntry ?? [])
+              .filter((s) => s.siteUrl && s.permissionLevel !== "siteUnverifiedUser")
+              .map((s) => String(s.siteUrl))
+              .slice(0, 12);
+          } else if (sitesRes && (sitesRes.status === 401 || sitesRes.status === 403)) {
+            manages.gscError = "needs_reauth";
+          } else {
+            manages.gscError = "unavailable";
+          }
+          if (channelsRes?.ok) {
+            const body = (await channelsRes.json().catch(() => null)) as {
+              items?: Array<{ snippet?: { title?: string } }>;
+            } | null;
+            manages.youtubeChannels = (body?.items ?? [])
+              .map((c) => c.snippet?.title)
+              .filter((t): t is string => Boolean(t))
+              .slice(0, 10);
+          }
+        }
+      } catch {
+        manages.gscError = "unavailable";
+      }
+    }
+    if (meta.connected) {
+      try {
+        const conn = await pool.query<{
+          access_token: string | null;
+          ig_username: string | null;
+          facebook_page_name: string | null;
+        }>(
+          `SELECT access_token, ig_username, facebook_page_name
+             FROM role_room_instagram_connections
+            WHERE project_id = $1 ORDER BY connected_at DESC LIMIT 1`,
+          [projectId],
+        );
+        manages.igUsername = conn.rows[0]?.ig_username ?? null;
+        manages.facebookPageName = conn.rows[0]?.facebook_page_name ?? null;
+        const token = conn.rows[0]?.access_token ?? null;
+        if (token) {
+          const pagesRes = await fetch(
+            `https://graph.facebook.com/v21.0/me/accounts?fields=name&limit=10&access_token=${encodeURIComponent(token)}`,
+            { signal: AbortSignal.timeout(8000) },
+          );
+          if (pagesRes.ok) {
+            const body = (await pagesRes.json().catch(() => null)) as {
+              data?: Array<{ name?: string }>;
+            } | null;
+            manages.metaPages = (body?.data ?? [])
+              .map((p) => p.name)
+              .filter((n): n is string => Boolean(n))
+              .slice(0, 10);
+          }
+        }
+      } catch {
+        // best effort
+      }
+    }
+
+    return res.json({ success: true, google, meta, manages });
   });
 
   // ── Kontrakt-skann: signert avtale → økonomisk oppsett ─────────────

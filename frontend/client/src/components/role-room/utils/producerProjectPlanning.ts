@@ -499,8 +499,8 @@ export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceK
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS: Record<ProducerAccountAccessPlatform, string> = {
-  google: 'Google Workspace',
-  meta: 'Meta Business',
+  google: 'Google (Workspace + Analytics)',
+  meta: 'Meta (Facebook + Instagram)',
   linkedin: 'LinkedIn',
   youtube: 'YouTube',
   tiktok: 'TikTok',
@@ -513,8 +513,8 @@ export const PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS: Record<ProducerAccountAccess
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS: Record<ProducerAccountAccessStatus, string> = {
-  not_started: 'Ikke startet',
-  client_action: 'Venter på klient',
+  not_started: 'Ikke begynt ennå',
+  client_action: 'Venter på kunden',
   invite_sent: 'Invitasjon sendt',
   connected: 'Koblet',
   revoked: 'Avsluttet',
@@ -868,7 +868,7 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       status: 'not_started',
       tier: 'delegated_access',
       riskLevel: 'low',
-      accessScope: 'Drive, Kalender og Meet for prosjektet.',
+      accessScope: 'Drive, Kalender og Meet — pluss GA4, Search Console og Site Verification for agentens analytics-oppsett.',
       sharedWithRoles: ['producer', 'admin'],
       twoFactorStatus: 'unknown',
       secretStatus: 'not_shared',

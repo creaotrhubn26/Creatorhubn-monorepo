@@ -11,9 +11,9 @@ import { pushCloudAsset, listCloudAssets, removeCloudAsset } from '../../service
 import { isAiConnected } from '../../services/claudeProxyService';
 
 const C = {
-  bg: '#f3efe9', panel: '#ffffff', cream: '#faf7f2', creamActive: '#f3ece2',
-  line: '#ece7df', lineStrong: '#ddd6cc', ink: '#1d1b19', inkSoft: '#6b6358',
-  inkFaint: '#9a9186', accent: '#ef8a5d', green: '#4a9d6b',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', creamActive: '#efeaf7',
+  line: '#e7e2ee', lineStrong: '#d8d2e2', ink: '#1e1b2e', inkSoft: '#6b6480',
+  inkFaint: '#9a94a8', accent: '#8b5cf6', green: '#22c55e',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, background: '#fff', borderRadius: 9, padding: '6px 11px', fontSize: 12, fontWeight: 600, color: C.ink, cursor: 'pointer' };

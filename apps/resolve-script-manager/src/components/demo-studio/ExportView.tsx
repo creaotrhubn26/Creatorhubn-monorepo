@@ -26,9 +26,9 @@ import { ttsProxy } from '../../services/claudeProxyService';
 import { translateForVoiceover } from './demoStudioAI';
 
 const C = {
-  navBg: '#1c1a18', bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
-  lineStrong: '#ddd6cc', ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186',
-  accent: '#ef8a5d', dark: '#2f2a26', green: '#4a9d6b', red: '#d9534f',
+  navBg: '#17141f', bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee',
+  lineStrong: '#d8d2e2', ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8',
+  accent: '#8b5cf6', dark: '#241d42', green: '#22c55e', red: '#d9534f',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -583,7 +583,7 @@ function fmtDur(sec: number) {
 const card: React.CSSProperties = { border: `2px solid ${C.line}`, borderRadius: 10, padding: '12px 10px', cursor: 'pointer', textAlign: 'center' };
 const pill: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 20, padding: '7px 16px', cursor: 'pointer', fontSize: 13, background: '#fff' };
 const pillActive: React.CSSProperties = { borderColor: C.accent, background: C.cream, fontWeight: 600 };
-const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer', boxShadow: '0 2px 6px rgba(217,106,58,0.32)' };
+const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer', boxShadow: '0 2px 6px rgba(124,58,237,0.32)' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '8px 14px', borderRadius: 8, cursor: 'pointer' };
 const brandInp: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 

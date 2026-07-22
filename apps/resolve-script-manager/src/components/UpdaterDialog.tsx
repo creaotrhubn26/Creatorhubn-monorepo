@@ -9,7 +9,7 @@
  * Bruker eksisterende modal-pattern fra MagicCutDialog/RoleRoomSignInDialog.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { IconSparkle, IconX } from "./Icons";
 
 type UpdaterStage = "available" | "downloading" | "installed" | "error";
@@ -19,14 +19,28 @@ interface Props {
   notes: string | null;
   /** Starter download. Callback får progress (0..1) eller -1 ved ferdig. */
   onDownload: (onProgress: (fraction: number, status: "downloading" | "finished") => void) => Promise<void>;
+  /** Starter appen på nytt for å aktivere den installerte oppdateringen. */
+  onRelaunch: () => Promise<void>;
   onDismiss: () => void;
 }
 
-export function UpdaterDialog({ version, notes, onDownload, onDismiss }: Props) {
+export function UpdaterDialog({ version, notes, onDownload, onRelaunch, onDismiss }: Props) {
   const [stage, setStage] = useState<UpdaterStage>("available");
   const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [relaunching, setRelaunching] = useState(false);
   const downloadRef = useRef<Promise<void> | null>(null);
+
+  const handleRelaunch = useCallback(() => {
+    setRelaunching(true);
+    // relaunch() avslutter prosessen; hvis den feiler faller vi tilbake til
+    // manuell restart-instruks framfor å henge på en spinner.
+    onRelaunch().catch((err) => {
+      setRelaunching(false);
+      setError(err instanceof Error ? err.message : String(err));
+      setStage("error");
+    });
+  }, [onRelaunch]);
 
   const handleDownload = useCallback(() => {
     if (downloadRef.current) return;
@@ -43,14 +57,6 @@ export function UpdaterDialog({ version, notes, onDownload, onDismiss }: Props) 
       setError(err instanceof Error ? err.message : String(err));
     });
   }, [onDownload]);
-
-  // Auto-close after 8s on "installed" if user does nothing (the version is
-  // already on disk; restart can happen later).
-  useEffect(() => {
-    if (stage !== "installed") return;
-    const timer = window.setTimeout(() => onDismiss(), 8000);
-    return () => window.clearTimeout(timer);
-  }, [stage, onDismiss]);
 
   const closeable = stage === "available" || stage === "installed" || stage === "error";
 
@@ -164,11 +170,14 @@ export function UpdaterDialog({ version, notes, onDownload, onDismiss }: Props) 
                 fontWeight: 500,
               }}
             >
-              v{version} er installert. Lukk Post Agent (⌘Q) og åpne den på nytt for å aktivere.
+              v{version} er lastet ned og installert. Start Post Agent på nytt for å ta den i bruk.
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
-              <button type="button" className="btn-primary" onClick={onDismiss}>
-                Forstått
+              <button type="button" className="btn-ghost" onClick={onDismiss} disabled={relaunching}>
+                Senere
+              </button>
+              <button type="button" className="btn-primary" onClick={handleRelaunch} disabled={relaunching}>
+                {relaunching ? "Starter på nytt…" : "Start på nytt nå"}
               </button>
             </div>
           </>
