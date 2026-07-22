@@ -24,8 +24,8 @@ import { materializePost } from './campaignDirector';
 import SystemArchDialog from './SystemArchDialog';
 import MotionStingDialog from './MotionStingDialog';
 import { motionHtmlForScene, type Archetype } from './motionReveal.js';
-import { sceneLayoutForValues, buildSequenceHtml } from './motionSequence.js';
-import { aiSuggestMotion } from './motionAI.js';
+import { sceneLayoutForValues, buildSequenceHtml, outroLayoutFor, TRANS_KINDS, CAM_KINDS, TRANS_LABEL, CAM_LABEL, type TransKind, type CamKind } from './motionSequence.js';
+import { aiSuggestMotion, aiDirectFilm } from './motionAI.js';
 import { loadPresets, savePreset, type MotionPreset } from './motionPresets.js';
 import type { MotionLayoutOpts } from './motionSting.js';
 import { isAiConnected } from '../../services/claudeProxyService';
@@ -257,6 +257,10 @@ interface Scene {
   entrance?: EntranceKind;
   /** Easing-kurve som remapper progresjonen (preview + render). */
   easing?: EasingKind;
+  /** Film-modus: hvordan scenen kommer INN i den sammenhengende data-filmen. */
+  trans?: TransKind;
+  /** Film-modus: rolig kamerabevegelse over scenens levetid. */
+  cam?: CamKind;
 }
 
 // Easing-kurver (remapper 0..1). Speiles i render (MJS) via samme navn.
@@ -939,6 +943,11 @@ export function InfographicStudioView(
   const [motionCaption, setMotionCaption] = useState<string | undefined>();
   const [motionPresets, setMotionPresets] = useState<MotionPreset[]>(() => loadPresets());
   const [aiMainBusy, setAiMainBusy] = useState(false);
+  // Film-regi: BPM-rutenett (0 = av), merkevare-outro + CTA, AI-regi-busy.
+  const [bpm, setBpm] = useState(0);
+  const [filmOutro, setFilmOutro] = useState(false);
+  const [outroCta, setOutroCta] = useState('Kom i gang');
+  const [directing, setDirecting] = useState(false);
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
@@ -1238,15 +1247,44 @@ export function InfographicStudioView(
     if (!p) return;
     setMainArch(p.arch); setFmt(p.format === '9:16' ? '9:16' : p.format === '1:1' ? '1:1' : '16:9'); setMotionPlace(p.place); setMotionTempo(p.tempo);
   };
-  // «Data-film»: alle scener flettet til ÉN sammenhengende animasjon m/ overganger.
+  // «Data-film»: alle scener flettet til ÉN sammenhengende animasjon m/ overganger
+  // (pr-scene overgang + kamera), valgfri merkevare-outro på slutten.
   const sequenceMotion = useMemo(() => {
-    const layouts = scenes.map((sc) => {
+    const baseLayouts = scenes.map((sc) => {
       const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
       return sceneLayoutForValues(fieldVals(sc, t), { templateId: t.id, brandName: project?.name || 'Merkevare', accent: sceneAccent(sc), order: t.fields.map((f) => f.key) }).layout;
     });
-    return buildSequenceHtml(layouts, { accent: sceneAccent(scene), format: motionFormat, place: motionPlace, transitionMs: 550 });
+    const fx = scenes.map((sc) => ({ trans: sc.trans, cam: sc.cam }));
+    const layouts = filmOutro
+      ? [...baseLayouts, outroLayoutFor({ brandName: project?.name || 'Merkevare', cta: outroCta.trim() || undefined, mark: '◆' })]
+      : baseLayouts;
+    const fxAll = filmOutro ? [...fx, { trans: 'morph' as TransKind, cam: 'in' as CamKind }] : fx;
+    return buildSequenceHtml(layouts, { accent: sceneAccent(scene), format: motionFormat, place: motionPlace, transitionMs: 550, fx: fxAll });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenes, motionFormat, motionPlace, accent, dataMap]);
+  }, [scenes, motionFormat, motionPlace, accent, dataMap, filmOutro, outroCta]);
+
+  // AI-regi («auto-manus»): la modellen sette overgang + kamera pr. scene for hele
+  // filmen (fallback = deterministisk heuristikk). Setter også outro-CTA om foreslått.
+  const runFilmDirector = async () => {
+    if (directing || scenes.length === 0) return;
+    setDirecting(true);
+    try {
+      const briefs = scenes.map((sc) => {
+        const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+        const vals = fieldVals(sc, t);
+        const archetype = sceneLayoutForValues(vals, { templateId: t.id, order: t.fields.map((f) => f.key) }).archetype;
+        const summary = Object.values(vals).filter((v) => v && String(v).trim()).slice(0, 3).join(' · ') || t.name;
+        return { label: sc.name || t.name, archetype, summary };
+      });
+      const dir = await aiDirectFilm(briefs);
+      setScenes((ss) => ss.map((s, idx) => (idx < dir.scenes.length ? { ...s, trans: dir.scenes[idx].trans, cam: dir.scenes[idx].cam } : s)));
+      if (dir.outroCta) { setOutroCta(dir.outroCta); setFilmOutro(true); }
+      setMsg(dir.fromAi
+        ? `🎬 AI-regi satt overgang + kamera på ${dir.scenes.length} scener${dir.outroCta ? ` + outro «${dir.outroCta}»` : ''}`
+        : `🎬 Regi satt (heuristikk) på ${dir.scenes.length} scener`);
+    } catch { setMsg('Kunne ikke sette regi — prøv igjen.'); }
+    finally { setDirecting(false); }
+  };
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -1387,14 +1425,53 @@ export function InfographicStudioView(
     const sc = scenes[i]; const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
     const startX = e.clientX, atSec0 = sc.atSec, dur0 = effDur(sc, t), z = tlZoom;
     setSel(i);
+    // Magnetisk snapping: naboklippenes kanter, spillehode, hele sekunder + beat-rutenett.
+    const snapTargets: number[] = [];
+    scenes.forEach((s, idx) => {
+      if (idx === i) return;
+      const st = INFOGRAPHIC_TEMPLATES.find((x) => x.id === s.tplId) || INFOGRAPHIC_TEMPLATES[0];
+      snapTargets.push(s.atSec, s.atSec + effDur(s, st));
+    });
+    snapTargets.push(scrubT);
+    const snap = (at: number): number => {
+      const thr = 9 / z; // px → sek
+      const cands = snapTargets.concat([Math.round(at)]);
+      if (bpm > 0) { const beat = 60 / bpm; cands.push(Math.round(at / beat) * beat); }
+      let best = at, bestD = thr;
+      for (const c of cands) { const d = Math.abs(c - at); if (d < bestD) { bestD = d; best = c; } }
+      return Math.max(0, Math.round(best * 100) / 100);
+    };
     const move = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / z;
-      if (mode === 'move') { const at = Math.max(0, Math.round((atSec0 + dx) * 10) / 10); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, atSec: at } : s))); }
+      if (mode === 'move') { const at = snap(Math.max(0, atSec0 + dx)); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, atSec: at } : s))); }
       else { const dur = Math.max(1, Math.round((dur0 + dx) * 10) / 10); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, durSec: dur } : s))); }
     };
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
+  // Tastatur-snarveier for tidslinjen (kun i motion/film, ikke mens man skriver).
+  useEffect(() => {
+    if (previewMode === 'still') return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (e.key === ' ') { e.preventDefault(); if (playingAll) stopPlayAll(); else playAll(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); scrubTo(Math.min(totalDur, scrubT + (e.shiftKey ? 1 : 0.1))); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); scrubTo(Math.max(0, scrubT - (e.shiftKey ? 1 : 0.1))); }
+      else if (e.key === 'Home') { e.preventDefault(); scrubTo(0); }
+      else if (e.key === 'End') { e.preventDefault(); scrubTo(totalDur); }
+      else if (e.key === '[' || e.key === ',') { e.preventDefault(); jumpScene(-1); }
+      else if (e.key === ']' || e.key === '.') { e.preventDefault(); jumpScene(1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewMode, playingAll, scrubT, totalDur]);
+  // Bla gjennom overgang/kamera pr. scene rett fra tidslinje-klippet.
+  const sceneTrans = (i: number): TransKind => scenes[i]?.trans || (i === 0 ? 'cut' : 'slide');
+  const cycleTrans = (i: number) => setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, trans: TRANS_KINDS[(TRANS_KINDS.indexOf(sceneTrans(i)) + 1) % TRANS_KINDS.length] } : s)));
+  const cycleCam = (i: number) => setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, cam: CAM_KINDS[(CAM_KINDS.indexOf(s.cam || 'none') + 1) % CAM_KINDS.length] } : s)));
+  const transShort = (k: TransKind): string => ({ cut: 'CUT', cross: 'X', slide: '↑', slideX: '→', wipe: '▨', zoom: '⤢', morph: '∿' }[k] || k);
   // Bundlede fonter for ikon-velgeren i studio-UI-et — offline-robust (før:
   // Google Fonts-CDN-lenke som brøt ikonene offline).
   useEffect(() => {
@@ -2283,6 +2360,11 @@ export function InfographicStudioView(
                   <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(totalDur)} title="Til slutt"><SkipNextIcon style={{ fontSize: 16 }} /></button>
                   <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: D.ink, marginLeft: 8, fontWeight: 600 }}>{fmtTC(scrubT)} <span style={{ color: D.faint, fontWeight: 400 }}>/ {fmtTC(totalDur)}</span></span>
                   {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 8 }}><WarningAmberIcon style={{ fontSize: 12 }} /> overlapp</span>}
+                  <div style={{ width: 1, height: 15, background: D.line, margin: '0 6px' }} />
+                  <button style={{ ...topBtn, padding: '3px 8px', opacity: directing ? 0.6 : 1 }} disabled={directing} onClick={() => void runFilmDirector()} title="AI-regi: sett overgang + kamera pr. scene for hele filmen">{directing ? '✨ …' : '✨ Regi'}</button>
+                  <button style={{ ...topBtn, padding: '3px 7px', background: filmOutro ? D.accent : D.panel2, border: `1px solid ${filmOutro ? D.accent : D.line}`, color: filmOutro ? '#fff' : D.ink }} onClick={() => setFilmOutro((v) => !v)} title="Merkevare-outro på slutten av filmen">🎬 Outro</button>
+                  {filmOutro && <input value={outroCta} onChange={(e) => setOutroCta(e.target.value)} placeholder="CTA" style={{ ...inp, width: 90, padding: '2px 6px', fontSize: 11 }} />}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4 }} title="BPM-rutenett for snapping (0 = av)"><MusicNoteIcon style={{ fontSize: 14, color: bpm > 0 ? D.accent : D.faint }} /><input type="number" min={0} max={220} value={bpm} onChange={(e) => setBpm(Math.max(0, Math.min(220, parseInt(e.target.value, 10) || 0)))} style={{ ...inp, width: 44, padding: '2px 4px', fontSize: 11 }} /></span>
                   <div style={{ flex: 1 }} />
                   <button style={{ ...topBtn, padding: '3px 6px', background: loopAll ? D.accent : D.panel2, border: `1px solid ${loopAll ? D.accent : D.line}`, color: loopAll ? '#fff' : D.ink }} onClick={() => setLoopAll((v) => !v)} title="Loop hele sekvensen"><RepeatIcon style={{ fontSize: 15 }} /></button>
                   <ZoomOutIcon style={{ fontSize: 15, color: D.faint, marginLeft: 4 }} />
@@ -2297,6 +2379,12 @@ export function InfographicStudioView(
                       {ticks.map((s) => (
                         <div key={s} style={{ position: 'absolute', left: s * px, top: 0, bottom: 0, borderLeft: `1px solid ${D.line}`, paddingLeft: 3, fontSize: 8.5, color: D.faint }}>{s}s</div>
                       ))}
+                      {/* Beat-rutenett (BPM) — snapper klipp til takten. */}
+                      {bpm > 0 && (60 / bpm) * px >= 6 && (() => {
+                        const beat = 60 / bpm; const out: React.ReactNode[] = [];
+                        for (let b = beat, k = 0; b <= totalDur; b += beat, k++) out.push(<div key={`bt${k}`} style={{ position: 'absolute', left: b * px, top: 0, bottom: 0, borderLeft: `1px solid ${D.accent}55`, pointerEvents: 'none' }} />);
+                        return out;
+                      })()}
                     </div>
                     {/* Én rad per scene som dragbart klipp. */}
                     <div style={{ position: 'relative', paddingTop: 4 }}>
@@ -2310,15 +2398,22 @@ export function InfographicStudioView(
                               title={`${sc.name || t.name} · ${sc.atSec.toFixed(1)}–${(sc.atSec + effDur(sc, t)).toFixed(1)}s`}
                               style={{ position: 'absolute', left, width: w, top: 0, height: rowH, borderRadius: 5, background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}`, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', overflow: 'hidden', cursor: 'grab', color: active ? '#fff' : D.soft, fontSize: 10.5, whiteSpace: 'nowrap', userSelect: 'none', touchAction: 'none' }}>
                               <span style={{ display: 'inline-flex', flex: 'none' }}>{tplIcon(sc.tplId, 12)}</span>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sc.name || t.name}</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{sc.name || t.name}</span>
+                              {w > 96 && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: 'none', marginRight: 4 }}>
+                                  <span onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); cycleTrans(i); }} title={`Overgang inn: ${TRANS_LABEL[sceneTrans(i)]} — klikk for å bla`} style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 0.3, padding: '1px 4px', borderRadius: 4, background: 'rgba(255,255,255,0.18)', cursor: 'pointer' }}>{transShort(sceneTrans(i))}</span>
+                                  <span onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); cycleCam(i); }} title={`Kamera: ${CAM_LABEL[sc.cam || 'none']} — klikk for å bla`} style={{ fontSize: 9.5, cursor: 'pointer', opacity: sc.cam && sc.cam !== 'none' ? 1 : 0.45 }}>🎥</span>
+                                </span>
+                              )}
                               <div onPointerDown={(e) => onClipDrag(e, i, 'resize')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.14)' }} />
                             </div>
                           </div>
                         );
                       })}
                     </div>
-                    {/* Playhead. */}
+                    {/* Playhead + tidsboble. */}
                     <div style={{ position: 'absolute', left: scrubT * px, top: 0, bottom: 0, width: 2, background: D.teal, pointerEvents: 'none', zIndex: 5 }} />
+                    <div style={{ position: 'absolute', left: scrubT * px, top: -1, transform: 'translateX(-50%)', background: D.teal, color: '#04121a', fontSize: 9, fontWeight: 800, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', zIndex: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtTC(scrubT)}</div>
                   </div>
                 </div>
               </>);
@@ -2505,6 +2600,33 @@ export function InfographicStudioView(
                     <button key={ek} onClick={() => { updateScene({ easing: ek }); window.setTimeout(() => play(), 30); }}
                       style={{ ...topBtn, justifyContent: 'center', fontSize: 11, padding: '6px 0', background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}` }}>
                       {EASING_LABEL[ek]}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Film-modus: hvordan scenen kommer INN i den sammenhengende data-filmen
+                  (overgang) + rolig kamerabevegelse. Styrer «Film»-preview + ProRes. */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Film · overgang inn <span style={{ color: D.faint, fontWeight: 500 }}>· scene {sel + 1}</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+                {TRANS_KINDS.map((tk) => {
+                  const active = sceneTrans(sel) === tk;
+                  return (
+                    <button key={tk} onClick={() => { updateScene({ trans: tk }); setPreviewMode('film'); }}
+                      style={{ ...topBtn, justifyContent: 'center', fontSize: 11, padding: '6px 0', background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}` }}>
+                      {TRANS_LABEL[tk]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 9.5, color: D.faint, lineHeight: 1.4, marginBottom: 12 }}>«Kutt» gir hard overgang (0 overlapp); «Morph» lar tall/former smelte inn. Scene 1 åpner alltid rolig.</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Film · kamera</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 14 }}>
+                {CAM_KINDS.map((ck) => {
+                  const active = (scene.cam || 'none') === ck;
+                  return (
+                    <button key={ck} onClick={() => { updateScene({ cam: ck }); setPreviewMode('film'); }}
+                      style={{ ...topBtn, justifyContent: 'center', fontSize: 10.5, padding: '6px 0', background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}` }}>
+                      {CAM_LABEL[ck]}
                     </button>
                   );
                 })}

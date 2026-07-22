@@ -23,6 +23,42 @@ function esc(s: string): string {
 }
 const fmt = (n: number): string => new Intl.NumberFormat('nb-NO').format(Math.round(n));
 
+/* ------------------------------------------------------------------ */
+/* Overgang + kamera (per scene) — «legg inn alt»                       */
+/* ------------------------------------------------------------------ */
+
+/** Hvordan en scene kommer INN (styrer også overlappens geometri). */
+export type TransKind = 'cut' | 'cross' | 'slide' | 'slideX' | 'wipe' | 'zoom' | 'morph';
+/** Rolig kamerabevegelse over scenens levetid (Ken Burns). */
+export type CamKind = 'none' | 'in' | 'out' | 'panL' | 'panR' | 'drift';
+/** Per-scene filmiske effekter. `len` = overlapp (ms) FØR denne scenen. */
+export interface SceneFx { trans?: TransKind; cam?: CamKind; len?: number }
+
+export const TRANS_KINDS: TransKind[] = ['cut', 'cross', 'slide', 'slideX', 'wipe', 'zoom', 'morph'];
+export const CAM_KINDS: CamKind[] = ['none', 'in', 'out', 'panL', 'panR', 'drift'];
+export const TRANS_LABEL: Record<TransKind, string> = {
+  cut: 'Kutt', cross: 'Krysston', slide: 'Skyv opp', slideX: 'Skyv inn', wipe: 'Sveip', zoom: 'Zoom', morph: 'Morph',
+};
+export const CAM_LABEL: Record<CamKind, string> = {
+  none: 'Ingen', in: 'Push inn', out: 'Trekk ut', panL: 'Panorer ◀', panR: 'Panorer ▶', drift: 'Drift opp',
+};
+
+/** Utgangs-scene («brand outro»): merke + navn + CTA, i layout-modellen. */
+export function outroLayoutFor(o: { brandName: string; cta?: string; mark?: string }): MotionLayout {
+  const reveals: RevealOp[] = [
+    { ref: 'ocmark', kind: 'pop', at: 120, dur: 540 },
+    { ref: 'ocname', kind: 'fade', at: 380, dur: 480 },
+  ];
+  if (o.cta) reveals.push({ ref: 'occta', kind: 'slideUp', at: 760, dur: 520 });
+  const total = (o.cta ? 760 + 520 : 380 + 480) + 780;
+  const body = `<div class="arc oc">`
+    + `<div class="oc-mark" data-r="ocmark">${esc(o.mark || '◆')}</div>`
+    + `<div class="oc-name" data-r="ocname">${esc(o.brandName)}</div>`
+    + (o.cta ? `<div class="oc-cta" data-r="occta">${esc(o.cta)}</div>` : '')
+    + `</div>`;
+  return { bodyHtml: body, reveals, total };
+}
+
 /** Sting uttrykt i layout-modellen (brand/funnel/hero/caption som reveals). */
 export function stingLayoutFor(d: StingData): MotionLayout {
   const reveals: RevealOp[] = [{ ref: 'brand', kind: 'fade', at: 120, dur: 360 }];
@@ -76,16 +112,24 @@ export function sceneLayoutForValues(
 
 export interface SequenceTimeline { total: number; starts: number[]; transMs: number }
 
-/** Scener overlapper med transMs (crossfade). Ren → testbar. */
-export function buildSequenceTimeline(totals: number[], transMs = 550): SequenceTimeline {
+/**
+ * Scener overlapper med transMs (crossfade). `trans` = skalar (samme overlapp
+ * overalt) ELLER per-grense-array (overlaps[i] = ms mellom scene i og i+1) så
+ * hver overgang kan ha egen lengde (kutt = 0). Ren → testbar.
+ */
+export function buildSequenceTimeline(totals: number[], trans: number | number[] = 550): SequenceTimeline {
+  const ov = (i: number): number => {
+    const v = Array.isArray(trans) ? trans[i] : trans;
+    return typeof v === 'number' && v >= 0 ? v : 550;
+  };
   const starts: number[] = [];
   let cursor = 0;
   totals.forEach((t, i) => {
     starts.push(cursor);
-    cursor += t - (i < totals.length - 1 ? transMs : 0);
+    cursor += t - (i < totals.length - 1 ? ov(i) : 0);
   });
   const total = totals.length ? starts[starts.length - 1] + totals[totals.length - 1] : 0;
-  return { total, starts, transMs };
+  return { total, starts, transMs: ov(0) };
 }
 
 /** Prefiks alle refs i en layout med s{i}_ (unngå kollisjon på tvers av scener). */
@@ -114,7 +158,7 @@ export interface SequenceResult { html: string; total: number; timeline: Sequenc
  */
 export function buildSequenceHtml(
   layouts: MotionLayout[],
-  opts: { accent?: string; format?: StingFormat; place?: MotionLayoutOpts; transitionMs?: number; autoplay?: boolean } = {},
+  opts: { accent?: string; format?: StingFormat; place?: MotionLayoutOpts; transitionMs?: number; autoplay?: boolean; fx?: SceneFx[] } = {},
 ): SequenceResult {
   const accent = opts.accent && /^#[0-9a-fA-F]{3,8}$/.test(opts.accent) ? opts.accent : '#8b5cf6';
   const format = opts.format || '16:9';
@@ -123,9 +167,19 @@ export function buildSequenceHtml(
   const GOLD = T.hero;
   const transMs = opts.transitionMs ?? 550;
   const autoplay = opts.autoplay !== false;
+  const fx = opts.fx || [];
 
   const prefixed = layouts.map((l, i) => prefixLayout(l, i));
-  const timeline = buildSequenceTimeline(prefixed.map((l) => l.total), transMs);
+  // Overgang pr. scene (scene 0 default = kutt/instant, resten = skyv opp som før).
+  const kinds: TransKind[] = prefixed.map((_l, i) => fx[i]?.trans || (i === 0 ? 'cut' : 'slide'));
+  const cams: CamKind[] = prefixed.map((_l, i) => fx[i]?.cam || 'none');
+  // Overlapp pr. grense: bestemt av NESTE scenes overgang (kutt = 0, ellers len ?? transMs).
+  const overlaps: number[] = prefixed.slice(0, -1).map((_l, i) => {
+    if (kinds[i + 1] === 'cut') return 0;
+    const len = fx[i + 1]?.len;
+    return typeof len === 'number' && len >= 0 ? len : transMs;
+  });
+  const timeline = buildSequenceTimeline(prefixed.map((l) => l.total), overlaps.length ? overlaps : transMs);
   const REVEAL = 260;
 
   const scenesHtml = prefixed
@@ -143,7 +197,13 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro
 #stage{aspect-ratio:${aspectFor(format)};width:100%;max-width:100%;max-height:100%;position:relative;border-radius:14px;overflow:hidden;color:${T.ink};
   background:radial-gradient(120% 90% at 82% -10%, ${accent}33, transparent 55%), radial-gradient(90% 80% at -10% 110%, ${accent}22, transparent 55%), ${T.ground}}
 .seq-scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:${L.align};padding:${L.pad};gap:${L.gap};will-change:opacity,transform}
+.seq-inner{display:flex;flex-direction:column;justify-content:inherit;gap:${L.gap};min-width:0;width:100%;transform-origin:50% 50%;will-change:transform}
 [data-r]{opacity:0}
+/* brand outro */
+.oc{align-items:center;text-align:center;gap:.7em}
+.oc-mark{width:1.9em;height:1.9em;border-radius:.5em;display:grid;place-items:center;color:${T.chip};font-weight:900;font-size:clamp(26px,7vw,52px);background:linear-gradient(135deg,${accent},#6d28d9);box-shadow:0 0 44px ${accent}55}
+.oc-name{font-size:clamp(20px,5.5vw,40px);font-weight:800;letter-spacing:-.02em;color:${T.ink}}
+.oc-cta{font-family:ui-monospace,"SF Mono",monospace;font-size:clamp(10px,2.4vw,14px);letter-spacing:.16em;text-transform:uppercase;color:${GOLD}}
 .arc{display:flex;flex-direction:column;max-width:100%;min-width:0;gap:${L.gap}}
 .st-label,.st-sub,.q-text,.q-author,.cmp-title,.cmp-lab,.cmp-val,.sq-lab,.sq-val,.sq-cap{overflow:hidden;text-overflow:ellipsis}
 /* sting */
@@ -197,27 +257,53 @@ ${spacingCss(opts.place?.spacing)}
   var R = ${JSON.stringify(allReveals)};
   var STARTS = ${JSON.stringify(timeline.starts)};
   var TOTALS = ${JSON.stringify(prefixed.map((l) => l.total))};
+  var OV = ${JSON.stringify(overlaps)};
+  var KINDS = ${JSON.stringify(kinds)};
+  var CAMS = ${JSON.stringify(cams)};
   var TOTAL = ${timeline.total};
-  var TRANS = ${transMs};
   var REVEAL = ${REVEAL};
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var nf = new Intl.NumberFormat('nb-NO');
   var stage = document.getElementById('stage');
   var scrub = document.getElementById('scrub');
   var scenes = [].slice.call(stage.querySelectorAll('.seq-scene'));
+  var inners = scenes.map(function(s){ return s.querySelector('.seq-inner'); });
   function cl(x){ return x<0?0:x>1?1:x; }
   function ease(x){ return 1 - Math.pow(1-x,3); }
+  // Kamerabevegelse (Ken Burns) over scenens levetid cp=0..1.
+  function camTf(kind, cp){
+    if(kind==='in') return 'scale(' + (1 + 0.06*cp).toFixed(4) + ')';
+    if(kind==='out') return 'scale(' + (1.06 - 0.06*cp).toFixed(4) + ')';
+    if(kind==='panL') return 'translateX(' + (-2.4*cp).toFixed(2) + '%) scale(1.045)';
+    if(kind==='panR') return 'translateX(' + (2.4*cp).toFixed(2) + '%) scale(1.045)';
+    if(kind==='drift') return 'translateY(' + (1.3 - 2.6*cp).toFixed(2) + '%) scale(1.045)';
+    return 'none';
+  }
+  // Inngangs-transform for scene i gitt eased intro/outro (0..1).
+  function sceneTf(kind, ei, eo){
+    if(kind==='slide') return 'translateY(' + ((1-ei)*22 - (1-eo)*22).toFixed(2) + 'px)';
+    if(kind==='slideX') return 'translateX(' + ((1-ei)*46).toFixed(2) + 'px)';
+    if(kind==='zoom') return 'scale(' + (0.9 + 0.1*ei).toFixed(4) + ')';
+    if(kind==='morph') return 'scale(' + ((1.10 - 0.10*ei) * (1 - 0.05*(1-eo))).toFixed(4) + ')';
+    return 'none'; // cut, cross, wipe → ingen transform
+  }
   function applyAt(t){
-    // scene-container overganger (crossfade + slide)
+    // scene-container overganger (pr-scene type + lengde) + kamera
     for(var i=0;i<scenes.length;i++){
       var s0 = STARTS[i], dur = TOTALS[i], localT = t - s0;
       var last = i === scenes.length - 1;
-      var intro = i > 0 ? cl(localT / TRANS) : 1;
-      var outro = !last ? cl((dur - localT) / TRANS) : 1;
-      var active = localT > -TRANS && localT < dur + TRANS;
-      var vis = active ? cl(intro) * cl(outro) : 0;
+      var inOv = i > 0 ? OV[i-1] : 0;      // overlapp før denne scenen
+      var outOv = !last ? OV[i] : 0;       // overlapp etter denne scenen
+      var kind = KINDS[i] || 'slide';
+      var intro = i === 0 ? 1 : (inOv <= 1 ? (localT >= 0 ? 1 : 0) : cl(localT / inOv));
+      var outro = last ? 1 : (outOv <= 1 ? (localT < dur ? 1 : 0) : cl((dur - localT) / outOv));
+      var active = localT >= -1 && localT <= dur + 1;
+      var ei = ease(intro), eo = ease(outro);
+      var vis = active ? ei * eo : 0;
       scenes[i].style.opacity = vis;
-      scenes[i].style.transform = active ? ('translateY(' + ((1 - intro) * 22 - (1 - outro) * 22) + 'px)') : 'translateY(22px)';
+      scenes[i].style.transform = active ? sceneTf(kind, ei, eo) : sceneTf(kind, 0, 1);
+      scenes[i].style.clipPath = (active && kind==='wipe') ? ('inset(0 ' + ((1-ei)*100).toFixed(2) + '% 0 0)') : 'none';
+      if(inners[i]) inners[i].style.transform = active ? camTf(CAMS[i], cl(dur>0?localT/dur:1)) : 'none';
     }
     // reveals per scene ved lokal tid
     for(var j=0;j<R.length;j++){

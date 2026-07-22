@@ -6,6 +6,7 @@
  */
 import { claudeProxyService, isAiConnected } from '../../services/claudeProxyService';
 import { pickArchetype, type Archetype } from './motionReveal.js';
+import { TRANS_KINDS, CAM_KINDS, type TransKind, type CamKind } from './motionSequence.js';
 
 const ARCHETYPES: Archetype[] = ['sting', 'stat', 'quote', 'compare', 'list'];
 
@@ -80,6 +81,73 @@ export async function aiSuggestMotion(
       eyebrow: (p?.eyebrow || '').trim() || undefined,
       fromAi: true,
     };
+  } catch {
+    return fallback;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Film-regi («auto-manus»): overgang + kamera pr. scene for hele filmen */
+/* ------------------------------------------------------------------ */
+
+export interface SceneBrief { label: string; archetype: Archetype; summary: string }
+export interface FilmDirection {
+  /** Én {trans, cam} pr. scene (samme rekkefølge som inn). */
+  scenes: { trans: TransKind; cam: CamKind }[];
+  outroCta?: string;
+  fromAi: boolean;
+}
+
+const NUMERIC: Archetype[] = ['sting', 'stat', 'compare'];
+
+/** Deterministisk regi-heuristikk — rytme + morph mellom beslektede tall. */
+export function heuristicDirection(scenes: { archetype: Archetype }[]): { trans: TransKind; cam: CamKind }[] {
+  const camCycle: CamKind[] = ['in', 'panR', 'out', 'panL', 'drift'];
+  return scenes.map((s, i) => {
+    if (i === 0) return { trans: 'cut', cam: 'in' };
+    const prev = scenes[i - 1].archetype;
+    const trans: TransKind = NUMERIC.includes(s.archetype) && NUMERIC.includes(prev)
+      ? 'morph'
+      : s.archetype === 'quote' ? 'cross'
+        : s.archetype === 'list' ? 'slideX'
+          : (i % 2 ? 'slide' : 'zoom');
+    return { trans, cam: camCycle[i % camCycle.length] };
+  });
+}
+
+/** Bygg regi-prompten (ren → testbar). */
+export function buildFilmDirectorPrompt(scenes: SceneBrief[]): string {
+  const list = scenes.map((s, i) => `${i + 1}. [${s.archetype}] ${s.label} — ${s.summary}`).join('\n') || '(ingen scener)';
+  return `Du regisserer en sammenhengende data-film av ${scenes.length} scener som spilles i rekkefølge.
+Scener:
+${list}
+
+For HVER scene, velg en INNGANGS-overgang og en KAMERA-bevegelse som gir filmen rytme og flyt.
+Overganger: ${TRANS_KINDS.join(', ')} (morph = la tall/former smelte til neste; cut = hardt kutt; cross = mykt krysston).
+Kamera: ${CAM_KINDS.join(', ')} (in = push inn, out = trekk ut, panL/panR = panorer, drift = drift opp).
+Regler: scene 1 bør åpne rolig (cut/cross). Bruk morph MELLOM beslektede tall-scener. Ikke gjenta samme kamera to ganger på rad. Foreslå også en kort CTA (norsk, maks 4 ord) til en avsluttende merkevare-scene.
+
+Svar med KUN ett JSON-objekt: { "scenes": [ { "trans": "...", "cam": "..." }, ... ], "outroCta": "kort CTA" }`;
+}
+
+/** La AI regissere hele filmen (overgang + kamera pr. scene). Fallback = heuristikk. */
+export async function aiDirectFilm(scenes: SceneBrief[], _ctx: Record<string, unknown> = {}): Promise<FilmDirection> {
+  const fb = heuristicDirection(scenes);
+  const fallback: FilmDirection = { scenes: fb, fromAi: false };
+  if (!isAiConnected() || scenes.length === 0) return fallback;
+  try {
+    const raw = await claudeProxyService.send({
+      systemPrompt: 'Du er en motion-regissør for data-film. Velg overganger og kamera som gir rytme og profesjonell flyt. Svar ALLTID med kun ett JSON-objekt.',
+      messages: [{ role: 'user', content: buildFilmDirectorPrompt(scenes) }],
+      maxTokens: 500,
+    });
+    const p = extractJson<{ scenes?: { trans?: string; cam?: string }[]; outroCta?: string }>(raw);
+    const arr = Array.isArray(p?.scenes) ? p!.scenes : [];
+    const out = scenes.map((_s, i) => ({
+      trans: TRANS_KINDS.includes(arr[i]?.trans as TransKind) ? (arr[i]!.trans as TransKind) : fb[i].trans,
+      cam: CAM_KINDS.includes(arr[i]?.cam as CamKind) ? (arr[i]!.cam as CamKind) : fb[i].cam,
+    }));
+    return { scenes: out, outroCta: (p?.outroCta || '').trim() || undefined, fromAi: true };
   } catch {
     return fallback;
   }
