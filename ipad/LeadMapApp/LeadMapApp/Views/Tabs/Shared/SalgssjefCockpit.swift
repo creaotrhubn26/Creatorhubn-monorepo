@@ -205,6 +205,10 @@ struct ApprovalsQueueSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var filter: ApprovalFilter = .all
     @State private var expanded: Set<String> = []
+    // Lokal beslutnings-state (backend-approval-ruten er ikke bundet enda).
+    @State private var decisions: [String: String] = [:]   // itemId → "Godkjent"/"Avslått"
+    @State private var comments: [String: String] = [:]     // itemId → notat
+    @State private var commentItem: ApprovalItem?
 
     enum ApprovalFilter: String, CaseIterable, Identifiable {
         case all = "Alle"
@@ -285,6 +289,11 @@ struct ApprovalsQueueSheet: View {
             .toolbarBackground(SlBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(item: $commentItem) { item in
+                ApprovalCommentSheet(item: item, existing: comments[item.id] ?? "") { note in
+                    comments[item.id] = note
+                }
+            }
         }
     }
 
@@ -327,14 +336,33 @@ struct ApprovalsQueueSheet: View {
                 Divider().background(SlBrand.stroke)
                 Text(item.rationale).font(.appScaled(size: 12))
                     .foregroundStyle(SlBrand.textSecondary)
-                HStack(spacing: 8) {
-                    Button("Godkjenn") {}
-                        .buttonStyle(FilledSlButtonStyle(tint: SlBrand.green))
-                    Button("Avslå") {}
-                        .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.red))
-                    Button("Kommentar") {}
-                        .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
-                    Spacer()
+                if let note = comments[item.id], !note.isEmpty {
+                    Label(note, systemImage: "text.bubble.fill")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(SlBrand.purpleLight)
+                }
+                if let decision = decisions[item.id] {
+                    HStack(spacing: 8) {
+                        Label(decision == "Godkjent" ? "Godkjent" : "Avslått",
+                              systemImage: decision == "Godkjent" ? "checkmark.seal.fill" : "xmark.seal.fill")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(decision == "Godkjent" ? SlBrand.green : SlBrand.red)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background((decision == "Godkjent" ? SlBrand.green : SlBrand.red).opacity(0.16), in: Capsule())
+                        Button("Angre") { decisions[item.id] = nil }
+                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.textSecondary))
+                        Spacer()
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Button("Godkjenn") { decisions[item.id] = "Godkjent" }
+                            .buttonStyle(FilledSlButtonStyle(tint: SlBrand.green))
+                        Button("Avslå") { decisions[item.id] = "Avslått" }
+                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.red))
+                        Button("Kommentar") { commentItem = item }
+                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
+                        Spacer()
+                    }
                 }
             }
         }
@@ -344,6 +372,50 @@ struct ApprovalsQueueSheet: View {
         .contentShape(Rectangle())
         .onTapGesture {
             if isOpen { expanded.remove(item.id) } else { expanded.insert(item.id) }
+        }
+    }
+}
+
+private struct ApprovalCommentSheet: View {
+    let item: ApprovalItem
+    let existing: String
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                SlBrand.bg.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(item.title).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+                    Text("\(item.sellerName) · \(item.customerName)")
+                        .font(.appScaled(size: 11)).foregroundStyle(SlBrand.textSecondary)
+                    TextEditor(text: $draft)
+                        .frame(minHeight: 140)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(SlBrand.stroke, lineWidth: 1))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(20)
+            }
+            .navigationTitle("Kommentar")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }.tint(SlBrand.textSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lagre") { onSave(draft); dismiss() }.tint(SlBrand.purpleLight)
+                }
+            }
+            .toolbarBackground(SlBrand.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear { if draft.isEmpty { draft = existing } }
         }
     }
 }
@@ -488,7 +560,7 @@ struct TeamForecastSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    ShareLink(item: forecastReport) {
                         HStack(spacing: 5) {
                             Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
                             Text("Del rapport").font(.appScaled(size: 12, weight: .bold))
@@ -503,6 +575,14 @@ struct TeamForecastSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+    }
+
+    private var forecastReport: String {
+        var lines = ["Team-forecast", ""]
+        for r in TeamForecastMockData.rows {
+            lines.append("\(r.name): prognose \(r.predictedText) (mål \(r.goalText), \(r.trendText), \(Int(r.attainment * 100))% måloppnåelse)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func forecastTile(_ label: String, value: String, trend: String, tint: Color) -> some View {
@@ -587,6 +667,8 @@ enum TeamForecastMockData {
 
 struct CoachingPlanSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var showNew = false
+    @State private var scheduled: [CoachingRow] = []
 
     var body: some View {
         NavigationStack {
@@ -616,6 +698,20 @@ struct CoachingPlanSheet: View {
                                     .font(.appScaled(size: 12)).foregroundStyle(SlBrand.textSecondary)
                             }
                             Spacer()
+                        }
+
+                        if !scheduled.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("NETTOPP PLANLAGT")
+                                    .font(.appScaled(size: 10, weight: .black))
+                                    .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
+                                ForEach(scheduled) { c in
+                                    coachingRow(c)
+                                }
+                            }
+                            .padding(14)
+                            .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
                         }
 
                         VStack(alignment: .leading, spacing: 10) {
@@ -653,7 +749,7 @@ struct CoachingPlanSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    Button { showNew = true } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
                             Text("Ny 1-til-1").font(.appScaled(size: 12, weight: .bold))
@@ -667,6 +763,11 @@ struct CoachingPlanSheet: View {
             .toolbarBackground(SlBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showNew) {
+                NewCoachingSheet(candidates: CoachingMockData.all) { row in
+                    scheduled.insert(row, at: 0)
+                }
+            }
         }
     }
 
@@ -764,10 +865,76 @@ enum CoachingMockData {
     ]
 }
 
+private struct NewCoachingSheet: View {
+    let candidates: [CoachingRow]
+    let onSchedule: (CoachingRow) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedName: String = ""
+    @State private var date: Date = Date()
+    @State private var focus: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Selger") {
+                    Picker("Velg selger", selection: $selectedName) {
+                        ForEach(candidates) { c in Text(c.name).tag(c.name) }
+                    }
+                }
+                Section("Tidspunkt") {
+                    DatePicker("Dato", selection: $date, displayedComponents: [.date])
+                }
+                Section("Fokus") {
+                    TextField("Hva skal 1-til-1-en handle om?", text: $focus)
+                }
+            }
+            .navigationTitle("Ny 1-til-1")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Planlegg") {
+                        let base = candidates.first { $0.name == selectedName }
+                        let row = CoachingRow(
+                            name: selectedName.isEmpty ? (base?.name ?? "Ny selger") : selectedName,
+                            initials: base?.initials ?? "–",
+                            color: base?.color ?? SlBrand.purpleLight,
+                            headline: focus.isEmpty ? "1-til-1 planlagt" : focus,
+                            pondusText: "—",
+                            goalText: "—",
+                            trendUp: true,
+                            lastMeetingText: "Nå",
+                            isScheduled: true
+                        )
+                        onSchedule(row)
+                        dismiss()
+                    }
+                    .disabled(selectedName.isEmpty)
+                }
+            }
+            .onAppear { if selectedName.isEmpty { selectedName = candidates.first?.name ?? "" } }
+        }
+    }
+}
+
 // MARK: - 4. MileageApprovalsSheet — kjøregodtgjørelse
 
 struct MileageApprovalsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var paidIds: Set<UUID> = []
+
+    private func isPaid(_ m: MileageEntry) -> Bool { m.isPaid || paidIds.contains(m.id) }
+    private var allPendingPaid: Bool {
+        !MileageMockData.pending.isEmpty && MileageMockData.pending.allSatisfy { paidIds.contains($0.id) }
+    }
+    private var mileageCSV: String {
+        var lines = ["Selger;Dato;Rute;KM;Beløp;Status"]
+        for m in MileageMockData.pending + MileageMockData.recent {
+            let status = isPaid(m) ? "Utbetalt" : "Til godkjenning"
+            lines.append("\(m.sellerName);\(m.dateText);\(m.routeText);\(m.km);\(m.amountText);\(status)")
+        }
+        return lines.joined(separator: "\n")
+    }
 
     var body: some View {
         NavigationStack {
@@ -803,10 +970,14 @@ struct MileageApprovalsSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
 
                         // Batch-godkjenn
-                        Button {} label: {
+                        Button {
+                            withAnimation {
+                                for m in MileageMockData.pending { paidIds.insert(m.id) }
+                            }
+                        } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.seal.fill")
-                                Text("Godkjenn alle 5 (6 420 kr)")
+                                Text(allPendingPaid ? "Alle godkjent ✓" : "Godkjenn alle 5 (6 420 kr)")
                                     .font(.appScaled(size: 14, weight: .bold))
                             }
                             .foregroundStyle(.white)
@@ -818,7 +989,10 @@ struct MileageApprovalsSheet: View {
                                 in: RoundedRectangle(cornerRadius: 12)
                             )
                             .shadow(color: SlBrand.green.opacity(0.4), radius: 8, y: 2)
-                        }.buttonStyle(.plain)
+                            .opacity(allPendingPaid ? 0.6 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(allPendingPaid)
 
                         // Historikk
                         VStack(alignment: .leading, spacing: 10) {
@@ -844,7 +1018,7 @@ struct MileageApprovalsSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    ShareLink(item: mileageCSV) {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.down.doc").font(.appScaled(size: 11))
                             Text("Eksporter til lønn").font(.appScaled(size: 12, weight: .bold))
@@ -895,8 +1069,8 @@ struct MileageApprovalsSheet: View {
                 Text(m.amountText).font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(SlBrand.green).monospacedDigit()
             }
-            if !m.isPaid {
-                Button {} label: {
+            if !isPaid(m) {
+                Button { withAnimation { _ = paidIds.insert(m.id) } } label: {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.appScaled(size: 20, weight: .bold))
                         .foregroundStyle(SlBrand.green)
@@ -953,6 +1127,8 @@ struct TeamRoutesTodaySheet: View {
     @State private var filter: RouteFilter = .active
     @State private var navigatingTo: TeamRoute?
     @State private var toast: String?
+    @State private var optimized = false
+    @State private var showRouteDetails = false
 
     enum RouteFilter: String, CaseIterable, Identifiable {
         case active = "Aktiv"
@@ -999,12 +1175,22 @@ struct TeamRoutesTodaySheet: View {
                                 Text("Sara og Mikkel har overlappende ruter i Sandvika-området (5 km fra hverandre). Del leads mellom dem for å spare 42 km i dag.")
                                     .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(.white)
-                                HStack(spacing: 8) {
-                                    Button("Optimér ruter") {}
+                                if optimized {
+                                    Label("Optimert — 42 km spart", systemImage: "checkmark.seal.fill")
+                                        .font(.appScaled(size: 12, weight: .bold))
+                                        .foregroundStyle(SlBrand.green)
+                                        .padding(.top, 2)
+                                } else {
+                                    HStack(spacing: 8) {
+                                        Button("Optimér ruter") {
+                                            withAnimation { optimized = true }
+                                            flash("Ruter optimert — 42 km spart")
+                                        }
                                         .buttonStyle(FilledSlButtonStyle(tint: SlBrand.purple))
-                                    Button("Se detaljer") {}
-                                        .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
-                                    Spacer()
+                                        Button("Se detaljer") { showRouteDetails = true }
+                                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
+                                        Spacer()
+                                    }
                                 }
                             }
                         }
@@ -1056,7 +1242,7 @@ struct TeamRoutesTodaySheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    Button { flash("Ruteplanlegging åpnes i Kart-fanen") } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                                 .font(.appScaled(size: 11, weight: .bold))
@@ -1091,6 +1277,52 @@ struct TeamRoutesTodaySheet: View {
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
+            .sheet(isPresented: $showRouteDetails) {
+                NavigationStack {
+                    ZStack {
+                        SlBrand.bg.ignoresSafeArea()
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 14) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "sparkles").font(.appScaled(size: 20, weight: .bold))
+                                        .foregroundStyle(SlBrand.purpleLight)
+                                    Text("Rute-overlapp").font(.appScaled(size: 18, weight: .heavy))
+                                        .foregroundStyle(.white)
+                                }
+                                Text("Sara Lindberg og Mikkel Berg har overlappende ruter i Sandvika-området — kun ~5 km fra hverandre.")
+                                    .font(.appScaled(size: 13)).foregroundStyle(SlBrand.textSecondary)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    detailRow("Avstand mellom ruter", "≈ 5 km")
+                                    detailRow("Potensiell besparelse", "42 km i dag")
+                                    detailRow("Forslag", "Del leads mellom Sara og Mikkel")
+                                }
+                                .padding(14)
+                                .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                            }
+                            .padding(20)
+                        }
+                    }
+                    .navigationTitle("Ruteoptimalisering")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Lukk") { showRouteDetails = false }.tint(SlBrand.purpleLight)
+                        }
+                    }
+                    .toolbarBackground(SlBrand.bg, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+                    .toolbarColorScheme(.dark, for: .navigationBar)
+                }
+            }
+        }
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.appScaled(size: 12)).foregroundStyle(SlBrand.textSecondary)
+            Spacer()
+            Text(value).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
         }
     }
 

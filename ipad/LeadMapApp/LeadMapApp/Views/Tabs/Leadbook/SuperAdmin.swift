@@ -765,7 +765,9 @@ struct OrgDetailSheet: View {
     var onUpdate: (Organization) -> Void
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var tab: Tab = .oversikt
+    @State private var showManualInvoiceInfo = false
     @State private var showEntitlementMatrix = false
     @State private var showPlanChange = false
     @State private var showImpersonate = false
@@ -1385,7 +1387,7 @@ struct OrgDetailSheet: View {
 
             if org.serverId == nil {
             HStack(spacing: 10) {
-                Button {} label: {
+                Button { showManualInvoiceInfo = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
                         Text("Send manuell faktura").font(.appScaled(size: 12, weight: .bold))
@@ -1395,7 +1397,9 @@ struct OrgDetailSheet: View {
                     .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 }.buttonStyle(.plain)
-                Button {} label: {
+                Button {
+                    if let url = URL(string: "https://dashboard.stripe.com") { openURL(url) }
+                } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.right.square.fill").font(.appScaled(size: 11, weight: .bold))
                         Text("Åpne i Stripe").font(.appScaled(size: 12, weight: .bold))
@@ -1408,6 +1412,34 @@ struct OrgDetailSheet: View {
                         in: RoundedRectangle(cornerRadius: 10)
                     )
                 }.buttonStyle(.plain)
+            }
+            .sheet(isPresented: $showManualInvoiceInfo) {
+                NavigationStack {
+                    ZStack {
+                        LBrand.bg.ignoresSafeArea()
+                        VStack(spacing: 14) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.appScaled(size: 42, weight: .semibold))
+                                .foregroundStyle(LBrand.purpleLight)
+                                .padding(.top, 60)
+                            Text("Manuell faktura").font(.appScaled(size: 18, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("Manuell fakturering settes opp i Stripe-dashbordet — bruk «Åpne i Stripe». Automatisk fakturering kobles når organisasjonen får et Stripe-abonnement.")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(LBrand.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 28)
+                            Spacer()
+                        }
+                    }
+                    .navigationTitle("Manuell faktura")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Lukk") { showManualInvoiceInfo = false }.tint(LBrand.purpleLight)
+                        }
+                    }
+                }
             }
             }
         }
