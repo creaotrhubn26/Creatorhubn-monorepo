@@ -211,7 +211,7 @@ export async function updateOrganizationSettings(
   });
 }
 
-export async function ensureUser(db: Db, email: string, displayName: string): Promise<string> {
+export async function ensureUser(db: Db | DbClient, email: string, displayName: string): Promise<string> {
   const existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);
   if (existing.rowCount) return existing.rows[0].id;
   const id = newId();

@@ -5,7 +5,7 @@
  */
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { hasPermission, type Permission } from '../access/permissions.js';
+import { hasPermission, ROLES, type Permission } from '../access/permissions.js';
 import { getAccountDef, STANDARD_ACCOUNTS } from '../coa/accounts.js';
 import { getVatCode, VAT_CODES } from '../coa/vat-codes.js';
 import type { Db } from '../db/pool.js';
@@ -40,6 +40,13 @@ import { renderInvoiceDocument } from '../invoicing/document.js';
 import { loadInvoiceView } from '../invoicing/view.js';
 import { renderInvoicePdf } from '../invoicing/pdf.js';
 import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoicing/ehf.js';
+import {
+  addOrUpdateMember,
+  changeMemberRole,
+  hasActiveMembershipByEmail,
+  listMembers,
+  removeMember,
+} from '../orgs/members.js';
 import { DeterministicTextExtractor, type DocumentExtractor } from '../pipeline/extract.js';
 import {
   approveAndPost,
@@ -207,7 +214,10 @@ export function createApiServer(deps: ApiDeps): express.Express {
     try {
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
       const allow = deps.allowedEmails ?? [];
-      if (deps.email?.configured && allow.length > 0 && isAllowedEmail(email, allow)) {
+      // Innloggingslenke sendes til globalt tillatte adresser ELLER inviterte medlemmer.
+      const permitted =
+        (allow.length > 0 && isAllowedEmail(email, allow)) || (await hasActiveMembershipByEmail(deps.db, email));
+      if (deps.email?.configured && permitted) {
         const token = createMagicToken(email, secret);
         const base = (deps.appBaseUrl ?? '').replace(/\/$/, '');
         const link = `${base}/?magic=${encodeURIComponent(token)}`;
@@ -234,7 +244,11 @@ export function createApiServer(deps: ApiDeps): express.Express {
       const { token } = z.object({ token: z.string().min(1) }).parse(req.body);
       const email = verifyMagicToken(token, secret);
       const allow = deps.allowedEmails ?? [];
-      if (!email || allow.length === 0 || !isAllowedEmail(email, allow)) {
+      // Gyldig for globalt tillatte adresser ELLER inviterte medlemmer (aktivt medlemskap).
+      const permitted =
+        !!email &&
+        ((allow.length > 0 && isAllowedEmail(email, allow)) || (await hasActiveMembershipByEmail(deps.db, email)));
+      if (!permitted) {
         res.status(401).json({ error: { code: 'INVALID_MAGIC', message: 'Ugyldig eller utløpt innloggingslenke.' } });
         return;
       }
@@ -1396,6 +1410,90 @@ export function createApiServer(deps: ApiDeps): express.Express {
           reason: body.reason,
         });
         res.status(201).json(toJson(entry));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Teammedlemmer ────────────────────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/members',
+    requireAuth,
+    requireOrgPermission('members.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const members = await listMembers(deps.db, req.params.orgId!);
+        res.json(members);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Inviter/legg til et medlem med rolle. Idempotent på bruker (oppdaterer rolle).
+  // Inviterte kan logge inn via magisk lenke selv uten global tillat-liste.
+  app.post(
+    '/api/organizations/:orgId/members',
+    requireAuth,
+    requireOrgPermission('members.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            email: z.string().email(),
+            role: z.enum(ROLES),
+            displayName: z.string().min(1).max(200).optional(),
+          })
+          .parse(req.body);
+        const result = await addOrUpdateMember(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          email: body.email,
+          role: body.role,
+          ...(body.displayName ? { displayName: body.displayName } : {}),
+        });
+        res.status(result.created ? 201 : 200).json(result);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Endre et medlems rolle. Kan ikke degradere den siste eieren.
+  app.patch(
+    '/api/organizations/:orgId/members/:userId',
+    requireAuth,
+    requireOrgPermission('members.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ role: z.enum(ROLES) }).parse(req.body);
+        await changeMemberRole(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          userId: req.params.userId!,
+          role: body.role,
+        });
+        res.json({ ok: true });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Trekk tilbake et medlemskap. Kan ikke fjerne den siste eieren.
+  app.delete(
+    '/api/organizations/:orgId/members/:userId',
+    requireAuth,
+    requireOrgPermission('members.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        await removeMember(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          userId: req.params.userId!,
+        });
+        res.json({ ok: true });
       } catch (err) {
         next(err);
       }
