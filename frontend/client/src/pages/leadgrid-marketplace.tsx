@@ -59,7 +59,7 @@ export default function LeadgridMarketplacePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    document.title = "Leadgrid Marketplace — Sertifiserte partnere";
+    document.title = "Leadgrid Marketplace: Sertifiserte partnere";
     fetch("/api/leadgrid/marketplace")
       .then((r) => r.ok ? r.json() : { partners: [] })
       .then((d) => { setPartners(d.partners ?? []); setLoading(false); })
@@ -96,7 +96,7 @@ export default function LeadgridMarketplacePage() {
           </Typography>
           <Typography variant="body1" textAlign="center"
                       sx={{ color: PALETTE.textMuted, maxWidth: 600 }}>
-            Vetted partnere som har gått gjennom Leadgrid's verifiserings-program.
+            Vetted partnere som har gått gjennom Leadgrids verifiserings-program.
             Velg en partner som passer ditt behov.
           </Typography>
           <Typography

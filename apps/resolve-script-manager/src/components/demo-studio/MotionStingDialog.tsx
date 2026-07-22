@@ -1,0 +1,374 @@
+/**
+ * MotionStingDialog — «Motion»: samme scene-data → en animert data-sting.
+ *
+ * Du VELGER hva du vil lage (arketype): Sting/funnel, Stat, Sitat eller
+ * Sammenlign — hver har sin egen native reveal-koreografi (ikke én tvunget
+ * funnel). Smart forslag som default, men fritt overstyrbart. Alle er
+ * deterministisk seekbare (scrubber) og frame-capture-bare mot Resolve.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { buildMotionStingHtml, stingFromValues, buildStingCaptureSpec, type StingFormat, type MotionLayoutOpts } from './motionSting.js';
+import {
+  buildMotionHtml, statLayout, quoteLayout, compareLayout, listLayout,
+  statFrom, quoteFrom, compareFrom, listFrom, pickArchetype, type Archetype,
+} from './motionReveal.js';
+import { aiSuggestMotion } from './motionAI.js';
+import { loadPresets, savePreset, deletePreset, type MotionPreset } from './motionPresets.js';
+
+const C = { bg: '#0b1120', panel: '#0f1524', panel2: '#141b2b', line: '#202a40', ink: '#e8eefc', soft: '#8a98b5' };
+
+const ARCS: { id: Archetype; label: string; hint: string }[] = [
+  { id: 'sting', label: 'Sting', hint: 'Hero + funnel som teller' },
+  { id: 'stat', label: 'Stat', hint: 'Ett stort tall + delta' },
+  { id: 'quote', label: 'Sitat', hint: 'Sitat + kilde' },
+  { id: 'compare', label: 'Sammenlign', hint: 'Barer som racer' },
+  { id: 'list', label: 'Liste', hint: 'Punkter som kaskader' },
+];
+
+const fmtNb = (n: number) => new Intl.NumberFormat('nb-NO').format(n);
+
+export default function MotionStingDialog(
+  { values, fields, order, templateId = '', brandName = 'Merkevare', accent = '#8b5cf6', mark, caption, eyebrow, onValueChange, onSendToResolve, onClose }:
+  {
+    values: Record<string, string>;
+    /** Redigerbare felt (nøkkel + etikett) — samme felt som selve malen. */
+    fields?: { key: string; label: string }[];
+    order?: string[];
+    templateId?: string;
+    brandName?: string;
+    accent?: string;
+    mark?: string;
+    caption?: string;
+    eyebrow?: string;
+    /** Skriver endringen TILBAKE til scenen → still + motion holdes i synk. */
+    onValueChange?: (key: string, value: string) => void;
+    /** Rendrer motion-HTML-en → transparent ProRes 4444 → inn i Resolve. */
+    onSendToResolve?: (html: string, durationSec: number, frame: string) => void | Promise<void>;
+    onClose?: () => void;
+  },
+) {
+  const [format, setFormat] = useState<StingFormat>('16:9');
+  const [place, setPlace] = useState<MotionLayoutOpts>({ align: 'center', density: 'normal', pad: 'normal' });
+  const [tempo, setTempo] = useState<'fast' | 'normal' | 'slow'>('normal');
+  const tempoK = tempo === 'fast' ? 0.7 : tempo === 'slow' ? 1.4 : 1;
+  const [adv, setAdv] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [presets, setPresets] = useState<MotionPreset[]>(() => loadPresets());
+  const applyPreset = (name: string) => {
+    const p = presets.find((x) => x.name === name);
+    if (!p) return;
+    setArch(p.arch); setFormat(p.format); setPlace(p.place); setTempo(p.tempo);
+  };
+  const saveCurrentPreset = () => {
+    const name = window.prompt('Navn på stil-preset:')?.trim();
+    if (!name) return;
+    setPresets(savePreset({ name, arch, format, place, tempo }));
+  };
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const [aiCaption, setAiCaption] = useState<string | undefined>();
+  const [aiEyebrow, setAiEyebrow] = useState<string | undefined>();
+  const runAi = async () => {
+    if (aiBusy) return;
+    setAiBusy(true); setAiNote(null);
+    try {
+      const s = await aiSuggestMotion(edit, { templateId });
+      setArch(s.archetype);
+      setAiCaption(s.caption); setAiEyebrow(s.eyebrow);
+      setAiNote(s.fromAi ? `AI valgte «${s.archetype}»${s.caption ? ` · «${s.caption}»` : ''}` : `AI ikke koblet — brukte heuristikk («${s.archetype}»)`);
+    } catch { setAiNote('AI-forslag feilet.'); }
+    finally { setAiBusy(false); }
+  };
+  const densityDefault = place.density === 'tight' ? 1.6 : place.density === 'airy' ? 5.4 : 3.2;
+  const setSpacing = (ref: string, v: number) => setPlace((p) => ({ ...p, spacing: { ...(p.spacing || {}), [ref]: v } }));
+  // Lokal, redigerbar kopi (seedet fra scenen). Live preview + skriv-tilbake.
+  const [edit, setEdit] = useState<Record<string, string>>(() => ({ ...values }));
+  const setField = (k: string, v: string) => { setEdit((e) => ({ ...e, [k]: v })); onValueChange?.(k, v); };
+  // Debouncet kopi som mater preview-en → animasjonen replayer først når du
+  // stopper å skrive (input er umiddelbar, forhåndsvisningen roer seg).
+  const [liveEdit, setLiveEdit] = useState<Record<string, string>>(edit);
+  useEffect(() => { const h = setTimeout(() => setLiveEdit(edit), 280); return () => clearTimeout(h); }, [edit]);
+  const editOrder = fields && fields.length ? fields.map((f) => f.key) : order;
+  const editFields = fields && fields.length
+    ? fields
+    : (editOrder || Object.keys(edit)).map((k) => ({ key: k, label: k }));
+  const [arch, setArch] = useState<Archetype>(() => pickArchetype(templateId, values));
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Bygg HTML + total + readout for valgt arketype.
+  const built = useMemo(() => {
+    if (arch === 'sting') {
+      const d = stingFromValues(liveEdit, { brandName, accent, mark, caption: aiCaption ?? caption, eyebrow: aiEyebrow ?? eyebrow, order: editOrder });
+      const spec = buildStingCaptureSpec({ ...d, format });
+      const readout = [
+        { k: 'Hero', v: `${fmtNb(d.hero.value)}${d.hero.suffix ? ` ${d.hero.suffix}` : ''}`, s: d.hero.label },
+        ...d.metrics.map((m) => ({ k: 'Funnel', v: m.display || fmtNb(m.value), s: m.label })),
+        ...(d.caption ? [{ k: 'Caption', v: d.caption, s: '' }] : []),
+      ];
+      return { html: buildMotionStingHtml({ ...d, format }, { layout: place, tempo: tempoK }), total: Math.round(spec.total * tempoK), readout, dataCount: d.metrics.length + (d.hero.value ? 1 : 0) };
+    }
+    const rOpts = { accent, format, place, brand: { name: brandName, mark }, tempo: tempoK };
+    if (arch === 'stat') {
+      const d = statFrom(liveEdit, editOrder);
+      const lay = statLayout(d);
+      const readout = [
+        { k: 'Tall', v: `${d.prefix || ''}${fmtNb(d.value)}${d.suffix ? ` ${d.suffix}` : ''}`, s: d.label },
+        ...(d.delta ? [{ k: 'Delta', v: d.delta, s: '' }] : []),
+        ...(d.sub ? [{ k: 'Under', v: d.sub, s: '' }] : []),
+      ];
+      return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.value ? 1 : 0 };
+    }
+    if (arch === 'quote') {
+      const d = quoteFrom(liveEdit, editOrder);
+      const lay = quoteLayout(d);
+      const readout = [
+        { k: 'Sitat', v: d.quote || '—', s: '' },
+        ...(d.author ? [{ k: 'Kilde', v: d.author + (d.role ? ` · ${d.role}` : ''), s: '' }] : []),
+      ];
+      return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.quote ? 1 : 0 };
+    }
+    if (arch === 'list') {
+      const d = listFrom(liveEdit, editOrder);
+      const lay = listLayout(d);
+      const readout = d.items.map((it) => ({ k: 'Punkt', v: it.label, s: it.sub || '' }));
+      return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.items.length };
+    }
+    const d = compareFrom(liveEdit, editOrder);
+    const lay = compareLayout(d);
+    const readout = [
+      ...(d.title ? [{ k: 'Tittel', v: d.title, s: '' }] : []),
+      ...d.items.map((it) => ({ k: 'Rad', v: it.display || fmtNb(it.value), s: it.label })),
+    ];
+    return { html: buildMotionHtml(lay, rOpts), total: Math.round(lay.total * tempoK), readout, dataCount: d.items.length };
+  }, [arch, liveEdit, editOrder, brandName, accent, mark, caption, eyebrow, format, place, tempoK, aiCaption, aiEyebrow]);
+
+  const [w, h] = format === '9:16' ? [1080, 1920] : format === '1:1' ? [1080, 1080] : [1920, 1080];
+  const frames = Math.max(1, Math.round((built.total / 1000) * 30) + 1);
+  // Elementer man kan gi ekstra mellomrom (per arketype).
+  const spaceable: [string, string][] =
+    arch === 'sting' ? [['brand', 'Merke'], ['funnel', 'Funnel'], ['hero', 'Hero'], ['caption', 'Caption']]
+      : arch === 'stat' ? [['label', 'Etikett'], ['delta', 'Delta'], ['sub', 'Undertekst']]
+        : arch === 'quote' ? [['quote', 'Sitat'], ['author', 'Kilde']]
+          : arch === 'compare' ? [['title', 'Tittel'], ['winner', 'Vinner']]
+            : arch === 'list' ? built.readout.map((_, i) => [`li${i}`, `Punkt ${i + 1}`] as [string, string])
+              : [];
+
+  const seek = (t: number) => {
+    const win = iframeRef.current?.contentWindow as unknown as { __motionSeek?: (t: number) => void; __stingSeek?: (t: number) => void } | null;
+    (win?.__motionSeek || win?.__stingSeek)?.(t);
+  };
+  const replay = () => {
+    const win = iframeRef.current?.contentWindow as unknown as { __motionPlay?: () => void; __stingPlay?: () => void } | null;
+    (win?.__motionPlay || win?.__stingPlay)?.();
+  };
+  const download = () => {
+    const blob = new Blob([built.html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${brandName.toLowerCase().replace(/\s+/g, '-')}-${arch}-${format.replace(':', 'x')}.html`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, padding: '8px 14px', borderRadius: 9, border: `1px solid ${C.line}`, color: '#c4d0e4', background: C.panel2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };
+  const chip = (on: boolean): React.CSSProperties => ({ ...btn, borderColor: on ? accent : C.line, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 });
+  const lbl: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: C.soft, marginBottom: 8 };
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: C.bg, color: C.ink, display: 'flex', flexDirection: 'column', padding: 20, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>▶ Motion</h1>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 7, background: `${accent}22`, color: accent }}>{ARCS.find((a) => a.id === arch)?.label} · {built.dataCount} felt</span>
+        {onClose && <span onClick={onClose} style={{ marginLeft: 'auto', cursor: 'pointer', color: C.soft, fontSize: 20 }}>×</span>}
+      </div>
+      <div style={{ color: C.soft, fontSize: 12.5, marginBottom: 14 }}>Samme scene-data → en animert reveal. Velg hva du vil lage — hver form har sin egen koreografi.</div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, flex: 1, minHeight: 0 }}>
+        {/* venstre: valg + kontroller */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, overflowY: 'auto' }}>
+          <div>
+            <div style={{ ...lbl, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Hva vil du lage?</span>
+              <span onClick={runAi} title="La AI velge arketype + skrive caption fra scene-data"
+                style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0, textTransform: 'none', color: aiBusy ? C.soft : accent, cursor: aiBusy ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {aiBusy ? '● tenker …' : '✨ La AI velge'}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {ARCS.map((a) => (
+                <div key={a.id} onClick={() => setArch(a.id)} style={{ ...chip(arch === a.id), flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '9px 11px' }}>
+                  <span style={{ fontWeight: 700 }}>{a.label}</span>
+                  <span style={{ fontSize: 10.5, color: arch === a.id ? accent : C.soft, fontWeight: 500 }}>{a.hint}</span>
+                </div>
+              ))}
+            </div>
+            {aiNote && <div style={{ marginTop: 6, fontSize: 11, color: C.soft, lineHeight: 1.4 }}>{aiNote}</div>}
+          </div>
+
+          <div>
+            <div style={lbl}>Format</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['16:9', '9:16', '1:1'] as StingFormat[]).map((f) => (
+                <span key={f} onClick={() => setFormat(f)} style={chip(format === f)}>{f}</span>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={lbl}>Stil-preset <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: C.soft }}>· hus-stil (uten data)</span></div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value="" onChange={(e) => { applyPreset(e.target.value); e.currentTarget.value = ''; }}
+                style={{ flex: 1, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 8, padding: '7px 9px', color: presets.length ? C.ink : C.soft, fontSize: 12.5, outline: 'none', cursor: 'pointer' }}>
+                <option value="">{presets.length ? 'Bruk lagret stil …' : 'Ingen lagret enda'}</option>
+                {presets.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </select>
+              <span onClick={saveCurrentPreset} title="Lagre gjeldende arketype + layout + tempo + tema som gjenbrukbar stil" style={{ ...btn, padding: '7px 12px' }}>Lagre</span>
+              {presets.length > 0 && (
+                <span onClick={() => { const n = presets[presets.length - 1]?.name; if (n && window.confirm(`Slette preset «${n}»?`)) setPresets(deletePreset(n)); }}
+                  title="Slett siste preset" style={{ ...btn, padding: '7px 10px', color: '#e08a8a' }}>✕</span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
+            <div style={lbl}>Layout <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: C.soft }}>· plassering + luft</span></div>
+            {([
+              { k: 'align', name: 'Plassering', opts: [['top', 'Topp'], ['center', 'Midt'], ['bottom', 'Bunn']] },
+              { k: 'density', name: 'Luft', opts: [['tight', 'Tett'], ['normal', 'Normal'], ['airy', 'Luftig']] },
+              { k: 'pad', name: 'Ramme', opts: [['snug', 'Smal'], ['normal', 'Normal'], ['roomy', 'Vid']] },
+            ] as const).map((row) => (
+              <div key={row.k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                <span style={{ fontSize: 11, color: C.soft, width: 74, flexShrink: 0 }}>{row.name}</span>
+                <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                  {row.opts.map(([v, l]) => {
+                    const on = place[row.k] === v;
+                    return (
+                      <span key={v} onClick={() => setPlace((p) => ({ ...p, [row.k]: v }))}
+                        style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '5px 0', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? accent : C.line}`, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 }}>{l}</span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 1 }}>
+              <span style={{ fontSize: 11, color: C.soft, width: 74, flexShrink: 0 }}>Tempo</span>
+              <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                {([['fast', 'Rask'], ['normal', 'Normal'], ['slow', 'Rolig']] as const).map(([v, l]) => {
+                  const on = tempo === v;
+                  return (
+                    <span key={v} onClick={() => setTempo(v)}
+                      style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '5px 0', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? accent : C.line}`, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 }}>{l}</span>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+              <span style={{ fontSize: 11, color: C.soft, width: 74, flexShrink: 0 }}>Tema</span>
+              <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                {([['dark', 'Mørk'], ['light', 'Lyst']] as const).map(([v, l]) => {
+                  const on = (place.theme ?? 'dark') === v;
+                  return (
+                    <span key={v} onClick={() => setPlace((p) => ({ ...p, theme: v }))}
+                      style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, padding: '5px 0', borderRadius: 7, cursor: 'pointer', border: `1px solid ${on ? accent : C.line}`, color: on ? accent : '#c4d0e4', background: on ? `${accent}1e` : C.panel2 }}>{l}</span>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div onClick={() => setAdv((v) => !v)} style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: adv ? accent : C.soft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              {adv ? '▾' : '▸'} Avansert · fin-juster mellomrom
+            </div>
+            {adv && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.soft, marginBottom: 2 }}><span>Mellomrom (alle)</span><span style={{ fontFamily: 'ui-monospace, monospace' }}>{(place.gap ?? densityDefault).toFixed(1)}%</span></div>
+                  <input type="range" min={0} max={9} step={0.2} value={place.gap ?? densityDefault}
+                    onChange={(e) => setPlace((p) => ({ ...p, gap: Number(e.target.value) }))}
+                    style={{ width: '100%', accentColor: accent, cursor: 'pointer' }} />
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: C.soft, marginTop: 2 }}>Mellomrom per element</div>
+                {spaceable.map(([ref, label]) => (
+                  <div key={ref}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.soft, marginBottom: 2 }}><span>{label}</span><span style={{ fontFamily: 'ui-monospace, monospace' }}>+{(place.spacing?.[ref] ?? 0).toFixed(1)}</span></div>
+                    <input type="range" min={0} max={6} step={0.25} value={place.spacing?.[ref] ?? 0}
+                      onChange={(e) => setSpacing(ref, Number(e.target.value))}
+                      style={{ width: '100%', accentColor: accent, cursor: 'pointer' }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
+            <div style={lbl}>Rediger data <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: C.soft }}>· oppdaterer scenen live</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {editFields.map((f) => (
+                <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10.5, color: C.soft }}>{f.label}</span>
+                  <input value={edit[f.key] ?? ''} onChange={(e) => setField(f.key, e.target.value)}
+                    style={{ background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 7, padding: '7px 9px', color: C.ink, fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }} />
+                </label>
+              ))}
+              {editFields.length === 0 && <div style={{ fontSize: 12, color: C.soft }}>Scenen har ingen felt å redigere.</div>}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 11, color: C.soft, lineHeight: 1.65 }}>
+              <span style={{ fontWeight: 600, color: '#c4d0e4' }}>Tolkes som:</span>{' '}
+              {built.readout.map((r, i) => (
+                <span key={i}>{i > 0 ? ' · ' : ''}<span style={{ color: C.soft }}>{r.k}</span> {r.v.length > 24 ? r.v.slice(0, 24) + '…' : r.v}</span>
+              ))}
+            </div>
+            {built.dataCount === 0 && (
+              <div style={{ marginTop: 10, fontSize: 12, color: '#f0b429', lineHeight: 1.5 }}>Denne arketypen fant ingen egnede felt — prøv en annen, eller fyll inn tall/tekst over.</div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+            <span onClick={replay} style={{ ...btn, background: accent, borderColor: accent, color: '#04121a' }}>▶ Spill av</span>
+            <span onClick={download} style={btn}>⬇ Last ned HTML</span>
+          </div>
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>
+            {onSendToResolve && (
+              <span onClick={async () => {
+                if (sending) return;
+                setSending(true);
+                try { await onSendToResolve(built.html, built.total / 1000, `${w}x${h}`); } finally { setSending(false); }
+              }}
+                style={{ ...btn, width: '100%', justifyContent: 'center', background: accent, borderColor: accent, color: '#04121a', fontWeight: 700, opacity: sending ? 0.7 : 1, cursor: sending ? 'default' : 'pointer' }}>
+                {sending ? '● Rendrer → Resolve …' : '⤓ Send til Resolve'}
+              </span>
+            )}
+            <div style={{ marginTop: 8, fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: C.soft }}>ProRes 4444 (alfa) · {w}×{h} · 30 fps · {(built.total / 1000).toFixed(1)}s · {frames} bilder</div>
+          </div>
+        </div>
+
+        {/* høyre: live reveal + scrubber */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.line}`, background: '#07040f', display: 'grid', placeItems: 'center', padding: 20 }}>
+            <iframe ref={iframeRef} title="motion-preview" srcDoc={built.html} key={arch + format}
+              style={{ width: format === '9:16' ? '46%' : '100%', height: format === '9:16' ? '100%' : 'auto', aspectRatio: format === '9:16' ? '9 / 16' : format === '1:1' ? '1 / 1' : '16 / 9', maxHeight: '100%', maxWidth: '100%', border: 0, background: 'transparent' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span onClick={replay} title="Spill av" style={{ ...btn, padding: '6px 11px' }}>▶</span>
+            <input type="range" min={0} max={built.total} step={16} defaultValue={0} key={arch + format}
+              onChange={(e) => seek(Number(e.target.value))}
+              style={{ flex: 1, accentColor: accent, cursor: 'pointer' }} />
+            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 10.5, color: C.soft, minWidth: 42, textAlign: 'right' }}>{(built.total / 1000).toFixed(1)}s</span>
+          </div>
+        </div>
+      </div>
+
+      {sending && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(11,17,32,.72)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, textAlign: 'center' }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', border: `3px solid ${C.line}`, borderTopColor: accent, animation: 'mspin 0.8s linear infinite' }} />
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>Rendrer motion → ProRes 4444</div>
+            <div style={{ fontSize: 12.5, color: C.soft, maxWidth: 320, lineHeight: 1.5 }}>Fanger {frames} bilder ({w}×{h}) og plasserer klippet på overlay-sporet i Resolve. Se status-linjen i studioet når dialogen lukkes.</div>
+          </div>
+          <style>{'@keyframes mspin{to{transform:rotate(360deg)}}'}</style>
+        </div>
+      )}
+    </div>
+  );
+}

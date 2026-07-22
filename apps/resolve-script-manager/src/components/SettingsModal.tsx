@@ -334,8 +334,12 @@ export function SettingsModal({ onClose }: Props) {
               <button
                 className="small"
                 onClick={() => {
-                  update("RR_BEARER_TOKEN", "");
-                  setSettings((s) => ({ ...s, RR_BEARER_TOKEN: "" }));
+                  // Logg ut må persisteres umiddelbart — ellers ligger tokenet
+                  // igjen i localStorage/env til brukeren evt. trykker Lagre.
+                  const cleared = { ...settings, RR_BEARER_TOKEN: "" };
+                  setSettings(cleared);
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(cleared));
+                  void updateAppSettings(settingsToEnvVars(cleared));
                 }}
               >
                 Logg ut

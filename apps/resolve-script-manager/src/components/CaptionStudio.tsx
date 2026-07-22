@@ -8,7 +8,7 @@
  *  3. Segments rendres i venstre kolonne med klikkbar timestamp
  *  4. Klikk på segment → preview hopper til den tiden, edit-panel
  *     viser tekst + style-controls
- *  5. Eksporter SRT (universal), VTT (web) eller burnt-in (via ffmpeg)
+ *  5. Eksporter SRT (universal) eller VTT (web)
  */
 
 import { useEffect, useState } from "react";
@@ -46,7 +46,8 @@ export function CaptionStudio({
 }: Props) {
   const [transcript, setTranscript] = useState<WhisperTranscript | null>(null);
   const [style, setStyle] = useState<CaptionStyle>(DEFAULT_CAPTION_STYLE);
-  const [stylePresetId, setStylePresetId] = useState<CaptionStylePresetId>("role-room-default");
+  // null = brukeren har finjustert stylen manuelt (ingen preset er «valgt»).
+  const [stylePresetId, setStylePresetId] = useState<CaptionStylePresetId | null>("role-room-default");
   const [whisperModel, setWhisperModel] = useState<string>("base");
   const [transcribing, setTranscribing] = useState(false);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
@@ -104,7 +105,7 @@ export function CaptionStudio({
 
   const updateStyle = (patch: Partial<CaptionStyle>) => {
     setStyle(prev => ({ ...prev, ...patch }));
-    setStylePresetId("role-room-default"); // mark som custom-edited
+    setStylePresetId(null); // mark som custom-edited (ingen preset «valgt»)
   };
 
   const updateSegmentText = (id: number, text: string) => {
@@ -124,7 +125,7 @@ export function CaptionStudio({
         sourceVideoPath,
         transcript,
         style,
-        stylePresetId,
+        stylePresetId: stylePresetId ?? undefined,
         whisperModel,
         language: transcript.language,
       });

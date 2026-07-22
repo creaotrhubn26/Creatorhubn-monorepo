@@ -52,14 +52,18 @@ import {
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
   clearLearnedTargets, detectLearnedDrift, pickShot, listStoredProjects, deleteStoredProject, type LearnedTarget,
+  detectFormatMismatch,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
+// Designsystem (punkt 10): lilla = aktiv/primær · rød = record/destruktiv ·
+// oransje = advarsel · grønn = godkjent. Kjøligere, mer konsistent nøytral-palett.
 const C = {
-  bg: '#f3efe9', panel: '#ffffff', cream: '#faf7f2', creamActive: '#f3ece2',
-  line: '#ece7df', lineStrong: '#ddd6cc', ink: '#1d1b19', inkSoft: '#6b6358',
-  inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#3a2f2a', green: '#4a9d6b',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', creamActive: '#efeaf7',
+  line: '#e7e2ee', lineStrong: '#d8d2e2', ink: '#1e1b2e', inkSoft: '#6b6480',
+  inkFaint: '#9a94a8', accent: '#8b5cf6', accentSoft: '#ede9fe', dark: '#241d42',
+  green: '#22c55e', warn: '#f59e0b', warnSoft: '#fef3e2', danger: '#ef4444',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -847,7 +851,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     const normalizedUrl = normalizeUrl(urlInput);
     const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: C.font, background: C.bg, color: C.ink }}>
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', fontFamily: C.font, background: C.bg, color: C.ink }}>
         <div style={topbarStyle}>
           <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Product Demo Studio</div>
@@ -887,14 +891,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
       {/* ── Topbar (URL-input erstatter Search) ── */}
       <div style={topbarStyle}>
         <div style={iconBtn} onClick={() => { if (recording && !window.confirm('Du har et pågående skjermopptak. Forlater du Demo Studio nå, forkastes opptaket. Fortsette?')) return; onClose?.(); }} title="Tilbake til hjem">☰</div>
         <div>
           <input style={{ ...titleField }} value={project.name} onChange={(e) => setProjectField('name', e.target.value)} />
-          <div style={{ fontSize: 11, color: saveStatus === 'error' ? '#dc2626' : C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: saveStatus === 'saved' ? C.green : saveStatus === 'saved_partial' ? '#f59e0b' : '#dc2626' }} />
+          <div style={{ fontSize: 11, color: saveStatus === 'error' ? C.danger : C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: saveStatus === 'saved' ? C.green : saveStatus === 'saved_partial' ? C.warn : C.danger }} />
             {saveStatus === 'saved' && (lastSavedAt
               ? `Draft · Autolagret ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
               : 'Draft')}
@@ -909,12 +913,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             onBlur={(e) => { const nu = normalizeUrl(e.target.value); setProjectField('url', nu); handleUrlCommitted(nu); }} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
-        {saveStatus === 'error' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">⚠ Ikke lagret</div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}</div>
+        {saveStatus === 'error' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.danger, fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">⚠ Ikke lagret</div>
         )}
-        <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
+        <button style={recording ? { ...btn, background: C.danger, color: '#fff', borderColor: C.danger, fontWeight: 700 } : { ...btn, borderColor: C.lineStrong }}
           onClick={async () => {
             if (recording) return;
             setStoryMode(false); startRecorder();
@@ -923,9 +925,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             const ok = sc && st.project ? await rec.start(st.project.id, sc.id) : false;
             if (ok) setRecording(true);
             else window.alert('Kunne ikke starte skjermopptak. Sjekk at appen har tillatelse til skjermopptak (Systeminnstillinger → Personvern og sikkerhet → Skjermopptak), og at en scene er valgt.');
-          }}>● {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}</button>
-        <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
-          onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span>⌄</span></button>
+          }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: recording ? '#fff' : C.danger, display: 'inline-block' }} />
+          {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}
+        </button>
+        <button style={{ ...primaryBtn, padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span style={{ opacity: 0.8 }}>⌄</span></button>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -949,11 +954,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             <span style={{ width: 18, opacity: 0.85 }}>◇</span> Sjekk oppsett
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
-            <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
-              <span style={{ color: C.accent }}>✦</span> AI Director
-              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: aiReady ? C.green : '#b5651d' }} />
+          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderTop: `3px solid ${C.accent}`, borderRadius: 14, padding: '14px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(30,27,46,0.06)' }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ width: 22, height: 22, borderRadius: 7, background: C.accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, flexShrink: 0 }}>✦</span> AI Director
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: aiReady ? '#e6f6ec' : C.warnSoft, color: aiReady ? C.green : C.warn, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: aiReady ? C.green : C.warn }} />
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
@@ -1311,7 +1316,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <>
             {/* ── Blocks panel (demo-typer) ── */}
             <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: 16, flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span style={{ color: C.inkFaint }}>‹</span></div>
+              <div style={{ ...secHd, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>Demo-typer <span style={{ color: C.inkFaint }}>‹</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => (
                   <div key={t} onClick={() => {
@@ -1324,15 +1329,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     applyDemoTypeTemplate(t, true);
                   }}
                     title={`${DEMO_TYPE_LABELS[t]} — ${DEMO_TYPE_TEMPLATES[t].scenes.length} scener · ~${DEMO_TYPE_TEMPLATES[t].targetSeconds}s`}
-                    style={{ aspectRatio: '1.15', border: `1px solid ${project.demoType === t ? C.accent : C.line}`, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', color: C.inkSoft, background: project.demoType === t ? C.cream : '#fff' }}>
-                    <div style={{ fontSize: 20 }}>{DEMO_TYPE_ICON[t]}</div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: C.ink }}>{DEMO_TYPE_LABELS[t].split(' ')[0]}</div>
+                    style={{ aspectRatio: '1.2', border: `1.5px solid ${project.demoType === t ? C.accent : C.line}`, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer', background: project.demoType === t ? C.accentSoft : '#fff', transition: 'border-color .12s, background .12s' }}>
+                    <div style={{ fontSize: 19, color: project.demoType === t ? C.accent : C.inkSoft }}>{DEMO_TYPE_ICON[t]}</div>
+                    <div style={{ fontSize: 12, fontWeight: project.demoType === t ? 700 : 500, color: project.demoType === t ? C.accent : C.ink }}>{DEMO_TYPE_LABELS[t].split(' ')[0]}</div>
                   </div>
                 ))}
               </div>
 
               {/* ── Visning (render-toggles) ── */}
-              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 20, marginBottom: 4 }}>Visning</div>
+              <div style={{ ...secHd, marginTop: 22, marginBottom: 6 }}>Visning</div>
               {(Object.keys(RENDER_OPTION_LABELS) as (keyof DemoRenderOptions)[]).map((k) => (
                 <Toggle key={k} label={RENDER_OPTION_LABELS[k]} on={(project.render ?? defaultRenderOptions())[k]}
                   onChange={(v) => setRenderOption(k, v)} />
@@ -1387,8 +1392,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               {/* G17: frame-blokkert side uten skjermbilder → forklar hvorfor
                   rammen under er blank, med utvei — i stedet for stille feil. */}
               {embedBlocked && !(project.scanShots && project.scanShots.length) && (
-                <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: '#fff8ec', border: '1px solid #f0d9a8', fontSize: 12.5, color: '#8a6516', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span>⚠</span>
+                <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: C.warnSoft, border: `1px solid ${C.warn}`, fontSize: 12.5, color: C.ink, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: C.warn }}>⚠</span>
                   <span style={{ flex: 1 }}>Denne siden blokkerer innebygd forhåndsvisning ({embedBlocked}) — rammen under er derfor blank. Hent ekte skjermbilder i stedet.</span>
                   <button style={{ ...btn, whiteSpace: 'nowrap', opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
                     onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Henter…' : 'Hent forhåndsvisning'}</button>
@@ -1435,6 +1440,23 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <button onClick={() => redo()} disabled={!canRedo()} title="Gjør om (⌘⇧Z)"
                     style={{ ...btn, padding: '5px 9px', fontSize: 12, opacity: canRedo() ? 1 : 0.4 }}>↷ Gjør om</button>
                 </div>
+                {(() => {
+                  // Format ↔ orientering: fang «filmer bredt, eksporterer smalt» FØR Export.
+                  const fm = detectFormatMismatch(project.scenes, project.format);
+                  if (!fm) return null;
+                  const oriLabel = fm.formatOrientation === 'portrait' ? 'stående' : 'liggende';
+                  const devLabel = fm.formatOrientation === 'portrait' ? 'liggende (MacBook/iPad-landskap)' : 'stående (iPhone)';
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: C.warnSoft, border: `1px solid ${C.warn}`, borderRadius: 9, padding: '8px 12px' }}>
+                      <span style={{ fontSize: 16, color: C.warn }}>⚠</span>
+                      <span style={{ fontSize: 12.5, color: C.ink, flex: 1, lineHeight: 1.4 }}>
+                        <b>{fm.conflicting} av {fm.total} scener</b> er {devLabel}, men eksport-format er <b>{project.format}</b> ({oriLabel}) — innholdet <b>beskjæres</b> ved Export.
+                      </span>
+                      <button style={{ ...btn, padding: '5px 11px', fontSize: 12, fontWeight: 600, background: C.warn, borderColor: C.warn, color: '#fff' }}
+                        onClick={() => setProjectField('format', fm.suggestFormat)}>Bytt format til {fm.suggestFormat}</button>
+                    </div>
+                  );
+                })()}
                 {selectedSceneIds.length > 0 ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: C.creamActive, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '6px 10px' }}>
                     <span style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedSceneIds.length} scene{selectedSceneIds.length === 1 ? '' : 'r'} valgt</span>
@@ -1462,7 +1484,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         if (e.metaKey || e.ctrlKey || e.shiftKey) { toggleSceneSelected(s.id, true); return; }
                         clearSceneSelection(); selectScene(s.id); if (recording) goToStep(s.index);
                       }}
-                      style={{ border: `2px solid ${multiSel ? C.dark : isPrimary ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'grab', background: multiSel ? C.creamActive : '#fff', opacity: dragIndex === s.index ? 0.4 : 1, boxShadow: dropBefore ? `-3px 0 0 ${C.accent}` : 'none' }}>
+                      style={{ border: `2px solid ${multiSel ? C.dark : isPrimary ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'grab', background: multiSel ? C.creamActive : isPrimary ? C.accentSoft : '#fff', opacity: dragIndex === s.index ? 0.4 : 1, boxShadow: dropBefore ? `-3px 0 0 ${C.accent}` : isPrimary ? `0 0 0 3px ${C.accentSoft}` : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
                         <span style={{ color: C.inkFaint, fontSize: 12, cursor: 'grab' }} title="Dra for å flytte">⠿</span>
                         <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
@@ -1492,7 +1514,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 /* Guided recorder teleprompter */
                 <>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', color: C.inkSoft, letterSpacing: 0.5 }}>Steg {recorderStepIndex + 1} av {scenes.length}</div>
-                  <div style={{ height: 4, background: '#eee4d8', borderRadius: 2, margin: '6px 0 12px' }}>
+                  <div style={{ height: 4, background: C.line, borderRadius: 2, margin: '6px 0 12px' }}>
                     <div style={{ height: '100%', width: `${((recorderStepIndex + 1) / scenes.length) * 100}%`, background: C.accent, borderRadius: 2 }} />
                   </div>
                   <h3 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>{recorderScene.title}</h3>
@@ -1583,6 +1605,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     </div>
                   </div>
 
+                  <div style={{ ...secHd, marginTop: 18, marginBottom: 9, paddingTop: 15, borderTop: `1px solid ${C.line}` }}>Handling & hotspot</div>
                   <div style={fldLabel}>Required action</div>
                   <div style={row2}>
                     <select style={field} value={selected.actionType ?? 'click'} onChange={(e) => updateScene(selected.id, { actionType: e.target.value as DemoActionType })}>
@@ -1604,12 +1627,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {placingHotspot
                     ? <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>{selected.hotspot ? 'Dra boksen for å flytte, eller dra et hjørne/kant for å endre størrelse. Tegn et nytt rektangel på tom flate for å erstatte.' : 'Dra et rektangel rundt elementet for eksakt markering — eller bare klikk for en standard-boks.'}</div>
                     : selected.hotspot
-                    ? <div style={{ marginTop: 6 }}><span style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: '#e6f3ec', color: C.green, display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />Element markert — fremheves i opptak</span></div>
+                    ? <div style={{ marginTop: 6 }}><span style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: '#e6f6ec', color: C.green, display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />Element markert — fremheves i opptak</span></div>
                     : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Tegn rundt elementet på preview-en så Guided Recorder kan fremheve det presist.</div>}
                   {selected.ctaType && (
-                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
+                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: C.warnSoft, color: C.warn }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
                   )}
 
+                  <div style={{ ...secHd, marginTop: 18, marginBottom: 9, paddingTop: 15, borderTop: `1px solid ${C.line}` }}>Video & bevegelse</div>
                   <div style={fldLabel}>Kamera & overgang (autonom video)</div>
                   <div style={row2}>
                     <select style={field} value={selected.cameraMove ?? 'auto'} onChange={(e) => updateScene(selected.id, { cameraMove: e.target.value as CameraMove })}>
@@ -1660,11 +1684,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <Stat h="⏱ Varighet" v={`${fmt(totalDuration(scenes))} total`} s="Anbefalt 60–90 s" />
           <Stat h="◷ Opptak" v={recording ? `Steg ${recorderStepIndex + 1} av ${scenes.length}` : 'Ikke startet'} s={recording ? 'Venter på deg' : 'Trykk Record'} />
           <Stat h="⤓ Format" v={`${project.format} · 1080p`} link="Eksport →" onLink={() => setNav('export')} />
-          <div style={{ background: C.panel, padding: '13px 15px' }}>
-            <div style={{ width: 42, height: 42, borderRadius: '50%', border: `3px solid ${C.green}`, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, float: 'right' }}>{Math.round((doneCount / Math.max(scenes.length, 1)) * 100)}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>✓ Demo-score</div>
-            <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{doneCount === scenes.length ? 'Klar for eksport' : 'Ta opp scener'}</div>
-          </div>
+          {(() => {
+            const pct = Math.round((doneCount / Math.max(scenes.length, 1)) * 100);
+            const ring = pct === 100 ? C.green : pct > 0 ? C.warn : C.lineStrong;
+            return (
+              <div style={{ background: C.panel, padding: '11px 15px 12px' }}>
+                <div style={{ width: 42, height: 42, borderRadius: '50%', border: `3px solid ${ring}`, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: ring, float: 'right' }}>{pct}</div>
+                <div style={{ ...secHd, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>✓ Demo-score</div>
+                <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{pct === 100 ? 'Klar for eksport' : 'Ta opp scener'}</div>
+              </div>
+            );
+          })()}
         </div>
       )}
       {showSignIn && (
@@ -1852,7 +1882,7 @@ function VisualBeatsModal({ beats, scenes, brandColor, onClose, onApply, onGoto 
             {beats.map((b, i) => (
               <div key={i} style={{ display: 'flex', gap: 14, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
                 {/* PREVIEW av uthevingen på en mock-skjerm */}
-                <div style={{ position: 'relative', width: 150, height: 95, flexShrink: 0, background: 'linear-gradient(135deg,#2f2a26,#544b43)', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ position: 'relative', width: 150, height: 95, flexShrink: 0, background: 'linear-gradient(135deg,#241d42,#4a4266)', borderRadius: 8, overflow: 'hidden' }}>
                   {b.kind === 'stat' ? (
                     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
                       <div style={{ background: accent, color: '#fff', fontWeight: 800, fontSize: 18, padding: '6px 12px', borderRadius: 8, textAlign: 'center', maxWidth: '88%' }}>{b.overlay}</div>
@@ -2203,10 +2233,10 @@ function DevicePreviewView() {
 function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
     <div onClick={() => onChange(!on)} role="switch" aria-checked={on}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', cursor: 'pointer', fontSize: 12.5, color: C.ink }}>
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', cursor: 'pointer', fontSize: 12.5, fontWeight: on ? 600 : 500, color: on ? C.ink : C.inkSoft }}>
       <span>{label}</span>
-      <span style={{ width: 34, height: 20, borderRadius: 10, background: on ? C.green : C.lineStrong, position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
-        <span style={{ position: 'absolute', top: 2, left: on ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
+      <span style={{ width: 36, height: 21, borderRadius: 11, background: on ? C.accent : C.lineStrong, position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 17 : 2, width: 17, height: 17, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
       </span>
     </div>
   );
@@ -2256,11 +2286,11 @@ function ResponsiveCheckModal({ report, onClose, onApply }: {
 
 function Stat({ h, v, s, link, onLink }: { h: string; v: string; s?: string; link?: string; onLink?: () => void }) {
   return (
-    <div style={{ background: C.panel, padding: '13px 15px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>{h}</div>
-      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{v}</div>
+    <div style={{ background: C.panel, padding: '11px 15px 12px' }}>
+      <div style={{ ...secHd, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>{h}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{v}</div>
       {s && <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{s}</div>}
-      {link && <div onClick={onLink} style={{ fontSize: 11, color: C.inkSoft, marginTop: 8, cursor: onLink ? 'pointer' : 'default' }}>{link}</div>}
+      {link && <div onClick={onLink} style={{ fontSize: 11, fontWeight: 600, color: C.accent, marginTop: 8, cursor: onLink ? 'pointer' : 'default' }}>{link}</div>}
     </div>
   );
 }
@@ -2268,7 +2298,7 @@ function Stat({ h, v, s, link, onLink }: { h: string; v: string; s?: string; lin
 const topbarStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 14, height: 60, padding: '0 18px', background: C.panel, borderBottom: `1px solid ${C.line}`, flexShrink: 0 };
 const iconBtn: React.CSSProperties = { width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 8, color: C.inkSoft, cursor: 'pointer' };
 const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, background: '#fff', borderRadius: 9, padding: '8px 13px', fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 };
-const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 13, fontWeight: 600, padding: '10px 18px', borderRadius: 8, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 0, color: '#fff', fontSize: 13, fontWeight: 700, padding: '10px 18px', borderRadius: 9, cursor: 'pointer' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '9px 14px', borderRadius: 8, cursor: 'pointer' };
 const fldLabel: React.CSSProperties = { fontSize: 11, color: C.inkSoft, margin: '14px 0 6px', fontWeight: 600 };
 const field: React.CSSProperties = { width: '100%', border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
@@ -2276,6 +2306,8 @@ const titleField: React.CSSProperties = { background: 'transparent', border: 0, 
 const sel: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 const row2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 };
 const chip: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 10, display: 'inline-block' };
+/** Konsistent seksjonstittel (punkt 1 — visuelt hierarki): liten, sperret versal. */
+const secHd: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: C.inkFaint };
 
 /**
  * Resolve-fri voiceover-forhåndsvisning (Web Speech). Les opp scenens manus i

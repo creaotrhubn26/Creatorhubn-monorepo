@@ -36,7 +36,7 @@ import {
 import { externalFetch } from "./external-api.js";
 
 const GA4_DATA_BASE = "https://analyticsdata.googleapis.com/v1beta";
-const ADS_API_BASE = "https://googleads.googleapis.com/v18";
+const ADS_API_BASE = "https://googleads.googleapis.com/v23"; // v18 pensjonert (404) per 19.07.2026
 const GSC_BASE = "https://www.googleapis.com/webmasters/v3";
 
 async function token(pool: Pool, producerUserId: string): Promise<string | null> {

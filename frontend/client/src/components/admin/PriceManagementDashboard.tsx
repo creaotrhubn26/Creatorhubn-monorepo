@@ -223,6 +223,7 @@ type PriceManagementSection =
   | 'enterprise'
   | 'post-agent'
   | 'lead-map';
+;
 
 interface PriceManagementDashboardProps {
   onMeetingCreate?: (meeting: WorkflowPayload) => void;
@@ -1545,7 +1546,7 @@ export default function PriceManagementDashboard({
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
           <Tab icon={<MoneyIcon />} label="Post Agent" />
           <Tab icon={<MoneyIcon />} label="Lead Map" />
-        </Tabs>
+</Tabs>
       </Box>
 
       <TabPanel value={tabValue} index={0}>
@@ -2501,6 +2502,9 @@ export default function PriceManagementDashboard({
       <TabPanel value={tabValue} index={6}>
         <LeadMapPricingPanel />
       </TabPanel>
+
+
+
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingFeature ? 'Rediger feature' : 'Legg til ny feature'}</DialogTitle>

@@ -33,7 +33,7 @@ export default function LeadgridDeveloperApplicationPage() {
   const [terms, setTerms] = useState<{ version: string; body_md: string } | null>(null);
 
   useEffect(() => {
-    document.title = "Leadgrid Developer — Søk om API-tilgang";
+    document.title = "Leadgrid Developer: Søk om API-tilgang";
     fetch("/api/leadgrid/partner-terms").then((r) => r.ok ? r.json() : null)
       .then((d) => setTerms(d));
   }, []);

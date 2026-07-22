@@ -22,6 +22,7 @@ import {
 import { useSnackbar } from 'notistack';
 import { useProject } from '@/contexts/ProjectContext';
 import { describeProducerError } from '../../utils/producerErrorMessage';
+import { CollapsibleSection } from '../CollapsibleSection';
 import type {
   CastingProject,
   ProducerClientIntake,
@@ -126,6 +127,28 @@ const MATERIAL_PRIORITY_LABELS: Record<'critical' | 'important' | 'reference', s
 
 const hasText = (value: string | undefined | null): value is string => typeof value === 'string' && value.trim().length > 0;
 const CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS = 12_000;
+
+// Trafikklys: ett fargesystem med fast betydning (The Role Room-farger).
+// Grønn = ferdig, gul = venter, rød = mangler. Kutter regnbuen så fargen
+// alltid betyr det samme — mindre å tolke.
+type StatusTone = 'go' | 'wait' | 'stop';
+const TONE_COLORS: Record<StatusTone, { fg: string; stripe: string; bg: string }> = {
+  go: { fg: '#34d399', stripe: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+  wait: { fg: '#fbbf24', stripe: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },
+  stop: { fg: '#f87171', stripe: '#ef4444', bg: 'rgba(239,68,68,0.10)' },
+};
+
+// Dempet stil for sekundærhandlinger — de skal være tilgjengelige, men
+// aldri konkurrere med hovedhandlingen om oppmerksomheten.
+const SECONDARY_ACTION_SX = {
+  textTransform: 'none' as const,
+  fontWeight: 600,
+  fontSize: '0.8rem',
+  color: 'rgba(203,213,225,0.72)',
+  minWidth: 0,
+  px: 0.9,
+  '&:hover': { color: '#e2e8f0', background: 'rgba(148,163,184,0.08)' },
+};
 
 function withClientPackageInputTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -720,7 +743,7 @@ export default function ProducerExportHandoffPanel({
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(content);
-        enqueueSnackbar('Overleveringsbrief kopiert.', { variant: 'success' });
+        enqueueSnackbar('Sammendrag til kunden kopiert.', { variant: 'success' });
         return;
       } catch (clipboardError) {
         console.warn('[ProducerExportHandoffPanel] Clipboard copy failed, falling back to file download', clipboardError);
@@ -897,7 +920,7 @@ export default function ProducerExportHandoffPanel({
       }
 
       setDeliveryWorkspaceFiles(uploadedWorkspaceFiles);
-      enqueueSnackbar('Leveransearbeidsområdet ble skrevet til prosjektfiler.', { variant: 'success' });
+      enqueueSnackbar('Filene ble klargjort for levering.', { variant: 'success' });
       return uploadedWorkspaceFiles;
     } catch (workspaceError) {
       console.error('[ProducerExportHandoffPanel] Failed to write delivery workspace', workspaceError);
@@ -981,89 +1004,53 @@ export default function ProducerExportHandoffPanel({
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <AssignmentTurnedInIcon sx={{ color: '#fbbf24' }} />
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-              Eksport og overlevering
+              Sende til kunden
             </Typography>
           </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.86)', maxWidth: 920 }}>
-            Samler klientpakke, publiseringspunkter, filnavn, merkevareguide og leveringsrutine i ett sted, slik at det som planlegges også er det som faktisk sendes og leveres.
+            Alt kunden skal få — innleggene som skal ut, filnavn, stilguide og leveringsrutine — samlet på ett sted, slik at det som planlegges er nøyaktig det som sendes.
           </Typography>
         </Box>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          {onOpenManuscript ? (
-            <Button variant="outlined" startIcon={<AutoStoriesIcon />} onClick={onOpenManuscript} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              Åpne manus
-            </Button>
-          ) : null}
-          {onOpenShotList ? (
-            <Button variant="outlined" startIcon={<ViewListIcon />} onClick={onOpenShotList} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              Åpne shotlist
-            </Button>
-          ) : null}
-          {onOpenMedia ? (
-            <Button variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              Åpne klientbrief
-            </Button>
-          ) : null}
-          <Button
-            variant="outlined"
-            startIcon={<ContentCopyIcon />}
-            data-testid="producer-export-copy-portal"
-            onClick={() => {
-              void handleCopyClientPortalUrl();
-            }}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
-          >
-            Kopier klientportal
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<TaskAltIcon />}
-            data-testid="producer-export-write-package"
-            onClick={() => {
-              void handleBuildAndUploadPackage();
-            }}
-            disabled={uploadingPackage}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
-          >
-            {uploadingPackage ? 'Skriver pakke...' : 'Skriv klientpakke'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<ViewListIcon />}
-            data-testid="producer-export-write-workspace"
-            onClick={() => {
-              void handleWriteDeliveryWorkspace();
-            }}
-            disabled={writingWorkspace}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
-          >
-            {writingWorkspace ? 'Skriver arbeidsområde...' : 'Skriv leveransearbeidsområde'}
-          </Button>
-          {latestPackage ? (
-            <Button
-              variant="outlined"
-              startIcon={<LaunchIcon />}
-              data-testid="producer-export-share-package"
-              onClick={() => {
-                void handleShareLatestPackage();
-              }}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              Del siste klientpakke
-            </Button>
-          ) : null}
+        {/* Én hovedhandling (The Role Room-gradient), resten dempet til
+            stille tekst-knapper — mindre å velge mellom på ett blikk. */}
+        <Stack spacing={1} alignItems={{ sm: 'flex-end' }} sx={{ flexShrink: 0 }}>
           {onSendToClient ? (
             <Button
               variant="contained"
+              size="large"
               startIcon={<SendIcon />}
               data-testid="producer-export-send-package"
               onClick={() => { void handleSendToClient(); }}
               disabled={sendingToClient || uploadingPackage || writingWorkspace}
-              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
+              sx={{
+                textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
+                px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                color: '#fff', boxShadow: '0 8px 24px rgba(139,92,246,0.35)',
+                '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
+                '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
+              }}
             >
-              {sendingToClient ? 'Klargjør klientpakke…' : 'Send klientpakke'}
+              {sendingToClient ? 'Klargjør…' : 'Send til kunden'}
             </Button>
           ) : null}
+          <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap justifyContent={{ sm: 'flex-end' }}>
+            {onOpenManuscript ? (
+              <Button variant="text" size="small" startIcon={<AutoStoriesIcon />} onClick={onOpenManuscript} sx={SECONDARY_ACTION_SX}>Åpne manus</Button>
+            ) : null}
+            {onOpenShotList ? (
+              <Button variant="text" size="small" startIcon={<ViewListIcon />} onClick={onOpenShotList} sx={SECONDARY_ACTION_SX}>Åpne shotlist</Button>
+            ) : null}
+            {onOpenMedia ? (
+              <Button variant="text" size="small" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={SECONDARY_ACTION_SX}>Åpne brief</Button>
+            ) : null}
+            <Button variant="text" size="small" startIcon={<ContentCopyIcon />} data-testid="producer-export-copy-portal" onClick={() => { void handleCopyClientPortalUrl(); }} sx={SECONDARY_ACTION_SX}>Kopier kundeportal</Button>
+            <Button variant="text" size="small" startIcon={<TaskAltIcon />} data-testid="producer-export-write-package" onClick={() => { void handleBuildAndUploadPackage(); }} disabled={uploadingPackage} sx={SECONDARY_ACTION_SX}>{uploadingPackage ? 'Skriver…' : 'Lag pakke'}</Button>
+            <Button variant="text" size="small" startIcon={<ViewListIcon />} data-testid="producer-export-write-workspace" onClick={() => { void handleWriteDeliveryWorkspace(); }} disabled={writingWorkspace} sx={SECONDARY_ACTION_SX}>{writingWorkspace ? 'Skriver…' : 'Lag filer'}</Button>
+            {latestPackage ? (
+              <Button variant="text" size="small" startIcon={<LaunchIcon />} data-testid="producer-export-share-package" onClick={() => { void handleShareLatestPackage(); }} sx={SECONDARY_ACTION_SX}>Del siste pakke</Button>
+            ) : null}
+          </Stack>
         </Stack>
       </Stack>
 
@@ -1152,6 +1139,7 @@ export default function ProducerExportHandoffPanel({
         {[
           {
             label: 'Klientpunkter',
+            tone: (manifest.pendingClientMoments.length > 0 ? 'wait' : 'go') as StatusTone,
             value: `${manifest.pendingClientMoments.length}`,
             detail: manifest.pendingClientMoments.length > 0
               ? 'Åpne punkter fra faseplan og content-kalender.'
@@ -1159,6 +1147,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Merkevareklarhet',
+            tone: (readiness.brandReadyCount === readiness.brandItems.length ? 'go' : 'wait') as StatusTone,
             value: `${readiness.brandReadyCount}/${readiness.brandItems.length}`,
             detail: readiness.brandReadyCount === readiness.brandItems.length
               ? 'Merkevareguiden er klar for levering.'
@@ -1166,6 +1155,7 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Leveringsrutine',
+            tone: (readiness.workflowReadyCount === readiness.workflowItems.length ? 'go' : 'wait') as StatusTone,
             value: `${readiness.workflowReadyCount}/${readiness.workflowItems.length}`,
             detail: readiness.workflowReadyCount === readiness.workflowItems.length
               ? 'Filstruktur og levering er definert.'
@@ -1173,13 +1163,15 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Klientgrunnlag',
+            tone: (clientMaterials.length > 0 ? 'go' : 'wait') as StatusTone,
             value: `${clientBriefReadyCount}/6 · ${clientMaterials.length} filer`,
             detail: clientMaterials.length > 0
               ? 'Klientbrief og opplastet materiale er koblet til pakken.'
               : 'Klienten bør legge inn brief og materiale før endelig handoff.',
           },
           {
-            label: 'Content Logic',
+            label: 'Innholdsplan',
+            tone: 'wait' as StatusTone,
             value: [manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length > 0
               ? `${[manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length}/3`
               : '0/3',
@@ -1188,7 +1180,8 @@ export default function ProducerExportHandoffPanel({
               : 'Mål, hook og CTA bør fylles før klientpakken sendes.',
           },
           {
-            label: 'Kontotilgang',
+            label: 'Hvem har tilgang',
+            tone: (manifest.accountAccessSummary.connectedCount >= manifest.accountAccessSummary.requiredPlatformCount ? 'go' : manifest.accountAccessSummary.connectedCount === 0 ? 'stop' : 'wait') as StatusTone,
             value: `${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount}`,
             detail: manifest.accountAccessSummary.clientActionCount > 0
               ? `${manifest.accountAccessSummary.clientActionCount} plattform${manifest.accountAccessSummary.clientActionCount === 1 ? '' : 'er'} krever klienthandling.`
@@ -1198,33 +1191,39 @@ export default function ProducerExportHandoffPanel({
           },
           {
             label: 'Åpne klientinnspill',
+            tone: (openClientContributionTasks.length > 0 ? 'wait' : 'go') as StatusTone,
             value: `${openClientContributionTasks.length}`,
             detail: openClientContributionTasks.length > 0
               ? 'Punkter som fortsatt må avklares før pakken er helt trygg å sende.'
               : 'Ingen åpne klientinnspill akkurat nå.',
           },
-        ].map((card) => (
+        ].map((card) => {
+          const t = TONE_COLORS[card.tone];
+          return (
           <Box
             key={card.label}
             data-testid={`producer-export-summary-${normalizeFileToken(card.label)}`}
             sx={{
               p: 1.3,
+              pl: 1.5,
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.64)',
+              borderLeft: `3px solid ${t.stripe}`,
+              background: t.bg,
             }}
           >
             <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', fontWeight: 700 }}>
               {card.label}
             </Typography>
-            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.16rem', mt: 0.45 }}>
+            <Typography sx={{ color: t.fg, fontWeight: 800, fontSize: '1.16rem', mt: 0.45, fontVariantNumeric: 'tabular-nums' }}>
               {card.value}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.45 }}>
               {card.detail}
             </Typography>
           </Box>
-        ))}
+          );
+        })}
       </Box>
 
       <Box
@@ -1238,30 +1237,21 @@ export default function ProducerExportHandoffPanel({
         }}
       >
         <Stack spacing={2}>
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Neste steg med kunden"
+            defaultOpen
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Neste klientpunkter
-              </Typography>
-              <Stack direction="row" spacing={1}>
-                {onOpenReviews ? (
-                  <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={onOpenReviews} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Åpne klientsamarbeid
-                  </Button>
-                ) : null}
-                {onOpenTimeline ? (
-                  <Button size="small" variant="outlined" startIcon={<CalendarMonthIcon />} onClick={onOpenTimeline} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Åpne tidslinje
-                  </Button>
-                ) : null}
-              </Stack>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+              {onOpenReviews ? (
+                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={onOpenReviews} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                  Åpne klientsamarbeid
+                </Button>
+              ) : null}
+              {onOpenTimeline ? (
+                <Button size="small" variant="outlined" startIcon={<CalendarMonthIcon />} onClick={onOpenTimeline} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                  Åpne tidslinje
+                </Button>
+              ) : null}
             </Stack>
             <Stack spacing={0.9}>
               {manifest.pendingClientMoments.slice(0, 6).map((moment) => {
@@ -1297,7 +1287,7 @@ export default function ProducerExportHandoffPanel({
                             <>
                               <Chip
                                 size="small"
-                                label="Content Logic"
+                                label="Innholdsplan"
                                 sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
                               />
                               <Chip
@@ -1311,7 +1301,7 @@ export default function ProducerExportHandoffPanel({
                             <>
                               <Chip
                                 size="small"
-                                label="Kontotilgang"
+                                label="Hvem har tilgang"
                                 sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#ccfbf1' }}
                               />
                               <Chip
@@ -1394,26 +1384,17 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Hvem har tilgang"
+            summary={`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} plattformer koblet · ${manifest.accountAccessSummary.clientActionCount} krever klient`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Kontotilgang
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(accountsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne kontotilgang
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(accountsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne kontotilgang
+              </Button>
+            ) : null}
             <Stack spacing={0.7}>
               <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
                 {`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} nødvendige plattformer er koblet. ${manifest.accountAccessSummary.clientActionCount} krever klienthandling. ${manifest.accountAccessSummary.inviteSentCount} venter på invite-bekreftelse.`}
@@ -1486,26 +1467,13 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               </Box>
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Filer klare til levering"
+            summary={`${deliveryWorkspaceFiles.length} prosjektfiler`}
+            badge={<Chip size="small" label={String(deliveryWorkspaceFiles.length)} sx={{ height: 18, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontSize: '0.68rem' }} />}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Leveransearbeidsområde
-              </Typography>
-              <Chip
-                size="small"
-                label={`${deliveryWorkspaceFiles.length} prosjektfiler`}
-                sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-              />
-            </Stack>
             <Stack spacing={0.85}>
               {deliveryWorkspaceFiles.length > 0 ? deliveryWorkspaceFiles.slice(0, 8).map((file) => (
                 <Box
@@ -1550,26 +1518,13 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               )}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Juridiske dokumenter"
+            summary={`${legalAgreements.agreements.length} avtaler`}
+            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.68rem' }} />}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Juridiske dokumenter
-              </Typography>
-              <Chip
-                size="small"
-                label={`${legalAgreements.agreements.length} avtaler`}
-                sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }}
-              />
-            </Stack>
             {legalAgreements.agreements.length > 0 ? (
               <Stack spacing={0.85}>
                 {legalAgreements.agreements.slice(0, 6).map((agreement) => {
@@ -1666,26 +1621,17 @@ export default function ProducerExportHandoffPanel({
                 Ingen juridiske dokumenter er koblet til klientpakken ennå.
               </Typography>
             )}
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Innspill fra kunden før levering"
+            summary={`${openClientContributionTasks.length} punkter må avklares`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Klientinnspill før handoff
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(materialsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne brief og materiale
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(materialsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne brief og materiale
+              </Button>
+            ) : null}
             <Stack spacing={0.85}>
               {openClientContributionTasks.slice(0, 6).map((task) => (
                 <Box
@@ -1748,19 +1694,12 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Leveranser og filnavn"
+            summary={`${upcomingDeliveries.length} leveranser`}
           >
-            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-              Leveranser og filnavn
-            </Typography>
             <Stack spacing={0.9}>
               {upcomingDeliveries.map((item) => (
                 <Box
@@ -1818,28 +1757,19 @@ export default function ProducerExportHandoffPanel({
                 </Box>
               ))}
             </Stack>
-          </Box>
+          </CollapsibleSection>
         </Stack>
 
         <Stack spacing={2}>
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Klientbrief og materiale"
+            defaultOpen
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Klientbrief og materiale
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne brief og materiale
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne brief og materiale
+              </Button>
+            ) : null}
             <Stack spacing={0.8}>
               {[
                 ['Prosjektmål', clientIntake.projectGoal],
@@ -1929,19 +1859,12 @@ export default function ProducerExportHandoffPanel({
                 </>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Prosjektramme"
+            summary="Strategi, konsept og aktivering"
           >
-            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-              Prosjektramme
-            </Typography>
             <Stack spacing={0.8}>
               {frameworkSections.map((section) => (
                 <Box key={section.key}>
@@ -1959,19 +1882,12 @@ export default function ProducerExportHandoffPanel({
                 </Typography>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Innholdsplan"
+            summary="Mål, målgruppe, hook, budskap, CTA"
           >
-            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-              Content Logic
-            </Typography>
             <Stack spacing={0.8}>
               {[
                 { label: 'Mål', value: manifest.contentLogicSummary.objective },
@@ -2005,26 +1921,17 @@ export default function ProducerExportHandoffPanel({
                 </Box>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Merkevareguide"
+            summary="Farger, fonter og tone kunden skal bruke"
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Merkevareguide
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(brandWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne merkevareguide
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(brandWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne merkevareguide
+              </Button>
+            ) : null}
             <Stack spacing={0.7}>
               {readiness.brandItems.map((item) => (
                 <Stack key={item.label} direction="row" spacing={1} alignItems="flex-start">
@@ -2157,26 +2064,17 @@ export default function ProducerExportHandoffPanel({
                 </Box>
               ) : null}
             </Stack>
-          </Box>
+          </CollapsibleSection>
 
-          <Box
-            sx={{
-              p: 1.4,
-              borderRadius: 1.5,
-              border: '1px solid rgba(148,163,184,0.18)',
-              background: 'rgba(15,23,42,0.58)',
-            }}
+          <CollapsibleSection
+            title="Leveringsrutine"
+            summary={`${readiness.workflowItems.filter((i) => i.ready).length}/${readiness.workflowItems.length} steg klare`}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                Leveringsrutine
-              </Typography>
-              {onOpenMedia ? (
-                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(deliveryWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne leveringsrutine
-                </Button>
-              ) : null}
-            </Stack>
+            {onOpenMedia ? (
+              <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(deliveryWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
+                Åpne leveringsrutine
+              </Button>
+            ) : null}
             <Stack spacing={0.7}>
               {readiness.workflowItems.map((item) => (
                 <Stack key={item.label} direction="row" spacing={1} alignItems="flex-start">
@@ -2192,7 +2090,7 @@ export default function ProducerExportHandoffPanel({
                 </Stack>
               ))}
             </Stack>
-          </Box>
+          </CollapsibleSection>
         </Stack>
       </Box>
 
@@ -2200,7 +2098,7 @@ export default function ProducerExportHandoffPanel({
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.82rem', maxWidth: 880 }}>
-          Overleveringsbriefen bygger automatisk på retning, idé, aktivering, content-kalender, merkevareguide og leveringsrutine. Filnavn og klientpunkter følger prosjektets egne regler.
+          Sammendraget til kunden bygges automatisk på retning, idé, aktivering, innleggsplan, merkevareguide og leveringsrutine. Filnavn og punkter følger prosjektets egne regler.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button

@@ -174,12 +174,15 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
   };
 
   const handleSetReference = (id: string) => {
-    setClips(prev => prev.map(c => ({
-      ...c,
-      isReference: c.id === id,
-      // Reset offset for ny reference
-      ...(c.id === id ? { detectedOffsetSec: 0, manualOffsetSec: 0, confidence: 1.0 } : {}),
-    })));
+    // Å bytte reference gjør alle tidligere auto-sync-offset ugyldige
+    // (de ble målt mot den GAMLE referansen). Nullstill dem så vi ikke
+    // beholder stale offset, og be brukeren kjøre Auto-sync på nytt.
+    setClips(prev => prev.map(c => (
+      c.id === id
+        ? { ...c, isReference: true, detectedOffsetSec: 0, manualOffsetSec: 0, confidence: 1.0 }
+        : { ...c, isReference: false, detectedOffsetSec: 0, confidence: 0 }
+    )));
+    setError("Referanse endret — kjør Auto-sync på nytt for å måle offset mot den nye referansen.");
   };
 
   const handleRemoveClip = (id: string) => {
@@ -196,7 +199,9 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
     setSaving(true);
     setError(null);
     try {
-      const hasSyncedClips = clips.some(c => c.confidence > 0);
+      // Synket = enten auto-sync (confidence>0) ELLER manuell finetune
+      // (manualOffsetSec != 0), som aldri setter confidence.
+      const hasSyncedClips = clips.some(c => c.confidence > 0 || c.manualOffsetSec !== 0);
       const syncStatus = hasSyncedClips ? "ready" : "pending";
       if (activeGroup) {
         await multicamService.update(activeGroup.id, {

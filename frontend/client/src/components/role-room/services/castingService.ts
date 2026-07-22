@@ -2926,7 +2926,7 @@ export const castingService = {
     assertPayloadProjectScope(projectId, payload, 'batchIngestLiveSetEvents');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events/batch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -2947,7 +2947,9 @@ export const castingService = {
     const query = new URLSearchParams();
     if (since) query.set('since', since);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events${suffix}`);
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events${suffix}`, {
+      headers: getRoleRoomAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch live set events: ${response.status}`);
     }
@@ -2968,7 +2970,7 @@ export const castingService = {
     assertPayloadProjectScope(projectId, payload, 'ackLiveSetEvents');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sync/ack`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {

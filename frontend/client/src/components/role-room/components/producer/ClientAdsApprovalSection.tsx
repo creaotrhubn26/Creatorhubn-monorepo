@@ -18,6 +18,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
 
 interface PendingConfig {
   config: {
@@ -75,6 +76,7 @@ export default function ClientAdsApprovalSection({
     try {
       const r = await fetch(`/api/role-room/ads-approvals/pending?clientProjectId=${encodeURIComponent(clientProjectId)}`, {
         credentials: 'include',
+        headers: roleRoomAgentDefaultHeaders(),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
@@ -93,6 +95,7 @@ export default function ClientAdsApprovalSection({
     try {
       const r = await fetch(`/api/role-room/ads-approvals/${configId}/approve`, {
         method: 'POST', credentials: 'include',
+        headers: roleRoomAgentDefaultHeaders(),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       await reload();
@@ -113,7 +116,7 @@ export default function ClientAdsApprovalSection({
     try {
       const r = await fetch(`/api/role-room/ads-approvals/${configId}/reject`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({ feedback: fb }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

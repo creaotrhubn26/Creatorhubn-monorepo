@@ -254,6 +254,7 @@ const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
 const AdsManagementPanel = lazy(() => retryDynamicImport(() => import('./producer/AdsManagementPanel'), 'AdsManagementPanel'));
+const ProducerBudgetTabs = lazy(() => retryDynamicImport(() => import('./producer/ProducerBudgetTabs'), 'ProducerBudgetTabs'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -1450,6 +1451,21 @@ type RoleRoomProjectWorkspaceState = {
   const selectionGoogleStatusRequestRef = useRef(0);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
   const lastProducerMediaFocusRef = useRef<ClientPortalWorkspaceFocus | null>(null);
+  // Stabil identitet: en ny inline-callback her hver render får ProducerMedia-
+  // Panels emit-effekt (som har callbacken i dep-listen) til å re-fyre hver
+  // parent-render og pushe identisk fokus opp igjen → render-løkke i klient-
+  // portalen. useCallback bryter det. Den funksjonelle guarden returnerer
+  // samme referanse ved uendret fokus så React hopper over re-render.
+  const handleProducerMediaFocusChange = useCallback((focus: ClientPortalWorkspaceFocus) => {
+    setProducerMediaFocus((previous) => (
+      previous?.workspace === focus.workspace
+      && previous?.sectionId === focus.sectionId
+      && previous?.pageId === focus.pageId
+      && previous?.artifactId === focus.artifactId
+        ? previous
+        : focus
+    ));
+  }, []);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
@@ -3389,18 +3405,35 @@ type RoleRoomProjectWorkspaceState = {
       // ETTER seed-effekten og overskriver lastRealProjectId med null fra
       // siste lagrede tom-state. Daniels TROLL-deep-link havnet i tom-state
       // selv om URL var korrekt og DB hadde 8 roller/8 kandidater klar.
+      // 2026-07-19: OG omvendt — når URL-en HAR ?project=, skal den vinne
+      // over stored (reprodusert: navigasjon til ?project=medside ble
+      // kastet til sist lagrede prosjekt). Prioritet: URL > stored > null.
+      const urlProjectParam = sp.get('project');
       const existing = persistedWorkspaceStateRef.current;
       persistedWorkspaceStateRef.current = {
         ...stored,
-        lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
-        projectId: stored.projectId ?? existing?.projectId ?? null,
+        lastRealProjectId: urlProjectParam ?? stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
+        projectId: urlProjectParam ?? stored.projectId ?? existing?.projectId ?? null,
       };
-      setStoryArcView(stored.storyArcView);
-      setStoryArcFocus(stored.storyArcFocus ?? null);
-      setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      // 2026-07-19: Eksplisitte URL-params VINNER over lagret tilstand.
+      // Før overstyrte restore både ?tab= og ?surface= — en delelenke til
+      // tab=producer-media landet i sist lagrede fane (tidslinje) i stedet.
+      // Lagret tilstand fyller kun dimensjonene URL-en ikke spesifiserer.
+      const urlHasTab = !!sp.get('tab');
+      const urlHasSurface = !!sp.get('surface');
+      const urlHasView = !!sp.get('view');
+      if (!urlHasView) {
+        setStoryArcView(stored.storyArcView);
+        setStoryArcFocus(stored.storyArcFocus ?? null);
+      }
+      if (!urlHasSurface) {
+        setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      }
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
       setContentProducerResumeTarget(stored.contentProducerResumeTarget ?? null);
-      setActiveTab(stored.activeTab);
+      if (!urlHasTab) {
+        setActiveTab(stored.activeTab);
+      }
     };
 
     void hydrateWorkspaceState();
@@ -12923,16 +12956,7 @@ type RoleRoomProjectWorkspaceState = {
                         initialSectionId={producerMediaFocus?.sectionId}
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
-                        onWorkspaceFocusChange={(focus) => {
-                          setProducerMediaFocus((previous) => (
-                            previous?.workspace === focus.workspace
-                            && previous?.sectionId === focus.sectionId
-                            && previous?.pageId === focus.pageId
-                            && previous?.artifactId === focus.artifactId
-                              ? previous
-                              : focus
-                          ));
-                        }}
+                        onWorkspaceFocusChange={handleProducerMediaFocusChange}
                         onUnsavedStateChange={(hasUnsaved, reason) => {
                           setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
                         }}
@@ -13441,16 +13465,7 @@ type RoleRoomProjectWorkspaceState = {
                       : undefined
                   )
                 }
-                onWorkspaceFocusChange={(focus) => {
-                  setProducerMediaFocus((previous) => (
-                    previous?.workspace === focus.workspace
-                    && previous?.sectionId === focus.sectionId
-                    && previous?.pageId === focus.pageId
-                    && previous?.artifactId === focus.artifactId
-                      ? previous
-                      : focus
-                  ));
-                }}
+                onWorkspaceFocusChange={handleProducerMediaFocusChange}
                 onUnsavedStateChange={(hasUnsaved, reason) => {
                   setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
                 }}
@@ -13537,11 +13552,16 @@ type RoleRoomProjectWorkspaceState = {
             </Box>
           ) : (
             <>
-              {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
-                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til.
-                  KUN for innholdsprodusent-modus eller klient-review (per Daniels krav:
-                  produksjonsteam-økonomi handler om budsjett-pakker, ikke ads-fakturering). */}
-              {(isContentProducerMode || isClientReviewerMode) && (
+              {/* Produksjonsbudsjett vs. markedsføringsbudsjett i to topp-faner
+                  (Daniels krav): produksjon = fase-linjer/bemanning/avtaler,
+                  markedsføring = §5.3 ads-økonomi (annonsekostnad + 20 % påslag,
+                  budsjett-tak, godkjenningspolicy) + kampanje-styring. Markedsføring
+                  vises KUN i innholdsprodusent-/klient-review-modus; i
+                  produksjonsteam-modus faller ProducerBudgetTabs tilbake til ren
+                  produksjonsvisning uten fane-rad. */}
+            <Suspense fallback={null}>
+            <ProducerBudgetTabs
+              marketing={(isContentProducerMode || isClientReviewerMode) ? (
                 <>
                   <Suspense fallback={null}>
                     <ClientEconomyPanel
@@ -13551,14 +13571,15 @@ type RoleRoomProjectWorkspaceState = {
                   </Suspense>
                   {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
                   {!isClientReviewerMode && (
-                    <Box sx={{ mb: 2 }}>
+                    <Box sx={{ mt: 2 }}>
                       <Suspense fallback={null}>
                         <AdsManagementPanel projectId={currentProject.id} />
                       </Suspense>
                     </Box>
                   )}
                 </>
-              )}
+              ) : null}
+              production={(
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
               projectId={currentProject.id}
@@ -13606,6 +13627,9 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+              )}
+            />
+            </Suspense>
             </>
           )}
         </TabPanel>
