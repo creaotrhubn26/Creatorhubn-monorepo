@@ -226,7 +226,7 @@ export const useErrorHandler = (
 
 // Higher-order component for wrapping components with error boundary
 export const withErrorBoundary = <P extends object>(
-  Component: React.ComponentType<>,
+  Component: React.ComponentType<P>,
   errorBoundaryProps?: Partial<Props>,
 ) => {
   return (props: P) => (
