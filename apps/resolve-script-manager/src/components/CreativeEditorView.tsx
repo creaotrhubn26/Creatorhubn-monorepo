@@ -3768,17 +3768,21 @@ ${ctxLines.join("\n")}`;
                           setStabilizingPick(true); setExportError(null);
                           try {
                             // Tiered stabilisering: Gyroflow (gyrodata) → ffmpeg vid.stab → deshake.
+                            // placeInResolve: legg det stabiliserte klippet rett på gjeldende Resolve-timeline.
                             const summary = await executeScript("stabilize_clip", {
                               videoPath: payload?.sourceVideo,
                               startSec: focusedPick.startSec,
                               endSec: focusedPick.endSec,
                               strength: 0.5,
+                              placeInResolve: true,
                             }, false);
                             const errEvent = summary.events.find(e => e.type === "error");
                             if (errEvent) throw new Error((errEvent.value as any)?.message ?? "Stabilisering feilet");
-                            const r = summary.events.find(e => e.type === "result")?.value as { outputPath?: string; method?: string } | undefined;
-                            if (r?.outputPath) setExportResult({ outputPath: `Stabilisert (${r.method}): ${r.outputPath}`, durationSec: 0 });
-                            else throw new Error("Stabilisering ga ingen fil");
+                            const r = summary.events.find(e => e.type === "result")?.value as { outputPath?: string; method?: string; placed?: boolean; placeError?: string } | undefined;
+                            if (r?.outputPath) {
+                              const placeMsg = r.placed ? " → lagt på Resolve-timeline" : r.placeError ? ` (ikke lagt i Resolve: ${r.placeError})` : "";
+                              setExportResult({ outputPath: `Stabilisert (${r.method}): ${r.outputPath}${placeMsg}`, durationSec: 0 });
+                            } else throw new Error("Stabilisering ga ingen fil");
                           } catch (e: any) {
                             setExportError("Stabilisering feilet: " + (typeof e === "string" ? e : (e?.message ?? "ukjent feil")));
                           } finally {
