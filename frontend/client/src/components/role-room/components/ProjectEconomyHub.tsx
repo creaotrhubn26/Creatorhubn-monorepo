@@ -1724,14 +1724,19 @@ export default function ProjectEconomyHub({
   };
 
   const handleCandidateStatusChange = async (candidateId: string, status: string) => {
-    const candidate = project.candidates.find((entry) => entry.id === candidateId);
+    // `project.candidates` kan mangle på prosjekter hentet fra API-et (feltet
+    // er ikke garantert i alle DTO-varianter) — uten guard kastet .find/.map
+    // «Cannot read properties of undefined» og feltet krasjet Økonomi-fanen via
+    // ErrorBoundary. Fall tilbake til tom liste.
+    const candidates = project.candidates ?? [];
+    const candidate = candidates.find((entry) => entry.id === candidateId);
     if (!candidate) {
       return;
     }
 
     const nextProject: CastingProject = {
       ...project,
-      candidates: project.candidates.map((entry) => (
+      candidates: candidates.map((entry) => (
         entry.id === candidateId
           ? { ...entry, status }
           : entry
