@@ -1303,6 +1303,7 @@ struct TeamRoutesTodaySheet: View {
     @State private var toast: String?
     @State private var optimized = false
     @State private var showRouteDetails = false
+    @State private var showPlanner = false
 
     enum RouteFilter: String, CaseIterable, Identifiable {
         case active = "Aktiv"
@@ -1416,7 +1417,7 @@ struct TeamRoutesTodaySheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { flash("Ruteplanlegging åpnes i Kart-fanen") } label: {
+                    Button { showPlanner = true } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                                 .font(.appScaled(size: 11, weight: .bold))
@@ -1451,6 +1452,9 @@ struct TeamRoutesTodaySheet: View {
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
+            .sheet(isPresented: $showPlanner) {
+                RoutePlannerSheet()
+            }
             .sheet(isPresented: $showRouteDetails) {
                 NavigationStack {
                     ZStack {
