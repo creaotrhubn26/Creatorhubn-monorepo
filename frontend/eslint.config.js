@@ -111,27 +111,28 @@ export default tseslint.config(
       // fortsatt av tsc/consistent-type-imports.
       'no-duplicate-imports': 'off',
       '@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }],
-      // ── Pre-eksisterende debt baselinet til 'warn' ──────────────────────
-      // Følgende regler har spredte brudd i eldre, ikke-role-room-kildekode
-      // (email/pricing/showcase/services/lib osv.) som ALDRI har vært lintet.
-      // De er reelle stil-/smell-signaler, men å rette ~34 instanser i ~20
-      // ukjente filer i en config-/gate-PR er høyere risiko enn verdi. Vi
-      // baseliner dem til 'warn' (synlig i IDE/`npm run lint`, blokkerer ikke
-      // gaten) på nøyaktig samme måte som `no-explicit-any` over — nye brudd
-      // er synlige, gamle ratcher vi ned senere. Flagget for oppfølging:
-      // no-sparse-arrays (4) + no-misleading-character-class (9) + no-async-
-      // promise-executor (1) er de mest bug-nære og bør ryddes først.
+      // ── Rene stil-/legacy-regler baselinet til 'warn' ───────────────────
+      // Disse har spredte, ufarlige brudd i eldre ikke-role-room-kildekode
+      // (email/pricing/showcase/services/lib osv.) som aldri har vært lintet.
+      // De er stil-signaler uten bug-risiko — baselinet til 'warn' (synlig i
+      // IDE/`npm run lint`, blokkerer ikke gaten), samme mønster som
+      // `no-explicit-any` over. Nye brudd er synlige; gamle ratcher vi senere.
       '@typescript-eslint/no-unused-expressions': 'warn',
       '@typescript-eslint/no-namespace': 'warn',
       '@typescript-eslint/triple-slash-reference': 'warn',
       'no-useless-catch': 'warn',
       'no-empty-pattern': 'warn',
       'prefer-rest-params': 'warn',
-      'no-sparse-arrays': 'warn',
-      'no-misleading-character-class': 'warn',
-      'no-async-promise-executor': 'warn',
       'no-irregular-whitespace': 'warn',
-      'no-control-regex': 'warn'
+      'no-control-regex': 'warn',
+      // ── Bug-nære regler: HÅNDHEVET som 'error' ──────────────────────────
+      // De opprinnelige bruddene er kode-fikset (ikke muted): sparse-array-
+      // defaults `[, ]`→`[]` (renderte phantom-element), emoji-regex fikk `u`-
+      // flagg (surrogatpar-matching), og async-Promise-executor omstrukturert
+      // (feil-swallow). Nå error-nivå så de ikke kan re-introduseres.
+      'no-sparse-arrays': 'error',
+      'no-misleading-character-class': 'error',
+      'no-async-promise-executor': 'error'
     }
   },
   // React hooks-regler — plugin-en var ALDRI registrert i denne configen, så

@@ -95,7 +95,7 @@ export default function ProjectFileManager({ projectId, profession, userId }: Pr
 });
 
   // Fetch project files
-  const { data: projectFiles = [, ],} = useQuery({
+  const { data: projectFiles = [],} = useQuery({
     queryKey: [`/api/projects/${projectId}/files`],
     retry: false,
     queryFn: () => apiRequest(`/api/projects/${projectId}/files`),

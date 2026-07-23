@@ -58,56 +58,54 @@ export const CameraDetector: React.FC<CameraDetectorProps> = ({
 
   // EXIF extraction utility connected to camera database
   const extractExifData = useCallback(async (file: File): Promise<CameraInfo> => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        // First check if camera database supports this file format
-        const supportedFormat = await validateFileFormat(file);
-        if (!supportedFormat.supported) {
-          reject(new Error(`Filformat ${file.name.split('.').pop()?.toUpperCase()} er ikke støttet for dette kameraet. ${supportedFormat.message}`));
-          return;
-      }
+    // First check if camera database supports this file format
+    const supportedFormat = await validateFileFormat(file);
+    if (!supportedFormat.supported) {
+      throw new Error(`Filformat ${file.name.split(".").pop()?.toUpperCase()} er ikke støttet for dette kameraet. ${supportedFormat.message}`);
+    }
 
-        const reader = new FileReader();
-        
-        reader.onload = async () => {
-          try {
-            const arrayBuffer = reader.result as ArrayBuffer;
-            
-            // Real EXIF extraction with camera database integration
-            const exifData = await extractRealExifData(arrayBuffer, file.name, supportedFormat);
-            
-            // Validate camera against database
-            if (exifData.make && exifData.model) {
-              const cameraInfo = await validateCameraInDatabase(exifData.make, exifData.model);
-              if (cameraInfo) {
-                resolve({
-                  ...exifData,
-                  ...cameraInfo,
-                  supportedFormat: supportedFormat.format
-            });
-            } else {
-                resolve({
-                  ...exifData,
-                  supportedFormat: supportedFormat.format
-            });
-            }
-          } else {
+    // Only the callback-based FileReader needs Promise-wrapping; the executor
+    // is synchronous so thrown/rejected errors propagate correctly (no
+    // async-executor swallowing).
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = async () => {
+        try {
+          const arrayBuffer = reader.result as ArrayBuffer;
+
+          // Real EXIF extraction with camera database integration
+          const exifData = await extractRealExifData(arrayBuffer, file.name, supportedFormat);
+
+          // Validate camera against database
+          if (exifData.make && exifData.model) {
+            const cameraInfo = await validateCameraInDatabase(exifData.make, exifData.model);
+            if (cameraInfo) {
               resolve({
                 ...exifData,
-                supportedFormat: supportedFormat.format
-          });
+                ...cameraInfo,
+                supportedFormat: supportedFormat.format,
+              });
+            } else {
+              resolve({
+                ...exifData,
+                supportedFormat: supportedFormat.format,
+              });
+            }
+          } else {
+            resolve({
+              ...exifData,
+              supportedFormat: supportedFormat.format,
+            });
           }
         } catch (error) {
-            reject(error);
+          reject(error);
         }
       };
-      
-      reader.onerror = () => reject(new Error('Failed to read file'));
+
+      reader.onerror = () => reject(new Error("Failed to read file"));
       reader.readAsArrayBuffer(file);
-  } catch (error) {
-      reject(error);
-  }
-});
+    });
 }, []);
 
 // Real EXIF data extraction with camera database support
