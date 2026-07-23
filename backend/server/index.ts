@@ -845,6 +845,7 @@ import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerLeadgridManualInvoiceRoutes } from "./leadgrid-manual-invoice-routes";
 import { registerLeadgridMileageApprovalRoutes } from "./leadgrid-mileage-approval-routes";
 import { registerLeadgridCockpitRoutes } from "./leadgrid-cockpit-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
@@ -66519,6 +66520,10 @@ setupSalesRoutes({
 // /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
 // konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
 registerSalesLeadershipRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/manual-invoice — manuell faktura for org uten Stripe (mig 0407,
+// super-admin): opprett + HTML-e-post + PDF-nedlasting.
+registerLeadgridManualInvoiceRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/mileage/* — kjøregodtgjørelse-godkjenning (Salgssjef-cockpit).
 // Egen Leadgrid-tabell (mig 0405): selger sender krav → leder godkjenner/eksporterer.
