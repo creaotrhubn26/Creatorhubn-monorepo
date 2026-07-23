@@ -22,6 +22,7 @@ import {
   vatRegistrationThreshold,
 } from '../ledger/reports.js';
 import { runHealthCheck } from '../ledger/health-check.js';
+import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import {
   createOrganization,
   ensureUser,
@@ -1665,6 +1666,35 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Feil-deteksjon på bokførte bilag — «har du gjort en feil?». Ren lesing.
+  app.get(
+    '/api/organizations/:orgId/bookkeeping-errors',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const toDate = typeof req.query.to === 'string' ? req.query.to : today;
+        // Standard: siste 12 måneder fram til i dag.
+        const fromDate =
+          typeof req.query.from === 'string'
+            ? req.query.from
+            : `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`;
+        res.json(
+          toJson(
+            await detectBookkeepingErrors(deps.db, deps.rules, {
+              organizationId: req.params.orgId!,
+              fromDate,
+              toDate,
+            }),
+          ),
+        );
       } catch (err) {
         next(err);
       }

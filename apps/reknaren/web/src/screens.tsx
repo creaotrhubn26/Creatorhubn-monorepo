@@ -113,6 +113,16 @@ interface HealthIssue {
   actionScreen?: string;
 }
 
+interface BookkeepingError {
+  code: string;
+  severity: 'error' | 'warning' | 'info';
+  title: string;
+  detail: string;
+  entryNumber?: number;
+  documentId?: string;
+  actionLabel: string;
+}
+
 export function OverviewScreen({
   orgId,
   onOpenDocument,
@@ -125,6 +135,10 @@ export function OverviewScreen({
   const { from, to } = thisYear();
   const health = useLoad(
     () => api<{ issues: HealthIssue[]; okCount: number }>('GET', `/api/organizations/${orgId}/health-check`),
+    [orgId],
+  );
+  const errors = useLoad(
+    () => api<{ errors: BookkeepingError[] }>('GET', `/api/organizations/${orgId}/bookkeeping-errors`),
     [orgId],
   );
   const docs = useLoad(() => api<DocumentRow[]>('GET', `/api/organizations/${orgId}/documents`), [orgId]);
@@ -187,6 +201,38 @@ export function OverviewScreen({
           )}
         </div>
       )}
+
+      {!errors.loading && errors.data && errors.data.errors.length > 0 && (
+        <div className="panel health-panel">
+          <div className="threshold-head">
+            <h2>Har du gjort en feil?</h2>
+            <span className="badge accent">
+              {errors.data.errors.length} bilag å sjekke
+            </span>
+          </div>
+          <p className="subtitle">
+            Vi går gjennom det som allerede er bokført og flagger det som ser feil ut. Ingenting rettes
+            automatisk — du bestemmer.
+          </p>
+          <ul className="health-list">
+            {errors.data.errors.map((e, i) => (
+              <li key={`${e.code}-${e.entryNumber ?? i}`} className={`health-item ${e.severity}`}>
+                <div className="health-dot" aria-hidden="true" />
+                <div className="health-body">
+                  <div className="health-title">{e.title}</div>
+                  <div className="health-detail">{e.detail}</div>
+                </div>
+                {e.documentId && (
+                  <button className="primary health-action" onClick={() => onOpenDocument(e.documentId!)}>
+                    {e.actionLabel}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {docs.loading ? (
         <div className="cards">
           <CardSkeleton />
