@@ -10,6 +10,7 @@ import {
   SaftImportScreen,
   TaxScreen,
   VatScreen,
+  YearEndScreen,
 } from './screens';
 import { DimensionsScreen } from './screens-dimensions';
 import { InvoicingScreen } from './screens-invoicing';
@@ -55,6 +56,7 @@ type Screen =
   | { name: 'reports' }
   | { name: 'vat' }
   | { name: 'tax' }
+  | { name: 'year-end' }
   | { name: 'ledger' }
   | { name: 'journal' }
   | { name: 'audit' }
@@ -72,6 +74,7 @@ const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = 
   { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
   { key: 'vat', label: 'MVA', icon: 'percent' },
   { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
+  { key: 'year-end', label: 'Årsavslutning', icon: 'shield' },
   { key: 'reports', label: 'Rapporter', icon: 'chart' },
   { key: 'saft-import', label: 'Importer fra Fiken', icon: 'inbox' },
   { key: 'org', label: 'Virksomhet', icon: 'shield' },
@@ -253,6 +256,7 @@ export default function App() {
           {screen.name === 'vat' && <VatScreen orgId={orgId} />}
           {screen.name === 'saft-import' && <SaftImportScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}
+          {screen.name === 'year-end' && <YearEndScreen orgId={orgId} />}
           {screen.name === 'ledger' && <LedgerScreen orgId={orgId} />}
           {screen.name === 'journal' && <JournalScreen orgId={orgId} />}
           {screen.name === 'audit' && <AuditScreen orgId={orgId} />}

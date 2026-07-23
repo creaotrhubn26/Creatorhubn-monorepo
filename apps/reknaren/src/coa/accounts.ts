@@ -548,6 +548,18 @@ export const STANDARD_ACCOUNTS: LedgerAccountDef[] = [
     commonVatCodes: ['0'],
     taxDeductible: 'yes',
   },
+  {
+    number: '8300',
+    name: 'Betalbar skatt (skattekostnad)',
+    friendlyName: 'Skattekostnad',
+    type: 'expense',
+    plainExplanation:
+      'Årets beregnede selskapsskatt. Bokføres kun for aksjeselskap ved årsavslutning — motsatsen er «Betalbar skatt» (2500) som du betaler til Skatteetaten.',
+    whenToUse: 'Automatisk ved årsavslutning for AS. Enkeltpersonforetak skatter privat og bruker ikke denne.',
+    examples: ['22 % selskapsskatt av skattepliktig overskudd'],
+    commonVatCodes: ['0'],
+    taxDeductible: 'no',
+  },
 ];
 
 const byNumber = new Map(STANDARD_ACCOUNTS.map((a) => [a.number, a]));

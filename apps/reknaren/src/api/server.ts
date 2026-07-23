@@ -13,6 +13,7 @@ import { SandboxGmailAdapter } from '../ingestion/gmail/sandbox.js';
 import type { GmailPort } from '../ingestion/gmail/port.js';
 import { SmartGmailFilter, type EmailClassifier, type EmailSignals } from '../ingestion/gmail/smart-filter.js';
 import { lockPeriod, reverseJournalEntry } from '../ledger/engine.js';
+import { computeYearEndPlan, executeYearEndClose } from '../ledger/year-end.js';
 import {
   balanceSheet,
   generalLedger,
@@ -1967,6 +1968,69 @@ export function createApiServer(deps: ApiDeps): express.Express {
           reason: body.reason,
         });
         res.status(204).end();
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Årsavslutning — forhåndsvisning: årsresultat, skatt, forslag til postering, låsestatus.
+  app.get(
+    '/api/organizations/:orgId/year-end/:year',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
+        const adjustments =
+          typeof req.query.adjustments === 'string' ? BigInt(req.query.adjustments) : 0n;
+        const org = (
+          await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])
+        ).rows[0];
+        if (!org) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Virksomheten finnes ikke.' } });
+          return;
+        }
+        res.json(
+          toJson(
+            await computeYearEndPlan(deps.db, deps.rules, {
+              organizationId: req.params.orgId!,
+              year,
+              orgForm: org.org_form,
+              adjustmentsMinor: adjustments,
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Årsavslutning — gjennomfør: bokfør skattekostnad (AS) + lås året. Idempotent.
+  app.post(
+    '/api/organizations/:orgId/year-end/:year/close',
+    requireAuth,
+    requireOrgPermission('period.lock'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
+        const body = z.object({ adjustmentsMinor: z.string().optional() }).parse(req.body ?? {});
+        const org = (
+          await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])
+        ).rows[0];
+        if (!org) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Virksomheten finnes ikke.' } });
+          return;
+        }
+        const receipt = await executeYearEndClose(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          year,
+          orgForm: org.org_form,
+          ...(body.adjustmentsMinor ? { adjustmentsMinor: BigInt(body.adjustmentsMinor) } : {}),
+        });
+        res.status(201).json(toJson(receipt));
       } catch (err) {
         next(err);
       }

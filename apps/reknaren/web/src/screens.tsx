@@ -2354,3 +2354,182 @@ export function TaxScreen({ orgId }: { orgId: string }) {
     </div>
   );
 }
+
+/* ── Årsavslutning ──────────────────────────────────────────────────────── */
+
+interface YearEndPlan {
+  year: number;
+  orgForm: string;
+  accountingResultMinor: string;
+  adjustmentsMinor: string;
+  taxableResultMinor: string;
+  taxRatePct: string | null;
+  payableTaxMinor: string;
+  resultAfterTaxMinor: string;
+  taxEntry: { accountNumber: string; accountName: string; debitMinor: string; creditMinor: string }[] | null;
+  periods: { month: number; status: 'open' | 'locked' | 'missing' }[];
+  taxAlreadyPosted: boolean;
+  fullyLocked: boolean;
+  warnings: string[];
+}
+
+export function YearEndScreen({ orgId }: { orgId: string }) {
+  const [year, setYear] = useState(Number(thisYear().to.slice(0, 4)) - 1);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const plan = useLoad(
+    () => api<YearEndPlan>('GET', `/api/organizations/${orgId}/year-end/${year}`),
+    [orgId, year],
+  );
+  const p = plan.data;
+  const lockedCount = p?.periods.filter((x) => x.status === 'locked').length ?? 0;
+  const done = Boolean(p && p.fullyLocked && (p.taxAlreadyPosted || p.taxEntry === null));
+
+  const close = async () => {
+    if (!p) return;
+    setBusy(true);
+    try {
+      const r = await api<{ payableTaxMinor: string; lockedMonths: number[]; taxPosted: boolean }>(
+        'POST',
+        `/api/organizations/${orgId}/year-end/${year}/close`,
+        {},
+      );
+      toast(
+        r.taxPosted
+          ? `Årsavslutning ${year} gjennomført — skatt bokført og året låst.`
+          : `Året ${year} er låst.`,
+        'ok',
+      );
+      plan.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Noe gikk galt', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Årsavslutning</h1>
+        <p className="subtitle">
+          Gjør regnskapsåret ferdig: beregn skatt, bokfør den, og lås året så tallene står fast.
+        </p>
+      </div>
+
+      <div className="row" style={{ maxWidth: 220 }}>
+        <div>
+          <label htmlFor="ye-year">Regnskapsår</label>
+          <input
+            id="ye-year"
+            inputMode="numeric"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value) || year)}
+          />
+        </div>
+      </div>
+
+      {plan.error && <div className="error">{plan.error}</div>}
+      {plan.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        p && (
+          <>
+            {done && (
+              <div className="success">
+                Regnskapsåret {year} er avsluttet og låst{p.taxAlreadyPosted ? ', og skatten er bokført' : ''}.
+              </div>
+            )}
+            <div className="cards">
+              <div className="card">
+                <div className="label">Resultat før skatt</div>
+                <div className="value">{kr(p.accountingResultMinor)}</div>
+                <div className="hint">Årets overskudd/underskudd fra hovedboken</div>
+              </div>
+              <div className="card">
+                <div className="label">
+                  Betalbar skatt{p.taxRatePct ? ` (${p.taxRatePct} %)` : ''}
+                </div>
+                <div className="value">{kr(p.payableTaxMinor)}</div>
+                <div className="hint">
+                  {p.orgForm === 'AS' || p.orgForm === 'NUF' || p.orgForm === 'SA'
+                    ? 'Selskapsskatt av skattepliktig resultat'
+                    : 'Enkeltpersonforetak skatter privat'}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Resultat etter skatt</div>
+                <div className="value">{kr(p.resultAfterTaxMinor)}</div>
+                <div className="hint">Til egenkapitalen</div>
+              </div>
+              <div className="card">
+                <div className="label">Perioder låst</div>
+                <div className="value">{lockedCount} / 12</div>
+                <div className="hint">Låste måneder kan ikke endres uten korrigering</div>
+              </div>
+            </div>
+
+            {p.taxEntry && (
+              <div className="panel">
+                <h2>Skattepostering som bokføres</h2>
+                <p className="subtitle">Bilaget dateres 31.12.{year}. Ingenting bokføres før du bekrefter.</p>
+                <table className="lines">
+                  <thead>
+                    <tr>
+                      <th>Konto</th>
+                      <th className="num">Debet</th>
+                      <th className="num">Kredit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.taxEntry.map((l) => (
+                      <tr key={l.accountNumber}>
+                        <td>
+                          {l.accountNumber} {l.accountName}
+                        </td>
+                        <td className="num">{BigInt(l.debitMinor) > 0n ? kr(l.debitMinor) : ''}</td>
+                        <td className="num">{BigInt(l.creditMinor) > 0n ? kr(l.creditMinor) : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {p.warnings.length > 0 && (
+              <div className="panel explain">
+                <strong>Verdt å vite:</strong>
+                <ul className="compact">
+                  {p.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!done && (
+              <div className="actions">
+                <button className="primary" disabled={busy} onClick={close}>
+                  {busy ? 'Gjennomfører …' : `Gjennomfør årsavslutning ${year}`}
+                </button>
+              </div>
+            )}
+
+            <div className="panel explain">
+              <strong>Neste steg: skattemeldingen</strong>
+              <p className="hint">
+                Når året er avsluttet, danner tallene grunnlaget for næringsspesifikasjonen til
+                Skatteetaten. Selve innsendingen kommer så snart tilgangen er på plass — samme
+                godkjenning som MVA-meldingen venter på.
+              </p>
+            </div>
+          </>
+        )
+      )}
+    </div>
+  );
+}
