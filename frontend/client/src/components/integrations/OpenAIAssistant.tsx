@@ -296,7 +296,7 @@ export const OpenAIAssistant: React.FC = () => {
 
   // Apply smart suggestion
   const applySuggestion = (suggestion: string) => {
-    setInput(suggestion.replace(/^[🐛🔍⚡📊🎨🔗💡🚀🔧📚]\s*/, ''));
+    setInput(suggestion.replace(/^[🐛🔍⚡📊🎨🔗💡🚀🔧📚]\s*/u, ''));
 };
 
   // Remove attached file
