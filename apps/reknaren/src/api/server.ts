@@ -1244,6 +1244,80 @@ export function createApiServer(deps: ApiDeps): express.Express {
     }
   });
 
+  // Hodeløs, planlagt e-postskanning — token-autentisert. Sikrer org, skanner Gmail
+  // med det smarte filteret, og henter automatisk inn de e-postene filteret er SIKRE
+  // på er bilag (til bilagsinnboksen for kontroll — bokfører ingenting selv).
+  app.post('/api/cron/gmail-scan', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      if (!secret || secret.length < 16) {
+        res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler eller er for kort.' } });
+        return;
+      }
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      const a = Buffer.from(secret);
+      const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } });
+        return;
+      }
+      if (!deps.bootstrapOrg) {
+        res.status(503).json({ error: { code: 'ORG_NOT_CONFIGURED', message: 'Bootstrap-org er ikke konfigurert.' } });
+        return;
+      }
+      if (deps.gmailMode !== 'imap') {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Ekte Gmail (IMAP) er ikke konfigurert.' } });
+        return;
+      }
+      const q = z.object({ labels: z.array(z.string().min(1)).min(1).max(20).optional(), afterDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.body ?? {});
+      const labels = q.labels ?? ['INBOX'];
+      const boot = await ensureBootstrapOrg(deps.db, deps.bootstrapOrg);
+      const gmail = (deps.gmailAdapterFactory ?? (() => new SandboxGmailAdapter()))();
+      const messages = await gmail.searchMessages({ labels, keywords: BILAG_KEYWORDS, ...(q.afterDate ? { afterDate: q.afterDate } : {}) });
+      const filter = new SmartGmailFilter(deps.emailClassifier);
+      const importIds: string[] = [];
+      const capped = messages.slice(0, 80);
+      for (let i = 0; i < capped.length; i += 8) {
+        const batch = capped.slice(i, i + 8);
+        const verdicts = await Promise.all(
+          batch.map(async (m) => {
+            const signals: EmailSignals = {
+              from: m.from,
+              subject: m.subject,
+              snippet: m.snippet,
+              attachmentNames: m.attachments.map((att) => att.filename),
+              hasPdf: m.attachments.some((att) => att.mimeType === 'application/pdf'),
+            };
+            return { id: m.messageId, v: await filter.evaluate(signals) };
+          }),
+        );
+        for (const r of verdicts) if (r.v.decision === 'import') importIds.push(r.id);
+      }
+      const vatStatus = await orgVatStatus(deps.db, boot.orgId);
+      const summary =
+        importIds.length > 0
+          ? await ingestFromGmail(pipelineDeps, {
+              organizationId: boot.orgId,
+              actor: { userId: boot.userId, role: 'owner' },
+              gmail,
+              filter: { labels, keywords: BILAG_KEYWORDS, ...(q.afterDate ? { afterDate: q.afterDate } : {}) },
+              vatStatus,
+              onlyMessageIds: importIds,
+            })
+          : { scannedMessages: messages.length, importedDocuments: [], connectionState: 'active' as const };
+      res.json(
+        toJson({
+          organizationId: boot.orgId,
+          scanned: messages.length,
+          confidentBilag: importIds.length,
+          importedDocuments: summary.importedDocuments.length,
+        }),
+      );
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Hodeløs betalingspåminnelse for cron — token-autentisert. Sikrer org, sender
   // purring på forfalte utstedte fakturaer via e-postporten. Ingen sesjon.
   app.post('/api/cron/reminders', async (req, res, next) => {
