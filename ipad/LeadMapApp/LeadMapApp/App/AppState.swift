@@ -625,6 +625,14 @@ final class AppState {
             self.memberLocations = []
             return
         }
+        // Optimistisk: vis sist kjente rolle for org-en umiddelbart, så
+        // rolle-gatede menyvalg (Salgsledelse) ikke «popper inn» etter at
+        // permissions-kallet lander. Serveren bekrefter/korrigerer under, og
+        // selve viewet vakter uansett server-side.
+        let roleCacheKey = "leadgrid.roleInOrg.\(orgId)"
+        if self.roleInOrg == nil, let cached = UserDefaults.standard.string(forKey: roleCacheKey) {
+            self.roleInOrg = cached
+        }
         async let permTask = api.fetchPermissions(organizationId: orgId)
         async let consentTask = api.fetchLocationConsent(orgId)
         async let locsTask = api.fetchMemberLocations(orgId)
@@ -632,6 +640,9 @@ final class AppState {
             let perm = try await permTask
             self.permissions = Set(perm.permissions)
             self.roleInOrg = perm.role
+            if let role = perm.role {
+                UserDefaults.standard.set(role, forKey: roleCacheKey)
+            }
         } catch {
             print("[AppState] permissions failed: \(error)")
         }

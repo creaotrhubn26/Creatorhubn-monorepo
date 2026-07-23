@@ -44,10 +44,11 @@ private enum CBrand {
 struct CalendarModePicker: View {
     @Binding var mode: CalendarMode
 
-    // iPhone: kompakt variant — kun ikoner. Med tekst-labels blir pickeren
-    // bredere enn tilgjengelig plass i agenda-headeren, teksten klippes til
-    // enkeltbokstaver og den valgte pillen overlapper nabo-segmentene.
-    private var compact: Bool { DeviceIdiom.isPhone }
+    // Kun-ikoner overalt. Med tekst-labels ble pickeren bredere enn den
+    // smale master-ruten på iPad (og iPhone-headeren) → teksten klippet til
+    // enkeltbokstaver og den valgte pillen overlappet nabo-segmentene
+    // (QA 2026-07-23). Ikonene er distinkte + har accessibility-labels.
+    private var compact: Bool { true }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -77,9 +78,9 @@ struct CalendarModePicker: View {
         .padding(3)
         .background(CBrand.cardHi, in: Capsule())
         .overlay(Capsule().stroke(CBrand.stroke, lineWidth: 1))
-        // Intrinsisk bredde på iPhone — hindrer at headeren komprimerer
-        // pickeren slik at segmentene legger seg oppå hverandre.
-        .fixedSize(horizontal: compact, vertical: false)
+        // Intrinsisk bredde alltid — hindrer at headeren komprimerer pickeren
+        // slik at segmentene legger seg oppå hverandre.
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
