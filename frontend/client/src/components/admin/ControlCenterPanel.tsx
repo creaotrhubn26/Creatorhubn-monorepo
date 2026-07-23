@@ -187,6 +187,26 @@ interface CanaryResponse {
   generatedAt: string;
 }
 
+type SecretStatus = 'ok' | 'expiring' | 'invalid' | 'error' | 'not_configured';
+
+interface SecretStatusView {
+  key: string;
+  label: string;
+  status: SecretStatus;
+  httpStatus: number | null;
+  expiresAt: string | null;
+  daysLeft: number | null;
+  message: string | null;
+  checkedAt: string | null;
+}
+
+interface SecretsResponse {
+  secrets: SecretStatusView[];
+  configured: number;
+  worst: SecretStatus;
+  generatedAt: string;
+}
+
 interface OrgAiSpend {
   organizationId: string | null;
   orgName: string | null;
@@ -299,6 +319,7 @@ const SUBTABS = [
   { id: 'overview', label: 'Oversikt' },
   { id: 'incidents', label: 'Hendelser' },
   { id: 'canary', label: 'Canary' },
+  { id: 'secrets', label: 'Nøkler' },
   { id: 'health', label: 'Helse' },
   { id: 'ai-margin', label: 'AI-margin' },
   { id: 'ai-overage', label: 'AI-overage' },
@@ -337,6 +358,14 @@ const CANARY_VERTICAL_LABEL: Record<CanaryVertical, string> = {
   roleroom: 'Role Room',
   leadgrid: 'Leadgrid',
   payments: 'Betaling',
+};
+
+const SECRET_STATUS_META: Record<SecretStatus, { label: string; color: string }> = {
+  ok: { label: 'Gyldig', color: '#3dd68c' },
+  expiring: { label: 'Utløper snart', color: '#f5a623' },
+  invalid: { label: 'Ugyldig', color: '#e5484d' },
+  error: { label: 'Probe-feil', color: '#e5484d' },
+  not_configured: { label: 'Ikke koblet', color: '#6b6b6b' },
 };
 
 const DEPLOY_STATUS_META: Record<DeployStatus, { label: string; color: string }> = {
@@ -419,6 +448,13 @@ const ControlCenterPanel: React.FC = () => {
     queryFn: () => apiRequest('/api/control-center/canary'),
     refetchInterval: POLL_MS,
     enabled: subTab === 'canary',
+  });
+
+  const secrets = useQuery<SecretsResponse>({
+    queryKey: ['/api/control-center/secrets'],
+    queryFn: () => apiRequest('/api/control-center/secrets'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'secrets',
   });
 
   const aiMargin = useQuery<AiMarginResponse>({
@@ -512,6 +548,7 @@ const ControlCenterPanel: React.FC = () => {
         <IncidentsSection inc={inc} onAction={(a) => incidentAction.mutate(a)} pending={incidentAction.isPending} />
       )}
       {subTab === 'canary' && <CanarySection canary={canary} />}
+      {subTab === 'secrets' && <SecretsSection secrets={secrets} />}
       {subTab === 'health' && <HealthSection health={health} />}
       {subTab === 'ai-margin' && <AiMarginSection aiMargin={aiMargin} />}
       {subTab === 'ai-overage' && (
@@ -867,6 +904,75 @@ const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryRespons
         Syntetiske brukerreiser mot prod (GitHub Actions, hvert 10. min) — fanger feil FØR brukerne.
         Feil bygger automatisk en hendelse i «Hendelser» + e-post til super_admin ved ny feil/gjenoppretting.
         «Ikke kjørt» = ingen samples enda (cron kjører ~hvert 10. min). Sist oppdatert {relTime(generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
+
+// ─── Nøkler (secret-/utløpsvakt) ─────────────────────────────────────────────
+
+const SecretsSection: React.FC<{ secrets: ReturnType<typeof useQuery<SecretsResponse>> }> = ({ secrets }) => {
+  if (secrets.isLoading) return <Loading />;
+  if (secrets.isError || !secrets.data) return <ErrorLine msg="Kunne ikke hente nøkkel-status." />;
+
+  const { secrets: rows, worst, generatedAt } = secrets.data;
+  const worstMeta = SECRET_STATUS_META[worst] ?? SECRET_STATUS_META.ok;
+  const okCount = rows.filter((s) => s.status === 'ok').length;
+  const activeCount = rows.filter((s) => s.status !== 'not_configured').length;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard label="Verste status" value={worstMeta.label} hint="Verste av koblede nøkler" accent={worstMeta.color} />
+        <KpiCard label="Gyldige" value={`${okCount}/${activeCount || rows.length}`} hint="Nøkler som svarer OK" />
+      </Stack>
+
+      <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ color: 'text.secondary' }}>Nøkkel</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Utløper</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Detalj</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Sist sjekket</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((s) => {
+            const meta = SECRET_STATUS_META[s.status] ?? SECRET_STATUS_META.not_configured;
+            const expiry =
+              s.daysLeft != null
+                ? `${s.daysLeft} d${s.expiresAt ? ` (${new Date(s.expiresAt).toLocaleDateString('no-NO')})` : ''}`
+                : '—';
+            return (
+              <TableRow key={s.key}>
+                <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{s.label}</TableCell>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={s.httpStatus != null ? `${meta.label} · ${s.httpStatus}` : meta.label}
+                    sx={{ height: 18, fontSize: 10, bgcolor: meta.color, color: '#fff' }}
+                  />
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: s.status === 'expiring' ? '#f5a623' : 'text.secondary' }}>
+                  {expiry}
+                </TableCell>
+                <TableCell sx={{ fontSize: 11, color: 'text.disabled', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.message ?? '—'}
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11, color: 'text.disabled' }}>
+                  {s.checkedAt ? relTime(s.checkedAt) : 'aldri'}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Daglig probe av plattform-nøklenes gyldighet (GitHub-PAT også utløpsdato via API-header).
+        Ugyldig/utløpende nøkkel bygger en hendelse + e-post til super_admin ved forverring/gjenoppretting.
+        «Ikke koblet» = env ikke satt. Sist oppdatert {relTime(generatedAt)}.
       </Typography>
     </Box>
   );
