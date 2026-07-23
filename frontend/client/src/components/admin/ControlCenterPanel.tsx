@@ -160,6 +160,33 @@ interface HealthResponse {
   generatedAt: string;
 }
 
+type CanaryStatus = 'up' | 'down' | 'unknown';
+type CanaryVertical = 'platform' | 'roleroom' | 'leadgrid' | 'payments';
+
+interface CanaryJourneyView {
+  key: string;
+  label: string;
+  vertical: CanaryVertical;
+  status: CanaryStatus;
+  httpStatus: number | null;
+  latencyMs: number | null;
+  expected: string;
+  message: string | null;
+  note: string;
+  uptime30d: number | null;
+  p95Ms: number | null;
+  sampleCount: number;
+  lastFailureAt: string | null;
+  lastCheckedAt: string | null;
+}
+
+interface CanaryResponse {
+  journeys: CanaryJourneyView[];
+  overall: CanaryStatus;
+  configured: number;
+  generatedAt: string;
+}
+
 interface OrgAiSpend {
   organizationId: string | null;
   orgName: string | null;
@@ -271,6 +298,7 @@ function levelColor(level: string | null): string {
 const SUBTABS = [
   { id: 'overview', label: 'Oversikt' },
   { id: 'incidents', label: 'Hendelser' },
+  { id: 'canary', label: 'Canary' },
   { id: 'health', label: 'Helse' },
   { id: 'ai-margin', label: 'AI-margin' },
   { id: 'ai-overage', label: 'AI-overage' },
@@ -296,6 +324,19 @@ const HEALTH_SERVICE_LABEL: Record<HealthService, string> = {
   realtime: 'Realtime',
   workers: 'Workers',
   ledgerly: 'Ledgerly (regnskap)',
+};
+
+const CANARY_STATUS_META: Record<CanaryStatus, { label: string; color: string }> = {
+  up: { label: 'OK', color: '#3dd68c' },
+  down: { label: 'Nede', color: '#e5484d' },
+  unknown: { label: 'Ikke kjørt', color: '#8b8b8b' },
+};
+
+const CANARY_VERTICAL_LABEL: Record<CanaryVertical, string> = {
+  platform: 'Plattform',
+  roleroom: 'Role Room',
+  leadgrid: 'Leadgrid',
+  payments: 'Betaling',
 };
 
 const DEPLOY_STATUS_META: Record<DeployStatus, { label: string; color: string }> = {
@@ -371,6 +412,13 @@ const ControlCenterPanel: React.FC = () => {
     queryFn: () => apiRequest('/api/control-center/health'),
     refetchInterval: POLL_MS,
     enabled: subTab === 'health',
+  });
+
+  const canary = useQuery<CanaryResponse>({
+    queryKey: ['/api/control-center/canary'],
+    queryFn: () => apiRequest('/api/control-center/canary'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'canary',
   });
 
   const aiMargin = useQuery<AiMarginResponse>({
@@ -463,6 +511,7 @@ const ControlCenterPanel: React.FC = () => {
       {subTab === 'incidents' && (
         <IncidentsSection inc={inc} onAction={(a) => incidentAction.mutate(a)} pending={incidentAction.isPending} />
       )}
+      {subTab === 'canary' && <CanarySection canary={canary} />}
       {subTab === 'health' && <HealthSection health={health} />}
       {subTab === 'ai-margin' && <AiMarginSection aiMargin={aiMargin} />}
       {subTab === 'ai-overage' && (
@@ -733,6 +782,95 @@ const LogsSection: React.FC<{ logs: ReturnType<typeof useQuery<LogsResponse>> }>
 // ─── Deploys ─────────────────────────────────────────────────────────────────
 
 // ─── Helse ─────────────────────────────────────────────────────────────────
+
+// ─── Canary (syntetiske journeys) ────────────────────────────────────────────
+
+const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryResponse>> }> = ({ canary }) => {
+  if (canary.isLoading) return <Loading />;
+  if (canary.isError || !canary.data) return <ErrorLine msg="Kunne ikke hente canary-status." />;
+
+  const { journeys, overall, generatedAt } = canary.data;
+  const overallMeta = CANARY_STATUS_META[overall] ?? CANARY_STATUS_META.unknown;
+  const upCount = journeys.filter((j) => j.status === 'up').length;
+  const ranCount = journeys.filter((j) => j.status !== 'unknown').length;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard
+          label="Totalstatus"
+          value={overallMeta.label}
+          hint="Verste av kjørte journeys"
+          accent={overallMeta.color}
+        />
+        <KpiCard
+          label="Grønne nå"
+          value={`${upCount}/${ranCount || journeys.length}`}
+          hint="Journeys som svarer som forventet"
+        />
+      </Stack>
+
+      <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ color: 'text.secondary' }}>Journey</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Vertikal</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Forventet</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Svartid</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Oppetid 30d</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">p95</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Detalj</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {journeys.map((j) => {
+            const meta = CANARY_STATUS_META[j.status] ?? CANARY_STATUS_META.unknown;
+            const detail = j.status === 'down' ? (j.message ?? j.note) : j.note;
+            return (
+              <TableRow key={j.key}>
+                <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{j.label}</TableCell>
+                <TableCell sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  {CANARY_VERTICAL_LABEL[j.vertical] ?? j.vertical}
+                </TableCell>
+                <TableCell>
+                  <Tooltip title={j.status === 'down' && j.lastFailureAt ? `Sist feil ${relTime(j.lastFailureAt)}` : ''}>
+                    <Chip
+                      size="small"
+                      label={j.httpStatus != null ? `${meta.label} · ${j.httpStatus}` : meta.label}
+                      sx={{ height: 18, fontSize: 10, bgcolor: meta.color, color: '#fff' }}
+                    />
+                  </Tooltip>
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>{j.expected}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  {j.latencyMs != null ? `${j.latencyMs} ms` : '—'}
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  <Tooltip title={`${j.sampleCount} samples`}>
+                    <span>{j.uptime30d != null ? `${j.uptime30d}%` : '—'}</span>
+                  </Tooltip>
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
+                  {j.p95Ms != null ? `${j.p95Ms} ms` : '—'}
+                </TableCell>
+                <TableCell sx={{ fontSize: 11, color: 'text.disabled', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {detail}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Syntetiske brukerreiser mot prod (GitHub Actions, hvert 10. min) — fanger feil FØR brukerne.
+        Feil bygger automatisk en hendelse i «Hendelser» + e-post til super_admin ved ny feil/gjenoppretting.
+        «Ikke kjørt» = ingen samples enda (cron kjører ~hvert 10. min). Sist oppdatert {relTime(generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
 
 const HealthSection: React.FC<{ health: ReturnType<typeof useQuery<HealthResponse>> }> = ({ health }) => {
   if (health.isLoading) return <Loading />;
