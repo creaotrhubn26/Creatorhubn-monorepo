@@ -1618,6 +1618,10 @@ export function CastingShotListPanel({
   const handleSearchReferenceShots = useCallback(async (query: string): Promise<ShotSearchResult[]> => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return [];
+    // Shot.cafe er et LOKALT dev-verktøy (kjører på :8000). I prod finnes ingen
+    // slik tjeneste, så fetch mot localhost:8000 feilet ALLTID og spammet en
+    // feil-toast for brukeren. Degrader stille til tomt resultat utenfor dev.
+    if (!import.meta.env.DEV) return [];
     try {
       const response = await fetch(`http://localhost:8000/api/shotcafe/search?q=${encodeURIComponent(trimmedQuery)}`);
       if (response.ok) {
