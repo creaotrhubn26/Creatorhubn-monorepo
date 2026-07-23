@@ -845,6 +845,7 @@ import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerLeadgridMileageApprovalRoutes } from "./leadgrid-mileage-approval-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
 import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
 import { registerLeadgridAcademyRoutes } from "./leadgrid-academy-routes";
@@ -66517,6 +66518,10 @@ setupSalesRoutes({
 // /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
 // konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
 registerSalesLeadershipRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/mileage/* — kjøregodtgjørelse-godkjenning (Salgssjef-cockpit).
+// Egen Leadgrid-tabell (mig 0405): selger sender krav → leder godkjenner/eksporterer.
+registerLeadgridMileageApprovalRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/sales-teams + /api/leadgrid/lead-assignments — 6 endpoints
 // (team-struktur + «Send oppdrag»-tildelinger, synk for iPad
