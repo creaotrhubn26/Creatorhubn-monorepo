@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   classifyExpiry,
   severity,
+  isAlertable,
+  expiryBand,
+  alertKeyFor,
+  alertRank,
   secretTransition,
   runSecretWatch,
   type SecretStatus,
@@ -22,37 +26,77 @@ describe("classifyExpiry", () => {
   });
 });
 
-describe("severity", () => {
-  it("rangerer riktig", () => {
-    expect(severity("ok")).toBe(0);
-    expect(severity("expiring")).toBe(1);
-    expect(severity("invalid")).toBe(2);
-    expect(severity("error")).toBe(2);
-    expect(severity("not_configured")).toBe(-1);
+describe("severity (visning)", () => {
+  it("invalid > expiring > error > ok > not_configured", () => {
+    expect(severity("invalid")).toBeGreaterThan(severity("expiring"));
+    expect(severity("expiring")).toBeGreaterThan(severity("error"));
+    expect(severity("error")).toBeGreaterThan(severity("ok"));
+    expect(severity("ok")).toBeGreaterThan(severity("not_configured"));
+  });
+});
+
+describe("isAlertable", () => {
+  it("kun invalid/expiring — IKKE error/ok/not_configured", () => {
+    expect(isAlertable("invalid")).toBe(true);
+    expect(isAlertable("expiring")).toBe(true);
+    expect(isAlertable("error")).toBe(false);
+    expect(isAlertable("ok")).toBe(false);
+    expect(isAlertable("not_configured")).toBe(false);
+  });
+});
+
+describe("expiryBand", () => {
+  it("faller inn i tetteste bånd <= daysLeft", () => {
+    expect(expiryBand(10, 14)).toBe(14);
+    expect(expiryBand(6, 14)).toBe(7);
+    expect(expiryBand(2, 14)).toBe(3);
+    expect(expiryBand(1, 14)).toBe(1);
+    expect(expiryBand(0, 14)).toBe(1);
+  });
+  it("utenfor warn → null (ikke expiring)", () => {
+    expect(expiryBand(30, 14)).toBeNull();
+    expect(expiryBand(null, 14)).toBeNull();
+  });
+});
+
+describe("alertRank", () => {
+  it("invalid > tettere expiring-bånd > løsere; ok/none = 0", () => {
+    expect(alertRank("invalid")).toBeGreaterThan(alertRank("expiring:1"));
+    expect(alertRank("expiring:1")).toBeGreaterThan(alertRank("expiring:7"));
+    expect(alertRank("expiring:7")).toBeGreaterThan(alertRank("expiring:14"));
+    expect(alertRank("ok")).toBe(0);
+    expect(alertRank("none")).toBe(0);
+    expect(alertRank(null)).toBe(0);
   });
 });
 
 describe("secretTransition", () => {
-  it("ok → expiring → alert", () => {
-    expect(secretTransition("ok", "expiring")).toBe("alert");
+  it("ok → expiring(14) → alert", () => {
+    expect(secretTransition("ok", "expiring", 14)).toEqual({ action: "alert", newKey: "expiring:14" });
   });
-  it("ok → invalid → alert", () => {
-    expect(secretTransition("ok", "invalid")).toBe("alert");
+  it("re-nudge: expiring:14 → expiring:7 → alert (tettere bånd)", () => {
+    expect(secretTransition("expiring:14", "expiring", 7)).toEqual({ action: "alert", newKey: "expiring:7" });
+  });
+  it("samme bånd → none (ingen spam)", () => {
+    expect(secretTransition("expiring:7", "expiring", 7)).toEqual({ action: "none", newKey: "expiring:7" });
   });
   it("expiring → invalid → alert (forverring)", () => {
-    expect(secretTransition("expiring", "invalid")).toBe("alert");
+    expect(secretTransition("expiring:7", "invalid", null)).toEqual({ action: "alert", newKey: "invalid" });
   });
-  it("invalid → invalid → none (ingen spam)", () => {
-    expect(secretTransition("invalid", "invalid")).toBe("none");
+  it("invalid → invalid → none", () => {
+    expect(secretTransition("invalid", "invalid", null)).toEqual({ action: "none", newKey: "invalid" });
   });
   it("invalid → ok → recover", () => {
-    expect(secretTransition("invalid", "ok")).toBe("recover");
+    expect(secretTransition("invalid", "ok", null)).toEqual({ action: "recover", newKey: "ok" });
   });
-  it("aldri sett (null) → expiring → alert", () => {
-    expect(secretTransition(null, "expiring")).toBe("alert");
+  it("invalid → error → none OG beholder prev-nøkkel (ingen falsk recover)", () => {
+    expect(secretTransition("invalid", "error", null)).toEqual({ action: "none", newKey: "invalid" });
+  });
+  it("aldri sett (null) → error → none", () => {
+    expect(secretTransition(null, "error", null)).toEqual({ action: "none", newKey: null });
   });
   it("aldri sett (null) → ok → none", () => {
-    expect(secretTransition(null, "ok")).toBe("none");
+    expect(secretTransition(null, "ok", null)).toEqual({ action: "none", newKey: null });
   });
 });
 

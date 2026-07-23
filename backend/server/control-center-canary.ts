@@ -176,7 +176,9 @@ export async function executeCheck(
       method: "GET",
       headers: def.headers,
       signal: controller.signal,
-      redirect: "manual",
+      // `follow` (ikke `manual`): en godartet host-redirect (apex→www, trailing-
+      // slash, http→https) skal ikke telle som 3xx-feil = falsk «canary NEDE».
+      redirect: "follow",
     });
     const latencyMs = Math.max(0, Math.round(now() - started));
     const ok = classifyOk(def.acceptable, res.status);

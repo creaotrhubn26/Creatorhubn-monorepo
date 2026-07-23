@@ -151,9 +151,17 @@ const PROBES: SecretProbeDef[] = [
         if (res.status !== 200) {
           return { status: "invalid", httpStatus: res.status, expiresAt: null, daysLeft: null, message: `Ugyldig PAT (HTTP ${res.status})` };
         }
-        // GitHub avslører EKTE utløp via header for PAT-er med utløp.
+        // GitHub avslører EKTE utløp via header for PAT-er med utløp. Parse
+        // DEFENSIVT: `Date.parse` returnerer NaN (kaster ikke) på uventet format
+        // — aldri `new Date(x).toISOString()` på uvalidert streng (kaster
+        // «Invalid time value» → falsk «ugyldig nøkkel»-varsel). `Date.parse`
+        // håndterer «GMT» + numeriske offset.
         const header = res.headers.get("github-authentication-token-expiration");
-        const expiresAt = header ? new Date(header.replace(" UTC", "Z").replace(" ", "T")).toISOString() : null;
+        let expiresAt: string | null = null;
+        if (header) {
+          const t = Date.parse(header.replace(" UTC", " GMT"));
+          if (!Number.isNaN(t)) expiresAt = new Date(t).toISOString();
+        }
         const daysLeft = daysUntil(expiresAt, now);
         const status = classifyExpiry(daysLeft, warn);
         return {
@@ -195,33 +203,80 @@ const PROBES: SecretProbeDef[] = [
   },
 ];
 
-/** Alvorlighet for transisjons-styring. not_configured varsler vi aldri på. */
+/** Kun `invalid`/`expiring` er varslbare ekte problemer. `error` = probe-blip
+ *  (nettverk/timeout) — inkonklusivt, skal IKKE varsle/lage incident (unngår
+ *  alarm-spam ved forbigående feil). `not_configured` = env mangler. */
+export function isAlertable(status: SecretStatus): boolean {
+  return status === "invalid" || status === "expiring";
+}
+
+/** Alvorlighet KUN for visning (worst-badge). error rangeres under kjente
+ *  problemer, over ok. */
 export function severity(status: SecretStatus): number {
   switch (status) {
+    case "invalid":
+      return 3;
+    case "expiring":
+      return 2;
+    case "error":
+      return 1;
     case "ok":
       return 0;
-    case "expiring":
-      return 1;
-    case "invalid":
-    case "error":
-      return 2;
     default:
       return -1; // not_configured
   }
 }
 
+// Utløps-bånd (dager): en tettere terskel = ny nudge (14 → 7 → 3 → 1), så et
+// nøkkel-utløp ikke varsles ÉN gang og så tystner til den faktisk dør.
+const EXPIRY_BANDS = [1, 3, 7, 14];
+
+export function expiryBand(daysLeft: number | null, warn: number): number | null {
+  if (daysLeft == null) return null;
+  const bands = EXPIRY_BANDS.filter((b) => b <= warn);
+  const eff = bands.length ? bands : [warn];
+  for (const b of eff) if (daysLeft <= b) return b;
+  return daysLeft <= warn ? warn : null;
+}
+
+/** Kanonisk «alert-nøkkel» lagret i last_alert_status for transisjons-styring. */
+export function alertKeyFor(status: SecretStatus, band: number | null): string {
+  if (status === "invalid") return "invalid";
+  if (status === "expiring") return `expiring:${band ?? 14}`;
+  if (status === "ok") return "ok";
+  return "none"; // error/not_configured → nøytral
+}
+
+/** Monoton rangering: tettere expiring-bånd + invalid rangeres høyere → tillater
+ *  re-nudge når nøkkelen nærmer seg utløp. */
+export function alertRank(key: string | null): number {
+  if (!key || key === "ok" || key === "none") return 0;
+  if (key === "invalid") return 100;
+  const m = /^expiring:(\d+)$/.exec(key);
+  if (m) return 50 - Number(m[1]); // band 14→36, 7→43, 3→47, 1→49
+  return 0;
+}
+
 export type SecretTransition = "alert" | "recover" | "none";
 
 /**
- * Varsel kun ved forverring til «dårlig» (sev>=1) fra bedre, eller gjenoppretting
- * til ok fra dårlig. `prevAlert` = statusen vi sist varslet på (null = aldri).
+ * Varsel-styring. `prevKey` = alert-nøkkelen vi sist varslet på (null = aldri).
+ * error/not_configured er inkonklusive → rør ikke alert-tilstanden.
  */
-export function secretTransition(prevAlert: SecretStatus | null, now: SecretStatus): SecretTransition {
-  const nowSev = severity(now);
-  const prevSev = prevAlert == null ? 0 : severity(prevAlert);
-  if (nowSev >= 1 && nowSev > prevSev) return "alert";
-  if (nowSev === 0 && prevSev >= 1) return "recover";
-  return "none";
+export function secretTransition(
+  prevKey: string | null,
+  nowStatus: SecretStatus,
+  band: number | null,
+): { action: SecretTransition; newKey: string | null } {
+  if (nowStatus === "error" || nowStatus === "not_configured") {
+    return { action: "none", newKey: prevKey };
+  }
+  const nowKey = alertKeyFor(nowStatus, band);
+  const nowRank = alertRank(nowKey);
+  const prevRank = alertRank(prevKey);
+  if (nowKey !== "ok" && nowRank > prevRank) return { action: "alert", newKey: nowKey };
+  if (nowKey === "ok" && prevRank > 0) return { action: "recover", newKey: "ok" };
+  return { action: "none", newKey: prevKey };
 }
 
 function isMissingTable(err: unknown): boolean {
@@ -277,12 +332,14 @@ export async function runSecretWatch(pool: Pool, deps: SecretWatchDeps = {}): Pr
     const result: SecretProbeResult = { key: probe.key, label: probe.label, ...r };
     results.push(result);
     if (r.status === "ok") okCount++;
-    if (severity(r.status) >= 1) problems++;
+    if (isAlertable(r.status)) problems++;
 
-    const action = secretTransition(prev.lastAlert, r.status);
+    const band = expiryBand(r.daysLeft, warn);
+    const { action, newKey } = secretTransition(prev.lastAlert, r.status, band);
 
-    // Forverring → idempotent incident i error_log.
-    if (severity(r.status) >= 1) {
+    // Kjent problem (ugyldig/utløper) → idempotent incident. `error` (probe-blip)
+    // lager IKKE incident — det er ikke et nøkkel-problem.
+    if (isAlertable(r.status)) {
       try {
         await logErrorFn(pool, {
           source: "backend",
@@ -297,8 +354,7 @@ export async function runSecretWatch(pool: Pool, deps: SecretWatchDeps = {}): Pr
       }
     }
 
-    const newAlert = action === "alert" ? r.status : action === "recover" ? "ok" : prev.lastAlert;
-    await upsertStatus(pool, probe.key, probe.label, r, newAlert);
+    await upsertStatus(pool, probe.key, probe.label, r, newKey);
 
     if (action !== "none") {
       try {
@@ -322,11 +378,11 @@ export async function runSecretWatch(pool: Pool, deps: SecretWatchDeps = {}): Pr
   return { ran: results.length, ok: okCount, configured, problems, results };
 }
 
-async function prevStatusFor(pool: Pool, key: string): Promise<{ lastAlert: SecretStatus | null }> {
+async function prevStatusFor(pool: Pool, key: string): Promise<{ lastAlert: string | null }> {
   try {
     const r = await pool.query(`SELECT last_alert_status FROM control_center_secret_status WHERE secret_key = $1`, [key]);
     if (r.rows.length === 0) return { lastAlert: null };
-    return { lastAlert: (r.rows[0].last_alert_status as SecretStatus | null) ?? null };
+    return { lastAlert: (r.rows[0].last_alert_status as string | null) ?? null };
   } catch (err) {
     if (isMissingTable(err)) return { lastAlert: null };
     throw err;
@@ -338,7 +394,7 @@ async function upsertStatus(
   key: string,
   label: string,
   r: Omit<SecretProbeResult, "key" | "label">,
-  lastAlert: SecretStatus | null,
+  lastAlert: string | null,
 ): Promise<void> {
   try {
     await pool.query(
