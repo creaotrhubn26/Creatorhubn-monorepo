@@ -47,6 +47,8 @@ import {
 } from "./ai-overage-service.js";
 import { overageMarkup } from "./ai-plan-budgets.js";
 import { billAiOverage } from "./ai-overage-billing.js";
+import { timingSafeEqual } from "crypto";
+import { runCanaries, getCanaryStatus } from "./control-center-canary.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -652,6 +654,42 @@ export function setupControlCenterRoutes(deps: Deps): void {
     } catch (err) {
       console.warn("[control-center/logs] failed:", (err as Error).message);
       return res.json({ success: true, data: [] });
+    }
+  });
+
+  // ── Canary: syntetiske journeys (proaktiv drift) ──────────────────────────
+  // GET er super_admin-gated (cockpit-visning). POST /run er cron-token-gated
+  // (kalles av GitHub Actions hvert 10. min), IKKE super_admin — samme mønster
+  // som de øvrige cron-endepunktene (x-cron-trigger-token + timingSafeEqual).
+  app.get("/api/control-center/canary", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const status = await getCanaryStatus(pool);
+      return res.json(status);
+    } catch (err) {
+      console.warn("[control-center/canary] failed:", (err as Error).message);
+      return res.json({ journeys: [], overall: "unknown", configured: 0, generatedAt: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/control-center/canary/run", async (req, res) => {
+    const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
+    const expected = (process.env.CRON_TRIGGER_TOKEN || "").trim();
+    if (
+      !presented ||
+      !expected ||
+      presented.length !== expected.length ||
+      !timingSafeEqual(Buffer.from(presented), Buffer.from(expected))
+    ) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    try {
+      const summary = await runCanaries(pool);
+      return res.json({ ok: true, ...summary });
+    } catch (err) {
+      console.error("[control-center/canary/run] failed:", (err as Error).message);
+      return res.status(500).json({ ok: false, error: "canary_run_failed" });
     }
   });
 }
