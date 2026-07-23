@@ -921,19 +921,76 @@ private struct NewCoachingSheet: View {
 
 struct MileageApprovalsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var paidIds: Set<UUID> = []
+    // Ekte (backend-)krav — hentes når demo er AV (mig 0405).
+    @State private var realPending: [MileageEntry] = []
+    @State private var realRecent: [MileageEntry] = []
+    @State private var loaded = false
+    @State private var working = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    private var pendingList: [MileageEntry] { isDemo ? MileageMockData.pending : realPending }
+    private var recentList: [MileageEntry] { isDemo ? MileageMockData.recent : realRecent }
 
     private func isPaid(_ m: MileageEntry) -> Bool { m.isPaid || paidIds.contains(m.id) }
     private var allPendingPaid: Bool {
-        !MileageMockData.pending.isEmpty && MileageMockData.pending.allSatisfy { paidIds.contains($0.id) }
+        !pendingList.isEmpty && pendingList.allSatisfy { isPaid($0) }
     }
+    private var pendingTotalNok: Int {
+        pendingList.reduce(0) { $0 + (Int($1.amountText.filter { $0.isNumber }) ?? 0) }
+    }
+    private var pendingTotalKm: Int { pendingList.reduce(0) { $0 + $1.km } }
+
     private var mileageCSV: String {
         var lines = ["Selger;Dato;Rute;KM;Beløp;Status"]
-        for m in MileageMockData.pending + MileageMockData.recent {
+        for m in pendingList + recentList {
             let status = isPaid(m) ? "Utbetalt" : "Til godkjenning"
             lines.append("\(m.sellerName);\(m.dateText);\(m.routeText);\(m.km);\(m.amountText);\(status)")
         }
         return lines.joined(separator: "\n")
+    }
+
+    // Map ekte krav → visnings-MileageEntry (bærer backendId for godkjenning).
+    private func toEntry(_ c: LeadgridMileageClaim) -> MileageEntry {
+        let name = c.sellerName ?? "Selger"
+        let inits = name.split(separator: " ").prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
+        let palette: [Color] = [SlBrand.purpleLight, SlBrand.green, SlBrand.blue, SlBrand.orange, SlBrand.yellow, SlBrand.red]
+        let color = palette[abs(c.sellerUserId.hashValue) % palette.count]
+        return MileageEntry(
+            sellerName: name, initials: inits.isEmpty ? "?" : inits, color: color,
+            dateText: c.tripDate, routeText: c.routeText ?? "",
+            km: Int(c.km.rounded()), amountText: "\(Int(c.amountNok.rounded())) kr",
+            isPaid: c.status != "pending", backendId: c.id, claimStatus: c.status
+        )
+    }
+
+    private func load() async {
+        guard !isDemo, let api = appState.api else { loaded = true; return }
+        async let p = try? api.fetchLeadgridMileagePending()
+        async let r = try? api.fetchLeadgridMileageRecent()
+        let (pend, rec) = await (p, r)
+        realPending = (pend ?? []).map(toEntry)
+        realRecent = (rec ?? []).map(toEntry)
+        loaded = true
+    }
+
+    private func approve(_ m: MileageEntry) async {
+        if isDemo { withAnimation { _ = paidIds.insert(m.id) }; return }
+        guard let id = m.backendId, let api = appState.api else { return }
+        working = true
+        try? await api.approveLeadgridMileage(id: id)
+        await load()
+        working = false
+    }
+
+    private func approveAll() async {
+        if isDemo { withAnimation { for m in pendingList { paidIds.insert(m.id) } }; return }
+        guard let api = appState.api else { return }
+        working = true
+        _ = try? await api.approveAllLeadgridMileage()
+        await load()
+        working = false
     }
 
     var body: some View {
@@ -941,27 +998,30 @@ struct MileageApprovalsSheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if MileageMockData.pending.isEmpty && MileageMockData.recent.isEmpty {
+                    if !loaded && !isDemo {
+                        ProgressView().tint(SlBrand.purpleLight).padding(.vertical, 80)
+                    } else if pendingList.isEmpty && recentList.isEmpty {
                         cockpitEmptyState(
                             icon: "car",
                             title: "Ingen kjøregodtgjørelser enda",
-                            subtitle: "Utgifter som venter godkjenning dukker opp her."
+                            subtitle: "Krav selgerne sender inn dukker opp her til godkjenning."
                         )
                     } else {
                     VStack(alignment: .leading, spacing: 14) {
                         // KPI
                         HStack(spacing: 12) {
-                            kpiTile("VENTER", "5", SlBrand.orange)
-                            kpiTile("TOTAL km", "1 284", SlBrand.blue)
-                            kpiTile("Å UTBETALE", "6 420 kr", SlBrand.green)
+                            kpiTile("VENTER", "\(pendingList.count)", SlBrand.orange)
+                            kpiTile("TOTAL km", "\(pendingTotalKm)", SlBrand.blue)
+                            kpiTile("Å UTBETALE", "\(pendingTotalNok) kr", SlBrand.green)
                         }
 
-                        // Månedens oversikt
+                        // Ventende krav
+                        if !pendingList.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("VENTER GODKJENNING (5)")
+                            Text("VENTER GODKJENNING (\(pendingList.count))")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(MileageMockData.pending) { m in
+                            ForEach(pendingList) { m in
                                 mileageRow(m)
                             }
                         }
@@ -971,13 +1031,11 @@ struct MileageApprovalsSheet: View {
 
                         // Batch-godkjenn
                         Button {
-                            withAnimation {
-                                for m in MileageMockData.pending { paidIds.insert(m.id) }
-                            }
+                            Task { await approveAll() }
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.seal.fill")
-                                Text(allPendingPaid ? "Alle godkjent ✓" : "Godkjenn alle 5 (6 420 kr)")
+                                Text(allPendingPaid ? "Alle godkjent ✓" : "Godkjenn alle \(pendingList.count) (\(pendingTotalNok) kr)")
                                     .font(.appScaled(size: 14, weight: .bold))
                             }
                             .foregroundStyle(.white)
@@ -989,27 +1047,31 @@ struct MileageApprovalsSheet: View {
                                 in: RoundedRectangle(cornerRadius: 12)
                             )
                             .shadow(color: SlBrand.green.opacity(0.4), radius: 8, y: 2)
-                            .opacity(allPendingPaid ? 0.6 : 1)
+                            .opacity(allPendingPaid || working ? 0.6 : 1)
                         }
                         .buttonStyle(.plain)
-                        .disabled(allPendingPaid)
+                        .disabled(allPendingPaid || working)
+                        }
 
                         // Historikk
+                        if !recentList.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("SISTE UTBETALT")
+                            Text(isDemo ? "SISTE UTBETALT" : "GODKJENT")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(MileageMockData.recent) { m in
+                            ForEach(recentList) { m in
                                 mileageRow(m)
                             }
                         }
                         .padding(14)
                         .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
                     }
                     .padding(20)
                     }
                 }
+                .task { if !loaded { await load() } }
             }
             .navigationTitle("Kjøregodtgjørelse")
             .navigationBarTitleDisplayMode(.inline)
@@ -1070,7 +1132,7 @@ struct MileageApprovalsSheet: View {
                     .foregroundStyle(SlBrand.green).monospacedDigit()
             }
             if !isPaid(m) {
-                Button { withAnimation { _ = paidIds.insert(m.id) } } label: {
+                Button { Task { await approve(m) } } label: {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.appScaled(size: 20, weight: .bold))
                         .foregroundStyle(SlBrand.green)
@@ -1095,6 +1157,9 @@ struct MileageEntry: Identifiable {
     let km: Int
     let amountText: String
     let isPaid: Bool
+    /// Satt for ekte (backend-)krav — brukes til å godkjenne mot API.
+    var backendId: Int? = nil
+    var claimStatus: String? = nil
 }
 
 enum MileageMockData {
