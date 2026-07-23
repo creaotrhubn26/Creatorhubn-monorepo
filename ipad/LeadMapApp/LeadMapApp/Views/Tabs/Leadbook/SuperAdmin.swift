@@ -768,6 +768,13 @@ struct OrgDetailSheet: View {
     @Environment(\.openURL) private var openURL
     @State private var tab: Tab = .oversikt
     @State private var showManualInvoiceInfo = false
+    // Manuell faktura-skjema (mig 0407)
+    @State private var invoiceEmail = ""
+    @State private var invoiceAmount = ""
+    @State private var invoiceDesc = "Leadgrid-abonnement"
+    @State private var invoiceSending = false
+    @State private var invoiceResult: LeadgridManualInvoice?
+    @State private var invoiceError: String?
     @State private var showEntitlementMatrix = false
     @State private var showPlanChange = false
     @State private var showImpersonate = false
@@ -1413,36 +1420,93 @@ struct OrgDetailSheet: View {
                     )
                 }.buttonStyle(.plain)
             }
-            .sheet(isPresented: $showManualInvoiceInfo) {
-                NavigationStack {
-                    ZStack {
-                        LBrand.bg.ignoresSafeArea()
-                        VStack(spacing: 14) {
-                            Image(systemName: "doc.text.fill")
-                                .font(.appScaled(size: 42, weight: .semibold))
-                                .foregroundStyle(LBrand.purpleLight)
-                                .padding(.top, 60)
-                            Text("Manuell faktura").font(.appScaled(size: 18, weight: .bold))
-                                .foregroundStyle(.white)
-                            Text("Manuell fakturering settes opp i Stripe-dashbordet — bruk «Åpne i Stripe». Automatisk fakturering kobles når organisasjonen får et Stripe-abonnement.")
-                                .font(.appScaled(size: 12))
-                                .foregroundStyle(LBrand.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 28)
-                            Spacer()
+            .sheet(isPresented: $showManualInvoiceInfo) { manualInvoiceSheet }
+            }
+        }
+    }
+
+    // MARK: Manuell faktura-skjema (mig 0407)
+
+    private var canSendInvoice: Bool {
+        invoiceEmail.contains("@") && (Double(invoiceAmount.replacingOccurrences(of: " ", with: "")) ?? 0) > 0
+    }
+
+    private var manualInvoiceSheet: some View {
+        NavigationStack {
+            Form {
+                if let inv = invoiceResult {
+                    Section {
+                        Label("Faktura sendt", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(LBrand.green)
+                        Text("Faktura \(inv.invoiceNumber ?? "—") sendt til \(inv.recipientEmail).")
+                            .font(.footnote).foregroundStyle(LBrand.textSecondary)
+                    }
+                } else {
+                    Section("Mottaker") {
+                        TextField("E-post", text: $invoiceEmail)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                    }
+                    Section("Beløp") {
+                        HStack {
+                            Text("NOK")
+                            TextField("0", text: $invoiceAmount)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
                         }
                     }
-                    .navigationTitle("Manuell faktura")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Lukk") { showManualInvoiceInfo = false }.tint(LBrand.purpleLight)
-                        }
+                    Section("Beskrivelse") {
+                        TextField("Hva faktureres", text: $invoiceDesc)
+                    }
+                    if let invoiceError {
+                        Section { Label(invoiceError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
                     }
                 }
             }
+            .navigationTitle("Manuell faktura")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(invoiceResult == nil ? "Avbryt" : "Lukk") { showManualInvoiceInfo = false }
+                        .tint(LBrand.textSecondary)
+                }
+                if invoiceResult == nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            Task { await sendInvoice() }
+                        } label: {
+                            if invoiceSending { ProgressView() } else { Text("Send faktura").fontWeight(.semibold) }
+                        }
+                        .disabled(!canSendInvoice || invoiceSending)
+                        .tint(LBrand.purpleLight)
+                    }
+                }
+            }
+            .onAppear {
+                if invoiceEmail.isEmpty, org.primaryContact.contains("@") { invoiceEmail = org.primaryContact }
+                if invoiceAmount.isEmpty, org.monthlySpend > 0 { invoiceAmount = "\(org.monthlySpend)" }
             }
         }
+    }
+
+    private func sendInvoice() async {
+        guard let api = appState.api else { invoiceError = "Ingen tilkobling."; return }
+        invoiceSending = true
+        invoiceError = nil
+        let amount = Double(invoiceAmount.replacingOccurrences(of: " ", with: "")) ?? 0
+        do {
+            let inv = try await api.sendLeadgridManualInvoice(
+                recipientEmail: invoiceEmail.trimmingCharacters(in: .whitespaces),
+                amountNok: amount,
+                description: invoiceDesc.isEmpty ? nil : invoiceDesc,
+                orgLabel: org.name,
+                organizationId: org.serverId
+            )
+            invoiceResult = inv
+        } catch {
+            invoiceError = "Kunne ikke sende faktura. Prøv igjen."
+        }
+        invoiceSending = false
     }
 
     private func stripeRow(_ label: String, value: String, icon: String) -> some View {
