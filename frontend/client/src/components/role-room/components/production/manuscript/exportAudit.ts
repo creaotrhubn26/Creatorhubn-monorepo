@@ -175,6 +175,8 @@ export const sanitizeDownloadFileName = (
   const trimmed = fileName.trim();
   const source = trimmed || fallbackFileName;
   const sanitized = source
+    // Kontrolltegn (0x00–0x1f, 0x7f) fjernes bevisst fra filnavn.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '_')
     .replace(/\s+/g, ' ')
     .replace(/^\.+/, '')

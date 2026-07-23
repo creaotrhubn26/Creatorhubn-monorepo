@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, star
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
-import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
@@ -788,7 +788,6 @@ export function CastingPlannerPanel({
     base = Math.max(useCompactHeaderLayout ? TOUCH_TARGET_SIZE : 38, base);
     return base;
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
-  const MOBILE_TOUCH_TARGET_SIZE = 48;
   const safeHeaderActionButtonSizePx = isMobile
     ? Math.max(navActionButtonSizePx, MOBILE_TOUCH_TARGET_SIZE)
     : navActionButtonSizePx;
