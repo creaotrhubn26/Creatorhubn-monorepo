@@ -1586,8 +1586,50 @@ export function VatScreen({ orgId }: { orgId: string }) {
     windowFrom: string;
     asOf: string;
     vatStatus: string;
+    altinnActive: boolean;
   }
   const threshold = useLoad(() => api<Threshold>('GET', `/api/organizations/${orgId}/vat/threshold`), [orgId]);
+  const [meldBusy, setMeldBusy] = useState(false);
+  const [meldMsg, setMeldMsg] = useState<string | null>(null);
+  const meldToast = useToast();
+
+  const downloadMvaMelding = async () => {
+    setMeldMsg(null);
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/vat/mva-melding/xml?from=${from}&to=${to}`, {
+        headers: { authorization: `Bearer ${sessionStorage.getItem('reknaren.token')}` },
+      });
+      if (!res.ok) throw new Error('Klarte ikke å lage MVA-meldingen.');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mva-melding_${from}_${to}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMeldMsg((err as Error).message);
+    }
+  };
+
+  const validateMvaMelding = async () => {
+    setMeldBusy(true);
+    setMeldMsg(null);
+    try {
+      const res = await api<{ valid: boolean; messages: string[] }>(
+        'POST',
+        `/api/organizations/${orgId}/vat/mva-melding/validate`,
+        { from, to },
+      );
+      if (res.valid) meldToast('MVA-meldingen er gyldig hos Skatteetaten ✓', 'ok');
+      else setMeldMsg(`Skatteetaten fant ${res.messages.length} merknad(er): ${res.messages.slice(0, 5).join(' · ')}`);
+    } catch (err) {
+      setMeldMsg((err as Error).message);
+    } finally {
+      setMeldBusy(false);
+    }
+  };
+
   const r = report.data;
   return (
     <div>
@@ -1650,6 +1692,34 @@ export function VatScreen({ orgId }: { orgId: string }) {
           <input id="vto" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
       </div>
+
+      <div className="panel">
+        <div className="threshold-head">
+          <h2>MVA-melding</h2>
+          <span className={`badge ${threshold.data?.altinnActive ? 'ok' : 'neutral plain'}`}>
+            {threshold.data?.altinnActive ? 'Innsending aktiv' : 'Innsending ikke aktivert'}
+          </span>
+        </div>
+        <p className="subtitle">
+          Meldingen bygges automatisk fra tallene i valgt periode, i Skatteetatens format.
+        </p>
+        {meldMsg && <div className="error">{meldMsg}</div>}
+        <div className="actions">
+          <button onClick={downloadMvaMelding}>Last ned MVA-melding (XML)</button>
+          {threshold.data?.altinnActive ? (
+            <button className="primary" disabled={meldBusy} onClick={validateMvaMelding}>
+              {meldBusy ? 'Validerer…' : 'Valider hos Skatteetaten'}
+            </button>
+          ) : null}
+        </div>
+        {!threshold.data?.altinnActive && (
+          <p className="hint">
+            Automatisk innsending og validering aktiveres når Maskinporten-tilgangen fra Skatteetaten er
+            på plass. I mellomtiden kan du laste ned XML-en og laste den opp i Altinn.
+          </p>
+        )}
+      </div>
+
       {report.error && <div className="error">{report.error}</div>}
       {report.loading ? (
         <div className="cards">

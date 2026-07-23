@@ -191,3 +191,29 @@ describe('EHF / PEPPOL', () => {
     expect(res.body.error.code).toBe('INTEGRATION_UNAVAILABLE');
   });
 });
+
+describe('MVA-melding', () => {
+  it('genererer nedlastbar MVA-melding-XML i Skatteetatens format (alltid tilgjengelig)', async () => {
+    const res = await request(app)
+      .get(`/api/organizations/${orgId}/vat/mva-melding/xml?from=2025-01-01&to=2026-12-31`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.headers['content-type']).toContain('application/xml');
+    expect(res.text).toContain('mvaMeldingDto');
+    expect(res.text).toContain('<mvaLinjer>');
+  });
+
+  it('validering/innsending svarer 503 uten aktivert Maskinporten', async () => {
+    const v = await request(app)
+      .post(`/api/organizations/${orgId}/vat/mva-melding/validate`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ from: '2026-01-01', to: '2026-12-31' })
+      .expect(503);
+    expect(v.body.error.code).toBe('INTEGRATION_UNAVAILABLE');
+    await request(app)
+      .post(`/api/organizations/${orgId}/vat/mva-melding/submit`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ from: '2026-01-01', to: '2026-12-31' })
+      .expect(503);
+  });
+});

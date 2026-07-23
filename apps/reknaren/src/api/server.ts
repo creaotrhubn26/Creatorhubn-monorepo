@@ -31,7 +31,7 @@ import {
 } from '../orgs/service.js';
 import type { VatRegisterLookup } from '../integrations/brreg.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
-import type { VatSubmissionPort } from '../integrations/vat-submission.js';
+import { buildMvaMeldingXml, MaskinportenError, type VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
 import type { StripeReadPort } from '../integrations/stripe.js';
 import { syncStripeRevenue } from '../integrations/stripe-sync.js';
@@ -1502,7 +1502,109 @@ export function createApiServer(deps: ApiDeps): express.Express {
           vatRegistrationThreshold(deps.db, { organizationId: req.params.orgId!, asOf }),
           deps.db.query(`SELECT vat_status FROM organizations WHERE id = $1`, [req.params.orgId]),
         ]);
-        res.json(toJson({ ...threshold, vatStatus: org.rows[0]?.vat_status ?? 'not_registered' }));
+        res.json(
+          toJson({
+            ...threshold,
+            vatStatus: org.rows[0]?.vat_status ?? 'not_registered',
+            altinnActive: Boolean(deps.vatSubmission?.active),
+          }),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // MVA-meldingen som XML (Skatteetatens format). Alltid tilgjengelig — kan lastes ned
+  // og lastes opp manuelt i Altinn, eller sendes automatisk via Maskinporten når aktiv.
+  app.get(
+    '/api/organizations/:orgId/vat/mva-melding/xml',
+    requireAuth,
+    requireOrgPermission('vat.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const q = z
+          .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+          .parse(req.query);
+        const report = await buildVatReport(deps.db, req.params.orgId!, q.from, q.to);
+        const xml = buildMvaMeldingXml(report);
+        res.setHeader('Content-Disposition', `attachment; filename="mva-melding_${q.from}_${q.to}.xml"`);
+        res.type('application/xml').send(xml);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Valider MVA-meldingen mot Skatteetatens grensesnittstøtte (krever Maskinporten).
+  app.post(
+    '/api/organizations/:orgId/vat/mva-melding/validate',
+    requireAuth,
+    requireOrgPermission('vat.submit'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.vatSubmission || !deps.vatSubmission.active) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message: 'MVA-melding-innsending er ikke aktivert (Maskinporten-tilgang mangler). Last ned XML og last opp i Altinn i mellomtiden.',
+            },
+          });
+          return;
+        }
+        const body = z
+          .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+          .parse(req.body);
+        const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
+        const result = await deps.vatSubmission.validate(report);
+        res.json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Send inn MVA-meldingen til Skatteetaten (Altinn 3 via Maskinporten).
+  app.post(
+    '/api/organizations/:orgId/vat/mva-melding/submit',
+    requireAuth,
+    requireOrgPermission('vat.submit'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (!deps.vatSubmission || !deps.vatSubmission.active) {
+          res.status(503).json({
+            error: {
+              code: 'INTEGRATION_UNAVAILABLE',
+              message: 'MVA-melding-innsending er ikke aktivert (Maskinporten-tilgang mangler).',
+            },
+          });
+          return;
+        }
+        const body = z
+          .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+          .parse(req.body);
+        const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
+        try {
+          const receipt = await deps.vatSubmission.submit(report);
+          await withTransaction(deps.db, (client) =>
+            recordAuditEvent(client, {
+              organizationId: req.params.orgId!,
+              actor: { userId: req.auth!.userId, role: req.orgRole! },
+              action: 'vat.mva_melding_submitted',
+              entityType: 'organization',
+              entityId: req.params.orgId!,
+              newValue: { from: body.from, to: body.to },
+            }),
+          );
+          res.status(201).json(toJson(receipt));
+        } catch (e) {
+          // Altinn 3-innsendingsflyten er ennå ikke ferdigstilt — ærlig 501 heller enn falsk kvittering.
+          if (e instanceof MaskinportenError) {
+            res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: e.message } });
+            return;
+          }
+          throw e;
+        }
       } catch (err) {
         next(err);
       }
