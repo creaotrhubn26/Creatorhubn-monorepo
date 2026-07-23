@@ -172,6 +172,7 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
@@ -2548,6 +2549,10 @@ app.use(
 app.use(
   "/api/role-room",
   createStoryboardRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/storyboards",
+  createStoryboardAiRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room/locations/analysis",
