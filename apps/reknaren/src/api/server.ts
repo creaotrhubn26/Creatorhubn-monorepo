@@ -67,7 +67,7 @@ import { bankCategoriesFor, categorizeBankTransaction } from '../bank/categorize
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
-import { parseSaft } from '../saft/import.js';
+import { parseSaft, importSaftOpeningBalance } from '../saft/import.js';
 import { newId } from '../shared/ids.js';
 import type { RuleRegister } from '../rules/register.js';
 import type { ObjectStorage } from '../storage/port.js';
@@ -1655,6 +1655,43 @@ export function createApiServer(deps: ApiDeps): express.Express {
             suppliers: preview.suppliers.slice(0, 200),
           }),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Bokfør åpningsbalansen fra SAF-T: sikrer kontoplan + kontakter + fører ÉN
+  // balansert åpningspostering datert asOfDate. Idempotent på dato.
+  app.post(
+    '/api/organizations/:orgId/saft-import',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            xml: z.string().min(1).max(40_000_000),
+            asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          })
+          .parse(req.body);
+        const result = await importSaftOpeningBalance(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          xml: body.xml,
+          asOfDate: body.asOfDate,
+        });
+        await withTransaction(deps.db, (client) =>
+          recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'saft.opening_balance_imported',
+            entityType: 'organization',
+            entityId: req.params.orgId!,
+            newValue: { asOfDate: body.asOfDate, entryNumber: result.entryNumber, lines: result.openingLines },
+          }),
+        );
+        res.status(201).json(toJson(result));
       } catch (err) {
         next(err);
       }

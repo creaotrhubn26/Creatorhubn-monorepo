@@ -1752,7 +1752,10 @@ interface SaftPreview {
 
 export function SaftImportScreen({ orgId }: { orgId: string }) {
   const [preview, setPreview] = useState<SaftPreview | null>(null);
+  const [xml, setXml] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [asOfDate, setAsOfDate] = useState('');
+  const [imported, setImported] = useState<{ entryNumber: number; accountsEnsured: number; customersCreated: number; suppliersCreated: number; openingLines: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
@@ -1764,11 +1767,35 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
     setBusy(true);
     setError(null);
     setPreview(null);
+    setImported(null);
     try {
-      const xml = await f.text();
-      const p = await api<SaftPreview>('POST', `/api/organizations/${orgId}/saft-import/preview`, { xml });
+      const content = await f.text();
+      const p = await api<SaftPreview>('POST', `/api/organizations/${orgId}/saft-import/preview`, { xml: content });
       setPreview(p);
+      setXml(content);
+      if (p.periodEnd) setAsOfDate(p.periodEnd);
       toast('Fila ble lest ✓', 'ok');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bookOpening = async () => {
+    if (!xml || !/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) {
+      setError('Velg en gyldig dato (ÅÅÅÅ-MM-DD) for åpningsbalansen.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<NonNullable<typeof imported>>('POST', `/api/organizations/${orgId}/saft-import`, {
+        xml,
+        asOfDate,
+      });
+      setImported(res);
+      toast(`Åpningsbalanse bokført som bilag nr. ${res.entryNumber} ✓`, 'ok');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1829,11 +1856,42 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
                 <div className="hint">Kredit: {kr(preview.totalCreditMinor)}</div>
               </div>
             </div>
-            <p className="hint">
-              Neste steg blir å bokføre åpningsbalansen fra disse tallene (kommer straks). Du får
-              bekrefte før noe føres — «brukervennlig først, men alt skal stemme».
-            </p>
           </div>
+
+          {imported ? (
+            <div className="panel threshold-panel ok">
+              <div className="threshold-head">
+                <h2>Åpningsbalanse bokført ✓</h2>
+                <span className="badge ok">Bilag nr. {imported.entryNumber}</span>
+              </div>
+              <p className="subtitle">
+                {imported.openingLines} kontosaldoer ført · {imported.accountsEnsured} nye kontoer opprettet ·{' '}
+                {imported.customersCreated} kunder · {imported.suppliersCreated} leverandører. Regnskapet i
+                Reknaren starter nå fra Fiken-tallene dine.
+              </p>
+            </div>
+          ) : (
+            preview.balanced && (
+              <div className="panel">
+                <h2>3. Bokfør åpningsbalanse</h2>
+                <p className="subtitle">
+                  Vi fører saldoene over som én åpningspostering på datoen du velger. Du kan ikke føre
+                  samme dato to ganger. Kontoer som mangler opprettes automatisk.
+                </p>
+                <div className="row">
+                  <div>
+                    <label htmlFor="asof">Åpningsdato</label>
+                    <input id="asof" placeholder="ÅÅÅÅ-MM-DD" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <button className="primary" disabled={busy} onClick={bookOpening}>
+                      {busy ? 'Bokfører…' : 'Bokfør åpningsbalanse'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          )}
 
           <h2>Kontoplan med saldo</h2>
           <div className="table-wrap">
