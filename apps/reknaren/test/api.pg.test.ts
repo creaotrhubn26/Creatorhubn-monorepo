@@ -147,6 +147,15 @@ describe('Vertikal flyt over HTTP', () => {
     expect(detail.body.explanation.rules.length).toBeGreaterThan(0);
     expect(detail.body.explanation.rules[0].sources[0].url).toMatch(/^https:/);
     expect(detail.body.suggestions[0].suggestion.requiresHumanReview).toBe(true);
+
+    // Krav 4: konsekvens i kroner — inngående mva trekkes fullt (2 000 kr).
+    expect(detail.body.explanation.impact.computable).toBe(true);
+    expect(detail.body.explanation.impact.deductibleInputVatMinor).toBe('200000');
+    // Krav 7: historikken har allerede systemets forslagshendelse.
+    expect(Array.isArray(detail.body.history)).toBe(true);
+    expect(
+      detail.body.history.some((e: { action: string }) => e.action === 'posting_suggestion.created'),
+    ).toBe(true);
   });
 
   it('godkjenner og bokfører; rapportene oppdateres', async () => {
@@ -176,6 +185,18 @@ describe('Vertikal flyt over HTTP', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
     expect(vat.body.deductibleInputVatMinor).toBe('200000');
+
+    // Krav 6+7: bilaget viser nå hvem som godkjente + full historikk med bokføring.
+    const after = await request(app)
+      .get(`/api/organizations/${orgId}/documents/${documentId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const decided = after.body.suggestions.find((s: { decided_at: string | null }) => s.decided_at);
+    expect(decided).toBeTruthy();
+    expect(decided.decided_by_email).toBe('eier@example.com');
+    expect(
+      after.body.history.some((e: { action: string }) => e.action === 'document.approved_and_posted'),
+    ).toBe(true);
   });
 
   it('Scenario 9: feil i låst periode rettes med kontrollert korrigering', async () => {

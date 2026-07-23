@@ -59,6 +59,7 @@ import {
   type PipelineDeps,
 } from '../pipeline/pipeline.js';
 import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
+import { computeDocumentImpact } from '../pipeline/impact.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
 import type { BankFeedProvider } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
@@ -635,16 +636,31 @@ export function createApiServer(deps: ApiDeps): express.Express {
           return;
         }
         const extraction = await deps.db.query(
-          `SELECT * FROM extracted_document_data WHERE document_id = $1 ORDER BY extraction_version DESC LIMIT 1`,
+          // invoice_date også som ::text: DATE lest via SELECT * blir et JS Date som
+          // under lokal tidssone kan skli en dag ved konvertering. Regeloppslag
+          // (satser per dato) skal alltid bruke den rene kalenderdatoen.
+          `SELECT *, invoice_date::text AS invoice_date_text
+           FROM extracted_document_data WHERE document_id = $1
+           ORDER BY extraction_version DESC LIMIT 1`,
           [req.params.documentId],
         );
+        // Krav 6: hvem godkjente/endret forslaget (aktørnavn slås opp mot users).
         const suggestions = await deps.db.query(
-          `SELECT id, suggestion, engine, status, created_at FROM posting_suggestions
-           WHERE document_id = $1 ORDER BY created_at DESC`,
+          `SELECT s.id, s.suggestion, s.engine, s.status, s.created_at,
+                  s.decided_by, s.decided_at, s.decision_note,
+                  u.display_name AS decided_by_name, u.email AS decided_by_email
+           FROM posting_suggestions s
+           LEFT JOIN users u ON u.id = s.decided_by
+           WHERE s.document_id = $1 ORDER BY s.created_at DESC`,
           [req.params.documentId],
         );
         // «Hvorfor foreslår dere dette?» — forklaring med kilder fra regelregisteret.
         const latest = suggestions.rows[0];
+        const org = await deps.db.query(
+          `SELECT org_form, vat_status FROM organizations WHERE id = $1`,
+          [req.params.orgId],
+        );
+        const ex = extraction.rows[0];
         const explanation = latest
           ? {
               evidence: latest.suggestion.evidence,
@@ -664,14 +680,38 @@ export function createApiServer(deps: ApiDeps): express.Express {
                   }),
                 };
               }),
+              // Krav 4: hva forslaget betyr for mva, resultat og skatt — i kroner.
+              impact: org.rowCount
+                ? computeDocumentImpact(deps.rules, {
+                    grossMinor: ex?.gross_minor === null || ex?.gross_minor === undefined ? null : BigInt(ex.gross_minor),
+                    currency: ex?.currency ?? 'NOK',
+                    vatCode: latest.suggestion.suggestedVatCode,
+                    businessUsePercentage: latest.suggestion.businessUsePercentage,
+                    capitalization: latest.suggestion.capitalizationAssessment,
+                    orgForm: org.rows[0].org_form,
+                    isoDate: ex?.invoice_date_text ?? new Date().toISOString().slice(0, 10),
+                  })
+                : null,
             }
           : null;
+        // Krav 7: full historikk for bilaget og forslagene (append-only revisjonslogg).
+        const entityIds = [req.params.documentId, ...suggestions.rows.map((s) => s.id)];
+        const history = await deps.db.query(
+          `SELECT a.action, a.occurred_at, a.reason, a.new_value, a.actor_role,
+                  u.display_name AS actor_name, u.email AS actor_email
+           FROM audit_events a
+           LEFT JOIN users u ON u.id = a.actor_user_id
+           WHERE a.organization_id = $1 AND a.entity_id = ANY($2::uuid[])
+           ORDER BY a.occurred_at ASC`,
+          [req.params.orgId, entityIds],
+        );
         res.json(
           toJson({
             document: doc.rows[0],
             extraction: extraction.rows[0] ?? null,
             suggestions: suggestions.rows,
             explanation,
+            history: history.rows,
           }),
         );
       } catch (err) {

@@ -25,6 +25,24 @@ interface Suggestion {
   confidence: number;
 }
 
+interface DocumentImpact {
+  computable: boolean;
+  reason?: string;
+  businessGrossMinor: string;
+  privateGrossMinor: string;
+  costToResultMinor: string;
+  deductibleInputVatMinor: string;
+  nonDeductibleVatMinor: string;
+  reverseChargeOutputVatMinor: string;
+  capitalized: boolean;
+  taxEffect: {
+    combinedRateLabel: string;
+    reducesTaxByMinor: string;
+    components: { name: string; ratePct: string; amountMinor: string }[];
+  } | null;
+  notes: string[];
+}
+
 interface Explanation {
   evidence: string[];
   assumptions: string[];
@@ -37,6 +55,17 @@ interface Explanation {
     plainExplanation: string;
     sources: { title: string; url: string; lastVerified: string }[];
   }[];
+  impact: DocumentImpact | null;
+}
+
+interface HistoryEvent {
+  action: string;
+  occurred_at: string;
+  reason: string | null;
+  new_value: Record<string, unknown> | null;
+  actor_role: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -415,8 +444,17 @@ export function DocumentDetailScreen({
       validation_status: string;
       validation_issues: { message: string; severity: string }[] | null;
     } | null;
-    suggestions: { id: string; suggestion: Suggestion; status: string }[];
+    suggestions: {
+      id: string;
+      suggestion: Suggestion;
+      status: string;
+      decided_at: string | null;
+      decided_by_name: string | null;
+      decided_by_email: string | null;
+      decision_note: string | null;
+    }[];
     explanation: Explanation | null;
+    history: HistoryEvent[];
   }
   const detail = useLoad(
     () => api<Detail>('GET', `/api/organizations/${orgId}/documents/${documentId}`),
@@ -450,6 +488,7 @@ export function DocumentDetailScreen({
     [orgId, documentId, isPosted, showTechnical],
   );
   const suggestion = d?.suggestions.find((s) => s.status === 'proposed') ?? d?.suggestions[0];
+  const decidedBy = d?.suggestions.find((s) => s.decided_at) ?? null;
   const needsRate = d?.extraction?.currency && d.extraction.currency !== 'NOK';
   const sugAccount = suggestion?.suggestion.suggestedAccountNumber;
   const sugVat = suggestion?.suggestion.suggestedVatCode;
@@ -544,7 +583,10 @@ export function DocumentDetailScreen({
 
       {suggestion && d && d.document.status !== 'posted' && (
         <div className="panel">
-          <h2>Vårt forslag</h2>
+          <div className="panel-head">
+            <h2>Vårt forslag</h2>
+            <ConfidenceBadge confidence={suggestion.suggestion.confidence} />
+          </div>
           <dl className="kv">
             <dt>Kategori</dt>
             <dd>
@@ -566,6 +608,7 @@ export function DocumentDetailScreen({
                   : 'Usikker — krever din vurdering'}
             </dd>
           </dl>
+          {d.explanation?.impact && <ImpactSummary impact={d.explanation.impact} />}
           <div className="actions">
             <button className="secondary" aria-expanded={showWhy} onClick={() => setShowWhy(!showWhy)}>
               Hvorfor foreslår dere dette?
@@ -690,6 +733,133 @@ export function DocumentDetailScreen({
           </h2>
           <PostingLines lines={entry.data.lines} />
         </div>
+      )}
+      {decidedBy && (
+        <div className="panel">
+          <h2>Godkjenning</h2>
+          <dl className="kv">
+            <dt>Godkjent/endret av</dt>
+            <dd>
+              {decidedBy.decided_by_name ?? decidedBy.decided_by_email ?? 'Ukjent bruker'}
+              {decidedBy.decided_at && (
+                <span className="code">{new Date(decidedBy.decided_at).toLocaleString('nb-NO')}</span>
+              )}
+            </dd>
+            {decidedBy.decision_note && (
+              <>
+                <dt>Merknad</dt>
+                <dd>{decidedBy.decision_note}</dd>
+              </>
+            )}
+          </dl>
+        </div>
+      )}
+      {d && d.history.length > 0 && <HistoryPanel history={d.history} />}
+    </div>
+  );
+}
+
+const AUDIT_LABELS: Record<string, string> = {
+  'posting_suggestion.created': 'Systemet foreslo konto og mva-kode',
+  'document.approved_and_posted': 'Godkjent og bokført',
+  'document.status_changed': 'Status endret',
+  'extraction.stored': 'Data lest fra dokumentet',
+};
+
+function actorLabel(e: HistoryEvent): string {
+  if (e.actor_name) return e.actor_name;
+  if (e.actor_email) return e.actor_email;
+  return 'Reknaren (automatisk)';
+}
+
+/** Krav 7: full, uforanderlig endringslogg for bilaget. */
+function HistoryPanel({ history }: { history: HistoryEvent[] }) {
+  return (
+    <div className="panel">
+      <h2>Historikk</h2>
+      <p className="subtitle">Alle endringer er sporet i en uforanderlig revisjonslogg.</p>
+      <ol className="timeline">
+        {history.map((e, i) => {
+          const entryNo = e.new_value && typeof e.new_value['entryNumber'] === 'number' ? e.new_value['entryNumber'] : null;
+          return (
+            <li key={i}>
+              <div className="timeline-when">{new Date(e.occurred_at).toLocaleString('nb-NO')}</div>
+              <div className="timeline-what">
+                <strong>{AUDIT_LABELS[e.action] ?? e.action}</strong>
+                {entryNo !== null && <> — bilag nr. {String(entryNo)}</>}
+                <div className="timeline-who">
+                  {actorLabel(e)}
+                  {e.actor_role && <span className="code">{e.actor_role}</span>}
+                </div>
+                {e.reason && <div className="hint">{e.reason}</div>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** Krav 5: modellsikkerhet som tydelig overskrift, fargekodet. */
+function ConfidenceBadge({ confidence }: { confidence: number }) {
+  const pct = Math.round((confidence ?? 0) * 100);
+  const level = pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low';
+  const label = level === 'high' ? 'Høy sikkerhet' : level === 'medium' ? 'Bør sjekkes' : 'Usikkert';
+  return (
+    <span className={`confidence ${level}`} title="Hvor sikkert forslaget er">
+      {pct} % · {label}
+    </span>
+  );
+}
+
+/** Krav 4: hva forslaget betyr for mva, resultat og skatt — i kroner. */
+function ImpactSummary({ impact }: { impact: DocumentImpact }) {
+  if (!impact.computable) {
+    return (
+      <div className="panel impact">
+        <strong>Konsekvens</strong>
+        <p className="hint">{impact.reason}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="panel impact">
+      <strong>Hva dette betyr</strong>
+      <dl className="kv">
+        {BigInt(impact.deductibleInputVatMinor) > 0n && (
+          <>
+            <dt>Fradragsberettiget inngående MVA</dt>
+            <dd className="pos">{kr(impact.deductibleInputVatMinor)}</dd>
+          </>
+        )}
+        {BigInt(impact.nonDeductibleVatMinor) > 0n && (
+          <>
+            <dt>MVA uten fradrag (blir kostnad)</dt>
+            <dd>{kr(impact.nonDeductibleVatMinor)}</dd>
+          </>
+        )}
+        {BigInt(impact.reverseChargeOutputVatMinor) > 0n && (
+          <>
+            <dt>Utgående MVA (omvendt avgiftsplikt)</dt>
+            <dd>{kr(impact.reverseChargeOutputVatMinor)}</dd>
+          </>
+        )}
+        <dt>{impact.capitalized ? 'Aktiveres (avskrives over år)' : 'Kostnad i resultatet'}</dt>
+        <dd>{kr(impact.costToResultMinor)}</dd>
+        {impact.taxEffect && (
+          <>
+            <dt>Anslått redusert skatt ({impact.taxEffect.combinedRateLabel})</dt>
+            <dd className="pos">≈ {kr(impact.taxEffect.reducesTaxByMinor)}</dd>
+          </>
+        )}
+      </dl>
+      {impact.notes.length > 0 && (
+        <ul className="compact hint">
+          {impact.notes.map((n, i) => (
+            <li key={i}>{n}</li>
+          ))}
+        </ul>
       )}
     </div>
   );

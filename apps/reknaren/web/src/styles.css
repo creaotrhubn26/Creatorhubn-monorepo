@@ -194,6 +194,29 @@ label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2);
 .panel.explain { background: var(--surface-2); border-color: var(--accent-soft); box-shadow: none; }
 .panel h2:first-child { margin-top: 0; }
 
+/* Forslag-header med sikkerhetsmerke (krav 5) */
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.panel-head h2 { margin: 0; }
+.confidence { font-size: 13px; font-weight: 600; padding: 3px 11px; border-radius: 999px; white-space: nowrap; }
+.confidence.high { background: var(--ok-soft); color: var(--ok); }
+.confidence.medium { background: var(--warn-soft); color: var(--warn); }
+.confidence.low { background: var(--danger-soft); color: var(--danger); }
+
+/* Konsekvens i kroner (krav 4) */
+.panel.impact { background: var(--surface-2); border: 1px solid var(--accent-soft); box-shadow: none; margin: 14px 0 4px; padding: 14px 16px; }
+.panel.impact > strong { display: block; margin-bottom: 8px; }
+.panel.impact .kv dd.pos { color: var(--ok); font-weight: 600; }
+.panel.impact ul.hint { color: var(--text-3); margin-top: 10px; }
+
+/* Endringslogg (krav 7) */
+.timeline { list-style: none; margin: 8px 0 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--border); }
+.timeline li:first-child { border-top: 0; }
+.timeline-when { color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.timeline-who { color: var(--text-2); font-size: 13px; margin-top: 2px; }
+.timeline-who .code { color: var(--text-3); font-size: 12px; margin-left: 7px; }
+@media (max-width: 720px) { .timeline li { grid-template-columns: 1fr; gap: 2px; } }
+
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .row > * { flex: 1; min-width: 150px; }
 .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
