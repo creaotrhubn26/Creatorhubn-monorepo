@@ -208,6 +208,11 @@ label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2);
 .panel.impact .kv dd.pos { color: var(--ok); font-weight: 600; }
 .panel.impact ul.hint { color: var(--text-3); margin-top: 10px; }
 
+/* Næringsspesifikasjon-utkast */
+.panel h3 { font-size: 15px; margin: 18px 0 8px; color: var(--text-2); }
+.kv.total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }
+.kv.total dt { color: var(--text); font-weight: 600; }
+
 /* Endringslogg (krav 7) */
 .timeline { list-style: none; margin: 8px 0 0; padding: 0; }
 .timeline li { display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--border); }

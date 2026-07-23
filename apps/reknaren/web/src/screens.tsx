@@ -2373,12 +2373,48 @@ interface YearEndPlan {
   warnings: string[];
 }
 
+interface SpecSection {
+  name: string;
+  poster: { accountNumber: string; accountName: string; amountMinor: string }[];
+  sumMinor: string;
+}
+interface Naeringsspesifikasjon {
+  year: number;
+  resultat: {
+    driftsinntekter: SpecSection;
+    driftskostnader: SpecSection;
+    driftsresultatMinor: string;
+    finansinntekter: SpecSection;
+    finanskostnader: SpecSection;
+    ordinaertResultatForSkattMinor: string;
+    skattekostnadMinor: string;
+    aarsresultatMinor: string;
+  };
+  balanse: {
+    anleggsmidler: SpecSection;
+    omlopsmidler: SpecSection;
+    sumEiendelerMinor: string;
+    egenkapital: SpecSection;
+    aarsresultatTilEgenkapitalMinor: string;
+    langsiktigGjeld: SpecSection;
+    kortsiktigGjeld: SpecSection;
+    sumEgenkapitalOgGjeldMinor: string;
+    balanserer: boolean;
+    differanseMinor: string;
+  };
+  warnings: string[];
+}
+
 export function YearEndScreen({ orgId }: { orgId: string }) {
   const [year, setYear] = useState(Number(thisYear().to.slice(0, 4)) - 1);
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const plan = useLoad(
     () => api<YearEndPlan>('GET', `/api/organizations/${orgId}/year-end/${year}`),
+    [orgId, year],
+  );
+  const spec = useLoad(
+    () => api<Naeringsspesifikasjon>('GET', `/api/organizations/${orgId}/year-end/${year}/naeringsspesifikasjon`),
     [orgId, year],
   );
   const p = plan.data;
@@ -2519,6 +2555,8 @@ export function YearEndScreen({ orgId }: { orgId: string }) {
               </div>
             )}
 
+            {spec.data && <NaeringsspecPanel spec={spec.data} year={year} orgId={orgId} />}
+
             <div className="panel explain">
               <strong>Neste steg: skattemeldingen</strong>
               <p className="hint">
@@ -2530,6 +2568,96 @@ export function YearEndScreen({ orgId }: { orgId: string }) {
           </>
         )
       )}
+    </div>
+  );
+}
+
+function SpecRow({ section }: { section: SpecSection }) {
+  return (
+    <Disclosure label={`${section.name}: ${kr(section.sumMinor)}`}>
+      <dl className="kv" style={{ marginTop: 6 }}>
+        {section.poster.map((p) => (
+          <div key={p.accountNumber} style={{ display: 'contents' }}>
+            <dt>
+              {p.accountNumber} {p.accountName}
+            </dt>
+            <dd>{kr(p.amountMinor)}</dd>
+          </div>
+        ))}
+        {section.poster.length === 0 && <dd className="hint">Ingen posteringer</dd>}
+      </dl>
+    </Disclosure>
+  );
+}
+
+function NaeringsspecPanel({ spec, year, orgId }: { spec: Naeringsspesifikasjon; year: number; orgId: string }) {
+  const r = spec.resultat;
+  const b = spec.balanse;
+  const download = () => {
+    const blob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `naeringsspesifikasjon-${orgId.slice(0, 8)}-${year}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2>Næringsspesifikasjon (utkast)</h2>
+        <span className={`confidence ${b.balanserer ? 'high' : 'medium'}`}>
+          {b.balanserer ? 'Balansen går opp ✓' : `Avvik ${kr(b.differanseMinor)}`}
+        </span>
+      </div>
+      <p className="subtitle">Grunnlaget for skattemeldingen — resultat og balanse mappet til standardposter.</p>
+
+      <h3>Resultatregnskap</h3>
+      <SpecRow section={r.driftsinntekter} />
+      <SpecRow section={r.driftskostnader} />
+      <dl className="kv total">
+        <dt>Driftsresultat</dt>
+        <dd>{kr(r.driftsresultatMinor)}</dd>
+      </dl>
+      <SpecRow section={r.finansinntekter} />
+      <SpecRow section={r.finanskostnader} />
+      <dl className="kv total">
+        <dt>Ordinært resultat før skatt</dt>
+        <dd>{kr(r.ordinaertResultatForSkattMinor)}</dd>
+        <dt>Skattekostnad</dt>
+        <dd>{kr(r.skattekostnadMinor)}</dd>
+        <dt>
+          <strong>Årsresultat</strong>
+        </dt>
+        <dd>
+          <strong>{kr(r.aarsresultatMinor)}</strong>
+        </dd>
+      </dl>
+
+      <h3>Balanse per 31.12.{year}</h3>
+      <SpecRow section={b.anleggsmidler} />
+      <SpecRow section={b.omlopsmidler} />
+      <dl className="kv total">
+        <dt>Sum eiendeler</dt>
+        <dd>{kr(b.sumEiendelerMinor)}</dd>
+      </dl>
+      <SpecRow section={b.egenkapital} />
+      <dl className="kv">
+        <dt>Årsresultat (til egenkapital)</dt>
+        <dd>{kr(b.aarsresultatTilEgenkapitalMinor)}</dd>
+      </dl>
+      <SpecRow section={b.langsiktigGjeld} />
+      <SpecRow section={b.kortsiktigGjeld} />
+      <dl className="kv total">
+        <dt>Sum egenkapital og gjeld</dt>
+        <dd>{kr(b.sumEgenkapitalOgGjeldMinor)}</dd>
+      </dl>
+
+      <div className="actions">
+        <button className="secondary" onClick={download}>
+          Last ned utkast (JSON)
+        </button>
+      </div>
     </div>
   );
 }

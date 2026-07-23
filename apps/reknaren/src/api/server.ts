@@ -14,6 +14,7 @@ import type { GmailPort } from '../ingestion/gmail/port.js';
 import { SmartGmailFilter, type EmailClassifier, type EmailSignals } from '../ingestion/gmail/smart-filter.js';
 import { lockPeriod, reverseJournalEntry } from '../ledger/engine.js';
 import { computeYearEndPlan, executeYearEndClose } from '../ledger/year-end.js';
+import { buildNaeringsspesifikasjon } from '../tax/naeringsspesifikasjon.js';
 import {
   balanceSheet,
   generalLedger,
@@ -2000,6 +2001,23 @@ export function createApiServer(deps: ApiDeps): express.Express {
               adjustmentsMinor: adjustments,
             }),
           ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Næringsspesifikasjon-utkast: resultat + balanse mappet til standardposter.
+  app.get(
+    '/api/organizations/:orgId/year-end/:year/naeringsspesifikasjon',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
+        res.json(
+          toJson(await buildNaeringsspesifikasjon(deps.db, { organizationId: req.params.orgId!, year })),
         );
       } catch (err) {
         next(err);
