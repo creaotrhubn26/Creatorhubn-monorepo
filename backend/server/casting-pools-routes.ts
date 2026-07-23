@@ -1,11 +1,17 @@
 /**
  * casting-pools-routes.ts
  *
- * Setup-funksjon for /api/casting/candidate-pool/* og /api/casting/role-pool/*
- * — gjenbrukbare pools av kandidater og roller som kan importeres inn i
- * casting-prosjekter.
+ * Setup-funksjon for /api/casting/{candidate-pool,role-pool,audition-pool}/*
+ * — gjenbrukbare pools av kandidater, roller og auditions som kan importeres
+ * inn i casting-prosjekter.
  *
- * 11 endpoints:
+ * 16 endpoints (candidate 6 + role 5 + audition 5):
+ *   GET    /audition-pool                           — list
+ *   POST   /audition-pool                           — upsert
+ *   DELETE /audition-pool/:auditionId               — slett
+ *   POST   /audition-pool/import-to-project         — import én til prosjekt
+ *   POST   /schedules/save-to-pool                  — opprett pool-entry fra schedule
+ *
  *   GET    /candidate-pool                          — list
  *   POST   /candidate-pool                          — upsert
  *   DELETE /candidate-pool/:candidateId             — slett
@@ -65,6 +71,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
 
   const legacyCandidatePool = new Map<string, any>();
   const legacyRolePool = new Map<string, any>();
+  const legacyAuditionPool = new Map<string, any>();
 
   function dbLegacyCandidatePoolKey(candidateId: string): string {
     return `casting:candidate-pool:${candidateId}`;
@@ -72,6 +79,10 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
 
   function dbLegacyRolePoolKey(roleId: string): string {
     return `casting:role-pool:${roleId}`;
+  }
+
+  function dbLegacyAuditionPoolKey(auditionId: string): string {
+    return `casting:audition-pool:${auditionId}`;
   }
 
   // ── Candidate pool ─────────────────────────────────────────────────
@@ -351,5 +362,145 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
       legacyRolePool.get(poolRoleId),
     );
     res.status(201).json({ success: true, poolRoleId });
+  });
+
+  // ── Audition pool ──────────────────────────────────────────────────
+  //   Gjenbrukbare audition-maler (varighet/type/krav/tags) som kan lagres
+  //   fra en schedule og importeres inn i et prosjekt. Speiler role-pool-
+  //   mønsteret: compatStore-prefiks + in-memory Map, scopet til ownerUserId.
+
+  app.get("/api/casting/audition-pool", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const dbRows = await compatStoreListByPrefix<any>("casting:audition-pool:");
+    if (dbRows.length > 0) {
+      const all = dbRows
+        .map((row) => row.value)
+        .filter((audition) => audition && typeof audition === "object");
+      legacyAuditionPool.clear();
+      for (const audition of all) {
+        const auditionId = typeof audition.id === "string" ? audition.id : "";
+        if (!auditionId) continue;
+        legacyAuditionPool.set(auditionId, audition);
+      }
+      const auditions = all.filter((a) => a.ownerUserId === session.userId);
+      res.json({ success: true, auditions });
+      return;
+    }
+    res.json({
+      success: true,
+      auditions: Array.from(legacyAuditionPool.values()).filter(
+        (a) => a.ownerUserId === session.userId,
+      ),
+    });
+  });
+
+  app.post("/api/casting/audition-pool", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const payload = req.body || {};
+    const auditionId =
+      typeof payload.id === "string" && payload.id.trim()
+        ? payload.id
+        : newEntityId("pool-audition");
+    const now = new Date().toISOString();
+    const current = legacyAuditionPool.get(auditionId) || {};
+    if (current.ownerUserId && current.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
+    const audition = {
+      // Normaliser feltene fra PoolAudition-kontrakten (defaults for robusthet).
+      title: "Uten tittel",
+      durationMinutes: 30,
+      requirements: {},
+      tags: [] as string[],
+      ...current,
+      ...payload,
+      id: auditionId,
+      ownerUserId: session.userId,
+      createdAt: current.createdAt || now,
+      updatedAt: now,
+    };
+    legacyAuditionPool.set(auditionId, audition);
+    await compatStoreSet(dbLegacyAuditionPoolKey(auditionId), audition);
+    res.status(201).json({ success: true, auditionId, audition });
+  });
+
+  app.delete("/api/casting/audition-pool/:auditionId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const auditionId = req.params.auditionId;
+    const existing =
+      legacyAuditionPool.get(auditionId) ||
+      (await compatStoreGet<any>(dbLegacyAuditionPoolKey(auditionId)));
+    if (existing && existing.ownerUserId && existing.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
+    legacyAuditionPool.delete(auditionId);
+    await compatStoreDelete(dbLegacyAuditionPoolKey(auditionId));
+    res.json({ success: true });
+  });
+
+  app.post("/api/casting/audition-pool/import-to-project", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const poolAuditionId =
+      typeof req.body?.poolAuditionId === "string" ? req.body.poolAuditionId : "";
+    const targetProjectId =
+      typeof req.body?.targetProjectId === "string"
+        ? req.body.targetProjectId
+        : "";
+    const poolAudition =
+      legacyAuditionPool.get(poolAuditionId) ||
+      (await compatStoreGet<any>(dbLegacyAuditionPoolKey(poolAuditionId)));
+    if (!poolAudition || !targetProjectId) {
+      res
+        .status(400)
+        .json({ success: false, error: "Invalid audition or target project" });
+      return;
+    }
+    if (poolAudition.ownerUserId && poolAudition.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
+    legacyAuditionPool.set(poolAuditionId, poolAudition);
+    res.status(201).json({ success: true, scheduleId: newEntityId("schedule") });
+  });
+
+  app.post("/api/casting/schedules/save-to-pool", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const scheduleId =
+      typeof req.body?.scheduleId === "string" ? req.body.scheduleId : "";
+    if (!scheduleId) {
+      res.status(400).json({ success: false, error: "scheduleId is required" });
+      return;
+    }
+    const poolAuditionId = newEntityId("pool-audition");
+    const now = new Date().toISOString();
+    // Frontend sender kun scheduleId (matcher candidate/role save-to-pool); lagre
+    // en pool-mal med referanse + valgfrie felt hvis de følger med i body.
+    const body = req.body || {};
+    legacyAuditionPool.set(poolAuditionId, {
+      id: poolAuditionId,
+      ownerUserId: session.userId,
+      title: typeof body.title === "string" ? body.title : `Audition ${scheduleId}`,
+      auditionType: typeof body.auditionType === "string" ? body.auditionType : undefined,
+      durationMinutes: typeof body.durationMinutes === "number" ? body.durationMinutes : 30,
+      location: typeof body.location === "string" ? body.location : undefined,
+      requirements: body.requirements && typeof body.requirements === "object" ? body.requirements : {},
+      tags: Array.isArray(body.tags) ? body.tags : ["imported"],
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      sourceScheduleId: scheduleId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await compatStoreSet(
+      dbLegacyAuditionPoolKey(poolAuditionId),
+      legacyAuditionPool.get(poolAuditionId),
+    );
+    res.status(201).json({ success: true, poolAuditionId });
   });
 }
