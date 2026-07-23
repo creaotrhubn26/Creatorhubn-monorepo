@@ -203,12 +203,19 @@ fileprivate func cockpitEmptyState(icon: String, title: String, subtitle: String
 
 struct ApprovalsQueueSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var filter: ApprovalFilter = .all
     @State private var expanded: Set<String> = []
-    // Lokal beslutnings-state (backend-approval-ruten er ikke bundet enda).
-    @State private var decisions: [String: String] = [:]   // itemId → "Godkjent"/"Avslått"
+    @State private var decisions: [String: String] = [:]   // itemId → "Godkjent"/"Avslått" (demo)
     @State private var comments: [String: String] = [:]     // itemId → notat
     @State private var commentItem: ApprovalItem?
+    // Ekte (backend-)saker — hentes når demo er AV (mig 0406).
+    @State private var realItems: [ApprovalItem] = []
+    @State private var loaded = false
+    @State private var working = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    private var sourceItems: [ApprovalItem] { isDemo ? ApprovalMockData.items : realItems }
 
     enum ApprovalFilter: String, CaseIterable, Identifiable {
         case all = "Alle"
@@ -219,7 +226,7 @@ struct ApprovalsQueueSheet: View {
     }
 
     private var filtered: [ApprovalItem] {
-        let all = ApprovalMockData.items
+        let all = sourceItems
         switch filter {
         case .all: return all
         case .deal: return all.filter { $0.kind == .deal }
@@ -228,12 +235,54 @@ struct ApprovalsQueueSheet: View {
         }
     }
 
+    private func kindFrom(_ s: String) -> ApprovalItem.Kind {
+        switch s { case "discount": return .discount; case "special": return .special; default: return .deal }
+    }
+    private func toItem(_ a: LeadgridApproval) -> ApprovalItem {
+        var days = 0
+        if let created = a.createdAt, let d = ISO8601DateFormatter().date(from: created) {
+            days = max(0, Int(Date().timeIntervalSince(d) / 86400))
+        }
+        return ApprovalItem(
+            id: String(a.id), kind: kindFrom(a.kind), title: a.title,
+            sellerName: a.sellerName ?? "Selger", customerName: a.customerName ?? "—",
+            amountText: "\(Int(a.amountNok.rounded())) kr", ageDays: days,
+            rationale: a.rationale ?? "", backendId: a.id
+        )
+    }
+
+    private func load() async {
+        guard !isDemo, let api = appState.api else { loaded = true; return }
+        if let items = try? await api.fetchLeadgridApprovalsPending() {
+            realItems = items.map(toItem)
+        }
+        loaded = true
+    }
+
+    private func decide(_ item: ApprovalItem, approve: Bool) async {
+        if isDemo { decisions[item.id] = approve ? "Godkjent" : "Avslått"; return }
+        guard let id = item.backendId, let api = appState.api else { return }
+        working = true
+        try? await api.decideLeadgridApproval(id: id, approve: approve, comment: comments[item.id])
+        await load()
+        working = false
+    }
+
+    private func saveComment(_ item: ApprovalItem, _ note: String) {
+        comments[item.id] = note
+        if !isDemo, let id = item.backendId, let api = appState.api {
+            Task { try? await api.commentLeadgridApproval(id: id, comment: note) }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if ApprovalMockData.items.isEmpty {
+                    if !loaded && !isDemo {
+                        ProgressView().tint(SlBrand.purpleLight).padding(.vertical, 80)
+                    } else if sourceItems.isEmpty {
                         cockpitEmptyState(
                             icon: "checkmark.seal",
                             title: "Ingen ventende godkjenninger",
@@ -291,9 +340,10 @@ struct ApprovalsQueueSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(item: $commentItem) { item in
                 ApprovalCommentSheet(item: item, existing: comments[item.id] ?? "") { note in
-                    comments[item.id] = note
+                    saveComment(item, note)
                 }
             }
+            .task { if !loaded { await load() } }
         }
     }
 
@@ -355,10 +405,12 @@ struct ApprovalsQueueSheet: View {
                     }
                 } else {
                     HStack(spacing: 8) {
-                        Button("Godkjenn") { decisions[item.id] = "Godkjent" }
+                        Button("Godkjenn") { Task { await decide(item, approve: true) } }
                             .buttonStyle(FilledSlButtonStyle(tint: SlBrand.green))
-                        Button("Avslå") { decisions[item.id] = "Avslått" }
+                            .disabled(working)
+                        Button("Avslå") { Task { await decide(item, approve: false) } }
                             .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.red))
+                            .disabled(working)
                         Button("Kommentar") { commentItem = item }
                             .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
                         Spacer()
@@ -429,6 +481,8 @@ struct ApprovalItem: Identifiable {
     let amountText: String
     let ageDays: Int
     let rationale: String
+    /// Satt for ekte (backend-)saker — brukes til å avgjøre mot API.
+    var backendId: Int? = nil
 
     enum Kind {
         case deal, discount, special
@@ -667,19 +721,81 @@ enum TeamForecastMockData {
 
 struct CoachingPlanSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var showNew = false
-    @State private var scheduled: [CoachingRow] = []
+    @State private var scheduled: [CoachingRow] = []      // demo: lokalt planlagte
+    @State private var realSessions: [LeadgridCoachingSession] = []
+    @State private var loaded = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    private func shortDate(_ iso: String?) -> String {
+        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return "—" }
+        let f = DateFormatter(); f.locale = Locale(identifier: "nb_NO"); f.dateFormat = "d. MMM"
+        return f.string(from: d)
+    }
+    private func rowColor(_ name: String) -> Color {
+        let palette: [Color] = [SlBrand.purpleLight, SlBrand.green, SlBrand.blue, SlBrand.orange, SlBrand.yellow, SlBrand.red]
+        return palette[abs(name.hashValue) % palette.count]
+    }
+    private func initials(_ name: String) -> String {
+        let i = name.split(separator: " ").prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
+        return i.isEmpty ? "?" : i
+    }
+    private func toRow(_ s: LeadgridCoachingSession) -> CoachingRow {
+        CoachingRow(
+            name: s.memberName, initials: initials(s.memberName), color: rowColor(s.memberName),
+            headline: ((s.focus?.isEmpty == false ? s.focus! : "1-til-1") + " · " + shortDate(s.scheduledAt)),
+            pondusText: "—", goalText: "—", trendUp: true,
+            lastMeetingText: shortDate(s.scheduledAt), isScheduled: true
+        )
+    }
+
+    /// «KOMMENDE 1-TIL-1» — demo: mock; ekte: backend-økter.
+    private var upcomingRows: [CoachingRow] { isDemo ? CoachingMockData.upcoming : realSessions.map(toRow) }
+    /// Kandidater til «Ny 1-til-1» + «ALLE KANDIDATER» — ekte: team-medlemmer.
+    private var candidateRows: [CoachingRow] {
+        if isDemo { return CoachingMockData.all }
+        return TeamData.members.map { m in
+            CoachingRow(name: m.name, initials: m.initials, color: m.color, headline: m.area,
+                        pondusText: "—", goalText: "—", trendUp: true, lastMeetingText: "—", isScheduled: false)
+        }
+    }
+
+    private func load() async {
+        guard !isDemo, let api = appState.api else { loaded = true; return }
+        if let s = try? await api.fetchLeadgridCoachingSessions() { realSessions = s }
+        loaded = true
+    }
+    private func schedule(name: String, date: Date, focus: String) {
+        if isDemo {
+            let base = candidateRows.first { $0.name == name }
+            scheduled.insert(CoachingRow(
+                name: name, initials: base?.initials ?? "–", color: base?.color ?? SlBrand.purpleLight,
+                headline: focus.isEmpty ? "1-til-1 planlagt" : focus,
+                pondusText: "—", goalText: "—", trendUp: true, lastMeetingText: "Nå", isScheduled: true), at: 0)
+        } else if let api = appState.api {
+            let uid = TeamLiveStore.shared.memberDTOs.first { $0.name == name }?.userId
+            Task {
+                try? await api.createLeadgridCoachingSession(
+                    memberName: name, memberUserId: uid, scheduledAt: date, focus: focus.isEmpty ? nil : focus)
+                await load()
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if CoachingMockData.upcoming.isEmpty && CoachingMockData.all.isEmpty {
+                    if !loaded && !isDemo {
+                        ProgressView().tint(SlBrand.purpleLight).padding(.vertical, 80)
+                    } else if upcomingRows.isEmpty && candidateRows.isEmpty && scheduled.isEmpty {
                         cockpitEmptyState(
                             icon: "person.badge.clock",
                             title: "Ingen coaching-planer enda",
-                            subtitle: "1-til-1-planer og coaching-kandidater vises her."
+                            subtitle: "Planlegg en 1-til-1 med «Ny 1-til-1» øverst."
                         )
                     } else {
                     VStack(alignment: .leading, spacing: 14) {
@@ -714,29 +830,33 @@ struct CoachingPlanSheet: View {
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
                         }
 
+                        if !upcomingRows.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("KOMMENDE 1-TIL-1")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(CoachingMockData.upcoming) { c in
+                            ForEach(upcomingRows) { c in
                                 coachingRow(c)
                             }
                         }
                         .padding(14)
                         .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
 
+                        if !candidateRows.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ALLE COACHING-KANDIDATER")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(CoachingMockData.all) { c in
+                            ForEach(candidateRows) { c in
                                 coachingRow(c)
                             }
                         }
                         .padding(14)
                         .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
                     }
                     .padding(20)
                     }
@@ -764,10 +884,11 @@ struct CoachingPlanSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showNew) {
-                NewCoachingSheet(candidates: CoachingMockData.all) { row in
-                    scheduled.insert(row, at: 0)
+                NewCoachingSheet(candidates: candidateRows) { name, date, focus in
+                    schedule(name: name, date: date, focus: focus)
                 }
             }
+            .task { if !loaded { await load() } }
         }
     }
 
@@ -867,7 +988,7 @@ enum CoachingMockData {
 
 private struct NewCoachingSheet: View {
     let candidates: [CoachingRow]
-    let onSchedule: (CoachingRow) -> Void
+    let onSchedule: (String, Date, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedName: String = ""
     @State private var date: Date = Date()
@@ -894,19 +1015,7 @@ private struct NewCoachingSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Planlegg") {
-                        let base = candidates.first { $0.name == selectedName }
-                        let row = CoachingRow(
-                            name: selectedName.isEmpty ? (base?.name ?? "Ny selger") : selectedName,
-                            initials: base?.initials ?? "–",
-                            color: base?.color ?? SlBrand.purpleLight,
-                            headline: focus.isEmpty ? "1-til-1 planlagt" : focus,
-                            pondusText: "—",
-                            goalText: "—",
-                            trendUp: true,
-                            lastMeetingText: "Nå",
-                            isScheduled: true
-                        )
-                        onSchedule(row)
+                        onSchedule(selectedName, date, focus)
                         dismiss()
                     }
                     .disabled(selectedName.isEmpty)
