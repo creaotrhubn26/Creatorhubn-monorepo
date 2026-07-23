@@ -32,7 +32,8 @@ export const VAT_SUBMISSION_ENDPOINTS: Record<
   test: {
     validateBase: 'https://idporten-api-sbstest.sits.no',
     altinnPlatform: 'https://platform.tt02.altinn.no',
-    altinnApp: 'https://skd.apps.tt02.altinn.no/skd/mva-melding-innsending',
+    // 🔑 app-ID (evt. -etmN-suffiks) bekreftes mot TT02 ved første testkjøring.
+    altinnApp: 'https://skd.apps.tt02.altinn.no/skd/mva-melding-innsending-etm2',
   },
   prod: {
     // NB: prod-host må bekreftes mot Skatteetaten før produksjonsbruk.
@@ -66,7 +67,7 @@ export interface VatSubmissionPort {
   /** Validerer mva-meldingen mot Skatteetatens grensesnittstøtte. Krever token. */
   validate(report: VatReport): Promise<VatValidationResult>;
   /** Sender inn mva-meldingen via Altinn 3. Krever token + autorisert virksomhet. */
-  submit(report: VatReport): Promise<VatSubmissionReceipt>;
+  submit(report: VatReport, options: { orgNumber: string }): Promise<VatSubmissionReceipt>;
 }
 
 type FetchLike = (
@@ -122,6 +123,34 @@ function escapeXml(s: string): string {
   );
 }
 
+const INNSENDING_NS = 'no:skatteetaten:fastsetting:avgift:mva:mvameldinginnsending:v1.0';
+
+/**
+ * Innsendings-konvolutten (MvaMeldingInnsending). MINIMALT SKJELETT — declarerer
+ * innsendingstype + periode. Eksakt schema bekreftes mot TT02 ved første kjøring;
+ * `validate()` og feedback fra Skatteetaten er fasit.
+ */
+export function buildInnsendingXml(report: VatReport): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<mvaMeldingInnsending xmlns="${INNSENDING_NS}">\n` +
+    `  <innsendingstype>komplett</innsendingstype>\n` +
+    `  <periode><fra>${report.fromDate}</fra><til>${report.toDate}</til></periode>\n` +
+    `</mvaMeldingInnsending>`
+  );
+}
+
+interface AltinnInstance {
+  id?: string;
+  data?: Array<{ id?: string; dataType?: string }>;
+}
+
+/** Finner data-elementets id i en Altinn-instans etter dataType (case-insensitivt). */
+function findDataElementId(instance: AltinnInstance | null, dataType: string): string | undefined {
+  const el = (instance?.data ?? []).find((e) => (e.dataType ?? '').toLowerCase() === dataType.toLowerCase());
+  return el?.id;
+}
+
 export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
   private readonly ep: (typeof VAT_SUBMISSION_ENDPOINTS)[MaskinportenEnv];
 
@@ -164,17 +193,89 @@ export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
     return { valid: res.ok && messages.length === 0, messages, raw };
   }
 
-  async submit(_report: VatReport): Promise<VatSubmissionReceipt> {
-    // Sikrer token/legitimasjon først (ærlig: feiler tidlig uten Maskinporten).
-    await this.token();
-    // Innsending krever en autorisert virksomhet og full Altinn 3-instansflyt
-    // (opprett instans → last opp melding + konvolutt → fullfør) mot
-    // `${this.ep.altinnApp}`. Denne kan ikke verifiseres uten legitimasjon og et
-    // test-organisasjonsnummer, og markeres derfor eksplisitt som ikke ferdigstilt
-    // heller enn å returnere en falsk kvittering.
-    throw new MaskinportenError(
-      `Innsending mot Altinn 3 (${this.ep.altinnApp}) er ikke ferdig implementert: krever autorisert virksomhet og instansflyt. Valider meldingen med validate() i mellomtiden.`,
-    );
+  /**
+   * Sender inn mva-meldingen via Altinn 3-appen (skd/mva-melding-innsending):
+   *  1) veksle Maskinporten-token → Altinn-token
+   *  2) opprett instans (eier = virksomheten)
+   *  3) last opp mva-melding + innsendings-konvolutt (+ evt. vedlegg)
+   *  4) fullfør prosessen (process/next ×2)
+   *  5) hent Skatteetatens kvittering (feedback)
+   *
+   * 🔑 Kall-sekvensen og endepunktene er fra Skatteetatens API-dok. De EKSAKTE
+   * payload-formene (konvoluttens XML, dataType-navn) bekreftes ved første kjøring
+   * mot TT02 — derfor `validate()` som fasit på XML-en underveis.
+   */
+  async submit(report: VatReport, options: { orgNumber: string }): Promise<VatSubmissionReceipt> {
+    const mpToken = await this.token(); // Maskinporten (kaster uten legitimasjon)
+    const altinnToken = await this.exchangeToken(mpToken);
+    const auth = { authorization: `Bearer ${altinnToken}` };
+    const app = this.ep.altinnApp;
+
+    // 1) Opprett instans — eier er virksomheten meldingen gjelder.
+    const created = await this.call(`${app}/instances`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ instanceOwner: { organisationNumber: options.orgNumber } }),
+    });
+    if (!created.ok) throw new MaskinportenError(`Klarte ikke å opprette Altinn-instans (${created.status}).`);
+    const instance = (await safeJson(created)) as AltinnInstance;
+    const instanceId = instance?.id; // «{partyId}/{instanceGuid}»
+    if (!instanceId) throw new MaskinportenError('Altinn returnerte ingen instans-id.');
+    const instanceUrl = `${app}/instances/${instanceId}`;
+
+    // 2) Last opp selve mva-meldingen.
+    const upMelding = await this.call(`${instanceUrl}/data?dataType=mvamelding`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/xml' },
+      body: buildMvaMeldingXml(report),
+    });
+    if (!upMelding.ok) throw new MaskinportenError(`Opplasting av mva-melding feilet (${upMelding.status}).`);
+
+    // 3) Last opp innsendings-konvolutten. Data-elementet er forhåndsopprettet av
+    //    appen; finnes det, PUT-er vi innholdet, ellers POST-er vi et nytt.
+    const envId = findDataElementId(instance, 'mvameldinginnsending');
+    const envXml = buildInnsendingXml(report);
+    if (envId) {
+      await this.call(`${instanceUrl}/data/${envId}`, {
+        method: 'PUT',
+        headers: { ...auth, 'content-type': 'application/xml' },
+        body: envXml,
+      });
+    } else {
+      await this.call(`${instanceUrl}/data?dataType=mvameldinginnsending`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/xml' },
+        body: envXml,
+      });
+    }
+
+    // 4) Fullfør: to prosess-steg (fullfør opplasting → fullfør innsending).
+    await this.call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
+    await this.call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
+
+    // 5) Hent Skatteetatens kvittering (synkron feedback).
+    const fb = await this.call(`${instanceUrl}/feedback/status`, { method: 'GET', headers: { ...auth, accept: 'application/json' } });
+    const fbRaw = await safeJson(fb);
+    const status =
+      (fbRaw && typeof fbRaw === 'object' && typeof (fbRaw as Record<string, unknown>)['status'] === 'string'
+        ? ((fbRaw as Record<string, unknown>)['status'] as string)
+        : fb.ok
+          ? 'submitted'
+          : 'pending');
+
+    return { reference: instanceId, status, submittedAt: new Date().toISOString() };
+  }
+
+  /** Veksler et Maskinporten-token til et Altinn-token (Altinn 3 platform). */
+  private async exchangeToken(maskinportenToken: string): Promise<string> {
+    const testFlag = this.maskinporten.env === 'test' ? '?test=true' : '';
+    const res = await this.call(`${this.ep.altinnPlatform}/authentication/api/v1/exchange/maskinporten${testFlag}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${maskinportenToken}`, accept: 'application/json' },
+    });
+    if (!res.ok) throw new MaskinportenError(`Altinn-token-veksling feilet (${res.status}).`);
+    const body = (await res.text()).trim();
+    return body.replace(/^"|"$/g, ''); // Altinn returnerer token som (evt. sitert) streng
   }
 
   private async token(): Promise<string> {
@@ -212,7 +313,7 @@ export class StubVatSubmission implements VatSubmissionPort {
     return this.result;
   }
 
-  async submit(_report: VatReport): Promise<VatSubmissionReceipt> {
+  async submit(_report: VatReport, _options: { orgNumber: string }): Promise<VatSubmissionReceipt> {
     if (!this.active) throw new MaskinportenAuthError('Stub uten Maskinporten-legitimasjon.');
     if (!this.receipt) throw new MaskinportenError('Stub har ingen innsendingskvittering konfigurert.');
     return this.receipt;

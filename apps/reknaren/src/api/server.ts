@@ -1583,9 +1583,15 @@ export function createApiServer(deps: ApiDeps): express.Express {
         const body = z
           .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
           .parse(req.body);
+        const orgRow = await deps.db.query(`SELECT org_number FROM organizations WHERE id = $1`, [req.params.orgId]);
+        const orgNumber = orgRow.rows[0]?.org_number;
+        if (!orgNumber) {
+          res.status(400).json({ error: { code: 'ORG_NUMBER_MISSING', message: 'Virksomheten mangler organisasjonsnummer — kreves for innsending.' } });
+          return;
+        }
         const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
         try {
-          const receipt = await deps.vatSubmission.submit(report);
+          const receipt = await deps.vatSubmission.submit(report, { orgNumber });
           await withTransaction(deps.db, (client) =>
             recordAuditEvent(client, {
               organizationId: req.params.orgId!,
@@ -1593,14 +1599,13 @@ export function createApiServer(deps: ApiDeps): express.Express {
               action: 'vat.mva_melding_submitted',
               entityType: 'organization',
               entityId: req.params.orgId!,
-              newValue: { from: body.from, to: body.to },
+              newValue: { from: body.from, to: body.to, reference: receipt.reference, status: receipt.status },
             }),
           );
           res.status(201).json(toJson(receipt));
         } catch (e) {
-          // Altinn 3-innsendingsflyten er ennå ikke ferdigstilt — ærlig 501 heller enn falsk kvittering.
           if (e instanceof MaskinportenError) {
-            res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: e.message } });
+            res.status(502).json({ error: { code: 'ALTINN_SUBMISSION_FAILED', message: e.message } });
             return;
           }
           throw e;

@@ -28,11 +28,11 @@ const report: VatReport = {
   warnings: [],
 };
 
-function fakeFetch(responder: (url: string, body?: string) => { status: number; body?: unknown }) {
-  const calls: Array<{ url: string; body: string | undefined; headers: Record<string, string> }> = [];
+function fakeFetch(responder: (url: string, method: string, body?: string) => { status: number; body?: unknown; text?: string }) {
+  const calls: Array<{ url: string; method: string; body: string | undefined; headers: Record<string, string> }> = [];
   const impl = async (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
-    calls.push({ url, body: init.body, headers: init.headers });
-    const r = responder(url, init.body);
+    calls.push({ url, method: init.method, body: init.body, headers: init.headers });
+    const r = responder(url, init.method, init.body);
     return {
       status: r.status,
       ok: r.status >= 200 && r.status < 300,
@@ -40,7 +40,7 @@ function fakeFetch(responder: (url: string, body?: string) => { status: number; 
         if (r.body === undefined) throw new Error('ikke JSON');
         return r.body;
       },
-      text: async () => '',
+      text: async () => r.text ?? '',
     };
   };
   return { impl, calls };
@@ -94,9 +94,35 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
     expect(res.messages).toContain('Ugyldig periode');
   });
 
-  it('submit() er ærlig: kaster (ikke ferdig implementert) framfor å returnere falsk kvittering', async () => {
-    const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), fakeFetch(() => ({ status: 200, body: {} })).impl);
-    await expect(client.submit(report)).rejects.toBeInstanceOf(MaskinportenError);
+  it('submit() kjører Altinn 3-flyten: veksle token → opprett instans → last opp → fullfør → kvittering', async () => {
+    const f = fakeFetch((url, method) => {
+      if (url.includes('/exchange/maskinporten')) return { status: 200, text: '"altinn-token"' };
+      if (url.endsWith('/instances') && method === 'POST')
+        return { status: 201, body: { id: '51234/abcd-guid', data: [{ id: 'env-1', dataType: 'mvameldinginnsending' }] } };
+      if (url.includes('/data?dataType=mvamelding')) return { status: 201, body: {} };
+      if (url.includes('/data/env-1')) return { status: 200, body: {} };
+      if (url.endsWith('/process/next')) return { status: 200, body: {} };
+      if (url.endsWith('/feedback/status')) return { status: 200, body: { status: 'godkjent' } };
+      return { status: 404, body: {} };
+    });
+    const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), f.impl);
+    const receipt = await client.submit(report, { orgNumber: '910023764' });
+    expect(receipt.reference).toBe('51234/abcd-guid');
+    expect(receipt.status).toBe('godkjent');
+    // instansen ble opprettet med virksomheten som eier, og Altinn-token brukt som Bearer
+    const create = f.calls.find((c) => c.url.endsWith('/instances') && c.method === 'POST')!;
+    expect(create.body).toContain('910023764');
+    expect(create.headers['authorization']).toBe('Bearer altinn-token');
+    // konvolutten ble PUT-et til det forhåndsopprettede data-elementet
+    expect(f.calls.some((c) => c.url.includes('/data/env-1') && c.method === 'PUT')).toBe(true);
+    // to prosess-steg (fullfør)
+    expect(f.calls.filter((c) => c.url.endsWith('/process/next')).length).toBe(2);
+  });
+
+  it('submit() melder feil hvis instansopprettelse feiler', async () => {
+    const f = fakeFetch((url) => (url.includes('/exchange') ? { status: 200, text: 'tok' } : { status: 403, body: {} }));
+    const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), f.impl);
+    await expect(client.submit(report, { orgNumber: '910023764' })).rejects.toBeInstanceOf(MaskinportenError);
   });
 });
 
@@ -107,7 +133,7 @@ describe('StubVatSubmission', () => {
       { reference: 'ALTINN-1', status: 'submitted', submittedAt: '2026-03-01T00:00:00.000Z' },
     );
     expect((await stub.validate(report)).valid).toBe(true);
-    expect((await stub.submit(report)).reference).toBe('ALTINN-1');
+    expect((await stub.submit(report, { orgNumber: '910023764' })).reference).toBe('ALTINN-1');
   });
 
   it('inaktiv stub kaster på validate/submit', async () => {
