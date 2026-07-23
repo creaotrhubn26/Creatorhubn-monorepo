@@ -50,6 +50,7 @@ import { billAiOverage } from "./ai-overage-billing.js";
 import { timingSafeEqual } from "crypto";
 import { runCanaries, getCanaryStatus } from "./control-center-canary.js";
 import { runSecretWatch, getSecretStatus } from "./control-center-secret-watch.js";
+import { runAnomalyScan, getAnomalyView } from "./control-center-anomaly.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -714,6 +715,30 @@ export function setupControlCenterRoutes(deps: Deps): void {
     } catch (err) {
       console.error("[control-center/secret-watch/run] failed:", (err as Error).message);
       return res.status(500).json({ ok: false, error: "secret_watch_failed" });
+    }
+  });
+
+  // ── Anomali-deteksjon: rate-spike + nye feiltyper i error_log ─────────────
+  app.get("/api/control-center/anomalies", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const view = await getAnomalyView(pool);
+      return res.json(view);
+    } catch (err) {
+      console.warn("[control-center/anomalies] failed:", (err as Error).message);
+      return res.json({ spike: false, latestDelta: null, baseline: null, activeFingerprints: null, unresolvedTotal: null, newErrors: [], lastScanAt: null, generatedAt: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/control-center/anomaly/run", async (req, res) => {
+    if (!verifyCronToken(req)) return res.status(401).json({ error: "unauthorized" });
+    try {
+      const summary = await runAnomalyScan(pool);
+      return res.json({ ok: true, ...summary });
+    } catch (err) {
+      console.error("[control-center/anomaly/run] failed:", (err as Error).message);
+      return res.status(500).json({ ok: false, error: "anomaly_scan_failed" });
     }
   });
 }

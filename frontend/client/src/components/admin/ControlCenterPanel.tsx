@@ -207,6 +207,26 @@ interface SecretsResponse {
   generatedAt: string;
 }
 
+interface NewErrorAnomaly {
+  fingerprint: string;
+  message: string;
+  endpoint: string | null;
+  level: string;
+  occurrenceCount: number;
+  firstSeenAt: string;
+}
+
+interface AnomalyResponse {
+  spike: boolean;
+  latestDelta: number | null;
+  baseline: number | null;
+  activeFingerprints: number | null;
+  unresolvedTotal: number | null;
+  newErrors: NewErrorAnomaly[];
+  lastScanAt: string | null;
+  generatedAt: string;
+}
+
 interface OrgAiSpend {
   organizationId: string | null;
   orgName: string | null;
@@ -320,6 +340,7 @@ const SUBTABS = [
   { id: 'incidents', label: 'Hendelser' },
   { id: 'canary', label: 'Canary' },
   { id: 'secrets', label: 'Nøkler' },
+  { id: 'anomaly', label: 'Anomali' },
   { id: 'health', label: 'Helse' },
   { id: 'ai-margin', label: 'AI-margin' },
   { id: 'ai-overage', label: 'AI-overage' },
@@ -457,6 +478,13 @@ const ControlCenterPanel: React.FC = () => {
     enabled: subTab === 'secrets',
   });
 
+  const anomaly = useQuery<AnomalyResponse>({
+    queryKey: ['/api/control-center/anomalies'],
+    queryFn: () => apiRequest('/api/control-center/anomalies'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'anomaly',
+  });
+
   const aiMargin = useQuery<AiMarginResponse>({
     queryKey: ['/api/control-center/ai-margin'],
     queryFn: () => apiRequest('/api/control-center/ai-margin?windowDays=30&limit=25'),
@@ -549,6 +577,7 @@ const ControlCenterPanel: React.FC = () => {
       )}
       {subTab === 'canary' && <CanarySection canary={canary} />}
       {subTab === 'secrets' && <SecretsSection secrets={secrets} />}
+      {subTab === 'anomaly' && <AnomalySection anomaly={anomaly} />}
       {subTab === 'health' && <HealthSection health={health} />}
       {subTab === 'ai-margin' && <AiMarginSection aiMargin={aiMargin} />}
       {subTab === 'ai-overage' && (
@@ -904,6 +933,77 @@ const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryRespons
         Syntetiske brukerreiser mot prod (GitHub Actions, hvert 10. min) — fanger feil FØR brukerne.
         Feil bygger automatisk en hendelse i «Hendelser» + e-post til super_admin ved ny feil/gjenoppretting.
         «Ikke kjørt» = ingen samples enda (cron kjører ~hvert 10. min). Sist oppdatert {relTime(generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
+
+// ─── Anomali (rate-spike + nye feiltyper) ────────────────────────────────────
+
+const AnomalySection: React.FC<{ anomaly: ReturnType<typeof useQuery<AnomalyResponse>> }> = ({ anomaly }) => {
+  if (anomaly.isLoading) return <Loading />;
+  if (anomaly.isError || !anomaly.data) return <ErrorLine msg="Kunne ikke hente anomali-status." />;
+
+  const { spike, latestDelta, baseline, activeFingerprints, unresolvedTotal, newErrors, lastScanAt, generatedAt } = anomaly.data;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard
+          label="Rate-status"
+          value={spike ? 'SPIKE' : 'Normal'}
+          hint={lastScanAt ? `Sist skannet ${relTime(lastScanAt)}` : 'Ikke skannet enda'}
+          accent={spike ? '#e5484d' : '#3dd68c'}
+        />
+        <KpiCard
+          label="Events siste vindu"
+          value={latestDelta != null ? String(latestDelta) : '—'}
+          hint={`Baseline ~${baseline != null ? Math.round(baseline) : '?'} (24t median)`}
+          accent={spike ? '#e5484d' : undefined}
+        />
+        <KpiCard label="Aktive feiltyper" value={activeFingerprints != null ? String(activeFingerprints) : '—'} hint="Distinkte, i vinduet" />
+        <KpiCard label="Uløste totalt" value={unresolvedTotal != null ? String(unresolvedTotal) : '—'} hint="error_log" />
+      </Stack>
+
+      <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: 'text.secondary' }}>
+        Nye feiltyper (24t){newErrors.length > 0 ? ` · ${newErrors.length}` : ''}
+      </Typography>
+      {newErrors.length === 0 ? (
+        <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>Ingen nye feiltyper siste 24 timer.</Typography>
+      ) : (
+        <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ color: 'text.secondary' }}>Nivå</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Melding</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>Endepunkt</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">Antall</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }} align="right">Først sett</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {newErrors.map((e) => (
+              <TableRow key={e.fingerprint}>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={e.level}
+                    sx={{ height: 18, fontSize: 10, bgcolor: e.level === 'error' ? '#e5484d' : e.level === 'warning' ? '#f5a623' : '#6b6b6b', color: '#fff' }}
+                  />
+                </TableCell>
+                <TableCell sx={{ fontSize: 11.5, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.message || '—'}</TableCell>
+                <TableCell sx={{ fontSize: 11, color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.endpoint ?? '—'}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 11.5, color: 'text.secondary' }}>{e.occurrenceCount}</TableCell>
+                <TableCell align="right" sx={{ fontSize: 11, color: 'text.disabled' }}>{relTime(e.firstSeenAt)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Statistisk vakt over error_log (hvert 15. min): event-rate-spike (delta mot 24t-median) + nye feiltyper.
+        Spike/ny feiltype varsler super_admin (debounced). Anomaliene lager IKKE egne error_log-oppføringer. Sist oppdatert {relTime(generatedAt)}.
       </Typography>
     </Box>
   );
