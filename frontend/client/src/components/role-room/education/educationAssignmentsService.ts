@@ -13,6 +13,9 @@ export type SubmissionStatus = 'not_started' | 'submitted' | 'reviewed';
 export interface Assignment {
   id: string;
   cohortId: string | null;
+  productionId: string | null;
+  productionTitle: string | null;
+  productionProjectId: string | null;
   title: string;
   brief: string | null;
   learningGoals: string | null;
@@ -52,6 +55,7 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
 export interface AssignmentInput {
   title: string;
   cohortId?: string | null;
+  productionId?: string | null;
   brief?: string;
   learningGoals?: string;
   dueAt?: string | null;

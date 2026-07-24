@@ -35,8 +35,8 @@ function makePool(opts: { ownsAssignment?: boolean; ownsStudent?: boolean; assig
   const pool: any = {
     query: vi.fn(async (sql: string, params: any[]) => {
       if (sql.includes("INSERT INTO role_room_education_assignments")) {
-        const [id, owner, cohortId, title] = params;
-        const row = { id, owner_user_id: owner, cohort_id: cohortId, title, brief: null, learning_goals: null, due_at: null, status: "draft", submitted_count: 0, reviewed_count: 0, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+        const [id, owner, cohortId, productionId, title] = params;
+        const row = { id, owner_user_id: owner, cohort_id: cohortId, production_id: productionId, title, brief: null, learning_goals: null, due_at: null, status: "draft", submitted_count: 0, reviewed_count: 0, production_title: null, production_project_id: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
         inserts.push({ type: "assignment", row });
         return { rows: [row] };
       }
