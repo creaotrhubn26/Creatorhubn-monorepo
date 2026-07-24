@@ -20,6 +20,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { CohortsTab } from './CohortsTab';
+import { AssignmentsTab } from './AssignmentsTab';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
@@ -163,6 +164,8 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
         </Box>
       ) : active.id === 'cohorts' ? (
         <CohortsTab />
+      ) : active.id === 'assignments' ? (
+        <AssignmentsTab />
       ) : (
         <EmptyState tab={active} />
       )}
