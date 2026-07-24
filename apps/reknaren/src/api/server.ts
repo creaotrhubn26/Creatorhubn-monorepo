@@ -28,6 +28,7 @@ import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
+import { huntDocuments } from '../ingestion/document-hunt.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
@@ -1702,6 +1703,21 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Smart dokumentjakt — betalinger uten bilag + sannsynlig faktura vi alt har hentet.
+  app.get(
+    '/api/organizations/:orgId/document-hunt',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const asOf = new Date().toISOString().slice(0, 10);
+        res.json(toJson(await huntDocuments(deps.db, { organizationId: req.params.orgId!, asOf })));
       } catch (err) {
         next(err);
       }

@@ -3331,3 +3331,101 @@ export function AssistantScreen({ orgId, onNavigate }: { orgId: string; onNaviga
     </div>
   );
 }
+
+/* ── Smart dokumentjakt ─────────────────────────────────────────────────── */
+
+interface DocCandidate {
+  documentId: string;
+  vendor: string | null;
+  dateText: string | null;
+  grossMinor: string;
+  score: number;
+  reasons: string[];
+}
+interface PaymentGap {
+  transactionId: string;
+  bookedDate: string;
+  amountMinor: string;
+  description: string;
+  counterparty: string | null;
+  candidates: DocCandidate[];
+}
+interface DocumentHunt {
+  paymentsMissingDoc: number;
+  gapsWithCandidates: number;
+  gaps: PaymentGap[];
+}
+
+export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgId: string; onOpenDocument: (id: string) => void; onNavigate?: (s: string) => void }) {
+  const h = useLoad(() => api<DocumentHunt>('GET', `/api/organizations/${orgId}/document-hunt`), [orgId]);
+  const d = h.data;
+  const abs = (s: string) => s.replace('-', '');
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Dokumentjakt</h1>
+        <p className="subtitle">
+          Reknaren leter på tvers av kildene: betalinger uten bilag koblet mot sannsynlige fakturaer vi allerede har hentet inn.
+        </p>
+      </div>
+      {h.loading ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        d && (
+          <>
+            {d.gaps.length === 0 ? (
+              <div className="panel">
+                <p className="subtitle">
+                  {d.paymentsMissingDoc === 0
+                    ? 'Alle betalinger har et bilag knyttet til seg. 🎉'
+                    : `${d.paymentsMissingDoc} betaling(er) mangler bilag, men vi fant ingen sannsynlig faktura ennå. Skann e-post eller last opp bilaget.`}
+                </p>
+                {d.paymentsMissingDoc > 0 && onNavigate && (
+                  <div className="actions">
+                    <button className="secondary" onClick={() => onNavigate('gmail')}>Skann e-post</button>
+                    <button className="secondary" onClick={() => onNavigate('bank')}>Se bank</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              d.gaps.map((g) => {
+                const top = g.candidates[0]!;
+                return (
+                  <div className="panel" key={g.transactionId}>
+                    <div className="panel-head">
+                      <h2>
+                        Betaling til {g.counterparty ?? g.description} · {kr(abs(g.amountMinor))} kr
+                      </h2>
+                      <span className="confidence low">Mangler bilag</span>
+                    </div>
+                    <p className="subtitle">
+                      Bokført {nb(g.bookedDate)} · «{g.description}». Vi fant en sannsynlig faktura — skal den kobles til betalingen?
+                    </p>
+                    {g.candidates.map((c, i) => (
+                      <div key={i} className="panel impact" style={{ marginTop: 10 }}>
+                        <div className="panel-head">
+                          <strong>
+                            {c.vendor ?? 'Bilag'} · {kr(c.grossMinor)} kr{c.dateText ? ` · ${nb(c.dateText)}` : ''}
+                          </strong>
+                          <span className={`confidence ${c.score >= 90 ? 'high' : 'medium'}`}>{c.score}% treff</span>
+                        </div>
+                        <ul className="compact">
+                          {c.reasons.map((r, j) => (
+                            <li key={j}>{r}</li>
+                          ))}
+                        </ul>
+                        <div className="actions">
+                          <button className="primary" onClick={() => onOpenDocument(c.documentId)}>Se fakturaen</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}

@@ -7,6 +7,7 @@ import {
   GmailScreen,
   AiScreen,
   AssistantScreen,
+  DocumentHuntScreen,
   OverviewScreen,
   PeriodCloseScreen,
   PlanningScreen,
@@ -56,6 +57,7 @@ type Screen =
   | { name: 'planning' }
   | { name: 'period-close' }
   | { name: 'assistant' }
+  | { name: 'document-hunt' }
   | { name: 'documents' }
   | { name: 'document'; id: string }
   | { name: 'gmail' }
@@ -78,6 +80,7 @@ const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = 
   { key: 'planning', label: 'Framover', icon: 'chart' },
   { key: 'period-close', label: 'Månedsavslutning', icon: 'shield' },
   { key: 'assistant', label: 'Skatteassistent', icon: 'shield' },
+  { key: 'document-hunt', label: 'Dokumentjakt', icon: 'inbox' },
   { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
   { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
   { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
@@ -258,6 +261,9 @@ export default function App() {
           )}
           {screen.name === 'assistant' && (
             <AssistantScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
+          )}
+          {screen.name === 'document-hunt' && (
+            <DocumentHuntScreen orgId={orgId} onOpenDocument={openDocument} onNavigate={(name) => setScreen({ name } as Screen)} />
           )}
           {screen.name === 'documents' && <DocumentsScreen orgId={orgId} onOpen={openDocument} />}
           {screen.name === 'document' && (
