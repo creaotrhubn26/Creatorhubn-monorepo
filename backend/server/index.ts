@@ -175,6 +175,7 @@ import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
 import { createCrewNotificationsRouter } from "./crew-notifications-routes.js";
 import { createEducationCohortsRouter } from "./role-room-education-cohorts-routes.js";
+import { createEducationAssignmentsRouter } from "./role-room-education-assignments-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
@@ -2564,6 +2565,10 @@ app.use(
 app.use(
   "/api/role-room",
   createEducationCohortsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationAssignmentsRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room/locations/analysis",
