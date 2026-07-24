@@ -120,7 +120,7 @@ export async function assessPeriodClose(
   if (pendingDocs > 0) {
     items.push({
       code: 'bilag_mangler',
-      severity: 'blocker',
+      severity: 'warning',
       title: `${pendingDocs} bilag venter på behandling`,
       detail: 'Bilag er lest, men ikke godkjent og bokført. Perioden er ikke komplett før de er behandlet.',
       count: pendingDocs,
@@ -330,7 +330,9 @@ export async function assessPeriodClose(
   const entryCount = totals.entries as number;
   const bankCount = totals.bank as number;
   const cleanUnits = Math.max(0, entryCount - flaggedEntries) + Math.max(0, bankCount - unmatched);
-  const workUnits = entryCount + bankCount + pendingDocs;
+  // Uprosesserte innboks-bilag hører til «nå», ikke en bestemt historisk måned,
+  // så de teller ikke i månedens ferdig-prosent (men vises som påminnelse).
+  const workUnits = entryCount + bankCount;
   // Ingen aktivitet = ingenting å avstemme = ferdig.
   const readinessPct = workUnits === 0 ? 100 : Math.max(0, Math.min(100, Math.round((100 * cleanUnits) / workUnits)));
   const ready = !items.some((i) => i.severity === 'blocker');
