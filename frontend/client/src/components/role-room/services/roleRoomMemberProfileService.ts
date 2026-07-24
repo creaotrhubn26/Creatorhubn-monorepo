@@ -170,6 +170,23 @@ export const roleRoomMemberProfileService = {
     return data.profile;
   },
 
+  /**
+   * `users.profession` for innlogget bruker (ikke member-profilens professions[]).
+   * Driver auto-routing til riktig workspace (f.eks. education). Degraderer til
+   * null ved feil.
+   */
+  async getMyProfession(): Promise<string | null> {
+    try {
+      const data = await jsonRequest<{ profession: string | null }>(
+        '/api/role-room/me/profession',
+        { method: 'GET' },
+      );
+      return data?.profession ?? null;
+    } catch {
+      return null;
+    }
+  },
+
   async updateMyProfile(updates: Partial<Omit<RoleRoomMemberProfile, 'userId' | 'updatedAt'>>): Promise<RoleRoomMemberProfile> {
     const data = await jsonRequest<{ profile: RoleRoomMemberProfile }>(
       '/api/role-room/profile/me',

@@ -546,6 +546,26 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
     }
   });
 
+  // Lettvekts-oppslag av `users.profession` for den innloggede brukeren.
+  // Brukes av klienten til å auto-route en provisjonert utdanningsinstitusjon
+  // (profession='education_institution') til utdannings-workspacet via
+  // professionMode.applyProfessionModeFromRole. `/profile/me` returnerer member-
+  // profilen (professions[]-array), IKKE users.profession — derfor eget endepunkt.
+  app.get("/api/role-room/me/profession", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res, activeSessions);
+    if (!userId) return;
+    try {
+      const { rows } = await pool.query<{ profession: string | null }>(
+        `SELECT profession FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      res.json({ profession: rows[0]?.profession ?? null });
+    } catch (err) {
+      console.warn("[rr-profile] GET /me/profession degraded:", (err as any)?.message || err);
+      res.json({ profession: null });
+    }
+  });
+
   // ── PATCH /api/role-room/profile/me ──
   app.patch("/api/role-room/profile/me", async (req: Request, res: Response) => {
     const userId = requireUser(req, res, activeSessions);
