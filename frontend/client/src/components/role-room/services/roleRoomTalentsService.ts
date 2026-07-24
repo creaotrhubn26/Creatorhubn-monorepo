@@ -5,6 +5,8 @@
  * Backend-routes: /api/role-room/talents/me + /me/consents (migrasjon 209+210).
  */
 
+import authSessionService from './authSessionService';
+
 /**
  * Konkret tilgjengelighets-vindu på en talent-profil. Marketplace-signal
  * («åpen for jobb fra–til»), IKKE en produksjonskalender — samtykke-gated via
@@ -131,7 +133,16 @@ const BASE = '/api/role-room/talents';
 const AGENCY_BASE = '/api/role-room';
 
 async function authFetch(path: string, init?: RequestInit) {
-  return fetch(path, { ...init, credentials: 'include' });
+  // theroleroom.com autentiserer på Bearer-header (readActiveSessionToken leser
+  // IKKE cookies). Den globale fetch-patchen i main.tsx injiserer bare
+  // `creatorhub_auth_token` — som IKKE settes av role-room-login (den bruker
+  // `role_room_auth_token`). Uten eksplisitt header 401-et derfor talents på
+  // standalone theroleroom.com. Legg på Bearer eksplisitt via authSessionService.
+  return fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: { ...(init?.headers ?? {}), ...authSessionService.getAuthHeadersSync() },
+  });
 }
 
 const roleRoomTalentsService = {

@@ -2,6 +2,7 @@
  * roleRoomSelfTapesService.ts
  *
  * Self-Tape Studio frontend service-lag.
+ * @remarks authSessionService importeres for eksplisitt Bearer-header (se `api`).
  *
  * Backend: talent-selftapes-routes.ts (Fase A).
  * Spec: docs/specs/SELF_TAPE_STUDIO_SPEC.md
@@ -9,6 +10,8 @@
  * Bevarer ?demo=1 fra URL i alle requests (samme mønster som
  * roleRoomPartnershipsService.ts).
  */
+
+import authSessionService from './authSessionService';
 
 export type SelftapeTakeStatus = 'uploading' | 'processing' | 'ready' | 'failed';
 export type SelftapeProjectStatus = 'active' | 'submitted' | 'archived';
@@ -191,9 +194,11 @@ async function api<T>(
 ): Promise<T> {
   const { params, ...rest } = init || {};
   const r = await fetch(buildUrl(path, params), {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(rest.headers ?? {}) },
     ...rest,
+    credentials: 'include',
+    // Bearer eksplisitt: den globale patchen injiserer bare creatorhub_auth_token
+    // (ikke satt av role-room-login) → talents 401-et uten dette på theroleroom.com.
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync(), ...(rest.headers ?? {}) },
   });
   const payload: unknown = await r.json().catch(() => null);
   if (!r.ok) {
