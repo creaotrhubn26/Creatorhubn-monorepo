@@ -13,6 +13,7 @@ import { getAccountDef } from '../coa/accounts.js';
 import type { Db } from '../db/pool.js';
 import { formatMinorAsKr } from '../invoicing/view.js';
 import type { RuleRegister } from '../rules/register.js';
+import { buildVatReport } from '../vat/engine.js';
 import { detectBookkeepingErrors } from './anomalies.js';
 
 const MONTHS = [
@@ -35,6 +36,8 @@ export interface CloseItem {
   count: number;
   /** Kort setningsledd til sammendraget, f.eks. «tre bilag mangler». */
   phrase: string;
+  /** false = vis i listen, men ikke i sammendrags-setningen (positive påminnelser). */
+  inSummary?: boolean;
   ruleReferences?: string[];
   actionScreen?: string;
 }
@@ -267,6 +270,47 @@ export async function assessPeriodClose(
     });
   }
 
+  // 9) Forrige måned bør låses først — månedene lukkes i rekkefølge.
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const prev = await one(
+    `SELECT
+       (SELECT COUNT(*) FROM journal_entries WHERE organization_id=$1 AND status='posted'
+          AND EXTRACT(YEAR FROM entry_date)=$2 AND EXTRACT(MONTH FROM entry_date)=$3)::int AS entries,
+       (SELECT status FROM accounting_periods WHERE organization_id=$1 AND year=$2 AND month=$3) AS pstatus`,
+    [org, prevYear, prevMonth],
+  );
+  if ((prev.entries as number) > 0 && prev.pstatus !== 'locked' && status === 'open') {
+    items.push({
+      code: 'forrige_apen',
+      severity: 'warning',
+      title: `${MONTHS[prevMonth - 1]} er ikke låst ennå`,
+      detail: 'Månedene bør låses i rekkefølge, så tallene ikke endrer seg bakover. Fullfør og lås forrige måned først.',
+      count: 1,
+      phrase: 'forrige måned er ikke låst',
+      actionScreen: 'period-close',
+    });
+  }
+
+  // 10) MVA-termin komplett — påminnelse ved slutten av en 2-måneders termin.
+  if ([2, 4, 6, 8, 10, 12].includes(month)) {
+    const termStart = `${year}-${pad(month - 1)}-01`;
+    const vat = await buildVatReport(db, org, termStart, monthEnd);
+    if (vat.outputVatMinor !== 0n || vat.deductibleInputVatMinor !== 0n) {
+      const net = vat.netPayableMinor;
+      items.push({
+        code: 'mva_termin',
+        severity: 'info',
+        inSummary: false,
+        title: 'MVA-terminen er komplett',
+        detail: `Terminen ${MONTHS[month - 2]}–${MONTHS[month - 1]} er over. ${net >= 0n ? 'Å betale' : 'Til gode'}: ${formatMinorAsKr(net < 0n ? -net : net)} kr. Klar til innsending når måneden er avstemt.`,
+        count: 0,
+        phrase: '',
+        actionScreen: 'vat',
+      });
+    }
+  }
+
   // Ferdig-prosent: andel av månedens arbeidsenheter (bilag + banktransaksjoner)
   // som er «rene». Ett bilag flagget av flere sjekker telles bare én gang.
   const flaggedEntries = (
@@ -296,10 +340,12 @@ export async function assessPeriodClose(
   let summary: string;
   if (status === 'locked') {
     summary = `${monthName} er avsluttet og låst.`;
-  } else if (items.length === 0) {
-    summary = `${monthName} er 100 % avstemt og klar til å låses.`;
+  } else if (items.filter((i) => i.inSummary !== false).length === 0) {
+    summary = items.length === 0
+      ? `${monthName} er 100 % avstemt og klar til å låses.`
+      : `${monthName} er ${readinessPct} % avstemt. Ingenting blokkerer — se påminnelsene under.`;
   } else {
-    const phrases = items.slice(0, 4).map((i) => i.phrase);
+    const phrases = items.filter((i) => i.inSummary !== false).slice(0, 4).map((i) => i.phrase);
     const joined =
       phrases.length === 1
         ? phrases[0]!
@@ -308,4 +354,36 @@ export async function assessPeriodClose(
   }
 
   return { year, month, monthName, status, readinessPct, ready, items, summary };
+}
+
+export interface YearCloseMonth {
+  month: number;
+  monthName: string;
+  status: 'open' | 'locked';
+  readinessPct: number;
+  ready: boolean;
+  itemCount: number;
+  blockerCount: number;
+}
+
+/** Hele året på én linje — readiness per måned, til «kontinuerlig avslutning»-oversikten. */
+export async function assessYearClose(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; year: number },
+): Promise<{ year: number; months: YearCloseMonth[] }> {
+  const months: YearCloseMonth[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const a = await assessPeriodClose(db, rules, { organizationId: params.organizationId, year: params.year, month: m });
+    months.push({
+      month: m,
+      monthName: a.monthName,
+      status: a.status,
+      readinessPct: a.readinessPct,
+      ready: a.ready,
+      itemCount: a.items.length,
+      blockerCount: a.items.filter((i) => i.severity === 'blocker').length,
+    });
+  }
+  return { year: params.year, months };
 }

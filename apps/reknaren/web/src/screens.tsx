@@ -3123,6 +3123,12 @@ export function PeriodCloseScreen({ orgId, onNavigate }: { orgId: string; onNavi
     () => api<PeriodClose>('GET', `/api/organizations/${orgId}/period-close/${year}/${month}`),
     [orgId, year, month],
   );
+  const yearOverview = useLoad(
+    () => api<{ months: { month: number; monthName: string; status: string; readinessPct: number; ready: boolean; blockerCount: number }[] }>(
+      'GET', `/api/organizations/${orgId}/period-close/${year}`,
+    ),
+    [orgId, year, pc.data?.status],
+  );
   const p = pc.data;
 
   const lock = async () => {
@@ -3165,6 +3171,25 @@ export function PeriodCloseScreen({ orgId, onNavigate }: { orgId: string; onNavi
           <input id="pc-year" inputMode="numeric" value={year} onChange={(e) => setYear(Number(e.target.value) || year)} />
         </div>
       </div>
+
+      {yearOverview.data && (
+        <div className="year-strip" role="tablist" aria-label={`Avstemming ${year}`}>
+          {yearOverview.data.months.map((m) => {
+            const lvl = m.status === 'locked' ? 'locked' : m.blockerCount > 0 ? 'low' : m.readinessPct >= 80 ? 'ok' : m.readinessPct >= 50 ? 'warn' : 'low';
+            return (
+              <button
+                key={m.month}
+                className={`year-chip ${lvl}${m.month === month ? ' active' : ''}`}
+                onClick={() => setMonth(m.month)}
+                title={`${m.monthName}: ${m.status === 'locked' ? 'låst' : m.readinessPct + ' % ferdig'}`}
+              >
+                <span className="year-chip-m">{m.monthName.slice(0, 3)}</span>
+                <span className="year-chip-v">{m.status === 'locked' ? '🔒' : `${m.readinessPct}%`}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {pc.error && <div className="error">{pc.error}</div>}
       {pc.loading ? (

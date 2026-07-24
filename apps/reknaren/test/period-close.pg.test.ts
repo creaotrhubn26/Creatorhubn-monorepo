@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { postJournalEntry } from '../src/ledger/engine.js';
-import { assessPeriodClose } from '../src/ledger/period-close.js';
+import { assessPeriodClose, assessYearClose } from '../src/ledger/period-close.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { newId } from '../src/shared/ids.js';
@@ -100,6 +100,39 @@ describe('assessPeriodClose', () => {
     expect(a.readinessPct).toBeLessThan(100);
     expect(a.readinessPct).toBeGreaterThan(0);
     expect(a.summary).toMatch(/^Mars er \d+ % ferdig avstemt\./);
+  });
+
+  it('forrige måned ikke låst → påminnelse om å lukke i rekkefølge', async () => {
+    const org = await createOrganization(db, { name: 'Rekkefølge AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    // Aktivitet i februar (åpen), vurderer mars.
+    await postJournalEntry(db, {
+      organizationId: org.id, actor: actor(), entryDate: '2025-02-10', description: 'Salg',
+      lines: [{ accountNumber: '1920', debitMinor: 500000n }, { accountNumber: '3000', creditMinor: 400000n, vatCode: '3' }, { accountNumber: '2700', creditMinor: 100000n, vatCode: '3' }],
+      idempotencyKey: 'feb',
+    });
+    const a = await assessPeriodClose(db, rules, { organizationId: org.id, year: 2025, month: 3 });
+    expect(codes(a)).toContain('forrige_apen');
+  });
+
+  it('MVA-termin komplett ved terminslutt (april), men ikke i sammendraget', async () => {
+    const org = await createOrganization(db, { name: 'Termin AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    await postJournalEntry(db, {
+      organizationId: org.id, actor: actor(), entryDate: '2025-03-20', description: 'Salg med mva',
+      lines: [{ accountNumber: '1920', debitMinor: 1250000n }, { accountNumber: '3000', creditMinor: 1000000n, vatCode: '3' }, { accountNumber: '2700', creditMinor: 250000n, vatCode: '3' }],
+      idempotencyKey: 'mvasalg',
+    });
+    const a = await assessPeriodClose(db, rules, { organizationId: org.id, year: 2025, month: 4 });
+    expect(codes(a)).toContain('mva_termin');
+    expect(a.summary).not.toContain('MVA-terminen');
+  });
+
+  it('år-oversikt gir tolv måneder med readiness', async () => {
+    const org = await createOrganization(db, { name: 'År AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    const y = await assessYearClose(db, rules, { organizationId: org.id, year: 2025 });
+    expect(y.months).toHaveLength(12);
+    expect(y.months[0]!.monthName).toBe('Januar');
+    expect(y.months[11]!.monthName).toBe('Desember');
+    expect(y.months.every((m) => m.readinessPct >= 0 && m.readinessPct <= 100)).toBe(true);
   });
 
   it('negativ bankbeholdning ved månedsslutt gir blokker', async () => {
