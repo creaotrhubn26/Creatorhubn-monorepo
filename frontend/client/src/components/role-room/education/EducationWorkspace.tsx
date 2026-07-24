@@ -18,8 +18,9 @@
  * token-systemet, for å holde scaffoldet isolert til education-modus.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { CohortsTab } from './CohortsTab';
+import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
 } from '@mui/material';
@@ -31,6 +32,7 @@ import {
   Grading as AssessmentIcon,
   CollectionsBookmark as PortfolioIcon,
   SupervisorAccount as FacultyIcon,
+  Explore as TourIcon,
 } from '@mui/icons-material';
 
 type EducationTabId =
@@ -81,14 +83,34 @@ function EmptyState({ tab }: { tab: EducationTabDef }) {
 
 export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
   const [activeTab, setActiveTab] = useState<EducationTabId>('overview');
+  const [tourOpen, setTourOpen] = useState(false);
   const active = EDUCATION_TABS.find((t) => t.id === activeTab) ?? EDUCATION_TABS[0];
+
+  // Vis rundturen automatisk én gang for nye faglærere.
+  useEffect(() => {
+    if (!hasSeenEducationTour()) setTourOpen(true);
+  }, []);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff', p: { xs: 2, md: 4 } }}>
+      <EducationTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        onNavigate={(tab) => setActiveTab(tab)}
+      />
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 0.5 }}>
         <SchoolIcon sx={{ color: ACCENT }} />
         <Typography variant="h5" sx={{ fontWeight: 800 }}>Utdannings-workspace</Typography>
         <Chip label="Faglærer" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
+        <Box sx={{ flexGrow: 1 }} />
+        <Button
+          size="small"
+          startIcon={<TourIcon />}
+          onClick={() => setTourOpen(true)}
+          sx={{ color: ACCENT, textTransform: 'none', fontWeight: 600 }}
+        >
+          Rundtur
+        </Button>
       </Stack>
       <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 13.5, mb: 3 }}>
         Undervisning, studentproduksjoner og samarbeid med eksterne oppdragsgivere — i én flate.
