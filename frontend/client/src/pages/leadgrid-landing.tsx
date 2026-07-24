@@ -79,7 +79,9 @@ const PALETTE = {
   accentBright: 'var(--lgl-accent-bright, #C084FC)',
   text: 'var(--lgl-text, #F4F0FF)',
   textMuted: 'rgba(244, 240, 255, 0.72)',
-  textFaint: 'rgba(244, 240, 255, 0.45)',
+  // 0.45 falt under WCAG AA (≈3:1) på den mørke bakgrunnen for liten tekst.
+  // 0.6 gir ~5:1 mot #0b0518 og leser fortsatt som «faint».
+  textFaint: 'rgba(244, 240, 255, 0.6)',
 };
 
 // ────────────────────────────────────────────────────────────
@@ -127,6 +129,32 @@ const ECOSYSTEM = [
 // tabell). Inntil videre — siden vi ikke har ekte testimonials —
 // rendres seksjonen ikke i det hele tatt. Vi vil ikke ha falske sitater.
 const TESTIMONIALS: { quote: string; name: string; role: string }[] = [];
+
+// FAQ — én kilde for både synlig seksjon (FaqSection) OG JSON-LD FAQPage.
+// Google krever at strukturert FAQ-data faktisk er synlig på siden; ved å
+// rendre det samme innholdet begge steder holder vi dem i sync.
+const FAQ_ITEMS: { q: string; a: string }[] = [
+  {
+    q: 'Hva er Leadgrid?',
+    a: 'Leadgrid er et kartbasert CRM-system for team som vil ha bedre oversikt over lokale leads, organisere oppfølging og levere målbare resultater til kundene sine.',
+  },
+  {
+    q: 'Hvor mye koster Leadgrid?',
+    a: 'Solo Free er gratis (1 kunde, 3 auto-onboards/mnd). Solo Pro er 799 kr/mnd (10 kunder, alle AI-features). Agency er 2 999 kr/mnd med multi-bruker, territorie-grids og white-label klient-portal.',
+  },
+  {
+    q: 'Hvordan kommer jeg i gang?',
+    a: 'Trykk Start gratis. Du oppgir bare e-post og bedriftsnavn. Vi setter opp alt, og du legger til din første kunde innen 2 minutter.',
+  },
+  {
+    q: 'Trenger kunden min konto for å se sin portal?',
+    a: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord, bare klikk på lenken i e-posten.',
+  },
+  {
+    q: 'Kan jeg avslutte når som helst?',
+    a: 'Ja. Alle planer kan kanselleres umiddelbart via Stripe Customer Portal. Data eksporteres på forespørsel.',
+  },
+];
 
 // Pris-config-form + default: kanonisk kilde i @shared/leadgridPricingConfig
 // (delt med admin-editoren). Landing leser fra /api/leadgrid/pricing-config;
@@ -274,33 +302,11 @@ export default function LeadgridLanding() {
     injectJsonLd('leadgrid-faq', {
       '@context': 'https://schema.org',
       '@type': 'FAQPage',
-      mainEntity: [
-        {
-          '@type': 'Question',
-          name: 'Hva er Leadgrid?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Leadgrid er et kartbasert CRM-system for team som vil ha bedre oversikt over lokale leads, organisere oppfølging og levere målbare resultater til kundene sine.' },
-        },
-        {
-          '@type': 'Question',
-          name: 'Hvor mye koster Leadgrid?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Solo Free er gratis (1 kunde, 3 auto-onboards/mnd). Solo Pro er 799 kr/mnd (10 kunder, alle AI-features). Agency er 2 999 kr/mnd med multi-bruker, territorie-grids og white-label klient-portal.' },
-        },
-        {
-          '@type': 'Question',
-          name: 'Hvordan kommer jeg i gang?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Trykk Start gratis. Du oppgir bare e-post og bedriftsnavn. Vi setter opp alt, og du legger til din første kunde innen 2 minutter.' },
-        },
-        {
-          '@type': 'Question',
-          name: 'Trenger kunden min konto for å se sin portal?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord, bare klikk på lenken i e-posten.' },
-        },
-        {
-          '@type': 'Question',
-          name: 'Kan jeg avslutte når som helst?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Ja. Alle planer kan kanselleres umiddelbart via Stripe Customer Portal. Data eksporteres på forespørsel.' },
-        },
-      ],
+      mainEntity: FAQ_ITEMS.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
     });
   }, []);
 
@@ -329,6 +335,7 @@ export default function LeadgridLanding() {
       <TestimonialsSection />
       <StackReplaceSection />
       <PricingSection />
+      <FaqSection />
       <FinalCtaSection />
       <Footer />
     </Box>
@@ -371,6 +378,8 @@ function StickyHeader() {
               component="img"
               src="/leadgrid/logo.webp"
               alt="Leadgrid"
+              width={36}
+              height={36}
               sx={{ width: 36, height: 36, borderRadius: 1 }}
             />
             <Box>
@@ -1000,6 +1009,9 @@ function DeviceComposition() {
         component="img"
         src="/leadgrid/hero/macbook.webp"
         alt="Leadgrid Salgsledelse på MacBook"
+        // Hero-bildet er LCP-elementet — prioritér nedlasting, ikke lazy.
+        fetchPriority="high"
+        decoding="async"
         sx={{
           position: 'relative',
           width: { xs: '96%', md: '100%' },
@@ -1012,6 +1024,7 @@ function DeviceComposition() {
         component="img"
         src="/leadgrid/hero/ipad.webp"
         alt="Leadgrid-kartet på iPad"
+        decoding="async"
         sx={{
           position: 'absolute',
           left: { xs: '-2%', md: '-6%' },
@@ -1026,6 +1039,7 @@ function DeviceComposition() {
         component="img"
         src="/leadgrid/hero/iphone.webp"
         alt="Dagens agenda i Leadgrid på iPhone"
+        decoding="async"
         sx={{
           position: 'absolute',
           right: { xs: '-1%', md: '-3%' },
@@ -1108,6 +1122,8 @@ function TrustStrip() {
                 component="img"
                 src={p.logo_url}
                 alt={p.name}
+                loading="lazy"
+                decoding="async"
                 sx={{
                   maxHeight: 36,
                   maxWidth: 140,
@@ -1170,7 +1186,7 @@ function HowItWorksSection() {
                     {s.n}
                   </Box>
                   <s.Icon sx={{ fontSize: 28, color: PALETTE.accent, mb: 1.5 }} />
-                  <Typography sx={{ fontWeight: 600, fontSize: 16, mb: 1 }}>
+                  <Typography component="h3" sx={{ fontWeight: 600, fontSize: 16, mb: 1 }}>
                     {s.title}
                   </Typography>
                   <Typography sx={{ color: PALETTE.textMuted, fontSize: 13.5, lineHeight: 1.55 }}>
@@ -1309,7 +1325,7 @@ function FeatureCard({
           }}>
             <Icon sx={{ fontSize: 24, color: accent }} />
           </Box>
-          <Typography sx={{ fontWeight: 600, fontSize: 22, mb: 1.5, color: PALETTE.text }}>
+          <Typography component="h3" sx={{ fontWeight: 600, fontSize: 22, mb: 1.5, color: PALETTE.text }}>
             {title}
           </Typography>
           <Typography sx={{ color: PALETTE.textMuted, fontSize: 15, lineHeight: 1.6, maxWidth: 440 }}>
@@ -1344,7 +1360,7 @@ function EcosystemSection() {
                 >
                   <e.Icon sx={{ fontSize: 30, color: PALETTE.accent }} />
                 </Box>
-                <Typography sx={{ fontWeight: 600, fontSize: 14, mt: 1 }}>
+                <Typography component="h3" sx={{ fontWeight: 600, fontSize: 14, mt: 1 }}>
                   {e.title}
                 </Typography>
                 <Typography sx={{
@@ -1463,7 +1479,7 @@ function StackReplaceSection() {
               height: '100%', bgcolor: PALETTE.card, border: `1px solid ${PALETTE.cardBorder}`,
               borderRadius: 3, boxShadow: 'none', p: 4, display: 'flex', flexDirection: 'column',
             }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>
+              <Typography component="h3" sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>
                 Vanlig salgs-stabel
               </Typography>
               <Typography sx={{ color: PALETTE.textFaint, fontSize: 13, mb: 3 }}>
@@ -1503,7 +1519,7 @@ function StackReplaceSection() {
               height: '100%', bgcolor: 'rgba(167, 139, 250, 0.10)', border: `1px solid ${PALETTE.accent}`,
               borderRadius: 3, boxShadow: 'none', p: 4, display: 'flex', flexDirection: 'column',
             }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>Med Leadgrid</Typography>
+              <Typography component="h3" sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>Med Leadgrid</Typography>
               <Typography sx={{ color: PALETTE.accentBright, fontSize: 13, mb: 3 }}>
                 Alt i ett, én norsk pris
               </Typography>
@@ -1602,7 +1618,7 @@ function PricingSection() {
                     }}
                   />
                 )}
-                <Typography sx={{ fontWeight: 600, fontSize: 18, mb: 0.5 }}>
+                <Typography component="h3" sx={{ fontWeight: 600, fontSize: 18, mb: 0.5 }}>
                   {p.name}
                 </Typography>
                 <Typography sx={{ color: PALETTE.textMuted, fontSize: 13.5, mb: 3 }}>
@@ -1705,7 +1721,7 @@ function PricingSection() {
                       }}>
                         <Icon sx={{ fontSize: 22, color: a.accent }} />
                       </Box>
-                      <Typography sx={{ fontWeight: 600, fontSize: 17, color: PALETTE.text }}>
+                      <Typography component="h3" sx={{ fontWeight: 600, fontSize: 17, color: PALETTE.text }}>
                         {a.title}
                       </Typography>
                     </Stack>
@@ -1754,6 +1770,57 @@ function PricingSection() {
             }}
           >
             Se full pris-sammenligning, kalkulator og FAQ →
+          </Button>
+        </Box>
+      </Container>
+    </Box>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// FAQ — synlig seksjon (speiler JSON-LD FAQPage via FAQ_ITEMS)
+// ────────────────────────────────────────────────────────────
+
+function FaqSection() {
+  return (
+    <Box component="section" id="faq" sx={{ py: { xs: 8, md: 12 }, bgcolor: PALETTE.bg }}>
+      <Container maxWidth="md">
+        <SectionTitle title="Ofte stilte spørsmål" />
+        <Box component="dl" sx={{ m: 0 }}>
+          {FAQ_ITEMS.map((f, i) => (
+            <Box
+              key={f.q}
+              sx={{
+                py: 3,
+                borderTop: i === 0 ? `1px solid ${PALETTE.cardBorder}` : 'none',
+                borderBottom: `1px solid ${PALETTE.cardBorder}`,
+              }}
+            >
+              <Typography
+                component="dt"
+                sx={{ fontWeight: 600, fontSize: { xs: 17, md: 19 }, color: PALETTE.text, mb: 1 }}
+              >
+                {f.q}
+              </Typography>
+              <Typography
+                component="dd"
+                sx={{ m: 0, color: PALETTE.textMuted, fontSize: 15, lineHeight: 1.65 }}
+              >
+                {f.a}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+        <Box sx={{ mt: 4, textAlign: 'center' }}>
+          <Button
+            href="/leadgrid/pricing"
+            variant="text"
+            sx={{
+              color: PALETTE.accentBright, fontWeight: 600, textTransform: 'none',
+              '&:hover': { bgcolor: 'rgba(167, 139, 250, 0.10)' },
+            }}
+          >
+            Flere spørsmål? Se pris-FAQ og kalkulator →
           </Button>
         </Box>
       </Container>
@@ -1856,6 +1923,9 @@ function Footer() {
                 component="img"
                 src="/leadgrid/logo.webp"
                 alt="Leadgrid"
+                width={36}
+                height={36}
+                loading="lazy"
                 sx={{ width: 36, height: 36, borderRadius: 1 }}
               />
               <Box>
@@ -1962,7 +2032,7 @@ function Footer() {
 function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <Box sx={{ textAlign: 'center', mb: 6 }}>
-      <Typography sx={{
+      <Typography component="h2" sx={{
         fontSize: { xs: 28, md: 36 },
         fontWeight: 700,
         letterSpacing: '-0.02em',
