@@ -39,6 +39,7 @@ import {
   Card, CardContent, Divider, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, CircularProgress, Alert,
+  IconButton, Drawer,
 } from '@mui/material';
 import {
   TravelExploreOutlined,
@@ -60,6 +61,8 @@ import {
   DoorFrontOutlined,
   DirectionsCarFilledOutlined,
   VerifiedOutlined,
+  MenuOutlined,
+  CloseOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
@@ -185,6 +188,13 @@ export default function LeadgridLanding() {
     const open = () => setDemoOpen(true);
     window.addEventListener('leadgrid:book-demo', open);
     return () => window.removeEventListener('leadgrid:book-demo', open);
+  }, []);
+  // «Start gratis» — samme mønster som book-demo: én dialog på topp-nivå,
+  // åpnes fra alle CTA-er (hero, stack-replace, pris-kort) via custom-event.
+  useEffect(() => {
+    const open = () => setExpStartOpen(true);
+    window.addEventListener('leadgrid:start-free', open);
+    return () => window.removeEventListener('leadgrid:start-free', open);
   }, []);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
@@ -317,7 +327,7 @@ export default function LeadgridLanding() {
       <FeatureGridSection />
       <EcosystemSection />
       <TestimonialsSection />
-      <StackReplaceSection onStartFree={() => setExpStartOpen(true)} />
+      <StackReplaceSection />
       <PricingSection />
       <FinalCtaSection />
       <Footer />
@@ -329,7 +339,19 @@ export default function LeadgridLanding() {
 // Header
 // ────────────────────────────────────────────────────────────
 
+const NAV_ITEMS: { label: string; href: string }[] = [
+  { label: 'Produkt', href: '#produkt' },
+  // NB: seksjons-id-en er `losninger` (uten ø) — anker må matche eksakt,
+  // ellers scroller lenken ingensteds. Footer bruker samme `#losninger`.
+  { label: 'Løsninger', href: '#losninger' },
+  { label: 'Connectors', href: '/leadgrid/connectors' },
+  { label: 'Importér', href: '/leadgrid/import' },
+  { label: 'Priser', href: '#priser' },
+  { label: 'Demo', href: '#demo' },
+];
+
 function StickyHeader() {
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <Box
       component="header"
@@ -362,14 +384,7 @@ function StickyHeader() {
           </Stack>
 
           <Stack direction="row" spacing={3} sx={{ display: { xs: 'none', md: 'flex' } }}>
-            {([
-              { label: 'Produkt', href: '#produkt' },
-              { label: 'Løsninger', href: '#løsninger' },
-              { label: 'Connectors', href: '/leadgrid/connectors' },
-              { label: 'Importér', href: '/leadgrid/import' },
-              { label: 'Priser', href: '#priser' },
-              { label: 'Demo', href: '#demo' },
-            ]).map((item) => (
+            {NAV_ITEMS.map((item) => (
               <Typography
                 key={item.label}
                 component="a"
@@ -388,7 +403,10 @@ function StickyHeader() {
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Button
               variant="text"
-              sx={{ color: PALETTE.textMuted, fontWeight: 500, textTransform: 'none' }}
+              sx={{
+                color: PALETTE.textMuted, fontWeight: 500, textTransform: 'none',
+                display: { xs: 'none', sm: 'inline-flex' },
+              }}
               href="https://creatorhubn.com"
             >
               Logg inn
@@ -402,6 +420,7 @@ function StickyHeader() {
                 textTransform: 'none',
                 borderRadius: 999,
                 px: 2.5,
+                display: { xs: 'none', sm: 'inline-flex' },
                 '&:hover': { bgcolor: PALETTE.accentBright },
               }}
               endIcon={<SendOutlined sx={{ fontSize: 16 }} />}
@@ -409,9 +428,86 @@ function StickyHeader() {
             >
               Book demo
             </Button>
+            {/* Mobil hamburger — nav-lenkene er skjult < md, så uten denne
+                hadde mobilbrukere ingen navigasjon i det hele tatt. */}
+            <IconButton
+              aria-label="Åpne meny"
+              onClick={() => setMobileOpen(true)}
+              sx={{ color: PALETTE.text, display: { xs: 'inline-flex', md: 'none' } }}
+            >
+              <MenuOutlined />
+            </IconButton>
           </Stack>
         </Stack>
       </Container>
+
+      <Drawer
+        anchor="right"
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        PaperProps={{
+          sx: {
+            bgcolor: PALETTE.bg,
+            color: PALETTE.text,
+            width: 280,
+            borderLeft: `1px solid ${PALETTE.cardBorder}`,
+            backgroundImage: 'none',
+          },
+        }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ p: 2 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: 18 }}>Leadgrid</Typography>
+          <IconButton aria-label="Lukk meny" onClick={() => setMobileOpen(false)} sx={{ color: PALETTE.text }}>
+            <CloseOutlined />
+          </IconButton>
+        </Stack>
+        <Divider sx={{ borderColor: PALETTE.cardBorder }} />
+        <Stack spacing={0.5} sx={{ p: 2 }}>
+          {NAV_ITEMS.map((item) => (
+            <Typography
+              key={item.label}
+              component="a"
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              sx={{
+                color: PALETTE.textMuted, fontSize: 16, fontWeight: 500,
+                textDecoration: 'none', py: 1,
+                '&:hover': { color: PALETTE.text },
+              }}
+            >
+              {item.label}
+            </Typography>
+          ))}
+        </Stack>
+        <Divider sx={{ borderColor: PALETTE.cardBorder }} />
+        <Stack spacing={1.5} sx={{ p: 2 }}>
+          <Button
+            variant="outlined"
+            fullWidth
+            href="https://creatorhubn.com"
+            sx={{
+              color: PALETTE.text, borderColor: PALETTE.cardBorder,
+              textTransform: 'none', fontWeight: 600, borderRadius: 999,
+              '&:hover': { borderColor: PALETTE.accent, bgcolor: 'rgba(167, 139, 250, 0.08)' },
+            }}
+          >
+            Logg inn
+          </Button>
+          <Button
+            variant="contained"
+            fullWidth
+            endIcon={<SendOutlined sx={{ fontSize: 16 }} />}
+            onClick={() => { setMobileOpen(false); window.dispatchEvent(new Event('leadgrid:book-demo')); }}
+            sx={{
+              bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 600,
+              textTransform: 'none', borderRadius: 999,
+              '&:hover': { bgcolor: PALETTE.accentBright },
+            }}
+          >
+            Book demo
+          </Button>
+        </Stack>
+      </Drawer>
     </Box>
   );
 }
@@ -421,7 +517,6 @@ function StickyHeader() {
 // ────────────────────────────────────────────────────────────
 
 function HeroSection() {
-  const [startOpen, setStartOpen] = useState(false);
   return (
     <Box
       sx={{
@@ -514,12 +609,11 @@ function HeroSection() {
                 }}
                 onClick={() => {
                   trackEvent('leadgrid_start_free_clicked', { cta_location: 'hero' });
-                  setStartOpen(true);
+                  window.dispatchEvent(new Event('leadgrid:start-free'));
                 }}
               >
                 Start gratis
               </Button>
-              <StartFreeDialog open={startOpen} onClose={() => setStartOpen(false)} />
               <Button
                 variant="outlined"
                 size="large"
@@ -580,8 +674,14 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [contactName, setContactName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [doneMsg, setDoneMsg] = useState<string | null>(null);
 
   const canStart = email.includes('@') && email.includes('.') && orgName.trim().length > 1;
+
+  function close() {
+    setDoneMsg(null); setError(null); setSubmitting(false);
+    onClose();
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -628,14 +728,13 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
         window.location.href = data.checkout_url;
         return;
       }
-      // Ingen checkout-url — fortell brukeren sjekk e-post for magic link
+      // Ingen checkout-url — vis bekreftelse i dialogen (ikke native alert).
       setError(null);
-      alert(
+      setDoneMsg(
         data.magic_link_sent
           ? 'Sjekk e-posten din. Vi sendte deg en magic link til Leadgrid.'
           : 'Klar! Gå til /leadgrid/welcome for å komme i gang.',
       );
-      onClose();
     } catch (e: any) {
       setError(String(e?.message ?? e));
     }
@@ -644,7 +743,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
 
   return (
     <Dialog
-      open={open} onClose={onClose} maxWidth="sm" fullWidth
+      open={open} onClose={close} maxWidth="sm" fullWidth
       PaperProps={{
         sx: {
           bgcolor: '#0a0512',
@@ -658,12 +757,18 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
         <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>
           Solo Free
         </Typography>
-        <Typography variant="h5" fontWeight={700}>Start gratis</Typography>
-        <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
-          1 kunde · 3 auto-onboards/mnd · Klient-portal · Ingen forpliktelse
-        </Typography>
+        <Typography variant="h5" fontWeight={700}>{doneMsg ? 'Takk!' : 'Start gratis'}</Typography>
+        {!doneMsg && (
+          <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
+            1 kunde · 3 auto-onboards/mnd · Klient-portal · Ingen forpliktelse
+          </Typography>
+        )}
       </DialogTitle>
       <DialogContent>
+        {doneMsg ? (
+          <Alert severity="success" sx={{ mb: 1 }}>{doneMsg}</Alert>
+        ) : (
+        <>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
@@ -726,21 +831,25 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
             ikke belastet før du oppgraderer. Avslutt når som helst.
           </Typography>
         </Stack>
+        </>
+        )}
       </DialogContent>
       <DialogActions sx={{ p: 3, pt: 1 }}>
-        <Button onClick={onClose} sx={{ color: PALETTE.textMuted }}>Avbryt</Button>
-        <Button
-          variant="contained"
-          disabled={!canStart || submitting}
-          onClick={submit}
-          sx={{
-            bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700,
-            px: 3, borderRadius: 999,
-            '&:hover': { bgcolor: PALETTE.accentBright },
-          }}
-        >
-          {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Fortsett til Stripe'}
-        </Button>
+        <Button onClick={close} sx={{ color: PALETTE.textMuted }}>{doneMsg ? 'Lukk' : 'Avbryt'}</Button>
+        {!doneMsg && (
+          <Button
+            variant="contained"
+            disabled={!canStart || submitting}
+            onClick={submit}
+            sx={{
+              bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700,
+              px: 3, borderRadius: 999,
+              '&:hover': { bgcolor: PALETTE.accentBright },
+            }}
+          >
+            {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Fortsett til Stripe'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
@@ -1334,7 +1443,7 @@ const STACK_TOOLS: { cat: string; price: string; note?: string }[] = [
   { cat: 'Kjøregodtgjørelse', price: '~130' },
 ];
 
-function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
+function StackReplaceSection() {
   return (
     <Box sx={{ py: { xs: 8, md: 12 }, bgcolor: PALETTE.bg }}>
       <Container maxWidth="lg">
@@ -1418,7 +1527,10 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
                 <Typography sx={{ color: PALETTE.textFaint, fontSize: 14 }}>/ bruker / mnd</Typography>
               </Stack>
               <Button
-                onClick={onStartFree}
+                onClick={() => {
+                  trackEvent('leadgrid_start_free_clicked', { cta_location: 'stack_replace' });
+                  window.dispatchEvent(new Event('leadgrid:start-free'));
+                }}
                 variant="contained"
                 sx={{
                   mt: 2.5, alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700,
@@ -1535,7 +1647,13 @@ function PricingSection() {
                       borderColor: PALETTE.accent,
                     },
                   }}
-                  href="/"
+                  onClick={() => {
+                    // Salgsdrevne tiers (f.eks. Agency «Kontakt oss») → demo-dialog.
+                    // Self-serve tiers (Free/Pro «Start gratis») → onboarding.
+                    const salesLed = /kontakt/i.test(p.cta);
+                    trackEvent('leadgrid_pricing_cta_clicked', { tier: p.key, sales_led: salesLed });
+                    window.dispatchEvent(new Event(salesLed ? 'leadgrid:book-demo' : 'leadgrid:start-free'));
+                  }}
                 >
                   {p.cta}
                 </Button>
