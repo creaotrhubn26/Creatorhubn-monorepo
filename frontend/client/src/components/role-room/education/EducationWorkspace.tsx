@@ -22,6 +22,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { CohortsTab } from './CohortsTab';
 import { AssignmentsTab } from './AssignmentsTab';
 import { ProductionsTab } from './ProductionsTab';
+import { FagstoffTab } from './FagstoffTab';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
@@ -34,6 +35,7 @@ import {
   Grading as AssessmentIcon,
   CollectionsBookmark as PortfolioIcon,
   SupervisorAccount as FacultyIcon,
+  MenuBook as LibraryIcon,
   Explore as TourIcon,
 } from '@mui/icons-material';
 
@@ -42,6 +44,7 @@ type EducationTabId =
   | 'cohorts'
   | 'productions'
   | 'assignments'
+  | 'fagstoff'
   | 'assessment'
   | 'portfolio'
   | 'faculty';
@@ -59,6 +62,7 @@ const EDUCATION_TABS: EducationTabDef[] = [
   { id: 'cohorts', label: 'Kull & studenter', icon: <CohortIcon fontSize="small" />, blurb: 'Klasse-/kull-grupper, student-roster og student-seter.' },
   { id: 'productions', label: 'Studentproduksjoner', icon: <ProductionIcon fontSize="small" />, blurb: 'Hver produksjon er et fullt Role Room-prosjekt (story-arc, roller, call-sheet, leveranser). Opprett, tildel og overvåk.' },
   { id: 'assignments', label: 'Oppgaver', icon: <AssignmentIcon fontSize="small" />, blurb: 'Oppgave-brief → student-leveranse → frist. Emner, moduler og læringsmål.' },
+  { id: 'fagstoff', label: 'Fagstoff', icon: <LibraryIcon fontSize="small" />, blurb: 'Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.' },
   { id: 'assessment', label: 'Vurdering', icon: <AssessmentIcon fontSize="small" />, blurb: 'Karakter og tilbakemelding på leveranser (gjenbruker godkjennings-/review-flyten).' },
   { id: 'portfolio', label: 'Portfolio', icon: <PortfolioIcon fontSize="small" />, blurb: 'Studentenes showreels og eksamensmapper.' },
   { id: 'faculty', label: 'Fakultet', icon: <FacultyIcon fontSize="small" />, blurb: 'Stab-seter, lærer-roller og hvem som veileder hvilket kull.' },
@@ -169,6 +173,8 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
         <ProductionsTab />
       ) : active.id === 'assignments' ? (
         <AssignmentsTab />
+      ) : active.id === 'fagstoff' ? (
+        <FagstoffTab />
       ) : (
         <EmptyState tab={active} />
       )}
