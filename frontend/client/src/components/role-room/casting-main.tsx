@@ -63,7 +63,23 @@ import { isLeadgridDedicatedHost, isRoleRoomEducationPathname } from './utils/ru
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
-import { getActiveProfessionMode } from './config/professionMode';
+import { getActiveProfessionMode, type ProfessionMode } from './config/professionMode';
+
+/**
+ * Velkomst-teksten i onboarding-turen er felles for alle vertikaler unntatt
+ * talent-portalen: tittelen er alltid «The Role Room» (produkt-branding), mens
+ * undertittelen beskriver den aktive vertikalen. Record<ProfessionMode> gjør at
+ * tsc roper hvis en ny persona ikke får sin egen velkomst.
+ */
+const WELCOME_SUBTITLE_BY_MODE: Record<ProfessionMode, string> = {
+  production: 'Produksjonsmodus — her planlegger du hele produksjonen: roller, kandidater, auditions, lokasjoner og team. Vi tar deg gjennom 3 viktige snarveier.',
+  photographer: 'Fotomodus — her planlegger du fotoprosjektet: medvirkende, lokasjoner, utstyr og leveranser. Vi tar deg gjennom 3 viktige snarveier.',
+  content_producer: 'Innholdsprodusent — her går du fra brief til ferdig innhold: storyboard, bidragsytere og klientgodkjenning. Vi tar deg gjennom 3 viktige snarveier.',
+  content_creator: 'Innholdsskaper — her planlegger og produserer du innholdet ditt fra idé til levering. Vi tar deg gjennom 3 viktige snarveier.',
+  dance_studio: 'Dansestudio — her styrer du studioet: produksjoner, dansere og timeplan. Vi tar deg gjennom 3 viktige snarveier.',
+  dance_freelance: 'Dans (frilans) — her holder du oversikt over oppdrag, tilgjengelighet og produksjonene du er med i. Vi tar deg gjennom 3 viktige snarveier.',
+  education: 'Utdanningsmodus — her underviser du: kull, studentproduksjoner, oppgaver og vurdering. Vi tar deg gjennom 3 viktige snarveier.',
+};
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
@@ -72,7 +88,6 @@ import {
   Search as SearchTourIcon,
   HelpOutline as HelpTourIcon,
   EmojiPeople as WelcomeIcon,
-  Theaters as CastingIcon,
 } from '@mui/icons-material';
 // Super Admin: alltid-tilgjengelig kontrollflate for daniel@creatorhubn.com.
 // Mountes på toppen av Role Room-shellen så det er synlig SELV når et
@@ -846,9 +861,9 @@ function CastingStandaloneRuntimeContent() {
                     ]
                   : [
                       {
-                        title: 'Velkommen til Casting Planner',
-                        body: 'Her organiserer du roller, kandidater og audition-prosesser. Vi tar deg gjennom 3 viktige snarveier.',
-                        icon: <CastingIcon />,
+                        title: 'Velkommen til The Role Room',
+                        body: WELCOME_SUBTITLE_BY_MODE[getActiveProfessionMode()] ?? WELCOME_SUBTITLE_BY_MODE.production,
+                        icon: <WelcomeIcon />,
                       },
                       {
                         title: 'Søk overalt med Cmd+K',
