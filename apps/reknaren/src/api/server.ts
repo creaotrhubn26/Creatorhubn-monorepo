@@ -678,16 +678,33 @@ export function createApiServer(deps: ApiDeps): express.Express {
               confidence: latest.suggestion.confidence,
               rules: (latest.suggestion.ruleReferences as string[]).map((ruleId) => {
                 const rule = deps.rules.getRule(ruleId);
+                // Punkt 9: hvilken regelversjon som gjaldt på bilagsdatoen.
+                let version: number | null = null;
+                try {
+                  version = deps.rules.getVersionAt(ruleId, ex?.invoice_date_text ?? new Date().toISOString().slice(0, 10)).version;
+                } catch {
+                  version = null;
+                }
                 return {
                   ruleId,
                   shortName: rule.shortName,
                   plainExplanation: rule.plainExplanation,
+                  version,
+                  lastReviewed: rule.lastReviewed,
                   sources: rule.sourceIds.map((sid) => {
                     const s = deps.rules.getSource(sid);
                     return { title: s.title, url: s.url, lastVerified: s.lastVerified };
                   }),
                 };
               }),
+              // Punkt 9: hvem/hva som gjorde vurderingen — motor og modellversjon.
+              assessedBy: {
+                suggestionEngine: latest.engine as string,
+                extractionEngine: (ex?.extraction_engine as string | undefined) ?? null,
+                aiModel: (ex?.extraction_engine as string | undefined)?.startsWith('claude')
+                  ? deps.aiModel ?? 'claude-sonnet-4-6'
+                  : null,
+              },
               // Krav 4: hva forslaget betyr for mva, resultat og skatt — i kroner.
               impact: org.rowCount
                 ? computeDocumentImpact(deps.rules, {

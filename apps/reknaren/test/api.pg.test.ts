@@ -146,6 +146,9 @@ describe('Vertikal flyt over HTTP', () => {
     expect(detail.body.explanation.evidence.length).toBeGreaterThan(0);
     expect(detail.body.explanation.rules.length).toBeGreaterThan(0);
     expect(detail.body.explanation.rules[0].sources[0].url).toMatch(/^https:/);
+    // Punkt 9: regelversjon + hvilken motor/modell som gjorde vurderingen.
+    expect(detail.body.explanation.rules[0]).toHaveProperty('version');
+    expect(detail.body.explanation.assessedBy.suggestionEngine).toBe('deterministic');
     expect(detail.body.suggestions[0].suggestion.requiresHumanReview).toBe(true);
 
     // Krav 4: konsekvens i kroner — inngående mva trekkes fullt (2 000 kr).

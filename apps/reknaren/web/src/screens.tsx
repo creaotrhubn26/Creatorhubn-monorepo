@@ -53,9 +53,12 @@ interface Explanation {
     ruleId: string;
     shortName: string;
     plainExplanation: string;
+    version: number | null;
+    lastReviewed: string;
     sources: { title: string; url: string; lastVerified: string }[];
   }[];
   impact: DocumentImpact | null;
+  assessedBy?: { suggestionEngine: string; extractionEngine: string | null; aiModel: string | null };
 }
 
 interface HistoryEvent {
@@ -721,7 +724,8 @@ export function DocumentDetailScreen({
                   <ul className="compact">
                     {d.explanation.rules.map((r) => (
                       <li key={r.ruleId}>
-                        <em>{r.shortName}</em>: {r.plainExplanation}{' '}
+                        <em>{r.shortName}</em>
+                        {r.version !== null && <span className="code">regelversjon {r.version}</span>}: {r.plainExplanation}{' '}
                         {r.sources.map((s, i) => (
                           <a key={i} href={s.url} target="_blank" rel="noreferrer">
                             [{s.title.split(':')[0]}, kontrollert {s.lastVerified}]
@@ -740,6 +744,16 @@ export function DocumentDetailScreen({
                   <dd>{sugVat}</dd>
                   <dt>Modellsikkerhet</dt>
                   <dd>{Math.round((d.explanation.confidence ?? 0) * 100)} %</dd>
+                  <dt>Vurdert av</dt>
+                  <dd>
+                    {d.explanation.assessedBy?.suggestionEngine?.startsWith('ai') ? 'KI-forslag' : 'Regelmotor'}
+                    {d.explanation.assessedBy?.aiModel && (
+                      <span className="code">lest av {d.explanation.assessedBy.aiModel}</span>
+                    )}
+                    {!d.explanation.assessedBy?.aiModel && d.explanation.assessedBy?.extractionEngine && (
+                      <span className="code">{d.explanation.assessedBy.extractionEngine}</span>
+                    )}
+                  </dd>
                   <dt>Dokument-hash (SHA-256)</dt>
                   <dd style={{ wordBreak: 'break-all', fontSize: 12.5 }}>{d.document.sha256}</dd>
                 </dl>
