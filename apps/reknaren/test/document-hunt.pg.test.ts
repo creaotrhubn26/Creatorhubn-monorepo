@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { createBankAccount, importBankTransactions } from '../src/bank/import.js';
-import { huntDocuments, linkPaymentToDocument } from '../src/ingestion/document-hunt.js';
+import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../src/ingestion/document-hunt.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { newId } from '../src/shared/ids.js';
@@ -73,6 +73,28 @@ describe('huntDocuments', () => {
     expect(top.reasons.join(' ')).toContain('14. juli');
     // Feil-beløp-dokumentet er ikke en kandidat.
     expect(gap.candidates.every((c) => c.grossMinor === 124900n)).toBe(true);
+  });
+
+  it('forhåndsvisning viser foreslått konto/MVA uten å bokføre', async () => {
+    const org = await createOrganization(db, { name: 'Preview AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    const acc = await createBankAccount(db, { organizationId: org.id, actor: actor(), name: 'Drift', ibanOrAccount: 'NO9386011117947' });
+    await importBankTransactions(db, {
+      organizationId: org.id, actor: actor(), bankAccountId: acc,
+      transactions: [{ externalId: 't-adobe', bookedDate: '2025-07-17', amountMinor: -124900n, description: 'ADOBE SYSTEMS SOFTWARE' }],
+    });
+    const doc = await orphanDoc(org.id, 'Adobe Systems Software AS', '2025-07-14', 124900n);
+    const txId = (await huntDocuments(db, { organizationId: org.id, asOf: ASOF })).gaps[0]!.transactionId;
+
+    const pv = await previewPaymentLink(db, rules, { organizationId: org.id, transactionId: txId, documentId: doc });
+    expect(pv.accountNumber).toMatch(/^\d{4}$/);
+    expect(pv.accountName.length).toBeGreaterThan(0);
+    expect(BigInt(pv.grossMinor)).toBe(124900n);
+
+    // Forhåndsvisning skriver ingenting.
+    const tx = await db.query(`SELECT status FROM bank_transactions WHERE id = $1`, [txId]);
+    expect(tx.rows[0].status).toBe('unmatched');
+    const je = await db.query(`SELECT id FROM journal_entries WHERE source_document_id = $1`, [doc]);
+    expect(je.rowCount).toBe(0);
   });
 
   it('ett-klikks kobling bokfører kostnaden, avstemmer betalingen og lenker alt', async () => {

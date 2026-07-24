@@ -28,7 +28,7 @@ import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
-import { huntDocuments, linkPaymentToDocument } from '../ingestion/document-hunt.js';
+import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../ingestion/document-hunt.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
@@ -1718,6 +1718,29 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await huntDocuments(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Forhåndsvisning: hva koblingen vil bokføre (konto/MVA), uten å skrive.
+  app.get(
+    '/api/organizations/:orgId/document-hunt/link-preview',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const q = z.object({ transactionId: z.string().uuid(), documentId: z.string().uuid() }).parse(req.query);
+        res.json(
+          toJson(
+            await previewPaymentLink(deps.db, deps.rules, {
+              organizationId: req.params.orgId!,
+              transactionId: q.transactionId,
+              documentId: q.documentId,
+            }),
+          ),
+        );
       } catch (err) {
         next(err);
       }

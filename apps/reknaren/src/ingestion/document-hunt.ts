@@ -11,6 +11,7 @@
  */
 import type { Actor } from '../audit/audit.js';
 import { recordAuditEvent } from '../audit/audit.js';
+import { getAccountDef } from '../coa/accounts.js';
 import { getVatCode } from '../coa/vat-codes.js';
 import type { Db } from '../db/pool.js';
 import { withTransaction } from '../db/pool.js';
@@ -177,20 +178,39 @@ export interface LinkResult {
   vatCode: string;
 }
 
-/**
- * Ett-klikks kobling: bokfører den manglende kostnaden fra bilaget mot betalingen
- * og avstemmer banktransaksjonen. Konto og MVA-kode utledes deterministisk fra
- * uttrekket (samme forslagsmotor som ellers), krediteres banken (betalingen er
- * allerede ute), og alt lenkes: bilag ↔ postering ↔ banktransaksjon. Reversibelt
- * og revisjonslogget. Idempotent per transaksjon.
- */
-export async function linkPaymentToDocument(
+export interface LinkPreview {
+  accountNumber: string;
+  accountName: string;
+  vatCode: string;
+  vatCodeName: string;
+  netMinor: bigint;
+  vatMinor: bigint;
+  grossMinor: bigint;
+  vendor: string | null;
+}
+
+interface DerivedBooking {
+  bookedDate: string;
+  isoDate: string;
+  magnitude: bigint;
+  accountNumber: string;
+  vatCodeStr: string;
+  bankAccount: string;
+  netMinor: bigint;
+  vatMinor: bigint;
+  vendor: string | null;
+  invoiceNumber: string | null;
+  lines: Parameters<typeof postJournalEntry>[1]['lines'];
+}
+
+/** Utleder (uten å skrive) hva koblingen vil bokføre: konto, MVA-kode og linjer. */
+async function deriveBooking(
   db: Db,
   rules: RuleRegister,
-  params: { organizationId: string; actor: Actor; transactionId: string; documentId: string },
-): Promise<LinkResult> {
-  const { organizationId: org, actor, transactionId, documentId } = params;
-
+  org: string,
+  transactionId: string,
+  documentId: string,
+): Promise<DerivedBooking> {
   const txRes = await db.query(
     `SELECT t.amount_minor::TEXT AS amount_minor, t.booked_date::TEXT AS booked_date, t.description, t.status,
             ba.ledger_account_number, o.org_form, o.vat_status
@@ -237,27 +257,87 @@ export async function linkPaymentToDocument(
   const vatCodeStr = suggestion.suggestedVatCode;
   const vatCode = getVatCode(vatCodeStr);
   const bankAccount = String(tx.ledger_account_number);
-  const magnitude = -amount; // betalt beløp (positivt)
+  const magnitude = -amount;
+  const vendor = (ex.vendor_name as string | null) ?? null;
 
   const lines: Parameters<typeof postJournalEntry>[1]['lines'] = [];
+  let netMinor: bigint;
+  let vatMinor: bigint;
   if (vatCode && vatCode.direction === 'input' && vatCode.deductible && !vatCode.reverseCharge) {
     const parts = splitGrossByVatCode(rules, vatCodeStr, magnitude, isoDate);
-    lines.push({ accountNumber, debitMinor: parts.netMinor, vatCode: vatCodeStr, ...(ex.vendor_name ? { description: ex.vendor_name as string } : {}) });
+    netMinor = parts.netMinor;
+    vatMinor = parts.vatMinor;
+    lines.push({ accountNumber, debitMinor: parts.netMinor, vatCode: vatCodeStr, ...(vendor ? { description: vendor } : {}) });
     if (parts.vatMinor > 0n) lines.push({ accountNumber: '2710', debitMinor: parts.vatMinor, vatCode: vatCodeStr, description: `Inngående mva ${parts.ratePct} %` });
   } else {
-    lines.push({ accountNumber, debitMinor: magnitude, ...(vatCode ? { vatCode: vatCodeStr } : {}), ...(ex.vendor_name ? { description: ex.vendor_name as string } : {}) });
+    netMinor = magnitude;
+    vatMinor = 0n;
+    lines.push({ accountNumber, debitMinor: magnitude, ...(vatCode ? { vatCode: vatCodeStr } : {}), ...(vendor ? { description: vendor } : {}) });
   }
   lines.push({ accountNumber: bankAccount, creditMinor: magnitude });
+
+  return {
+    bookedDate: String(tx.booked_date),
+    isoDate,
+    magnitude,
+    accountNumber,
+    vatCodeStr,
+    bankAccount,
+    netMinor,
+    vatMinor,
+    vendor,
+    invoiceNumber: (ex.invoice_number as string | null) ?? null,
+    lines,
+  };
+}
+
+/** Forhåndsvisning: hva koblingen vil bokføre, uten å skrive. */
+export async function previewPaymentLink(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; transactionId: string; documentId: string },
+): Promise<LinkPreview> {
+  const b = await deriveBooking(db, rules, params.organizationId, params.transactionId, params.documentId);
+  const vat = getVatCode(b.vatCodeStr);
+  return {
+    accountNumber: b.accountNumber,
+    accountName: getAccountDef(b.accountNumber)?.name ?? b.accountNumber,
+    vatCode: b.vatCodeStr,
+    vatCodeName: vat?.name ?? b.vatCodeStr,
+    netMinor: b.netMinor,
+    vatMinor: b.vatMinor,
+    grossMinor: b.magnitude,
+    vendor: b.vendor,
+  };
+}
+
+/**
+ * Ett-klikks kobling: bokfører den manglende kostnaden fra bilaget mot betalingen
+ * og avstemmer banktransaksjonen. Konto og MVA-kode utledes deterministisk fra
+ * uttrekket (samme forslagsmotor som ellers), krediteres banken (betalingen er
+ * allerede ute), og alt lenkes: bilag ↔ postering ↔ banktransaksjon. Reversibelt
+ * og revisjonslogget. Idempotent per transaksjon.
+ */
+export async function linkPaymentToDocument(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; actor: Actor; transactionId: string; documentId: string },
+): Promise<LinkResult> {
+  const { organizationId: org, actor, transactionId, documentId } = params;
+  const b = await deriveBooking(db, rules, org, transactionId, documentId);
+  const accountNumber = b.accountNumber;
+  const vatCodeStr = b.vatCodeStr;
 
   const entry = await postJournalEntry(db, {
     organizationId: org,
     actor,
-    entryDate: String(tx.booked_date),
-    description: `${(ex.vendor_name as string) ?? 'Betaling'}${ex.invoice_number ? ` — faktura ${ex.invoice_number}` : ''}`,
-    lines,
+    entryDate: b.bookedDate,
+    description: `${b.vendor ?? 'Betaling'}${b.invoiceNumber ? ` — faktura ${b.invoiceNumber}` : ''}`,
+    lines: b.lines,
     idempotencyKey: `bank-link:${transactionId}`,
     sourceDocumentId: documentId,
   });
+  const magnitude = b.magnitude;
 
   await withTransaction(db, async (client) => {
     await client.query(`UPDATE bank_transactions SET status = 'reconciled' WHERE id = $1 AND organization_id = $2`, [transactionId, org]);

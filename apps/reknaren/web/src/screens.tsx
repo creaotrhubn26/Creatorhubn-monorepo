@@ -3355,13 +3355,40 @@ interface DocumentHunt {
   gapsWithCandidates: number;
   gaps: PaymentGap[];
 }
+interface LinkPreview {
+  accountNumber: string;
+  accountName: string;
+  vatCode: string;
+  vatCodeName: string;
+  netMinor: string;
+  vatMinor: string;
+  grossMinor: string;
+}
 
 export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgId: string; onOpenDocument: (id: string) => void; onNavigate?: (s: string) => void }) {
   const h = useLoad(() => api<DocumentHunt>('GET', `/api/organizations/${orgId}/document-hunt`), [orgId]);
   const d = h.data;
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, LinkPreview | 'loading'>>({});
   const abs = (s: string) => s.replace('-', '');
+  const forhaandsvis = async (transactionId: string, documentId: string) => {
+    setPreviews((p) => ({ ...p, [documentId]: 'loading' }));
+    try {
+      const pv = await api<LinkPreview>(
+        'GET',
+        `/api/organizations/${orgId}/document-hunt/link-preview?transactionId=${transactionId}&documentId=${documentId}`,
+      );
+      setPreviews((p) => ({ ...p, [documentId]: pv }));
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke forhåndsvise', 'danger');
+      setPreviews((p) => {
+        const n = { ...p };
+        delete n[documentId];
+        return n;
+      });
+    }
+  };
   const koble = async (transactionId: string, documentId: string) => {
     setBusy(documentId);
     try {
@@ -3432,12 +3459,44 @@ export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgI
                             <li key={j}>{r}</li>
                           ))}
                         </ul>
-                        <div className="actions">
-                          <button className="primary" disabled={busy === c.documentId} onClick={() => koble(g.transactionId, c.documentId)}>
-                            {busy === c.documentId ? 'Kobler …' : 'Koble til betalingen'}
-                          </button>
-                          <button className="secondary" onClick={() => onOpenDocument(c.documentId)}>Se fakturaen</button>
-                        </div>
+                        {(() => {
+                          const pv = previews[c.documentId];
+                          if (pv && pv !== 'loading') {
+                            return (
+                              <>
+                                <dl className="kv" style={{ marginTop: 10 }}>
+                                  <dt>Foreslått konto</dt>
+                                  <dd>{pv.accountNumber} {pv.accountName}</dd>
+                                  <dt>MVA-kode</dt>
+                                  <dd>{pv.vatCodeName} <span className="code">kode {pv.vatCode}</span></dd>
+                                  <dt>Kostnad</dt>
+                                  <dd>{kr(pv.netMinor)} kr</dd>
+                                  {BigInt(pv.vatMinor) > 0n && (
+                                    <>
+                                      <dt>Inngående MVA</dt>
+                                      <dd className="pos">{kr(pv.vatMinor)} kr</dd>
+                                    </>
+                                  )}
+                                </dl>
+                                <p className="hint">Utledet av regelmotoren fra bilaget. Kontroller før du bekrefter — alt er reversibelt.</p>
+                                <div className="actions">
+                                  <button className="primary" disabled={busy === c.documentId} onClick={() => koble(g.transactionId, c.documentId)}>
+                                    {busy === c.documentId ? 'Bokfører …' : 'Bekreft kobling'}
+                                  </button>
+                                  <button className="secondary" onClick={() => onOpenDocument(c.documentId)}>Se fakturaen</button>
+                                </div>
+                              </>
+                            );
+                          }
+                          return (
+                            <div className="actions">
+                              <button className="primary" disabled={pv === 'loading'} onClick={() => forhaandsvis(g.transactionId, c.documentId)}>
+                                {pv === 'loading' ? 'Henter …' : 'Forhåndsvis kobling'}
+                              </button>
+                              <button className="secondary" onClick={() => onOpenDocument(c.documentId)}>Se fakturaen</button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
