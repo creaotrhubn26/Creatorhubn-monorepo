@@ -66,6 +66,7 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
 import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 
 // ============================================
@@ -674,7 +675,9 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     try {
       const response = await fetch('/api/role-room/call-sheets/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Endepunktet er session-gated (requireUserSession) — uten Bearer-token
+        // ga «Send til crew» 401 og e-posten ble aldri sendt.
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({
           projectId,
           subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,

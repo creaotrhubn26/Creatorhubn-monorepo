@@ -103,7 +103,7 @@ export default function LeadsPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['leads-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {

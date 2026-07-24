@@ -44,7 +44,7 @@ export default function DiscoveryPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['discovery-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {

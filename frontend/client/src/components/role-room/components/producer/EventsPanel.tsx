@@ -36,7 +36,7 @@ export default function EventsPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['events-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {
