@@ -1932,10 +1932,11 @@ type RoleRoomProjectWorkspaceState = {
     focus?: Omit<ProducerWorkflowFocusPayload, 'projectId' | 'panel'>,
   ) => {
     if (isContentProducerMode) {
-      if (tabIndex === PRODUCER_MEDIA_TAB_INDEX) {
-        openContentProducerPlannerSurface('project_room');
-        return;
-      }
+      // NB: media/prosjektrom rutes IKKE herfra — det har sin egen dedikerte
+      // `navigateToProducerMediaWorkspace` (ClientPortalWorkspaceFocus, ikke
+      // ProducerWorkflowFocusPayload). Denne funksjonen kalles kun med
+      // ECONOMY/REVIEWS/TIMELINE (verifisert alle kall-steder), så en
+      // PRODUCER_MEDIA_TAB_INDEX-gren her var død kode — fjernet.
       if (tabIndex === PRODUCER_REVIEWS_TAB_INDEX) {
         openContentProducerPlannerSurface('approval', {
           focusPanel: 'reviews',
