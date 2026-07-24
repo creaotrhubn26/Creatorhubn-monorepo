@@ -19,6 +19,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
+import { CohortsTab } from './CohortsTab';
 import {
   Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
 } from '@mui/material';
@@ -138,6 +139,8 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
             </Button>
           </Stack>
         </Box>
+      ) : active.id === 'cohorts' ? (
+        <CohortsTab />
       ) : (
         <EmptyState tab={active} />
       )}
