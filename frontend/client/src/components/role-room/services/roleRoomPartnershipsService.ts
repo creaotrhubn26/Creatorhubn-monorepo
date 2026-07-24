@@ -23,6 +23,8 @@
  *   GET    /api/role-room/partnerships/discoverable-agencies
  */
 
+import authSessionService from './authSessionService';
+
 export const CURRENT_PARTNERSHIP_TERMS_VERSION = '1.0';
 
 export type AvailabilityState =
@@ -143,9 +145,11 @@ function buildUrl(path: string, params?: Record<string, string | undefined>): st
 async function api<T>(path: string, init?: RequestInit & { params?: Record<string, string | undefined> }): Promise<T> {
   const { params, ...rest } = init || {};
   const r = await fetch(buildUrl(path, params), {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(rest.headers ?? {}) },
     ...rest,
+    credentials: 'include',
+    // Bearer eksplisitt: den globale patchen injiserer bare creatorhub_auth_token
+    // (ikke satt av role-room-login) → talents 401-et uten dette på theroleroom.com.
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync(), ...(rest.headers ?? {}) },
   });
   const payload: unknown = await r.json().catch(() => null);
   if (!r.ok) {
