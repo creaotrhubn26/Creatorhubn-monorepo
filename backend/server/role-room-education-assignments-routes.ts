@@ -39,6 +39,9 @@ interface SessionData {
 export interface AssignmentView {
   id: string;
   cohortId: string | null;
+  productionId: string | null;
+  productionTitle: string | null;
+  productionProjectId: string | null;
   title: string;
   brief: string | null;
   learningGoals: string | null;
@@ -69,6 +72,9 @@ function assignmentRowToView(r: Record<string, unknown>): AssignmentView {
   return {
     id: String(r.id),
     cohortId: r.cohort_id ? String(r.cohort_id) : null,
+    productionId: r.production_id ? String(r.production_id) : null,
+    productionTitle: (r.production_title as string) ?? null,
+    productionProjectId: (r.production_project_id as string) ?? null,
     title: (r.title as string) ?? "",
     brief: (r.brief as string) ?? null,
     learningGoals: (r.learning_goals as string) ?? null,
@@ -139,13 +145,16 @@ export function createEducationAssignmentsRouter(
     try {
       const r = await pool.query(
         `SELECT a.*,
+                prod.title AS production_title,
+                prod.project_id AS production_project_id,
                 COUNT(sub.id) FILTER (WHERE sub.status = 'submitted')::int AS submitted_count,
                 COUNT(sub.id) FILTER (WHERE sub.status = 'reviewed')::int  AS reviewed_count
            FROM role_room_education_assignments a
            LEFT JOIN role_room_education_submissions sub ON sub.assignment_id = a.id
+           LEFT JOIN role_room_education_productions prod ON prod.id = a.production_id
           WHERE a.owner_user_id = $1
             AND ($2::text IS NULL OR a.cohort_id = $2)
-          GROUP BY a.id
+          GROUP BY a.id, prod.title, prod.project_id
           ORDER BY (a.status = 'archived') ASC, a.created_at DESC`,
         [uid(req), cohortId],
       );
@@ -159,7 +168,7 @@ export function createEducationAssignmentsRouter(
 
   router.post("/education/assignments", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as {
-      title?: string; cohortId?: string | null; brief?: string;
+      title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
       learningGoals?: string; dueAt?: string | null; status?: string;
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -169,11 +178,13 @@ export function createEducationAssignmentsRouter(
       const id = newEntityId("edassign");
       const r = await pool.query(
         `INSERT INTO role_room_education_assignments
-           (id, owner_user_id, cohort_id, title, brief, learning_goals, due_at, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         RETURNING *, 0 AS submitted_count, 0 AS reviewed_count`,
+           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING *, 0 AS submitted_count, 0 AS reviewed_count,
+           (SELECT title FROM role_room_education_productions WHERE id = $4) AS production_title,
+           (SELECT project_id FROM role_room_education_productions WHERE id = $4) AS production_project_id`,
         [
-          id, uid(req), body.cohortId || null, title,
+          id, uid(req), body.cohortId || null, body.productionId || null, title,
           body.brief?.trim() || null, body.learningGoals?.trim() || null,
           body.dueAt || null, status,
         ],
@@ -187,7 +198,7 @@ export function createEducationAssignmentsRouter(
 
   router.patch("/education/assignments/:id", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as {
-      title?: string; cohortId?: string | null; brief?: string;
+      title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
       learningGoals?: string; dueAt?: string | null; status?: string;
     };
     const status = typeof body.status === "string" && ASSIGNMENT_STATUSES.has(body.status) ? body.status : null;
@@ -200,11 +211,14 @@ export function createEducationAssignmentsRouter(
                 learning_goals = COALESCE($6, learning_goals),
                 due_at = COALESCE($7, due_at),
                 status = COALESCE($8, status),
+                production_id = COALESCE($9, production_id),
                 updated_at = now()
           WHERE id = $1 AND owner_user_id = $2
           RETURNING *,
             (SELECT COUNT(*)::int FROM role_room_education_submissions s WHERE s.assignment_id = role_room_education_assignments.id AND s.status='submitted') AS submitted_count,
-            (SELECT COUNT(*)::int FROM role_room_education_submissions s WHERE s.assignment_id = role_room_education_assignments.id AND s.status='reviewed') AS reviewed_count`,
+            (SELECT COUNT(*)::int FROM role_room_education_submissions s WHERE s.assignment_id = role_room_education_assignments.id AND s.status='reviewed') AS reviewed_count,
+            (SELECT title FROM role_room_education_productions WHERE id = role_room_education_assignments.production_id) AS production_title,
+            (SELECT project_id FROM role_room_education_productions WHERE id = role_room_education_assignments.production_id) AS production_project_id`,
         [
           req.params.id, uid(req),
           typeof body.title === "string" ? body.title.trim() : null,
@@ -213,6 +227,7 @@ export function createEducationAssignmentsRouter(
           typeof body.learningGoals === "string" ? body.learningGoals.trim() : null,
           body.dueAt ?? null,
           status,
+          body.productionId ?? null,
         ],
       );
       if (r.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }

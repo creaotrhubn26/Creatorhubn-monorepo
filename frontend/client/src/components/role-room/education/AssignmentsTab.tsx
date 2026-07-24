@@ -14,9 +14,10 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Assignment as AssignmentIcon,
-  ArrowBack as BackIcon,
+  ArrowBack as BackIcon, MovieCreation as ProductionIcon, OpenInNew as OpenIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
+import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import {
   educationAssignmentsService, type Assignment, type AssignmentStatus,
   type Submission, type SubmissionStatus,
@@ -48,6 +49,7 @@ function formatDue(iso: string | null): string | null {
 export function AssignmentsTab() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [productions, setProductions] = useState<Production[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Assignment | null>(null);
@@ -55,6 +57,7 @@ export function AssignmentsTab() {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [cohortId, setCohortId] = useState('');
+  const [productionId, setProductionId] = useState('');
   const [brief, setBrief] = useState('');
   const [goals, setGoals] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -64,12 +67,14 @@ export function AssignmentsTab() {
     setLoading(true);
     setError(null);
     try {
-      const [a, c] = await Promise.all([
+      const [a, c, p] = await Promise.all([
         educationAssignmentsService.listAssignments(),
         educationCohortsService.listCohorts(),
+        educationProductionsService.listProductions(),
       ]);
       setAssignments(a);
       setCohorts(c);
+      setProductions(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kunne ikke hente oppgaver');
     } finally {
@@ -91,13 +96,14 @@ export function AssignmentsTab() {
       const assignment = await educationAssignmentsService.createAssignment({
         title: title.trim(),
         cohortId: cohortId || undefined,
+        productionId: productionId || undefined,
         brief: brief.trim() || undefined,
         learningGoals: goals.trim() || undefined,
         dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
         status: 'published',
       });
       setAssignments((prev) => [assignment, ...prev]);
-      setTitle(''); setCohortId(''); setBrief(''); setGoals(''); setDueAt(''); setCreating(false);
+      setTitle(''); setCohortId(''); setProductionId(''); setBrief(''); setGoals(''); setDueAt(''); setCreating(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave');
     } finally {
@@ -153,6 +159,13 @@ export function AssignmentsTab() {
               <TextField label="Frist" size="small" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)}
                 fullWidth InputLabelProps={{ shrink: true }} />
             </Stack>
+            <TextField label="Leveres i produksjon" size="small" select value={productionId} onChange={(e) => setProductionId(e.target.value)}
+              helperText={productions.length === 0 ? 'Opprett en studentproduksjon for å knytte oppgaven til ekte Role Room-arbeid' : 'Knytt oppgaven til et Role Room-prosjekt studentene jobber i'}>
+              <MenuItem value=""><em>Ikke knyttet til produksjon</em></MenuItem>
+              {productions
+                .filter((p) => !cohortId || !p.cohortId || p.cohortId === cohortId)
+                .map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
+            </TextField>
             <TextField label="Brief (oppgavetekst)" size="small" value={brief} onChange={(e) => setBrief(e.target.value)}
               multiline minRows={2} placeholder="Hva skal studentene lage, og hvordan leveres det?" />
             <TextField label="Læringsmål" size="small" value={goals} onChange={(e) => setGoals(e.target.value)}
@@ -192,6 +205,7 @@ export function AssignmentsTab() {
                       <Stack direction="row" spacing={1} sx={{ mt: 0.75 }} flexWrap="wrap" useFlexGap>
                         <Chip size="small" label={meta.label} sx={{ height: 20, fontSize: 10, color: meta.color, borderColor: meta.color }} variant="outlined" />
                         {name && <Chip size="small" label={name} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />}
+                        {a.productionTitle && <Chip size="small" icon={<ProductionIcon sx={{ fontSize: '12px !important' }} />} label={a.productionTitle} sx={{ height: 20, fontSize: 10, '& .MuiChip-icon': { color: ACCENT } }} />}
                         {due && <Chip size="small" label={`Frist ${due}`} sx={{ height: 20, fontSize: 10 }} />}
                         {(a.submittedCount > 0 || a.reviewedCount > 0) && (
                           <Chip size="small" label={`${a.submittedCount} levert · ${a.reviewedCount} vurdert`} sx={{ height: 20, fontSize: 10 }} />
@@ -254,12 +268,19 @@ function SubmissionsView({ assignment, cohortName, onBack, onError, error }: {
     <Box sx={{ display: 'grid', gap: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1}>
         <IconButton onClick={onBack} sx={{ color: '#fff' }} aria-label="Tilbake"><BackIcon /></IconButton>
-        <Box>
+        <Box sx={{ flexGrow: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{assignment.title}</Typography>
           <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
             {cohortName ?? 'Ikke knyttet til kull'}{due ? ` · Frist ${due}` : ''}
           </Typography>
         </Box>
+        {assignment.productionProjectId && (
+          <Button size="small" variant="outlined" startIcon={<OpenIcon />}
+            onClick={() => openProductionInRoleRoom(assignment.productionProjectId as string)}
+            sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+            Åpne produksjon
+          </Button>
+        )}
       </Stack>
 
       {error && <Alert severity="error" onClose={() => onError(null)}>{error}</Alert>}
