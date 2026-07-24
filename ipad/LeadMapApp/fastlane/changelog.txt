@@ -1,7 +1,9 @@
-Dørsalg-modus: tapp en pin så zoomer kartet til husnivå, salg feires med dagsmål-milepæl («X av 3» + gull-trofé), avslag gir en oppmuntring, og «Neste dør» viser kompass + retning til nærmeste ubesøkte dør. Salgssjef/teamleder kan nå sette dagsmål og budsjett per team og per selger i Salgsledelse.
+Salgssjef-verktøy på ekte: Godkjenn kjøregodtgjørelse (én og én eller alle på én gang, med eksport til lønn), godkjenn/avslå deals og rabatter i godkjenningskøen, og planlegg 1-til-1 coaching-samtaler. Alt lagres nå mot serveren i stedet for bare å vises.
 
-Navigasjon: helt ny rute-låst motor — bilen følger veien (aldri over bygninger), peker riktig retning gjennom svinger, kameraet glir jevnt, og stemmen gjentar aldri seg selv. Gå-visning når du går, bil-visning når du kjører.
+Ny rute-planlegger: I «Team-ruter i dag» → «Planlegg ny rute» velger du flere stopp, så foreslår appen den korteste besøksrekkefølgen med total distanse og kjøretid. «Start rute» tar deg rett ut i navigasjon til første stopp.
 
-Leadgrid Go: «Start kjøring» tar deg fra tildelt firmabil rett ut i navigasjon; registrer bil med regnr-oppslag og book firmabil fra dashbordet.
+Manuell faktura (super-admin): Send faktura til organisasjoner uten Stripe direkte fra org-oversikten — e-post + PDF med fakturanummer.
 
-Diverse: «Leads i området» kan kollapses i portrett for fullt kart, og lade-/bensin-varsler følger bilen din og teller ned avstanden.
+Knapper som nå virker: Mange steder som så klikkbare ut, men ikke gjorde noe, er koblet — «Neste handlinger» (Ring / E-post / åpne lead), selger-kortet (Send melding, Sett mål, del rapport, sammenlign mot team og hele laget), «Se alle»-lenkene i Oversikt, og møte-forberedelse (opprett oppgave, snooze, filtrer historikk, eksporter).
+
+Finpuss: Sidemenyen viser riktige valg med en gang (ingen «hopp» etter innlasting), og visnings-bryteren i Møter (Agenda / Dag / Uke / Måned) er ryddet opp så teksten ikke lenger klippes.
