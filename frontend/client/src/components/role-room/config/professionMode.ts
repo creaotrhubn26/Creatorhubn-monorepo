@@ -22,7 +22,8 @@ export type ProfessionMode =
   | 'content_producer'  // innholdsprodusent
   | 'content_creator'   // innholdsskaper
   | 'dance_studio'      // dans — studioeier (PR #2)
-  | 'dance_freelance';  // dans — frilanser (PR #2)
+  | 'dance_freelance'   // dans — frilanser (PR #2)
+  | 'education';        // utdanningsinstitusjon — kull, studentproduksjoner, faglærer-oversikt
 
 export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'production',
@@ -31,6 +32,7 @@ export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'content_creator',
   'dance_studio',
   'dance_freelance',
+  'education',
 ] as const;
 
 export const DEFAULT_PROFESSION_MODE: ProfessionMode = 'production';
@@ -61,6 +63,10 @@ const URL_ALIASES: Record<string, ProfessionMode> = {
   film: 'production',
   video: 'production',
   foto: 'photographer',
+  utdanning: 'education',
+  utdanningsinstitusjon: 'education',
+  education: 'education',
+  skole: 'education',
 };
 
 /**
@@ -120,3 +126,7 @@ export const isDanceMode = (mode: ProfessionMode): boolean =>
 export const isProductionMode = (mode: ProfessionMode): boolean =>
   mode === 'production' || mode === 'photographer' ||
   mode === 'content_producer' || mode === 'content_creator';
+
+/** Utdanningsinstitusjon-modus — egen parallell workspace (EducationWorkspace). */
+export const isEducationMode = (mode: ProfessionMode): boolean =>
+  mode === 'education';
