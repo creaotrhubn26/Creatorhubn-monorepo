@@ -27,6 +27,7 @@ import { runHealthCheck } from '../ledger/health-check.js';
 import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
+import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
@@ -1701,6 +1702,36 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Proaktiv skatte- og MVA-assistent — muligheter, kontrollpunkter og risiko.
+  app.get(
+    '/api/organizations/:orgId/tax-advisories',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const org = (
+          await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])
+        ).rows[0];
+        if (!org) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Virksomheten finnes ikke.' } });
+          return;
+        }
+        const asOf = new Date().toISOString().slice(0, 10);
+        res.json(
+          toJson(
+            await buildTaxAdvisories(deps.db, deps.rules, {
+              organizationId: req.params.orgId!,
+              orgForm: org.org_form,
+              asOf,
+            }),
+          ),
+        );
       } catch (err) {
         next(err);
       }

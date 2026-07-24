@@ -3245,3 +3245,89 @@ export function PeriodCloseScreen({ orgId, onNavigate }: { orgId: string; onNavi
     </div>
   );
 }
+
+/* ── Proaktiv skatte- og MVA-assistent ──────────────────────────────────── */
+
+interface Advisory {
+  code: string;
+  kind: 'mulighet' | 'kontrollpunkt' | 'risiko';
+  title: string;
+  detail: string;
+  ruleReferences: string[];
+  legalReference?: string;
+  needsProfessional?: boolean;
+  actionScreen?: string;
+}
+interface TaxAdvisories {
+  advisories: Advisory[];
+  disclaimer: string;
+}
+
+const KIND_META: Record<Advisory['kind'], { label: string; cls: string }> = {
+  risiko: { label: 'Risiko', cls: 'low' },
+  mulighet: { label: 'Muligheter', cls: 'high' },
+  kontrollpunkt: { label: 'Kontrollpunkter', cls: 'medium' },
+};
+
+export function AssistantScreen({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: string) => void }) {
+  const a = useLoad(() => api<TaxAdvisories>('GET', `/api/organizations/${orgId}/tax-advisories`), [orgId]);
+  const d = a.data;
+  const groups: Advisory['kind'][] = ['risiko', 'mulighet', 'kontrollpunkt'];
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Skatte- og MVA-assistent</h1>
+        <p className="subtitle">
+          Reknaren leter kontinuerlig etter forhold som fortjener oppmerksomhet — muligheter og kontrollpunkter, ikke løfter.
+        </p>
+      </div>
+      {a.loading ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        d && (
+          <>
+            <div className="panel explain">
+              <p className="hint" style={{ margin: 0 }}>{d.disclaimer}</p>
+            </div>
+            {d.advisories.length === 0 ? (
+              <div className="panel"><p className="subtitle">Ingenting krever oppmerksomhet akkurat nå. Vi følger med fortløpende.</p></div>
+            ) : (
+              groups.map((k) => {
+                const items = d.advisories.filter((x) => x.kind === k);
+                if (items.length === 0) return null;
+                return (
+                  <div className="panel" key={k}>
+                    <div className="panel-head">
+                      <h2>{KIND_META[k].label}</h2>
+                      <span className={`confidence ${KIND_META[k].cls}`}>{items.length}</span>
+                    </div>
+                    <ul className="health-list">
+                      {items.map((it, i) => (
+                        <li key={i} className={`health-item ${k === 'risiko' ? 'warning' : k === 'mulighet' ? 'info' : 'info'}`}>
+                          <div className="health-dot" aria-hidden="true" />
+                          <div className="health-body">
+                            <div className="health-title">
+                              {it.title}
+                              {it.needsProfessional && <span className="code">regnskapsfører</span>}
+                            </div>
+                            <div className="health-detail">{it.detail}</div>
+                            {it.legalReference && <div className="hint">Kilde: {it.legalReference}</div>}
+                          </div>
+                          {it.actionScreen && onNavigate && (
+                            <button className="secondary health-action" onClick={() => onNavigate(it.actionScreen!)}>
+                              Åpne
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}
