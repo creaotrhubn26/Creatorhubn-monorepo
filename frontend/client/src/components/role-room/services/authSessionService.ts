@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
+import { applyProfessionModeFromRole } from '../config/professionMode';
 
 export type AdminUser = {
   id: number | string;
@@ -189,6 +190,10 @@ export const authSessionService = {
         sessionCache = cached;
         updateWindowUserId(cached.currentUserId || (cached.adminUser?.id ? String(cached.adminUser.id) : null));
         persistTokenMirror(cached.sessionToken);
+        // Ved re-hydrering (retur-besøk / provisjonert innlogging): rout til
+        // utdannings-workspacet fra lagret profession hvis ingen eksplisitt
+        // modus alt er valgt.
+        applyProfessionModeFromRole(cached.selectedProfession);
         hydrated = true;
         return cached;
       }
@@ -246,6 +251,10 @@ export const authSessionService = {
       lastUpdated: new Date().toISOString(),
     };
     await persistSession(next);
+    // Bro profession → ProfessionMode: en provisjonert utdanningsinstitusjon
+    // (selectedProfession='education') routes til utdannings-workspacet uten
+    // manuelt modus-valg. Rører kun education (annet → no-op).
+    applyProfessionModeFromRole(roleId);
   },
 
   async updateRoleContext(update: RoleContextUpdate): Promise<void> {

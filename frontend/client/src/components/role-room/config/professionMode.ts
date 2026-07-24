@@ -130,3 +130,46 @@ export const isProductionMode = (mode: ProfessionMode): boolean =>
 /** Utdanningsinstitusjon-modus — egen parallell workspace (EducationWorkspace). */
 export const isEducationMode = (mode: ProfessionMode): boolean =>
   mode === 'education';
+
+/**
+ * Bro fra bruker-profesjon/rolle (server-side `users.profession` / onboarding-
+ * `selectedProfession`) → ProfessionMode. Dette er «profession-feltet» som
+ * kommentaren over `getActiveProfessionMode` forutsa: en provisjonert
+ * utdanningsinstitusjon (profession='education') skal lande i utdannings-
+ * workspacet uten å måtte velge modus manuelt.
+ *
+ * FORELØPIG KUN education-signaler → 'education'. Andre profesjoner returnerer
+ * null (uendret oppførsel) — bevisst, så broen ikke endrer modus for
+ * eksisterende produksjons-/foto-brukere. Kan utvides senere.
+ */
+const PROFESSION_ROLE_TO_MODE: Record<string, ProfessionMode> = {
+  education: 'education',
+  education_institution: 'education',
+  educational_institution: 'education',
+  utdanning: 'education',
+  utdanningsinstitusjon: 'education',
+  skole: 'education',
+};
+
+export function professionRoleToMode(role: string | null | undefined): ProfessionMode | null {
+  if (typeof role !== 'string' || !role.trim()) return null;
+  return PROFESSION_ROLE_TO_MODE[role.trim().toLowerCase()] ?? null;
+}
+
+/**
+ * Aktiver modus fra bruker-profesjon — men KUN hvis brukeren ikke allerede har
+ * et eksplisitt modus-valg (localStorage). Et eksplisitt valg (mode-switcher)
+ * vinner alltid. Returnerer true hvis modus ble satt.
+ */
+export function applyProfessionModeFromRole(role: string | null | undefined): boolean {
+  if (typeof window === 'undefined') return false;
+  const mode = professionRoleToMode(role);
+  if (!mode) return false;
+  try {
+    if (window.localStorage.getItem(STORAGE_KEY)) return false; // eksplisitt valg vinner
+  } catch {
+    return false;
+  }
+  setActiveProfessionMode(mode);
+  return true;
+}
