@@ -20,6 +20,7 @@ import type {
   CalendarDayStatus,
   MemberListItem,
 } from '../services/roleRoomMemberProfileService';
+import type { CrewConflict } from '../services/castingApiService';
 
 /** Legg til n dager på en YYYY-MM-DD-streng uten TZ-drift (lokal midnatt). */
 function addDays(iso: string, n: number): string {
@@ -44,6 +45,62 @@ export interface CrewAvailabilityOverlay {
   cells: AvailabilityCell[];
   /** Samlet «ledig fra–til»-vindu (kun available-dager) for isAvailableNow/kolonne. */
   range?: { startDate: string; endDate: string };
+}
+
+export interface CrewConflictLookupContext {
+  /** Crew-radene i planleggeren, med e-post-koblingen til medlem. */
+  crew: Array<{ id: string; email?: string | null }>;
+  /** userId → tilgjengelighets-overlay (fra useProjectMemberAvailability). */
+  availabilityByUser: Map<string, CrewAvailabilityOverlay>;
+  /** lowercased e-post → userId. */
+  emailToUser: Map<string, string>;
+}
+
+/**
+ * Beregn crew-tilgjengelighetskonflikter for et datointervall UT FRA allerede-
+ * lastet medlems-tilgjengelighet — INGEN server-kall. En konflikt = en dag i
+ * [startDate, endDate] der crew-medlemmets celle er 'unavailable' (opptatt) eller
+ * 'hold' (tentativ). Crew mappes til medlem via e-post (samme kobling som resten
+ * av crew↔medlem-synkingen). Returnerer kun crew med >=1 konflikt.
+ *
+ * Erstatter det aldri-bygde `/crew/:id/conflicts`-endepunktet: dataene finnes
+ * allerede i klienten (role_room_member_availability via profil-endepunktene),
+ * så vi trenger ikke en duplikat-backend.
+ */
+export function computeCrewConflictsFromAvailability(
+  crewIds: string[],
+  startDate: string,
+  endDate: string,
+  ctx: CrewConflictLookupContext,
+): Map<string, CrewConflict[]> {
+  const out = new Map<string, CrewConflict[]>();
+  if (!startDate || !endDate) return out;
+  // YYYY-MM-DD sammenlignes leksikografisk = kronologisk.
+  const [from, to] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+  for (const crewId of crewIds) {
+    const member = ctx.crew.find((m) => m.id === crewId);
+    const email = (member?.email || '').toLowerCase().trim();
+    if (!email) continue;
+    const userId = ctx.emailToUser.get(email);
+    if (!userId) continue;
+    const overlay = ctx.availabilityByUser.get(userId);
+    if (!overlay || overlay.cells.length === 0) continue;
+    const conflicts: CrewConflict[] = [];
+    for (const cell of overlay.cells) {
+      if (cell.date < from || cell.date > to) continue;
+      if (cell.availability === 'unavailable' || cell.availability === 'hold') {
+        conflicts.push({
+          type: 'unavailable',
+          id: `${crewId}:${cell.date}`,
+          start_date: cell.date,
+          end_date: cell.date,
+          notes: cell.availability === 'hold' ? 'Merket usikker (tentativ)' : 'Merket utilgjengelig',
+        });
+      }
+    }
+    if (conflicts.length > 0) out.set(crewId, conflicts);
+  }
+  return out;
 }
 
 /**

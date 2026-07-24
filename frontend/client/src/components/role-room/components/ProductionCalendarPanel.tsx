@@ -44,7 +44,6 @@ import {
 import { useSnackbar } from 'notistack';
 import {
   calendarEventsApi,
-  crewConflictsApi,
   crewNotificationsApi,
   candidatesApi,
   crewApi,
@@ -68,6 +67,7 @@ import { CalendarMonthHeader } from './calendar/CalendarMonthHeader';
 import { CalendarStatsBar } from './calendar/CalendarStatsBar';
 import { CrewCalendarView, type CrewCalendarMember, type CrewDayAvailability } from './calendar/CrewCalendarView';
 import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
+import { computeCrewConflictsFromAvailability } from '../utils/crewAvailabilitySync';
 
 interface Candidate {
   id: string;
@@ -521,19 +521,19 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return { conflicts, conflictingIds };
   };
 
-  const fetchCrewConflicts = async (crewIds: string[], start: string, end: string) => {
-    const conflicts = new Map<string, CrewConflict[]>();
-    for (const crewId of crewIds) {
-      try {
-        const result = await crewConflictsApi.check(crewId, start.split('T')[0], end.split('T')[0]);
-        if (result.hasConflicts) {
-          conflicts.set(crewId, result.conflicts);
-        }
-      } catch (error) {
-        console.error('Failed to check conflicts for crew:', crewId, error);
-      }
-    }
-    return conflicts;
+  const fetchCrewConflicts = (crewIds: string[], start: string, end: string): Map<string, CrewConflict[]> => {
+    // Konflikter beregnes fra ALLEREDE-lastet medlems-tilgjengelighet
+    // (useProjectMemberAvailability) i stedet for det aldri-bygde
+    // `/crew/:id/conflicts`-endepunktet (som ga 404 → konflikt-varsler viste
+    // aldri). Crew mappes til medlem via e-post.
+    return computeCrewConflictsFromAvailability(crewIds, start.split('T')[0], end.split('T')[0], {
+      crew: crew.map((member) => ({
+        id: member.id,
+        email: (member as { contactInfo?: { email?: string } }).contactInfo?.email ?? null,
+      })),
+      availabilityByUser,
+      emailToUser,
+    });
   };
 
   useEffect(() => {
