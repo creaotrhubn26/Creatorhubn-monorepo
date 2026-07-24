@@ -2369,6 +2369,8 @@ interface YearEndPlan {
   taxEntry: { accountNumber: string; accountName: string; debitMinor: string; creditMinor: string }[] | null;
   periods: { month: number; status: 'open' | 'locked' | 'missing' }[];
   taxAlreadyPosted: boolean;
+  dispositionAlreadyPosted: boolean;
+  dispositionAccount: string;
   fullyLocked: boolean;
   warnings: string[];
 }
@@ -2419,7 +2421,7 @@ export function YearEndScreen({ orgId }: { orgId: string }) {
   );
   const p = plan.data;
   const lockedCount = p?.periods.filter((x) => x.status === 'locked').length ?? 0;
-  const done = Boolean(p && p.fullyLocked && (p.taxAlreadyPosted || p.taxEntry === null));
+  const done = Boolean(p && p.fullyLocked);
 
   const close = async () => {
     if (!p) return;
@@ -2535,6 +2537,25 @@ export function YearEndScreen({ orgId }: { orgId: string }) {
                 </table>
               </div>
             )}
+
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Disponering av årsresultat</h2>
+                {p.dispositionAlreadyPosted && <span className="confidence high">Disponert ✓</span>}
+              </div>
+              <p className="subtitle">
+                Årsresultatet flyttes til egenkapitalen så den ruller riktig inn i neste år. Dette holdes
+                utenfor resultatregnskapet, som fortsatt viser årets drift.
+              </p>
+              <dl className="kv">
+                <dt>
+                  {BigInt(p.resultAfterTaxMinor) < 0n ? 'Underskudd som reduserer egenkapital' : 'Årsresultat til egenkapital'}
+                </dt>
+                <dd>{kr(p.resultAfterTaxMinor)}</dd>
+                <dt>Føres mot</dt>
+                <dd>Annen egenkapital ({p.dispositionAccount})</dd>
+              </dl>
+            </div>
 
             {p.warnings.length > 0 && (
               <div className="panel explain">

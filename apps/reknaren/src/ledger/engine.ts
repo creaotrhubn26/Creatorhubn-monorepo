@@ -47,6 +47,8 @@ export interface PostJournalEntryInput {
   lines: JournalLineInput[];
   idempotencyKey: string;
   sourceDocumentId?: string;
+  /** true for årsavslutnings-/disponeringsbilag (holdes utenfor resultatregnskapet). */
+  isClosing?: boolean;
 }
 
 export interface PostedJournalEntry {
@@ -237,8 +239,8 @@ async function postJournalEntryTx(
     await client.query(
       `INSERT INTO journal_entries
          (id, organization_id, entry_number, entry_date, period_id, description,
-          source_document_id, idempotency_key, posted_by, posted_by_role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          source_document_id, idempotency_key, posted_by, posted_by_role, is_closing)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         entryId,
         input.organizationId,
@@ -250,6 +252,7 @@ async function postJournalEntryTx(
         input.idempotencyKey,
         input.actor.userId,
         input.actor.role,
+        input.isClosing ?? false,
       ],
     );
 

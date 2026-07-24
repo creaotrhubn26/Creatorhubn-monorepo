@@ -23,6 +23,8 @@ export interface ReportFilter {
   /** Ta med linjer fra reverserte bilag (default true — reverseringen nuller dem ut). */
   project?: string;
   department?: string;
+  /** Ta med årsavslutnings-/disponeringsbilag (default true). Resultatregnskapet setter false. */
+  includeClosing?: boolean;
 }
 
 function dateFilterSql(filter: ReportFilter, params: unknown[]): string {
@@ -42,6 +44,10 @@ function dateFilterSql(filter: ReportFilter, params: unknown[]): string {
   if (filter.department) {
     params.push(filter.department);
     sql += ` AND l.department = $${params.length}`;
+  }
+  // Årsavslutningsbilag holdes utenfor resultatregnskapet (men er med i balansen).
+  if (filter.includeClosing === false) {
+    sql += ` AND e.is_closing = FALSE`;
   }
   return sql;
 }
@@ -87,7 +93,9 @@ export interface IncomeStatement {
 }
 
 export async function incomeStatement(db: Db, filter: ReportFilter): Promise<IncomeStatement> {
-  const rows = await trialBalance(db, filter);
+  // Resultatregnskapet viser driften — årsavslutningsbilag (som nuller P&L mot
+  // egenkapital) holdes utenfor, ellers ville avslutningsåret vist null.
+  const rows = await trialBalance(db, { ...filter, includeClosing: false });
   const pnl = rows.filter((r) => r.accountType === 'revenue' || r.accountType === 'expense');
   let revenue = 0n;
   let expense = 0n;

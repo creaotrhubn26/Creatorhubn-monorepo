@@ -129,8 +129,10 @@ export async function buildNaeringsspesifikasjon(
   const langsiktigGjeld = section('Langsiktig gjeld', liabilities.filter((r) => inRange(r, 2200, 2399)));
   const kortsiktigGjeld = section('Kortsiktig gjeld', liabilities.filter((r) => !inRange(r, 2200, 2399)));
 
-  // Årets resultat inngår i egenkapitalen (er ennå ikke disponert som egen postering).
-  const aarsresultatTilEgenkapitalMinor = inc.resultMinor;
+  // Udisponert resultat som inngår i egenkapitalen. Bruker balansens
+  // retainedResult (inkl. avslutningsbilag) → blir 0 når årsresultatet er
+  // disponert til egenkapitalkontoene, så det ikke dobbelttelles.
+  const aarsresultatTilEgenkapitalMinor = bs.retainedResultMinor;
   const sumEgenkapitalOgGjeldMinor =
     egenkapital.sumMinor + aarsresultatTilEgenkapitalMinor + langsiktigGjeld.sumMinor + kortsiktigGjeld.sumMinor;
 

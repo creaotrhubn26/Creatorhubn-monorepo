@@ -24,6 +24,7 @@ import { lockPeriod, postJournalEntry } from './engine.js';
 const COMPANY_FORMS: OrganizationForm[] = ['AS', 'NUF', 'SA'];
 const TAX_ACCOUNT = '8300'; // Skattekostnad
 const PAYABLE_TAX_ACCOUNT = '2500'; // Betalbar skatt
+const EQUITY_ACCOUNT = '2050'; // Annen egenkapital
 
 export interface YearEndLine {
   accountNumber: string;
@@ -55,6 +56,10 @@ export interface YearEndPlan {
   periods: YearEndPeriod[];
   /** true når skatteposteringen for året allerede er bokført. */
   taxAlreadyPosted: boolean;
+  /** true når årsresultatet allerede er disponert til egenkapital. */
+  dispositionAlreadyPosted: boolean;
+  /** Egenkapitalkontoen årsresultatet overføres til. */
+  dispositionAccount: string;
   /** true når alle tolv perioder er låst. */
   fullyLocked: boolean;
   warnings: string[];
@@ -67,6 +72,39 @@ function ratePctLabel(numerator: bigint, denominator: bigint): string {
 
 function taxIdempotencyKey(year: number): string {
   return `year-end-tax:${year}`;
+}
+
+function dispositionIdempotencyKey(year: number): string {
+  return `year-end-disposal:${year}`;
+}
+
+/**
+ * Bygger disponeringsbilaget: nuller resultatkontoene (Dr inntekt / Cr kostnad,
+ * inkl. skattekostnad) og fører netto årsresultat til egenkapital (2050) —
+ * overskudd som kredit, underskudd som debet. Leser driften (uten avslutningsbilag)
+ * slik at samme år kan disponeres nøyaktig én gang.
+ */
+async function buildDispositionLines(
+  db: Db,
+  org: string,
+  from: string,
+  to: string,
+): Promise<{ accountNumber: string; debitMinor?: bigint; creditMinor?: bigint }[]> {
+  const inc = await incomeStatement(db, { organizationId: org, fromDate: from, toDate: to });
+  const lines: { accountNumber: string; debitMinor?: bigint; creditMinor?: bigint }[] = [];
+  for (const r of inc.byAccount) {
+    if (r.balanceMinor === 0n) continue;
+    if (r.accountType === 'revenue') {
+      lines.push({ accountNumber: r.accountNumber, debitMinor: -r.balanceMinor }); // kreditsaldo → debiteres bort
+    } else {
+      lines.push({ accountNumber: r.accountNumber, creditMinor: r.balanceMinor }); // debetsaldo → krediteres bort
+    }
+  }
+  if (lines.length === 0) return [];
+  const result = inc.resultMinor;
+  if (result > 0n) lines.push({ accountNumber: EQUITY_ACCOUNT, creditMinor: result });
+  else if (result < 0n) lines.push({ accountNumber: EQUITY_ACCOUNT, debitMinor: -result });
+  return lines;
 }
 
 async function loadPeriods(db: Db | DbClient, org: string, year: number): Promise<YearEndPeriod[]> {
@@ -112,6 +150,12 @@ export async function computeYearEndPlan(
     [org, taxIdempotencyKey(year), PAYABLE_TAX_ACCOUNT],
   );
   const taxAlreadyPosted = (posted.rowCount ?? 0) > 0;
+
+  const disposed = await db.query(
+    `SELECT 1 FROM journal_entries WHERE organization_id = $1 AND idempotency_key = $2 LIMIT 1`,
+    [org, dispositionIdempotencyKey(year)],
+  );
+  const dispositionAlreadyPosted = (disposed.rowCount ?? 0) > 0;
 
   const inc = await incomeStatement(db, { organizationId: org, fromDate: from, toDate: to });
   const periods = await loadPeriods(db, org, year);
@@ -168,6 +212,8 @@ export async function computeYearEndPlan(
     taxEntry,
     periods,
     taxAlreadyPosted,
+    dispositionAlreadyPosted,
+    dispositionAccount: EQUITY_ACCOUNT,
     fullyLocked,
     warnings,
   };
@@ -177,6 +223,8 @@ export interface YearEndReceipt {
   year: number;
   taxPosted: boolean;
   taxEntryNumber?: number;
+  dispositionPosted: boolean;
+  dispositionEntryNumber?: number;
   payableTaxMinor: bigint;
   lockedMonths: number[];
 }
@@ -225,7 +273,31 @@ export async function executeYearEndClose(
     taxPosted = !entry.alreadyExisted;
   }
 
-  // 2) Lås alle tolv perioder som ennå er åpne/mangler (hopp over allerede låste).
+  // 2) Disponer årsresultatet til egenkapital (etter skatt). Merket is_closing,
+  //    så resultatregnskapet fortsatt viser driften. Idempotent.
+  let dispositionPosted = false;
+  let dispositionEntryNumber: number | undefined;
+  if (!plan.dispositionAlreadyPosted) {
+    const lines = await buildDispositionLines(db, org, `${year}-01-01`, to);
+    if (lines.length > 0) {
+      await withTransaction(db, async (client) => {
+        await ensureAccount(client, org, EQUITY_ACCOUNT);
+      });
+      const disp = await postJournalEntry(db, {
+        organizationId: org,
+        actor: params.actor,
+        entryDate: to,
+        description: `Årsavslutning ${year} — disponering av årsresultat`,
+        lines,
+        idempotencyKey: dispositionIdempotencyKey(year),
+        isClosing: true,
+      });
+      dispositionEntryNumber = disp.entryNumber;
+      dispositionPosted = !disp.alreadyExisted;
+    }
+  }
+
+  // 3) Lås alle tolv perioder som ennå er åpne/mangler (hopp over allerede låste).
   const lockedMonths: number[] = [];
   for (const p of plan.periods) {
     if (p.status === 'locked') continue;
@@ -251,6 +323,7 @@ export async function executeYearEndClose(
         year,
         payableTaxMinor: plan.payableTaxMinor.toString(),
         taxEntryNumber: taxEntryNumber ?? null,
+        dispositionEntryNumber: dispositionEntryNumber ?? null,
         lockedMonths,
       },
     });
@@ -260,6 +333,8 @@ export async function executeYearEndClose(
     year,
     taxPosted,
     ...(taxEntryNumber !== undefined ? { taxEntryNumber } : {}),
+    dispositionPosted,
+    ...(dispositionEntryNumber !== undefined ? { dispositionEntryNumber } : {}),
     payableTaxMinor: plan.payableTaxMinor,
     lockedMonths,
   };

@@ -91,9 +91,17 @@ describe('årsavslutning', () => {
     expect(receipt.payableTaxMinor).toBe(132000n);
     expect(receipt.lockedMonths).toHaveLength(12);
 
-    // Skattekostnad debitert 8300, betalbar skatt kreditert 2500.
-    expect(await accountBalance(org.id, '8300')).toBe(132000n);
+    // Skattekostnad ble debitert 8300 i skattebilaget (før disponeringen nuller det).
+    const taxLine = await db.query(
+      `SELECT l.debit_minor FROM journal_lines l JOIN journal_entries je ON je.id = l.entry_id
+       WHERE je.organization_id = $1 AND je.idempotency_key = $2 AND l.account_number = '8300'`,
+      [org.id, `year-end-tax:${YEAR}`],
+    );
+    expect(BigInt(taxLine.rows[0].debit_minor)).toBe(132000n);
+    // Betalbar skatt (2500) er kreditert — dette er gjelden som skal betales.
     expect(await accountBalance(org.id, '2500')).toBe(-132000n);
+    // Etter disponering er skattekostnaden (8300) nullet ut mot egenkapitalen.
+    expect(await accountBalance(org.id, '8300')).toBe(0n);
 
     // Året er låst.
     const locked = await db.query(
@@ -119,9 +127,12 @@ describe('årsavslutning', () => {
       actor: actor(),
     });
     expect(second.taxPosted).toBe(false);
+    expect(second.dispositionPosted).toBe(false);
     expect(second.lockedMonths).toHaveLength(0);
-    // Fortsatt bare én skattepostering.
-    expect(await accountBalance(org.id, '8300')).toBe(132000n);
+    // Fortsatt bare én gang disponert: betalbar skatt (2500) er ikke dobbelt.
+    expect(await accountBalance(org.id, '2500')).toBe(-132000n);
+    // Egenkapitalen fikk årsresultatet etter skatt nøyaktig én gang.
+    expect(await accountBalance(org.id, '2050')).toBe(-468000n);
 
     const plan = await computeYearEndPlan(db, rules, { organizationId: org.id, year: YEAR, orgForm: 'AS' });
     expect(plan.taxAlreadyPosted).toBe(true);
