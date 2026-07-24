@@ -2701,6 +2701,14 @@ interface Forecast {
     leverandorgjeldMinor: string;
     items: { vendor: string; dueDate: string; amountMinor: string }[];
   };
+  gjentakendeKostnader: {
+    vendor: string;
+    amountMinor: string;
+    cadence: 'monthly' | 'quarterly';
+    occurrences: number;
+    nextDates: string[];
+    confidence: 'high' | 'assumed';
+  }[];
   mangler: { bilagTilBehandling: number; uavstemteBanktransaksjoner: number };
   likviditet: {
     timeline: { weekStart: string; inflowMinor: string; outflowMinor: string; projectedBalanceMinor: string }[];
@@ -2870,6 +2878,35 @@ export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigat
                 </ul>
               )}
             </div>
+
+            {f.gjentakendeKostnader.length > 0 && (
+              <div className="panel">
+                <div className="panel-head">
+                  <h2>Faste kostnader (anslått)</h2>
+                  <span className="confidence medium">Gjenkjent fra historikken</span>
+                </div>
+                <p className="subtitle">
+                  Periodiske kostnader vi har oppdaget og projisert framover. Anslag — ikke bokførte forfall.
+                </p>
+                <ul className="health-list">
+                  {f.gjentakendeKostnader.map((rc, i) => (
+                    <li key={i} className="health-item info">
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">
+                          {rc.vendor} · {kr(rc.amountMinor)}{' '}
+                          <span className="code">{rc.cadence === 'monthly' ? 'månedlig' : 'kvartalsvis'}</span>
+                        </div>
+                        <div className="health-detail">
+                          {rc.nextDates.length} forfall innen 90 dager (neste {nb(rc.nextDates[0] ?? null)}) ·{' '}
+                          {rc.confidence === 'high' ? 'tydelig mønster' : 'antatt'}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {f.warnings.length > 0 && (
               <div className="panel explain">

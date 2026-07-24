@@ -123,6 +123,65 @@ describe('buildForecast', () => {
     expect(f.likviditet.goesNegative).toBe(false);
   });
 
+  it('gjenkjenner faste månedlige kostnader og projiserer dem framover', async () => {
+    const org = await createOrganization(db, {
+      name: 'Faste AS',
+      orgForm: 'AS',
+      vatStatus: 'registered',
+      createdByUserId: userId,
+    });
+    await postJournalEntry(db, {
+      organizationId: org.id,
+      actor: actor(),
+      entryDate: '2025-01-02',
+      description: 'Aksjekapital',
+      lines: [
+        { accountNumber: '1920', debitMinor: 3000000n },
+        { accountNumber: '2000', creditMinor: 3000000n },
+      ],
+      idempotencyKey: 'r-ak',
+    });
+    const vendorId = newId();
+    await db.query(`INSERT INTO vendors (id, organization_id, name, created_by) VALUES ($1,$2,$3,$4)`, [
+      vendorId,
+      org.id,
+      'Adobe',
+      userId,
+    ]);
+    // Fire månedlige trekk på 249 kr, betalt fra bank.
+    for (const [key, date] of [
+      ['r1', '2025-02-15'],
+      ['r2', '2025-03-15'],
+      ['r3', '2025-04-15'],
+      ['r4', '2025-05-15'],
+    ] as const) {
+      await postJournalEntry(db, {
+        organizationId: org.id,
+        actor: actor(),
+        entryDate: date,
+        description: 'Adobe abonnement',
+        lines: [
+          { accountNumber: '6810', debitMinor: 24900n, vatCode: '1', vendorId },
+          { accountNumber: '1920', creditMinor: 24900n },
+        ],
+        idempotencyKey: key,
+      });
+    }
+
+    const f = await buildForecast(db, rules, { organizationId: org.id, orgForm: 'AS', asOf: ASOF });
+    const rec = f.gjentakendeKostnader.find((r) => r.vendor === 'Adobe');
+    expect(rec).toBeDefined();
+    expect(rec!.cadence).toBe('monthly');
+    expect(rec!.amountMinor).toBe(24900n);
+    expect(rec!.confidence).toBe('high');
+    expect(rec!.nextDates).toHaveLength(3); // ~30-dagers steg: juli/aug/sep innen 90 dager fra 15. juni
+    // Tidslinjen trekker fra de tre projiserte forfallene.
+    // Bank nå = 3 000 000 − 4×24 900 = 2 900 400; minus 3×24 900 = 2 825 700.
+    expect(f.cashNowMinor).toBe(2900400n);
+    expect(f.likviditet.endBalanceMinor).toBe(2825700n);
+    expect(f.warnings.join(' ')).toContain('anslått');
+  });
+
   it('flagger når prognosen går i minus', async () => {
     const org = await createOrganization(db, {
       name: 'Minus AS',

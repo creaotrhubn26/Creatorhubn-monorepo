@@ -20,7 +20,7 @@ export interface CashflowItem {
   date: string;
   label: string;
   amountMinor: bigint; // positivt = inn, negativt = ut
-  kind: 'invoice_in' | 'vat_out' | 'supplier_out';
+  kind: 'invoice_in' | 'vat_out' | 'supplier_out' | 'recurring_out';
 }
 
 export interface TimelineWeek {
@@ -28,6 +28,16 @@ export interface TimelineWeek {
   inflowMinor: bigint;
   outflowMinor: bigint;
   projectedBalanceMinor: bigint;
+}
+
+export interface RecurringCost {
+  vendor: string;
+  amountMinor: bigint; // median per forekomst
+  cadence: 'monthly' | 'quarterly';
+  occurrences: number;
+  lastDate: string;
+  nextDates: string[]; // projiserte forfall innen horisonten
+  confidence: 'high' | 'assumed';
 }
 
 export interface Forecast {
@@ -54,6 +64,7 @@ export interface Forecast {
     leverandorgjeldMinor: bigint;
     items: { vendor: string; dueDate: string; amountMinor: bigint }[];
   };
+  gjentakendeKostnader: RecurringCost[];
   mangler: {
     bilagTilBehandling: number;
     uavstemteBanktransaksjoner: number;
@@ -94,6 +105,90 @@ function addDaysIso(iso: string, days: number): string {
   const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
   const dt = new Date(Date.UTC(y, m - 1, d + days));
   return dt.toISOString().slice(0, 10);
+}
+
+const dayMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+function median(nums: number[]): number {
+  const s = [...nums].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+function medianBig(vals: bigint[]): bigint {
+  const s = [...vals].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2n;
+}
+
+/**
+ * Finner faste/gjentakende kostnader ved å se etter periodiske mønstre per
+ * leverandør (≥3 forekomster, jevnt intervall, likt beløp), og projiserer neste
+ * forfall innen horisonten. Heuristisk → merkes «anslått», aldri bokført.
+ */
+async function detectRecurringCosts(
+  db: Db,
+  org: string,
+  asOf: string,
+  horizonEnd: string,
+): Promise<RecurringCost[]> {
+  const rows = await db.query(
+    `SELECT je.entry_date::TEXT AS d, MAX(l.vendor_id::text) AS vendor_id, SUM(l.debit_minor)::TEXT AS amount
+     FROM journal_entries je JOIN journal_lines l ON l.entry_id = je.id
+     WHERE je.organization_id = $1 AND je.status = 'posted' AND je.is_closing = FALSE
+       AND je.entry_date <= $2
+     GROUP BY je.id, je.entry_date
+     HAVING MAX(l.vendor_id::text) IS NOT NULL AND SUM(l.debit_minor) > 0
+     ORDER BY 2, 1`,
+    [org, asOf],
+  );
+  const byVendor = new Map<string, { d: string; amt: bigint }[]>();
+  for (const r of rows.rows) {
+    const arr = byVendor.get(r.vendor_id) ?? [];
+    arr.push({ d: r.d, amt: BigInt(r.amount) });
+    byVendor.set(r.vendor_id, arr);
+  }
+  const vids = [...byVendor.keys()];
+  const names = new Map<string, string>();
+  if (vids.length) {
+    const nrow = await db.query(`SELECT id::text AS id, name FROM vendors WHERE id = ANY($1::uuid[])`, [vids]);
+    for (const n of nrow.rows) names.set(n.id, n.name);
+  }
+  const horizonMs = dayMs(horizonEnd);
+  const asOfMs = dayMs(asOf);
+  const result: RecurringCost[] = [];
+  for (const [vid, occ] of byVendor) {
+    if (occ.length < 3) continue;
+    const days = occ.map((o) => dayMs(o.d));
+    const intervals: number[] = [];
+    for (let i = 1; i < days.length; i++) intervals.push(Math.round((days[i]! - days[i - 1]!) / 86400000));
+    const medInt = median(intervals);
+    const cadence: 'monthly' | 'quarterly' | null =
+      medInt >= 25 && medInt <= 35 ? 'monthly' : medInt >= 80 && medInt <= 100 ? 'quarterly' : null;
+    if (!cadence) continue;
+    const medAmt = medianBig(occ.map((o) => o.amt));
+    if (medAmt <= 0n) continue;
+    const lo = (medAmt * 70n) / 100n;
+    const hi = (medAmt * 130n) / 100n;
+    const within = occ.filter((o) => o.amt >= lo && o.amt <= hi).length;
+    if (within < Math.ceil(occ.length * 0.6)) continue;
+    const stepMs = medInt * 86400000;
+    const nextDates: string[] = [];
+    let t = days[days.length - 1]! + stepMs;
+    while (t <= horizonMs && nextDates.length < 6) {
+      if (t >= asOfMs) nextDates.push(new Date(t).toISOString().slice(0, 10));
+      t += stepMs;
+    }
+    if (nextDates.length === 0) continue;
+    result.push({
+      vendor: names.get(vid) ?? 'Leverandør',
+      amountMinor: medAmt,
+      cadence,
+      occurrences: occ.length,
+      lastDate: occ[occ.length - 1]!.d,
+      nextDates,
+      confidence: occ.length >= 4 && within === occ.length ? 'high' : 'assumed',
+    });
+  }
+  return result.sort((a, b) => (b.amountMinor > a.amountMinor ? 1 : b.amountMinor < a.amountMinor ? -1 : 0));
 }
 
 export async function buildForecast(
@@ -192,8 +287,16 @@ export async function buildForecast(
     uavstemteBanktransaksjoner: unmatched.rows[0].n as number,
   };
 
+  // 6b) Faste/gjentakende kostnader — projisert framover (anslått).
+  const gjentakendeKostnader = await detectRecurringCosts(db, org, asOf, horizonEnd);
+
   // 7) Likviditets-tidslinje — 90 dager i ukesbøtter fra bankbeholdning nå.
   const events: CashflowItem[] = [];
+  for (const rc of gjentakendeKostnader) {
+    for (const d of rc.nextDates) {
+      events.push({ date: d, label: `${rc.vendor} (fast)`, amountMinor: -rc.amountMinor, kind: 'recurring_out' });
+    }
+  }
   for (const inv of receivableItems) {
     // Forfalte fordringer forventes inn «nå» (uke 0); ellers på forfallsdato innen horisonten.
     const when = !inv.dueDate || inv.dueDate < asOf ? asOf : inv.dueDate;
@@ -238,7 +341,13 @@ export async function buildForecast(
   if (goesNegative) {
     warnings.push(`Prognosen viser at kontoen kan gå i minus (laveste ${(lowest / 100n).toString()} kr rundt ${lowestWeekStart}). Følg opp innbetalinger eller utsett kostnader.`);
   }
-  warnings.push('Prognosen bygger kun på kjente, bokførte forfall — ikke gjentakende eller estimerte poster.');
+  if (gjentakendeKostnader.length > 0) {
+    warnings.push(
+      `Tidslinjen inkluderer ${gjentakendeKostnader.length} anslått${gjentakendeKostnader.length > 1 ? 'e' : ''} fast${gjentakendeKostnader.length > 1 ? 'e' : ''} kostnad${gjentakendeKostnader.length > 1 ? 'er' : ''} (gjenkjent fra historikken), i tillegg til kjente bokførte forfall.`,
+    );
+  } else {
+    warnings.push('Prognosen bygger på kjente bokførte forfall. Ingen faste kostnader gjenkjent ennå.');
+  }
 
   return {
     asOf,
@@ -248,6 +357,7 @@ export async function buildForecast(
     skatt: { estimatedTaxMinor: tax.estimatedTaxMinor, recommendedReserveMinor: tax.recommendedReserveMinor },
     ubetalteFakturaer,
     kommendeKostnader,
+    gjentakendeKostnader,
     mangler,
     likviditet: { timeline, endBalanceMinor: running, lowestBalanceMinor: lowest, lowestWeekStart, goesNegative },
     warnings,
