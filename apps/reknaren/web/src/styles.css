@@ -208,6 +208,14 @@ label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2);
 .panel.impact .kv dd.pos { color: var(--ok); font-weight: 600; }
 .panel.impact ul.hint { color: var(--text-3); margin-top: 10px; }
 
+/* Likviditets-prognose (Framover) */
+.liq-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 6px 0 20px; position: relative; }
+.liq-bar-wrap { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.liq-bar { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 4px; transition: none; }
+.liq-bar.neg { background: var(--danger); }
+.liq-label { position: absolute; bottom: -18px; font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+button.linklike { background: none; border: none; color: var(--accent); padding: 0; font: inherit; cursor: pointer; text-decoration: underline; }
+
 /* Næringsspesifikasjon-utkast */
 .panel h3 { font-size: 15px; margin: 18px 0 8px; color: var(--text-2); }
 .kv.total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }

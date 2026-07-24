@@ -2682,3 +2682,208 @@ function NaeringsspecPanel({ spec, year, orgId }: { spec: Naeringsspesifikasjon;
     </div>
   );
 }
+
+/* ── Framover: planlegger ───────────────────────────────────────────────── */
+
+interface Forecast {
+  asOf: string;
+  horizonDays: number;
+  cashNowMinor: string;
+  forventetMva: { fromDate: string; toDate: string; dueDate: string; netPayableMinor: string };
+  skatt: { estimatedTaxMinor: string; recommendedReserveMinor: string };
+  ubetalteFakturaer: {
+    totalMinor: string;
+    overdueMinor: string;
+    count: number;
+    items: { invoiceNumber: string | null; customer: string; dueDate: string | null; outstandingMinor: string; overdue: boolean }[];
+  };
+  kommendeKostnader: {
+    leverandorgjeldMinor: string;
+    items: { vendor: string; dueDate: string; amountMinor: string }[];
+  };
+  mangler: { bilagTilBehandling: number; uavstemteBanktransaksjoner: number };
+  likviditet: {
+    timeline: { weekStart: string; inflowMinor: string; outflowMinor: string; projectedBalanceMinor: string }[];
+    endBalanceMinor: string;
+    lowestBalanceMinor: string;
+    lowestWeekStart: string;
+    goesNegative: boolean;
+  };
+  warnings: string[];
+}
+
+const nb = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '–');
+
+function LiquidityChart({ liq, cashNow }: { liq: Forecast['likviditet']; cashNow: string }) {
+  const balances = [BigInt(cashNow), ...liq.timeline.map((w) => BigInt(w.projectedBalanceMinor))];
+  const max = balances.reduce((a, b) => (b > a ? b : a), 1n);
+  const min = balances.reduce((a, b) => (b < a ? b : a), 0n);
+  const span = max - min > 0n ? max - min : 1n;
+  const heightPct = (v: bigint) => Number(((v - min) * 100n) / span);
+  return (
+    <div className="liq-chart" role="img" aria-label="Likviditetsprognose 90 dager">
+      {liq.timeline.map((w, i) => {
+        const v = BigInt(w.projectedBalanceMinor);
+        const neg = v < 0n;
+        return (
+          <div className="liq-bar-wrap" key={i} title={`${nb(w.weekStart)}: ${kr(w.projectedBalanceMinor)}`}>
+            <div
+              className={`liq-bar${neg ? ' neg' : ''}`}
+              style={{ height: `${Math.max(4, heightPct(v))}%` }}
+            />
+            {i % 2 === 0 && <span className="liq-label">{nb(w.weekStart)}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: string) => void }) {
+  const fc = useLoad(() => api<Forecast>('GET', `/api/organizations/${orgId}/planning`), [orgId]);
+  const f = fc.data;
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Framover</h1>
+        <p className="subtitle">
+          Hva som kommer: forventet MVA og skatt, likviditet, ubetalte fakturaer, kommende kostnader og hva som mangler.
+        </p>
+      </div>
+      {fc.error && <div className="error">{fc.error}</div>}
+      {fc.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        f && (
+          <>
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Likviditet neste 90 dager</h2>
+                <span className={`confidence ${f.likviditet.goesNegative ? 'low' : 'high'}`}>
+                  {f.likviditet.goesNegative ? 'Kan gå i minus' : 'Positiv hele veien'}
+                </span>
+              </div>
+              <LiquidityChart liq={f.likviditet} cashNow={f.cashNowMinor} />
+              <div className="cards" style={{ marginTop: 14 }}>
+                <div className="card">
+                  <div className="label">På konto nå</div>
+                  <div className="value">{kr(f.cashNowMinor)}</div>
+                </div>
+                <div className={`card${f.likviditet.goesNegative ? ' attention' : ''}`}>
+                  <div className="label">Laveste punkt</div>
+                  <div className="value">{kr(f.likviditet.lowestBalanceMinor)}</div>
+                  <div className="hint">rundt {nb(f.likviditet.lowestWeekStart)}</div>
+                </div>
+                <div className="card">
+                  <div className="label">Anslått saldo om 90 dager</div>
+                  <div className="value">{kr(f.likviditet.endBalanceMinor)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="cards">
+              <div className="card">
+                <div className="label">Forventet MVA</div>
+                <div className="value">{kr(f.forventetMva.netPayableMinor)}</div>
+                <div className="hint">
+                  {BigInt(f.forventetMva.netPayableMinor) < 0n ? 'til gode' : 'å betale'} · forfall {nb(f.forventetMva.dueDate)}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Skatt å sette av</div>
+                <div className="value">{kr(f.skatt.recommendedReserveMinor)}</div>
+                <div className="hint">anbefalt reserve (skatt + mva)</div>
+              </div>
+              <div className={`card${f.mangler.bilagTilBehandling + f.mangler.uavstemteBanktransaksjoner > 0 ? ' attention' : ''}`}>
+                <div className="label">Mangler oppfølging</div>
+                <div className="value">{f.mangler.bilagTilBehandling + f.mangler.uavstemteBanktransaksjoner}</div>
+                <div className="hint">
+                  {f.mangler.bilagTilBehandling} bilag · {f.mangler.uavstemteBanktransaksjoner} banktransaksjoner
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Venter på betaling (inn)</h2>
+                <span className="badge accent">{kr(f.ubetalteFakturaer.totalMinor)}</span>
+              </div>
+              {f.ubetalteFakturaer.count === 0 ? (
+                <p className="subtitle">Ingen utestående kundefakturaer.</p>
+              ) : (
+                <>
+                  {BigInt(f.ubetalteFakturaer.overdueMinor) > 0n && (
+                    <p className="subtitle">
+                      Herav {kr(f.ubetalteFakturaer.overdueMinor)} forfalt.{' '}
+                      {onNavigate && (
+                        <button className="linklike" onClick={() => onNavigate('invoicing')}>
+                          Send påminnelse
+                        </button>
+                      )}
+                    </p>
+                  )}
+                  <ul className="health-list">
+                    {f.ubetalteFakturaer.items.slice(0, 8).map((it, i) => (
+                      <li key={i} className={`health-item ${it.overdue ? 'warning' : 'info'}`}>
+                        <div className="health-dot" aria-hidden="true" />
+                        <div className="health-body">
+                          <div className="health-title">
+                            Faktura {it.invoiceNumber ?? ''} · {it.customer}
+                          </div>
+                          <div className="health-detail">
+                            {kr(it.outstandingMinor)} · forfall {nb(it.dueDate)}
+                            {it.overdue ? ' (forfalt)' : ''}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Kommende kostnader (ut)</h2>
+                <span className="badge accent">{kr(f.kommendeKostnader.leverandorgjeldMinor)}</span>
+              </div>
+              <p className="subtitle">Leverandørgjeld du skylder. Kjente forfall innen 90 dager under.</p>
+              {f.kommendeKostnader.items.length === 0 ? (
+                <p className="hint">Ingen bilag med registrert forfallsdato i perioden.</p>
+              ) : (
+                <ul className="health-list">
+                  {f.kommendeKostnader.items.slice(0, 8).map((it, i) => (
+                    <li key={i} className="health-item info">
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">{it.vendor}</div>
+                        <div className="health-detail">
+                          {kr(it.amountMinor)} · forfall {nb(it.dueDate)}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {f.warnings.length > 0 && (
+              <div className="panel explain">
+                <strong>Om prognosen:</strong>
+                <ul className="compact">
+                  {f.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}
