@@ -156,6 +156,17 @@ export function professionRoleToMode(role: string | null | undefined): Professio
   return PROFESSION_ROLE_TO_MODE[role.trim().toLowerCase()] ?? null;
 }
 
+/** Har brukeren allerede et lagret (eksplisitt/broet) modus-valg? Brukes til å
+ *  hoppe over profesjons-oppslaget på boot når modus alt er avgjort. */
+export function hasStoredProfessionMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return isProfessionMode(window.localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Aktiver modus fra bruker-profesjon — men KUN hvis brukeren ikke allerede har
  * et eksplisitt modus-valg (localStorage). Et eksplisitt valg (mode-switcher)

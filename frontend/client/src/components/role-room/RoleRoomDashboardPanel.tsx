@@ -118,7 +118,7 @@ import {
   Paid as PaidIcon,
   Instagram as InstagramIcon,
 } from '@mui/icons-material';
-import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
+import { getActiveProfessionMode, isDanceMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
 import { PostAgentErrorBoundary } from './components/PostAgentErrorBoundary';
@@ -375,6 +375,31 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     'admin-room': { label: 'Admin Room', Icon: AutoFixHighIcon, highlight: true },
   };
   const isAdminUser = auth.user?.role === 'admin' || auth.user?.role === 'super_admin';
+
+  // Provisjonerings-kobling: en provisjonert utdanningsinstitusjon har
+  // users.profession='education_institution' men intet lagret modus-valg. Hent
+  // profesjonen én gang på boot → aktiver riktig workspace-modus (broen rører
+  // KUN education → null risiko for andre). Hopper over hvis modus alt er valgt.
+  const professionSyncRanRef = useRef(false);
+  useEffect(() => {
+    if (professionSyncRanRef.current) return;
+    if (typeof window === 'undefined') return;
+    if (hasStoredProfessionMode()) return; // eksplisitt/tidligere valg vinner
+    if (!auth.user) return; // kun innloggede
+    professionSyncRanRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      const profession = await roleRoomMemberProfileService.getMyProfession();
+      if (cancelled) return;
+      // Setter modus KUN hvis den faktisk endret seg → last inn i riktig
+      // workspace (samme reload-mønster som mode-switcheren).
+      if (applyProfessionModeFromRole(profession)) {
+        window.location.reload();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auth.user]);
+
   const activeProfessionMode = getActiveProfessionMode();
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [roleRoomAgentSnapshot, setRoleRoomAgentSnapshot] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);

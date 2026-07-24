@@ -4,6 +4,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import {
   professionRoleToMode,
   applyProfessionModeFromRole,
+  hasStoredProfessionMode,
   getActiveProfessionMode,
 } from './professionMode';
 
@@ -66,5 +67,13 @@ describe('applyProfessionModeFromRole', () => {
   it('null rolle → no-op', () => {
     expect(applyProfessionModeFromRole(null)).toBe(false);
     expect(store['role_room_profession_mode']).toBeUndefined();
+  });
+
+  it('hasStoredProfessionMode: true kun for gyldig lagret modus', () => {
+    expect(hasStoredProfessionMode()).toBe(false);
+    store['role_room_profession_mode'] = 'education';
+    expect(hasStoredProfessionMode()).toBe(true);
+    store['role_room_profession_mode'] = 'tull';
+    expect(hasStoredProfessionMode()).toBe(false);
   });
 });
