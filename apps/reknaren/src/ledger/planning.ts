@@ -20,7 +20,12 @@ export interface CashflowItem {
   date: string;
   label: string;
   amountMinor: bigint; // positivt = inn, negativt = ut
-  kind: 'invoice_in' | 'vat_out' | 'supplier_out' | 'recurring_out';
+  kind: 'invoice_in' | 'vat_out' | 'supplier_out' | 'recurring_out' | 'tax_out';
+}
+
+export interface TaxInstallment {
+  dueDate: string;
+  amountMinor: bigint;
 }
 
 export interface TimelineWeek {
@@ -53,6 +58,8 @@ export interface Forecast {
   skatt: {
     estimatedTaxMinor: bigint;
     recommendedReserveMinor: bigint;
+    /** Anslåtte forskuddsskatt-terminer innen horisonten. */
+    terminer: TaxInstallment[];
   };
   ubetalteFakturaer: {
     totalMinor: bigint;
@@ -108,6 +115,36 @@ function addDaysIso(iso: string, days: number): string {
 }
 
 const dayMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+
+/**
+ * Forskuddsskatt-terminer som faller innen horisonten. AS betaler i to terminer
+ * (15. februar og 15. april året etter), ENK i fire (15. mars/juni/september/
+ * desember i året). Beløp = annualisert skatteestimat delt på antall terminer —
+ * et anslag, ikke Skatteetatens fastsatte forskuddsskatt.
+ */
+function taxInstallments(
+  orgForm: OrganizationForm,
+  asOf: string,
+  horizonEnd: string,
+  annualTaxMinor: bigint,
+): TaxInstallment[] {
+  const isCompany = ['AS', 'NUF', 'SA'].includes(orgForm);
+  const schedule: [number, number][] = isCompany
+    ? [[2, 15], [4, 15]]
+    : [[3, 15], [6, 15], [9, 15], [12, 15]];
+  const per = annualTaxMinor > 0n ? annualTaxMinor / BigInt(schedule.length) : 0n;
+  if (per <= 0n) return [];
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = Number(asOf.slice(0, 4));
+  const out: TaxInstallment[] = [];
+  for (const y of [year, year + 1]) {
+    for (const [m, d] of schedule) {
+      const dueDate = `${y}-${pad(m)}-${pad(d)}`;
+      if (dueDate >= asOf && dueDate <= horizonEnd) out.push({ dueDate, amountMinor: per });
+    }
+  }
+  return out.sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+}
 function median(nums: number[]): number {
   const s = [...nums].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
@@ -221,8 +258,12 @@ export async function buildForecast(
     netPayableMinor: vat.netPayableMinor,
   };
 
-  // 3) Skatt — løpende estimat + anbefalt reserve (hittil i år).
+  // 3) Skatt — løpende estimat + anbefalt reserve + anslåtte forskuddsskatt-terminer.
   const tax = await buildTaxEstimate(db, rules, { organizationId: org, orgForm, fromDate: yearStart, toDate: asOf });
+  // Annualiser skatten hittil i år som grunnlag for terminbeløpene.
+  const daysElapsed = Math.max(1, Math.round((dayMs(asOf) - dayMs(yearStart)) / 86400000) + 1);
+  const annualTaxMinor = (tax.estimatedTaxMinor * 365n) / BigInt(daysElapsed);
+  const skatteterminer = taxInstallments(orgForm, asOf, horizonEnd, annualTaxMinor);
 
   // 4) Ubetalte kundefakturaer (forventede innbetalinger).
   const recv = await db.query(
@@ -297,6 +338,9 @@ export async function buildForecast(
       events.push({ date: d, label: `${rc.vendor} (fast)`, amountMinor: -rc.amountMinor, kind: 'recurring_out' });
     }
   }
+  for (const t of skatteterminer) {
+    events.push({ date: t.dueDate, label: 'Forskuddsskatt (anslått)', amountMinor: -t.amountMinor, kind: 'tax_out' });
+  }
   for (const inv of receivableItems) {
     // Forfalte fordringer forventes inn «nå» (uke 0); ellers på forfallsdato innen horisonten.
     const when = !inv.dueDate || inv.dueDate < asOf ? asOf : inv.dueDate;
@@ -348,13 +392,20 @@ export async function buildForecast(
   } else {
     warnings.push('Prognosen bygger på kjente bokførte forfall. Ingen faste kostnader gjenkjent ennå.');
   }
+  if (skatteterminer.length > 0) {
+    warnings.push('Skatteterminene er anslag basert på resultatet hittil i år, ikke Skatteetatens fastsatte forskuddsskatt.');
+  }
 
   return {
     asOf,
     horizonDays: HORIZON_DAYS,
     cashNowMinor,
     forventetMva,
-    skatt: { estimatedTaxMinor: tax.estimatedTaxMinor, recommendedReserveMinor: tax.recommendedReserveMinor },
+    skatt: {
+      estimatedTaxMinor: tax.estimatedTaxMinor,
+      recommendedReserveMinor: tax.recommendedReserveMinor,
+      terminer: skatteterminer,
+    },
     ubetalteFakturaer,
     kommendeKostnader,
     gjentakendeKostnader,

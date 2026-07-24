@@ -2690,7 +2690,11 @@ interface Forecast {
   horizonDays: number;
   cashNowMinor: string;
   forventetMva: { fromDate: string; toDate: string; dueDate: string; netPayableMinor: string };
-  skatt: { estimatedTaxMinor: string; recommendedReserveMinor: string };
+  skatt: {
+    estimatedTaxMinor: string;
+    recommendedReserveMinor: string;
+    terminer: { dueDate: string; amountMinor: string }[];
+  };
   ubetalteFakturaer: {
     totalMinor: string;
     overdueMinor: string;
@@ -2804,7 +2808,10 @@ export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigat
               <div className="card">
                 <div className="label">Skatt å sette av</div>
                 <div className="value">{kr(f.skatt.recommendedReserveMinor)}</div>
-                <div className="hint">anbefalt reserve (skatt + mva)</div>
+                <div className="hint">
+                  anbefalt reserve (skatt + mva)
+                  {f.skatt.terminer.length > 0 && ` · neste termin ${nb(f.skatt.terminer[0]!.dueDate)}`}
+                </div>
               </div>
               <div className={`card${f.mangler.bilagTilBehandling + f.mangler.uavstemteBanktransaksjoner > 0 ? ' attention' : ''}`}>
                 <div className="label">Mangler oppfølging</div>
@@ -2878,6 +2885,29 @@ export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigat
                 </ul>
               )}
             </div>
+
+            {f.skatt.terminer.length > 0 && (
+              <div className="panel">
+                <div className="panel-head">
+                  <h2>Skatteterminer (anslått)</h2>
+                  <span className="confidence medium">Forskuddsskatt</span>
+                </div>
+                <p className="subtitle">
+                  Anslåtte forskuddsskatt-terminer innen 90 dager, basert på resultatet hittil. Ikke Skatteetatens fastsatte beløp.
+                </p>
+                <ul className="health-list">
+                  {f.skatt.terminer.map((t, i) => (
+                    <li key={i} className="health-item info">
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">Forskuddsskatt · {kr(t.amountMinor)}</div>
+                        <div className="health-detail">forfall {nb(t.dueDate)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {f.gjentakendeKostnader.length > 0 && (
               <div className="panel">

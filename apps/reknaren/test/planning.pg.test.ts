@@ -182,6 +182,60 @@ describe('buildForecast', () => {
     expect(f.warnings.join(' ')).toContain('anslått');
   });
 
+  it('ENK: forskuddsskatt-termin innen 90 dager legges på tidslinjen', async () => {
+    const org = await createOrganization(db, {
+      name: 'Enkel ENK',
+      orgForm: 'ENK',
+      vatStatus: 'registered',
+      createdByUserId: userId,
+    });
+    // Overskudd → skatt å betale. Inntekt inn på bank.
+    await postJournalEntry(db, {
+      organizationId: org.id,
+      actor: actor(),
+      entryDate: '2025-05-01',
+      description: 'Salg',
+      lines: [
+        { accountNumber: '1920', debitMinor: 5000000n },
+        { accountNumber: '3000', creditMinor: 5000000n, vatCode: '3' },
+      ],
+      idempotencyKey: 'enk-salg',
+    });
+    const f = await buildForecast(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: '2025-08-01' });
+    // ENK: 15. sep faller innen [1. aug, 30. okt]; 15. des faller utenfor.
+    expect(f.skatt.terminer).toHaveLength(1);
+    expect(f.skatt.terminer[0]!.dueDate).toBe('2025-09-15');
+    expect(f.skatt.terminer[0]!.amountMinor).toBeGreaterThan(0n);
+    // Terminen trekkes på tidslinjen.
+    expect(f.likviditet.endBalanceMinor).toBe(f.cashNowMinor - f.skatt.terminer[0]!.amountMinor);
+  });
+
+  it('AS: ingen skattetermin midt på året (forfall feb/apr utenfor vinduet)', async () => {
+    const org = await createOrganization(db, {
+      name: 'Sommer AS',
+      orgForm: 'AS',
+      vatStatus: 'registered',
+      createdByUserId: userId,
+    });
+    await postJournalEntry(db, {
+      organizationId: org.id,
+      actor: actor(),
+      entryDate: '2025-01-15',
+      description: 'Salg',
+      lines: [
+        { accountNumber: '1920', debitMinor: 5000000n },
+        { accountNumber: '3000', creditMinor: 5000000n, vatCode: '3' },
+      ],
+      idempotencyKey: 'as-salg',
+    });
+    const f = await buildForecast(db, rules, { organizationId: org.id, orgForm: 'AS', asOf: '2025-08-01' });
+    expect(f.skatt.terminer).toHaveLength(0);
+    // Men i mars faller 15. april innenfor vinduet.
+    const springF = await buildForecast(db, rules, { organizationId: org.id, orgForm: 'AS', asOf: '2025-03-01' });
+    expect(springF.skatt.terminer).toHaveLength(1);
+    expect(springF.skatt.terminer[0]!.dueDate).toBe('2025-04-15');
+  });
+
   it('flagger når prognosen går i minus', async () => {
     const org = await createOrganization(db, {
       name: 'Minus AS',
