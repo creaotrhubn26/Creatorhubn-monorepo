@@ -208,6 +208,14 @@ label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2);
 .panel.impact .kv dd.pos { color: var(--ok); font-weight: 600; }
 .panel.impact ul.hint { color: var(--text-3); margin-top: 10px; }
 
+/* Månedsavslutning — progresjonsbar */
+.progress { height: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; transition: none; }
+.progress-fill.ok { background: var(--ok); }
+.progress-fill.warn { background: var(--warn); }
+.progress-fill.low { background: var(--danger); }
+.health-item.info .health-dot { background: var(--text-3); }
+
 /* KI-transparens */
 .ai-use { padding: 14px 0; border-top: 1px solid var(--border); }
 .ai-use:first-of-type { border-top: 0; padding-top: 4px; }

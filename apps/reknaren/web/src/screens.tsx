@@ -3075,3 +3075,134 @@ export function AiScreen() {
     </div>
   );
 }
+
+/* ── Månedsavslutning (kontinuerlig avslutning) ─────────────────────────── */
+
+interface CloseItem {
+  code: string;
+  severity: 'blocker' | 'warning' | 'info';
+  title: string;
+  detail: string;
+  count: number;
+  actionScreen?: string;
+}
+interface PeriodClose {
+  year: number;
+  month: number;
+  monthName: string;
+  status: 'open' | 'locked';
+  readinessPct: number;
+  ready: boolean;
+  items: CloseItem[];
+  summary: string;
+}
+
+const MONTH_NAMES = ['Januar','Februar','Mars','April','Mai','Juni','Juli','August','September','Oktober','November','Desember'];
+
+export function PeriodCloseScreen({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: string) => void }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const pc = useLoad(
+    () => api<PeriodClose>('GET', `/api/organizations/${orgId}/period-close/${year}/${month}`),
+    [orgId, year, month],
+  );
+  const p = pc.data;
+
+  const lock = async () => {
+    setBusy(true);
+    try {
+      await api('POST', `/api/organizations/${orgId}/periods/${year}/${month}/lock`, {
+        reason: `Månedsavslutning ${MONTH_NAMES[month - 1]} ${year}`,
+      });
+      toast(`${MONTH_NAMES[month - 1]} ${year} er låst.`, 'ok');
+      pc.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke låse', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sevClass: Record<string, string> = { blocker: 'error', warning: 'warning', info: 'info' };
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Månedsavslutning</h1>
+        <p className="subtitle">
+          Reknaren kontrollerer regnskapet løpende — ikke bare ved månedsslutt. Her ser du hvor klar måneden er til å låses.
+        </p>
+      </div>
+
+      <div className="row" style={{ maxWidth: 360 }}>
+        <div>
+          <label htmlFor="pc-month">Måned</label>
+          <select id="pc-month" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+            {MONTH_NAMES.map((m, i) => (
+              <option key={i} value={i + 1}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="pc-year">År</label>
+          <input id="pc-year" inputMode="numeric" value={year} onChange={(e) => setYear(Number(e.target.value) || year)} />
+        </div>
+      </div>
+
+      {pc.error && <div className="error">{pc.error}</div>}
+      {pc.loading ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        p && (
+          <>
+            <div className="panel">
+              <div className="panel-head">
+                <h2>{p.monthName} {p.year}</h2>
+                <span className={`confidence ${p.status === 'locked' ? 'high' : p.ready ? 'high' : p.readinessPct >= 80 ? 'medium' : 'low'}`}>
+                  {p.status === 'locked' ? 'Låst ✓' : p.ready ? 'Klar til å låses' : `${p.readinessPct} % ferdig`}
+                </span>
+              </div>
+              <div className="progress" role="img" aria-label={`${p.readinessPct} prosent ferdig`}>
+                <div className={`progress-fill${p.readinessPct >= 80 ? ' ok' : p.readinessPct >= 50 ? ' warn' : ' low'}`} style={{ width: `${p.readinessPct}%` }} />
+              </div>
+              <p className="subtitle" style={{ marginTop: 10 }}>{p.summary}</p>
+              {p.status === 'open' && (
+                <div className="actions">
+                  <button className="primary" disabled={busy || !p.ready} onClick={lock} title={p.ready ? '' : 'Rydd blokkerende punkter først'}>
+                    {busy ? 'Låser …' : 'Lås perioden'}
+                  </button>
+                  {!p.ready && <span className="hint">Løs de røde punktene under før du kan låse.</span>}
+                </div>
+              )}
+            </div>
+
+            {p.items.length > 0 && (
+              <div className="panel">
+                <h2>Gjenstår før låsing</h2>
+                <ul className="health-list">
+                  {p.items.map((it, i) => (
+                    <li key={i} className={`health-item ${sevClass[it.severity]}`}>
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">{it.title}</div>
+                        <div className="health-detail">{it.detail}</div>
+                      </div>
+                      {it.actionScreen && onNavigate && (
+                        <button className="secondary health-action" onClick={() => onNavigate(it.actionScreen!)}>
+                          Åpne
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}

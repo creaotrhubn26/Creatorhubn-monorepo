@@ -26,6 +26,7 @@ import {
 import { runHealthCheck } from '../ledger/health-check.js';
 import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import { buildForecast } from '../ledger/planning.js';
+import { assessPeriodClose } from '../ledger/period-close.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
@@ -1683,6 +1684,24 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Kontinuerlig regnskapsavslutning — hvor klar er måneden til å låses?
+  app.get(
+    '/api/organizations/:orgId/period-close/:year/:month',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
+        const month = z.coerce.number().int().min(1).max(12).parse(req.params.month);
+        res.json(
+          toJson(await assessPeriodClose(deps.db, deps.rules, { organizationId: req.params.orgId!, year, month })),
+        );
       } catch (err) {
         next(err);
       }

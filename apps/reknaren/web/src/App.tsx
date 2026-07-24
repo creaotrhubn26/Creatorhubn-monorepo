@@ -7,6 +7,7 @@ import {
   GmailScreen,
   AiScreen,
   OverviewScreen,
+  PeriodCloseScreen,
   PlanningScreen,
   ReportsScreen,
   SaftImportScreen,
@@ -52,6 +53,7 @@ const VIEW_MODE_LABELS: Record<ViewMode, string> = {
 type Screen =
   | { name: 'overview' }
   | { name: 'planning' }
+  | { name: 'period-close' }
   | { name: 'documents' }
   | { name: 'document'; id: string }
   | { name: 'gmail' }
@@ -72,6 +74,7 @@ type Screen =
 const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
   { key: 'overview', label: 'Oversikt', icon: 'overview' },
   { key: 'planning', label: 'Framover', icon: 'chart' },
+  { key: 'period-close', label: 'Månedsavslutning', icon: 'shield' },
   { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
   { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
   { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
@@ -246,6 +249,9 @@ export default function App() {
           )}
           {screen.name === 'planning' && (
             <PlanningScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
+          )}
+          {screen.name === 'period-close' && (
+            <PeriodCloseScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
           )}
           {screen.name === 'documents' && <DocumentsScreen orgId={orgId} onOpen={openDocument} />}
           {screen.name === 'document' && (
