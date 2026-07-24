@@ -316,6 +316,9 @@ struct PondusAkademiSheet: View {
     // Quiz-kapittelet («Test deg selv») er interaktivt — ikke video.
     @State private var showQuiz = false
     @State private var quizLocalResult: PondusQuizLocalResult? = PondusQuizLocalResult.load()
+    // «Anbefalt for deg» (slice B): kvalitets-underkjenninger som signal.
+    @Environment(AppState.self) private var appState
+    @State private var qualityRejections: [SalesVerification] = []
 
     private var filteredChapters: [PondusChapter] {
         var list = chapters
@@ -398,6 +401,39 @@ struct PondusAkademiSheet: View {
             playbackSeconds = 0
             isPlaying = false
         }
+        .task { await loadRejections() }
+    }
+
+    // MARK: «Anbefalt for deg» (slice B)
+
+    /// Kun Pondus-kurset har dimensjons-kapitler (tittel-prefiks «Autoritet»,
+    /// «Klarhet», …) — andre kurs fra Akademi-fanen får ingen seksjon.
+    private var isPondusCourse: Bool {
+        PondusDimension.allCases.contains { dim in
+            chapters.contains { $0.title.hasPrefix(dim.label) }
+        }
+    }
+
+    private var recommendations: [PondusRecommendation] {
+        guard isPondusCourse else { return [] }
+        return PondusRecommendationEngine.recommendations(
+            quiz: quizLocalResult,
+            rejections: qualityRejections,
+            chapters: chapters
+        )
+    }
+
+    /// Underkjenninger som personlig signal. Demo: demo-køen. Ekte: kun EGNE
+    /// underkjenninger — uten kjent bruker-id vises ingenting (aldri org-data
+    /// som personlig signal). 403 fra kvalitetskøen → signal stille borte.
+    private func loadRejections() async {
+        if DemoModeManager.isActiveNonisolated {
+            qualityRejections = KvalitetDemoStore.shared.items.filter { $0.status == "rejected" }
+            return
+        }
+        guard let me = TeamLiveStore.shared.currentUserId else { return }
+        guard let q = await QualityService.shared.queue(using: appState.api) else { return }
+        qualityRejections = q.items.filter { $0.status == "rejected" && $0.sellerUserId == me }
     }
 
     // MARK: Player
@@ -913,6 +949,21 @@ struct PondusAkademiSheet: View {
 
             ScrollView {
                 VStack(spacing: 8) {
+                    // «Anbefalt for deg» — skjules under aktivt søk/filter så
+                    // listen forblir ren når brukeren leter selv.
+                    if isPondusCourse && search.isEmpty && sectionFilter == nil {
+                        PondusRecommendationSection(
+                            recommendations: recommendations,
+                            quizTaken: quizLocalResult != nil,
+                            onSelect: { current = $0 },
+                            onQuizCompleted: { r in
+                                quizLocalResult = r
+                                if let quizChapter = chapters.first(where: { $0.section == .test }) {
+                                    watched.insert(quizChapter.id)
+                                }
+                            }
+                        )
+                    }
                     ForEach(PondusChapter.Section.allCases) { sec in
                         let chs = filteredChapters.filter { $0.section == sec }
                         if !chs.isEmpty {
