@@ -3359,7 +3359,25 @@ interface DocumentHunt {
 export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgId: string; onOpenDocument: (id: string) => void; onNavigate?: (s: string) => void }) {
   const h = useLoad(() => api<DocumentHunt>('GET', `/api/organizations/${orgId}/document-hunt`), [orgId]);
   const d = h.data;
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
   const abs = (s: string) => s.replace('-', '');
+  const koble = async (transactionId: string, documentId: string) => {
+    setBusy(documentId);
+    try {
+      const r = await api<{ entryNumber: number; accountNumber: string }>(
+        'POST',
+        `/api/organizations/${orgId}/document-hunt/link`,
+        { transactionId, documentId },
+      );
+      toast(`Koblet og bokført som bilag nr. ${r.entryNumber} (konto ${r.accountNumber}).`, 'ok');
+      h.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke koble', 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <div>
       <div className="page-head">
@@ -3415,7 +3433,10 @@ export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgI
                           ))}
                         </ul>
                         <div className="actions">
-                          <button className="primary" onClick={() => onOpenDocument(c.documentId)}>Se fakturaen</button>
+                          <button className="primary" disabled={busy === c.documentId} onClick={() => koble(g.transactionId, c.documentId)}>
+                            {busy === c.documentId ? 'Kobler …' : 'Koble til betalingen'}
+                          </button>
+                          <button className="secondary" onClick={() => onOpenDocument(c.documentId)}>Se fakturaen</button>
                         </div>
                       </div>
                     ))}

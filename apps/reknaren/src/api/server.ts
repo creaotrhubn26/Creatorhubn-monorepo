@@ -28,7 +28,7 @@ import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
-import { huntDocuments } from '../ingestion/document-hunt.js';
+import { huntDocuments, linkPaymentToDocument } from '../ingestion/document-hunt.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
@@ -1718,6 +1718,27 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await huntDocuments(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Ett-klikks kobling: bokfør bilaget mot betalingen og avstem transaksjonen.
+  app.post(
+    '/api/organizations/:orgId/document-hunt/link',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ transactionId: z.string().uuid(), documentId: z.string().uuid() }).parse(req.body);
+        const result = await linkPaymentToDocument(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          transactionId: body.transactionId,
+          documentId: body.documentId,
+        });
+        res.status(201).json(toJson(result));
       } catch (err) {
         next(err);
       }

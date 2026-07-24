@@ -9,8 +9,19 @@
  *
  * REN LESING og forslag — kobling krever menneskelig godkjenning.
  */
+import type { Actor } from '../audit/audit.js';
+import { recordAuditEvent } from '../audit/audit.js';
+import { getVatCode } from '../coa/vat-codes.js';
 import type { Db } from '../db/pool.js';
+import { withTransaction } from '../db/pool.js';
+import type { ExtractedData } from '../documents/types.js';
 import { formatMinorAsKr } from '../invoicing/view.js';
+import { postJournalEntry } from '../ledger/engine.js';
+import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
+import type { RuleRegister } from '../rules/register.js';
+import { ConflictError, NotFoundError, ValidationError } from '../shared/errors.js';
+import { newId } from '../shared/ids.js';
+import { splitGrossByVatCode } from '../vat/engine.js';
 
 export interface DocCandidate {
   documentId: string;
@@ -158,4 +169,114 @@ export async function huntDocuments(
     gapsWithCandidates: gaps.length,
     gaps,
   };
+}
+
+export interface LinkResult {
+  entryNumber: number;
+  accountNumber: string;
+  vatCode: string;
+}
+
+/**
+ * Ett-klikks kobling: bokfører den manglende kostnaden fra bilaget mot betalingen
+ * og avstemmer banktransaksjonen. Konto og MVA-kode utledes deterministisk fra
+ * uttrekket (samme forslagsmotor som ellers), krediteres banken (betalingen er
+ * allerede ute), og alt lenkes: bilag ↔ postering ↔ banktransaksjon. Reversibelt
+ * og revisjonslogget. Idempotent per transaksjon.
+ */
+export async function linkPaymentToDocument(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; actor: Actor; transactionId: string; documentId: string },
+): Promise<LinkResult> {
+  const { organizationId: org, actor, transactionId, documentId } = params;
+
+  const txRes = await db.query(
+    `SELECT t.amount_minor::TEXT AS amount_minor, t.booked_date::TEXT AS booked_date, t.description, t.status,
+            ba.ledger_account_number, o.org_form, o.vat_status
+     FROM bank_transactions t
+     JOIN bank_accounts ba ON ba.id = t.bank_account_id
+     JOIN organizations o ON o.id = t.organization_id
+     WHERE t.id = $1 AND t.organization_id = $2`,
+    [transactionId, org],
+  );
+  if (!txRes.rowCount) throw new NotFoundError('Banktransaksjonen finnes ikke.');
+  const tx = txRes.rows[0];
+  if (tx.status !== 'unmatched') throw new ConflictError('Transaksjonen er allerede avstemt.');
+  const amount = BigInt(tx.amount_minor);
+  if (amount >= 0n) throw new ValidationError('Kobling støtter foreløpig kun utbetalinger.');
+
+  const exRes = await db.query(
+    `SELECT vendor_name, vendor_org_number, invoice_number, invoice_date::TEXT AS invoice_date,
+            currency, net_minor, vat_minor, gross_minor, document_type, foreign_service
+     FROM extracted_document_data WHERE document_id = $1 ORDER BY extraction_version DESC LIMIT 1`,
+    [documentId],
+  );
+  if (!exRes.rowCount) throw new NotFoundError('Bilaget mangler tolkede data.');
+  const linked = await db.query(`SELECT 1 FROM journal_entries WHERE source_document_id = $1 LIMIT 1`, [documentId]);
+  if (linked.rowCount) throw new ConflictError('Bilaget er allerede bokført.');
+
+  const ex = exRes.rows[0];
+  const isoDate = (ex.invoice_date as string | null) ?? String(tx.booked_date);
+  const data: ExtractedData = {
+    documentType: (ex.document_type as ExtractedData['documentType']) ?? 'unknown',
+    ...(ex.vendor_name ? { vendorName: ex.vendor_name as string } : {}),
+    ...(ex.vendor_org_number ? { vendorOrgNumber: ex.vendor_org_number as string } : {}),
+    ...(ex.currency ? { currency: ex.currency as string } : {}),
+    ...(ex.net_minor !== null ? { netMinor: BigInt(ex.net_minor) } : {}),
+    ...(ex.vat_minor !== null ? { vatMinor: BigInt(ex.vat_minor) } : {}),
+    ...(ex.gross_minor !== null ? { grossMinor: BigInt(ex.gross_minor) } : {}),
+    ...(ex.foreign_service === true ? { foreignService: true } : {}),
+  };
+  const suggestion = await new DeterministicSuggestionEngine().suggest(data, {
+    rules,
+    vatStatus: tx.vat_status as 'registered' | 'not_registered' | 'pending',
+    isoDate,
+  });
+  const accountNumber = suggestion.suggestedAccountNumber;
+  const vatCodeStr = suggestion.suggestedVatCode;
+  const vatCode = getVatCode(vatCodeStr);
+  const bankAccount = String(tx.ledger_account_number);
+  const magnitude = -amount; // betalt beløp (positivt)
+
+  const lines: Parameters<typeof postJournalEntry>[1]['lines'] = [];
+  if (vatCode && vatCode.direction === 'input' && vatCode.deductible && !vatCode.reverseCharge) {
+    const parts = splitGrossByVatCode(rules, vatCodeStr, magnitude, isoDate);
+    lines.push({ accountNumber, debitMinor: parts.netMinor, vatCode: vatCodeStr, ...(ex.vendor_name ? { description: ex.vendor_name as string } : {}) });
+    if (parts.vatMinor > 0n) lines.push({ accountNumber: '2710', debitMinor: parts.vatMinor, vatCode: vatCodeStr, description: `Inngående mva ${parts.ratePct} %` });
+  } else {
+    lines.push({ accountNumber, debitMinor: magnitude, ...(vatCode ? { vatCode: vatCodeStr } : {}), ...(ex.vendor_name ? { description: ex.vendor_name as string } : {}) });
+  }
+  lines.push({ accountNumber: bankAccount, creditMinor: magnitude });
+
+  const entry = await postJournalEntry(db, {
+    organizationId: org,
+    actor,
+    entryDate: String(tx.booked_date),
+    description: `${(ex.vendor_name as string) ?? 'Betaling'}${ex.invoice_number ? ` — faktura ${ex.invoice_number}` : ''}`,
+    lines,
+    idempotencyKey: `bank-link:${transactionId}`,
+    sourceDocumentId: documentId,
+  });
+
+  await withTransaction(db, async (client) => {
+    await client.query(`UPDATE bank_transactions SET status = 'reconciled' WHERE id = $1 AND organization_id = $2`, [transactionId, org]);
+    await client.query(
+      `INSERT INTO reconciliation_matches
+         (id, organization_id, bank_transaction_id, journal_entry_id, source_document_id, match_type, matched_amount_minor, explanation, approved_by, approved_at, status)
+       VALUES ($1,$2,$3,$4,$5,'manual',$6,$7,$8,now(),'approved')`,
+      [newId(), org, transactionId, entry.id, documentId, magnitude.toString(), `Koblet til bilag av bruker (konto ${accountNumber}, mva ${vatCodeStr}).`, actor.userId],
+    );
+    await client.query(`UPDATE source_documents SET status = 'posted', updated_at = now(), version = version + 1 WHERE id = $1 AND organization_id = $2`, [documentId, org]);
+    await recordAuditEvent(client, {
+      organizationId: org,
+      actor,
+      action: 'payment.linked_to_document',
+      entityType: 'bank_transaction',
+      entityId: transactionId,
+      newValue: { documentId, journalEntryId: entry.id, entryNumber: entry.entryNumber, accountNumber, vatCode: vatCodeStr },
+    });
+  });
+
+  return { entryNumber: entry.entryNumber, accountNumber, vatCode: vatCodeStr };
 }
