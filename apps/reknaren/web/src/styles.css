@@ -208,6 +208,11 @@ label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2);
 .panel.impact .kv dd.pos { color: var(--ok); font-weight: 600; }
 .panel.impact ul.hint { color: var(--text-3); margin-top: 10px; }
 
+/* KI-transparens */
+.ai-use { padding: 14px 0; border-top: 1px solid var(--border); }
+.ai-use:first-of-type { border-top: 0; padding-top: 4px; }
+.ai-use h3 { font-size: 15px; }
+
 /* Likviditets-prognose (Framover) */
 .liq-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 6px 0 20px; position: relative; }
 .liq-bar-wrap { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }

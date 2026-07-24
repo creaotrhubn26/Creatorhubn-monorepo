@@ -489,10 +489,12 @@ export function DocumentDetailScreen({
       gross_minor: string | null;
       validation_status: string;
       validation_issues: { message: string; severity: string }[] | null;
+      extraction_engine: string | null;
     } | null;
     suggestions: {
       id: string;
       suggestion: Suggestion;
+      engine: string;
       status: string;
       decided_at: string | null;
       decided_by_name: string | null;
@@ -590,7 +592,13 @@ export function DocumentDetailScreen({
 
       {d?.extraction && (
         <div className="panel">
-          <h2>Hva vi fant i dokumentet</h2>
+          <div className="panel-head">
+            <h2>Hva vi fant i dokumentet</h2>
+            <ExtractionBadge engine={d.extraction.extraction_engine} />
+          </div>
+          {d.extraction.extraction_engine?.startsWith('claude') && (
+            <p className="subtitle">Lest av kunstig intelligens — kontroller at tallene stemmer før du godkjenner.</p>
+          )}
           <dl className="kv">
             <dt>Leverandør</dt>
             <dd>{d.extraction.vendor_name ?? '–'}</dd>
@@ -633,6 +641,12 @@ export function DocumentDetailScreen({
             <h2>Vårt forslag</h2>
             <ConfidenceBadge confidence={suggestion.suggestion.confidence} />
           </div>
+          <p className="subtitle">
+            {suggestion.engine?.startsWith('ai')
+              ? 'Forslag fra kunstig intelligens'
+              : 'Regelbasert forslag'}{' '}
+            — konto og MVA-kode må godkjennes av deg før bokføring.
+          </p>
           <dl className="kv">
             <dt>Kategori</dt>
             <dd>
@@ -855,6 +869,18 @@ function ConfidenceBadge({ confidence }: { confidence: number }) {
   return (
     <span className={`confidence ${level}`} title="Hvor sikkert forslaget er">
       {pct} % · {label}
+    </span>
+  );
+}
+
+/** KI-transparens: hvordan dokumentet ble lest. */
+function ExtractionBadge({ engine }: { engine: string | null }) {
+  const ai = engine?.startsWith('claude');
+  const ocr = engine?.includes('ocr') || engine?.includes('tesseract');
+  const label = ai ? 'Lest av KI (Claude)' : ocr ? 'Lest med OCR' : 'Lest fra tekst';
+  return (
+    <span className={`confidence ${ai ? 'medium' : 'high'}`} title="Hvordan bilaget ble tolket">
+      {label}
     </span>
   );
 }
@@ -2948,6 +2974,101 @@ export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigat
                 </ul>
               </div>
             )}
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
+/* ── Kunstig intelligens (transparens) ──────────────────────────────────── */
+
+interface AiUse {
+  id: string;
+  feature: string;
+  purpose: string;
+  provider: string;
+  model: string;
+  active: boolean;
+  humanControl: string;
+  dataNote: string;
+}
+interface AiDisclosure {
+  usesAi: boolean;
+  headline: string;
+  principles: { key: string; title: string; text: string }[];
+  uses: AiUse[];
+  humanOversight: string;
+  limitations: string[];
+}
+
+export function AiScreen() {
+  const d = useLoad(() => api<AiDisclosure>('GET', '/api/ai/disclosure'), []);
+  const a = d.data;
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Kunstig intelligens</h1>
+        <p className="subtitle">Hvor og hvordan Reknaren bruker KI — og hvordan du beholder kontrollen.</p>
+      </div>
+      {d.loading ? (
+        <div className="cards">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        a && (
+          <>
+            <div className={`panel${a.usesAi ? '' : ' explain'}`}>
+              <p style={{ margin: 0, fontSize: 15.5 }}>{a.headline}</p>
+            </div>
+
+            <div className="cards">
+              {a.principles.map((p) => (
+                <div className="card" key={p.key} style={{ textAlign: 'left' }}>
+                  <div className="label">{p.title}</div>
+                  <div className="hint" style={{ fontSize: 13.5, marginTop: 6 }}>
+                    {p.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="panel">
+              <h2>Slik brukes KI i Reknaren</h2>
+              {a.uses.map((u) => (
+                <div key={u.id} className="ai-use">
+                  <div className="panel-head">
+                    <h3 style={{ margin: 0 }}>{u.feature}</h3>
+                    <span className={`confidence ${u.active ? 'high' : 'medium'}`}>
+                      {u.active ? 'Aktiv' : 'Ikke aktiv'}
+                    </span>
+                  </div>
+                  <p className="subtitle" style={{ marginTop: 4 }}>{u.purpose}</p>
+                  <dl className="kv">
+                    <dt>Modell</dt>
+                    <dd>
+                      {u.provider} <span className="code">{u.model}</span>
+                    </dd>
+                    <dt>Menneskelig kontroll</dt>
+                    <dd>{u.humanControl}</dd>
+                    <dt>Data</dt>
+                    <dd>{u.dataNote}</dd>
+                  </dl>
+                </div>
+              ))}
+            </div>
+
+            <div className="panel explain">
+              <strong>Menneskelig kontroll</strong>
+              <p className="hint" style={{ marginTop: 6 }}>{a.humanOversight}</p>
+              <strong>Begrensninger</strong>
+              <ul className="compact">
+                {a.limitations.map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+              </ul>
+            </div>
           </>
         )
       )}

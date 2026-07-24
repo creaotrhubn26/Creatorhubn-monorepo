@@ -26,6 +26,7 @@ import {
 import { runHealthCheck } from '../ledger/health-check.js';
 import { detectBookkeepingErrors } from '../ledger/anomalies.js';
 import { buildForecast } from '../ledger/planning.js';
+import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
   ensureUser,
@@ -118,6 +119,8 @@ export interface ApiDeps {
   ocrStatus?: { tesseract: boolean; pdftotext: boolean } | undefined;
   /** Om AI-bilagslesing (Claude) er aktiv (nøkkel konfigurert). */
   aiExtraction?: boolean | undefined;
+  /** Claude-modell brukt til bilagslesing (til KI-transparens). */
+  aiModel?: string | undefined;
   /** Oppslag mot MVA-registeret (Brreg åpne data). Uten denne er kontrollen utilgjengelig. */
   vatRegister?: VatRegisterLookup | undefined;
   /**
@@ -1023,6 +1026,17 @@ export function createApiServer(deps: ApiDeps): express.Express {
       database: { up: dbUp, detail: dbDetail },
       integrations,
     });
+  });
+
+  // KI-transparens: hvor og hvordan Reknaren bruker kunstig intelligens.
+  app.get('/api/ai/disclosure', requireAuth, (_req, res) => {
+    res.json(
+      buildAiDisclosure({
+        aiExtraction: Boolean(deps.aiExtraction),
+        aiModel: deps.aiModel ?? 'claude-sonnet-4-6',
+        emailScanningActive: deps.gmailMode === 'imap',
+      }),
+    );
   });
 
   app.get('/api/integrations/status', requireAuth, (_req, res) => {

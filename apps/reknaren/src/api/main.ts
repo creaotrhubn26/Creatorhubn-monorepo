@@ -53,6 +53,7 @@ const app = createApiServer({
   extractor,
   ocrStatus,
   aiExtraction: Boolean(config.anthropicApiKey),
+  aiModel: config.aiModel,
   // Åpne data fra Brønnøysundregistrene — ekte klient, ingen nøkkel kreves.
   vatRegister: new BrregVatRegisterClient(),
   // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
