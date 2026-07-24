@@ -44,6 +44,10 @@ private struct PondusQuizMineResponse: Decodable {
     let attempts: Int
 }
 
+private struct PondusQuizOrgResponse: Decodable {
+    let profiles: [PondusQuizResult]
+}
+
 extension APIClient {
     private static let _pondusQuizDecoder = JSONDecoder()
     private static let _pondusQuizEncoder = JSONEncoder()
@@ -69,5 +73,12 @@ extension APIClient {
         let data = try await _request("/api/leadgrid/pondus/quiz/mine", method: "GET")
         let resp = try Self._pondusQuizDecoder.decode(PondusQuizMineResponse.self, from: data)
         return (resp.latest, resp.attempts)
+    }
+
+    /// Leder: siste profil per selger i org-en (manager-gate — 403 ellers).
+    /// Brukes av coaching-forberedelsen («Ny 1-til-1»).
+    func fetchPondusQuizOrg() async throws -> [PondusQuizResult] {
+        let data = try await _request("/api/leadgrid/pondus/quiz/org", method: "GET")
+        return try Self._pondusQuizDecoder.decode(PondusQuizOrgResponse.self, from: data).profiles
     }
 }

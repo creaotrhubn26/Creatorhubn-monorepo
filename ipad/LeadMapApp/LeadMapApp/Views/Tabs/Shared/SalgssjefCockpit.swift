@@ -990,9 +990,59 @@ private struct NewCoachingSheet: View {
     let candidates: [CoachingRow]
     let onSchedule: (String, Date, String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var selectedName: String = ""
     @State private var date: Date = Date()
     @State private var focus: String = ""
+    // Slice D: Pondus-profiler for org-en (quiz/org, manager-gate) — driver
+    // «Pondus-forberedelse»-kortet under selger-valget.
+    @State private var orgProfiles: [PondusQuizResult] = []
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    /// Profilen til valgt selger. Ekte: userId-oppslag via memberDTOs, fallback
+    /// navne-match. Demo: deterministisk mock-profil (demo-konvensjon).
+    private var selectedProfile: PondusQuizResult? {
+        guard !selectedName.isEmpty else { return nil }
+        if isDemo { return Self.demoProfile(for: selectedName) }
+        if let uid = TeamLiveStore.shared.memberDTOs.first(where: { $0.name == selectedName })?.userId,
+           let byId = orgProfiles.first(where: { $0.userId == uid }) {
+            return byId
+        }
+        return orgProfiles.first { $0.userName == selectedName }
+    }
+
+    private func weakest(_ p: PondusQuizResult) -> (dim: PondusDimension, score: Int) {
+        let pairs: [(PondusDimension, Int)] = [
+            (.autoritet, p.autoritet), (.klarhet, p.klarhet),
+            (.troverdighet, p.troverdighet), (.trygghet, p.trygghet),
+            (.fremdrift, p.fremdrift),
+        ]
+        let w = pairs.min { $0.1 < $1.1 } ?? (.autoritet, 0)
+        return (w.0, w.1)
+    }
+
+    /// Deterministisk demo-profil per navn (unicode-skalar-aritmetikk — stabil
+    /// på tvers av renders OG launches, i motsetning til hashValue).
+    private static func demoProfile(for name: String) -> PondusQuizResult {
+        let scalars = name.unicodeScalars.map { Int($0.value) }
+        func score(_ salt: Int) -> Int {
+            let h = scalars.enumerated().reduce(salt) { acc, e in
+                (acc &* 31 &+ e.element &* (e.offset + 7)) % 100_000
+            }
+            return 35 + (h % 56)   // 35–90
+        }
+        let a = score(1), k = score(2), t = score(3), tr = score(4), f = score(5)
+        return PondusQuizResult(
+            id: -1, userId: "demo", userName: name,
+            autoritet: a, klarhet: k, troverdighet: t, trygghet: tr, fremdrift: f,
+            total: (a + k + t + tr + f) / 5, createdAt: nil)
+    }
+
+    private func quizDateLabel(_ iso: String?) -> String? {
+        guard let iso, iso.count >= 10 else { return nil }
+        return String(iso.prefix(10))
+    }
 
     var body: some View {
         NavigationStack {
@@ -1001,6 +1051,9 @@ private struct NewCoachingSheet: View {
                     Picker("Velg selger", selection: $selectedName) {
                         ForEach(candidates) { c in Text(c.name).tag(c.name) }
                     }
+                }
+                if !selectedName.isEmpty {
+                    pondusPrepSection
                 }
                 Section("Tidspunkt") {
                     DatePicker("Dato", selection: $date, displayedComponents: [.date])
@@ -1022,6 +1075,57 @@ private struct NewCoachingSheet: View {
                 }
             }
             .onAppear { if selectedName.isEmpty { selectedName = candidates.first?.name ?? "" } }
+            .task {
+                guard !isDemo, let api = appState.api else { return }
+                orgProfiles = (try? await api.fetchPondusQuizOrg()) ?? []
+            }
+        }
+    }
+
+    // MARK: Pondus-forberedelse (slice D)
+
+    @ViewBuilder
+    private var pondusPrepSection: some View {
+        Section("Pondus-forberedelse") {
+            if let p = selectedProfile {
+                let w = weakest(p)
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        Circle().fill(w.dim.tint.opacity(0.22))
+                        Image(systemName: "gauge.with.needle")
+                            .font(.appScaled(size: 14, weight: .bold))
+                            .foregroundStyle(w.dim.tint)
+                    }
+                    .frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Svakest: \(w.dim.label) — \(w.score) av 100")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                        HStack(spacing: 4) {
+                            Text("Pondus totalt: \(p.total)")
+                            if let d = quizDateLabel(p.createdAt) {
+                                Text("· Quiz \(d)")
+                            }
+                        }
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(.secondary)
+                        Text("Anbefalt kapittel: «\(w.dim.recommendedChapterTitle)»")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                Button {
+                    focus = "Pondus: \(w.dim.label) — se kapittelet «\(w.dim.recommendedChapterTitle)» før samtalen"
+                } label: {
+                    Label("Bruk som fokus", systemImage: "target")
+                        .font(.appScaled(size: 13, weight: .semibold))
+                }
+            } else {
+                // Ærlig tom-tilstand — aldri fabrikkert profil i ekte modus.
+                Text("Ingen pondus-profil enda — be \(selectedName) ta quizen i Akademiet.")
+                    .font(.appScaled(size: 12))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
