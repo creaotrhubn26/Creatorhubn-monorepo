@@ -23,7 +23,34 @@ import { openProductionInRoleRoom } from './educationProductionsService';
 import {
   educationStudentViewService, hasStudentSession, clearStudentSession,
   type StudentView, type StudentViewProduction, type StudentProductionHub, type StudentViewAssignment,
+  type StudentRubricBreakdown as StudentRubricBreakdownData,
 } from './educationStudentViewService';
+
+const RUBRIC_LEVEL_LABELS = ['Ikke nådd', 'Delvis', 'Nådd'];
+
+function StudentRubricBreakdown({ rubric }: { rubric: StudentRubricBreakdownData }) {
+  return (
+    <Box sx={{ mt: 1, p: 1.25, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)' }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
+        <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Vurderingskriterier</Typography>
+        <Chip size="small" label={`${rubric.pct}%`} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+      </Stack>
+      <Stack spacing={0.5}>
+        {rubric.criteria.map((c, i) => (
+          <Stack key={i} direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{c.title}</Typography>
+              {c.goalTitle && <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{c.goalTitle}</Typography>}
+            </Box>
+            <Chip size="small" label={RUBRIC_LEVEL_LABELS[c.level] ?? '—'}
+              sx={{ height: 20, fontSize: 10, color: c.level >= 2 ? '#10b981' : c.level === 1 ? '#e9d5ff' : 'rgba(255,255,255,0.5)', borderColor: c.level >= 2 ? '#10b981' : 'rgba(255,255,255,0.2)' }}
+              variant="outlined" />
+          </Stack>
+        ))}
+      </Stack>
+    </Box>
+  );
+}
 import { MEMBER_ROLE_LABELS, type MemberRole } from './educationProductionMembersService';
 
 const ACCENT = '#8B5CF6';
@@ -258,6 +285,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                         {a.feedback && <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', whiteSpace: 'pre-wrap' }}>{a.feedback}</Typography>}
                       </Box>
                     )}
+                    {a.rubric && <StudentRubricBreakdown rubric={a.rubric} />}
                   </Box>
                 </Box>
               );
