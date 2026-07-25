@@ -551,6 +551,24 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             except Exception:
                 pass
 
+    # persister anbefalingene i prosjektindeksen (suggestions-tabellen)
+    if picks and not dry_run:
+        try:
+            from project_index import ProjectIndex
+            _pidx = ProjectIndex(conn.project, resolve=conn.resolve)
+            for cand in picks:
+                if cand.get("uid"):
+                    _pidx.db.execute(
+                        "INSERT INTO suggestions (kind, subject_uid, payload, status, created_ts) "
+                        "VALUES (?,?,?,?,?)",
+                        ("insert", cand["uid"],
+                         json.dumps({k: v for k, v in cand.items() if k != "thumb"},
+                                    ensure_ascii=False)[:4000],
+                         "new", __import__("time").time()))
+            _pidx.close()
+        except Exception:
+            pass
+
     bridge.result({
         "timeline": timeline.GetName(),
         "fps": fps,

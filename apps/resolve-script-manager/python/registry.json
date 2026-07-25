@@ -68,6 +68,20 @@
       "requiresTimeline": false
     },
     {
+      "id": "record_action",
+      "name": "Indeks-sidecar: før handling (intern)",
+      "category": "project",
+      "scriptPath": "scripts/project/record_action.py",
+      "description": "Intern sidecar: fører utførte handlinger + rollback-referanser inn i prosjektindeksens actions/rollbacks-tabeller. Kalles fire-and-forget fra panelets main-prosess etter ekte kjøringer. Trenger ikke Resolve (åpner DB på GUID).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "connect_to_resolve",
       "name": "Connect to Resolve",
       "category": "project",

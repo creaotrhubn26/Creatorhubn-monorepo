@@ -27,6 +27,8 @@ const PY_ENV = {
 let mainWindow = null;
 let resolveObj = null;
 let registry = null;
+let lastProjectGuid = '';
+let pendingRollbackRef = '';  // settes av backup-timeline, konsumeres av neste ekte kjøring
 
 // ── Audit-logg: ALLE handlinger (panel + chat + direkte-API) → jsonl ──
 const AUDIT_PATH = path.join(process.env.HOME || '', '.config/postagent/audit.jsonl');
@@ -37,6 +39,18 @@ function audit(entry) {
             ts: new Date().toISOString(), ...entry,
         }) + '\n');
     } catch { /* audit skal aldri velte handlingen */ }
+}
+
+// Fire-and-forget: før EKTE handlinger inn i prosjektindeksen (actions/
+// rollbacks) via sidecar-script — blokkerer aldri selve handlingen.
+function recordActionToIndex(entry) {
+    if (!lastProjectGuid) return;
+    try {
+        const args = [path.join(PY_ROOT, 'scripts/project/record_action.py'),
+            `--params=${JSON.stringify({ guid: lastProjectGuid, ...entry })}`];
+        spawn('python3', args, { env: PY_ENV, cwd: PY_ROOT, detached: true,
+                                 stdio: 'ignore' }).unref();
+    } catch { /* føring skal aldri velte handlingen */ }
 }
 
 function resultSummary(v) {
@@ -102,6 +116,14 @@ ipcMain.handle('run-script', async (_ev, scriptId, params, dryRun) => {
             audit({ via: 'panel', scriptId, dryRun: Boolean(dryRun),
                     params: JSON.stringify(params || {}).slice(0, 400),
                     ok: result !== null, result: result !== null ? resultSummary(result) : (errMsg || `exit ${code}`).slice(0, 200) });
+            if (!dryRun) {
+                recordActionToIndex({ via: 'panel', scriptId,
+                    params: JSON.stringify(params || {}).slice(0, 1500),
+                    ok: String(result !== null),
+                    result: JSON.stringify(result !== null ? resultSummary(result) : {}),
+                    rollbackRef: pendingRollbackRef });
+                pendingRollbackRef = '';
+            }
             if (result !== null) resolvePromise(result);
             else rejectPromise(new Error(errMsg || `script avsluttet med kode ${code}`));
         });
@@ -167,7 +189,10 @@ ipcMain.handle('context-snapshot', async () => {
         if (!resolve) return { connected: false };
         snap.connected = true;
         snap.page = await resolve.GetCurrentPage();
-        if (project) snap.projectName = await project.GetName();
+        if (project) {
+            snap.projectName = await project.GetName();
+            try { snap.projectGuid = await project.GetUniqueId(); lastProjectGuid = snap.projectGuid || lastProjectGuid; } catch { /* — */ }
+        }
         if (tl) {
             snap.timelineName = await tl.GetName();
             snap.fps = await tl.GetSetting('timelineFrameRate');
@@ -275,6 +300,7 @@ ipcMain.handle('backup-timeline', async () => {
     const nowCur = await project.GetCurrentTimeline();
     const restored = nowCur && (await nowCur.GetName()) === orig;
     audit({ via: 'panel-api', action: 'backupTimeline', ok: restored, result: { backupName, restored } });
+    if (restored) pendingRollbackRef = backupName;
     return { ok: Boolean(restored), backupName,
              error: restored ? undefined : 'kunne ikke bytte tilbake til originalen — AVBRYT mutasjonen' };
 });

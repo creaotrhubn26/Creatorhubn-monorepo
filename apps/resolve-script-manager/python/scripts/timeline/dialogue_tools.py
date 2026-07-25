@@ -74,6 +74,14 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
 
     if mode == "extract":
         total_speech = sum(s["durationSec"] for s in segs)
+        if segs and not dry_run:
+            try:
+                from project_index import ProjectIndex
+                _idx = ProjectIndex(project, resolve=conn.resolve)
+                _idx.replace_transcripts(timeline.GetUniqueId() or "current", segs)
+                _idx.close()
+            except Exception:
+                pass
         bridge.result({"mode": mode, "timeline": timeline.GetName(), "fps": fps,
                        "segments": len(segs), "speechSec": round(total_speech, 1),
                        "list": segs[:500], "capped": len(segs) > 500, "dryRun": dry_run})

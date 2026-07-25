@@ -99,6 +99,19 @@ def clip_identity(clip, with_fingerprint: bool = False) -> dict:
 
 
 class ProjectIndex:
+    @classmethod
+    def open_raw(cls, guid: str):
+        """Åpne indeksen på GUID alene — uten Resolve-tilkobling. Brukes av
+        billige sidecar-skrivinger (action-føring fra panelet)."""
+        self = cls.__new__(cls)
+        os.makedirs(INDEX_DIR, exist_ok=True)
+        self.path = os.path.join(INDEX_DIR, f"{guid or 'unnamed'}.db")
+        self.db = sqlite3.connect(self.path)
+        self.db.executescript(_SCHEMA)
+        row = self.db.execute("SELECT value FROM meta WHERE key='resolve_version'").fetchone()
+        self.resolve_version = row[0] if row else ""
+        return self
+
     def __init__(self, project, resolve=None):
         guid = ""
         try:
