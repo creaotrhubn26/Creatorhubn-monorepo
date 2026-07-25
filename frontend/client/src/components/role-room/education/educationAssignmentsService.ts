@@ -32,7 +32,10 @@ export interface Submission {
   studentName: string;
   status: SubmissionStatus;
   note: string | null;
+  feedback: string | null;
+  grade: string | null;
   submittedAt: string | null;
+  reviewedAt: string | null;
 }
 
 const BASE = '/api/role-room/education';
@@ -83,7 +86,7 @@ export const educationAssignmentsService = {
     const data = await req<{ submissions: Submission[] }>(`${BASE}/assignments/${encodeURIComponent(assignmentId)}/submissions`);
     return data.submissions ?? [];
   },
-  async setSubmission(assignmentId: string, input: { studentId: string; status: SubmissionStatus; note?: string }): Promise<void> {
+  async setSubmission(assignmentId: string, input: { studentId: string; status: SubmissionStatus; note?: string; feedback?: string; grade?: string }): Promise<void> {
     await req(`${BASE}/assignments/${encodeURIComponent(assignmentId)}/submissions`, { method: 'PUT', body: JSON.stringify(input) });
   },
 };
