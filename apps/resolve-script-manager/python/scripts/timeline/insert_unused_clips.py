@@ -88,13 +88,21 @@ def run(params: dict, dry_run: bool) -> None:
                        "anchors": len(groups), "markersAdded": added, "dryRun": dry_run})
         return
 
-    # ── Finn MediaPoolItems på navn (hele media-poolen, UBRUKT-first) ──
+    # ── Finn MediaPoolItems: UID FØRST (stabil identitet), navn som fallback ──
+    wanted_uids = {str(i.get("uid", "")).strip() for i in items if i.get("uid")}
     wanted = {str(i.get("clip", "")).strip() for i in items if i.get("clip")}
+    by_uid: dict = {}
     by_name: dict = {}
 
     def walk(folder, in_ubrukt: bool):
         here = in_ubrukt or (folder.GetName() or "").strip().upper() == "UBRUKT"
         for c in folder.GetClipList() or []:
+            try:
+                u = c.GetUniqueId() or ""
+            except Exception:
+                u = ""
+            if u and u in wanted_uids:
+                by_uid[u] = c
             n = (c.GetName() or "").strip()
             if n in wanted and (n not in by_name or here):
                 by_name[n] = c
@@ -102,7 +110,9 @@ def run(params: dict, dry_run: bool) -> None:
             walk(sub, here)
 
     walk(conn.media_pool.GetRootFolder(), False)
-    missing = sorted(wanted - set(by_name))
+    missing = sorted(n for i in items
+                     for n in [str(i.get("clip", "")).strip()]
+                     if not (str(i.get("uid", "")).strip() in by_uid or n in by_name))
 
     # ── Spor: bruk angitt, ellers nytt video-spor øverst ──
     track_param = params.get("track")
@@ -113,7 +123,7 @@ def run(params: dict, dry_run: bool) -> None:
     cursor = 0  # kollisjons-forskyvning på vårt spor
     for it in sorted(items, key=lambda x: int(x.get("frame") or 0)):
         name = str(it.get("clip", "")).strip()
-        clip = by_name.get(name)
+        clip = by_uid.get(str(it.get("uid", "")).strip()) or by_name.get(name)
         if not clip:
             continue
         frame = max(int(it.get("frame") or 0), tl_start)

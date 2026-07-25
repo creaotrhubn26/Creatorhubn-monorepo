@@ -106,6 +106,7 @@ function mutationLevel(scriptId, params, dryRun) {
         case "get_media_pool_state": return 0;
         case "delivery_manager": return ["queue", "report"].includes(mode) ? 1 : 0;
         case "disk_cleanup": return mode === "clean" ? 2 : 0;
+        case "build_project_index": return 0; // skriver kun egen lokal DB
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -198,6 +199,7 @@ function suggestionsFor(c) {
             sug.push({ text: "Dialog-verktøy: søk i talen, finn pauser/repetisjoner, bygg assembly", act: "op-dialog" });
             sug.push({ text: "Klippe-assistenter: rytme-analyse, jump-cut-vakt, takes og vinkler", act: "op-assist" });
             sug.push({ text: "Teknisk QC: offline media, flash-frames, fps/oppløsning, subtitles", act: "op-tqc" });
+            sug.push({ text: "Prosjektindeks: bygg/oppdater stabile ID-er + fingerprints (gjør vision-analyser gjenbrukbare)", act: "op-index" });
             if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): alternative takes / samtidige vinkler`, act: "op-assist" });
             break;
         case "color":
@@ -869,6 +871,11 @@ const ACTIONS = {
     "op-dialog": () => { S.step = "dialog"; render(); },
     "op-assist": () => { S.step = "assist"; render(); },
     "op-tqc": () => { S.step = "tqc"; render(); },
+    "op-index": async () => {
+        const v = await run("build_project_index", { mode: "build" }, false, "Indekserer prosjektet (uid + fingerprints) …");
+        status(`✓ Indeks: ${v.clipsIndexed} klipp (${v.fingerprints} fingerprints), ${v.timelines} timelines, ${v.counts.analyses} analyser cachet — Resolve ${v.meta.resolve_version}`, "ok-text");
+        log(`Prosjektindeks oppdatert: ${v.clipsIndexed} klipp`);
+    },
     "op-log": () => { S.step = "color"; render(); },
     "op-voice": async () => {
         S.voiceTracks = await PA.voiceIsolationInfo();

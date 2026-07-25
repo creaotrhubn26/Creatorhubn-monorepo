@@ -286,8 +286,10 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 _, fpath = _identity(c)
                 dur = _clip_duration_sec(c, fps)
                 score = min(gap_sec, 60.0) + (0.0 if covered else 20.0) + (10.0 if 2.0 <= dur <= 45.0 else 0.0)
+                _uid, _ = _identity(c)
                 candidates.append({
                     "clip": c.GetName() or "?",
+                    "uid": _uid,
                     "camera": cam,
                     "bin": folder.GetName(),
                     "filePath": fpath,
@@ -392,6 +394,14 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             model = params.get("model") or "claude-sonnet-4-6"
             max_frames = int(params.get("maxFrames") or 12)
             frame_step = float(params.get("frameStep") or 2.0)
+            # prosjektindeks: gjenbruk betalte vision-dommer når klippet
+            # (fingerprint) og ankeret er uendret
+            _idx = None
+            try:
+                from project_index import ProjectIndex, fingerprint as _fp
+                _idx = ProjectIndex(conn.project, resolve=conn.resolve)
+            except Exception:
+                _idx = None
 
             def grid(path: str, dur: float, n: int, lo: float = 0.02, hi: float = 0.98):
                 """Jevnt samplede thumbnails gjennom [lo..hi] av klippet."""
@@ -407,6 +417,18 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
 
             for cand in picks:
                 dur = cand["durationSec"] or 4.0
+                if _idx and cand.get("uid"):
+                    fp_now = _fp(cand["filePath"]) if cand.get("filePath") else None
+                    cached = _idx.get_analysis(f"vision:{cand['anchorFrame']}",
+                                               cand["uid"], fp_now)
+                    if cached:
+                        cand["vision"] = cached
+                        cand["visionCached"] = True
+                        vision_ran += 1
+                        for k in ("_prevPath", "_prevDur", "_nextPath", "_nextDur",
+                                  "_contextPath"):
+                            cand.pop(k, None)
+                        continue
                 n = max(4, min(max_frames, int(dur / frame_step) + 1))
                 cand_frames = grid(cand["filePath"], dur, n)          # hele klippet
                 prev_frames = grid(cand.pop("_prevPath", None), cand.pop("_prevDur", 0),
@@ -449,6 +471,14 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                     cand["vision"] = json.loads(text)
                     cand["framesAnalyzed"] = len(cand_frames) + len(prev_frames) + len(next_frames)
                     vision_ran += 1
+                    if _idx and cand.get("uid"):
+                        try:
+                            _idx.record_analysis(f"vision:{cand['anchorFrame']}", cand["uid"],
+                                                 cand["vision"],
+                                                 _fp(cand["filePath"]) if cand.get("filePath") else None)
+                            _idx.commit()
+                        except Exception:
+                            pass
                 except Exception as e:  # per-kandidat: fortsett
                     cand["vision"] = {"error": str(e)[:150]}
 

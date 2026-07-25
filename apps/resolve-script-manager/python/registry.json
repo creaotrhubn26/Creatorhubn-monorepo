@@ -54,6 +54,20 @@
   ],
   "scripts": [
     {
+      "id": "build_project_index",
+      "name": "Prosjektindeks (stabile ID-er, fingerprints, analyse-cache)",
+      "category": "project",
+      "scriptPath": "scripts/project/build_project_index.py",
+      "description": "build: indekserer alle klipp (GetUniqueId + innholds-fingerprint + kamera-metadata), timelines (uid + tc-range), markører og transkript → SQLite per prosjekt-GUID m/ schema- og Resolve-versjon. status: meta + tellinger. verify: stikkprøve-refingerprinting avslører endrede/borte filer. Brukes som cache av vision-analysen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "connect_to_resolve",
       "name": "Connect to Resolve",
       "category": "project",
