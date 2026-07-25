@@ -22,6 +22,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     expDiff: null, fbCheck: null,
     genPlan: null,
     personRes: null,
+    genMotion: "medium",
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -623,6 +624,11 @@ const RENDER = {
             <span class="muted">eller</span>
             <input type="text" id="gen-image" placeholder="fotografens bilde (sti til .jpg → «levende foto»)" style="min-width:220px">
             <label class="chk"><input type="checkbox" id="gen-people"> bildet har mennesker (behold dem)</label>
+        </div><div class="row" style="margin-top:6px">
+            <span class="muted">levende foto — bevegelse:</span>
+            ${[["subtle", "🌙 Subtil (5s)"], ["medium", "🌊 Middels (6s)"], ["high", "🌪 Mye (8s)"]].map(([id, label]) =>
+                `<button class="small ${S.genMotion === id ? "primary" : ""}" data-gen-motion="${id}">${label}</button>`).join("")}
+            <span class="muted">prompt-feltet kan stå tomt når bilde + nivå er valgt</span>
             <button id="gen-plan" ${S.busy ? "disabled" : ""}>Planlegg</button>
             <button id="gen-run" class="primary" ${!S.genPlan || S.busy ? "disabled" : ""}>Generer</button>
         </div>
@@ -843,9 +849,9 @@ const ACTIONS = {
     },
     "gen-plan": async () => {
         const prompt = $("gen-prompt").value.trim();
-        if (!prompt) { status("Skriv motiv-prompt først.", "warn"); return; }
+        if (!prompt && !$("gen-image").value.trim()) { status("Skriv motiv-prompt, eller velg bilde + bevegelsesnivå.", "warn"); return; }
         S.genPlan = await run("generate_broll", {
-            mode: "plan", prompt,
+            mode: "plan", ...(prompt ? { prompt } : {}), motionLevel: S.genMotion,
             ...($("gen-anchor").value.trim() ? { anchorTc: $("gen-anchor").value.trim() } : {}),
             ...($("gen-image").value.trim() ? { imagePath: $("gen-image").value.trim() } : {}),
             noPeople: $("gen-people").checked ? "false" : "true",
@@ -854,9 +860,10 @@ const ACTIONS = {
     },
     "gen-run": async () => {
         const prompt = $("gen-prompt").value.trim();
+        if (!prompt && !$("gen-image").value.trim()) { status("Velg bilde + bevegelsesnivå, eller skriv prompt.", "warn"); return; }
         if (!confirm(`Genererer 5s b-roll via Higgsfield (~${S.genPlan?.estCredits ?? "?"} kreditter) og importerer i GENERERT-binnen. Fortsette?`)) return;
         const v = await run("generate_broll", {
-            mode: "generate", prompt,
+            mode: "generate", ...(prompt ? { prompt } : {}), motionLevel: S.genMotion,
             ...($("gen-anchor").value.trim() ? { anchorTc: $("gen-anchor").value.trim() } : {}),
             ...($("gen-image").value.trim() ? { imagePath: $("gen-image").value.trim() } : {}),
             noPeople: $("gen-people").checked ? "false" : "true",
@@ -1091,6 +1098,7 @@ document.addEventListener("click", async (ev) => {
         status(ok ? "Spillehodet flyttet til " + el.dataset.jump : "Kunne ikke flytte spillehodet", ok ? "ok-text" : "err");
         return;
     }
+    if (el.dataset.genMotion != null) { S.genMotion = el.dataset.genMotion; render(); return; }
     if (el.dataset.attrUse != null) {
         const f = $("attr-pattern");
         if (f) f.value = el.dataset.attrMd === "1" ? "type:" + el.dataset.attrUse : el.dataset.attrUse;

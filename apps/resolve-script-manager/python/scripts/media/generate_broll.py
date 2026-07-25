@@ -46,6 +46,29 @@ from project_index import clip_identity  # noqa: E402
 
 HF = os.path.expanduser("~/.local/bin/higgsfield")
 
+# Levende foto-presets (kalibrert med Daniel 2026-07-25): bevegelsesnivå
+# → prompt + varighet. Brukes når imagePath er satt og motionLevel valgt.
+LIVING_PRESETS = {
+    "subtle": (5, "subtle cinematic live-photo effect: very gentle slow push-in "
+               "with soft parallax, natural micro-motion in fabric and hair, "
+               "preserve the exact subjects, composition, colors and lighting of "
+               "the photograph, photorealistic, elegant wedding film insert"),
+    "medium": (6, "cinematic living photograph with clearly visible gentle motion: "
+               "slow dolly-in camera move with parallax between people, the people "
+               "naturally alive - subtle laughing, smiling, heads turning slightly "
+               "toward each other, blinking, dupattas and fabric swaying softly, "
+               "hair moving in light breeze, warm celebratory atmosphere, preserve "
+               "the exact same people, faces, composition, colors and lighting as "
+               "the photograph, photorealistic wedding film"),
+    "high": (8, "cinematic living photograph with rich dynamic motion: slow "
+             "handheld drift and gentle orbit around the group creating strong "
+             "parallax, people vividly alive - laughing together, turning toward "
+             "each other, gesturing naturally, fabric and dupattas flowing, "
+             "celebratory energy, yet preserve the exact same people, faces, "
+             "composition, colors and lighting as the photograph, photorealistic "
+             "wedding film"),
+}
+
 
 def _tc_frames(tc: str, fps: float) -> int:
     m = re.match(r"(\d+):(\d+):(\d+)[:;](\d+)", (tc or "").strip())
@@ -137,7 +160,13 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
 
     prompt = (params.get("prompt") or "").strip()
     anchor_tc = (params.get("anchorTc") or "").strip()
-    duration = max(4, min(15, int(params.get("duration") or 5)))
+    motion = (params.get("motionLevel") or "").strip().lower()
+    img_param = os.path.expanduser((params.get("imagePath") or "").strip())
+    preset_dur = None
+    if img_param and motion in LIVING_PRESETS and not prompt:
+        preset_dur, prompt = LIVING_PRESETS[motion]
+        params = {**params, "noPeople": params.get("noPeople", "false")}
+    duration = max(4, min(15, int(params.get("duration") or preset_dur or 5)))
     resolution = (params.get("resolution") or "1080p").strip()
     if str(params.get("noPeople", "true")).lower() in ("true", "1", "yes"):
         prompt = (prompt + ", no people, no faces, no text").strip(", ")
@@ -163,7 +192,8 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
 
     if mode == "generate":
         if not prompt:
-            bridge.error("prompt= kreves (engelsk motiv-beskrivelse).")
+            bridge.error("prompt= kreves — eller imagePath + motionLevel "
+                         "(subtle|medium|high) for levende foto.")
             return
         if dry_run:
             bridge.result({"mode": mode, "dryRun": True,
