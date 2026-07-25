@@ -188,6 +188,7 @@ import { createEducationCensorRouter } from "./role-room-education-censor-routes
 import { createEducationFacultyRouter } from "./role-room-education-faculty-routes.js";
 import { createEducationLearningGoalsRouter } from "./role-room-education-learning-goals-routes.js";
 import { createFeideRouter } from "./role-room-feide-routes.js";
+import { createLtiRouter } from "./role-room-lti-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
@@ -2629,6 +2630,10 @@ app.use(
 app.use(
   "/api/role-room",
   createFeideRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createLtiRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room/locations/analysis",
