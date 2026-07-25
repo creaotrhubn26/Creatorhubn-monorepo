@@ -3609,3 +3609,123 @@ export function AgreementsScreen({ orgId }: { orgId: string }) {
     </div>
   );
 }
+
+/* ── Kunde- og leverandørrisiko ─────────────────────────────────────────── */
+
+interface CompanyRisk {
+  orgNumber: string;
+  found: boolean;
+  name: string | null;
+  orgForm: string | null;
+  overall: 'ok' | 'attention' | 'risk';
+  signals: { code: string; severity: 'ok' | 'attention' | 'risk'; title: string; detail: string; source: string }[];
+  profile: { registeredInVatRegister: boolean | null; foundedDate: string | null; address: { street?: string; postalCode?: string; city?: string } | null };
+  ehf: { status: string; note: string };
+  creditNote: string;
+  checkedAt: string;
+  disclaimer: string;
+}
+
+const OVERALL_META: Record<string, { label: string; cls: string }> = {
+  ok: { label: 'Ser bra ut', cls: 'high' },
+  attention: { label: 'Følg med', cls: 'medium' },
+  risk: { label: 'Risiko', cls: 'low' },
+};
+
+export function CompanyRiskScreen({ orgId }: { orgId: string }) {
+  const [orgNr, setOrgNr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [r, setR] = useState<CompanyRisk | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const check = async () => {
+    const n = orgNr.replace(/\s/g, '');
+    if (!/^\d{9}$/.test(n)) {
+      setErr('Organisasjonsnummer må være 9 sifre.');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api<CompanyRisk>('GET', `/api/organizations/${orgId}/company-risk?orgNumber=${n}`);
+      setR(res);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Oppslag feilet');
+      setR(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Kunde- og leverandørrisiko</h1>
+        <p className="subtitle">Sjekk en virksomhet mot Enhetsregisteret før du fakturerer eller inngår avtale. Hver observasjon vises med kilde — ingen automatisk score.</p>
+      </div>
+      <div className="row" style={{ maxWidth: 460 }}>
+        <div>
+          <label htmlFor="cr-org">Organisasjonsnummer</label>
+          <input id="cr-org" inputMode="numeric" placeholder="9 sifre" value={orgNr}
+            onChange={(e) => setOrgNr(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && check()} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <button className="primary" disabled={busy} onClick={check}>{busy ? 'Sjekker …' : 'Sjekk'}</button>
+        </div>
+      </div>
+      {err && <div className="error">{err}</div>}
+
+      {r && (
+        <>
+          <div className="panel">
+            <div className="panel-head">
+              <h2>{r.found ? (r.name ?? 'Ukjent navn') : 'Ikke funnet'} {r.orgForm && <span className="code">{r.orgForm}</span>}</h2>
+              <span className={`confidence ${OVERALL_META[r.overall]?.cls ?? 'medium'}`}>{OVERALL_META[r.overall]?.label ?? r.overall}</span>
+            </div>
+            <dl className="kv">
+              <dt>Org.nr</dt>
+              <dd>{r.orgNumber}</dd>
+              {r.profile.registeredInVatRegister !== null && (
+                <>
+                  <dt>MVA-registeret</dt>
+                  <dd>{r.profile.registeredInVatRegister ? 'Registrert' : 'Ikke registrert'}</dd>
+                </>
+              )}
+              {r.profile.foundedDate && (<><dt>Stiftet</dt><dd>{r.profile.foundedDate}</dd></>)}
+              {r.profile.address && (
+                <>
+                  <dt>Adresse</dt>
+                  <dd>{[r.profile.address.street, r.profile.address.postalCode, r.profile.address.city].filter(Boolean).join(', ')}</dd>
+                </>
+              )}
+            </dl>
+          </div>
+
+          <div className="panel">
+            <h2>Signaler</h2>
+            <ul className="health-list">
+              {r.signals.map((s, i) => (
+                <li key={i} className={`health-item ${s.severity === 'risk' ? 'error' : s.severity === 'attention' ? 'warning' : 'info'}`}>
+                  <div className="health-dot" aria-hidden="true" />
+                  <div className="health-body">
+                    <div className="health-title">{s.title}</div>
+                    <div className="health-detail">{s.detail}</div>
+                    <div className="hint">Kilde: {s.source}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="panel explain">
+            <dl className="kv">
+              <dt>EHF-mottak</dt>
+              <dd>{r.ehf.note}</dd>
+              <dt>Kredittgrense</dt>
+              <dd>{r.creditNote}</dd>
+            </dl>
+            <p className="hint" style={{ marginTop: 8 }}>{r.disclaimer} Kontrollert {r.checkedAt}.</p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

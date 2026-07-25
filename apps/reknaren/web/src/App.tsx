@@ -8,6 +8,7 @@ import {
   AgreementsScreen,
   AiScreen,
   AssistantScreen,
+  CompanyRiskScreen,
   DocumentHuntScreen,
   OverviewScreen,
   PeriodCloseScreen,
@@ -60,6 +61,7 @@ type Screen =
   | { name: 'assistant' }
   | { name: 'document-hunt' }
   | { name: 'agreements' }
+  | { name: 'company-risk' }
   | { name: 'documents' }
   | { name: 'document'; id: string }
   | { name: 'gmail' }
@@ -77,25 +79,51 @@ type Screen =
   | { name: 'ai' }
   | { name: 'org' };
 
-const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = [
-  { key: 'overview', label: 'Oversikt', icon: 'overview' },
-  { key: 'planning', label: 'Framover', icon: 'chart' },
-  { key: 'period-close', label: 'Månedsavslutning', icon: 'shield' },
-  { key: 'assistant', label: 'Skatteassistent', icon: 'shield' },
-  { key: 'document-hunt', label: 'Dokumentjakt', icon: 'inbox' },
-  { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
-  { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
-  { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
-  { key: 'agreements', label: 'Avtaler', icon: 'chart' },
-  { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
-  { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
-  { key: 'vat', label: 'MVA', icon: 'percent' },
-  { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
-  { key: 'year-end', label: 'Årsavslutning', icon: 'shield' },
-  { key: 'reports', label: 'Rapporter', icon: 'chart' },
-  { key: 'saft-import', label: 'Importer fra Fiken', icon: 'inbox' },
-  { key: 'ai', label: 'Kunstig intelligens', icon: 'shield' },
-  { key: 'org', label: 'Virksomhet', icon: 'shield' },
+type NavItem = { key: Screen['name']; label: string; icon: keyof typeof Icons };
+const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
+  {
+    items: [
+      { key: 'overview', label: 'Oversikt', icon: 'overview' },
+      { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
+      { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
+      { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
+      { key: 'document-hunt', label: 'Dokumentjakt', icon: 'inbox' },
+    ],
+  },
+  {
+    section: 'Salg',
+    items: [
+      { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
+      { key: 'agreements', label: 'Avtaler', icon: 'chart' },
+      { key: 'company-risk', label: 'Kunderisiko', icon: 'shield' },
+    ],
+  },
+  {
+    section: 'Innsikt',
+    items: [
+      { key: 'planning', label: 'Framover', icon: 'chart' },
+      { key: 'assistant', label: 'Skatteassistent', icon: 'shield' },
+    ],
+  },
+  {
+    section: 'Avslutning & skatt',
+    items: [
+      { key: 'period-close', label: 'Månedsavslutning', icon: 'shield' },
+      { key: 'vat', label: 'MVA', icon: 'percent' },
+      { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
+      { key: 'year-end', label: 'Årsavslutning', icon: 'shield' },
+    ],
+  },
+  {
+    section: 'Mer',
+    items: [
+      { key: 'reports', label: 'Rapporter', icon: 'chart' },
+      { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
+      { key: 'saft-import', label: 'Importer fra Fiken', icon: 'inbox' },
+      { key: 'ai', label: 'Kunstig intelligens', icon: 'shield' },
+      { key: 'org', label: 'Virksomhet', icon: 'shield' },
+    ],
+  },
 ];
 
 /** Skjermer som kun vises i regnskapsførervisningen. */
@@ -193,16 +221,21 @@ export default function App() {
           </div>
           <OrgSwitcher currentId={orgId} onSwitch={switchOrg} onAdd={() => setAddingOrg(true)} />
           <nav aria-label="Hovedmeny">
-            {NAV.map((item) => (
-              <button
-                key={item.key}
-                className={`navlink${screen.name === item.key ? ' active' : ''}`}
-                aria-current={screen.name === item.key ? 'page' : undefined}
-                onClick={() => setScreen({ name: item.key } as Screen)}
-              >
-                {Icons[item.icon]}
-                {item.label}
-              </button>
+            {NAV_GROUPS.map((group) => (
+              <div key={group.section ?? 'daglig'}>
+                {group.section && <div className="nav-section">{group.section}</div>}
+                {group.items.map((item) => (
+                  <button
+                    key={item.key}
+                    className={`navlink${screen.name === item.key ? ' active' : ''}`}
+                    aria-current={screen.name === item.key ? 'page' : undefined}
+                    onClick={() => setScreen({ name: item.key } as Screen)}
+                  >
+                    {Icons[item.icon]}
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             ))}
             {viewMode === 'pro' && (
               <>
@@ -281,6 +314,7 @@ export default function App() {
           {screen.name === 'bank' && <BankScreen orgId={orgId} />}
           {screen.name === 'invoicing' && <InvoicingScreen orgId={orgId} />}
           {screen.name === 'agreements' && <AgreementsScreen orgId={orgId} />}
+          {screen.name === 'company-risk' && <CompanyRiskScreen orgId={orgId} />}
           {screen.name === 'dimensions' && <DimensionsScreen orgId={orgId} />}
           {screen.name === 'ai' && <AiScreen />}
           {screen.name === 'org' && <OrgSettingsScreen orgId={orgId} />}

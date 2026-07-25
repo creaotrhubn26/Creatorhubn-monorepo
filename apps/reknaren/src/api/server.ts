@@ -40,6 +40,8 @@ import {
   updateOrganizationSettings,
 } from '../orgs/service.js';
 import type { VatRegisterLookup } from '../integrations/brreg.js';
+import type { CompanyRegistry } from '../integrations/company-registry.js';
+import { assessCompanyRisk } from '../ledger/company-risk.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
 import { buildMvaMeldingXml, MaskinportenError, type VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
@@ -128,6 +130,8 @@ export interface ApiDeps {
   aiModel?: string | undefined;
   /** Oppslag mot MVA-registeret (Brreg åpne data). Uten denne er kontrollen utilgjengelig. */
   vatRegister?: VatRegisterLookup | undefined;
+  /** Fullt virksomhetsoppslag (Enhetsregisteret) til kunde-/leverandørrisiko. */
+  companyRegistry?: CompanyRegistry | undefined;
   /**
    * Lovdata API-klient til lovtekst-oppslag. Åpne bulk-datasett fungerer uten
    * nøkkel; per-paragraf lovtekst krever X-API-Key. Status rapporteres ærlig.
@@ -1705,6 +1709,32 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Kunde-/leverandørrisiko — Enhetsregister-oppslag med kildeforklarte signaler.
+  app.get(
+    '/api/organizations/:orgId/company-risk',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const orgNumber = String(req.query.orgNumber ?? '').replace(/\s/g, '');
+        if (!/^\d{9}$/.test(orgNumber)) {
+          res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Organisasjonsnummer må være 9 sifre.' } });
+          return;
+        }
+        if (!deps.companyRegistry) {
+          res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Enhetsregister-oppslag er ikke konfigurert.' } });
+          return;
+        }
+        const profile = await deps.companyRegistry.lookup(orgNumber);
+        const asOf = new Date().toISOString().slice(0, 10);
+        const invoiceHasVat = req.query.invoiceHasVat === 'true';
+        res.json(toJson(assessCompanyRisk(orgNumber, profile, { checkedAt: asOf, invoiceHasVat })));
       } catch (err) {
         next(err);
       }
