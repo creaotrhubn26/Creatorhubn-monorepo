@@ -58,7 +58,10 @@ export interface SubmissionView {
   studentName: string;
   status: string;
   note: string | null;
+  feedback: string | null;
+  grade: string | null;
   submittedAt: string | null;
+  reviewedAt: string | null;
 }
 
 const SUBMISSION_STATUSES = new Set(["not_started", "submitted", "reviewed"]);
@@ -263,7 +266,8 @@ export function createEducationAssignmentsRouter(
       const r = await pool.query(
         `SELECT st.id AS student_id, st.name AS student_name,
                 COALESCE(sub.status, 'not_started') AS status,
-                sub.note AS note, sub.submitted_at AS submitted_at
+                sub.note AS note, sub.submitted_at AS submitted_at,
+                sub.feedback AS feedback, sub.grade AS grade, sub.reviewed_at AS reviewed_at
            FROM role_room_education_students st
            LEFT JOIN role_room_education_submissions sub
                   ON sub.student_id = st.id AND sub.assignment_id = $1
@@ -276,7 +280,10 @@ export function createEducationAssignmentsRouter(
         studentName: (row.student_name as string) ?? "",
         status: (row.status as string) ?? "not_started",
         note: (row.note as string) ?? null,
+        feedback: (row.feedback as string) ?? null,
+        grade: (row.grade as string) ?? null,
         submittedAt: isoOrNull(row.submitted_at),
+        reviewedAt: isoOrNull(row.reviewed_at),
       }));
       res.json({ submissions });
     } catch (err) {
@@ -287,13 +294,15 @@ export function createEducationAssignmentsRouter(
   });
 
   router.put("/education/assignments/:id/submissions", requireAuth, async (req, res) => {
-    const body = (req.body ?? {}) as { studentId?: string; status?: string; note?: string };
+    const body = (req.body ?? {}) as { studentId?: string; status?: string; note?: string; feedback?: string; grade?: string };
     const studentId = typeof body.studentId === "string" ? body.studentId : "";
     const status = typeof body.status === "string" ? body.status : "";
     if (!studentId || !SUBMISSION_STATUSES.has(status)) {
       res.status(400).json({ error: "invalid_submission" });
       return;
     }
+    const feedback = typeof body.feedback === "string" ? body.feedback.trim() || null : null;
+    const grade = typeof body.grade === "string" ? body.grade.trim() || null : null;
     try {
       // Eierskap: oppgaven MÅ tilhøre brukeren, og studenten samme kull.
       const assignment = await ownedAssignment(req.params.id, uid(req));
@@ -304,18 +313,24 @@ export function createEducationAssignmentsRouter(
       );
       if (owns.rows.length === 0) { res.status(404).json({ error: "student_not_found" }); return; }
       const submittedAt = status === "not_started" ? null : new Date().toISOString();
+      // reviewed_at settes når status blir 'reviewed', nullstilles ved not_started.
+      const reviewedAt = status === "reviewed" ? new Date().toISOString() : null;
       const id = newEntityId("edsub");
       const r = await pool.query(
         `INSERT INTO role_room_education_submissions
-           (id, assignment_id, student_id, owner_user_id, status, note, submitted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
+           (id, assignment_id, student_id, owner_user_id, status, note, feedback, grade, submitted_at, reviewed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT (assignment_id, student_id)
          DO UPDATE SET status = EXCLUDED.status, note = EXCLUDED.note,
+                       feedback = EXCLUDED.feedback, grade = EXCLUDED.grade,
                        submitted_at = CASE WHEN EXCLUDED.status = 'not_started' THEN NULL
                                            ELSE COALESCE(role_room_education_submissions.submitted_at, EXCLUDED.submitted_at) END,
+                       reviewed_at = CASE WHEN EXCLUDED.status = 'reviewed' THEN COALESCE(role_room_education_submissions.reviewed_at, EXCLUDED.reviewed_at)
+                                          WHEN EXCLUDED.status = 'not_started' THEN NULL
+                                          ELSE role_room_education_submissions.reviewed_at END,
                        updated_at = now()
          RETURNING *`,
-        [id, req.params.id, studentId, uid(req), status, body.note?.trim() || null, submittedAt],
+        [id, req.params.id, studentId, uid(req), status, body.note?.trim() || null, feedback, grade, submittedAt, reviewedAt],
       );
       const row = r.rows[0];
       res.json({
@@ -323,7 +338,10 @@ export function createEducationAssignmentsRouter(
           studentId,
           status: (row.status as string) ?? status,
           note: (row.note as string) ?? null,
+          feedback: (row.feedback as string) ?? null,
+          grade: (row.grade as string) ?? null,
           submittedAt: isoOrNull(row.submitted_at),
+          reviewedAt: isoOrNull(row.reviewed_at),
         },
       });
     } catch (err) {

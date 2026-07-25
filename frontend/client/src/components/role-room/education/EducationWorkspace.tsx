@@ -23,6 +23,7 @@ import { CohortsTab } from './CohortsTab';
 import { AssignmentsTab } from './AssignmentsTab';
 import { ProductionsTab } from './ProductionsTab';
 import { FagstoffTab } from './FagstoffTab';
+import { AssessmentTab } from './AssessmentTab';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
@@ -175,6 +176,8 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
         <AssignmentsTab />
       ) : active.id === 'fagstoff' ? (
         <FagstoffTab />
+      ) : active.id === 'assessment' ? (
+        <AssessmentTab />
       ) : (
         <EmptyState tab={active} />
       )}
