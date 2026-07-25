@@ -3532,6 +3532,20 @@
       "requiresTimeline": true
     },
     {
+      "id": "copy_attributes_by_camera",
+      "name": "Kopier attributter per kamera (grade/transform/gruppe)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/copy_attributes_by_camera.py",
+      "description": "Batch-versjonen av Paste Attributes: grade (CopyGrades fra klippet på tc/sourceClip til alle som matcher cameraPattern-regex, onlyUngraded-filter), attributes (SetProperty: Pan/Tilt/Zoom/Rotation/Crop… valgte keys), group (ANBEFALT: Color Group per kamera — grade én gang på gruppen, gjelder alle medlemmer).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "technical_qc",
       "name": "Teknisk QC (media, timeline, subtitles, farge, leveranse)",
       "category": "qc",

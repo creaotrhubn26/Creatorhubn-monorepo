@@ -140,7 +140,7 @@ function suggestionsFor(c) {
             if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): alternative takes / samtidige vinkler`, act: "op-assist" });
             break;
         case "color":
-            sug.push({ text: "Grade-kopiering på tvers av lignende klipp kan bare foreslås — nodegraf leses, men utvalg styres i GUI", act: null });
+            sug.push({ text: "Kamera-attributter: color-gruppe per kamera, eller kopier grade/transform fra playhead-klippet til alle like", act: "op-assist" });
             if (c.currentItem) sug.push({ text: `Sjekk log-gamma for materialet → CST-prosjektsettings`, act: "op-log" });
             break;
         case "fairlight":
@@ -374,7 +374,15 @@ const RENDER = {
             ${(tk.neighbors || []).map((n) => `<div class="muted">${n.used ? "✓ brukt" : "○ ubrukt"} &nbsp;${esc(n.clip)} (${n.durationSec}s)</div>`).join("") || `<div class="muted">${esc(tk.note || "ingen naboer")}</div>`}</div>` : ""}
         ${an ? `<div style="margin-top:8px"><strong>${an.alternativeCount || 0} samtidige vinkler</strong> <span class="muted">for ${esc(an.clip || "")}</span>
             ${(an.alternatives || []).map((a) => `<div class="muted">${a.used ? "✓" : "○"} ${esc(a.camera)} / ${esc(a.clip)} @ ${esc(a.startTc)}</div>`).join("") || `<div class="muted">${esc(an.note || "")}</div>`}</div>` : ""}
-        </div>`;
+        </div>
+        <div class="card"><div class="row">
+            <strong>🎨 Kamera-attributter</strong>
+            <input type="text" id="attr-pattern" placeholder="mønster (CANON, A74…)" value="CANON" style="min-width:140px">
+        </div><div class="row" style="margin-top:6px">
+            <button id="attr-group" ${S.busy ? "disabled" : ""}>Color-gruppe for alle (anbefalt)</button>
+            <button id="attr-grade" ${!playhead || S.busy ? "disabled" : ""}>Kopier GRADE fra playhead-klippet → alle</button>
+            <button id="attr-transform" ${!playhead || S.busy ? "disabled" : ""}>Kopier transform → alle</button>
+        </div><div class="muted" style="margin-top:4px">Gruppe: grade én gang på gruppen i Color — gjelder alle, rører ingen klipp-grades. Grade-kopiering OVERSKRIVER målenes grade.</div></div>`;
     },
     tqc() {
         const s = S.tqcSweep, c = S.tqcColor, d = S.tqcDelivery, a = S.tqcAudio;
@@ -663,6 +671,29 @@ const ACTIONS = {
         S.angles = await run("edit_assistants",
             { mode: "angles", tc: S.ctx?.tc || "", bins: S.bins }, false, "Finner samtidige vinkler …");
         S.takes = null; render();
+    },
+    "attr-group": async () => {
+        const pat = $("attr-pattern").value.trim(); if (!pat) return;
+        const plan = await run("copy_attributes_by_camera", { mode: "group", cameraPattern: pat }, true, "Teller mål …");
+        if (!confirm(`Melder ${plan.targets} klipp inn i color-gruppen «${plan.groupName}» (${plan.groupExisted ? "finnes" : "opprettes"}).\nIngen grades røres. Fortsette?`)) return;
+        const v = await run("copy_attributes_by_camera", { mode: "group", cameraPattern: pat }, false, "Melder inn i gruppen …");
+        status(`✓ ${v.assigned} klipp i gruppen «${v.groupName}» — grade den i Color-siden (Group Pre/Post-clip)`, "ok-text");
+        log(`Color-gruppe «${v.groupName}»: ${v.assigned} klipp innmeldt`);
+    },
+    "attr-grade": async () => {
+        const pat = $("attr-pattern").value.trim(); if (!pat || !S.ctx?.tc) return;
+        const plan = await run("copy_attributes_by_camera", { mode: "grade", cameraPattern: pat, tc: S.ctx.tc }, true, "Planlegger grade-kopiering …");
+        if (!confirm(`Kopierer graden fra «${plan.source}» til ${plan.targets} klipp som matcher «${pat}».\n\n⚠ ${plan.warning}\nFortsette?`)) return;
+        const v = await run("copy_attributes_by_camera", { mode: "grade", cameraPattern: pat, tc: S.ctx.tc }, false, "Kopierer grader …");
+        status(`✓ Grade kopiert til ${v.copied} klipp`, "ok-text");
+        log(`CopyGrades: ${v.source} → ${v.copied} klipp (${pat})`);
+    },
+    "attr-transform": async () => {
+        const pat = $("attr-pattern").value.trim(); if (!pat || !S.ctx?.tc) return;
+        const plan = await run("copy_attributes_by_camera", { mode: "attributes", cameraPattern: pat, tc: S.ctx.tc }, true, "Leser attributter …");
+        if (!confirm(`Setter ${JSON.stringify(plan.keys)} fra «${plan.source}» på ${plan.targets} klipp. Fortsette?`)) return;
+        const v = await run("copy_attributes_by_camera", { mode: "attributes", cameraPattern: pat, tc: S.ctx.tc }, false, "Setter attributter …");
+        status(`✓ Attributter satt på ${v.applied} klipp`, "ok-text");
     },
     // ── operatør-handlinger (side-bevisste) ──
     "op-transcribe": async () => {
