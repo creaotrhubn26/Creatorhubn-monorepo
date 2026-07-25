@@ -21,6 +21,7 @@ export interface AssessmentItem {
   status: 'submitted' | 'reviewed';
   grade: string | null;
   feedback: string | null;
+  link: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }

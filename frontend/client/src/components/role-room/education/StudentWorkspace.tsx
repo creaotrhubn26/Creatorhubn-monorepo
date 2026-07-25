@@ -10,13 +10,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, Button, Chip,
-  CircularProgress, Alert, MenuItem, TextField, Divider, IconButton,
+  CircularProgress, Alert, MenuItem, TextField, Divider, IconButton, Link,
 } from '@mui/material';
 import {
   Backpack as StudentIcon, MovieCreation as ProductionIcon,
   OpenInNew as OpenIcon, Assignment as AssignmentIcon, Grading as GradedIcon,
 } from '@mui/icons-material';
-import { Logout as LogoutIcon, ArrowBack as BackIcon, Groups as TeamIcon } from '@mui/icons-material';
+import { Logout as LogoutIcon, ArrowBack as BackIcon, Groups as TeamIcon, Upload as UploadIcon } from '@mui/icons-material';
 import { useSuperAdminGate } from '../components/admin/useSuperAdminGate';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
@@ -286,6 +286,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                       </Box>
                     )}
                     {a.rubric && <StudentRubricBreakdown rubric={a.rubric} />}
+                    {studentMode && <AssignmentSubmit assignment={a} />}
                   </Box>
                 </Box>
               );
@@ -293,6 +294,57 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
           </Card>
         )}
       </Box>
+    </Box>
+  );
+}
+
+function AssignmentSubmit({ assignment }: { assignment: StudentViewAssignment }) {
+  const [savedLink, setSavedLink] = useState(assignment.link);
+  const [status, setStatus] = useState(assignment.submissionStatus);
+  const [link, setLink] = useState(assignment.link ?? '');
+  const [note, setNote] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reviewed = status === 'reviewed';
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const r = await educationStudentViewService.submitAssignment(assignment.id, { link: link.trim() || undefined, note: note.trim() || undefined });
+      setStatus(r.status as StudentViewAssignment['submissionStatus']); setSavedLink(r.link); setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kunne ikke levere');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Box sx={{ mt: 1, display: 'grid', gap: 0.75 }}>
+      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+      {savedLink && !editing && (
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Chip size="small" label={reviewed ? 'Innlevert' : 'Levert'} sx={{ height: 20, fontSize: 10, color: '#10b981', borderColor: '#10b981' }} variant="outlined" />
+          <Link href={savedLink} target="_blank" rel="noopener" sx={{ color: ACCENT, fontSize: 12.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{savedLink}</Link>
+        </Stack>
+      )}
+      {!reviewed && !editing && (
+        <Button size="small" startIcon={<UploadIcon sx={{ fontSize: '16px !important' }} />} onClick={() => { setLink(savedLink ?? ''); setEditing(true); }}
+          sx={{ color: ACCENT, textTransform: 'none', justifyContent: 'flex-start' }}>
+          {savedLink ? 'Rediger levering' : 'Lever arbeid'}
+        </Button>
+      )}
+      {!reviewed && editing && (
+        <Stack spacing={1}>
+          <TextField label="Lenke til arbeidet (video / Drive / produksjonen)" size="small" value={link} onChange={(e) => setLink(e.target.value)} autoFocus placeholder="https://…" />
+          <TextField label="Kommentar (valgfritt)" size="small" value={note} onChange={(e) => setNote(e.target.value)} multiline minRows={1} />
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Button size="small" onClick={() => setEditing(false)} disabled={busy}>Avbryt</Button>
+            <Button size="small" variant="contained" onClick={submit} disabled={busy || !link.trim()} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT } }}>{busy ? 'Leverer…' : 'Lever'}</Button>
+          </Stack>
+        </Stack>
+      )}
     </Box>
   );
 }

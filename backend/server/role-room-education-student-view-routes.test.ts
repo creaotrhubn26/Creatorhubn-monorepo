@@ -29,8 +29,8 @@ async function runChain(stack: any[], req: any, res: any) {
   }
 }
 
-function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStudentId?: string | null; rubric?: any[] } = {}) {
-  const { studentOwner = "inst-1", invite, sessionStudentId, rubric } = opts;
+function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStudentId?: string | null; rubric?: any[]; assignmentInCohort?: boolean } = {}) {
+  const { studentOwner = "inst-1", invite, sessionStudentId, rubric, assignmentInCohort = true } = opts;
   const inserts: any[] = [];
   const pool: any = {
     query: vi.fn(async (sql: string, params: any[]) => {
@@ -57,6 +57,12 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
       }
       if (sql.includes("FROM role_room_education_rubric_criteria c")) {
         return { rows: rubric ?? [] };
+      }
+      if (sql.includes("FROM role_room_education_assignments WHERE id")) {
+        return { rows: assignmentInCohort ? [{ n: 1 }] : [] };
+      }
+      if (sql.includes("INSERT INTO role_room_education_submissions")) {
+        return { rows: [{ status: "submitted", link: params[4] }] };
       }
       if (sql.includes("FROM role_room_education_assignments a")) {
         return { rows: [{ id: "a1", title: "Oppg", brief: null, learning_goals: null, due_at: null, status: "published", production_title: "Kortfilm", production_project_id: "proj-1", sub_status: "submitted", grade: "B", feedback: "Bra", submitted_at: new Date(0).toISOString(), reviewed_at: null }] };
@@ -140,6 +146,27 @@ describe("education student view + claim routes", () => {
       { headers: { "x-student-token": "stok-1" }, query: {}, params: {} }, res);
     expect(res.statusCode).toBe(200);
     expect(res.body.student.id).toBe("st1");
+  });
+
+  it("student leverer lenke → status submitted", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ sessionStudentId: "st1" }).pool), "PUT", "/education/student/assignment/:assignmentId/submit"),
+      { headers: { "x-student-token": "stok" }, body: { link: "https://vimeo.com/123" }, params: { assignmentId: "a1" }, query: {} }, res);
+    expect(res.body).toMatchObject({ status: "submitted", link: "https://vimeo.com/123" });
+  });
+
+  it("levering på oppgave utenfor kullet → 404", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ sessionStudentId: "st1", assignmentInCohort: false }).pool), "PUT", "/education/student/assignment/:assignmentId/submit"),
+      { headers: { "x-student-token": "stok" }, body: { link: "x" }, params: { assignmentId: "a-x" }, query: {} }, res);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("levering uten student-token → 401", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ sessionStudentId: null }).pool), "PUT", "/education/student/assignment/:assignmentId/submit"),
+      { headers: { "x-student-token": "bad" }, body: {}, params: { assignmentId: "a1" }, query: {} }, res);
+    expect(res.statusCode).toBe(401);
   });
 
   it("ugyldig/utløpt studentsesjon → 401", async () => {
