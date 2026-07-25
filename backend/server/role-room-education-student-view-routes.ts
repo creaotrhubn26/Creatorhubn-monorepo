@@ -98,16 +98,17 @@ export function createEducationStudentViewRouter(
     const studentId = String(student.id);
     const cohortId = student.cohort_id ? String(student.cohort_id) : null;
 
-    const prodRes = cohortId
-      ? await pool.query(
-          `SELECT p.id, p.title, p.project_id, cp.status AS project_status
-             FROM role_room_education_productions p
-             LEFT JOIN casting_projects cp ON cp.id = p.project_id
-            WHERE p.cohort_id = $1
-            ORDER BY p.created_at DESC`,
-          [cohortId],
-        )
-      : { rows: [] as Record<string, unknown>[] };
+    // Studenten ser KUN produksjonene faglærer har tildelt dem (skole-styrt
+    // RBAC), med sin egen rolle.
+    const prodRes = await pool.query(
+      `SELECT p.id, p.title, p.project_id, cp.status AS project_status, m.role AS member_role
+         FROM role_room_education_production_members m
+         JOIN role_room_education_productions p ON p.id = m.production_id
+         LEFT JOIN casting_projects cp ON cp.id = p.project_id
+        WHERE m.student_id = $1
+        ORDER BY p.created_at DESC`,
+      [studentId],
+    );
 
     const asgRes = cohortId
       ? await pool.query(
@@ -137,6 +138,7 @@ export function createEducationStudentViewRouter(
         title: (p.title as string) ?? "",
         projectId: String(p.project_id),
         projectStatus: (p.project_status as string) ?? null,
+        role: (p.member_role as string) ?? "contributor",
       })),
       assignments: asgRes.rows.map((a) => ({
         id: String(a.id),

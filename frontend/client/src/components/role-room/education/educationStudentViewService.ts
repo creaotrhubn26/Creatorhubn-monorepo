@@ -12,6 +12,7 @@ export interface StudentViewProduction {
   title: string;
   projectId: string;
   projectStatus: string | null;
+  role: string;
 }
 
 export interface StudentViewAssignment {

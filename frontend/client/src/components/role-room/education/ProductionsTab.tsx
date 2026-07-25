@@ -10,16 +10,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, Button, TextField,
-  IconButton, Chip, CircularProgress, Alert, MenuItem,
+  IconButton, Chip, CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
+  DialogContent, Divider, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, MovieCreation as ProductionIcon,
-  OpenInNew as OpenIcon,
+  OpenInNew as OpenIcon, GroupAdd as AssignIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
+import {
+  educationProductionMembersService, MEMBER_ROLE_LABELS,
+  type ProductionMember, type MemberRole,
+} from './educationProductionMembersService';
 
 const ACCENT = '#8B5CF6';
+const ROLE_ORDER: MemberRole[] = ['viewer', 'contributor', 'lead'];
 
 export function ProductionsTab() {
   const [productions, setProductions] = useState<Production[]>([]);
@@ -31,6 +37,7 @@ export function ProductionsTab() {
   const [title, setTitle] = useState('');
   const [cohortId, setCohortId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [membersFor, setMembersFor] = useState<Production | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,10 +160,16 @@ export function ProductionsTab() {
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Stack>
-                  <Button fullWidth variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(p.projectId)}
-                    sx={{ mt: 1.5, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
-                    Åpne i Role Room
-                  </Button>
+                  <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                    <Button fullWidth size="small" variant="text" startIcon={<AssignIcon />} onClick={() => setMembersFor(p)}
+                      sx={{ color: '#e9d5ff', textTransform: 'none' }}>
+                      Tildel studenter
+                    </Button>
+                    <Button fullWidth size="small" variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(p.projectId)}
+                      sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                      Åpne i Role Room
+                    </Button>
+                  </Stack>
                 </CardContent>
               </Card>
             );
@@ -169,7 +182,77 @@ export function ProductionsTab() {
           «Fjern» tar bort koblingen til kullet — selve Role Room-prosjektet og arbeidet består.
         </Typography>
       )}
+
+      {membersFor && <ProductionMembersDialog production={membersFor} onClose={() => setMembersFor(null)} />}
     </Box>
+  );
+}
+
+function ProductionMembersDialog({ production, onClose }: { production: Production; onClose: () => void }) {
+  const [members, setMembers] = useState<ProductionMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void educationProductionMembersService.listMembers(production.id)
+      .then(setMembers)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Kunne ikke hente studenter'))
+      .finally(() => setLoading(false));
+  }, [production.id]);
+
+  const setRole = async (studentId: string, role: MemberRole | null) => {
+    setSavingId(studentId);
+    setError(null);
+    try {
+      if (role) await educationProductionMembersService.setMember(production.id, { studentId, role });
+      else await educationProductionMembersService.removeMember(production.id, studentId);
+      setMembers((prev) => prev.map((m) => m.studentId === studentId
+        ? { ...m, assigned: !!role, role: role ?? m.role }
+        : m));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kunne ikke lagre');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { bgcolor: '#141018', border: '1px solid rgba(139,92,246,0.3)', color: '#fff' } }}>
+      <DialogTitle sx={{ fontWeight: 800 }}>
+        Tildel studenter
+        <Typography sx={{ fontSize: 13, color: 'text.secondary', fontWeight: 400 }}>{production.title}</Typography>
+      </DialogTitle>
+      <DialogContent sx={{ display: 'grid', gap: 1 }}>
+        <Typography sx={{ fontSize: 12, color: 'text.disabled', mb: 0.5 }}>
+          Skolen bestemmer hvem som er med og med hvilken rolle. Studenten ser kun produksjonene de er tildelt.
+        </Typography>
+        {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
+        ) : members.length === 0 ? (
+          <Typography sx={{ color: 'text.disabled', textAlign: 'center', p: 2, fontSize: 13.5 }}>
+            Ingen studenter i kullet. Legg til studenter i «Kull & studenter» først.
+          </Typography>
+        ) : (
+          members.map((m, i) => (
+            <Box key={m.studentId}>
+              {i > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
+              <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={1} sx={{ py: 1.25 }}>
+                <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{m.studentName}</Typography>
+                <ToggleButtonGroup size="small" exclusive value={m.assigned ? m.role : 'none'} disabled={savingId === m.studentId}
+                  onChange={(_e, v: MemberRole | 'none' | null) => { if (v !== null) void setRole(m.studentId, v === 'none' ? null : v); }}
+                  sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: 11.5, py: 0.25, px: 1 }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
+                  <ToggleButton value="none">Ikke med</ToggleButton>
+                  {ROLE_ORDER.map((r) => <ToggleButton key={r} value={r}>{MEMBER_ROLE_LABELS[r]}</ToggleButton>)}
+                </ToggleButtonGroup>
+              </Stack>
+            </Box>
+          ))
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

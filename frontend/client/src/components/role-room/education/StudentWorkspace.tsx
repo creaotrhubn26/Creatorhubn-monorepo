@@ -24,6 +24,7 @@ import {
   educationStudentViewService, hasStudentSession, clearStudentSession,
   type StudentView, type StudentViewAssignment,
 } from './educationStudentViewService';
+import { MEMBER_ROLE_LABELS, type MemberRole } from './educationProductionMembersService';
 
 const ACCENT = '#8B5CF6';
 
@@ -191,7 +192,10 @@ function StudentViewContent({ view }: { view: StudentView }) {
             {productions.map((p) => (
               <Card key={p.id} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <CardContent>
-                  <Typography sx={{ fontWeight: 700 }}>{p.title}</Typography>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                    <Typography sx={{ fontWeight: 700 }}>{p.title}</Typography>
+                    <Chip size="small" label={MEMBER_ROLE_LABELS[p.role as MemberRole] ?? p.role} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+                  </Stack>
                   <Button fullWidth variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(p.projectId)}
                     sx={{ mt: 1.5, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
                     Åpne i Role Room
