@@ -88,9 +88,22 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     return allFiles.filter((f) => !appliedSet.has(f)).sort();
   }
 
+  // Gyldig MIGRATE_TRIGGER_TOKEN i header? Lar CI (GitHub Actions) polle status
+  // uten produkteier-sesjon — samme token-semantikk som /run.
+  function hasValidMigrateToken(req: Parameters<typeof requireAdminRoomAccess>[0]): boolean {
+    const header = req.headers["x-migrate-trigger-token"];
+    const triggerToken = (typeof header === "string" ? header : "").trim();
+    const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
+    if (!triggerToken || !expectedToken || triggerToken.length !== expectedToken.length) return false;
+    return require("crypto").timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken));
+  }
+
   app.get("/api/admin-room/migrations/status", async (req, res) => {
-    const session = requireAdminRoomAccess(req, res);
-    if (!session) return;
+    // Token-path (CI) ELLER admin-sesjon (Admin Room-UI).
+    if (!hasValidMigrateToken(req)) {
+      const session = requireAdminRoomAccess(req, res);
+      if (!session) return;
+    }
     try {
       const pendingFiles = await detectPendingMigrations();
       res.json({ ...currentState, lockHeld: runLock, pendingFiles, pendingCount: pendingFiles.length });
