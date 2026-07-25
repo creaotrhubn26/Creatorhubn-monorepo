@@ -112,7 +112,13 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
     tl_dur = (int(timeline.GetEndFrame() or 0) - tl_start) / fps
 
     f = os.path.expanduser((params.get("file") or "").strip())
-    if not f:
+    # feedback-modus kan kjøre uten lokal fil: exportTime="YYYY-MM-DD HH:MM"
+    exp_time_param = (params.get("exportTime") or "").strip()
+    if not f and exp_time_param and (params.get("mode") or "").lower() == "feedback":
+        import datetime as _dt0
+        export_mtime = _dt0.datetime.strptime(exp_time_param, "%Y-%m-%d %H:%M").timestamp()
+        f = f"(ekstern eksport, {exp_time_param})"
+    elif not f:
         base = os.path.expanduser("~/Movies/Leveranser/"
                                   + re.sub(r"[^A-Za-z0-9_-]+", "_", project.GetName() or "p"))
         cands = ([os.path.join(base, x) for x in os.listdir(base)
@@ -122,10 +128,11 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             bridge.error("Ingen eksport funnet — oppgi file=<sti til eksportert video>.")
             return
         f = max(cands, key=os.path.getmtime)
-    if not os.path.isfile(f):
-        bridge.error(f"Fila finnes ikke: {f}")
-        return
-    export_mtime = os.path.getmtime(f)
+    if not f.startswith("(ekstern"):
+        if not os.path.isfile(f):
+            bridge.error(f"Fila finnes ikke: {f}")
+            return
+        export_mtime = os.path.getmtime(f)
 
     # ── lag 1: handlinger etter eksporten (indeks + audit) ──
     actions_after = []
@@ -179,6 +186,14 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             idx.close()
         except Exception:
             pass
+        planning = ""
+        try:
+            _guid = project.GetUniqueId() or ""
+            _pp = os.path.expanduser(f"~/.config/postagent/planning/{_guid}.md")
+            if os.path.isfile(_pp):
+                planning = open(_pp, encoding="utf-8").read()[:6000]
+        except Exception:
+            pass
         markers_ev = []
         try:
             for frame, m in (timeline.GetMarkers() or {}).items():
@@ -194,6 +209,8 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             f"{_dt.datetime.fromtimestamp(export_mtime).strftime('%Y-%m-%d %H:%M')}; "
             "handlinger med afterExport=true er IKKE med i den fila.\n\n"
             "TILBAKEMELDINGER:\n" + "\n".join(f"{i}: {p}" for i, p in enumerate(points))
+            + ("\n\nPLANLEGGINGSDOKUMENT (kjøreplan/familiekart/kontekst):\n" + planning
+               if planning else "")
             + "\n\nHANDLINGSLOGG:\n" + json.dumps(evidence_actions, ensure_ascii=False)
             + "\n\nMARKØRER I TIMELINEN:\n" + "\n".join(markers_ev[:40])
             + '\n\nSvar KUN med JSON: {"vurderinger": [{"punkt": <index>, '
