@@ -43,9 +43,26 @@ def run(params: dict, dry_run: bool) -> None:
     if not conn.connect() or not conn.require_project():
         return
     project = conn.project
+    # timelineName-vakt: brukeren kan bytte timeline i GUI-et mens scripts
+    # kjører — mutasjoner MÅ låses til navngitt timeline, ikke «gjeldende».
+    want_tl = (params.get("timelineName") or "").strip()
+    if want_tl:
+        target = None
+        for i in range(1, int(project.GetTimelineCount() or 0) + 1):
+            t = project.GetTimelineByIndex(i)
+            if t and (t.GetName() or "").strip() == want_tl:
+                target = t
+                break
+        if not target:
+            bridge.error(f"Fant ikke timeline «{want_tl}».")
+            return
+        project.SetCurrentTimeline(target)
     timeline = project.GetCurrentTimeline()
     if not timeline:
         bridge.error("Ingen gjeldende timeline.")
+        return
+    if want_tl and (timeline.GetName() or "").strip() != want_tl:
+        bridge.error(f"Klarte ikke å aktivere «{want_tl}» — avbryter uten endringer.")
         return
 
     raw = params.get("items")

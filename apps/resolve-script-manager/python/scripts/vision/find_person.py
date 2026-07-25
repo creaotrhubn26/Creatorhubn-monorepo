@@ -159,7 +159,8 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             bridge.error(f"Ingen referanser for «{name}» — kjør register først.")
             return
         scope = (params.get("scope") or "both").strip().lower()
-        max_clips = int(params.get("maxClips") or 120)
+        _mc = params.get("maxClips")
+        max_clips = 120 if _mc is None or str(_mc) == "" else int(_mc)  # 0 = alle
         step = float(params.get("sampleStep") or 5)
         cv2, det, rec = _engines()
 
