@@ -13,7 +13,7 @@
 import crypto from "crypto";
 import { Router, type NextFunction, type Request, type Response, type Router as ExpressRouter } from "express";
 import type { Pool } from "pg";
-import { loadPersistedAuthSession } from "./auth-session-store.js";
+import { loadPersistedAuthSession, persistAuthSession } from "./auth-session-store.js";
 import { newEntityId } from "./_shared-ids.js";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken, extractAgs,
@@ -58,6 +58,78 @@ async function fetchPlatformJwks(jwksUrl: string): Promise<PlatformJwk[]> {
   if (!res.ok) throw new Error("jwks_fetch_failed");
   const data = (await res.json()) as { keys?: PlatformJwk[] };
   return data.keys ?? [];
+}
+
+/**
+ * Trekker ut identitet fra et validert LTI id_token. Navn/e-post er standard
+ * OIDC-claims (Canvas/saLTIre sender dem når konfigurert). LTI `roles`-claim →
+ * faglærer vs student. Instruktør-lignende roller vinner (den som launcher for
+ * å sette karakter er som regel faglæreren).
+ */
+export function extractLtiIdentity(claims: Record<string, unknown>): {
+  email: string | null; name: string | null; educationRole: "faglærer" | "student";
+} {
+  const email =
+    typeof claims.email === "string" && claims.email.trim() ? claims.email.trim().toLowerCase() : null;
+  const name =
+    typeof claims.name === "string" && claims.name.trim()
+      ? claims.name.trim()
+      : [claims.given_name, claims.family_name]
+          .filter((p): p is string => typeof p === "string" && !!p.trim())
+          .join(" ")
+          .trim() || null;
+  const rolesRaw = claims["https://purl.imsglobal.org/spec/lti/claim/roles"];
+  const roles = Array.isArray(rolesRaw) ? rolesRaw.filter((r): r is string => typeof r === "string") : [];
+  const isInstructor = roles.some((r) =>
+    /#(Instructor|TeachingAssistant|ContentDeveloper|Mentor|Administrator|Manager|Officer)\b/i.test(r),
+  );
+  const isLearner = roles.some((r) => /#(Learner|Student)\b/i.test(r));
+  const educationRole: "faglærer" | "student" = isLearner && !isInstructor ? "student" : "faglærer";
+  return { email, name, educationRole };
+}
+
+/**
+ * Provisjonerer/finner bruker fra LTI-claims og minter en utdannings-sesjon.
+ * Speiler resolveFeideSession (upsert users.email, placeholder-passord,
+ * profession=education) — LTI-launch vouch-er for brukeren (LMS-en har alt
+ * autentisert), så ingen ekstra pålogging trengs. Returnerer sesjons-token
+ * (plukkes opp av frontendens ?rr_session=-håndtering) eller null.
+ */
+async function mintLtiEducationSession(
+  pool: Pool,
+  activeSessions: Map<string, SessionData> | undefined,
+  identity: { email: string; name: string | null; educationRole: "faglærer" | "student" },
+): Promise<string | null> {
+  const bcrypt = await import("bcrypt");
+  const placeholderPassword = await bcrypt.default.hash(`${crypto.randomUUID()}${crypto.randomUUID()}`, 10);
+  const upsert = await pool.query<{ id: string; role: string | null }>(
+    `INSERT INTO users (email, username, password, role, profession, last_login_at, created_at, updated_at)
+     VALUES ($1, $2, $3, 'user', 'education', NOW(), NOW(), NOW())
+     ON CONFLICT (email) DO UPDATE SET
+       username = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
+       password = COALESCE(NULLIF(users.password, ''), EXCLUDED.password),
+       profession = COALESCE(NULLIF(users.profession, ''), 'education'),
+       last_login_at = NOW(), updated_at = NOW()
+     RETURNING id, role`,
+    [identity.email, identity.email, placeholderPassword],
+  );
+  const row = upsert.rows[0];
+  if (!row) return null;
+  const token = crypto.randomUUID();
+  const sessionData: SessionData = {
+    userId: String(row.id),
+    email: identity.email,
+    name: identity.name ?? identity.email,
+    role: (row.role ?? "user").toString(),
+    loginAt: new Date().toISOString(),
+    profession: "education",
+    selectedProfession: "education",
+    educationRole: identity.educationRole,
+    loginSource: "lti",
+  };
+  activeSessions?.set(token, sessionData);
+  await persistAuthSession(pool, token, sessionData);
+  return token;
 }
 
 export interface CreateLtiRouterDeps { activeSessions?: Map<string, SessionData>; }
@@ -160,8 +232,26 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         [launchId, platform.id, String(claims.sub ?? ""), context?.id ?? null, resourceLink?.id ?? null,
          ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? [])],
       );
+      // Auto-provisjon fra LTI-claims: LMS-en har alt autentisert brukeren, så
+      // vi minter en utdannings-sesjon og sender den via ?rr_session= (samme
+      // pickup som Feide). Uten e-post-claim (f.eks. saLTIre uten User-claims)
+      // faller vi tilbake til uautentisert landing — launch-kontekst er uansett
+      // lagret for grade-push.
+      const identity = extractLtiIdentity(claims);
+      let sessionToken: string | null = null;
+      if (identity.email) {
+        try {
+          sessionToken = await mintLtiEducationSession(pool, deps.activeSessions, {
+            email: identity.email, name: identity.name, educationRole: identity.educationRole,
+          });
+        } catch (e) {
+          console.warn("[lti] sesjon-mint feilet (fortsetter uautentisert):", (e as Error).message);
+        }
+      }
       // Landing: inn i utdannings-workspacet (launch-kontekst lagret for grade-push).
-      res.redirect(`${APP_URL}?mode=education&lti_launch=${encodeURIComponent(launchId)}`);
+      const redirectParams = new URLSearchParams({ mode: "education", lti_launch: launchId });
+      if (sessionToken) redirectParams.set("rr_session", sessionToken);
+      res.redirect(`${APP_URL}?${redirectParams.toString()}`);
     } catch (err) {
       console.error("[lti] launch failed:", (err as Error).message);
       res.status(400).send("launch_validation_failed");
