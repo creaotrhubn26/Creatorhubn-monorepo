@@ -169,15 +169,15 @@ export function OverviewScreen({
 
           {/* Signal-fliser — glanseløst overblikk, hver lenker til sin fane */}
           <div className="tile-grid">
-            <Tile label="Likviditet 90 dager" value={`${kr(d.liquidity.endBalanceMinor)} kr`}
-              sub={`laveste ${kr(d.liquidity.lowestBalanceMinor)} kr`} tone={d.liquidity.goesNegative ? 'alert' : 'ok'} onClick={() => go('planning')} />
+            <Tile label="Likviditet 90 dager" value={kr(d.liquidity.endBalanceMinor)}
+              sub={`laveste ${kr(d.liquidity.lowestBalanceMinor)}`} tone={d.liquidity.goesNegative ? 'alert' : 'ok'} onClick={() => go('planning')} />
             <Tile label="Dokumentjakt" value={`${d.documentHunt.gapsWithCandidates} treff`}
               sub={`${d.documentHunt.paymentsMissingDoc} betaling${d.documentHunt.paymentsMissingDoc === 1 ? '' : 'er'} uten bilag`}
               tone={d.documentHunt.gapsWithCandidates > 0 ? 'attention' : 'plain'} onClick={() => go('document-hunt')} />
             <Tile label="Skatteassistent" value={`${d.advisories.total} funn`}
               sub={`${d.advisories.risiko} risiko · ${d.advisories.mulighet} muligheter`}
               tone={d.advisories.risiko > 0 ? 'attention' : 'plain'} onClick={() => go('assistant')} />
-            <Tile label="Sett av til skatt" value={`${kr(d.taxReserveMinor)} kr`}
+            <Tile label="Sett av til skatt" value={kr(d.taxReserveMinor)}
               sub={`neste MVA-forfall ${nb(d.vat.dueDate)}`} tone="plain" onClick={() => go('tax')} />
             <Tile label="Bilag til behandling" value={String(d.counts.documentsWaiting)}
               sub="venter på godkjenning" tone={d.counts.documentsWaiting > 0 ? 'attention' : 'ok'} onClick={() => go('documents')} />
