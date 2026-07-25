@@ -16,8 +16,11 @@ import {
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationStudentInvitesService, type StudentInvite } from './educationStudentInvitesService';
+import { educationCensorService, type CensorInvite } from './educationCensorService';
+import { FactCheck as CensorIcon } from '@mui/icons-material';
 
 const claimLink = (token: string) => `${window.location.origin}/role-room/student/claim?token=${encodeURIComponent(token)}`;
+const censorLink = (token: string) => `${window.location.origin}/role-room/censor/claim?token=${encodeURIComponent(token)}`;
 
 const ACCENT = '#8B5CF6';
 
@@ -313,7 +316,96 @@ function StudentsView({ cohort, onBack, onError, error }: {
           ))}
         </Card>
       )}
+
+      <CensorInvitePanel cohortId={cohort.id} onError={onError} />
     </Box>
+  );
+}
+
+function CensorInvitePanel({ cohortId, onError }: { cohortId: string; onError: (m: string | null) => void }) {
+  const [invites, setInvites] = useState<CensorInvite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void educationCensorService.listCohortInvites(cohortId)
+      .then(setInvites)
+      .catch(() => { /* tomt greit */ })
+      .finally(() => setLoading(false));
+  }, [cohortId]);
+
+  const create = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const inv = await educationCensorService.createInvite({ cohortId, name: name.trim() || undefined });
+      setInvites((prev) => [inv, ...prev]);
+      setName('');
+      void copy(inv.id, inv.token);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke invitere sensor');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (id: string, token: string) => {
+    try {
+      await navigator.clipboard.writeText(censorLink(token));
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1800);
+    } catch { /* no-op */ }
+  };
+
+  const revoke = async (id: string) => {
+    try {
+      await educationCensorService.revokeInvite(id);
+      setInvites((prev) => prev.filter((i) => i.id !== id));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake');
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.2)' }}>
+      <CardContent sx={{ display: 'grid', gap: 1 }}>
+        <Stack direction="row" alignItems="center" spacing={0.75}>
+          <CensorIcon sx={{ fontSize: 18, color: ACCENT }} />
+          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Ekstern sensor</Typography>
+        </Stack>
+        <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>
+          Gi en sensor tidsbegrenset tilgang til å se kullets arbeid + din vurdering, og gi sin egen. Lenken utløper automatisk.
+        </Typography>
+        {invites.map((inv) => (
+          <Stack key={inv.id} direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{inv.name || 'Sensor'}</Typography>
+              <Chip size="small" label={inv.status === 'accepted' ? 'Aktivert' : 'Invitert'} sx={{ height: 18, fontSize: 9.5, mt: 0.25, bgcolor: inv.status === 'accepted' ? 'transparent' : 'rgba(139,92,246,0.22)', color: inv.status === 'accepted' ? '#10b981' : '#e9d5ff', borderColor: inv.status === 'accepted' ? '#10b981' : undefined }} variant={inv.status === 'accepted' ? 'outlined' : 'filled'} />
+            </Box>
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title={copiedId === inv.id ? 'Lenke kopiert' : 'Kopier sensor-lenke'}>
+                <span><IconButton size="small" onClick={() => copy(inv.id, inv.token)} sx={{ color: copiedId === inv.id ? '#10b981' : ACCENT }} aria-label="Kopier sensor-lenke">
+                  {copiedId === inv.id ? <CheckIcon fontSize="small" /> : <CopyIcon fontSize="small" />}
+                </IconButton></span>
+              </Tooltip>
+              <Tooltip title="Trekk tilbake">
+                <span><IconButton size="small" onClick={() => revoke(inv.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Trekk tilbake"><DeleteIcon fontSize="small" /></IconButton></span>
+              </Tooltip>
+            </Stack>
+          </Stack>
+        ))}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mt: 0.5 }}>
+          <TextField label="Sensorens navn (valgfritt)" size="small" value={name} onChange={(e) => setName(e.target.value)} fullWidth />
+          <Button variant="contained" startIcon={<CensorIcon />} onClick={create} disabled={busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>
+            {busy ? 'Lager…' : 'Inviter sensor'}
+          </Button>
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }
 
