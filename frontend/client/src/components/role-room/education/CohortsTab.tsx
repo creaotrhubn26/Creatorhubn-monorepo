@@ -12,9 +12,12 @@ import {
 import {
   Add as AddIcon, Delete as DeleteIcon, Groups as CohortIcon,
   ArrowBack as BackIcon, PersonAdd as PersonAddIcon, VpnKey as InviteIcon,
+  ContentCopy as CopyIcon, Check as CheckIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
-import { educationStudentInvitesService, type StudentInviteStatus } from './educationStudentInvitesService';
+import { educationStudentInvitesService, type StudentInvite } from './educationStudentInvitesService';
+
+const claimLink = (token: string) => `${window.location.origin}/role-room/student/claim?token=${encodeURIComponent(token)}`;
 
 const ACCENT = '#8B5CF6';
 
@@ -149,12 +152,13 @@ function StudentsView({ cohort, onBack, onError, error }: {
   cohort: Cohort; onBack: () => void; onError: (m: string | null) => void; error: string | null;
 }) {
   const [students, setStudents] = useState<Student[]>([]);
-  const [invites, setInvites] = useState<Record<string, StudentInviteStatus>>({});
+  const [invites, setInvites] = useState<Record<string, StudentInvite>>({});
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -164,7 +168,7 @@ function StudentsView({ cohort, onBack, onError, error }: {
         educationStudentInvitesService.listCohortInvites(cohort.id).catch(() => []),
       ]);
       setStudents(list);
-      setInvites(Object.fromEntries(inviteList.map((iv) => [iv.studentId, iv.status])));
+      setInvites(Object.fromEntries(inviteList.map((iv) => [iv.studentId, iv])));
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Kunne ikke hente studenter');
     } finally {
@@ -178,7 +182,8 @@ function StudentsView({ cohort, onBack, onError, error }: {
     setInvitingId(id);
     try {
       const inv = await educationStudentInvitesService.invite(id);
-      setInvites((prev) => ({ ...prev, [id]: inv.status }));
+      setInvites((prev) => ({ ...prev, [id]: inv }));
+      if (inv.token) void handleCopy(id, inv.token);
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Kunne ikke klargjøre tilgang');
     } finally {
@@ -186,11 +191,19 @@ function StudentsView({ cohort, onBack, onError, error }: {
     }
   };
 
+  const handleCopy = async (id: string, token: string) => {
+    try {
+      await navigator.clipboard.writeText(claimLink(token));
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1800);
+    } catch { /* utrygg kontekst / no-op */ }
+  };
+
   const handleRevoke = async (id: string) => {
     setInvitingId(id);
     try {
       await educationStudentInvitesService.revoke(id);
-      setInvites((prev) => ({ ...prev, [id]: 'none' }));
+      setInvites((prev) => { const next = { ...prev }; delete next[id]; return next; });
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake');
     } finally {
@@ -247,7 +260,7 @@ function StudentsView({ cohort, onBack, onError, error }: {
       </Card>
 
       <Typography sx={{ fontSize: 11.5, color: 'text.disabled' }}>
-        «Inviter» klargjør studenttilgang. Selve studentpåloggingen aktiveres i et neste steg.
+        «Inviter» lager en innloggingslenke — kopier den (📋) og del med studenten. De logger inn og ser Min side.
       </Typography>
 
       {loading ? (
@@ -265,11 +278,18 @@ function StudentsView({ cohort, onBack, onError, error }: {
                   {s.email && <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{s.email}</Typography>}
                 </Box>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
-                  {invites[s.id] === 'accepted' ? (
+                  {invites[s.id]?.status === 'accepted' ? (
                     <Chip size="small" label="Aktivert" sx={{ height: 20, fontSize: 10, color: '#10b981', borderColor: '#10b981' }} variant="outlined" />
-                  ) : invites[s.id] === 'pending' ? (
+                  ) : invites[s.id]?.status === 'pending' ? (
                     <>
                       <Chip size="small" label="Invitert" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+                      {invites[s.id]?.token && (
+                        <Tooltip title={copiedId === s.id ? 'Lenke kopiert' : 'Kopier innloggingslenke'}>
+                          <span><IconButton size="small" onClick={() => handleCopy(s.id, invites[s.id]!.token as string)} sx={{ color: copiedId === s.id ? '#10b981' : ACCENT }} aria-label="Kopier lenke">
+                            {copiedId === s.id ? <CheckIcon fontSize="small" /> : <CopyIcon fontSize="small" />}
+                          </IconButton></span>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Trekk tilbake tilgang">
                         <span><IconButton size="small" onClick={() => handleRevoke(s.id)} disabled={invitingId === s.id} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Trekk tilbake"><DeleteIcon fontSize="small" /></IconButton></span>
                       </Tooltip>

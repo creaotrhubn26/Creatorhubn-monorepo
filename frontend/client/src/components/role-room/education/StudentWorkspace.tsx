@@ -16,10 +16,14 @@ import {
   Backpack as StudentIcon, MovieCreation as ProductionIcon,
   OpenInNew as OpenIcon, Assignment as AssignmentIcon, Grading as GradedIcon,
 } from '@mui/icons-material';
+import { Logout as LogoutIcon } from '@mui/icons-material';
 import { useSuperAdminGate } from '../components/admin/useSuperAdminGate';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
-import { educationStudentViewService, type StudentView, type StudentViewAssignment } from './educationStudentViewService';
+import {
+  educationStudentViewService, hasStudentSession, clearStudentSession,
+  type StudentView, type StudentViewAssignment,
+} from './educationStudentViewService';
 
 const ACCENT = '#8B5CF6';
 
@@ -37,8 +41,9 @@ function formatDate(iso: string | null): string | null {
 
 export function StudentWorkspace() {
   const { isSuperAdmin, ready } = useSuperAdminGate();
+  const loggedIn = hasStudentSession();
 
-  if (!ready) {
+  if (!ready && !loggedIn) {
     return <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
   }
 
@@ -48,14 +53,41 @@ export function StudentWorkspace() {
         <StudentIcon sx={{ color: ACCENT }} />
         <Typography variant="h5" sx={{ fontWeight: 800 }}>Min side</Typography>
         <Chip label="Student" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
+        {loggedIn && (
+          <>
+            <Box sx={{ flexGrow: 1 }} />
+            <Button size="small" startIcon={<LogoutIcon />} onClick={() => { clearStudentSession(); window.location.reload(); }}
+              sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'none' }}>
+              Logg ut
+            </Button>
+          </>
+        )}
       </Stack>
       <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 13.5, mb: 3 }}>
         Produksjonene, oppgavene og tilbakemeldingene dine — samlet på ett sted.
       </Typography>
 
-      {isSuperAdmin ? <SuperAdminPreview /> : <StudentPlaceholder />}
+      {loggedIn ? <MyStudentView /> : isSuperAdmin ? <SuperAdminPreview /> : <StudentPlaceholder />}
     </Box>
   );
+}
+
+function MyStudentView() {
+  const [view, setView] = useState<StudentView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void educationStudentViewService.getMyView()
+      .then(setView)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Kunne ikke hente Min side'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
+  if (error) return <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => { clearStudentSession(); window.location.reload(); }}>Logg inn på nytt</Button>}>{error}</Alert>;
+  if (!view?.student) return <StudentPlaceholder />;
+  return <StudentViewContent view={view} />;
 }
 
 function StudentPlaceholder() {

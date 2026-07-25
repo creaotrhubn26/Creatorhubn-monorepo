@@ -147,6 +147,7 @@ const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dan
 const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
 const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
+const RrClaimStudentAccess = React.lazy(() => import('@/pages/ClaimStudentAccess'));
 const RrAcceptPrototypeTesterInvite = React.lazy(() => import('@/pages/AcceptPrototypeTesterInvite'));
 const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
 // Innlogging + passord-reset: var KUN App.tsx-ruter, så klienter på
@@ -165,6 +166,7 @@ const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: Rea
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
   { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
+  { test: /^\/role-room\/student\/claim$/, path: '/role-room/student/claim', component: RrClaimStudentAccess },
   { test: /^\/prototype-tester\/accept-invite$/, path: '/prototype-tester/accept-invite', component: RrAcceptPrototypeTesterInvite },
   { test: /^\/lead-map\/accept$/, path: '/lead-map/accept', component: RrLeadMapAccept },
   { test: /^\/link$/, path: '/link', component: RrPostAgentLink },
