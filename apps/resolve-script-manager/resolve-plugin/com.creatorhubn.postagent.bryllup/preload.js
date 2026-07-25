@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('postagent', {
     setVoiceIsolation: (track, isEnabled, amount) => ipcRenderer.invoke('set-voice-isolation', track, isEnabled, amount),
     renderInfo: () => ipcRenderer.invoke('render-info'),
     createSubtitles: () => ipcRenderer.invoke('create-subtitles'),
+    operatorChat: (history) => ipcRenderer.invoke('operator-chat', history),
     startRendering: () => ipcRenderer.invoke('start-rendering'),
     onProgress: (cb) => {
         const handler = (_ev, data) => cb(data);

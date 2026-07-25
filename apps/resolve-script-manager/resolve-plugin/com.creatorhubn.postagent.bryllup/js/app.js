@@ -12,6 +12,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     dialog: null, dialogHits: null, dialogPauses: null, dialogReps: null,
     dialogSel: {},
     tempo: null, jumpcuts: null, takes: null, angles: null,
+    chat: [], chatBusy: false,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -24,6 +25,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
 
 const STEPS = [
     { id: "operator", n: 0, label: "🎛 Operatør" },
+    { id: "chat",     n: 0, label: "💬 Spør" },
     { id: "sources",  n: 1, label: "Kilder + kameraer" },
     { id: "material", n: 2, label: "Multicam-scan" },
     { id: "audio",    n: 3, label: "Ekstern lyd" },
@@ -324,6 +326,23 @@ const RENDER = {
         ${(d.list || []).slice(0, 60).map((s, i) => segRow(s, i, true)).join("")}
         ${(d.list || []).length > 60 ? `<div class="muted">… ${(d.list || []).length - 60} til (vis alle kommer i neste runde)</div>` : ""}` : ""}`;
     },
+    chat() {
+        return `<h2>💬 Spør operatøren</h2>
+        <div class="sub">Naturlig språk mot hele motoren: «hvor er de tregeste partiene?», «finnes det ubrukte dronebilder som passer i seremonien?», «hva sies rundt 01:20?». Operatøren leser — panelfanene endrer.</div>
+        <div id="chat-log">
+        ${S.chat.map((m) => `<div class="card ${m.role === "user" ? "" : "sugg"}">
+            <div class="muted" style="font-size:10px">${m.role === "user" ? "Du" : "Operatøren"}</div>
+            <div style="white-space:pre-wrap">${esc(m.text)}</div>
+            ${m.tools?.length ? `<div style="margin-top:4px">${m.tools.map((t) => `<span class="chip">${esc(t)}</span>`).join(" ")}</div>` : ""}
+        </div>`).join("") || `<div class="card dim">Still et spørsmål — operatøren henter fakta fra timelinen før den svarer.</div>`}
+        ${S.chatBusy ? `<div class="card dim">Operatøren undersøker … (kjører analyser ved behov)</div>` : ""}
+        </div>
+        <div class="card"><div class="row">
+            <input type="text" id="chat-input" placeholder="Spør om timelinen, materialet, dialogen …" style="flex:1;min-width:200px" ${S.chatBusy ? "disabled" : ""}>
+            <button id="chat-send" class="primary" ${S.chatBusy ? "disabled" : ""}>Send</button>
+            ${S.chat.length ? `<button id="chat-clear" class="small">Tøm</button>` : ""}
+        </div></div>`;
+    },
     assist() {
         const t = S.tempo, j = S.jumpcuts, tk = S.takes, an = S.angles;
         const playhead = S.ctx?.tc || "";
@@ -505,6 +524,25 @@ const ACTIONS = {
         log(`Bygde assembly «${name}»: ${v.built} utsnitt`);
         status(`✓ ${v.built} utsnitt på ny timeline «${name}» — ${v.note || ""}`, "ok-text");
     },
+    // ── chat-operatøren ──
+    "chat-send": async () => {
+        const input = $("chat-input");
+        const q = input.value.trim();
+        if (!q || S.chatBusy) return;
+        S.chat.push({ role: "user", text: q });
+        S.chatBusy = true; render();
+        try {
+            const history = S.chat.map((m) => ({ role: m.role === "user" ? "user" : "assistant", text: m.text }));
+            const r = await PA.operatorChat(history);
+            S.chat.push({ role: "assistant", text: r.text, tools: r.tools || [] });
+            if (r.tools?.length) log(`Operatøren kjørte: ${r.tools.join(", ")}`);
+        } catch (e) {
+            S.chat.push({ role: "assistant", text: "Feil: " + String(e.message || e).slice(0, 200) });
+        }
+        S.chatBusy = false; render();
+        const el = $("chat-input"); if (el) el.focus();
+    },
+    "chat-clear": () => { S.chat = []; render(); },
     // ── klippe-assistenter ──
     "as-tempo": async () => {
         S.tempo = await run("edit_assistants", { mode: "tempo" }, false, "Analyserer rytmen …");
@@ -625,6 +663,10 @@ document.addEventListener("click", async (ev) => {
         render(); return;
     }
     if (el.id && ACTIONS[el.id]) { try { await ACTIONS[el.id](); } catch { /* status satt av run() */ } }
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target && e.target.id === "chat-input") ACTIONS["chat-send"]();
 });
 
 render();
