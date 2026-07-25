@@ -18,6 +18,7 @@ import {
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationRubricService, type RubricCriterion } from './educationRubricService';
+import { educationLearningGoalsService, type LearningGoal } from './educationLearningGoalsService';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import {
   educationAssignmentsService, type Assignment, type AssignmentStatus,
@@ -307,7 +308,7 @@ function SubmissionsView({ assignment, cohortName, onBack, onError, error }: {
         </Card>
       )}
 
-      <RubricEditor assignmentId={assignment.id} onError={onError} />
+      <RubricEditor assignmentId={assignment.id} cohortId={assignment.cohortId} onError={onError} />
 
       <Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
@@ -352,12 +353,13 @@ function SubmissionsView({ assignment, cohortName, onBack, onError, error }: {
   );
 }
 
-function RubricEditor({ assignmentId, onError }: { assignmentId: string; onError: (m: string | null) => void }) {
+function RubricEditor({ assignmentId, cohortId, onError }: { assignmentId: string; cohortId: string | null; onError: (m: string | null) => void }) {
   const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  const [goals, setGoals] = useState<LearningGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
-  const [goal, setGoal] = useState('');
+  const [goalId, setGoalId] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -367,13 +369,18 @@ function RubricEditor({ assignmentId, onError }: { assignmentId: string; onError
       .finally(() => setLoading(false));
   }, [assignmentId]);
 
+  useEffect(() => {
+    if (!cohortId) return;
+    void educationLearningGoalsService.listGoals(cohortId).then(setGoals).catch(() => { /* greit */ });
+  }, [cohortId]);
+
   const add = async () => {
     if (!title.trim() || busy) return;
     setBusy(true);
     try {
-      const c = await educationRubricService.addCriterion(assignmentId, { title: title.trim(), learningGoal: goal.trim() || undefined });
+      const c = await educationRubricService.addCriterion(assignmentId, { title: title.trim(), learningGoalId: goalId || undefined });
       setCriteria((prev) => [...prev, c]);
-      setTitle(''); setGoal(''); setAdding(false);
+      setTitle(''); setGoalId(''); setAdding(false);
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Kunne ikke legge til kriterium');
     } finally {
@@ -404,9 +411,9 @@ function RubricEditor({ assignmentId, onError }: { assignmentId: string; onError
         )}
         {criteria.map((c) => (
           <Stack key={c.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 0.25 }}>
-            <Box>
+            <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{c.title}</Typography>
-              {c.learningGoal && <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>{c.learningGoal}</Typography>}
+              {(c.learningGoalTitle || c.learningGoal) && <Chip size="small" label={c.learningGoalTitle ?? c.learningGoal} sx={{ height: 18, fontSize: 10, mt: 0.25, bgcolor: 'rgba(139,92,246,0.18)', color: '#e9d5ff' }} />}
             </Box>
             <IconButton size="small" onClick={() => remove(c.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Slett kriterium"><DeleteIcon fontSize="small" /></IconButton>
           </Stack>
@@ -414,7 +421,11 @@ function RubricEditor({ assignmentId, onError }: { assignmentId: string; onError
         {adding && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mt: 0.5 }}>
             <TextField label="Kriterium" size="small" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus fullWidth placeholder="Manus/story" />
-            <TextField label="Læringsmål (valgfritt)" size="small" value={goal} onChange={(e) => setGoal(e.target.value)} fullWidth />
+            <TextField label="Læringsmål" size="small" select value={goalId} onChange={(e) => setGoalId(e.target.value)} sx={{ minWidth: 190 }}
+              helperText={goals.length === 0 ? 'Definer læringsmål i kull-visningen' : ' '}>
+              <MenuItem value=""><em>Ingen kobling</em></MenuItem>
+              {goals.map((g) => <MenuItem key={g.id} value={g.id}>{g.code ? `${g.code}: ` : ''}{g.title}</MenuItem>)}
+            </TextField>
             <Button variant="contained" onClick={add} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>Legg til</Button>
           </Stack>
         )}

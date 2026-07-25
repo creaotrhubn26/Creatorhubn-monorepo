@@ -7,7 +7,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, CardActionArea, Button, TextField,
-  IconButton, Chip, CircularProgress, Divider, Alert, Tooltip,
+  IconButton, Chip, CircularProgress, Divider, Alert, Tooltip, LinearProgress,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Groups as CohortIcon,
@@ -17,7 +17,8 @@ import {
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationStudentInvitesService, type StudentInvite } from './educationStudentInvitesService';
 import { educationCensorService, type CensorInvite } from './educationCensorService';
-import { FactCheck as CensorIcon } from '@mui/icons-material';
+import { educationLearningGoalsService, type LearningGoal, type GoalAttainment } from './educationLearningGoalsService';
+import { FactCheck as CensorIcon, Flag as GoalIcon } from '@mui/icons-material';
 
 const claimLink = (token: string) => `${window.location.origin}/role-room/student/claim?token=${encodeURIComponent(token)}`;
 const censorLink = (token: string) => `${window.location.origin}/role-room/censor/claim?token=${encodeURIComponent(token)}`;
@@ -317,8 +318,88 @@ function StudentsView({ cohort, onBack, onError, error }: {
         </Card>
       )}
 
+      <LearningGoalsPanel cohortId={cohort.id} onError={onError} />
       <CensorInvitePanel cohortId={cohort.id} onError={onError} />
     </Box>
+  );
+}
+
+function LearningGoalsPanel({ cohortId, onError }: { cohortId: string; onError: (m: string | null) => void }) {
+  const [goals, setGoals] = useState<LearningGoal[]>([]);
+  const [attainment, setAttainment] = useState<GoalAttainment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [code, setCode] = useState('');
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [g, a] = await Promise.all([
+        educationLearningGoalsService.listGoals(cohortId),
+        educationLearningGoalsService.getAttainment(cohortId).catch(() => []),
+      ]);
+      setGoals(g); setAttainment(a);
+    } catch { /* tomt greit */ } finally { setLoading(false); }
+  }, [cohortId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const add = async () => {
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try {
+      const g = await educationLearningGoalsService.addGoal(cohortId, { code: code.trim() || undefined, title: title.trim() });
+      setGoals((prev) => [...prev, g]);
+      setCode(''); setTitle('');
+    } catch (e) { onError(e instanceof Error ? e.message : 'Kunne ikke legge til læringsmål'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    try {
+      await educationLearningGoalsService.deleteGoal(id);
+      setGoals((prev) => prev.filter((g) => g.id !== id));
+      setAttainment((prev) => prev.filter((a) => a.goalId !== id));
+    } catch (e) { onError(e instanceof Error ? e.message : 'Kunne ikke slette'); }
+  };
+
+  if (loading) return null;
+  const attMap = new Map(attainment.map((a) => [a.goalId, a]));
+
+  return (
+    <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.2)' }}>
+      <CardContent sx={{ display: 'grid', gap: 1 }}>
+        <Stack direction="row" alignItems="center" spacing={0.75}>
+          <GoalIcon sx={{ fontSize: 18, color: ACCENT }} />
+          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Læringsmål & måloppnåelse</Typography>
+        </Stack>
+        <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>
+          Definer læringsmålene for kullet. Koble rubrikk-kriterier til dem (i oppgavene), så beregnes måloppnåelsen automatisk her — for faglærer og sensor.
+        </Typography>
+        {goals.length === 0 && <Typography sx={{ fontSize: 12.5, color: 'text.disabled' }}>Ingen læringsmål enda.</Typography>}
+        {goals.map((g) => {
+          const a = attMap.get(g.id);
+          const hasScores = a && a.scoreCount > 0;
+          return (
+            <Box key={g.id} sx={{ display: 'grid', gap: 0.5 }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{g.code ? `${g.code}: ` : ''}{g.title}</Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  {a && a.criteriaCount > 0 && <Chip size="small" label={hasScores ? `${a.pct}%` : `${a.criteriaCount} kriterier`} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />}
+                  <IconButton size="small" onClick={() => remove(g.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Slett læringsmål"><DeleteIcon fontSize="small" /></IconButton>
+                </Stack>
+              </Stack>
+              {hasScores && <LinearProgress variant="determinate" value={a!.pct} sx={{ height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: a!.pct >= 67 ? '#10b981' : a!.pct >= 34 ? ACCENT : '#ef4444' } }} />}
+            </Box>
+          );
+        })}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 0.5 }}>
+          <TextField label="Kode" size="small" value={code} onChange={(e) => setCode(e.target.value)} placeholder="LM1" sx={{ width: { xs: '100%', sm: 90 } }} />
+          <TextField label="Læringsmål" size="small" value={title} onChange={(e) => setTitle(e.target.value)} fullWidth placeholder="Kan bygge en troverdig fortelling" />
+          <Button variant="contained" onClick={add} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>Legg til</Button>
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }
 

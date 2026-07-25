@@ -40,7 +40,7 @@ function makePool(opts: { ownsAssignment?: boolean; ownsCriterion?: boolean; cri
       if (sql.includes("SELECT 1 FROM role_room_education_rubric_criteria WHERE id")) {
         return { rows: ownsCriterion ? [{ "?column?": 1 }] : [] };
       }
-      if (sql.includes("FROM role_room_education_rubric_criteria") && sql.includes("ORDER BY sort_order")) {
+      if (sql.includes("FROM role_room_education_rubric_criteria c")) {
         return { rows: criteria ?? [] };
       }
       if (sql.includes("INSERT INTO role_room_education_rubric_criteria")) {

@@ -9,6 +9,8 @@ export interface RubricCriterion {
   id: string;
   title: string;
   learningGoal: string | null;
+  learningGoalId: string | null;
+  learningGoalTitle: string | null;
   sortOrder: number;
 }
 
@@ -41,7 +43,7 @@ export const educationRubricService = {
     const data = await req<{ criteria: RubricCriterion[] }>(`${BASE}/assignments/${encodeURIComponent(assignmentId)}/rubric`);
     return data.criteria ?? [];
   },
-  async addCriterion(assignmentId: string, input: { title: string; learningGoal?: string }): Promise<RubricCriterion> {
+  async addCriterion(assignmentId: string, input: { title: string; learningGoal?: string; learningGoalId?: string }): Promise<RubricCriterion> {
     const data = await req<{ criterion: RubricCriterion }>(`${BASE}/assignments/${encodeURIComponent(assignmentId)}/rubric/criteria`, { method: 'POST', body: JSON.stringify(input) });
     return data.criterion;
   },
