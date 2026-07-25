@@ -3502,6 +3502,34 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "recommend_unused_insertions",
+      "name": "Anbefal innsetting av ubrukte klipp",
+      "category": "media",
+      "scriptPath": "scripts/media/recommend_unused_insertions.py",
+      "description": "«Fyll hullene»: rangerer ubrukte klipp etter hvor godt de passer i timelinen — opptakstid (Date Created + Start TC) gir presist anker, hull-analyse (lange strekk uten kutt på V1, b-roll-dekning på V2+) gir score. vision=true → Claude ser thumbnails og gir norsk begrunnelse + confidence per kandidat.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "insert_unused_clips",
+      "name": "Sett inn ubrukte klipp på anbefalt posisjon",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/insert_unused_clips.py",
+      "description": "Setter valgte ubrukte klipp inn i timelinen på ankerposisjonen fra anbefalingen — på et EGET nytt b-roll-spor (aldri oppå eksisterende klipp), med valgfri segment-trim (startSec/endSec fra vision) og Cyan-markør per innsetting. Kollisjoner på samme anker forskyves sekvensielt.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
     }
   ]
 }

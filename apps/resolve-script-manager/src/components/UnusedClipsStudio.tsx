@@ -7,7 +7,7 @@
 // kan uttrykkes via skipSubBins.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { executeScript } from "../api";
+import { convertFileSrc, executeScript } from "../api";
 
 const DEFAULT_SKIP = ["Timelines", "Musikk", "Audio", "LD", "Røde_Mikrofon_Opptaker", "THMBNL"];
 const TARGET = "UBRUKT";
@@ -59,6 +59,49 @@ interface PlacementResult {
   bins: PlacementBin[];
 }
 
+interface RecVision {
+  beskrivelse?: string;
+  passer?: boolean;
+  begrunnelse?: string;
+  confidence?: number;
+  bestStartSec?: number;
+  bestEndSec?: number;
+  segmentGrunn?: string;
+  error?: string;
+}
+interface Recommendation {
+  clip: string;
+  camera: string;
+  bin: string;
+  durationSec: number;
+  anchorFrame: number;
+  estTc: string;
+  prevUsed: { name: string; tc: string } | null;
+  nextUsed: { name: string; tc: string } | null;
+  gapSeconds: number;
+  brollCovered: boolean;
+  orderedBy: string;
+  score: number;
+  thumb?: string;
+  framesAnalyzed?: number;
+  vision?: RecVision;
+}
+interface RecommendResult {
+  timeline: string;
+  analyzedUnused: number;
+  candidatesTotal: number;
+  visionRan: number;
+  recommendations: Recommendation[];
+}
+interface InsertResult {
+  track: number;
+  trackCreated: boolean;
+  inserted: number;
+  failed: string[];
+  missing: string[];
+  markersAdded: number;
+}
+
 interface BinChoice { name: string; checked: boolean }
 
 interface MediaPoolBinNode { name: string; depth: number; subBins: MediaPoolBinNode[] }
@@ -94,6 +137,19 @@ export function UnusedClipsStudio({ onClose }: { onClose: () => void }) {
   const [placement, setPlacement] = useState<PlacementResult | null>(null);
   const [placementBusy, setPlacementBusy] = useState(false);
   const [placementExpanded, setPlacementExpanded] = useState<Record<string, boolean>>({});
+
+  // Anbefalinger: kandidat-rangering + valgfri Claude frame-for-frame-analyse
+  const [recs, setRecs] = useState<Recommendation[] | null>(null);
+  const [recMeta, setRecMeta] = useState<{ analyzed: number; total: number; visionRan: number } | null>(null);
+  const [recBusy, setRecBusy] = useState(false);
+  const [recWithVision, setRecWithVision] = useState(false);
+  const [recTopN, setRecTopN] = useState("25");
+  const [recSelected, setRecSelected] = useState<Record<string, boolean>>({});
+  const [insertBusy, setInsertBusy] = useState(false);
+  const [insertResult, setInsertResult] = useState<InsertResult | null>(null);
+  const [recMarkerBusy, setRecMarkerBusy] = useState(false);
+  const [recMarkerResult, setRecMarkerResult] =
+    useState<{ anchors: number; markersAdded: number } | null>(null);
 
   // Auto-populer dag-bins fra Media Pool (toppnivå under rot, forhåndskryss day/dag)
   useEffect(() => {
@@ -274,6 +330,115 @@ export function UnusedClipsStudio({ onClose }: { onClose: () => void }) {
       setPlacementBusy(false);
     }
   }, [checkedBins]);
+
+  // Anbefalinger: hent kandidater (vision=false rask, vision=true frame-for-frame)
+  const fetchRecs = useCallback(async (vision: boolean) => {
+    if (vision && !window.confirm(
+      `Claude ser gjennom topp ${recTopN} kandidater frame-for-frame ` +
+      `(~${recTopN} klipp × ~10 frames sendes til Claude). Dette tar ~1 min for 25 klipp — fortsett?`,
+    )) return;
+    setRecBusy(true);
+    setRecWithVision(vision);
+    setError(null);
+    setInsertResult(null);
+    try {
+      const summary = await executeScript(
+        "recommend_unused_insertions",
+        {
+          bins: checkedBins.join(","),
+          target: TARGET,
+          topN: recTopN,
+          ...(vision ? { vision: "true" } : {}),
+        },
+        false, // ekte kjøring er read-only; kun den gir thumbnails + vision
+      );
+      const r = resultFrom<RecommendResult>(summary);
+      if (!r) throw new Error("Anbefalingsmotoren ga ikke noe resultat.");
+      setRecs(r.recommendations);
+      setRecMeta({ analyzed: r.analyzedUnused, total: r.candidatesTotal, visionRan: r.visionRan });
+      setRecSelected(Object.fromEntries(
+        r.recommendations.map((rec) => [rec.clip, rec.vision?.passer !== false]),
+      ));
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setRecBusy(false);
+    }
+  }, [checkedBins, recTopN]);
+
+  const insertClips = useCallback(async (list: Recommendation[]) => {
+    if (list.length === 0) return;
+    if (!window.confirm(
+      `Sette inn ${list.length} klipp i timelinen?\n\n` +
+      `• Nytt videospor opprettes øverst — ingen eksisterende klipp røres\n` +
+      `• Cyan-markør settes per innsetting\n` +
+      `• Angres ved å slette sporet i Resolve`,
+    )) return;
+    setInsertBusy(true);
+    setError(null);
+    try {
+      const items = list.map((r) => ({
+        clip: r.clip,
+        frame: r.anchorFrame,
+        ...(r.vision?.bestStartSec != null && r.vision?.bestEndSec != null
+          ? { startSec: r.vision.bestStartSec, endSec: r.vision.bestEndSec }
+          : {}),
+      }));
+      const summary = await executeScript(
+        "insert_unused_clips",
+        { items: JSON.stringify(items), markers: "true" },
+        false,
+      );
+      const r = resultFrom<InsertResult>(summary);
+      if (!r) throw new Error("Innsettingen ga ikke noe resultat.");
+      setInsertResult(r);
+      setToast(`📥 ${r.inserted} klipp satt inn på spor V${r.track}`);
+      setTimeout(() => setToast(null), 4000);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setInsertBusy(false);
+    }
+  }, []);
+
+  // Grønne ANBEFALT-markører på ankerpunktene — gjenbruker resultatene i state,
+  // ingen ny Claude-analyse. Kun kort Claude ikke har avvist.
+  const setRecommendationMarkers = useCallback(async () => {
+    const fitting = (recs ?? []).filter((r) => r.vision?.passer !== false);
+    if (fitting.length === 0) return;
+    setRecMarkerBusy(true);
+    setError(null);
+    try {
+      const items = fitting.map((r) => ({
+        clip: r.clip,
+        frame: r.anchorFrame,
+        note: r.vision && r.vision.confidence != null
+          ? `${r.vision.confidence}%: ${r.vision.begrunnelse ?? ""}`
+          : `score ${r.score}, ${r.gapSeconds}s strekk uten kutt`,
+      }));
+      const summary = await executeScript(
+        "insert_unused_clips",
+        { items: JSON.stringify(items), markersOnly: "true" },
+        false,
+      );
+      const r = resultFrom<{ anchors: number; markersAdded: number }>(summary);
+      if (!r) throw new Error("Markør-kjøringen ga ikke noe resultat.");
+      setRecMarkerResult({ anchors: r.anchors, markersAdded: r.markersAdded });
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setRecMarkerBusy(false);
+    }
+  }, [recs]);
+
+  const selectedRecs = useMemo(
+    () => (recs ?? []).filter((r) => recSelected[r.clip]),
+    [recs, recSelected],
+  );
+  const allVisionFailed = useMemo(
+    () => recWithVision && (recs ?? []).length > 0 && (recs ?? []).every((r) => r.vision?.error),
+    [recs, recWithVision],
+  );
 
   const busy = phase === "analyzing" || phase === "moving";
 
@@ -464,6 +629,188 @@ export function UnusedClipsStudio({ onClose }: { onClose: () => void }) {
             {placement && (
               <div style={{ fontSize: 10, opacity: 0.5, marginTop: 8 }}>
                 Basert på opptaks-rekkefølge per kamera (filnavn-sekvens).
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Anbefalinger (kandidat-score + valgfri Claude frame-for-frame) ── */}
+        {(phase === "done" || phase === "results" || resyncCandidates > 0) && (
+          <div className="card" style={{ padding: 12, marginTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <strong style={{ flex: 1 }}>🧠 Anbefalinger</strong>
+              <select value={recTopN} disabled={recBusy || busy}
+                      onChange={(e) => setRecTopN(e.target.value)}
+                      style={{ fontSize: 11 }}>
+                <option value="10">topp 10</option>
+                <option value="25">topp 25</option>
+                <option value="50">topp 50</option>
+              </select>
+              <button className="small" onClick={() => fetchRecs(false)} disabled={recBusy || busy}>
+                {recBusy && !recWithVision ? "Beregner …" : "Finn kandidater"}
+              </button>
+              <button className="small" onClick={() => fetchRecs(true)} disabled={recBusy || busy}>
+                {recBusy && recWithVision ? "Claude analyserer …" : "🧠 Analyser med Claude (frame-for-frame)"}
+              </button>
+            </div>
+            {!recs && !recBusy && (
+              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>
+                Claude ser gjennom ubrukte klipp frame-for-frame og foreslår hvor de passer —
+                basert på opptakstid, hull uten kutt i timelinen og innholdet i klippet.
+              </div>
+            )}
+            {recBusy && (
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 8 }}>
+                {recWithVision
+                  ? `Claude ser gjennom klippene frame-for-frame … dette tar ~1 min for ${recTopN} klipp`
+                  : "Analyserer opptakstid og hull i timelinen …"}
+              </div>
+            )}
+
+            {recs && recMeta && (
+              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 8 }}>
+                {recMeta.analyzed} ubrukte analysert · {recMeta.total} kandidater ·
+                viser topp {recs.length}
+                {recMeta.visionRan > 0 && <> · 🧠 {recMeta.visionRan} Claude-analysert</>}
+              </div>
+            )}
+            {allVisionFailed && (
+              <div className="dialog-warning" style={{ marginTop: 6 }}>
+                Claude-analyse feilet på alle kort — krever API-nøkkel (ANTHROPIC_API_KEY).
+              </div>
+            )}
+
+            {recs && recs.length === 0 && (
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+                Ingen kandidater — ingen hull uten kutt funnet nær de ubrukte klippene.
+              </div>
+            )}
+
+            {recs && recs.length > 0 && (
+              <>
+                <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className="small ghost" disabled={recBusy || insertBusy || recMarkerBusy}
+                          onClick={() => setRecSelected(Object.fromEntries(recs.map((r) => [r.clip, true])))}>
+                    Velg alle
+                  </button>
+                  <button className="small ghost" disabled={recBusy || insertBusy || recMarkerBusy}
+                          onClick={() => setRecSelected({})}>
+                    Fjern alle
+                  </button>
+                  <button className="small ghost" disabled={recBusy || insertBusy || recMarkerBusy
+                            || recs.every((r) => r.vision?.passer === false)}
+                          onClick={setRecommendationMarkers}>
+                    {recMarkerBusy ? "Setter markører …" : "🟢 Sett markører der de passer"}
+                  </button>
+                  {recMarkerResult && (
+                    <span style={{ fontSize: 11, color: "var(--success, #16a34a)" }}>
+                      ✓ {recMarkerResult.markersAdded} markører satt på {recMarkerResult.anchors} ankerpunkter
+                    </span>
+                  )}
+                </div>
+
+                {recs.map((r) => {
+                  const v = r.vision;
+                  const rejected = v?.passer === false;
+                  const conf = v?.confidence;
+                  return (
+                    <div key={r.clip} className="card"
+                         style={{ padding: 10, marginTop: 8, display: "flex", gap: 10,
+                                  opacity: rejected ? 0.55 : 1 }}>
+                      <input type="checkbox" checked={recSelected[r.clip] === true}
+                             disabled={recBusy || insertBusy}
+                             onChange={() => setRecSelected((p) => ({ ...p, [r.clip]: !p[r.clip] }))}
+                             style={{ alignSelf: "flex-start", marginTop: 4 }} />
+                      {r.thumb ? (
+                        <img src={convertFileSrc(r.thumb)} alt={r.clip}
+                             style={{ width: 96, height: 54, objectFit: "cover", borderRadius: 4,
+                                      flex: "0 0 96px", alignSelf: "flex-start" }} />
+                      ) : (
+                        <div style={{ width: 96, height: 54, borderRadius: 4, flex: "0 0 96px",
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                      background: "var(--bg-inset, #1a1726)", fontSize: 20 }}>🎞</div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden",
+                                         textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+                            {r.clip}
+                          </span>
+                          <span className="chip" style={{ fontSize: 9 }}>🎥 {r.camera}</span>
+                          <strong style={{ color: "var(--accent)", fontSize: 11 }}>≈ {r.estTc}</strong>
+                          {conf != null && !v?.error && (
+                            <span className="chip" style={{
+                              fontSize: 9,
+                              background: conf >= 75 ? "rgba(22,163,74,.25)"
+                                : conf >= 50 ? "rgba(217,119,6,.25)" : undefined,
+                            }}>
+                              {conf}%
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 2 }}>
+                          {r.gapSeconds}s uten kutt · {r.durationSec}s klipp · score {r.score}
+                          {r.brollCovered && " · b-roll finnes der"}
+                        </div>
+                        {v?.beskrivelse && (
+                          <div style={{ fontSize: 11, fontStyle: "italic", opacity: 0.85, marginTop: 4 }}>
+                            {v.beskrivelse}
+                          </div>
+                        )}
+                        {v?.begrunnelse && (
+                          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
+                            {rejected && "⚠ "}{v.begrunnelse}
+                          </div>
+                        )}
+                        {v?.bestStartSec != null && v?.bestEndSec != null && (
+                          <span className="chip" title={v.segmentGrunn}
+                                style={{ fontSize: 9, marginTop: 4, display: "inline-block" }}>
+                            ✂ Sterkeste segment: {v.bestStartSec}s–{v.bestEndSec}s
+                          </span>
+                        )}
+                        {v?.error && (
+                          <div style={{ fontSize: 10, color: "var(--danger, #dc2626)", marginTop: 3 }}>
+                            Claude-analyse feilet: {v.error}
+                          </div>
+                        )}
+                      </div>
+                      <button className="small ghost" disabled={recBusy || insertBusy}
+                              onClick={() => insertClips([r])}
+                              style={{ alignSelf: "flex-start" }}>
+                        Sett inn
+                      </button>
+                    </div>
+                  );
+                })}
+
+                <button className="primary" style={{ marginTop: 10, width: "100%" }}
+                        disabled={recBusy || insertBusy || selectedRecs.length === 0}
+                        onClick={() => insertClips(selectedRecs)}>
+                  {insertBusy ? "Setter inn …" : `📥 Sett inn ${selectedRecs.length} valgte på nytt b-roll-spor`}
+                </button>
+              </>
+            )}
+
+            {insertResult && (
+              <div className="card" style={{ padding: 10, marginTop: 8,
+                                             border: "1px solid rgba(22,163,74,.4)" }}>
+                <strong style={{ fontSize: 12 }}>
+                  ✓ {insertResult.inserted} klipp satt inn på spor V{insertResult.track}
+                  {" "}(nytt spor: {insertResult.trackCreated ? "ja" : "nei"}), {insertResult.markersAdded} markører
+                </strong>
+                {insertResult.failed.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--warning, #d97706)", marginTop: 4 }}>
+                    Feilet: {insertResult.failed.join(", ")}
+                  </div>
+                )}
+                {insertResult.missing.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--warning, #d97706)", marginTop: 4 }}>
+                    Ikke funnet i Media Pool: {insertResult.missing.join(", ")}
+                  </div>
+                )}
+                <div style={{ fontSize: 10, opacity: 0.55, marginTop: 4 }}>
+                  Angre: slett spor V{insertResult.track} i Resolve — ingen eksisterende klipp er rørt.
+                </div>
               </div>
             )}
           </div>
