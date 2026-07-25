@@ -20,6 +20,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { CohortsTab } from './CohortsTab';
+import { OverviewTab } from './OverviewTab';
 import { AssignmentsTab } from './AssignmentsTab';
 import { ProductionsTab } from './ProductionsTab';
 import { FagstoffTab } from './FagstoffTab';
@@ -141,33 +142,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
       </Tabs>
 
       {active.id === 'overview' ? (
-        <Box sx={{ display: 'grid', gap: 2 }}>
-          <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-            {[
-              { label: 'Aktive kull', hint: 'Fylles når kull opprettes' },
-              { label: 'Studentproduksjoner', hint: 'Pågående prosjekter' },
-              { label: 'Leveranser denne uken', hint: 'Frister som nærmer seg' },
-              { label: 'Til vurdering', hint: 'Venter på faglærer' },
-            ].map((k) => (
-              <Card key={k.label} sx={{ flex: '1 1 200px', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 }}>
-                <CardContent>
-                  <Typography sx={{ fontSize: 28, fontWeight: 800, color: ACCENT }}>—</Typography>
-                  <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{k.label}</Typography>
-                  <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>{k.hint}</Typography>
-                </CardContent>
-              </Card>
-            ))}
-          </Stack>
-          <EmptyState tab={active} />
-          <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-            <Button variant="contained" disabled sx={{ bgcolor: ACCENT, '&.Mui-disabled': { bgcolor: 'rgba(139,92,246,0.3)', color: 'rgba(255,255,255,0.5)' } }}>
-              Opprett kull (kommer)
-            </Button>
-            <Button variant="outlined" disabled sx={{ borderColor: 'rgba(139,92,246,0.5)', color: 'rgba(255,255,255,0.5)' }}>
-              Ny studentproduksjon (kommer)
-            </Button>
-          </Stack>
-        </Box>
+        <OverviewTab onNavigate={setActiveTab} />
       ) : active.id === 'cohorts' ? (
         <CohortsTab />
       ) : active.id === 'productions' ? (
