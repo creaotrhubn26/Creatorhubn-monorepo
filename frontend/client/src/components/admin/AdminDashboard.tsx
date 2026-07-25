@@ -138,6 +138,7 @@ import InboundAlertsPanel from './InboundAlertsPanel';
 import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
+import LtiPlatformsPanel from './LtiPlatformsPanel';
 import CreatorhubVisualEditorRefactored from './CreatorhubVisualEditorRefactored';
 import CustomerProjectsPanel from './CustomerProjectsPanel';
 import SystemHealthPanel from './SystemHealthPanel';
@@ -3638,6 +3639,7 @@ export default function AdminDashboard({
         return (
           <Box sx={{ display: 'grid', gap: 3 }}>
             <IntegrationsManagementPanel {...sharedPanelProps} />
+            <LtiPlatformsPanel />
             <OAuthScopeChecker />
           </Box>
         );
