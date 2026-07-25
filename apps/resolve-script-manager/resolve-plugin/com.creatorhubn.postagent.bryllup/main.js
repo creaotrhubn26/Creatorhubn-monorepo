@@ -123,6 +123,112 @@ ipcMain.handle('jump-to-tc', async (_ev, tc) => {
     return Boolean(await tl.SetCurrentTimecode(tc));
 });
 
+// ── Kontekst-motoren: billig snapshot (polles ~2s fra panelet) ──
+// Alt try/catch-et enkeltvis: felter som ikke gjelder aktiv side utelates
+// heller enn å velte hele snapshotet.
+async function currentTimeline() {
+    const resolve = await getResolve();
+    if (!resolve) return { resolve: null };
+    const pm = await resolve.GetProjectManager();
+    const project = await pm.GetCurrentProject();
+    const tl = project ? await project.GetCurrentTimeline() : null;
+    return { resolve, project, tl };
+}
+
+ipcMain.handle('context-snapshot', async () => {
+    const snap = {};
+    try {
+        const { resolve, project, tl } = await currentTimeline();
+        if (!resolve) return { connected: false };
+        snap.connected = true;
+        snap.page = await resolve.GetCurrentPage();
+        if (project) snap.projectName = await project.GetName();
+        if (tl) {
+            snap.timelineName = await tl.GetName();
+            snap.fps = await tl.GetSetting('timelineFrameRate');
+            try { snap.tc = await tl.GetCurrentTimecode(); } catch { /* media-side */ }
+            try {
+                const item = await tl.GetCurrentVideoItem();
+                if (item) snap.currentItem = await item.GetName();
+            } catch { /* ikke tilgjengelig på alle sider */ }
+            try { snap.inOut = await tl.GetMarkInOut(); } catch { /* eldre API */ }
+            snap.videoTracks = await tl.GetTrackCount('video');
+            snap.audioTracks = await tl.GetTrackCount('audio');
+        }
+        try {
+            const mp = await project.GetMediaPool();
+            const sel = await mp.GetSelectedClips();
+            if (sel && sel.length) {
+                snap.selectedClips = [];
+                for (const c of sel.slice(0, 8)) snap.selectedClips.push(await c.GetName());
+                snap.selectedCount = sel.length;
+            }
+        } catch { /* utvalg ikke tilgjengelig */ }
+    } catch (e) {
+        snap.error = String(e).slice(0, 150);
+    }
+    return snap;
+});
+
+// ── Direkte-API-operasjoner (native funksjoner orkestreres, ikke kopieres) ──
+ipcMain.handle('transcribe-selected', async (_ev, useSpeakers) => {
+    const { project } = await currentTimeline();
+    const mp = await project.GetMediaPool();
+    const sel = (await mp.GetSelectedClips()) || [];
+    let ok = 0;
+    for (const c of sel) {
+        try { if (await c.TranscribeAudio(Boolean(useSpeakers))) ok++; } catch { /* per-klipp */ }
+    }
+    return { total: sel.length, ok };
+});
+
+ipcMain.handle('intellisearch-selected', async (_ev, identifyFaces) => {
+    const { project } = await currentTimeline();
+    const mp = await project.GetMediaPool();
+    const sel = (await mp.GetSelectedClips()) || [];
+    let ok = 0;
+    for (const c of sel) {
+        try { if (await c.AnalyzeForIntellisearch(Boolean(identifyFaces), false)) ok++; } catch { /* per-klipp */ }
+    }
+    return { total: sel.length, ok };
+});
+
+ipcMain.handle('voice-isolation-info', async () => {
+    const { tl } = await currentTimeline();
+    if (!tl) return [];
+    const n = Math.min(8, (await tl.GetTrackCount('audio')) || 0);
+    const out = [];
+    for (let t = 1; t <= n; t++) {
+        try {
+            const st = await tl.GetVoiceIsolationState(t);
+            out.push({ track: t, name: await tl.GetTrackName('audio', t), ...st });
+        } catch { out.push({ track: t, unsupported: true }); }
+    }
+    return out;
+});
+
+ipcMain.handle('set-voice-isolation', async (_ev, track, isEnabled, amount) => {
+    const { tl } = await currentTimeline();
+    if (!tl) return false;
+    return Boolean(await tl.SetVoiceIsolationState(track, { isEnabled, amount: amount ?? 50 }));
+});
+
+ipcMain.handle('render-info', async () => {
+    const { project } = await currentTimeline();
+    if (!project) return { presets: [], jobs: [] };
+    let presets = [];
+    let jobs = [];
+    try { presets = ((await project.GetRenderPresetList()) || []).slice(0, 20); } catch { /* — */ }
+    try { jobs = ((await project.GetRenderJobList()) || []).slice(0, 10); } catch { /* — */ }
+    return { presets, jobs };
+});
+
+ipcMain.handle('start-rendering', async () => {
+    const { project } = await currentTimeline();
+    if (!project) return false;
+    return Boolean(await project.StartRendering());
+});
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1180,

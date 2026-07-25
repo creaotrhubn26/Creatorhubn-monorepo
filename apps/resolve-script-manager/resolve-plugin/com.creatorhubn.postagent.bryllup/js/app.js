@@ -6,7 +6,9 @@
 const PA = window.postagent;
 
 const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
-    step: "sources",
+    step: "operator",
+    ctx: null, prevCtx: null, journal: [],
+    voiceTracks: null, render: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -18,6 +20,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
 };
 
 const STEPS = [
+    { id: "operator", n: 0, label: "🎛 Operatør" },
     { id: "sources",  n: 1, label: "Kilder + kameraer" },
     { id: "material", n: 2, label: "Multicam-scan" },
     { id: "audio",    n: 3, label: "Ekstern lyd" },
@@ -46,11 +49,98 @@ async function run(scriptId, params, dryRun, busyMsg) {
     try {
         const v = await PA.runScript(scriptId, params, Boolean(dryRun));
         status("Ferdig: " + scriptId, "ok-text");
+        log(`Kjørte ${scriptId}${dryRun ? " (dry-run)" : ""}`);
         return v;
     } catch (e) {
         status("Feil i " + scriptId + ": " + String(e.message || e).slice(0, 160), "err");
         throw e;
     } finally { S.busy = false; progressDone(); render(); }
+}
+
+// ── Kontekst-motoren: snapshot (2s) → diff → journal ──
+function log(msg) {
+    const t = new Date().toTimeString().slice(0, 8);
+    S.journal.unshift({ t, msg });
+    S.journal = S.journal.slice(0, 40);
+    if (S.step === "operator") render();
+}
+
+const PAGE_NO = { media: "Media", cut: "Cut", edit: "Edit", fusion: "Fusion",
+                  color: "Color", fairlight: "Fairlight", deliver: "Deliver" };
+
+function diffContext(prev, cur) {
+    if (!prev || !cur.connected) return;
+    if (prev.page !== cur.page && cur.page)
+        log(`Byttet til ${PAGE_NO[cur.page] || cur.page}-siden`);
+    if (prev.timelineName !== cur.timelineName && cur.timelineName)
+        log(`Timeline: «${cur.timelineName}»`);
+    if (prev.currentItem !== cur.currentItem && cur.currentItem)
+        log(`Klipp under playhead: ${cur.currentItem}`);
+    if (JSON.stringify(prev.selectedClips) !== JSON.stringify(cur.selectedClips) && cur.selectedCount)
+        log(`${cur.selectedCount} klipp valgt i Media Pool`);
+    if (JSON.stringify(prev.inOut) !== JSON.stringify(cur.inOut) && cur.inOut && Object.keys(cur.inOut).length)
+        log("In/out-range endret");
+}
+
+async function pollContext() {
+    try {
+        const cur = await PA.contextSnapshot();
+        diffContext(S.ctx, cur);
+        S.prevCtx = S.ctx; S.ctx = cur;
+        renderContextStrip();
+    } catch { /* neste poll */ }
+}
+
+function renderContextStrip() {
+    const c = S.ctx;
+    const el = $("context-strip");
+    if (!c || !c.connected) { el.innerHTML = `<span class="ctx">⚠ ikke tilkoblet</span>`; return; }
+    const bits = [];
+    if (c.page) bits.push(`<span class="ctx page">${PAGE_NO[c.page] || c.page}</span>`);
+    if (c.tc) bits.push(`<span class="ctx">⏱ <b>${esc(c.tc)}</b></span>`);
+    if (c.currentItem) bits.push(`<span class="ctx">🎞 <b>${esc(c.currentItem.slice(0, 34))}</b></span>`);
+    if (c.inOut && (c.inOut.video || c.inOut.audio)) {
+        const io = c.inOut.video || c.inOut.audio;
+        bits.push(`<span class="ctx">⇥ in/out: <b>${esc(String(io.in ?? "?"))}–${esc(String(io.out ?? "?"))}</b></span>`);
+    }
+    if (c.selectedCount) bits.push(`<span class="ctx">☑ <b>${c.selectedCount}</b> valgt</span>`);
+    if (c.videoTracks) bits.push(`<span class="ctx">${c.videoTracks}V/${c.audioTracks}A</span>`);
+    el.innerHTML = bits.join("") || `<span class="ctx">åpne et prosjekt</span>`;
+}
+
+// Side-bevisste forslag — beregnes av billige kontekst-felt, handlingene
+// kjører først når brukeren klikker.
+function suggestionsFor(c) {
+    if (!c || !c.connected) return [];
+    const sug = [];
+    switch (c.page) {
+        case "media":
+            if (c.selectedCount) {
+                sug.push({ text: `${c.selectedCount} valgte klipp — transkriber med taler-deteksjon (native)`, act: "op-transcribe" });
+                sug.push({ text: `IntelliSearch-analyse på valgte (native AI-indeksering)`, act: "op-intellisearch" });
+            } else {
+                sug.push({ text: "Velg klipp i Media Pool for transkripsjon / IntelliSearch-analyse", act: null });
+            }
+            break;
+        case "edit": case "cut":
+            sug.push({ text: "Kjør QC på timelinen: svarte mellomrom + stille partier", act: "op-qc" });
+            sug.push({ text: "Ubrukt-materiale: finn klipp som ikke er brukt + AI-anbefalinger", act: "op-unused" });
+            if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): finn ubrukte nabo-klipp fra samme kamera`, act: "op-unused" });
+            break;
+        case "color":
+            sug.push({ text: "Grade-kopiering på tvers av lignende klipp kan bare foreslås — nodegraf leses, men utvalg styres i GUI", act: null });
+            if (c.currentItem) sug.push({ text: `Sjekk log-gamma for materialet → CST-prosjektsettings`, act: "op-log" });
+            break;
+        case "fairlight":
+            sug.push({ text: "Voice Isolation-status per spor (native) — slå på for dialogspor", act: "op-voice" });
+            break;
+        case "deliver":
+            sug.push({ text: "Vis render-kø + presets", act: "op-render" });
+            break;
+        default:
+            sug.push({ text: "Fusion-siden: comp-info per klipp er lesbar (GetFusionCompCount) — dypere Fusion-scripting er fase 2", act: null });
+    }
+    return sug;
 }
 
 async function refreshProject() {
@@ -68,6 +158,30 @@ async function refreshProject() {
 
 // ── steg-renderere ──
 const RENDER = {
+    operator() {
+        const c = S.ctx;
+        const sug = suggestionsFor(c);
+        return `<h2>🎛 Operatør</h2>
+        <div class="sub">Følger med på hvor du er i Resolve og foreslår neste handling. Forslagene under er for <strong>${esc(PAGE_NO[c?.page] || "…")}</strong>-siden.</div>
+        ${sug.map((s) => `<div class="card sugg"><div class="row">
+            <div style="flex:1">${esc(s.text)}</div>
+            ${s.act ? `<button class="small primary" id="${s.act}" ${S.busy ? "disabled" : ""}>Kjør</button>` : `<span class="chip yellow">foreslås</span>`}
+        </div></div>`).join("")}
+        ${S.voiceTracks ? `<div class="card"><strong>Voice Isolation per spor</strong>
+            ${S.voiceTracks.map((t) => t.unsupported
+                ? `<div class="muted">A${t.track}: ikke støttet</div>`
+                : `<div class="row" style="margin-top:4px"><span style="min-width:140px">A${t.track} ${esc(t.name || "")}</span>
+                   <span class="chip ${t.isEnabled ? "green" : ""}">${t.isEnabled ? "PÅ " + (t.amount ?? "?") + "%" : "av"}</span>
+                   <button class="small" data-voice-toggle="${t.track}" data-voice-on="${t.isEnabled ? 0 : 1}">${t.isEnabled ? "Slå av" : "Slå på (50 %)"}</button></div>`).join("")}
+        </div>` : ""}
+        ${S.render ? `<div class="card"><strong>Render</strong>
+            <div class="muted">Kø: ${S.render.jobs.length} jobber · Presets: ${esc((S.render.presets || []).slice(0, 6).map((p) => p.RenderPresetName || p).join(", "))}${(S.render.presets || []).length > 6 ? " …" : ""}</div>
+            ${S.render.jobs.length ? `<div class="row" style="margin-top:6px"><button class="small primary" id="op-start-render" ${S.busy ? "disabled" : ""}>Start rendering (${S.render.jobs.length} i kø)</button></div>` : ""}
+        </div>` : ""}
+        <div class="card"><strong>Journal</strong> <span class="muted">— det panelet ser og gjør</span>
+            ${S.journal.length ? S.journal.slice(0, 12).map((j) => `<div class="journal-line"><span class="t">${j.t}</span>${esc(j.msg)}</div>`).join("") : `<div class="muted">ingenting enda — bytt side eller velg et klipp i Resolve, så ser du at panelet følger med</div>`}
+        </div>`;
+    },
     sources() {
         return `<h2>Steg 1 — Kilder + kameraer</h2>
         <div class="sub">Pek på råmateriale (minnekort/mappe). Kameraer identifiseres på metadata (make/model/serienr) og foreslås som vinkler.</div>
@@ -265,6 +379,44 @@ const ACTIONS = {
             { timelineName: info.timelineName, unusedSongs: S.songs, removeOldQc: true }, false, "Setter QC-markører …");
         status(`✓ ${v.markersAdded || 0} QC-markører satt (røde = gap, gule = stille).`, "ok-text");
     },
+    // ── operatør-handlinger (side-bevisste) ──
+    "op-transcribe": async () => {
+        S.busy = true; render(); status("Transkriberer valgte klipp (native) — kan ta minutter …");
+        try {
+            const r = await PA.transcribeSelected(true);
+            log(`Transkriberte ${r.ok}/${r.total} valgte klipp (taler-deteksjon)`);
+            status(`✓ ${r.ok}/${r.total} transkribert`, "ok-text");
+        } catch (e) { status("Transkripsjon feilet: " + e.message, "err"); }
+        S.busy = false; render();
+    },
+    "op-intellisearch": async () => {
+        S.busy = true; render(); status("IntelliSearch-analyse på valgte …");
+        try {
+            const r = await PA.intellisearchSelected(true);
+            log(`IntelliSearch-analyserte ${r.ok}/${r.total} valgte klipp`);
+            status(`✓ ${r.ok}/${r.total} analysert`, "ok-text");
+        } catch (e) { status("Analyse feilet: " + e.message + " (krever at AI-pakkene er installert i Resolve)", "err"); }
+        S.busy = false; render();
+    },
+    "op-qc": async () => { S.step = "color"; render(); await ACTIONS["run-qc"](); },
+    "op-unused": () => { S.step = "unused"; render(); },
+    "op-log": () => { S.step = "color"; render(); },
+    "op-voice": async () => {
+        S.voiceTracks = await PA.voiceIsolationInfo();
+        log("Leste Voice Isolation-status for lydsporene");
+        render();
+    },
+    "op-render": async () => {
+        S.render = await PA.renderInfo();
+        log(`Render-kø: ${S.render.jobs.length} jobber`);
+        render();
+    },
+    "op-start-render": async () => {
+        if (!confirm(`Start rendering av ${S.render?.jobs.length ?? 0} jobber i køen?`)) return;
+        const ok = await PA.startRendering();
+        log(ok ? "Startet rendering av køen" : "Kunne ikke starte rendering");
+        status(ok ? "✓ Rendering startet" : "Rendering feilet", ok ? "ok-text" : "err");
+    },
     "analyse-unused": async () => {
         S.bins = $("bins-input").value;
         const v = await run("categorize_unused_clips", { bins: S.bins }, true, "Analyserer brukt/ubrukt …");
@@ -310,9 +462,19 @@ document.addEventListener("click", async (ev) => {
     }
     if (el.dataset.insert != null) { await insertRec(Number(el.dataset.insert)); return; }
     if (el.dataset.delSong != null) { S.songs.splice(Number(el.dataset.delSong), 1); render(); return; }
+    if (el.dataset.voiceToggle != null) {
+        const track = Number(el.dataset.voiceToggle);
+        const turnOn = el.dataset.voiceOn === "1";
+        const ok = await PA.setVoiceIsolation(track, turnOn, 50);
+        log(ok ? `Voice Isolation ${turnOn ? "PÅ (50 %)" : "AV"} på spor A${track}` : `Voice Isolation-endring feilet på A${track}`);
+        S.voiceTracks = await PA.voiceIsolationInfo();
+        render(); return;
+    }
     if (el.id && ACTIONS[el.id]) { try { await ACTIONS[el.id](); } catch { /* status satt av run() */ } }
 });
 
 render();
 refreshProject();
+pollContext();
+setInterval(pollContext, 2000);
 setInterval(refreshProject, 15000);

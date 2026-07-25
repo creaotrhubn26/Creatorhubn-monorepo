@@ -5,6 +5,13 @@ contextBridge.exposeInMainWorld('postagent', {
     pickFolder: (title) => ipcRenderer.invoke('pick-folder', title),
     projectInfo: () => ipcRenderer.invoke('project-info'),
     jumpToTc: (tc) => ipcRenderer.invoke('jump-to-tc', tc),
+    contextSnapshot: () => ipcRenderer.invoke('context-snapshot'),
+    transcribeSelected: (useSpeakers) => ipcRenderer.invoke('transcribe-selected', useSpeakers),
+    intellisearchSelected: (identifyFaces) => ipcRenderer.invoke('intellisearch-selected', identifyFaces),
+    voiceIsolationInfo: () => ipcRenderer.invoke('voice-isolation-info'),
+    setVoiceIsolation: (track, isEnabled, amount) => ipcRenderer.invoke('set-voice-isolation', track, isEnabled, amount),
+    renderInfo: () => ipcRenderer.invoke('render-info'),
+    startRendering: () => ipcRenderer.invoke('start-rendering'),
     onProgress: (cb) => {
         const handler = (_ev, data) => cb(data);
         ipcRenderer.on('script-progress', handler);
