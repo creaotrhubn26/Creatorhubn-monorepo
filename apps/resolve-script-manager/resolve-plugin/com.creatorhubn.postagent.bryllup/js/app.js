@@ -18,6 +18,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     cameras2: null,
     delivPlan: null, delivVerify: null, delivReport: null,
     diskScan: null,
+    selects: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -107,6 +108,7 @@ function mutationLevel(scriptId, params, dryRun) {
         case "delivery_manager": return ["queue", "report"].includes(mode) ? 1 : 0;
         case "disk_cleanup": return mode === "clean" ? 2 : 0;
         case "build_project_index": return 0; // skriver kun egen lokal DB
+        case "selects_builder": return ["edl", "build"].includes(mode) ? 1 : 0;
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -391,7 +393,30 @@ const RENDER = {
             <button id="dlg-assembly" class="primary" ${!selCount || S.busy ? "disabled" : ""}>Bygg assembly av ${selCount} valgte (ny timeline)</button>
         </div></div>
         ${(d.list || []).slice(0, 60).map((s, i) => segRow(s, i, true)).join("")}
-        ${(d.list || []).length > 60 ? `<div class="muted">… ${(d.list || []).length - 60} til (vis alle kommer i neste runde)</div>` : ""}` : ""}`;
+        ${(d.list || []).length > 60 ? `<div class="muted">… ${(d.list || []).length - 60} til (vis alle kommer i neste runde)</div>` : ""}` : ""}
+        <div class="card"><div class="row"><strong>⭐ Selects & rough cut</strong>
+            <input type="text" id="sel-brief" placeholder="brief (f.eks. «sterkeste øyeblikk til 60s teaser»)" style="min-width:240px">
+            <input type="text" id="sel-target" value="90" style="min-width:60px;max-width:70px"> s
+            <button id="sel-run" class="primary" ${S.busy ? "disabled" : ""}>Foreslå selects (Claude)</button>
+        </div>
+        ${S.selects ? `<div style="margin-top:8px">
+            <div class="muted">${S.selects.picks.length} picks · ${S.selects.totalDurationSec}s av ${S.selects.targetDurationSec}s mål${S.selects.notes ? " · " + esc(String(S.selects.notes).slice(0, 140)) : ""}</div>
+            ${S.selects.picks.map((p2) => `<div class="card sugg"><div class="row">
+                <button class="small" data-jump="${esc(p2.timelineIn)}">→ ${esc(p2.timelineIn)}</button>
+                <span class="chip">${p2.durationSec}s</span>
+                <span class="${(p2.confidence || 0) >= 75 ? "conf-high" : "conf-mid"}">${p2.confidence ?? "?"} %</span></div>
+                <div class="desc">«${esc(p2.transcriptExcerpt)}»</div>
+                <div class="reason">${esc(p2.selectionReason)}</div>
+                ${p2.tighterSuggestion ? `<div class="muted">✂ Strammere: ${esc(String(p2.tighterSuggestion))}</div>` : ""}
+                ${(p2.events || []).map((e) => `<div class="muted">kilde: ${esc(e.sourceClip)} · src ${esc(e.sourceIn)}–${esc(e.sourceOut)} → tl ${esc(e.timelineIn)}–${esc(e.timelineOut)}</div>`).join("")}
+                ${p2.alternativeCandidate ? `<div class="muted">alternativ: ${esc(JSON.stringify(p2.alternativeCandidate))}</div>` : ""}
+                ${(p2.brollCandidates || []).length ? `<div class="muted">b-roll: ${p2.brollCandidates.map(esc).join(", ")}</div>` : ""}
+            </div>`).join("")}
+            <div class="row" style="margin-top:6px">
+                <button id="sel-edl" ${S.busy ? "disabled" : ""}>Eksporter EDL + CSV</button>
+                <button id="sel-build" class="primary" ${S.busy ? "disabled" : ""}>Bygg rough cut-timeline</button>
+            </div>
+        </div>` : ""}</div>`;
     },
     chat() {
         return `<h2>💬 Spør operatøren</h2>
@@ -631,6 +656,26 @@ const ACTIONS = {
         const v = await run("mark_qc_issues_on_timeline",
             { timelineName: info.timelineName, unusedSongs: S.songs, removeOldQc: true }, false, "Setter QC-markører …");
         status(`✓ ${v.markersAdded || 0} QC-markører satt (røde = gap, gule = stille).`, "ok-text");
+    },
+    "sel-run": async () => {
+        const brief = $("sel-brief").value.trim();
+        const target = $("sel-target").value.trim() || "90";
+        S.selects = await run("selects_builder", {
+            mode: "select", ...(brief ? { brief } : {}), targetDurationSec: target,
+        }, false, "Claude leser transkriptet og velger selects …");
+        render();
+    },
+    "sel-edl": async () => {
+        const v = await run("selects_builder", { mode: "edl", picksJson: JSON.stringify(S.selects.picks) }, false, "Skriver EDL …");
+        status(`✓ ${v.events} events → ${v.edlPath}`, "ok-text");
+    },
+    "sel-build": async () => {
+        const name = prompt("Navn på rough cut-timelinen:", "Rough cut (Post Agent)");
+        if (!name) return;
+        if (!confirm(`Bygger NY timeline «${name}» av ${S.selects.picks.length} picks — master røres ikke. Fortsette?`)) return;
+        const v = await run("selects_builder", { mode: "build", picksJson: JSON.stringify(S.selects.picks), timelineName: name }, false, "Bygger rough cut …");
+        status(`✓ ${v.built} utsnitt på «${name}» — ${v.note || ""}`, "ok-text");
+        log(`Rough cut «${name}»: ${v.built} utsnitt`);
     },
     // ── dialog-handlinger ──
     "dlg-subs": async () => {

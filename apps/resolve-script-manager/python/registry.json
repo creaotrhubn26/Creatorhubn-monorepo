@@ -54,6 +54,20 @@
   ],
   "scripts": [
     {
+      "id": "selects_builder",
+      "name": "Selects & rough cut (begrunnet EDL fra transkript)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/selects_builder.py",
+      "description": "select: Claude velger sterke uttalelser fra transkriptet (brief + mål-lengde), hopper over repetisjoner, foreslår strammere formulering — hvert pick m/ FULL kontrakt: sourceClip/sourceIn/sourceOut (kilde-TC bevart), timelineIn/Out, transcriptExcerpt, selectionReason, confidence, alternativeCandidate (annen vinkel samme øyeblikk) + b-roll-kandidater fra UBRUKT. edl: CMX3600 + CSV. build: NY timeline av utvalget (master røres aldri).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "build_project_index",
       "name": "Prosjektindeks (stabile ID-er, fingerprints, analyse-cache)",
       "category": "project",
