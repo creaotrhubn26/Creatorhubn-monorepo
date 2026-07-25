@@ -57,12 +57,13 @@ export const educationLtiService = {
 
   /**
    * Pusher en karakter til LMS-karakterboka via AGS. `grade` = fri tekst
-   * (mappes til tallscore på backend); `scoreMaximum` kan overstyre maks
-   * (f.eks. rubrikk-maks). Kaster med backendens melding ved feil.
+   * (mappes til tallscore på backend); `scoreMaximum` kan overstyre maks.
+   * `ltiUserSub`/`studentEmail` velger hvilken students rad (NRPS-roster) —
+   * uten dem går karakteren til launch-brukeren. Kaster med backendens melding.
    */
   async pushGrade(
     launchId: string,
-    input: { grade: string; comment?: string; label?: string; scoreMaximum?: number },
+    input: { grade: string; comment?: string; label?: string; scoreMaximum?: number; ltiUserSub?: string; studentEmail?: string },
   ): Promise<void> {
     const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/grade`, {
       method: 'POST',
@@ -74,6 +75,27 @@ export const educationLtiService = {
       throw new Error(body.message || body.error || `HTTP ${res.status}`);
     }
   },
+
+  /** Henter LMS-klasse-rosteret (NRPS) for en launch — hver students LMS-sub + navn/e-post/rolle. */
+  async getRoster(launchId: string): Promise<LtiRosterMember[]> {
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/roster`, {
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    const data = (await res.json()) as { members?: LtiRosterMember[] };
+    return data.members ?? [];
+  },
 };
+
+export interface LtiRosterMember {
+  sub: string;
+  name: string | null;
+  email: string | null;
+  roles: string[];
+  status: string;
+}
 
 export default educationLtiService;

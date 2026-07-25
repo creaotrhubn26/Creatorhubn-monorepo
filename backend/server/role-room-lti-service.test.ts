@@ -5,7 +5,40 @@ import { describe, expect, it } from "vitest";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken,
   extractAgs, buildLineItem, buildScore, AGS_SCOPES,
+  extractNrps, parseRosterMembers,
 } from "./role-room-lti-service.js";
+
+const NRPS_CLAIM = "https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice";
+
+describe("extractNrps (NRPS-claim → memberships-endepunkt)", () => {
+  it("henter context_memberships_url + service_versions", () => {
+    const out = extractNrps({ [NRPS_CLAIM]: { context_memberships_url: "https://lms/ctx/1/members", service_versions: ["2.0"] } });
+    expect(out).toEqual({ url: "https://lms/ctx/1/members", serviceVersions: ["2.0"] });
+  });
+  it("mangler NRPS-claim → null", () => {
+    expect(extractNrps({})).toBeNull();
+    expect(extractNrps({ [NRPS_CLAIM]: {} })).toBeNull();
+  });
+});
+
+describe("parseRosterMembers (NRPS membership container → medlemmer)", () => {
+  it("normaliserer user_id→sub, navn, e-post (lowercased), roller", () => {
+    const members = parseRosterMembers({
+      members: [
+        { user_id: "u1", name: "Kari Nordmann", email: "Kari@Skole.No", roles: ["...#Learner"], status: "Active" },
+        { user_id: "u2", given_name: "Ola", family_name: "Hansen", email: "ola@skole.no", roles: ["...#Instructor"] },
+      ],
+    });
+    expect(members).toHaveLength(2);
+    expect(members[0]).toMatchObject({ sub: "u1", name: "Kari Nordmann", email: "kari@skole.no", status: "Active" });
+    expect(members[1]).toMatchObject({ sub: "u2", name: "Ola Hansen", email: "ola@skole.no" });
+  });
+  it("dropper medlemmer uten user_id; tåler tom/ugyldig container", () => {
+    expect(parseRosterMembers({ members: [{ name: "Ingen ID" }] })).toEqual([]);
+    expect(parseRosterMembers({})).toEqual([]);
+    expect(parseRosterMembers(null)).toEqual([]);
+  });
+});
 
 describe("LTI tool keypair + JWKS", () => {
   it("genererer nøkkelpar + public JWK m/ kid/use/alg", () => {

@@ -17,7 +17,8 @@ import { loadPersistedAuthSession, persistAuthSession } from "./auth-session-sto
 import { newEntityId } from "./_shared-ids.js";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken, extractAgs,
-  buildLineItem, buildScore, AGS_SCOPES, type PlatformJwk,
+  buildLineItem, buildScore, AGS_SCOPES, extractNrps, parseRosterMembers, NRPS_SCOPE,
+  type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
@@ -51,6 +52,15 @@ async function ensureToolKey(pool: Pool): Promise<{ privatePem: string; publicJw
     [newEntityId("ltikey"), kp.kid, kp.privatePem, JSON.stringify(kp.publicJwk)],
   );
   return kp;
+}
+
+// Lat, idempotent schema-selvheler for NRPS-kolonnen (unngår avhengighet av
+// den dvale-lagte auto-migrate-workflowen — speiler pricing-config-mønsteret).
+let nrpsColumnEnsured = false;
+async function ensureNrpsColumn(pool: Pool): Promise<void> {
+  if (nrpsColumnEnsured) return;
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS nrps_url TEXT`);
+  nrpsColumnEnsured = true;
 }
 
 async function fetchPlatformJwks(jwksUrl: string): Promise<PlatformJwk[]> {
@@ -223,14 +233,16 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       });
 
       const ags = extractAgs(claims);
+      const nrps = extractNrps(claims);
       const context = claims["https://purl.imsglobal.org/spec/lti/claim/context"] as { id?: string } | undefined;
       const resourceLink = claims["https://purl.imsglobal.org/spec/lti/claim/resource_link"] as { id?: string } | undefined;
       const launchId = newEntityId("ltilaunch");
+      await ensureNrpsColumn(pool);
       await pool.query(
-        `INSERT INTO role_room_lti_launches (id, platform_id, lti_user_sub, context_id, resource_link_id, ags_lineitems, ags_lineitem, ags_scopes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        `INSERT INTO role_room_lti_launches (id, platform_id, lti_user_sub, context_id, resource_link_id, ags_lineitems, ags_lineitem, ags_scopes, nrps_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [launchId, platform.id, String(claims.sub ?? ""), context?.id ?? null, resourceLink?.id ?? null,
-         ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? [])],
+         ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? []), nrps?.url ?? null],
       );
       // Auto-provisjon fra LTI-claims: LMS-en har alt autentisert brukeren, så
       // vi minter en utdannings-sesjon og sender den via ?rr_session= (samme
@@ -303,14 +315,30 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     next();
   };
 
+  // ── Faglærer: hent LMS-klasse-roster (NRPS) ──────────────────────────────
+  // Gir hver students LMS-sub + navn/e-post/rolle, slik at faglærer kan pushe
+  // karakter til hver students egen rad i karakterboka.
+  router.get("/lti/launches/:id/roster", requireSession, async (req, res) => {
+    try {
+      const result = await fetchRoster(pool, req.params.id);
+      if (!result.ok) { res.status(result.status ?? 500).json({ error: result.error }); return; }
+      res.json({ members: result.members });
+    } catch (err) {
+      console.error("[lti] roster failed:", (err as Error).message);
+      res.status(500).json({ error: "roster_failed" });
+    }
+  });
+
   // ── Faglærer: send karakter til LMS-karakterboka (AGS grade-passback) ─────
   // Tar en fri-tekst-karakter (mappes til tallscore) ELLER eksplisitt
-  // scoreGiven/scoreMaximum. Poster til launchens AGS line item for launch-
-  // brukeren. 🔑 MVP: målbruker = den som launchet (korrekt for student-launchet
-  // oppgave). Faglærer-vurderer-mange-studenter → hver students LMS-sub trengs
-  // (NRPS roster-sync, neste steg).
+  // scoreGiven/scoreMaximum. Målbruker: `ltiUserSub` (fra roster) ELLER
+  // `studentEmail` (slås opp mot roster) — ellers launch-brukeren (student-
+  // launchet oppgave). Poster til launchens AGS line item.
   router.post("/lti/launches/:id/grade", requireSession, async (req, res) => {
-    const b = (req.body ?? {}) as { grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string };
+    const b = (req.body ?? {}) as {
+      grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string;
+      ltiUserSub?: string; studentEmail?: string;
+    };
     let scoreGiven = b.scoreGiven;
     let scoreMaximum = b.scoreMaximum;
     if (typeof scoreGiven !== "number" || typeof scoreMaximum !== "number") {
@@ -330,7 +358,17 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       return;
     }
     try {
-      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label });
+      // Målbruker: eksplisitt sub, ellers slå opp e-post i rosteret (NRPS).
+      let targetUserSub = typeof b.ltiUserSub === "string" && b.ltiUserSub.trim() ? b.ltiUserSub.trim() : undefined;
+      if (!targetUserSub && typeof b.studentEmail === "string" && b.studentEmail.trim()) {
+        const roster = await fetchRoster(pool, req.params.id);
+        if (!roster.ok) { res.status(roster.status ?? 502).json({ error: roster.error }); return; }
+        const email = b.studentEmail.trim().toLowerCase();
+        const member = roster.members.find((m) => m.email === email);
+        if (!member) { res.status(404).json({ error: "student_not_in_roster" }); return; }
+        targetUserSub = member.sub;
+      }
+      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label, targetUserSub });
       if (!result.ok) { res.status(result.status ?? 500).json({ error: result.error }); return; }
       res.json({ success: true, scoreGiven, scoreMaximum });
     } catch (err) {
@@ -364,12 +402,14 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
  */
 export async function pushScore(
   pool: Pool, launchId: string,
-  input: { scoreGiven: number; scoreMaximum: number; comment?: string; label?: string },
+  input: { scoreGiven: number; scoreMaximum: number; comment?: string; label?: string; targetUserSub?: string },
 ): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
   const lr = await pool.query(`SELECT * FROM role_room_lti_launches WHERE id = $1`, [launchId]);
   const launch = lr.rows[0];
   if (!launch) return { ok: false, error: "launch_not_found", status: 404 };
-  if (!launch.lti_user_sub) return { ok: false, error: "no_user", status: 400 };
+  // Målbruker: eksplisitt (per-student via roster) ellers launch-brukeren.
+  const targetUserSub = input.targetUserSub ?? launch.lti_user_sub;
+  if (!targetUserSub) return { ok: false, error: "no_user", status: 400 };
   const pr = await pool.query(`SELECT * FROM role_room_lti_platforms WHERE id = $1`, [launch.platform_id]);
   const platform = pr.rows[0];
   if (!platform) return { ok: false, error: "platform_not_found", status: 404 };
@@ -407,10 +447,50 @@ export async function pushScore(
   const scoreRes = await fetch(scoreUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v1.score+json" },
-    body: JSON.stringify(buildScore({ userId: String(launch.lti_user_sub), scoreGiven: input.scoreGiven, scoreMaximum: input.scoreMaximum, comment: input.comment })),
+    body: JSON.stringify(buildScore({ userId: String(targetUserSub), scoreGiven: input.scoreGiven, scoreMaximum: input.scoreMaximum, comment: input.comment })),
   });
   if (!scoreRes.ok) return { ok: false, error: "score_post_failed", status: 502 };
   return { ok: true };
+}
+
+/**
+ * NRPS: henter LMS-klasse-rosteret for en launch. Minter client_credentials-
+ * token (NRPS-scope), GET-er context-memberships-endepunktet, og parser
+ * medlemmene (LMS-sub + navn/e-post/roller). Eksportert for gjenbruk + testing.
+ */
+export async function fetchRoster(
+  pool: Pool, launchId: string,
+): Promise<{ ok: true; members: RosterMember[] } | { ok: false; error: string; status?: number }> {
+  const lr = await pool.query(`SELECT * FROM role_room_lti_launches WHERE id = $1`, [launchId]);
+  const launch = lr.rows[0];
+  if (!launch) return { ok: false, error: "launch_not_found", status: 404 };
+  if (!launch.nrps_url) return { ok: false, error: "no_nrps", status: 400 };
+  const pr = await pool.query(`SELECT * FROM role_room_lti_platforms WHERE id = $1`, [launch.platform_id]);
+  const platform = pr.rows[0];
+  if (!platform) return { ok: false, error: "platform_not_found", status: 404 };
+
+  const key = await ensureToolKey(pool);
+  const assertion = signClientAssertion({ clientId: String(platform.client_id), tokenUrl: String(platform.token_url), privatePem: key.privatePem, kid: key.kid });
+  const tokenRes = await fetch(String(platform.token_url), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: assertion,
+      scope: NRPS_SCOPE,
+    }).toString(),
+  });
+  if (!tokenRes.ok) return { ok: false, error: "token_failed", status: 502 };
+  const { access_token } = (await tokenRes.json()) as { access_token?: string };
+  if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
+
+  const memRes = await fetch(String(launch.nrps_url), {
+    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lti-nrps.v2.membershipcontainer+json" },
+  });
+  if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
+  const container = await memRes.json();
+  return { ok: true, members: parseRosterMembers(container) };
 }
 
 /**

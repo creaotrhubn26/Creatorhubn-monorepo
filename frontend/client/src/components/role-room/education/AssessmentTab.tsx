@@ -18,6 +18,7 @@ import {
 } from '@mui/icons-material';
 import { educationAssessmentService, type AssessmentItem } from './educationAssessmentService';
 import educationLtiService from './educationLtiService';
+import { LmsRosterPanel } from './LmsRosterPanel';
 import { educationRubricService, RUBRIC_LEVELS, RUBRIC_MAX, type RubricCriterion } from './educationRubricService';
 import { educationAssignmentsService } from './educationAssignmentsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
@@ -143,6 +144,8 @@ export function AssessmentTab() {
         sx={{ bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
         Dette er formativ vurdering knyttet til det ekte produksjonsarbeidet. Offisielle karakterer føres i skolens eget system — bruk «Eksporter til LMS».
       </Alert>
+
+      {launchId && <LmsRosterPanel launchId={launchId} />}
 
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 

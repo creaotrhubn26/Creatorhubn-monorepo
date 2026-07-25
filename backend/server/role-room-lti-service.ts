@@ -81,6 +81,46 @@ export function extractAgs(claims: Record<string, unknown>): AgsEndpoint | null 
   return { lineitems: ags.lineitems, lineitem: ags.lineitem, scope: ags.scope ?? [] };
 }
 
+/**
+ * NRPS-claim (Names and Role Provisioning Services) fra et validert launch-
+ * token → context-memberships-endepunktet (klasse-roster i LMS-en).
+ */
+export function extractNrps(claims: Record<string, unknown>): { url: string; serviceVersions: string[] } | null {
+  const nrps = claims["https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice"] as
+    { context_memberships_url?: string; service_versions?: string[] } | undefined;
+  if (!nrps?.context_memberships_url) return null;
+  return { url: nrps.context_memberships_url, serviceVersions: nrps.service_versions ?? [] };
+}
+
+/** Ett medlem i LMS-klasse-rosteret (NRPS membership container). */
+export interface RosterMember { sub: string; name: string | null; email: string | null; roles: string[]; status: string; }
+
+/** Parser en NRPS membership-container → normaliserte medlemmer (LMS-sub + navn/e-post/roller). */
+export function parseRosterMembers(container: unknown): RosterMember[] {
+  const c = container as { members?: unknown[] } | null;
+  const members = Array.isArray(c?.members) ? (c as { members: unknown[] }).members : [];
+  return members
+    .map((m): RosterMember => {
+      const mm = (m ?? {}) as Record<string, unknown>;
+      const name =
+        typeof mm.name === "string" && mm.name.trim()
+          ? mm.name.trim()
+          : [mm.given_name, mm.family_name]
+              .filter((p): p is string => typeof p === "string" && !!p.trim())
+              .join(" ")
+              .trim() || null;
+      const roles = Array.isArray(mm.roles) ? (mm.roles as unknown[]).filter((r): r is string => typeof r === "string") : [];
+      return {
+        sub: String(mm.user_id ?? ""),
+        name,
+        email: typeof mm.email === "string" && mm.email.trim() ? mm.email.trim().toLowerCase() : null,
+        roles,
+        status: typeof mm.status === "string" ? mm.status : "Active",
+      };
+    })
+    .filter((m) => Boolean(m.sub));
+}
+
 /** AGS LineItem (karakterbok-kolonne). */
 export function buildLineItem(input: { label: string; scoreMaximum: number; resourceLinkId?: string; tag?: string }): Record<string, unknown> {
   return {
@@ -106,6 +146,8 @@ export function buildScore(input: {
     ...(input.comment ? { comment: input.comment } : {}),
   };
 }
+
+export const NRPS_SCOPE = "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly";
 
 export const AGS_SCOPES = [
   "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
