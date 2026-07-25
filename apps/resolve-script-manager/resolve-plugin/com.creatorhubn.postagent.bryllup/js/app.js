@@ -16,6 +16,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     chat: [], chatBusy: false,
     tqcSweep: null, tqcColor: null, tqcDelivery: null, tqcAudio: null,
     cameras2: null,
+    delivPlan: null, delivVerify: null, delivReport: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -102,6 +103,7 @@ function mutationLevel(scriptId, params, dryRun) {
             return mode === "cameras" ? 0 : 2;
         case "categorize_unused_clips": return 2; // flytter klipp i media pool
         case "get_media_pool_state": return 0;
+        case "delivery_manager": return ["queue", "report"].includes(mode) ? 1 : 0;
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -487,6 +489,28 @@ const RENDER = {
             ${(d.specIssues || []).map((i) => `<div class="err">✗ ${esc(i)}</div>`).join("")}
             ${d.specApplied && !(d.specIssues || []).length ? `<div class="ok-text">✓ Alle jobber innenfor leveransestandarden</div>` : ""}
         </div>` : ""}
+        <div class="card"><div class="row"><strong>🚚 Leveranse-sjef</strong>
+            <label class="chk"><input type="checkbox" id="dv-master"> master (ProRes)</label>
+            <label class="chk"><input type="checkbox" id="dv-web" checked> web</label>
+            <label class="chk"><input type="checkbox" id="dv-review" checked> review</label>
+            <label class="chk"><input type="checkbox" id="dv-some"> some</label>
+            <label class="chk"><input type="checkbox" id="dv-inout"> kun in/out-range</label>
+            <select id="dv-subs"><option value="none">uten subtitles</option><option value="burnin">subtitles brent inn</option><option value="embedded">embedded</option><option value="file">egen fil</option></select>
+        </div><div class="row" style="margin-top:6px">
+            <button id="dv-plan" class="primary" ${S.busy ? "disabled" : ""}>Planlegg</button>
+            <button id="dv-queue" ${!S.delivPlan || S.busy ? "disabled" : ""}>Legg i render-kø</button>
+            <button id="dv-verify" ${S.busy ? "disabled" : ""}>Verifiser ferdig render</button>
+            <button id="dv-report" ${S.busy ? "disabled" : ""}>Leveranserapport</button>
+        </div>
+        ${S.delivPlan ? `<div style="margin-top:8px">
+            <div class="muted">range ${S.delivPlan.rangeSec}s (in/out: ${S.delivPlan.usingInOut ? "ja" : "nei — hele timelinen"})</div>
+            ${S.delivPlan.versions.map((p) => `<div class="muted">▸ <strong>${esc(p.version)}</strong> ${esc(p.format)}/${esc(p.codec)} ${esc(p.resolution)} · ${p.bitrateKbps || "auto"} kbps · ~${p.estGb} GB → <code>${esc(p.filename)}</code>${p.note ? " ⚠ " + esc(p.note) : ""}</div>`).join("")}
+            <div class="${S.delivPlan.disk?.ok ? "ok-text" : "err"}">${S.delivPlan.disk?.ok ? "✓" : "🛑"} Disk: trenger ~${S.delivPlan.disk?.estimatedGb} GB, ${S.delivPlan.disk?.freeGb} GB ledig i ${esc(S.delivPlan.disk?.targetDir || "")}</div>
+            ${(S.delivPlan.errors || []).map((e) => `<div class="err">⚠ ${esc(e)}</div>`).join("")}
+        </div>` : ""}
+        ${S.delivVerify ? `<div style="margin-top:8px">${S.delivVerify.results.map((r) => `<div class="${r.ok ? "ok-text" : "err"}">${r.ok ? "✓" : "✗"} ${esc(r.file || "")} — ${r.durationSec}s, ${esc(r.resolution || "")} @ ${r.fps}, ${esc(r.videoCodec || "")}, ${r.audioStreams} lydstrøm(mer), ${r.sizeGb} GB${(r.issues || []).length ? " — " + esc(r.issues.join("; ")) : ""}</div>`).join("") || `<div class="muted">ingen filer å verifisere enda</div>`}</div>` : ""}
+        ${S.delivReport?.writtenTo ? `<div class="ok-text" style="margin-top:6px">✓ Rapport skrevet: ${esc(S.delivReport.writtenTo)}</div>` : ""}
+        </div>
         ${a ? `<div class="card"><strong>Lyd-peak:</strong> ${a.filesChecked} filer sjekket
             ${(a.clippedCandidates || []).map((f) => `<div class="err">✗ ${esc(f.file)} — peak ${esc(String(f.peakDb))} dB (klipping-kandidat)</div>`).join("") || `<div class="ok-text">✓ Ingen klipping-kandidater</div>`}
         </div>` : ""}`;
@@ -687,6 +711,37 @@ const ACTIONS = {
         if (!confirm(`Sletter ${n} klipp under 3 frames:\n${plan.planned.map((x) => `${x.tc} ${x.track} ${x.clip}`).join("\n")}\n\nNB: stablede 1-frame-klipp KAN være tilsiktede flash-effekter — sjekk tidskodene først. Fortsette?`)) return;
         const v = await run("technical_qc", { mode: "fixflash" }, false, "Sletter flash-frames …");
         status(`✓ ${v.deleted} flash-frames slettet — kjør sveipen på nytt for å verifisere`, "ok-text");
+    },
+    "dv-plan": async () => {
+        const versions = ["master", "web", "review", "some"].filter((v) => $("dv-" + v)?.checked).join(",");
+        if (!versions) { status("Velg minst én versjon.", "warn"); return; }
+        S.delivPlan = await run("delivery_manager", {
+            mode: "plan", versions, subtitles: $("dv-subs").value,
+            useInOut: $("dv-inout").checked ? "true" : "false",
+        }, true, "Planlegger leveransen …");
+        render();
+    },
+    "dv-queue": async () => {
+        const versions = (S.delivPlan?.versions || []).map((p) => p.version).join(",");
+        if (!versions) return;
+        if (!S.delivPlan.disk?.ok && !confirm("Diskvakten sier det IKKE er plass. Legge i kø likevel?")) return;
+        if (!confirm(`Legger ${S.delivPlan.versions.length} render-jobber i køen (starter ikke rendering). Fortsette?`)) return;
+        const v = await run("delivery_manager", {
+            mode: "queue", versions, subtitles: $("dv-subs").value,
+            useInOut: $("dv-inout").checked ? "true" : "false",
+            ...(S.delivPlan.disk?.ok ? {} : { force: "true" }),
+        }, false, "Oppretter render-jobber …");
+        status(`✓ ${v.queued.length} jobber i køen (${v.verifiedInQueue ?? "?"} verifisert)${v.errors.length ? " · feil: " + v.errors.join("; ") : ""}`, v.errors.length ? "warn" : "ok-text");
+        log(`Leveranse-kø: ${v.queued.map((q) => q.version).join(", ")}`);
+    },
+    "dv-verify": async () => {
+        S.delivVerify = await run("delivery_manager", { mode: "verify" }, true, "Sammenligner render med timelinen …");
+        render();
+    },
+    "dv-report": async () => {
+        if (!guard(1, "leveranserapport")) return;
+        S.delivReport = await run("delivery_manager", { mode: "report" }, false, "Genererer leveranserapport …");
+        render();
     },
     "tqc-markers": async () => {
         const v = await run("technical_qc", { mode: "sweep", markers: "true" }, false, "Setter QC-markører …");

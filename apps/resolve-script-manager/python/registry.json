@@ -3532,6 +3532,20 @@
       "requiresTimeline": true
     },
     {
+      "id": "delivery_manager",
+      "name": "Leveranse-sjef (versjoner, kø, diskvakt, verifisering, rapport)",
+      "category": "export",
+      "scriptPath": "scripts/export/delivery_manager.py",
+      "description": "plan: master/web/review/some-versjoner m/ codec/bitrate/lydformat, kanoniske filnavn, render-range fra in/out, subtitles-valg og DISKVAKT (estimat vs ledig). queue: SetRenderSettings + AddRenderJob per versjon (starter ikke rendering, diskvakten kan stoppe). verify: ffprobe ferdig render vs timeline (varighet/fps/oppløsning/lyd). report: LEVERANSERAPPORT.md i målmappen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "copy_attributes_by_camera",
       "name": "Kopier attributter per kamera (grade/transform/gruppe)",
       "category": "timeline",

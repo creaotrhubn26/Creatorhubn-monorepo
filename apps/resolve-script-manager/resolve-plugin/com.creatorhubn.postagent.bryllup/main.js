@@ -339,7 +339,7 @@ function anthropicRequest(body) {
 const CHAT_READ_OK = new Set(['get_media_pool_state', 'unused_clips_placement',
     'recommend_unused_insertions', 'dialogue_tools', 'edit_assistants',
     'detect_timeline_gaps', 'detect_silent_sections_in_timeline', 'detect_log_gamma',
-    'technical_qc', 'copy_attributes_by_camera']);
+    'technical_qc', 'copy_attributes_by_camera', 'delivery_manager']);
 const CHAT_DRY_ONLY = new Set(['categorize_unused_clips', 'insert_unused_clips',
     'mark_qc_issues_on_timeline']);
 
@@ -350,6 +350,9 @@ async function chatRunScript(scriptId, params) {
         return { refused: 'assembly bygger ny timeline — be brukeren gjøre det i 🗣 Dialog-fanen' };
     }
     let dry = false;
+    if (scriptId === 'delivery_manager' && ['queue', 'report'].includes(String(p.mode).toLowerCase())) {
+        dry = true; // kø/rapport utføres i panelet
+    }
     if (scriptId === 'copy_attributes_by_camera') {
         dry = true; // mutasjon — chat viser planen, panelet utfører m/ confirm
     }
