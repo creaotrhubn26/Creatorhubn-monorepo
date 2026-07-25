@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { api, ApiError, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
 import { useLoad, type ViewMode } from './App';
@@ -430,6 +430,7 @@ export function DocumentDetailScreen({
     }[];
     explanation: Explanation | null;
     history: HistoryEvent[];
+    fxRate: { currency: string; rateDecimal: string; forDate: string; source: string } | null;
   }
   const detail = useLoad(
     () => api<Detail>('GET', `/api/organizations/${orgId}/documents/${documentId}`),
@@ -444,9 +445,19 @@ export function DocumentDetailScreen({
   const [project, setProject] = useState('');
   const [department, setDepartment] = useState('');
   const [rate, setRate] = useState('');
+  const [rateSource, setRateSource] = useState('manuell (bruker)');
   const [error, setError] = useState<string | null>(null);
   const [posted, setPosted] = useState<{ entryNumber: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const fx = detail.data?.fxRate ?? null;
+  // Forhåndsutfyll Norges Bank-kursen når bilaget er i fremmed valuta.
+  useEffect(() => {
+    if (fx && !rate) {
+      setRate(fx.rateDecimal);
+      setRateSource(fx.source);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fx?.rateDecimal]);
 
   const d = detail.data;
   const isPosted = d?.document.status === 'posted';
@@ -481,7 +492,7 @@ export function DocumentDetailScreen({
       if (department) overrides['department'] = department;
       const body: Record<string, unknown> = { suggestionId: suggestion.id };
       if (Object.keys(overrides).length) body['overrides'] = overrides;
-      if (needsRate) body['exchangeRate'] = { rateDecimal: rate, source: 'manuell (bruker)' };
+      if (needsRate) body['exchangeRate'] = { rateDecimal: rate, source: rateSource };
       const res = await api<{ entryNumber: number }>(
         'POST',
         `/api/organizations/${orgId}/documents/${documentId}/approve`,
@@ -703,7 +714,10 @@ export function DocumentDetailScreen({
             {needsRate && (
               <div>
                 <label htmlFor="rate">Valutakurs {d?.extraction?.currency}→NOK</label>
-                <input id="rate" placeholder="f.eks. 11.50" value={rate} onChange={(e) => setRate(e.target.value)} />
+                <input id="rate" placeholder="f.eks. 11.50" value={rate} onChange={(e) => { setRate(e.target.value); setRateSource('manuell (bruker)'); }} />
+                {fx && (
+                  <div className="hint" style={{ marginTop: 4 }}>Norges Bank-kurs for {fx.forDate} · kilde lagres på posteringen. Du kan overstyre.</div>
+                )}
               </div>
             )}
             <DimensionSelect orgId={orgId} kind="project" value={project} onChange={setProject} id="dim-project" />

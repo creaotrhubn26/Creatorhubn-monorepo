@@ -11,6 +11,7 @@ import { ClaudeDocumentExtractor } from '../pipeline/ai-extract.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
 import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { BrregCompanyRegistry } from '../integrations/company-registry.js';
+import { NorgesBankFxRates } from '../integrations/fx-rates.js';
 import { LovdataApiClient } from '../integrations/lovdata.js';
 import { MaskinportenClient } from '../integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
@@ -59,6 +60,8 @@ const app = createApiServer({
   vatRegister: new BrregVatRegisterClient(),
   // Fullt Enhetsregister-oppslag til kunde-/leverandørrisiko (åpne data).
   companyRegistry: new BrregCompanyRegistry(),
+  // Automatisk valutakurs fra Norges Bank (åpne data).
+  fxRates: new NorgesBankFxRates(),
   // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
   // X-API-Key (REKNAREN_LOVDATA_API_KEY). Status rapporteres ærlig.
   legalText: new LovdataApiClient(config.lovdataApiKey),

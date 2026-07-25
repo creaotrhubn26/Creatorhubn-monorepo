@@ -41,6 +41,8 @@ import {
 } from '../orgs/service.js';
 import type { VatRegisterLookup } from '../integrations/brreg.js';
 import type { CompanyRegistry } from '../integrations/company-registry.js';
+import type { FxRateSource } from '../integrations/fx-rates.js';
+import { convertToNok, money } from '../shared/money.js';
 import { assessCompanyRisk } from '../ledger/company-risk.js';
 import { answerQuestion } from '../ledger/ask.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
@@ -133,6 +135,8 @@ export interface ApiDeps {
   vatRegister?: VatRegisterLookup | undefined;
   /** Fullt virksomhetsoppslag (Enhetsregisteret) til kunde-/leverandørrisiko. */
   companyRegistry?: CompanyRegistry | undefined;
+  /** Automatisk valutakurs (Norges Bank, åpne data). */
+  fxRates?: FxRateSource | undefined;
   /**
    * Lovdata API-klient til lovtekst-oppslag. Åpne bulk-datasett fungerer uten
    * nøkkel; per-paragraf lovtekst krever X-API-Key. Status rapporteres ærlig.
@@ -678,6 +682,20 @@ export function createApiServer(deps: ApiDeps): express.Express {
           [req.params.orgId],
         );
         const ex = extraction.rows[0];
+        // Fremmed valuta: hent Norges Bank-kurs for bilagsdatoen, gjør konsekvensen
+        // beregnbar i NOK og la klienten forhåndsutfylle kursen ved bokføring.
+        const impIsoDate: string = ex?.invoice_date_text ?? new Date().toISOString().slice(0, 10);
+        const rawGross = ex?.gross_minor === null || ex?.gross_minor === undefined ? null : BigInt(ex.gross_minor);
+        let impactCurrency: string = ex?.currency ?? 'NOK';
+        let impactGrossMinor: bigint | null = rawGross;
+        let fxRate: { currency: string; rateDecimal: string; forDate: string; source: string } | null = null;
+        if (latest && impactCurrency !== 'NOK' && rawGross !== null && deps.fxRates) {
+          fxRate = await deps.fxRates.rate(impactCurrency, impIsoDate);
+          if (fxRate) {
+            impactGrossMinor = convertToNok(money(rawGross, impactCurrency), fxRate.rateDecimal).minorUnits;
+            impactCurrency = 'NOK';
+          }
+        }
         const explanation = latest
           ? {
               evidence: latest.suggestion.evidence,
@@ -717,13 +735,13 @@ export function createApiServer(deps: ApiDeps): express.Express {
               // Krav 4: hva forslaget betyr for mva, resultat og skatt — i kroner.
               impact: org.rowCount
                 ? computeDocumentImpact(deps.rules, {
-                    grossMinor: ex?.gross_minor === null || ex?.gross_minor === undefined ? null : BigInt(ex.gross_minor),
-                    currency: ex?.currency ?? 'NOK',
+                    grossMinor: impactGrossMinor,
+                    currency: impactCurrency,
                     vatCode: latest.suggestion.suggestedVatCode,
                     businessUsePercentage: latest.suggestion.businessUsePercentage,
                     capitalization: latest.suggestion.capitalizationAssessment,
                     orgForm: org.rows[0].org_form,
-                    isoDate: ex?.invoice_date_text ?? new Date().toISOString().slice(0, 10),
+                    isoDate: impIsoDate,
                   })
                 : null,
             }
@@ -746,6 +764,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
             suggestions: suggestions.rows,
             explanation,
             history: history.rows,
+            fxRate,
           }),
         );
       } catch (err) {
@@ -1710,6 +1729,37 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Automatisk valutakurs fra Norges Bank for en valuta på en dato.
+  app.get(
+    '/api/organizations/:orgId/fx-rate',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const currency = String(req.query.currency ?? '').toUpperCase();
+        const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+          ? req.query.date
+          : new Date().toISOString().slice(0, 10);
+        if (!/^[A-Z]{3}$/.test(currency)) {
+          res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Ugyldig valutakode.' } });
+          return;
+        }
+        if (!deps.fxRates) {
+          res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Valutakurs-oppslag er ikke konfigurert.' } });
+          return;
+        }
+        const rate = await deps.fxRates.rate(currency, date);
+        if (!rate) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: `Fant ingen kurs for ${currency}.` } });
+          return;
+        }
+        res.json(toJson(rate));
       } catch (err) {
         next(err);
       }
