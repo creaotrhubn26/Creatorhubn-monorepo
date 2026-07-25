@@ -26,6 +26,10 @@ Params:
   bins=Dag 1,Dag 2        (kommaseparert; case-insensitiv «inneholder»-match)
   target=UBRUKT           (navn på under-bin som opprettes per dag-bin)
   timeline=<navn>         (default: gjeldende timeline)
+  mode=categorize         categorize (default) | resync | undo
+                          resync: klipp i UBRUKT som NÅ er brukt i timelinen
+                                  flyttes tilbake til original kamera-bin
+                          undo:   ALT i UBRUKT flyttes tilbake
 """
 from __future__ import annotations
 
@@ -157,7 +161,9 @@ def run(params: dict, dry_run: bool) -> None:
     bins = _find_bins(root, bin_names)
     missing = [b for b in bin_names if b not in bins]
 
+    mode = (params.get("mode") or "categorize").strip().lower()
     report: dict = {
+        "mode": mode,
         "timeline": timeline.GetName(),
         "timelineItemsWithMedia": item_count,
         "targetSubBin": target,
@@ -166,6 +172,48 @@ def run(params: dict, dry_run: bool) -> None:
         "bins": [],
         "dryRun": dry_run,
     }
+
+    # ── resync / undo: flytt klipp UT av UBRUKT tilbake til kamera-bin ──
+    if mode in ("resync", "undo"):
+        for wanted, folder in bins.items():
+            ubrukt = None
+            for s in folder.GetSubFolderList() or []:
+                if (s.GetName() or "").strip().upper() == target.upper():
+                    ubrukt = s
+                    break
+            entry = {"bin": folder.GetName(), "matchedFor": wanted,
+                     "candidates": 0, "moved": 0, "movedNames": []}
+            if not ubrukt:
+                entry["note"] = f"Ingen «{target}»-bin funnet."
+                report["bins"].append(entry)
+                continue
+            # kamera-bins i dag-binnet (mål for tilbakeflytting)
+            day_subs = {(s.GetName() or "").strip(): s
+                        for s in folder.GetSubFolderList() or []}
+            groups = [(ubrukt, None)] + [(s, (s.GetName() or "").strip())
+                                          for s in ubrukt.GetSubFolderList() or []]
+            for src_folder, cam_name in groups:
+                clips = src_folder.GetClipList() or []
+                to_move = []
+                for clip in clips:
+                    if mode == "undo":
+                        to_move.append(clip)
+                        continue
+                    uid, fpath = _clip_identity(clip)
+                    if (uid in used_uid) or (fpath and fpath in used_path):
+                        to_move.append(clip)
+                entry["candidates"] += len(to_move)
+                if to_move and not dry_run:
+                    dest = day_subs.get(cam_name) if cam_name else folder
+                    if dest is None:
+                        dest = media_pool.AddSubFolder(folder, cam_name)
+                    if dest and media_pool.MoveClips(to_move, dest):
+                        entry["moved"] += len(to_move)
+                        entry["movedNames"].extend(
+                            (c.GetName() or "?") for c in to_move[:50])
+            report["bins"].append(entry)
+        bridge.result(report)
+        return
 
     skip = {target.upper()} | skip_sub
     for wanted, folder in bins.items():

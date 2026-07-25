@@ -60,6 +60,7 @@ import type { AgentConfig } from "./agents/types";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
+import { UnusedClipsStudio } from "./components/UnusedClipsStudio";
 import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
@@ -181,6 +182,7 @@ export default function App() {
   }, []);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showWeddingWizard, setShowWeddingWizard] = useState(false);
+  const [showUnusedClips, setShowUnusedClips] = useState(false);
   const [showQcVideo, setShowQcVideo] = useState(false);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
@@ -188,6 +190,14 @@ export default function App() {
     const handler = () => setShowDependencies(true);
     window.addEventListener("trrpa:open-dependencies", handler);
     return () => window.removeEventListener("trrpa:open-dependencies", handler);
+  }, []);
+
+  // «Finn ubrukte klipp»-knappen i MediaPoolSidebar åpner studioet herfra
+  // (samme løst koblede event-mønster som deps-modalen).
+  useEffect(() => {
+    const handler = () => setShowUnusedClips(true);
+    window.addEventListener("trrpa:open-unused-clips", handler);
+    return () => window.removeEventListener("trrpa:open-unused-clips", handler);
   }, []);
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
@@ -946,6 +956,9 @@ export default function App() {
           { id: "view_audio", title: "View: Audio",
             subtitle: "audio QC + sync tools",
             handler: () => setView("audio") },
+          { id: "unused_clips", title: "Ubrukt-materiale — finn ubrukte klipp",
+            subtitle: "kategoriser per bin (Dag 1/Dag 2) til UBRUKT/<kamera> + resynk",
+            handler: () => setShowUnusedClips(true) },
           { id: "creative_editor", title: "Åpne Creative Editor",
             subtitle: "Pixel-perfect editor med segments + timeline + Claude assistent",
             handler: () => setCreativeEditorPath(
@@ -1072,6 +1085,8 @@ export default function App() {
       )}
 
       {showQcVideo && <QcSourceVideoModal onClose={() => setShowQcVideo(false)} />}
+
+      {showUnusedClips && <UnusedClipsStudio onClose={() => setShowUnusedClips(false)} />}
 
       {showFirstRun && <FirstRunSetupWizard onClose={() => setShowFirstRun(false)} />}
 
