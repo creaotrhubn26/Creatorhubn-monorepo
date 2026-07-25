@@ -125,6 +125,20 @@ export function Disclosure({ label, children }: { label: string; children: React
   );
 }
 
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <button className="modal-close" aria-label="Lukk" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Toasts ────────────────────────────────────────────────────────────── */
 
 interface Toast {

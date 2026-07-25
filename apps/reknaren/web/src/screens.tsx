@@ -5,7 +5,7 @@ import { api, ApiError, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo 
 import { useLoad, type ViewMode } from './App';
 import { DimensionSelect } from './screens-dimensions';
 import { PostingLines } from './screens-pro';
-import { CardSkeleton, Disclosure, EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
+import { CardSkeleton, Disclosure, EmptyState, Modal, StatusBadge, TableSkeleton, useToast } from './ui';
 
 /* ── Delte typer (speiler API-svarene) ─────────────────────────────────── */
 
@@ -173,7 +173,7 @@ export function OverviewScreen({
               sub={`laveste ${kr(d.liquidity.lowestBalanceMinor)}`} tone={d.liquidity.goesNegative ? 'alert' : 'ok'} onClick={() => go('planning')} />
             <Tile label="Dokumentjakt" value={`${d.documentHunt.gapsWithCandidates} treff`}
               sub={`${d.documentHunt.paymentsMissingDoc} betaling${d.documentHunt.paymentsMissingDoc === 1 ? '' : 'er'} uten bilag`}
-              tone={d.documentHunt.gapsWithCandidates > 0 ? 'attention' : 'plain'} onClick={() => go('document-hunt')} />
+              tone={d.documentHunt.gapsWithCandidates > 0 ? 'attention' : 'plain'} onClick={() => go('bank')} />
             <Tile label="Skatteassistent" value={`${d.advisories.total} funn`}
               sub={`${d.advisories.risiko} risiko · ${d.advisories.mulighet} muligheter`}
               tone={d.advisories.risiko > 0 ? 'attention' : 'plain'} onClick={() => go('assistant')} />
@@ -1081,7 +1081,7 @@ export function GmailScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDo
 
 /* ── Bank og avstemming ────────────────────────────────────────────────── */
 
-export function BankScreen({ orgId }: { orgId: string }) {
+export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: string; onOpenDocument?: (id: string) => void; onNavigate?: (s: string) => void }) {
   interface BankTx {
     id: string;
     booked_date: string;
@@ -1591,6 +1591,10 @@ export function BankScreen({ orgId }: { orgId: string }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {onOpenDocument && (
+        <DocumentHuntScreen orgId={orgId} onOpenDocument={onOpenDocument} onNavigate={onNavigate} embedded />
       )}
     </div>
   );
@@ -3289,7 +3293,7 @@ interface LinkPreview {
   grossMinor: string;
 }
 
-export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgId: string; onOpenDocument: (id: string) => void; onNavigate?: (s: string) => void }) {
+export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate, embedded }: { orgId: string; onOpenDocument: (id: string) => void; onNavigate?: (s: string) => void; embedded?: boolean }) {
   const h = useLoad(() => api<DocumentHunt>('GET', `/api/organizations/${orgId}/document-hunt`), [orgId]);
   const d = h.data;
   const toast = useToast();
@@ -3331,12 +3335,19 @@ export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgI
   };
   return (
     <div>
-      <div className="page-head">
-        <h1>Dokumentjakt</h1>
-        <p className="subtitle">
-          Reknaren leter på tvers av kildene: betalinger uten bilag koblet mot sannsynlige fakturaer vi allerede har hentet inn.
-        </p>
-      </div>
+      {embedded ? (
+        <>
+          <h2 style={{ marginTop: 24 }}>Dokumentjakt</h2>
+          <p className="subtitle" style={{ marginTop: 0 }}>Betalinger uten bilag koblet mot sannsynlige fakturaer vi allerede har hentet inn.</p>
+        </>
+      ) : (
+        <div className="page-head">
+          <h1>Dokumentjakt</h1>
+          <p className="subtitle">
+            Reknaren leter på tvers av kildene: betalinger uten bilag koblet mot sannsynlige fakturaer vi allerede har hentet inn.
+          </p>
+        </div>
+      )}
       {h.loading ? (
         <div className="cards"><CardSkeleton /><CardSkeleton /></div>
       ) : (
@@ -3461,9 +3472,10 @@ const FLAG_LABEL: Record<string, { label: string; cls: string }> = {
 
 export function AgreementsScreen({ orgId }: { orgId: string }) {
   const review = useLoad(() => api<{ reviews: AgreementReview[]; totalGapMinor: string }>('GET', `/api/organizations/${orgId}/agreements/review`), [orgId]);
-  const customers = useLoad(() => api<{ id: string; name: string }[]>('GET', `/api/organizations/${orgId}/customers`), [orgId]);
+  const customers = useLoad(() => api<{ id: string; name: string; org_number: string | null }[]>('GET', `/api/organizations/${orgId}/customers`), [orgId]);
   const toast = useToast();
   const [show, setShow] = useState(false);
+  const [riskOrg, setRiskOrg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState({ customerId: '', name: '', amountKr: '', cadence: 'monthly', startDate: '', endDate: '', noticeMonths: '0' });
   const d = review.data;
@@ -3512,6 +3524,16 @@ export function AgreementsScreen({ orgId }: { orgId: string }) {
                 <option value="">Velg kunde …</option>
                 {(customers.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {f.customerId && (
+                <button
+                  type="button"
+                  className="linklike"
+                  style={{ marginTop: 6 }}
+                  onClick={() => setRiskOrg((customers.data ?? []).find((c) => c.id === f.customerId)?.org_number ?? '')}
+                >
+                  Sjekk kunde mot Enhetsregisteret
+                </button>
+              )}
             </div>
             <div>
               <label htmlFor="a-name">Navn</label>
@@ -3606,6 +3628,9 @@ export function AgreementsScreen({ orgId }: { orgId: string }) {
           </>
         )
       )}
+      {riskOrg !== null && (
+        <CompanyRiskModal orgId={orgId} initialOrgNr={riskOrg || undefined} onClose={() => setRiskOrg(null)} />
+      )}
     </div>
   );
 }
@@ -3632,8 +3657,8 @@ const OVERALL_META: Record<string, { label: string; cls: string }> = {
   risk: { label: 'Risiko', cls: 'low' },
 };
 
-export function CompanyRiskScreen({ orgId }: { orgId: string }) {
-  const [orgNr, setOrgNr] = useState('');
+function CompanyRiskCheck({ orgId, initialOrgNr }: { orgId: string; initialOrgNr?: string }) {
+  const [orgNr, setOrgNr] = useState(initialOrgNr ?? '');
   const [busy, setBusy] = useState(false);
   const [r, setR] = useState<CompanyRisk | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -3657,10 +3682,7 @@ export function CompanyRiskScreen({ orgId }: { orgId: string }) {
   };
   return (
     <div>
-      <div className="page-head">
-        <h1>Kunde- og leverandørrisiko</h1>
-        <p className="subtitle">Sjekk en virksomhet mot Enhetsregisteret før du fakturerer eller inngår avtale. Hver observasjon vises med kilde — ingen automatisk score.</p>
-      </div>
+      <p className="subtitle" style={{ marginTop: 0 }}>Sjekk en virksomhet mot Enhetsregisteret. Hver observasjon vises med kilde — ingen automatisk score.</p>
       <div className="row" style={{ maxWidth: 460 }}>
         <div>
           <label htmlFor="cr-org">Organisasjonsnummer</label>
@@ -3727,5 +3749,14 @@ export function CompanyRiskScreen({ orgId }: { orgId: string }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Kunderisiko som modal — for faktura-/avtale-flyten. */
+export function CompanyRiskModal({ orgId, initialOrgNr, onClose }: { orgId: string; initialOrgNr?: string; onClose: () => void }) {
+  return (
+    <Modal title="Kunderisiko" onClose={onClose}>
+      <CompanyRiskCheck orgId={orgId} initialOrgNr={initialOrgNr} />
+    </Modal>
   );
 }

@@ -7,11 +7,13 @@ import { api, apiText, kr, parseKrToMinor } from './api';
 import { useLoad } from './App';
 import { DimensionSelect } from './screens-dimensions';
 import { EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
+import { CompanyRiskModal } from './screens';
 
 interface Customer {
   id: string;
   name: string;
   email: string | null;
+  org_number: string | null;
 }
 
 interface InvoiceRow {
@@ -69,6 +71,7 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
   );
 
   const [showBuilder, setShowBuilder] = useState(false);
+  const [riskOrg, setRiskOrg] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState('');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerStreet, setNewCustomerStreet] = useState('');
@@ -220,6 +223,12 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
         <div className="actions" style={{ marginBottom: 14 }}>
           <button className="primary" onClick={() => setShowBuilder(true)}>
             Ny faktura
+          </button>
+          <button
+            className="secondary"
+            onClick={() => setRiskOrg((customers.data ?? []).find((c) => c.id === customerId)?.org_number ?? '')}
+          >
+            Sjekk kunde (risiko)
           </button>
         </div>
       )}
@@ -416,6 +425,9 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
             </tbody>
           </table>
         </div>
+      )}
+      {riskOrg !== null && (
+        <CompanyRiskModal orgId={orgId} initialOrgNr={riskOrg || undefined} onClose={() => setRiskOrg(null)} />
       )}
     </div>
   );

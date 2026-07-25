@@ -8,8 +8,6 @@ import {
   AgreementsScreen,
   AiScreen,
   AssistantScreen,
-  CompanyRiskScreen,
-  DocumentHuntScreen,
   OverviewScreen,
   PeriodCloseScreen,
   PlanningScreen,
@@ -59,9 +57,7 @@ type Screen =
   | { name: 'planning' }
   | { name: 'period-close' }
   | { name: 'assistant' }
-  | { name: 'document-hunt' }
   | { name: 'agreements' }
-  | { name: 'company-risk' }
   | { name: 'documents' }
   | { name: 'document'; id: string }
   | { name: 'gmail' }
@@ -87,7 +83,6 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
       { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
       { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
       { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
-      { key: 'document-hunt', label: 'Dokumentjakt', icon: 'inbox' },
     ],
   },
   {
@@ -95,7 +90,6 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
     items: [
       { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
       { key: 'agreements', label: 'Avtaler', icon: 'chart' },
-      { key: 'company-risk', label: 'Kunderisiko', icon: 'shield' },
     ],
   },
   {
@@ -298,9 +292,6 @@ export default function App() {
           {screen.name === 'assistant' && (
             <AssistantScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
           )}
-          {screen.name === 'document-hunt' && (
-            <DocumentHuntScreen orgId={orgId} onOpenDocument={openDocument} onNavigate={(name) => setScreen({ name } as Screen)} />
-          )}
           {screen.name === 'documents' && <DocumentsScreen orgId={orgId} onOpen={openDocument} />}
           {screen.name === 'document' && (
             <DocumentDetailScreen
@@ -311,10 +302,11 @@ export default function App() {
             />
           )}
           {screen.name === 'gmail' && <GmailScreen orgId={orgId} onOpenDocument={openDocument} />}
-          {screen.name === 'bank' && <BankScreen orgId={orgId} />}
+          {screen.name === 'bank' && (
+            <BankScreen orgId={orgId} onOpenDocument={openDocument} onNavigate={(name) => setScreen({ name } as Screen)} />
+          )}
           {screen.name === 'invoicing' && <InvoicingScreen orgId={orgId} />}
           {screen.name === 'agreements' && <AgreementsScreen orgId={orgId} />}
-          {screen.name === 'company-risk' && <CompanyRiskScreen orgId={orgId} />}
           {screen.name === 'dimensions' && <DimensionsScreen orgId={orgId} />}
           {screen.name === 'ai' && <AiScreen />}
           {screen.name === 'org' && <OrgSettingsScreen orgId={orgId} />}
