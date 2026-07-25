@@ -89,10 +89,21 @@ describe('SAF-T Financial-eksport', () => {
     execFileSync('xmllint', [
       '--noout',
       '--schema',
-      join(process.cwd(), 'vendor/saft/Norwegian_SAF-T_Financial_Schema_v_1.10.xsd'),
+      join(process.cwd(), 'vendor/saft/Norwegian_SAF-T_Financial_Schema_v_1.40.xsd'),
       file,
     ]);
     expect(xml).toContain('S\u00f6ta &amp; Br\u00e5ten &lt;AS&gt;');
+    expect(xml).toContain('<n1:AuditFileVersion>1.40</n1:AuditFileVersion>');
+    // 1.40 skiller debet/kredit-avgift (ikke lenger <TaxAmount>).
+    expect(xml).toMatch(/<n1:(Debit|Credit)TaxAmount>/);
+    expect(xml).not.toContain('<n1:TaxAmount>');
+    // Sporbarhet: intern posterings-ID (SystemID = bilagsnummer) p\u00e5 transaksjonen.
+    expect(xml).toMatch(/<n1:SystemID>\d+<\/n1:SystemID>/);
+    // 1.40: reskontrosaldo i BalanceAccount med kontrollkonto.
+    expect(xml).toContain('<n1:BalanceAccount>');
+    // 1.40: GroupingCategory/GroupingCode erstatter StandardAccountID.
+    expect(xml).toContain('<n1:GroupingCategory>');
+    expect(xml).not.toContain('<n1:StandardAccountID>');
   });
 
   it('totaler stemmer med hovedboken for perioden, og debet == kredit', async () => {
@@ -138,5 +149,43 @@ describe('SAF-T Financial-eksport', () => {
     expect(xml).toMatch(/<n1:TaxCode>3<\/n1:TaxCode>/);
     // Fakturalinjen b\u00e6rer kunde-ID-en (reskontrospor).
     expect(xml).toMatch(/<n1:CustomerID>[0-9a-f]{32}<\/n1:CustomerID>/); // maks 35 tegn i SAF-T
+  });
+
+  it('1.40 full sporbarhet: fremmed valuta + dimensjon + kildebilag, XSD-validert', async () => {
+    // Prosjekt (dimensjon) + kildebilag + en fremmed-valuta-postering (USD).
+    await db.query(`INSERT INTO projects (id, organization_id, code, name, created_by) VALUES ($1,$2,'PROSJEKT-X','Filmprosjekt X',$3)`, [newId(), orgId, userId]);
+    const docId = newId();
+    await db.query(
+      `INSERT INTO source_documents (id, organization_id, source, filename, mime_type, byte_size, sha256, storage_key, status, created_by)
+       VALUES ($1,$2,'upload','faktura.pdf','application/pdf',100,$3,$4,'posted',$5)`,
+      [docId, orgId, newId(), `k/${docId}`, userId],
+    );
+    await postJournalEntry(db, {
+      organizationId: orgId,
+      actor: actor(),
+      entryDate: '2025-11-20',
+      description: 'Programvare i USD',
+      idempotencyKey: 'saft-usd',
+      sourceDocumentId: docId,
+      lines: [
+        { accountNumber: '6810', debitMinor: 95702n, vatCode: '86', project: 'PROSJEKT-X', originalCurrency: 'USD', originalAmountMinor: 10000n, exchangeRate: '9.5702', exchangeRateSource: 'Norges Bank' },
+        { accountNumber: '2400', creditMinor: 95702n },
+      ],
+    });
+    const xml = await buildSafTXml(db, { organizationId: orgId, fromDate: '2025-11-01', toDate: '2025-11-30' });
+    const dir = mkdtempSync(join(tmpdir(), 'saft14-'));
+    const file = join(dir, 'export.xml');
+    writeFileSync(file, xml, 'utf8');
+    execFileSync('xmllint', ['--noout', '--schema', join(process.cwd(), 'vendor/saft/Norwegian_SAF-T_Financial_Schema_v_1.40.xsd'), file]);
+
+    // Dimensjon deklarert i AnalysisTypeTable + brukt p\u00e5 linjen (Analysis).
+    expect(xml).toContain('<n1:AnalysisType>PROSJEKT</n1:AnalysisType>');
+    expect(xml).toContain('<n1:AnalysisID>PROSJEKT-X</n1:AnalysisID>');
+    // Fremmed valuta: NOK-bel\u00f8p + originalvaluta/-bel\u00f8p/kurs.
+    expect(xml).toContain('<n1:CurrencyCode>USD</n1:CurrencyCode>');
+    expect(xml).toContain('<n1:CurrencyAmount>100.00</n1:CurrencyAmount>');
+    expect(xml).toContain('<n1:ExchangeRate>9.5702</n1:ExchangeRate>');
+    // Kildebilag-lenke (krone \u2192 bilag).
+    expect(xml).toMatch(/<n1:SourceDocumentID>[0-9a-f]{32}<\/n1:SourceDocumentID>/);
   });
 });

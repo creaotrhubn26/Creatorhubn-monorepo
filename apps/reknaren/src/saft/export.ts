@@ -12,6 +12,7 @@
  */
 import type { Db } from '../db/pool.js';
 import { getVatCode, VAT_CODES } from '../coa/vat-codes.js';
+import { groupingFor } from './grouping.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
 import { NotFoundError, ValidationError } from '../shared/errors.js';
 import { moneyToDecimalString, money } from '../shared/money.js';
@@ -57,7 +58,13 @@ export interface SafTParams {
   toDate: string; // ISO, inklusiv
   softwareName?: string;
   softwareVersion?: string;
+  /** SAF-T Financial-versjon. Standard 1.40 (obligatorisk fra 1.1.2027). */
+  auditFileVersion?: string;
 }
+
+/** Nyeste SAF-T Financial-versjon. Obligatorisk fra første regnskapsperiode
+ *  som starter 1. januar 2027 eller senere; frivillig før det. */
+export const SAFT_VERSION = '1.40';
 
 export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(params.fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(params.toDate)) {
@@ -133,10 +140,14 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
         bal.closing >= 0n
           ? `<n1:ClosingDebitBalance>${amt(bal.closing)}</n1:ClosingDebitBalance>`
           : `<n1:ClosingCreditBalance>${amt(bal.closing)}</n1:ClosingCreditBalance>`;
+      // 1.40: GroupingCategory + GroupingCode (kobling til næringsspesifikasjonen)
+      // erstatter StandardAccountID fra tidligere versjoner.
+      const grouping = groupingFor(account.account_number);
       return `      <n1:Account>
         <n1:AccountID>${esc(account.account_number)}</n1:AccountID>
         <n1:AccountDescription>${esc(account.name)}</n1:AccountDescription>
-        <n1:StandardAccountID>${esc(account.account_number)}</n1:StandardAccountID>
+        <n1:GroupingCategory>${esc(grouping.category)}</n1:GroupingCategory>
+        <n1:GroupingCode>${esc(grouping.code)}</n1:GroupingCode>
         <n1:AccountType>GL</n1:AccountType>
         ${opening}
         ${closing}
@@ -160,13 +171,17 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
     .map((c) => {
       const opening = BigInt(c.opening);
       const closing = BigInt(c.closing);
+      // 1.40: reskontrosaldo ligger i BalanceAccount med kontrollkontoen (1500).
       return `      <n1:Customer>
         ${c.org_number ? `<n1:RegistrationNumber>${esc(c.org_number)}</n1:RegistrationNumber>` : ''}
         <n1:Name>${esc(c.name)}</n1:Name>
         ${addressXml(c.street_address, c.postal_code, c.city)}
         <n1:CustomerID>${saftId(c.id)}</n1:CustomerID>
-        ${opening >= 0n ? `<n1:OpeningDebitBalance>${amt(opening)}</n1:OpeningDebitBalance>` : `<n1:OpeningCreditBalance>${amt(opening)}</n1:OpeningCreditBalance>`}
-        ${closing >= 0n ? `<n1:ClosingDebitBalance>${amt(closing)}</n1:ClosingDebitBalance>` : `<n1:ClosingCreditBalance>${amt(closing)}</n1:ClosingCreditBalance>`}
+        <n1:BalanceAccount>
+          <n1:AccountID>1500</n1:AccountID>
+          ${opening >= 0n ? `<n1:OpeningDebitBalance>${amt(opening)}</n1:OpeningDebitBalance>` : `<n1:OpeningCreditBalance>${amt(opening)}</n1:OpeningCreditBalance>`}
+          ${closing >= 0n ? `<n1:ClosingDebitBalance>${amt(closing)}</n1:ClosingDebitBalance>` : `<n1:ClosingCreditBalance>${amt(closing)}</n1:ClosingCreditBalance>`}
+        </n1:BalanceAccount>
       </n1:Customer>`;
     })
     .join('\n');
@@ -186,13 +201,17 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
     .map((v) => {
       const opening = BigInt(v.opening);
       const closing = BigInt(v.closing);
+      // 1.40: reskontrosaldo ligger i BalanceAccount med kontrollkontoen (2400).
       return `      <n1:Supplier>
         ${v.org_number ? `<n1:RegistrationNumber>${esc(v.org_number)}</n1:RegistrationNumber>` : ''}
         <n1:Name>${esc(v.name)}</n1:Name>
         <n1:Address/>
         <n1:SupplierID>${saftId(v.id)}</n1:SupplierID>
-        ${opening >= 0n ? `<n1:OpeningDebitBalance>${amt(opening)}</n1:OpeningDebitBalance>` : `<n1:OpeningCreditBalance>${amt(opening)}</n1:OpeningCreditBalance>`}
-        ${closing >= 0n ? `<n1:ClosingDebitBalance>${amt(closing)}</n1:ClosingDebitBalance>` : `<n1:ClosingCreditBalance>${amt(closing)}</n1:ClosingCreditBalance>`}
+        <n1:BalanceAccount>
+          <n1:AccountID>2400</n1:AccountID>
+          ${opening >= 0n ? `<n1:OpeningDebitBalance>${amt(opening)}</n1:OpeningDebitBalance>` : `<n1:OpeningCreditBalance>${amt(opening)}</n1:OpeningCreditBalance>`}
+          ${closing >= 0n ? `<n1:ClosingDebitBalance>${amt(closing)}</n1:ClosingDebitBalance>` : `<n1:ClosingCreditBalance>${amt(closing)}</n1:ClosingCreditBalance>`}
+        </n1:BalanceAccount>
       </n1:Supplier>`;
     })
     .join('\n');
@@ -219,6 +238,36 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
     )
     .join('\n');
 
+  // ── Dimensjoner (kostnadsbærere) → AnalysisTypeTable ─────────────────────
+  // Prosjekt og avdeling deklareres som analyse-typer slik at linjenes
+  // Analysis-koder er sporbare tilbake til registeret.
+  const projects = await db.query(
+    `SELECT code, name FROM projects WHERE organization_id = $1 ORDER BY code`,
+    [params.organizationId],
+  );
+  const departments = await db.query(
+    `SELECT code, name FROM departments WHERE organization_id = $1 ORDER BY code`,
+    [params.organizationId],
+  );
+  const analysisEntries = [
+    ...projects.rows.map((p) => ({ type: 'PROSJEKT', typeDesc: 'Prosjekt', id: p.code as string, idDesc: p.name as string })),
+    ...departments.rows.map((d) => ({ type: 'AVDELING', typeDesc: 'Avdeling', id: d.code as string, idDesc: d.name as string })),
+  ];
+  const analysisTypeTableXml = analysisEntries.length
+    ? `    <n1:AnalysisTypeTable>
+${analysisEntries
+        .map(
+          (a) => `      <n1:AnalysisTypeTableEntry>
+        <n1:AnalysisType>${esc(a.type)}</n1:AnalysisType>
+        <n1:AnalysisTypeDescription>${esc(a.typeDesc)}</n1:AnalysisTypeDescription>
+        <n1:AnalysisID>${esc(a.id)}</n1:AnalysisID>
+        <n1:AnalysisIDDescription>${esc(a.idDesc)}</n1:AnalysisIDDescription>
+      </n1:AnalysisTypeTableEntry>`,
+        )
+        .join('\n')}
+    </n1:AnalysisTypeTable>`
+    : '';
+
   // ── Posteringer i perioden ───────────────────────────────────────────────
   const entries = await db.query(
     `SELECT e.id, e.entry_number, e.entry_date::TEXT AS entry_date, e.description,
@@ -232,7 +281,8 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
   const lines = entryIds.length
     ? await db.query(
         `SELECT entry_id, line_number, account_number, vat_code, debit_minor, credit_minor,
-                description, customer_id, vendor_id
+                description, customer_id, vendor_id, project, department,
+                original_currency, original_amount_minor, exchange_rate
          FROM journal_lines WHERE entry_id = ANY($1) ORDER BY entry_id, line_number`,
         [entryIds],
       )
@@ -256,32 +306,54 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
           const credit = BigInt(line.credit_minor ?? '0');
           totalDebit += debit;
           totalCredit += credit;
-          const amount =
-            debit > 0n
-              ? `<n1:DebitAmount><n1:Amount>${amt(debit)}</n1:Amount></n1:DebitAmount>`
-              : `<n1:CreditAmount><n1:Amount>${amt(credit)}</n1:Amount></n1:CreditAmount>`;
-          // TaxAmount: på mva-kontoene ER linjebeløpet avgiften; på grunnlagslinjer
-          // beregnes den deterministisk av linjebeløpet med satsen per bilagsdato.
-          const lineAmount = debit > 0n ? debit : credit;
+          const isDebit = debit > 0n;
+
+          // Fremmed valuta (SAF-T 1.40): linjebeløpet er i NOK (Amount), men
+          // originalvaluta/-beløp/kurs tas med for full sporbarhet (bokf.loven §4-2).
+          const curr = line.original_currency as string | null;
+          const origMinor = line.original_amount_minor as string | null;
+          const currencyInner =
+            curr && curr !== 'NOK' && origMinor != null
+              ? `<n1:CurrencyCode>${esc(curr)}</n1:CurrencyCode><n1:CurrencyAmount>${amt(BigInt(origMinor))}</n1:CurrencyAmount>${line.exchange_rate ? `<n1:ExchangeRate>${esc(line.exchange_rate as string)}</n1:ExchangeRate>` : ''}`
+              : '';
+          const amount = isDebit
+            ? `<n1:DebitAmount><n1:Amount>${amt(debit)}</n1:Amount>${currencyInner}</n1:DebitAmount>`
+            : `<n1:CreditAmount><n1:Amount>${amt(credit)}</n1:Amount>${currencyInner}</n1:CreditAmount>`;
+
+          // TaxAmount i NOK (header-valuta): på mva-kontoene ER linjebeløpet avgiften;
+          // på grunnlagslinjer beregnes den deterministisk med satsen per bilagsdato.
+          // 1.40 skiller debet/kredit-avgift (DebitTaxAmount/CreditTaxAmount).
+          const lineAmount = isDebit ? debit : credit;
           const isVatAccount = ['2700', '2710', '2740'].includes(line.account_number as string);
           const taxAmount = line.vat_code
             ? isVatAccount
               ? lineAmount
               : vatOfNet(rules, line.vat_code, lineAmount, entry.entry_date).vatMinor
             : 0n;
+          const taxAmountTag = isDebit ? 'DebitTaxAmount' : 'CreditTaxAmount';
           const tax = line.vat_code
             ? `
             <n1:TaxInformation>
               <n1:TaxType>MVA</n1:TaxType>
               <n1:TaxCode>${esc(line.vat_code)}</n1:TaxCode>
               <n1:TaxPercentage>${ratePctAt(line.vat_code, entry.entry_date)}</n1:TaxPercentage>
-              <n1:TaxAmount><n1:Amount>${amt(taxAmount)}</n1:Amount></n1:TaxAmount>
+              <n1:${taxAmountTag}><n1:Amount>${amt(taxAmount)}</n1:Amount></n1:${taxAmountTag}>
             </n1:TaxInformation>`
+            : '';
+
+          // Analysis: prosjekt/avdeling → sporbar til AnalysisTypeTable.
+          const analysis = [
+            line.project ? `<n1:Analysis><n1:AnalysisType>PROSJEKT</n1:AnalysisType><n1:AnalysisID>${esc(line.project as string)}</n1:AnalysisID></n1:Analysis>` : '',
+            line.department ? `<n1:Analysis><n1:AnalysisType>AVDELING</n1:AnalysisType><n1:AnalysisID>${esc(line.department as string)}</n1:AnalysisID></n1:Analysis>` : '',
+          ].filter(Boolean).join('');
+          // SourceDocumentID: lenke til kildebilaget (full sporbarhet krone→bilag).
+          const sourceDoc = entry.source_document_id
+            ? `<n1:SourceDocumentID>${saftId(entry.source_document_id)}</n1:SourceDocumentID>`
             : '';
           return `          <n1:Line>
             <n1:RecordID>${line.line_number}</n1:RecordID>
             <n1:AccountID>${esc(line.account_number as string)}</n1:AccountID>
-            ${line.customer_id ? `<n1:CustomerID>${saftId(line.customer_id)}</n1:CustomerID>` : ''}
+            ${analysis}${sourceDoc}${line.customer_id ? `<n1:CustomerID>${saftId(line.customer_id)}</n1:CustomerID>` : ''}
             ${line.vendor_id ? `<n1:SupplierID>${saftId(line.vendor_id)}</n1:SupplierID>` : ''}
             <n1:Description>${esc((line.description as string | null) ?? entry.description)}</n1:Description>
             ${amount}${tax}
@@ -296,6 +368,7 @@ export async function buildSafTXml(db: Db, params: SafTParams): Promise<string> 
           <n1:Description>${esc(entry.description)}</n1:Description>
           <n1:SystemEntryDate>${new Date(entry.posted_at).toISOString().slice(0, 10)}</n1:SystemEntryDate>
           <n1:GLPostingDate>${entry.entry_date}</n1:GLPostingDate>
+          <n1:SystemID>${entry.entry_number}</n1:SystemID>
 ${linesXml}
         </n1:Transaction>`;
     })
@@ -305,7 +378,7 @@ ${linesXml}
   return `<?xml version="1.0" encoding="UTF-8"?>
 <n1:AuditFile xmlns:n1="urn:StandardAuditFile-Taxation-Financial:NO">
   <n1:Header>
-    <n1:AuditFileVersion>1.10</n1:AuditFileVersion>
+    <n1:AuditFileVersion>${esc(params.auditFileVersion ?? SAFT_VERSION)}</n1:AuditFileVersion>
     <n1:AuditFileCountry>NO</n1:AuditFileCountry>
     <n1:AuditFileDateCreated>${created}</n1:AuditFileDateCreated>
     <n1:SoftwareCompanyName>${esc(params.softwareName ?? 'Reknaren')}</n1:SoftwareCompanyName>
@@ -342,6 +415,7 @@ ${accountsXml}
 ${taxTableXml}
       </n1:TaxTableEntry>
     </n1:TaxTable>
+${analysisTypeTableXml}
   </n1:MasterFiles>
   <n1:GeneralLedgerEntries>
     <n1:NumberOfEntries>${entries.rowCount}</n1:NumberOfEntries>
