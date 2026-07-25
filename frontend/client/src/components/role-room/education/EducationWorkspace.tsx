@@ -26,6 +26,7 @@ import { ProductionsTab } from './ProductionsTab';
 import { FagstoffTab } from './FagstoffTab';
 import { AssessmentTab } from './AssessmentTab';
 import { FacultyTab } from './FacultyTab';
+import educationLtiService from './educationLtiService';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
@@ -98,6 +99,12 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
   // Vis rundturen automatisk én gang for nye faglærere.
   useEffect(() => {
     if (!hasSeenEducationTour()) setTourOpen(true);
+  }, []);
+
+  // Fang LTI-launch-kontekst (?lti_launch=<id>) → localStorage, slik at
+  // «Send til LMS-karakterbok» i Vurdering kan pushe karakter via AGS.
+  useEffect(() => {
+    educationLtiService.captureLaunchContext();
   }, []);
 
   return (
