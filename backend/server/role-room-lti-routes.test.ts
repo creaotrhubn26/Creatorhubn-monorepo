@@ -1,6 +1,43 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { createLtiRouter, pushScore } from "./role-room-lti-routes.js";
+import { createLtiRouter, pushScore, extractLtiIdentity } from "./role-room-lti-routes.js";
+
+const ROLES = "https://purl.imsglobal.org/spec/lti/claim/roles";
+
+describe("extractLtiIdentity (LTI id_token → identitet + rolle)", () => {
+  it("henter e-post (lowercased) + navn fra OIDC-claims", () => {
+    const id = extractLtiIdentity({ email: "Kari@Skole.No", name: "Kari Nordmann", [ROLES]: [] });
+    expect(id.email).toBe("kari@skole.no");
+    expect(id.name).toBe("Kari Nordmann");
+  });
+  it("faller tilbake til given_name + family_name når name mangler", () => {
+    const id = extractLtiIdentity({ email: "a@b.no", given_name: "Ola", family_name: "Hansen", [ROLES]: [] });
+    expect(id.name).toBe("Ola Hansen");
+  });
+  it("Instructor-rolle → faglærer", () => {
+    const id = extractLtiIdentity({ email: "a@b.no", [ROLES]: ["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"] });
+    expect(id.educationRole).toBe("faglærer");
+  });
+  it("kun Learner-rolle → student", () => {
+    const id = extractLtiIdentity({ email: "a@b.no", [ROLES]: ["http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"] });
+    expect(id.educationRole).toBe("student");
+  });
+  it("både Instructor og Learner → faglærer (instruktør vinner)", () => {
+    const id = extractLtiIdentity({ email: "a@b.no", [ROLES]: [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner",
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor",
+    ] });
+    expect(id.educationRole).toBe("faglærer");
+  });
+  it("ingen roller → faglærer (default; launcher setter karakter)", () => {
+    const id = extractLtiIdentity({ email: "a@b.no", [ROLES]: [] });
+    expect(id.educationRole).toBe("faglærer");
+  });
+  it("uten e-post-claim → email null (uautentisert landing)", () => {
+    const id = extractLtiIdentity({ [ROLES]: [] });
+    expect(id.email).toBeNull();
+  });
+});
 
 function mountHandlers(router: any) {
   const out: Array<{ method: string; path: string; stack: any[] }> = [];
