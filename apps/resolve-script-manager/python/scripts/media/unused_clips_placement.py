@@ -27,18 +27,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import bridge  # noqa: E402
 
 
-def _identity(clip) -> tuple[str, str]:
-    uid = ""
-    try:
-        uid = clip.GetUniqueId() or ""
-    except Exception:
-        pass
-    fpath = ""
-    try:
-        fpath = clip.GetClipProperty("File Path") or ""
-    except Exception:
-        pass
-    return (uid or fpath or (clip.GetName() or "")), fpath
+from project_index import clip_identity as _shared_identity
+
+
+def _identity(clip):
+    """Delt identitet fra prosjektindeksen — ALDRI navn alene."""
+    d = _shared_identity(clip)
+    return d["uid"], d["path"]
 
 
 def _natural_key(name: str):

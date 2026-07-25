@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import bridge  # noqa: E402
+from project_index import clip_identity  # noqa: E402
 
 DEFAULT_KEYS = ["Pan", "Tilt", "ZoomX", "ZoomY", "RotationAngle"]
 
@@ -102,7 +103,7 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 mpi = it.GetMediaPoolItem()
                 if not mpi:
                     continue
-                uid = mpi.GetUniqueId() or mpi.GetName()
+                uid = clip_identity(mpi)["uid"]
                 if uid in seen:
                     continue
                 seen.add(uid)

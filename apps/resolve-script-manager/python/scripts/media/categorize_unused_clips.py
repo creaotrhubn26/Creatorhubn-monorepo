@@ -40,21 +40,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import bridge  # noqa: E402
 
 
-def _clip_identity(clip) -> tuple[str, str]:
-    """(primær-id, filbane). UniqueId når mulig, ellers filbane/navn."""
-    uid = ""
-    try:
-        uid = clip.GetUniqueId() or ""
-    except Exception:
-        pass
-    fpath = ""
-    try:
-        fpath = clip.GetClipProperty("File Path") or ""
-    except Exception:
-        pass
-    if not uid:
-        uid = fpath or (clip.GetName() or "")
-    return uid, fpath
+from project_index import clip_identity as _shared_identity
+
+
+def _clip_identity(clip):
+    """Delt identitet fra prosjektindeksen — ALDRI navn alene."""
+    d = _shared_identity(clip)
+    return d["uid"], d["path"]
 
 
 def _clip_type(clip) -> str:

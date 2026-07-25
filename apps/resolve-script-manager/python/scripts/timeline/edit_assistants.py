@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import bridge  # noqa: E402
+from project_index import clip_identity  # noqa: E402
 
 
 def _ffmpeg() -> str:
@@ -211,7 +212,7 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                     try:
                         mpi = it.GetMediaPoolItem()
                         if mpi:
-                            used.add(mpi.GetUniqueId() or mpi.GetName())
+                            used.add(clip_identity(mpi)["uid"])
                     except Exception:
                         continue
         bin_names = [b.strip() for b in (params.get("bins") or "Dag 1,Dag 2").split(",") if b.strip()]
@@ -236,11 +237,7 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 return ("", "")
 
         def describe(c, cam):
-            uid = ""
-            try:
-                uid = c.GetUniqueId() or ""
-            except Exception:
-                pass
+            uid = clip_identity(c)["uid"]
             try:
                 dur = float(c.GetClipProperty("Frames") or 0) / fps
                 stc = c.GetClipProperty("Start TC") or ""
@@ -248,7 +245,7 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 dur, stc = 0, ""
             return {"clip": c.GetName() or "?", "camera": cam,
                     "startTc": stc, "durationSec": round(dur, 1),
-                    "used": (uid or c.GetName()) in used}
+                    "used": uid in used}
 
         cur_name = cur["name"]
         cur_cam_tok = _camera_token(cur_name)
