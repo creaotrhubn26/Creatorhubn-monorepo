@@ -1739,6 +1739,15 @@ function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
         ...defaultDevOrigins,
         DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN,
         'https://www.theroleroom.com',
+        'https://theroleroom.com',
+        // Førsteparts CreatorHub-flater som hoster Role Room admin/integrasjons-
+        // UI (bl.a. LTI-plattform-registrering i AdminDashboard). Uten disse
+        // ble kreditert cross-origin-kall fra admin-panelet mot /api/role-room/*
+        // avvist (LTI-plattformregistrering feilet). Speiler den globale
+        // KNOWN_ORIGINS-listen for CreatorHub-vertene.
+        'https://admin.creatorhubn.com',
+        'https://creatorhubn.com',
+        'https://www.creatorhubn.com',
       ].filter((entry): entry is string => Boolean(readStringValue(entry))),
     ),
   );
