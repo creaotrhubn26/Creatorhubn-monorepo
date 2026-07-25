@@ -43,6 +43,7 @@ import {
   type ProfessionMode,
 } from '../config/professionMode';
 import authSessionService from '../services/authSessionService';
+import { FeideLoginButton } from '../education/FeideLoginButton';
 import { googleWorkspaceApi } from '../services/castingApiService';
 import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
 import { parseTalentPortalIntentFromWindow } from '../utils/talentPortal';
@@ -6404,6 +6405,8 @@ export default function LoginDialog({
               >
                 {isLandingPage ? 'Google' : 'Fortsett med Google'}
               </Button>
+              {/* Feide (institusjons-innlogging) — skjuler seg selv hvis ikke konfigurert */}
+              <FeideLoginButton compact={isLandingPage} />
               {/* LinkedIn */}
               {isLandingPage && (
                 <Button
