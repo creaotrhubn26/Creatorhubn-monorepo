@@ -188,4 +188,14 @@ describe('SAF-T Financial-eksport', () => {
     // Kildebilag-lenke (krone \u2192 bilag).
     expect(xml).toMatch(/<n1:SourceDocumentID>[0-9a-f]{32}<\/n1:SourceDocumentID>/);
   });
+
+  it('tom periode (ingen posteringer) er fortsatt gyldig 1.40 (utelater tom TaxTable)', async () => {
+    const xml = await buildSafTXml(db, { organizationId: orgId, fromDate: '2030-01-01', toDate: '2030-12-31' });
+    const dir = mkdtempSync(join(tmpdir(), 'saft-empty-'));
+    const file = join(dir, 'export.xml');
+    writeFileSync(file, xml, 'utf8');
+    execFileSync('xmllint', ['--noout', '--schema', join(process.cwd(), 'vendor/saft/Norwegian_SAF-T_Financial_Schema_v_1.40.xsd'), file]);
+    expect(xml).toContain('<n1:NumberOfEntries>0</n1:NumberOfEntries>');
+    expect(xml).not.toContain('<n1:TaxTable>'); // ingen brukte mva-koder \u2192 utelatt
+  });
 });

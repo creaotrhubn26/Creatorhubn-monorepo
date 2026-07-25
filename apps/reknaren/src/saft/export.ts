@@ -408,13 +408,17 @@ ${accountsXml}
     </n1:GeneralLedgerAccounts>
     ${customersXml ? `<n1:Customers>\n${customersXml}\n    </n1:Customers>` : ''}
     ${vendorsXml ? `<n1:Suppliers>\n${vendorsXml}\n    </n1:Suppliers>` : ''}
-    <n1:TaxTable>
+    ${
+      taxTableXml
+        ? `<n1:TaxTable>
       <n1:TaxTableEntry>
         <n1:TaxType>MVA</n1:TaxType>
         <n1:Description>Merverdiavgift</n1:Description>
 ${taxTableXml}
       </n1:TaxTableEntry>
-    </n1:TaxTable>
+    </n1:TaxTable>`
+        : ''
+    }
 ${analysisTypeTableXml}
   </n1:MasterFiles>
   <n1:GeneralLedgerEntries>
