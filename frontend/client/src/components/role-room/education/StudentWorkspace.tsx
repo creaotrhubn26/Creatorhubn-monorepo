@@ -10,19 +10,19 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, Button, Chip,
-  CircularProgress, Alert, MenuItem, TextField, Divider,
+  CircularProgress, Alert, MenuItem, TextField, Divider, IconButton,
 } from '@mui/material';
 import {
   Backpack as StudentIcon, MovieCreation as ProductionIcon,
   OpenInNew as OpenIcon, Assignment as AssignmentIcon, Grading as GradedIcon,
 } from '@mui/icons-material';
-import { Logout as LogoutIcon } from '@mui/icons-material';
+import { Logout as LogoutIcon, ArrowBack as BackIcon, Groups as TeamIcon } from '@mui/icons-material';
 import { useSuperAdminGate } from '../components/admin/useSuperAdminGate';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
 import {
   educationStudentViewService, hasStudentSession, clearStudentSession,
-  type StudentView, type StudentViewAssignment,
+  type StudentView, type StudentViewProduction, type StudentProductionHub, type StudentViewAssignment,
 } from './educationStudentViewService';
 import { MEMBER_ROLE_LABELS, type MemberRole } from './educationProductionMembersService';
 
@@ -88,7 +88,7 @@ function MyStudentView() {
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
   if (error) return <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => { clearStudentSession(); window.location.reload(); }}>Logg inn på nytt</Button>}>{error}</Alert>;
   if (!view?.student) return <StudentPlaceholder />;
-  return <StudentViewContent view={view} />;
+  return <StudentViewContent view={view} studentMode />;
 }
 
 function StudentPlaceholder() {
@@ -170,8 +170,14 @@ function SuperAdminPreview() {
   );
 }
 
-function StudentViewContent({ view }: { view: StudentView }) {
+function StudentViewContent({ view, studentMode = false }: { view: StudentView; studentMode?: boolean }) {
   const { student, productions, assignments } = view;
+  const [openProd, setOpenProd] = useState<StudentViewProduction | null>(null);
+
+  if (studentMode && openProd) {
+    return <StudentProductionDetail production={openProd} onBack={() => setOpenProd(null)} />;
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: 2.5 }}>
       {student && (
@@ -186,7 +192,7 @@ function StudentViewContent({ view }: { view: StudentView }) {
           <Typography sx={{ fontWeight: 700, fontSize: 14 }}>Produksjonene dine</Typography>
         </Stack>
         {productions.length === 0 ? (
-          <Typography sx={{ color: 'text.disabled', fontSize: 13 }}>Ingen produksjoner i kullet enda.</Typography>
+          <Typography sx={{ color: 'text.disabled', fontSize: 13 }}>Du er ikke tildelt noen produksjon enda. Faglærer legger deg til.</Typography>
         ) : (
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' } }}>
             {productions.map((p) => (
@@ -196,9 +202,10 @@ function StudentViewContent({ view }: { view: StudentView }) {
                     <Typography sx={{ fontWeight: 700 }}>{p.title}</Typography>
                     <Chip size="small" label={MEMBER_ROLE_LABELS[p.role as MemberRole] ?? p.role} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
                   </Stack>
-                  <Button fullWidth variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(p.projectId)}
+                  <Button fullWidth variant="outlined" startIcon={<OpenIcon />}
+                    onClick={() => (studentMode ? setOpenProd(p) : openProductionInRoleRoom(p.projectId))}
                     sx={{ mt: 1.5, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
-                    Åpne i Role Room
+                    {studentMode ? 'Åpne produksjon' : 'Åpne i Role Room'}
                   </Button>
                 </CardContent>
               </Card>
@@ -258,6 +265,91 @@ function StudentViewContent({ view }: { view: StudentView }) {
           </Card>
         )}
       </Box>
+    </Box>
+  );
+}
+
+function StudentProductionDetail({ production, onBack }: { production: StudentViewProduction; onBack: () => void }) {
+  const [hub, setHub] = useState<StudentProductionHub | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void educationStudentViewService.getMyProduction(production.id)
+      .then(setHub)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Kunne ikke hente produksjonen'))
+      .finally(() => setLoading(false));
+  }, [production.id]);
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <IconButton onClick={onBack} sx={{ color: '#fff' }} aria-label="Tilbake"><BackIcon /></IconButton>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{production.title}</Typography>
+          {hub && <Chip size="small" label={`Din rolle: ${MEMBER_ROLE_LABELS[hub.production.myRole as MemberRole] ?? hub.production.myRole}`} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />}
+        </Box>
+      </Stack>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
+      ) : error ? (
+        <Alert severity="error">{error}</Alert>
+      ) : hub ? (
+        <>
+          {hub.production.projectDescription && (
+            <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <CardContent>
+                <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>Om produksjonen</Typography>
+                <Typography sx={{ fontSize: 13.5, color: 'rgba(255,255,255,0.82)', whiteSpace: 'pre-wrap' }}>{hub.production.projectDescription}</Typography>
+              </CardContent>
+            </Card>
+          )}
+
+          <Box>
+            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+              <TeamIcon sx={{ fontSize: 18, color: ACCENT }} />
+              <Typography sx={{ fontWeight: 700, fontSize: 14 }}>Teamet</Typography>
+            </Stack>
+            <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              {hub.teammates.map((t, i) => (
+                <Box key={i}>
+                  {i > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 2, py: 1 }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{t.name}{t.isMe && <Typography component="span" sx={{ color: 'text.disabled', fontSize: 12 }}> (deg)</Typography>}</Typography>
+                    <Chip size="small" label={MEMBER_ROLE_LABELS[t.role as MemberRole] ?? t.role} sx={{ height: 20, fontSize: 10 }} />
+                  </Stack>
+                </Box>
+              ))}
+            </Card>
+          </Box>
+
+          {hub.assignments.length > 0 && (
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: 14, mb: 1 }}>Oppgaver i produksjonen</Typography>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                {hub.assignments.map((a, i) => (
+                  <Box key={a.id}>
+                    {i > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
+                    <Box sx={{ px: 2, py: 1.25 }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{a.title}</Typography>
+                      {(a.grade || a.feedback) && (
+                        <Typography sx={{ fontSize: 12.5, color: '#10b981', mt: 0.25 }}>
+                          {a.grade ? `Karakter: ${a.grade}` : 'Vurdert'}{a.feedback ? ` — ${a.feedback}` : ''}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                ))}
+              </Card>
+            </Box>
+          )}
+
+          <Typography sx={{ fontSize: 11.5, color: 'text.disabled' }}>
+            Selve produksjonsverktøyene (story-arc, casting, call-sheet) åpnes i Role Room — kommer for studenter.
+          </Typography>
+        </>
+      ) : null}
     </Box>
   );
 }

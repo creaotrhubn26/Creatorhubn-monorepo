@@ -36,6 +36,20 @@ export interface StudentView {
   assignments: StudentViewAssignment[];
 }
 
+export interface StudentProductionHub {
+  production: {
+    id: string;
+    title: string;
+    projectId: string;
+    projectName: string | null;
+    projectStatus: string | null;
+    projectDescription: string | null;
+    myRole: string;
+  };
+  teammates: { name: string; role: string; isMe: boolean }[];
+  assignments: { id: string; title: string; dueAt: string | null; submissionStatus: string; grade: string | null; feedback: string | null }[];
+}
+
 const BASE = '/api/role-room/education';
 
 /** Isolert studentsesjon-token (SEPARAT fra role_room_auth_token). */
@@ -80,6 +94,18 @@ export const educationStudentViewService = {
     if (res.status === 401) { clearStudentSession(); throw new Error('Sesjonen er utløpt'); }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as StudentView;
+  },
+
+  /** Innlogget student: read-only produksjons-hub for en TILDELT produksjon. */
+  async getMyProduction(productionId: string): Promise<StudentProductionHub> {
+    const token = getStudentToken();
+    if (!token) throw new Error('Ingen studentsesjon');
+    const res = await fetch(`${BASE}/student/production/${encodeURIComponent(productionId)}`, {
+      headers: { 'Content-Type': 'application/json', 'x-student-token': token },
+    });
+    if (res.status === 401) { clearStudentSession(); throw new Error('Sesjonen er utløpt'); }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as StudentProductionHub;
   },
 
   /** Løs inn en invitasjon → lagrer studentsesjon-token. */
