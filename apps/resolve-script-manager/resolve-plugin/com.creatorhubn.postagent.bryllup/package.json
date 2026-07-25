@@ -1,0 +1,6 @@
+{
+    "name": "post-agent-bryllup-workflow-integration",
+    "version": "0.1.0",
+    "description": "Post Agent bryllupsveiviser som DaVinci Resolve Workflow Integration",
+    "main": "main.js"
+}

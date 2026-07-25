@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BlackmagicDesign>
+    <Plugin>
+        <Id>com.creatorhubn.postagent.bryllup</Id>
+        <Name>Post Agent — Bryllup</Name>
+        <Version>0.1</Version>
+        <Description>Bryllupsveiviseren inne i Resolve: kilder, multicam, lyd-sync, QC og ubrukt-materiale med AI-anbefalinger.</Description>
+        <FilePath>main.js</FilePath>
+    </Plugin>
+</BlackmagicDesign>
