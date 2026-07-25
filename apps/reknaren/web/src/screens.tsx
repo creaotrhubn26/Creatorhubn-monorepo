@@ -135,183 +135,107 @@ export function OverviewScreen({
   onOpenDocument: (id: string) => void;
   onNavigate?: (screen: string) => void;
 }) {
-  const { from, to } = thisYear();
-  const health = useLoad(
-    () => api<{ issues: HealthIssue[]; okCount: number }>('GET', `/api/organizations/${orgId}/health-check`),
-    [orgId],
-  );
-  const errors = useLoad(
-    () => api<{ errors: BookkeepingError[] }>('GET', `/api/organizations/${orgId}/bookkeeping-errors`),
-    [orgId],
-  );
-  const docs = useLoad(() => api<DocumentRow[]>('GET', `/api/organizations/${orgId}/documents`), [orgId]);
-  const tax = useLoad(
-    () =>
-      api<{ recommendedReserveMinor: string }>(
-        'GET',
-        `/api/organizations/${orgId}/tax/estimate?from=${from}&to=${to}`,
-      ),
-    [orgId],
-  );
-  const bank = useLoad(
-    () => api<{ id: string }[]>('GET', `/api/organizations/${orgId}/bank/transactions?status=unmatched`),
-    [orgId],
-  );
-
-  const all = docs.data ?? [];
-  const needsAction = all.filter((d) => ['needs_review', 'quarantined', 'extracted'].includes(d.status));
-  const count = (s: string) => all.filter((d) => d.status === s).length;
-  const reviewCount = count('needs_review') + count('quarantined');
-
+  const dash = useLoad(() => api<Dashboard>('GET', `/api/organizations/${orgId}/dashboard`), [orgId]);
+  const d = dash.data;
+  const go = (s: string) => onNavigate?.(s);
   return (
     <div>
       <div className="page-head">
         <h1>Oversikt</h1>
-        <p className="subtitle">Det viktigste først: hva trenger oppmerksomhet nå.</p>
+        <p className="subtitle">Alt på ett sted — hva som er bra, og hva som trenger deg.</p>
       </div>
+      {dash.error && <div className="error">{dash.error}</div>}
+      {dash.loading || !d ? (
+        <>
+          <div className="panel"><TableSkeleton /></div>
+          <div className="tile-grid">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="tile"><CardSkeleton /></div>)}</div>
+        </>
+      ) : (
+        <>
+          {/* Hero: månedsavslutning — den løpende statusen */}
+          <div className="panel hero clickable" onClick={() => go('period-close')} role="button" tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && go('period-close')}>
+            <div className="panel-head">
+              <h2>{d.monthClose.monthName} — avstemming</h2>
+              <span className={`confidence ${d.monthClose.blockerCount > 0 ? 'low' : d.monthClose.readinessPct >= 80 ? 'high' : 'medium'}`}>
+                {d.monthClose.ready ? 'Klar til å låses' : `${d.monthClose.readinessPct} % ferdig`}
+              </span>
+            </div>
+            <div className="progress">
+              <div className={`progress-fill${d.monthClose.readinessPct >= 80 ? ' ok' : d.monthClose.readinessPct >= 50 ? ' warn' : ' low'}`} style={{ width: `${d.monthClose.readinessPct}%` }} />
+            </div>
+            <p className="subtitle" style={{ marginTop: 10, marginBottom: 0 }}>{d.monthClose.summary}</p>
+          </div>
 
-      {!health.loading && health.data && (
-        <div className="panel health-panel">
-          <div className="threshold-head">
-            <h2>Regnskapshelse</h2>
-            {health.data.issues.length === 0 ? (
-              <span className="badge ok">Alt ser bra ut ✓</span>
+          {/* Signal-fliser — glanseløst overblikk, hver lenker til sin fane */}
+          <div className="tile-grid">
+            <Tile label="Likviditet 90 dager" value={`${kr(d.liquidity.endBalanceMinor)} kr`}
+              sub={`laveste ${kr(d.liquidity.lowestBalanceMinor)} kr`} tone={d.liquidity.goesNegative ? 'alert' : 'ok'} onClick={() => go('planning')} />
+            <Tile label="Dokumentjakt" value={`${d.documentHunt.gapsWithCandidates} treff`}
+              sub={`${d.documentHunt.paymentsMissingDoc} betaling${d.documentHunt.paymentsMissingDoc === 1 ? '' : 'er'} uten bilag`}
+              tone={d.documentHunt.gapsWithCandidates > 0 ? 'attention' : 'plain'} onClick={() => go('document-hunt')} />
+            <Tile label="Skatteassistent" value={`${d.advisories.total} funn`}
+              sub={`${d.advisories.risiko} risiko · ${d.advisories.mulighet} muligheter`}
+              tone={d.advisories.risiko > 0 ? 'attention' : 'plain'} onClick={() => go('assistant')} />
+            <Tile label="Sett av til skatt" value={`${kr(d.taxReserveMinor)} kr`}
+              sub={`neste MVA-forfall ${nb(d.vat.dueDate)}`} tone="plain" onClick={() => go('tax')} />
+            <Tile label="Bilag til behandling" value={String(d.counts.documentsWaiting)}
+              sub="venter på godkjenning" tone={d.counts.documentsWaiting > 0 ? 'attention' : 'ok'} onClick={() => go('documents')} />
+            <Tile label="Uavstemt bank" value={String(d.counts.bankUnmatched)}
+              sub="betalinger uten kobling" tone={d.counts.bankUnmatched > 0 ? 'attention' : 'ok'} onClick={() => go('bank')} />
+          </div>
+
+          {/* Én samlet handlingsliste */}
+          <div className="panel">
+            <div className="panel-head">
+              <h2>Å følge opp</h2>
+              {d.followUp.length === 0 ? <span className="confidence high">Alt ser bra ut ✓</span> : <span className="confidence medium">{d.followUp.length}</span>}
+            </div>
+            {d.followUp.length === 0 ? (
+              <p className="subtitle">Vi fant ingenting som haster. Vi kontrollerer regnskapet løpende, så du kan slappe av.</p>
             ) : (
-              <span className="badge accent">{health.data.issues.length} ting å se på</span>
+              <ul className="health-list">
+                {d.followUp.map((f) => (
+                  <li key={f.id} className={`health-item ${f.severity}`}>
+                    <div className="health-dot" aria-hidden="true" />
+                    <div className="health-body">
+                      <div className="health-title">{f.title}</div>
+                      <div className="health-detail">{f.detail}</div>
+                    </div>
+                    {(f.documentId || f.actionScreen) && (
+                      <button className="secondary health-action" onClick={() => (f.documentId ? onOpenDocument(f.documentId) : go(f.actionScreen!))}>
+                        Åpne
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-          {health.data.issues.length === 0 ? (
-            <p className="subtitle">
-              Vi fant ingenting som haster. Vi sjekker fortløpende om noe ser feil ut, så du kan slappe av.
-            </p>
-          ) : (
-            <ul className="health-list">
-              {health.data.issues.map((iss) => (
-                <li key={iss.id} className={`health-item ${iss.severity}`}>
-                  <div className="health-dot" aria-hidden="true" />
-                  <div className="health-body">
-                    <div className="health-title">{iss.title}</div>
-                    <div className="health-detail">{iss.detail}</div>
-                  </div>
-                  {iss.actionLabel && iss.actionScreen && onNavigate && (
-                    <button className="primary health-action" onClick={() => onNavigate(iss.actionScreen!)}>
-                      {iss.actionLabel}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        </>
       )}
-
-      {!errors.loading && errors.data && errors.data.errors.length > 0 && (
-        <div className="panel health-panel">
-          <div className="threshold-head">
-            <h2>Har du gjort en feil?</h2>
-            <span className="badge accent">
-              {errors.data.errors.length} bilag å sjekke
-            </span>
-          </div>
-          <p className="subtitle">
-            Vi går gjennom det som allerede er bokført og flagger det som ser feil ut. Ingenting rettes
-            automatisk — du bestemmer.
-          </p>
-          <ul className="health-list">
-            {errors.data.errors.map((e, i) => (
-              <li key={`${e.code}-${e.entryNumber ?? i}`} className={`health-item ${e.severity}`}>
-                <div className="health-dot" aria-hidden="true" />
-                <div className="health-body">
-                  <div className="health-title">{e.title}</div>
-                  <div className="health-detail">{e.detail}</div>
-                </div>
-                {e.documentId && (
-                  <button className="primary health-action" onClick={() => onOpenDocument(e.documentId!)}>
-                    {e.actionLabel}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {docs.loading ? (
-        <div className="cards">
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
-        </div>
-      ) : (
-        <div className="cards">
-          <div className={`card${count('extracted') > 0 ? ' attention' : ''}`}>
-            <div className="label">Klar til kontroll</div>
-            <div className="value">{count('extracted')}</div>
-            <div className="hint">Bilag med forslag som venter på din godkjenning</div>
-          </div>
-          <div className={`card${reviewCount > 0 ? ' attention' : ''}`}>
-            <div className="label">Trenger gjennomgang</div>
-            <div className="value">{reviewCount}</div>
-            <div className="hint">Avvik i summer eller sikkerhetskarantene</div>
-          </div>
-          <div className="card">
-            <div className="label">Uavstemte banktransaksjoner</div>
-            <div className="value">{bank.data?.length ?? '–'}</div>
-            <div className="hint">Betalinger uten kobling til bilag</div>
-          </div>
-          <div className="card">
-            <div className="label">Anbefalt reserve (skatt + MVA)</div>
-            <div className="value">{tax.data ? kr(tax.data.recommendedReserveMinor) : '–'}</div>
-            <div className="hint">Estimat — se «Skatt og reserver» for forutsetningene</div>
-          </div>
-        </div>
-      )}
-
-      <h2>Bilag som venter på deg</h2>
-      {docs.loading ? (
-        <TableSkeleton />
-      ) : needsAction.length === 0 ? (
-        <EmptyState
-          icon="✓"
-          title="Ingenting venter"
-          desc="Alle mottatte bilag er behandlet. Nye dokumenter dukker opp her når de kommer inn via Gmail, mobil eller opplasting."
-        />
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Dokument</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {needsAction.map((d) => (
-                <tr
-                  key={d.id}
-                  className="clickable"
-                  tabIndex={0}
-                  onClick={() => onOpenDocument(d.id)}
-                  onKeyDown={(e) => e.key === 'Enter' && onOpenDocument(d.id)}
-                >
-                  <td>
-                    <div className="primary-line">{d.filename}</div>
-                    <div className="secondary-line">
-                      {SOURCE_LABELS[d.source] ?? d.source} · {d.created_at?.slice(0, 10)}
-                    </div>
-                  </td>
-                  <td>
-                    <StatusBadge status={d.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {docs.error && <div className="error">{docs.error}</div>}
     </div>
+  );
+}
+
+interface Dashboard {
+  monthClose: { monthName: string; readinessPct: number; ready: boolean; summary: string; blockerCount: number };
+  liquidity: { cashNowMinor: string; endBalanceMinor: string; lowestBalanceMinor: string; goesNegative: boolean };
+  vat: { netPayableMinor: string; dueDate: string };
+  taxReserveMinor: string;
+  advisories: { risiko: number; mulighet: number; kontrollpunkt: number; total: number };
+  documentHunt: { paymentsMissingDoc: number; gapsWithCandidates: number };
+  counts: { documentsWaiting: number; bankUnmatched: number };
+  followUp: { id: string; severity: string; title: string; detail: string; actionScreen?: string; documentId?: string }[];
+}
+
+function Tile({ label, value, sub, tone, onClick }: { label: string; value: string; sub?: string; tone: 'ok' | 'attention' | 'alert' | 'plain'; onClick: () => void }) {
+  return (
+    <button className={`tile ${tone}`} onClick={onClick}>
+      <div className="tile-label">{label}</div>
+      <div className="tile-value">{value}</div>
+      {sub && <div className="tile-sub">{sub}</div>}
+    </button>
   );
 }
 
