@@ -39,6 +39,8 @@ export interface RubricCriterionView {
   id: string;
   title: string;
   learningGoal: string | null;
+  learningGoalId: string | null;
+  learningGoalTitle: string | null;
   sortOrder: number;
 }
 
@@ -47,6 +49,8 @@ function criterionRowToView(r: Record<string, unknown>): RubricCriterionView {
     id: String(r.id),
     title: (r.title as string) ?? "",
     learningGoal: (r.learning_goal as string) ?? null,
+    learningGoalId: r.learning_goal_id ? String(r.learning_goal_id) : null,
+    learningGoalTitle: (r.learning_goal_title as string) ?? null,
     sortOrder: Number(r.sort_order ?? 0),
   };
 }
@@ -104,8 +108,10 @@ export function createEducationRubricRouter(
 
   const listCriteria = async (assignmentId: string): Promise<RubricCriterionView[]> => {
     const r = await pool.query(
-      `SELECT * FROM role_room_education_rubric_criteria
-        WHERE assignment_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+      `SELECT c.*, g.title AS learning_goal_title
+         FROM role_room_education_rubric_criteria c
+         LEFT JOIN role_room_education_learning_goals g ON g.id = c.learning_goal_id
+        WHERE c.assignment_id = $1 ORDER BY c.sort_order ASC, c.created_at ASC`,
       [assignmentId],
     );
     return r.rows.map(criterionRowToView);
@@ -124,16 +130,17 @@ export function createEducationRubricRouter(
   });
 
   router.post("/education/assignments/:id/rubric/criteria", requireAuth, async (req, res) => {
-    const body = (req.body ?? {}) as { title?: string; learningGoal?: string; sortOrder?: number };
+    const body = (req.body ?? {}) as { title?: string; learningGoal?: string; learningGoalId?: string; sortOrder?: number };
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) { res.status(400).json({ error: "title_required" }); return; }
     try {
       if (!(await ownsAssignment(req.params.id, uid(req)))) { res.status(404).json({ error: "not_found" }); return; }
       const id = newEntityId("edrub");
       const r = await pool.query(
-        `INSERT INTO role_room_education_rubric_criteria (id, assignment_id, owner_user_id, title, learning_goal, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [id, req.params.id, uid(req), title, body.learningGoal?.trim() || null, Number.isFinite(body.sortOrder) ? body.sortOrder : 0],
+        `INSERT INTO role_room_education_rubric_criteria (id, assignment_id, owner_user_id, title, learning_goal, learning_goal_id, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         RETURNING *, (SELECT title FROM role_room_education_learning_goals WHERE id = $6) AS learning_goal_title`,
+        [id, req.params.id, uid(req), title, body.learningGoal?.trim() || null, body.learningGoalId || null, Number.isFinite(body.sortOrder) ? body.sortOrder : 0],
       );
       res.status(201).json({ criterion: criterionRowToView(r.rows[0]) });
     } catch (err) {
