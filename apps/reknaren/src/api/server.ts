@@ -5,7 +5,7 @@
  */
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { hasPermission, ROLES, type Permission } from '../access/permissions.js';
+import { hasPermission, PERMISSIONS, ROLES, type Permission } from '../access/permissions.js';
 import { getAccountDef, STANDARD_ACCOUNTS } from '../coa/accounts.js';
 import { getVatCode, VAT_CODES } from '../coa/vat-codes.js';
 import type { Db } from '../db/pool.js';
@@ -112,6 +112,18 @@ import { buildTaxEstimate } from '../tax/estimate.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
 import { issueToken, resolveAuthSecret, verifyToken, type AuthTokenPayload } from './auth.js';
 import { createMagicToken, isAllowedEmail, verifyMagicToken } from './magic-link.js';
+import { createApiKey, listApiKeys, resolveApiKey, revokeApiKey } from '../integrations/api-keys.js';
+import {
+  createWebhook,
+  deleteWebhook,
+  deliverPending,
+  emitEvent,
+  kickDelivery,
+  listDeliveries,
+  listWebhooks,
+  testWebhook,
+  WEBHOOK_EVENTS,
+} from '../integrations/webhooks.js';
 
 /** JSON-serialisering: bigint (øre) blir strenger — aldri flyttall over grensen. */
 function toJson(value: unknown): unknown {
@@ -123,6 +135,8 @@ function toJson(value: unknown): unknown {
 interface AuthedRequest extends Request {
   auth?: AuthTokenPayload;
   orgRole?: string;
+  /** Satt når forespørselen er autentisert med en API-nøkkel (åpent integrasjonslag). */
+  apiKey?: { keyId: string; organizationId: string; scopes: string[] };
 }
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
@@ -284,6 +298,62 @@ export function createApiServer(deps: ApiDeps): express.Express {
               code: role ? 'FORBIDDEN' : 'NOT_FOUND',
               message: role ? 'Du mangler rettighet til denne handlingen.' : 'Ikke funnet.',
             },
+          });
+          return;
+        }
+        req.orgRole = role;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    };
+
+  /**
+   * Tilgang til det åpne integrasjonslaget (/api/v1): godtar ENTEN en API-nøkkel
+   * (rk_live_…, scopet + tenant-bundet) ELLER en vanlig sesjons-token (m/
+   * medlemskap). Begge håndhever det samme rettighetsvokabularet, og
+   * organisasjonen i URL-en må matche nøkkelens/​medlemmets org.
+   */
+  const requireApiAccess =
+    (permission: Permission) =>
+    async (req: AuthedRequest, res: Response, next: NextFunction): Promise<void> => {
+      try {
+        const orgId = req.params.orgId;
+        if (!orgId || !/^[0-9a-f-]{36}$/i.test(orgId)) {
+          res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Ugyldig organisasjons-ID.' } });
+          return;
+        }
+        const header = req.header('authorization');
+        const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+        if (token?.startsWith('rk_')) {
+          const resolved = await resolveApiKey(deps.db, token);
+          if (!resolved) {
+            res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Ugyldig eller tilbakekalt API-nøkkel.' } });
+            return;
+          }
+          if (resolved.organizationId !== orgId) {
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ikke funnet.' } });
+            return;
+          }
+          if (!resolved.scopes.includes(permission)) {
+            res.status(403).json({ error: { code: 'FORBIDDEN', message: `API-nøkkelen mangler scope «${permission}».` } });
+            return;
+          }
+          req.apiKey = resolved;
+          next();
+          return;
+        }
+        // Fall tilbake til sesjons-token + medlemskap.
+        const payload = token ? verifyToken(token, secret) : null;
+        if (!payload) {
+          res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Gyldig token eller API-nøkkel kreves.' } });
+          return;
+        }
+        req.auth = payload;
+        const role = await getMembershipRole(deps.db, orgId, payload.userId);
+        if (!role || !hasPermission(role, permission)) {
+          res.status(role ? 403 : 404).json({
+            error: { code: role ? 'FORBIDDEN' : 'NOT_FOUND', message: role ? 'Du mangler rettighet.' : 'Ikke funnet.' },
           });
           return;
         }
@@ -878,6 +948,13 @@ export function createApiServer(deps: ApiDeps): express.Express {
           ...(body.exchangeRate ? { exchangeRate: body.exchangeRate } : {}),
           ...(body.postingDate ? { postingDate: body.postingDate } : {}),
         });
+        // Åpent integrasjonslag: varsle abonnenter om ny postering.
+        await emitEvent(deps.db, {
+          organizationId: req.params.orgId!,
+          event: 'journal_entry.posted',
+          data: { entryId: entry.id, entryNumber: entry.entryNumber, entryDate: entry.entryDate, documentId: req.params.documentId },
+        });
+        kickDelivery(deps.db);
         res.status(201).json(toJson(entry));
       } catch (err) {
         next(err);
@@ -2385,6 +2462,177 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // ═══ Åpent integrasjonslag ════════════════════════════════════════════════
+  // (1) Forvaltning (sesjon + integrations.manage): API-nøkler + webhooks.
+  app.get('/api/organizations/:orgId/api-keys', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await listApiKeys(deps.db, req.params.orgId!)));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/api-keys', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ name: z.string().min(1).max(120), scopes: z.array(z.string()).min(1) }).parse(req.body);
+      const result = await createApiKey(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        name: body.name,
+        scopes: body.scopes,
+      });
+      // secret returneres KUN her, denne ene gangen.
+      res.status(201).json(toJson(result));
+    } catch (err) { next(err); }
+  });
+  app.delete('/api/organizations/:orgId/api-keys/:keyId', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      await revokeApiKey(deps.db, { organizationId: req.params.orgId!, actor: { userId: req.auth!.userId, role: req.orgRole! }, keyId: req.params.keyId! });
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+
+  app.get('/api/organizations/:orgId/webhooks', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await listWebhooks(deps.db, req.params.orgId!)));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/webhooks', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ url: z.string().url(), events: z.array(z.string()).min(1), description: z.string().max(200).optional() }).parse(req.body);
+      const result = await createWebhook(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        url: body.url,
+        events: body.events,
+        ...(body.description ? { description: body.description } : {}),
+      });
+      res.status(201).json(toJson(result));
+    } catch (err) { next(err); }
+  });
+  app.delete('/api/organizations/:orgId/webhooks/:webhookId', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      await deleteWebhook(deps.db, { organizationId: req.params.orgId!, actor: { userId: req.auth!.userId, role: req.orgRole! }, webhookId: req.params.webhookId! });
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/webhooks/:webhookId/test', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await testWebhook(deps.db, { organizationId: req.params.orgId!, webhookId: req.params.webhookId! })));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/organizations/:orgId/webhook-deliveries', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await listDeliveries(deps.db, req.params.orgId!)));
+    } catch (err) { next(err); }
+  });
+
+  // (2) Cron: drener/gjenforsøker webhook-leveranser.
+  app.post('/api/cron/webhooks-drain', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      if (!secret || secret.length < 16) { res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler.' } }); return; }
+      const a = Buffer.from(secret); const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } }); return; }
+      res.json(toJson(await deliverPending(deps.db)));
+    } catch (err) { next(err); }
+  });
+
+  // (3) Offentlig oppdagelse (dokumentasjon): hva laget tilbyr.
+  app.get('/api/v1', (_req, res) => {
+    res.json({
+      name: 'Reknaren åpent integrasjonslag',
+      version: '1',
+      auth: 'Bearer API-nøkkel (rk_live_…) i Authorization-headeren, eller sesjons-token.',
+      scopes: PERMISSIONS,
+      events: WEBHOOK_EVENTS,
+      formats: { saft: 'SAF-T Financial 1.40', einvoice: 'EHF / PEPPOL BIS Billing 3.0' },
+      endpoints: [
+        'GET /api/v1/organizations/:orgId/accounts',
+        'GET /api/v1/organizations/:orgId/customers',
+        'GET /api/v1/organizations/:orgId/suppliers',
+        'GET /api/v1/organizations/:orgId/journal-entries?from&to&limit&offset',
+        'GET /api/v1/organizations/:orgId/invoices',
+        'GET /api/v1/organizations/:orgId/vat-report?from&to',
+        'GET /api/v1/organizations/:orgId/saf-t?from&to (SAF-T 1.40 XML)',
+      ],
+      webhookSignature: 'X-Reknaren-Signature: sha256=<HMAC-SHA256 av råkroppen med endepunktets secret>',
+    });
+  });
+
+  // (4) Versjonert LES-API (API-nøkkel eller sesjon).
+  app.get('/api/v1/organizations/:orgId/accounts', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const rows = (await deps.db.query(`SELECT account_number, name, active FROM ledger_accounts WHERE organization_id = $1 ORDER BY account_number`, [req.params.orgId])).rows;
+      res.json(toJson({ accounts: rows.map((r) => ({ accountNumber: r.account_number, name: r.name, active: r.active })) }));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/v1/organizations/:orgId/customers', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const rows = (await deps.db.query(`SELECT id, name, org_number, email, status FROM customers WHERE organization_id = $1 ORDER BY name`, [req.params.orgId])).rows;
+      res.json(toJson({ customers: rows.map((r) => ({ id: r.id, name: r.name, orgNumber: r.org_number, email: r.email, status: r.status })) }));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/v1/organizations/:orgId/suppliers', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const rows = (await deps.db.query(`SELECT id, name, org_number, status FROM vendors WHERE organization_id = $1 ORDER BY name`, [req.params.orgId])).rows;
+      res.json(toJson({ suppliers: rows.map((r) => ({ id: r.id, name: r.name, orgNumber: r.org_number, status: r.status })) }));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/v1/organizations/:orgId/journal-entries', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const q = z.object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        limit: z.coerce.number().int().min(1).max(500).default(100),
+        offset: z.coerce.number().int().min(0).default(0),
+      }).parse(req.query);
+      const from = q.from ?? '0001-01-01';
+      const to = q.to ?? '9999-12-31';
+      const entries = (await deps.db.query(
+        `SELECT id, entry_number, entry_date::text AS entry_date, description, status
+         FROM journal_entries WHERE organization_id = $1 AND entry_date BETWEEN $2 AND $3
+         ORDER BY entry_number DESC LIMIT $4 OFFSET $5`,
+        [req.params.orgId, from, to, q.limit, q.offset],
+      )).rows;
+      const ids = entries.map((e) => e.id);
+      const lines = ids.length
+        ? (await deps.db.query(
+            `SELECT entry_id, line_number, account_number, vat_code, debit_minor, credit_minor, description, project, department
+             FROM journal_lines WHERE entry_id = ANY($1) ORDER BY entry_id, line_number`, [ids])).rows
+        : [];
+      const byEntry = new Map<string, unknown[]>();
+      for (const l of lines) {
+        const arr = byEntry.get(l.entry_id as string) ?? [];
+        arr.push({ lineNumber: l.line_number, accountNumber: l.account_number, vatCode: l.vat_code, debitMinor: l.debit_minor, creditMinor: l.credit_minor, description: l.description, project: l.project, department: l.department });
+        byEntry.set(l.entry_id as string, arr);
+      }
+      res.json(toJson({
+        entries: entries.map((e) => ({ id: e.id, entryNumber: Number(e.entry_number), entryDate: e.entry_date, description: e.description, status: e.status, lines: byEntry.get(e.id) ?? [] })),
+        limit: q.limit, offset: q.offset,
+      }));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/v1/organizations/:orgId/invoices', requireApiAccess('invoices.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const rows = (await deps.db.query(
+        `SELECT id, invoice_number, status, invoice_date::text AS invoice_date, due_date::text AS due_date, currency, gross_minor, customer_id
+         FROM invoices WHERE organization_id = $1 ORDER BY invoice_date DESC NULLS LAST LIMIT 500`, [req.params.orgId])).rows;
+      res.json(toJson({ invoices: rows.map((r) => ({ id: r.id, invoiceNumber: r.invoice_number, status: r.status, invoiceDate: r.invoice_date, dueDate: r.due_date, currency: r.currency, grossMinor: r.gross_minor, customerId: r.customer_id })) }));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/v1/organizations/:orgId/vat-report', requireApiAccess('vat.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const q = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
+      res.json(toJson(await buildVatReport(deps.db, req.params.orgId!, q.from, q.to)));
+    } catch (err) { next(err); }
+  });
+  app.get('/api/v1/organizations/:orgId/saf-t', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const q = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
+      const xml = await buildSafTXml(deps.db, { organizationId: req.params.orgId!, fromDate: q.from, toDate: q.to });
+      res.set('Content-Type', 'application/xml; charset=utf-8').send(xml);
+    } catch (err) { next(err); }
+  });
+
   app.get(
     '/api/organizations/:orgId/tax/estimate',
     requireAuth,
@@ -2545,6 +2793,12 @@ export function createApiServer(deps: ApiDeps): express.Express {
             newValue: { from: q.from, to: q.to, bytes: Buffer.byteLength(xml) },
           }),
         );
+        await emitEvent(deps.db, {
+          organizationId: req.params.orgId!,
+          event: 'saft.exported',
+          data: { from: q.from, to: q.to, bytes: Buffer.byteLength(xml) },
+        });
+        kickDelivery(deps.db);
         res
           .set('Content-Type', 'application/xml; charset=utf-8')
           .set(
@@ -3004,6 +3258,13 @@ export function createApiServer(deps: ApiDeps): express.Express {
           invoiceId: req.params.invoiceId!,
           ...(body.invoiceDate ? { invoiceDate: body.invoiceDate } : {}),
         });
+        // Åpent integrasjonslag: varsle abonnenter om utstedt faktura.
+        await emitEvent(deps.db, {
+          organizationId: req.params.orgId!,
+          event: 'invoice.issued',
+          data: { invoiceId: req.params.invoiceId, ...(result as Record<string, unknown>) },
+        });
+        kickDelivery(deps.db);
         res.status(201).json(toJson(result));
       } catch (err) {
         next(err);

@@ -3900,6 +3900,215 @@ function GroupForm({ orgId, onSaved }: { orgId: string; onSaved: () => void }) {
   );
 }
 
+/* ── Åpent integrasjonslag (API-nøkler + webhooks) ──────────────────────── */
+
+interface ApiKeyDto { id: string; name: string; keyPrefix: string; scopes: string[]; createdAt: string; lastUsedAt: string | null; revokedAt: string | null }
+interface WebhookDto { id: string; url: string; events: string[]; description: string | null; active: boolean; createdAt: string }
+interface DeliveryDto { id: string; event: string; status: string; attempts: number; url: string; responseStatus: number | null; createdAt: string; lastAttemptAt: string | null }
+
+const API_SCOPES: { value: string; label: string }[] = [
+  { value: 'reports.view', label: 'Lese regnskap/rapporter (konti, bilag, SAF-T)' },
+  { value: 'invoices.view', label: 'Lese fakturaer' },
+  { value: 'vat.view', label: 'Lese MVA-rapport' },
+  { value: 'documents.view', label: 'Lese bilag' },
+  { value: 'audit.view', label: 'Lese revisjonslogg' },
+];
+const WEBHOOK_EVENT_OPTS = ['invoice.issued', 'invoice.paid', 'journal_entry.posted', 'document.received', 'saft.exported', 'vat_report.ready'];
+
+export function IntegrationsScreen({ orgId }: { orgId: string }) {
+  const keys = useLoad(() => api<ApiKeyDto[]>('GET', `/api/organizations/${orgId}/api-keys`), [orgId]);
+  const hooks = useLoad(() => api<WebhookDto[]>('GET', `/api/organizations/${orgId}/webhooks`), [orgId]);
+  const deliveries = useLoad(() => api<DeliveryDto[]>('GET', `/api/organizations/${orgId}/webhook-deliveries`), [orgId]);
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [newSecret, setNewSecret] = useState<{ kind: 'key' | 'webhook'; value: string } | null>(null);
+
+  // API-nøkkel-skjema
+  const [keyName, setKeyName] = useState('');
+  const [keyScopes, setKeyScopes] = useState<string[]>(['reports.view']);
+  const toggleScope = (s: string) => setKeyScopes((p) => (p.includes(s) ? p.filter((x) => x !== s) : [...p, s]));
+  const createKey = async () => {
+    setBusy('key');
+    try {
+      const res = await api<{ secret: string }>('POST', `/api/organizations/${orgId}/api-keys`, { name: keyName, scopes: keyScopes });
+      setNewSecret({ kind: 'key', value: res.secret });
+      setKeyName('');
+      keys.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Kunne ikke opprette nøkkel', 'danger'); } finally { setBusy(null); }
+  };
+  const revokeKey = async (id: string) => {
+    setBusy(id);
+    try { await api('DELETE', `/api/organizations/${orgId}/api-keys/${id}`); toast('Nøkkel tilbakekalt', 'ok'); keys.reload(); }
+    catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+
+  // Webhook-skjema
+  const [hookUrl, setHookUrl] = useState('');
+  const [hookEvents, setHookEvents] = useState<string[]>(['invoice.issued']);
+  const toggleEvent = (e: string) => setHookEvents((p) => (p.includes(e) ? p.filter((x) => x !== e) : [...p, e]));
+  const createHook = async () => {
+    setBusy('hook');
+    try {
+      const res = await api<{ secret: string }>('POST', `/api/organizations/${orgId}/webhooks`, { url: hookUrl, events: hookEvents });
+      setNewSecret({ kind: 'webhook', value: res.secret });
+      setHookUrl('');
+      hooks.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Kunne ikke opprette webhook', 'danger'); } finally { setBusy(null); }
+  };
+  const testHook = async (id: string) => {
+    setBusy(id);
+    try { const r = await api<{ delivered: boolean }>('POST', `/api/organizations/${orgId}/webhooks/${id}/test`, {}); toast(r.delivered ? 'Testhendelse levert ✓' : 'Levering feilet — sjekk endepunktet', r.delivered ? 'ok' : 'danger'); deliveries.reload(); }
+    catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+  const deleteHook = async (id: string) => {
+    setBusy(id);
+    try { await api('DELETE', `/api/organizations/${orgId}/webhooks/${id}`); toast('Webhook slettet', 'ok'); hooks.reload(); }
+    catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+
+  const activeKeys = keys.data?.filter((k) => !k.revokedAt) ?? [];
+  return (
+    <div>
+      <div className="page-head">
+        <h1>API og integrasjoner</h1>
+        <p className="subtitle">
+          Åpent integrasjonslag: gi eksterne systemer scopet, tilbakekallbar tilgang til regnskapet, og få hendelser
+          levert via webhooks. Standard eksportformater: SAF-T Financial 1.40 og EHF/PEPPOL.
+        </p>
+      </div>
+
+      {newSecret && (
+        <div className="panel" style={{ borderColor: 'var(--accent)' }}>
+          <div className="panel-head"><h2>{newSecret.kind === 'key' ? 'Din nye API-nøkkel' : 'Webhook-hemmelighet'}</h2></div>
+          <p className="hint" style={{ marginTop: 0 }}>Kopier den nå — den vises kun denne ene gangen og lagres aldri i klartekst.</p>
+          <code className="secret-reveal">{newSecret.value}</code>
+          <div style={{ marginTop: 10 }}><button className="secondary" onClick={() => setNewSecret(null)}>Jeg har kopiert den</button></div>
+        </div>
+      )}
+
+      {/* API-nøkler */}
+      <div className="panel">
+        <div className="panel-head"><h2>API-nøkler</h2><span className="confidence medium">{activeKeys.length}</span></div>
+        <div className="form-grid">
+          <div>
+            <label htmlFor="key-name">Navn</label>
+            <input id="key-name" value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="f.eks. Power BI, egen portal" />
+          </div>
+          <div>
+            <label>Tilgang (scope)</label>
+            <div className="chips">
+              {API_SCOPES.map((s) => (
+                <label key={s.value} className={`chip${keyScopes.includes(s.value) ? ' active' : ''}`} style={{ cursor: 'pointer' }}>
+                  <input type="checkbox" checked={keyScopes.includes(s.value)} onChange={() => toggleScope(s.value)} style={{ marginRight: 6 }} />
+                  {s.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <button disabled={busy === 'key' || !keyName.trim() || keyScopes.length === 0} onClick={createKey}>Opprett API-nøkkel</button>
+          </div>
+        </div>
+        {activeKeys.length > 0 && (
+          <ul className="health-list" style={{ marginTop: 12 }}>
+            {activeKeys.map((k) => (
+              <li key={k.id} className="health-item">
+                <div className="health-dot" aria-hidden="true" />
+                <div className="health-body">
+                  <div className="health-title"><code>{k.keyPrefix}…</code> {k.name}</div>
+                  <div className="health-detail">{k.scopes.join(', ')}</div>
+                  <div className="hint">Sist brukt: {k.lastUsedAt ? nb(k.lastUsedAt.slice(0, 10)) : 'aldri'}</div>
+                </div>
+                <button className="secondary health-action" disabled={busy === k.id} onClick={() => revokeKey(k.id)}>Tilbakekall</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Webhooks */}
+      <div className="panel">
+        <div className="panel-head"><h2>Webhooks</h2><span className="confidence medium">{hooks.data?.length ?? 0}</span></div>
+        <div className="form-grid">
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label htmlFor="hook-url">Endepunkt-URL (https)</label>
+            <input id="hook-url" value={hookUrl} onChange={(e) => setHookUrl(e.target.value)} placeholder="https://ditt-system.no/webhooks/reknaren" />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label>Hendelser</label>
+            <div className="chips">
+              {WEBHOOK_EVENT_OPTS.map((e) => (
+                <label key={e} className={`chip${hookEvents.includes(e) ? ' active' : ''}`} style={{ cursor: 'pointer' }}>
+                  <input type="checkbox" checked={hookEvents.includes(e)} onChange={() => toggleEvent(e)} style={{ marginRight: 6 }} />
+                  {e}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <button disabled={busy === 'hook' || !hookUrl.trim() || hookEvents.length === 0} onClick={createHook}>Legg til webhook</button>
+          </div>
+        </div>
+        {hooks.data && hooks.data.length > 0 && (
+          <ul className="health-list" style={{ marginTop: 12 }}>
+            {hooks.data.map((h) => (
+              <li key={h.id} className="health-item">
+                <div className="health-dot" aria-hidden="true" />
+                <div className="health-body">
+                  <div className="health-title">{h.url}</div>
+                  <div className="health-detail">{h.events.join(', ')}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="secondary health-action" disabled={busy === h.id} onClick={() => testHook(h.id)}>Test</button>
+                  <button className="secondary health-action" disabled={busy === h.id} onClick={() => deleteHook(h.id)}>Slett</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Leveranselogg */}
+      {deliveries.data && deliveries.data.length > 0 && (
+        <div className="panel">
+          <Disclosure label={`Leveranselogg (${deliveries.data.length})`}>
+            <table className="data-table">
+              <thead><tr><th>Hendelse</th><th>Status</th><th>Forsøk</th><th>Svar</th><th>Tid</th></tr></thead>
+              <tbody>
+                {deliveries.data.map((d) => (
+                  <tr key={d.id}>
+                    <td>{d.event}</td>
+                    <td><span className={`confidence ${d.status === 'delivered' ? 'high' : d.status === 'failed' ? 'low' : 'medium'}`}>{d.status}</span></td>
+                    <td>{d.attempts}</td>
+                    <td>{d.responseStatus ?? '—'}</td>
+                    <td>{nb(d.createdAt.slice(0, 10))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Disclosure>
+        </div>
+      )}
+
+      {/* Oppdagelse / dokumentasjon */}
+      <div className="panel">
+        <Disclosure label="Slik bruker du API-et">
+          <div className="hint">
+            <p>Autentiser med <code>Authorization: Bearer rk_live_…</code>. Basis-URL: <code>/api/v1/organizations/&lt;orgId&gt;/…</code></p>
+            <ul>
+              <li><code>GET /accounts</code>, <code>/customers</code>, <code>/suppliers</code></li>
+              <li><code>GET /journal-entries?from&amp;to&amp;limit&amp;offset</code></li>
+              <li><code>GET /invoices</code>, <code>GET /vat-report?from&amp;to</code></li>
+              <li><code>GET /saf-t?from&amp;to</code> → SAF-T Financial 1.40 (XML)</li>
+            </ul>
+            <p>Webhooks signeres med <code>X-Reknaren-Signature: sha256=&lt;HMAC av råkroppen med webhook-hemmeligheten&gt;</code>. Se <code>GET /api/v1</code> for full oppdagelse.</p>
+          </div>
+        </Disclosure>
+      </div>
+    </div>
+  );
+}
+
 /* ── Smart dokumentjakt ─────────────────────────────────────────────────── */
 
 interface DocCandidate {

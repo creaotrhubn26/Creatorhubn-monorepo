@@ -10,6 +10,7 @@ import {
   AskScreen,
   AssistantScreen,
   FraudScreen,
+  IntegrationsScreen,
   LearningScreen,
   OverviewScreen,
   PeriodCloseScreen,
@@ -78,6 +79,7 @@ type Screen =
   | { name: 'invoicing' }
   | { name: 'dimensions' }
   | { name: 'saft-import' }
+  | { name: 'integrations' }
   | { name: 'ai' }
   | { name: 'org' };
 
@@ -123,6 +125,7 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
       { key: 'reports', label: 'Rapporter', icon: 'chart' },
       { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
       { key: 'saft-import', label: 'Importer fra Fiken', icon: 'inbox' },
+      { key: 'integrations', label: 'API og integrasjoner', icon: 'shield' },
       { key: 'ai', label: 'Kunstig intelligens', icon: 'shield' },
       { key: 'org', label: 'Virksomhet', icon: 'shield' },
     ],
@@ -325,6 +328,7 @@ export default function App() {
           {screen.name === 'reports' && <ReportsScreen orgId={orgId} />}
           {screen.name === 'vat' && <VatScreen orgId={orgId} />}
           {screen.name === 'saft-import' && <SaftImportScreen orgId={orgId} />}
+          {screen.name === 'integrations' && <IntegrationsScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}
           {screen.name === 'year-end' && <YearEndScreen orgId={orgId} />}
           {screen.name === 'ledger' && <LedgerScreen orgId={orgId} />}
