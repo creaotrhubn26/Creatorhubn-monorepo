@@ -159,3 +159,56 @@ describe("education student view + claim routes", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+// ── Produksjons-hub (student-token + RBAC-membership) ──────────────────────
+function makeHubPool(opts: { sessionStudentId?: string | null; isMember?: boolean } = {}) {
+  const { sessionStudentId = "st1", isMember = true } = opts;
+  const pool: any = {
+    query: vi.fn(async (sql: string) => {
+      if (sql.includes("UPDATE role_room_education_student_sessions")) {
+        return { rows: sessionStudentId ? [{ student_id: sessionStudentId }] : [] };
+      }
+      if (sql.includes("SELECT role FROM role_room_education_production_members")) {
+        return { rows: isMember ? [{ role: "lead" }] : [] };
+      }
+      if (sql.includes("JOIN role_room_education_students st")) {
+        return { rows: [{ name: "Kari", role: "lead", is_me: true }, { name: "Ola", role: "contributor", is_me: false }] };
+      }
+      if (sql.includes("FROM role_room_education_productions p")) {
+        return { rows: [{ id: "ep1", title: "Kortfilm", project_id: "proj-1", project_name: "Kortfilm-prosjekt", project_status: "active", project_description: "En kortfilm" }] };
+      }
+      if (sql.includes("FROM role_room_education_assignments a")) {
+        return { rows: [{ id: "a1", title: "Oppg", due_at: null, sub_status: "submitted", grade: "B", feedback: "Bra" }] };
+      }
+      return { rows: [] };
+    }),
+  };
+  return pool;
+}
+
+describe("education student production hub", () => {
+  it("tildelt student ser hub (prosjekt + rolle + medstudenter + oppgaver)", async () => {
+    const res = makeRes();
+    await runChain(H(R(makeHubPool()), "GET", "/education/student/production/:productionId"),
+      { headers: { "x-student-token": "stok-1" }, params: { productionId: "ep1" }, query: {} }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.production).toMatchObject({ title: "Kortfilm", myRole: "lead", projectName: "Kortfilm-prosjekt" });
+    expect(res.body.teammates).toHaveLength(2);
+    expect(res.body.teammates.find((t: any) => t.isMe)).toMatchObject({ name: "Kari" });
+    expect(res.body.assignments[0]).toMatchObject({ submissionStatus: "submitted", grade: "B" });
+  });
+
+  it("student som IKKE er tildelt → 404", async () => {
+    const res = makeRes();
+    await runChain(H(R(makeHubPool({ isMember: false })), "GET", "/education/student/production/:productionId"),
+      { headers: { "x-student-token": "stok-1" }, params: { productionId: "ep-other" }, query: {} }, res);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("uten student-token → 401", async () => {
+    const res = makeRes();
+    await runChain(H(R(makeHubPool()), "GET", "/education/student/production/:productionId"),
+      { headers: {}, params: { productionId: "ep1" }, query: {} }, res);
+    expect(res.statusCode).toBe(401);
+  });
+});

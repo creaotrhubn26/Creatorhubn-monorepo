@@ -246,5 +246,85 @@ export function createEducationStudentViewRouter(
     }
   });
 
+  // ── Produksjons-hub (student-token; RBAC-scopet, les-only) ────────────────
+  // Studenten åpner en produksjon de er TILDELT (steg 3a-membership). Viser
+  // prosjektinfo + rolle + medstudenter + oppgaver — uten å slippe student-
+  // token inn i selve casting-planner-API-et (trygt, isolert).
+  router.get("/education/student/production/:productionId", async (req, res) => {
+    try {
+      const studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
+      const productionId = req.params.productionId;
+
+      // RBAC: studenten MÅ være tildelt denne produksjonen.
+      const mem = await pool.query(
+        `SELECT role FROM role_room_education_production_members
+          WHERE production_id = $1 AND student_id = $2`,
+        [productionId, studentId],
+      );
+      if (mem.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const myRole = (mem.rows[0].role as string) ?? "contributor";
+
+      const pr = await pool.query(
+        `SELECT p.id, p.title, p.project_id, cp.name AS project_name, cp.status AS project_status, cp.description AS project_description
+           FROM role_room_education_productions p
+           LEFT JOIN casting_projects cp ON cp.id = p.project_id
+          WHERE p.id = $1`,
+        [productionId],
+      );
+      const prod = pr.rows[0];
+      if (!prod) { res.status(404).json({ error: "not_found" }); return; }
+
+      const teammates = await pool.query(
+        `SELECT st.name AS name, m.role AS role, (st.id = $2) AS is_me
+           FROM role_room_education_production_members m
+           JOIN role_room_education_students st ON st.id = m.student_id
+          WHERE m.production_id = $1
+          ORDER BY st.created_at ASC`,
+        [productionId, studentId],
+      );
+
+      const asg = await pool.query(
+        `SELECT a.id, a.title, a.due_at,
+                sub.status AS sub_status, sub.grade AS grade, sub.feedback AS feedback
+           FROM role_room_education_assignments a
+           LEFT JOIN role_room_education_submissions sub
+                  ON sub.assignment_id = a.id AND sub.student_id = $2
+          WHERE a.production_id = $1 AND a.status = 'published'
+          ORDER BY a.due_at ASC NULLS LAST, a.created_at DESC`,
+        [productionId, studentId],
+      );
+
+      res.json({
+        production: {
+          id: String(prod.id),
+          title: (prod.title as string) ?? "",
+          projectId: String(prod.project_id),
+          projectName: (prod.project_name as string) ?? null,
+          projectStatus: (prod.project_status as string) ?? null,
+          projectDescription: (prod.project_description as string) ?? null,
+          myRole,
+        },
+        teammates: teammates.rows.map((t) => ({
+          name: (t.name as string) ?? "",
+          role: (t.role as string) ?? "contributor",
+          isMe: Boolean(t.is_me),
+        })),
+        assignments: asg.rows.map((a) => ({
+          id: String(a.id),
+          title: (a.title as string) ?? "",
+          dueAt: isoOrNull(a.due_at),
+          submissionStatus: (a.sub_status as string) ?? "not_started",
+          grade: (a.grade as string) ?? null,
+          feedback: (a.feedback as string) ?? null,
+        })),
+      });
+    } catch (err) {
+      if (isMissingTable(err)) { res.status(404).json({ error: "not_found" }); return; }
+      console.error("[education-student-production] failed:", (err as Error).message);
+      res.status(500).json({ error: "production_failed" });
+    }
+  });
+
   return router;
 }
