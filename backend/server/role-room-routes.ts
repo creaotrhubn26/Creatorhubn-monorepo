@@ -1775,7 +1775,18 @@ function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
       return callback(null, { ...baseOptions, origin: true });
     }
 
-    callback(new Error(`Origin ${origin} blocked by CORS_ALLOW_ORIGINS policy`));
+    // Ukjent origin: IKKE kast. Et kast her gjør at cors kaller next(err) →
+    // Express' error-handler → 500 for HELE /api/role-room — inkludert
+    // LTI- og Feide-subrouterne som mountes ETTER denne routeren (de nås
+    // aldri, fordi denne router.use(cors(...)) matcher alle sub-paths og
+    // kaster først). LMS-launch (saLTIre/Canvas) og enhver annen tredjeparts-
+    // origin er per definisjon utenfor allowlist-en, så dette 500-et blokkerte
+    // all LTI-launch. Svar i stedet med ikke-kreditert CORS: `origin:false`
+    // gir `Access-Control-Allow-Origin: *` UTEN credentials-header, så
+    // browseren blokkerer fortsatt cross-origin *kreditert* lesing (uendret
+    // sikkerhet), mens top-level LTI-navigasjon (som ikke er CORS-underlagt)
+    // nå slipper gjennom til handleren i stedet for å feile med 500.
+    callback(null, { ...baseOptions, origin: false, credentials: false });
   };
 }
 
