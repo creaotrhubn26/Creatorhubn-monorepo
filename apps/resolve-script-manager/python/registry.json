@@ -54,6 +54,20 @@
   ],
   "scripts": [
     {
+      "id": "export_diff",
+      "name": "Eksport-diff + tilbakemeldings-sjekk (er eksporten i synk?)",
+      "category": "qc",
+      "scriptPath": "scripts/qc/export_diff.py",
+      "description": "diff: er den eksporterte fila utdatert vs timelinen? Tre bevislag — handlingslogg etter eksport-tidsstempel (indeksen), varighet/format (ffprobe), kutt-sammenligning (scene-deteksjon vs timelinens synlige kutt, heuristisk m/ avvikssoner). feedback: brudeparets punkter (én per linje) vurderes mot bevisene → forbedret-i-eksporten / forbedret-IKKE-i-eksporten (re-eksport trengs) / mangler — alltid med bevis.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "selects_builder",
       "name": "Selects & rough cut (begrunnet EDL fra transkript)",
       "category": "timeline",

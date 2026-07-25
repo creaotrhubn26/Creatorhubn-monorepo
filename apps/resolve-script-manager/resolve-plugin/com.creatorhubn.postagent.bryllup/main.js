@@ -366,7 +366,7 @@ const CHAT_READ_OK = new Set(['get_media_pool_state', 'unused_clips_placement',
     'recommend_unused_insertions', 'dialogue_tools', 'edit_assistants',
     'detect_timeline_gaps', 'detect_silent_sections_in_timeline', 'detect_log_gamma',
     'technical_qc', 'copy_attributes_by_camera', 'delivery_manager', 'disk_cleanup',
-    'build_project_index', 'selects_builder']);
+    'build_project_index', 'selects_builder', 'export_diff']);
 const CHAT_DRY_ONLY = new Set(['categorize_unused_clips', 'insert_unused_clips',
     'mark_qc_issues_on_timeline']);
 

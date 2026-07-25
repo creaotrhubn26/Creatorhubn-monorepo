@@ -19,6 +19,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     delivPlan: null, delivVerify: null, delivReport: null,
     diskScan: null,
     selects: null,
+    expDiff: null, fbCheck: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -109,6 +110,7 @@ function mutationLevel(scriptId, params, dryRun) {
         case "disk_cleanup": return mode === "clean" ? 2 : 0;
         case "build_project_index": return 0; // skriver kun egen lokal DB
         case "selects_builder": return ["edl", "build"].includes(mode) ? 1 : 0;
+        case "export_diff": return 0; // ren lesing (+ Claude-vurdering)
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -540,6 +542,28 @@ const RENDER = {
         ${S.delivVerify ? `<div style="margin-top:8px">${S.delivVerify.results.map((r) => `<div class="${r.ok ? "ok-text" : "err"}">${r.ok ? "✓" : "✗"} ${esc(r.file || "")} — ${r.durationSec}s, ${esc(r.resolution || "")} @ ${r.fps}, ${esc(r.videoCodec || "")}, ${r.audioStreams} lydstrøm(mer), ${r.sizeGb} GB${(r.issues || []).length ? " — " + esc(r.issues.join("; ")) : ""}</div>`).join("") || `<div class="muted">ingen filer å verifisere enda</div>`}</div>` : ""}
         ${S.delivReport?.writtenTo ? `<div class="ok-text" style="margin-top:6px">✓ Rapport skrevet: ${esc(S.delivReport.writtenTo)}</div>` : ""}
         </div>
+        <div class="card"><div class="row"><strong>📼 Eksport-diff & tilbakemeldinger</strong>
+            <button id="xd-diff" class="primary" ${S.busy ? "disabled" : ""}>Er eksporten i synk?</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+            <input type="text" id="xd-feedback" placeholder="brudeparets punkter — skill med | (f.eks. mer b-roll i starten | bytt musikk i mottakelsen)" style="flex:1;min-width:280px">
+            <button id="xd-fb" ${S.busy ? "disabled" : ""}>Sjekk mot bevisene</button>
+        </div>
+        ${S.expDiff ? `<div style="margin-top:8px">
+            <div class="${S.expDiff.stale ? "err" : "ok-text"}"><strong>${esc(S.expDiff.verdict)}</strong> — ${esc(S.expDiff.file.split("/").pop())} (${esc(S.expDiff.exportModified)})</div>
+            <div class="muted">varighet: eksport ${S.expDiff.durations.exportSec}s vs timeline ${S.expDiff.durations.timelineSec}s · ${S.expDiff.actionsAfterExport.length} handlinger etter eksporten · kutt: ${S.expDiff.cutComparison.matched}/${S.expDiff.cutComparison.timelineCuts} matchet</div>
+            ${S.expDiff.actionsAfterExport.slice(0, 6).map((a2) => `<div class="muted">▸ ${esc(a2.time)} ${esc(a2.action)}</div>`).join("")}
+            ${(S.expDiff.cutComparison.divergenceZones || []).slice(0, 6).map((z) => `<div class="warn">avvikssone: <button class="small" data-jump="${esc(z.fromTc)}">→ ${esc(z.fromTc)}</button>–${esc(z.toTc)} (${z.cuts} kutt)</div>`).join("")}
+        </div>` : ""}
+        ${S.fbCheck ? `<div style="margin-top:8px">
+            ${S.fbCheck.vurderinger.map((a2) => {
+                const ic = { forbedret_i_eksporten: "✅", forbedret_ikke_i_eksporten: "⚠", mangler: "❌", usikkert: "❓" }[a2.status] || "?";
+                return `<div class="card ${a2.status === "mangler" ? "" : "dim"}"><div>${ic} <strong>${esc(a2.feedback)}</strong></div>
+                    <div class="muted">bevis: ${esc(a2.bevis || "")}</div>
+                    ${a2.anbefaling ? `<div class="reason">→ ${esc(String(a2.anbefaling))}</div>` : ""}</div>`;
+            }).join("")}
+            <div class="${S.fbCheck.needsReexport || S.fbCheck.missingPoints.length ? "warn" : "ok-text"}">${S.fbCheck.needsReexport ? "⚠ Re-eksport nødvendig. " : ""}${S.fbCheck.missingPoints.length ? "Mangler: " + S.fbCheck.missingPoints.length + " punkt(er)." : "Alle punkter adressert i eksporten ✓"}</div>
+        </div>` : ""}</div>
         <div class="card"><div class="row"><strong>🧹 Disk-rydding</strong>
             <button id="dc-scan" class="primary" ${S.busy ? "disabled" : ""}>Skann</button>
             ${S.diskScan ? `<button id="dc-clean" ${S.busy ? "disabled" : ""}>Rydd (${S.diskScan.reclaimableGb} GB)</button>` : ""}
@@ -770,6 +794,16 @@ const ACTIONS = {
         if (!confirm(`Sletter ${n} klipp under 3 frames:\n${plan.planned.map((x) => `${x.tc} ${x.track} ${x.clip}`).join("\n")}\n\nNB: stablede 1-frame-klipp KAN være tilsiktede flash-effekter — sjekk tidskodene først. Fortsette?`)) return;
         const v = await run("technical_qc", { mode: "fixflash" }, false, "Sletter flash-frames …");
         status(`✓ ${v.deleted} flash-frames slettet — kjør sveipen på nytt for å verifisere`, "ok-text");
+    },
+    "xd-diff": async () => {
+        S.expDiff = await run("export_diff", { scanSeconds: "600" }, false, "Sammenligner eksporten med timelinen (scene-deteksjon tar litt) …");
+        render();
+    },
+    "xd-fb": async () => {
+        const fb = $("xd-feedback").value.trim();
+        if (!fb) { status("Skriv inn tilbakemeldingspunktene først.", "warn"); return; }
+        S.fbCheck = await run("export_diff", { mode: "feedback", feedback: fb.split("|").map((x) => x.trim()).join("\n") }, false, "Vurderer punktene mot handlingsloggen …");
+        render();
     },
     "dc-scan": async () => {
         S.diskScan = await run("disk_cleanup", { mode: "scan" }, true, "Skanner cache og artefakter (du -s tar litt tid) …");
