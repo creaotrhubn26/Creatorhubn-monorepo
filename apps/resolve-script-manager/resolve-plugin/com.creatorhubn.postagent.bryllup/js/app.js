@@ -14,6 +14,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     tempo: null, jumpcuts: null, takes: null, angles: null,
     chat: [], chatBusy: false,
     tqcSweep: null, tqcColor: null, tqcDelivery: null, tqcAudio: null,
+    cameras2: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -72,6 +73,11 @@ function log(msg) {
     S.journal.unshift({ t, msg });
     S.journal = S.journal.slice(0, 40);
     if (S.step === "operator") render();
+}
+
+function attrParams(pat) {
+    return pat.toLowerCase().startsWith("type:")
+        ? { cameraType: pat.slice(5).trim() } : { cameraPattern: pat };
 }
 
 const PAGE_NO = { media: "Media", cut: "Cut", edit: "Edit", fusion: "Fusion",
@@ -377,8 +383,14 @@ const RENDER = {
         </div>
         <div class="card"><div class="row">
             <strong>🎨 Kamera-attributter</strong>
-            <input type="text" id="attr-pattern" placeholder="mønster (CANON, A74…)" value="CANON" style="min-width:140px">
-        </div><div class="row" style="margin-top:6px">
+            <input type="text" id="attr-pattern" placeholder="mønster (CANON, A74…) eller type:Canon EOS C80" value="CANON" style="min-width:180px">
+            <button id="attr-cameras" class="small" ${S.busy ? "disabled" : ""}>📷 Vis kameraer</button>
+        </div>
+        ${S.cameras2 ? `<div style="margin-top:6px">${S.cameras2.map((c) => `<div class="row muted">
+            <span class="chip ${c.source === "metadata" ? "green" : ""}">${c.clips} klipp</span>
+            <span>${esc(c.group)}</span>
+            <button class="small" data-attr-use="${esc(c.cameraType || c.example.slice(0, 6))}" data-attr-md="${c.cameraType ? 1 : 0}">bruk</button>
+        </div>`).join("")}<div class="muted">grønn chip = ekte kamera-metadata (Canon MXF); resten = filnavn-mønster (Sony/DJI mangler metadata i Resolve)</div></div>` : ""}<div class="row" style="margin-top:6px">
             <button id="attr-group" ${S.busy ? "disabled" : ""}>Color-gruppe for alle (anbefalt)</button>
             <button id="attr-grade" ${!playhead || S.busy ? "disabled" : ""}>Kopier GRADE fra playhead-klippet → alle</button>
             <button id="attr-transform" ${!playhead || S.busy ? "disabled" : ""}>Kopier transform → alle</button>
@@ -672,27 +684,31 @@ const ACTIONS = {
             { mode: "angles", tc: S.ctx?.tc || "", bins: S.bins }, false, "Finner samtidige vinkler …");
         S.takes = null; render();
     },
+    "attr-cameras": async () => {
+        const v = await run("copy_attributes_by_camera", { mode: "cameras" }, true, "Leser kamera-metadata …");
+        S.cameras2 = v.cameras || []; render();
+    },
     "attr-group": async () => {
         const pat = $("attr-pattern").value.trim(); if (!pat) return;
-        const plan = await run("copy_attributes_by_camera", { mode: "group", cameraPattern: pat }, true, "Teller mål …");
+        const plan = await run("copy_attributes_by_camera", { mode: "group", ...attrParams(pat) }, true, "Teller mål …");
         if (!confirm(`Melder ${plan.targets} klipp inn i color-gruppen «${plan.groupName}» (${plan.groupExisted ? "finnes" : "opprettes"}).\nIngen grades røres. Fortsette?`)) return;
-        const v = await run("copy_attributes_by_camera", { mode: "group", cameraPattern: pat }, false, "Melder inn i gruppen …");
+        const v = await run("copy_attributes_by_camera", { mode: "group", ...attrParams(pat) }, false, "Melder inn i gruppen …");
         status(`✓ ${v.assigned} klipp i gruppen «${v.groupName}» — grade den i Color-siden (Group Pre/Post-clip)`, "ok-text");
         log(`Color-gruppe «${v.groupName}»: ${v.assigned} klipp innmeldt`);
     },
     "attr-grade": async () => {
         const pat = $("attr-pattern").value.trim(); if (!pat || !S.ctx?.tc) return;
-        const plan = await run("copy_attributes_by_camera", { mode: "grade", cameraPattern: pat, tc: S.ctx.tc }, true, "Planlegger grade-kopiering …");
+        const plan = await run("copy_attributes_by_camera", { mode: "grade", ...attrParams(pat), tc: S.ctx.tc }, true, "Planlegger grade-kopiering …");
         if (!confirm(`Kopierer graden fra «${plan.source}» til ${plan.targets} klipp som matcher «${pat}».\n\n⚠ ${plan.warning}\nFortsette?`)) return;
-        const v = await run("copy_attributes_by_camera", { mode: "grade", cameraPattern: pat, tc: S.ctx.tc }, false, "Kopierer grader …");
+        const v = await run("copy_attributes_by_camera", { mode: "grade", ...attrParams(pat), tc: S.ctx.tc }, false, "Kopierer grader …");
         status(`✓ Grade kopiert til ${v.copied} klipp`, "ok-text");
         log(`CopyGrades: ${v.source} → ${v.copied} klipp (${pat})`);
     },
     "attr-transform": async () => {
         const pat = $("attr-pattern").value.trim(); if (!pat || !S.ctx?.tc) return;
-        const plan = await run("copy_attributes_by_camera", { mode: "attributes", cameraPattern: pat, tc: S.ctx.tc }, true, "Leser attributter …");
+        const plan = await run("copy_attributes_by_camera", { mode: "attributes", ...attrParams(pat), tc: S.ctx.tc }, true, "Leser attributter …");
         if (!confirm(`Setter ${JSON.stringify(plan.keys)} fra «${plan.source}» på ${plan.targets} klipp. Fortsette?`)) return;
-        const v = await run("copy_attributes_by_camera", { mode: "attributes", cameraPattern: pat, tc: S.ctx.tc }, false, "Setter attributter …");
+        const v = await run("copy_attributes_by_camera", { mode: "attributes", ...attrParams(pat), tc: S.ctx.tc }, false, "Setter attributter …");
         status(`✓ Attributter satt på ${v.applied} klipp`, "ok-text");
     },
     // ── operatør-handlinger (side-bevisste) ──
@@ -777,6 +793,11 @@ document.addEventListener("click", async (ev) => {
     if (el.dataset.jump) {
         const ok = await PA.jumpToTc(el.dataset.jump);
         status(ok ? "Spillehodet flyttet til " + el.dataset.jump : "Kunne ikke flytte spillehodet", ok ? "ok-text" : "err");
+        return;
+    }
+    if (el.dataset.attrUse != null) {
+        const f = $("attr-pattern");
+        if (f) f.value = el.dataset.attrMd === "1" ? "type:" + el.dataset.attrUse : el.dataset.attrUse;
         return;
     }
     if (el.dataset.dialogSel != null) { S.dialogSel[Number(el.dataset.dialogSel)] = el.checked; render(); return; }

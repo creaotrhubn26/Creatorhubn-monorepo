@@ -58,16 +58,69 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
         return
     fps = float(timeline.GetSetting("timelineFrameRate") or 25.0)
     mode = (params.get("mode") or "group").strip().lower()
+
+    # Mål-utvalg, metadata-først: cameraType/cameraSerial matcher EKTE
+    # innbakt kamera-metadata (Canon MXF: «Canon EOS C80» + serienr) —
+    # presist selv om filer døpes om. cameraPattern (filnavn-regex) er
+    # fallback/supplement (Sony MP4 mangler metadata i Resolve).
+    want_type = (params.get("cameraType") or "").strip().lower()
+    want_serial = (params.get("cameraSerial") or "").strip()
     pattern = (params.get("cameraPattern") or "").strip()
-    if not pattern:
-        bridge.error("cameraPattern=<regex> kreves (f.eks. CANON eller A74).")
+    if not (pattern or want_type or want_serial) and mode != "cameras":
+        bridge.error("Oppgi cameraType=<Camera Type>, cameraSerial=<serienr> "
+                     "eller cameraPattern=<filnavn-regex>.")
         return
-    rx = re.compile(pattern, re.I)
+    rx = re.compile(pattern, re.I) if pattern else None
+
+    def matches(it) -> bool:
+        if rx and rx.search(it.GetName() or ""):
+            return True
+        if want_type or want_serial:
+            try:
+                md = it.GetMediaPoolItem().GetMetadata() or {}
+            except Exception:
+                return False
+            if want_type and want_type in (md.get("Camera Type") or "").lower():
+                return True
+            if want_serial and want_serial == (md.get("Camera Serial #") or ""):
+                return True
+        return False
 
     items = _all_items(timeline)
-    targets = [(t, it) for t, it in items if rx.search(it.GetName() or "")]
+    targets = items if mode == "cameras" else [(t, it) for t, it in items if matches(it)]
     if not targets:
-        bridge.error(f"Ingen timeline-items matcher «{pattern}».")
+        bridge.error("Ingen timeline-items matcher utvalget.")
+        return
+    pattern = pattern or want_type or want_serial  # til rapport/gruppenavn
+
+    # mode=cameras: vis hvilke kameraer som er DETEKTERT (metadata + filnavn)
+    if mode == "cameras":
+        groups: dict[str, dict] = {}
+        seen = set()
+        for _t, it in items:
+            try:
+                mpi = it.GetMediaPoolItem()
+                if not mpi:
+                    continue
+                uid = mpi.GetUniqueId() or mpi.GetName()
+                if uid in seen:
+                    continue
+                seen.add(uid)
+                md = mpi.GetMetadata() or {}
+            except Exception:
+                continue
+            ctype = md.get("Camera Type") or ""
+            serial = md.get("Camera Serial #") or ""
+            name = mpi.GetName() or "?"
+            token = re.match(r"([A-Za-z]+_?\d{0,4})", name)
+            key = f"{ctype} [{serial}]" if ctype else f"filnavn-prefiks «{(token.group(1) if token else name)[:8]}»"
+            g = groups.setdefault(key, {"cameraType": ctype or None, "serial": serial or None,
+                                        "source": "metadata" if ctype else "filnavn",
+                                        "clips": 0, "example": name})
+            g["clips"] += 1
+        bridge.result({"mode": mode, "cameras": [{"group": k, **v} for k, v in
+                                                 sorted(groups.items(), key=lambda kv: -kv[1]["clips"])],
+                       "dryRun": dry_run})
         return
 
     # kilde (grade/attributes): klippet på tc, ellers navngitt
