@@ -92,6 +92,7 @@ interface RecommendResult {
   candidatesTotal: number;
   visionRan: number;
   recommendations: Recommendation[];
+  excluded?: Array<{ clip: string; estTc: string; reason: string }>;
 }
 interface InsertResult {
   track: number;
@@ -150,6 +151,9 @@ export function UnusedClipsStudio({ onClose }: { onClose: () => void }) {
   const [recMarkerBusy, setRecMarkerBusy] = useState(false);
   const [recMarkerResult, setRecMarkerResult] =
     useState<{ anchors: number; markersAdded: number } | null>(null);
+  const [recExcluded, setRecExcluded] =
+    useState<Array<{ clip: string; estTc: string; reason: string }>>([]);
+  const [recExcludedOpen, setRecExcludedOpen] = useState(false);
 
   // Auto-populer dag-bins fra Media Pool (toppnivå under rot, forhåndskryss day/dag)
   useEffect(() => {
@@ -356,6 +360,8 @@ export function UnusedClipsStudio({ onClose }: { onClose: () => void }) {
       if (!r) throw new Error("Anbefalingsmotoren ga ikke noe resultat.");
       setRecs(r.recommendations);
       setRecMeta({ analyzed: r.analyzedUnused, total: r.candidatesTotal, visionRan: r.visionRan });
+      setRecExcluded(r.excluded ?? []);
+      setRecExcludedOpen(false);
       setRecSelected(Object.fromEntries(
         r.recommendations.map((rec) => [rec.clip, rec.vision?.passer !== false]),
       ));
@@ -788,6 +794,24 @@ export function UnusedClipsStudio({ onClose }: { onClose: () => void }) {
                         onClick={() => insertClips(selectedRecs)}>
                   {insertBusy ? "Setter inn …" : `📥 Sett inn ${selectedRecs.length} valgte på nytt b-roll-spor`}
                 </button>
+
+                {recExcluded.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <button className="small ghost" style={{ fontSize: 10, opacity: 0.75 }}
+                            onClick={() => setRecExcludedOpen((o) => !o)}>
+                      🛡 {recExcluded.length} klipp holdt utenfor av duplikat-vakten {recExcludedOpen ? "▾" : "▸"}
+                    </button>
+                    {recExcludedOpen && (
+                      <div style={{ marginTop: 4 }}>
+                        {recExcluded.map((x) => (
+                          <div key={x.clip} style={{ fontSize: 10, opacity: 0.6, marginLeft: 8, marginTop: 2 }}>
+                            {x.clip} — {x.reason}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
 
