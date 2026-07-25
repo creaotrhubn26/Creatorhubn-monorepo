@@ -3532,6 +3532,20 @@
       "requiresTimeline": true
     },
     {
+      "id": "edit_assistants",
+      "name": "Klippe-assistenter (jump-cuts, tempo, takes, vinkler)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/edit_assistants.py",
+      "description": "jumpcuts: split-kutt + lik-innramming over kuttgrenser (dHash, samme kamera) m/ røde markører. tempo: kutt-tetthet + tregeste skudd. takes: nabo-opptak fra samme kamera for klippet på tc=<playhead>. angles: andre kameraers klipp som dekker samme opptaks-øyeblikk (Start TC-overlapp).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "insert_unused_clips",
       "name": "Sett inn ubrukte klipp på anbefalt posisjon",
       "category": "timeline",

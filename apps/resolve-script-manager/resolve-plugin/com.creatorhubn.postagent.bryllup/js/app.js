@@ -11,6 +11,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     voiceTracks: null, render: null,
     dialog: null, dialogHits: null, dialogPauses: null, dialogReps: null,
     dialogSel: {},
+    tempo: null, jumpcuts: null, takes: null, angles: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -33,6 +34,7 @@ const STEPS = [
     { id: "color",    n: 8, label: "Color / QC" },
     { id: "unused",   n: 9, label: "🧠 Ubrukt-materiale", sep: "Etterarbeid" },
     { id: "dialog",   n: 10, label: "🗣 Dialog" },
+    { id: "assist",   n: 11, label: "✂ Assistenter" },
 ];
 
 // ── infrastruktur ──
@@ -129,7 +131,8 @@ function suggestionsFor(c) {
             sug.push({ text: "Kjør QC på timelinen: svarte mellomrom + stille partier", act: "op-qc" });
             sug.push({ text: "Ubrukt-materiale: finn klipp som ikke er brukt + AI-anbefalinger", act: "op-unused" });
             sug.push({ text: "Dialog-verktøy: søk i talen, finn pauser/repetisjoner, bygg assembly", act: "op-dialog" });
-            if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): finn ubrukte nabo-klipp fra samme kamera`, act: "op-unused" });
+            sug.push({ text: "Klippe-assistenter: rytme-analyse, jump-cut-vakt, takes og vinkler", act: "op-assist" });
+            if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): alternative takes / samtidige vinkler`, act: "op-assist" });
             break;
         case "color":
             sug.push({ text: "Grade-kopiering på tvers av lignende klipp kan bare foreslås — nodegraf leses, men utvalg styres i GUI", act: null });
@@ -321,6 +324,35 @@ const RENDER = {
         ${(d.list || []).slice(0, 60).map((s, i) => segRow(s, i, true)).join("")}
         ${(d.list || []).length > 60 ? `<div class="muted">… ${(d.list || []).length - 60} til (vis alle kommer i neste runde)</div>` : ""}` : ""}`;
     },
+    assist() {
+        const t = S.tempo, j = S.jumpcuts, tk = S.takes, an = S.angles;
+        const playhead = S.ctx?.tc || "";
+        return `<h2>✂ Klippe-assistenter</h2>
+        <div class="sub">Rytme-analyse og jump-cut-vakt for hele timelinen — og alternative takes/vinkler for klippet under playhead (${esc(playhead || "flytt spillehodet i Resolve")}).</div>
+        <div class="card"><div class="row">
+            <button id="as-tempo" class="primary" ${S.busy ? "disabled" : ""}>📈 Tempo & rytme</button>
+            <button id="as-jumpcuts" ${S.busy ? "disabled" : ""}>⚡ Finn jump-cuts</button>
+            ${j?.candidates?.length ? `<button id="as-jc-markers" class="small" ${S.busy ? "disabled" : ""}>Sett røde markører (${j.candidates.length})</button>` : ""}
+        </div>
+        ${t ? `<div class="muted" style="margin-top:6px">${t.shots} skudd over ${t.tracks} spor · snitt ${t.avgShotSec}s · ${t.durationMin} min</div>
+            <div class="muted">Tregeste partier: ${t.slowestShots.map((s) => `<button class="small" data-jump="${esc(s.tc)}">${esc(s.tc)} (${s.sec}s)</button>`).join(" ")}</div>` : ""}
+        </div>
+        ${j ? `<div class="card"><strong>${j.candidates.length} jump-cut-kandidater</strong> <span class="muted">(${j.cutsChecked} kutt sjekket, ${j.hashedPairs} visuelt sammenlignet)</span>
+            ${j.candidates.slice(0, 15).map((c) => `<div class="row" style="margin-top:4px"><button class="small" data-jump="${esc(c.tc)}">→ ${esc(c.tc)}</button>
+                <span class="muted" style="flex:1">${esc(c.reason)}</span></div>`).join("")}
+            ${j.candidates.length > 15 ? `<div class="muted">… ${j.candidates.length - 15} til</div>` : ""}
+        </div>` : ""}
+        <div class="card"><div class="row">
+            <strong>Klippet under playhead</strong>
+            <button id="as-takes" ${!playhead || S.busy ? "disabled" : ""}>🎞 Alternative takes</button>
+            <button id="as-angles" ${!playhead || S.busy ? "disabled" : ""}>📐 Andre vinkler (samtidig)</button>
+        </div>
+        ${tk ? `<div style="margin-top:8px"><strong>${esc(tk.clip || "")}</strong> <span class="chip">${esc(tk.camera || "")}</span>
+            ${(tk.neighbors || []).map((n) => `<div class="muted">${n.used ? "✓ brukt" : "○ ubrukt"} &nbsp;${esc(n.clip)} (${n.durationSec}s)</div>`).join("") || `<div class="muted">${esc(tk.note || "ingen naboer")}</div>`}</div>` : ""}
+        ${an ? `<div style="margin-top:8px"><strong>${an.alternativeCount || 0} samtidige vinkler</strong> <span class="muted">for ${esc(an.clip || "")}</span>
+            ${(an.alternatives || []).map((a) => `<div class="muted">${a.used ? "✓" : "○"} ${esc(a.camera)} / ${esc(a.clip)} @ ${esc(a.startTc)}</div>`).join("") || `<div class="muted">${esc(an.note || "")}</div>`}</div>` : ""}
+        </div>`;
+    },
     unused() {
         const c = S.cat;
         return `<h2>🧠 Etterarbeid — Ubrukt-materiale</h2>
@@ -473,6 +505,31 @@ const ACTIONS = {
         log(`Bygde assembly «${name}»: ${v.built} utsnitt`);
         status(`✓ ${v.built} utsnitt på ny timeline «${name}» — ${v.note || ""}`, "ok-text");
     },
+    // ── klippe-assistenter ──
+    "as-tempo": async () => {
+        S.tempo = await run("edit_assistants", { mode: "tempo" }, false, "Analyserer rytmen …");
+        render();
+    },
+    "as-jumpcuts": async () => {
+        S.jumpcuts = await run("edit_assistants", { mode: "jumpcuts", maxCuts: "200" }, true,
+            "Sjekker kuttgrensene — split-kutt + visuell sammenligning …");
+        render();
+    },
+    "as-jc-markers": async () => {
+        const v = await run("edit_assistants", { mode: "jumpcuts", maxCuts: "200", markers: "true" }, false,
+            "Setter jump-cut-markører …");
+        status(`✓ ${v.markersAdded} røde JUMP CUT?-markører satt`, "ok-text");
+    },
+    "as-takes": async () => {
+        S.takes = await run("edit_assistants",
+            { mode: "takes", tc: S.ctx?.tc || "", bins: S.bins }, false, "Finner alternative takes …");
+        S.angles = null; render();
+    },
+    "as-angles": async () => {
+        S.angles = await run("edit_assistants",
+            { mode: "angles", tc: S.ctx?.tc || "", bins: S.bins }, false, "Finner samtidige vinkler …");
+        S.takes = null; render();
+    },
     // ── operatør-handlinger (side-bevisste) ──
     "op-transcribe": async () => {
         S.busy = true; render(); status("Transkriberer valgte klipp (native) — kan ta minutter …");
@@ -495,6 +552,7 @@ const ACTIONS = {
     "op-qc": async () => { S.step = "color"; render(); await ACTIONS["run-qc"](); },
     "op-unused": () => { S.step = "unused"; render(); },
     "op-dialog": () => { S.step = "dialog"; render(); },
+    "op-assist": () => { S.step = "assist"; render(); },
     "op-log": () => { S.step = "color"; render(); },
     "op-voice": async () => {
         S.voiceTracks = await PA.voiceIsolationInfo();
