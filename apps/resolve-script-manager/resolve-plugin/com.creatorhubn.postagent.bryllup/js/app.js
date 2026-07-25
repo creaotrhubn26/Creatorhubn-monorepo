@@ -21,6 +21,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     selects: null,
     expDiff: null, fbCheck: null,
     genPlan: null,
+    personRes: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -113,6 +114,7 @@ function mutationLevel(scriptId, params, dryRun) {
         case "selects_builder": return ["edl", "build"].includes(mode) ? 1 : 0;
         case "export_diff": return 0; // ren lesing (+ Claude-vurdering)
         case "generate_broll": return mode === "generate" ? 2 : 0; // koster kreditter + importerer
+        case "find_person": return 0; // lokal ansikts-søk, skriver kun egen DB
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -625,7 +627,22 @@ const RENDER = {
             <button id="gen-run" class="primary" ${!S.genPlan || S.busy ? "disabled" : ""}>Generer</button>
         </div>
         ${S.genPlan ? `<div class="muted" style="margin-top:6px">${esc(S.genPlan.account)} · ~${S.genPlan.estCredits} kreditter for ${S.genPlan.duration}s ${esc(S.genPlan.resolution)} · forankring: ${S.genPlan.contextFrameAvailable ? "✓ ekte bilde/frame" : "✗ ren tekst-til-video"}</div>` : ""}
-        <div class="muted" style="margin-top:4px">Forankres i parets eget materiale (ekte frame/foto som startbilde). Egnet for atmosfære + levende fotografier — genererte fremmede mennesker er sperret som default.</div></div>`;
+        <div class="muted" style="margin-top:4px">Forankres i parets eget materiale (ekte frame/foto som startbilde). Egnet for atmosfære + levende fotografier — genererte fremmede mennesker er sperret som default.</div></div>
+        <div class="card"><div class="row"><strong>👤 Finn person</strong>
+            <span class="muted">«de vil ha mer av X» — søk i klipp og bilder</span></div>
+        <div class="row" style="margin-top:6px">
+            <input type="text" id="fp-name" placeholder="navn (f.eks. Brudens mor)" style="min-width:150px">
+            <input type="text" id="fp-images" placeholder="referansebilder (stier, kommaseparert)" style="flex:1;min-width:220px">
+            <button id="fp-register" ${S.busy ? "disabled" : ""}>Registrer</button>
+            <button id="fp-search" class="primary" ${S.busy ? "disabled" : ""}>Søk</button>
+        </div>
+        ${S.personRes ? `<div style="margin-top:8px">
+            <div class="ok-text">${esc(S.personRes.answer)}</div>
+            ${(S.personRes.unusedClipsWithPerson || []).slice(0, 8).map((h) => `<div class="muted">○ UBRUKT: ${esc(h.clip)} (score ${h.bestScore})</div>`).join("")}
+            ${(S.personRes.usedClips || []).slice(0, 5).map((h) => `<div class="muted">✓ brukt: ${esc(h.clip)} @ ${(h.hits || []).map((m) => m.timeSec + "s").join(", ")}</div>`).join("")}
+            ${(S.personRes.photoHits || []).slice(0, 8).map((h) => `<div class="muted">📷 ${esc(h.photo.split("/").pop())} (${h.score}) — levende foto-kandidat</div>`).join("")}
+            <div class="muted">${esc(S.personRes.note || "")}</div>
+        </div>` : ""}</div>`;
     },
 };
 
@@ -810,6 +827,19 @@ const ACTIONS = {
         if (!confirm(`Sletter ${n} klipp under 3 frames:\n${plan.planned.map((x) => `${x.tc} ${x.track} ${x.clip}`).join("\n")}\n\nNB: stablede 1-frame-klipp KAN være tilsiktede flash-effekter — sjekk tidskodene først. Fortsette?`)) return;
         const v = await run("technical_qc", { mode: "fixflash" }, false, "Sletter flash-frames …");
         status(`✓ ${v.deleted} flash-frames slettet — kjør sveipen på nytt for å verifisere`, "ok-text");
+    },
+    "fp-register": async () => {
+        const name = $("fp-name").value.trim(), imgs = $("fp-images").value.trim();
+        if (!name || !imgs) { status("Navn + minst ett referansebilde kreves.", "warn"); return; }
+        const v = await run("find_person", { mode: "register", personName: name, imagePaths: imgs }, false, "Registrerer ansikts-referanser …");
+        status(`✓ ${v.referencesStored} referanser lagret for «${name}»${v.skipped.length ? " · hoppet over: " + v.skipped.length : ""}`, "ok-text");
+    },
+    "fp-search": async () => {
+        const name = $("fp-name").value.trim();
+        if (!name) { status("Skriv navnet på personen.", "warn"); return; }
+        S.personRes = await run("find_person", { mode: "search", personName: name, maxClips: "150" }, false,
+            "Søker i klipp og bilder — første gang skannes ansikter (caches) …");
+        render();
     },
     "gen-plan": async () => {
         const prompt = $("gen-prompt").value.trim();

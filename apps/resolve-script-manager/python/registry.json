@@ -54,6 +54,20 @@
   ],
   "scripts": [
     {
+      "id": "find_person",
+      "name": "Finn person (referansebilde → klipp + bilder)",
+      "category": "vision",
+      "scriptPath": "scripts/vision/find_person.py",
+      "description": "«Mer av X i filmen»: register (referansebilder → SFace-embedding, lokalt/gratis), search (skanner klipp m/ tidspunkt + brukt/ubrukt + skjermtid-estimat, og fotomappen — svarer: N ubrukte klipp + M bilder har personen, i dag ~Xs skjermtid). Embeddings caches i indeksen (fingerprint-voktet) — andre søk er øyeblikkelige. Treff er bevis, fravær er ikke motbevis.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "generate_broll",
       "name": "Generer b-roll (Higgsfield Seedance) — forankret i eget footage",
       "category": "media",
