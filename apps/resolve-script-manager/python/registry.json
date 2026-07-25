@@ -3560,6 +3560,20 @@
       "requiresTimeline": true
     },
     {
+      "id": "disk_cleanup",
+      "name": "Disk-rydding (cache, artefakter, backup-timelines)",
+      "category": "qc",
+      "scriptPath": "scripts/qc/disk_cleanup.py",
+      "description": "scan: render-cache per prosjekt-GUID (plassering fra perfCacheClipsLocation, aktivt prosjekt FREDET via GetUniqueId), gallery stills, Post Agent-artefakter (.part/thumbs/staging), [backup]-timelines, frigjørbar plass. clean: targets=oldCache,artifacts,backupTimelines — kun regenererbart/eget, aldri kildemateriale; verifiserer faktisk frigjort plass etterpå.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "technical_qc",
       "name": "Teknisk QC (media, timeline, subtitles, farge, leveranse)",
       "category": "qc",

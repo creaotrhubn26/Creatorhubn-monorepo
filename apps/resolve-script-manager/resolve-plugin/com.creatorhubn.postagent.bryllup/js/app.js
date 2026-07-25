@@ -17,6 +17,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     tqcSweep: null, tqcColor: null, tqcDelivery: null, tqcAudio: null,
     cameras2: null,
     delivPlan: null, delivVerify: null, delivReport: null,
+    diskScan: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -104,6 +105,7 @@ function mutationLevel(scriptId, params, dryRun) {
         case "categorize_unused_clips": return 2; // flytter klipp i media pool
         case "get_media_pool_state": return 0;
         case "delivery_manager": return ["queue", "report"].includes(mode) ? 1 : 0;
+        case "disk_cleanup": return mode === "clean" ? 2 : 0;
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -511,6 +513,16 @@ const RENDER = {
         ${S.delivVerify ? `<div style="margin-top:8px">${S.delivVerify.results.map((r) => `<div class="${r.ok ? "ok-text" : "err"}">${r.ok ? "✓" : "✗"} ${esc(r.file || "")} — ${r.durationSec}s, ${esc(r.resolution || "")} @ ${r.fps}, ${esc(r.videoCodec || "")}, ${r.audioStreams} lydstrøm(mer), ${r.sizeGb} GB${(r.issues || []).length ? " — " + esc(r.issues.join("; ")) : ""}</div>`).join("") || `<div class="muted">ingen filer å verifisere enda</div>`}</div>` : ""}
         ${S.delivReport?.writtenTo ? `<div class="ok-text" style="margin-top:6px">✓ Rapport skrevet: ${esc(S.delivReport.writtenTo)}</div>` : ""}
         </div>
+        <div class="card"><div class="row"><strong>🧹 Disk-rydding</strong>
+            <button id="dc-scan" class="primary" ${S.busy ? "disabled" : ""}>Skann</button>
+            ${S.diskScan ? `<button id="dc-clean" ${S.busy ? "disabled" : ""}>Rydd (${S.diskScan.reclaimableGb} GB)</button>` : ""}
+        </div>
+        ${S.diskScan ? `<div style="margin-top:6px">
+            ${S.diskScan.cacheFolders.map((c) => `<div class="${c.isCurrentProject ? "ok-text" : c.deletable ? "warn" : "muted"}">${c.gb} GB · ${c.ageDays}d · cache ${esc(c.folder.slice(0, 12))}… — ${c.isCurrentProject ? "AKTIVT PROSJEKT (fredet)" : c.deletable ? "slettbar (regenererbar)" : "for ny"}</div>`).join("")}
+            ${S.diskScan.artifacts.map((a2) => `<div class="muted">${a2.gb} GB · ${esc(a2.path)}</div>`).join("")}
+            ${S.diskScan.backupTimelines.length ? `<div class="muted">backup-timelines: ${S.diskScan.backupTimelines.map(esc).join(", ")}</div>` : ""}
+            <div class="muted">Ledig på volumet: ${S.diskScan.disk?.freeGb ?? "?"} GB av ${S.diskScan.disk?.totalGb ?? "?"} GB · ${esc(S.diskScan.note || "")}</div>
+        </div>` : ""}</div>
         ${a ? `<div class="card"><strong>Lyd-peak:</strong> ${a.filesChecked} filer sjekket
             ${(a.clippedCandidates || []).map((f) => `<div class="err">✗ ${esc(f.file)} — peak ${esc(String(f.peakDb))} dB (klipping-kandidat)</div>`).join("") || `<div class="ok-text">✓ Ingen klipping-kandidater</div>`}
         </div>` : ""}`;
@@ -711,6 +723,19 @@ const ACTIONS = {
         if (!confirm(`Sletter ${n} klipp under 3 frames:\n${plan.planned.map((x) => `${x.tc} ${x.track} ${x.clip}`).join("\n")}\n\nNB: stablede 1-frame-klipp KAN være tilsiktede flash-effekter — sjekk tidskodene først. Fortsette?`)) return;
         const v = await run("technical_qc", { mode: "fixflash" }, false, "Sletter flash-frames …");
         status(`✓ ${v.deleted} flash-frames slettet — kjør sveipen på nytt for å verifisere`, "ok-text");
+    },
+    "dc-scan": async () => {
+        S.diskScan = await run("disk_cleanup", { mode: "scan" }, true, "Skanner cache og artefakter (du -s tar litt tid) …");
+        render();
+    },
+    "dc-clean": async () => {
+        const d = S.diskScan;
+        const targets = ["oldCache", "artifacts", d.backupTimelines.length ? "backupTimelines" : null].filter(Boolean).join(",");
+        if (!confirm(`Sletter KUN regenererbar cache fra inaktive prosjekter + egne artefakter (~${d.reclaimableGb} GB).\nAktivt prosjekts cache og alt kildemateriale er fredet.\n\nFortsette?`)) return;
+        const v = await run("disk_cleanup", { mode: "clean", targets }, false, "Rydder — 200+ GB tar noen minutter …");
+        status(`✓ ${v.freedGb} GB slettet · volumet har nå ${v.volumeFreeNowGb ?? "?"} GB ledig${v.errors.length ? " · feil: " + v.errors.join("; ") : ""}`, v.errors.length ? "warn" : "ok-text");
+        log(`Disk-rydding: ${v.freedGb} GB frigjort`);
+        S.diskScan = null; render();
     },
     "dv-plan": async () => {
         const versions = ["master", "web", "review", "some"].filter((v) => $("dv-" + v)?.checked).join(",");
