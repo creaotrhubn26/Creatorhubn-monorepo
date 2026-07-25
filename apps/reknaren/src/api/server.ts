@@ -124,6 +124,8 @@ import {
   testWebhook,
   WEBHOOK_EVENTS,
 } from '../integrations/webhooks.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createReknarenMcpServer } from '../mcp/server.js';
 
 /** JSON-serialisering: bigint (øre) blir strenger — aldri flyttall over grensen. */
 function toJson(value: unknown): unknown {
@@ -2555,8 +2557,45 @@ export function createApiServer(deps: ApiDeps): express.Express {
         'GET /api/v1/organizations/:orgId/saf-t?from&to (SAF-T 1.40 XML)',
       ],
       webhookSignature: 'X-Reknaren-Signature: sha256=<HMAC-SHA256 av råkroppen med endepunktets secret>',
+      mcp: 'POST /mcp (Model Context Protocol, Streamable HTTP) med Bearer API-nøkkel — scopede LES-/forslag-verktøy for AI-klienter.',
     });
   });
+
+  // (5) MCP-server (Model Context Protocol) — AI-klienter kobler seg på med en
+  // API-nøkkel og får scopede verktøy. Stateless: fersk server per forespørsel.
+  const handleMcp = async (req: AuthedRequest, res: Response): Promise<void> => {
+    try {
+      const header = req.header('authorization');
+      const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+      const resolved = token?.startsWith('rk_') ? await resolveApiKey(deps.db, token) : null;
+      if (!resolved) {
+        res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Gyldig API-nøkkel (rk_live_…) kreves i Authorization-headeren.' }, id: null });
+        return;
+      }
+      const server = createReknarenMcpServer(
+        { db: deps.db, rules: deps.rules },
+        { organizationId: resolved.organizationId, scopes: resolved.scopes },
+      );
+      // Stateless: ingen sesjons-ID. SDK-typene krever cast under exactOptionalPropertyTypes.
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      } as unknown as ConstructorParameters<typeof StreamableHTTPServerTransport>[0]);
+      res.on('close', () => {
+        void transport.close();
+        void server.close();
+      });
+      await server.connect(transport as unknown as Parameters<typeof server.connect>[0]);
+      await transport.handleRequest(req as never, res as never, req.body);
+    } catch (err) {
+      if (!res.headersSent) {
+        res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Intern feil i MCP-serveren.' }, id: null });
+      }
+      deps.errorMonitor?.capture(err);
+    }
+  };
+  app.post('/mcp', handleMcp);
+  app.get('/mcp', handleMcp);
+  app.delete('/mcp', handleMcp);
 
   // (4) Versjonert LES-API (API-nøkkel eller sesjon).
   app.get('/api/v1/organizations/:orgId/accounts', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {

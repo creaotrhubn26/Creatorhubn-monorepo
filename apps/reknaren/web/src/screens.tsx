@@ -4102,6 +4102,7 @@ export function IntegrationsScreen({ orgId }: { orgId: string }) {
               <li><code>GET /saf-t?from&amp;to</code> → SAF-T Financial 1.40 (XML)</li>
             </ul>
             <p>Webhooks signeres med <code>X-Reknaren-Signature: sha256=&lt;HMAC av råkroppen med webhook-hemmeligheten&gt;</code>. Se <code>GET /api/v1</code> for full oppdagelse.</p>
+            <p><strong>AI / MCP:</strong> AI-assistenter (Claude m.fl.) kan koble seg på <code>POST /mcp</code> (Model Context Protocol) med samme API-nøkkel og få scopede verktøy — les konti/bilag/rapporter/SAF-T og «spør virksomheten». Kun lesing og forslag; posteringer krever fortsatt godkjenning i appen.</p>
           </div>
         </Disclosure>
       </div>
