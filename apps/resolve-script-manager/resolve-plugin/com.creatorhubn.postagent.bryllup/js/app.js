@@ -395,7 +395,13 @@ const RENDER = {
             <button id="tqc-delivery" ${S.busy ? "disabled" : ""}>📦 Leveranse</button>
             <button id="tqc-audio" ${S.busy ? "disabled" : ""}>🔊 Lyd-peak (dekoder)</button>
             ${s ? `<button id="tqc-markers" class="small" ${S.busy ? "disabled" : ""}>Sett QC-markører</button>` : ""}
-        </div></div>
+        </div>
+        ${s ? `<div class="row" style="margin-top:8px">
+            <button id="tqc-relink" class="small" ${S.busy ? "disabled" : ""}>🔗 Relink offline (søk + koble)</button>
+            <button id="tqc-consolidate" class="small" ${S.busy ? "disabled" : ""}>📦 Konsolider temp-media</button>
+            <button id="tqc-fixflash" class="small" ${S.busy ? "disabled" : ""}>✂ Slett flash-frames</button>
+            <input type="text" id="tqc-ignore" placeholder="hvitliste-regex (f.eks. LightHit|bts)" style="min-width:180px">
+        </div>` : ""}</div>
         ${s ? `<div class="card"><strong>Sveip:</strong> ${s.clipsScanned} klipp · timeline ${esc(s.timelineRes)} @ ${s.fps}
             ${Object.entries(s.counts).filter(([, n]) => n).map(([k, n]) => `<div style="margin-top:6px"><span class="chip yellow">${n}</span> <strong>${esc(CAT_NO[k] || k)}</strong>
                 ${(s.findings[k] || []).slice(0, 6).map(findRow).join("")}</div>`).join("") || `<div class="ok-text" style="margin-top:6px">✓ Ingen funn — teknisk ren</div>`}
@@ -568,7 +574,8 @@ const ACTIONS = {
     },
     // ── teknisk QC ──
     "tqc-sweep": async () => {
-        S.tqcSweep = await run("technical_qc", { mode: "sweep" }, true, "Teknisk sveip — media, timeline, subtitles …");
+        const ig = $("tqc-ignore")?.value?.trim();
+        S.tqcSweep = await run("technical_qc", { mode: "sweep", ...(ig ? { ignorePattern: ig } : {}) }, true, "Teknisk sveip — media, timeline, subtitles …");
         render();
     },
     "tqc-color": async () => {
@@ -583,6 +590,31 @@ const ACTIONS = {
         if (!confirm("Lyd-peak-sjekken dekoder inntil 15 brukte lydkilder med ffmpeg — kan ta et par minutter. Fortsette?")) return;
         S.tqcAudio = await run("technical_qc", { mode: "audiopeak" }, true, "Måler lyd-peaks (ffmpeg) …");
         render();
+    },
+    "tqc-relink": async () => {
+        const plan = await run("technical_qc", { mode: "relink" }, true, "Søker etter offline-filene …");
+        const n = plan.planned?.length || 0;
+        if (!n) { status(`Ingen av de offline filene ble funnet på tilkoblede disker (${plan.notFound?.length || 0} mangler).`, "warn"); return; }
+        if (!confirm(`Fant ${n} av filene:\n${plan.planned.map((x) => `${x.clip} → ${x.newPath}`).join("\n")}\n\nRelink nå?`)) return;
+        const v = await run("technical_qc", { mode: "relink" }, false, "Relinker …");
+        status(`✓ ${v.relinked} relinket · ${v.notFound?.length || 0} fortsatt borte`, "ok-text");
+        log(`Relinket ${v.relinked} offline-klipp`);
+    },
+    "tqc-consolidate": async () => {
+        const plan = await run("technical_qc", { mode: "consolidate" }, true, "Planlegger konsolidering …");
+        const n = plan.planned?.length || 0;
+        if (!n) { status("Ingen temp-media å konsolidere.", "ok-text"); return; }
+        if (!confirm(`Kopierer ${n} filer inn i ${plan.targetDir} og relinker:\n${plan.planned.map((x) => x.clip).join("\n")}\n\nFortsette?`)) return;
+        const v = await run("technical_qc", { mode: "consolidate" }, false, "Konsoliderer …");
+        status(`✓ ${v.consolidated} filer konsolidert til prosjektstrukturen`, "ok-text");
+    },
+    "tqc-fixflash": async () => {
+        const plan = await run("technical_qc", { mode: "fixflash" }, true, "Finner flash-frames …");
+        const n = plan.planned?.length || 0;
+        if (!n) { status("Ingen flash-frames.", "ok-text"); return; }
+        if (!confirm(`Sletter ${n} klipp under 3 frames:\n${plan.planned.map((x) => `${x.tc} ${x.track} ${x.clip}`).join("\n")}\n\nNB: stablede 1-frame-klipp KAN være tilsiktede flash-effekter — sjekk tidskodene først. Fortsette?`)) return;
+        const v = await run("technical_qc", { mode: "fixflash" }, false, "Sletter flash-frames …");
+        status(`✓ ${v.deleted} flash-frames slettet — kjør sveipen på nytt for å verifisere`, "ok-text");
     },
     "tqc-markers": async () => {
         const v = await run("technical_qc", { mode: "sweep", markers: "true" }, false, "Setter QC-markører …");

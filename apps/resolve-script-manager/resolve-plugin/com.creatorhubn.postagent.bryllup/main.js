@@ -291,6 +291,9 @@ async function chatRunScript(scriptId, params) {
         return { refused: 'assembly bygger ny timeline — be brukeren gjøre det i 🗣 Dialog-fanen' };
     }
     let dry = false;
+    if (scriptId === 'technical_qc' && ['relink', 'consolidate', 'fixflash'].includes(String(p.mode).toLowerCase())) {
+        dry = true; // fix-modi: chat viser planen, panelet utfører m/ confirm
+    }
     if (CHAT_DRY_ONLY.has(scriptId)) dry = true;
     else if (!CHAT_READ_OK.has(scriptId)) return { refused: `scriptet «${scriptId}» er ikke i chat-listen` };
     const runHandler = async () => new Promise((resolvePromise, rejectPromise) => {

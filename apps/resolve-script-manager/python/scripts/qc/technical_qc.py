@@ -112,7 +112,9 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 continue
             cfps = _prop(c, "FPS")
             try:
-                if cfps and abs(float(cfps) - fps) > 0.01 and abs(float(cfps) / 2 - fps) > 0.01:
+                ignore = params.get("ignorePattern")
+                if cfps and abs(float(cfps) - fps) > 0.01 and abs(float(cfps) / 2 - fps) > 0.01 \
+                        and not (ignore and re.search(ignore, name, re.I)):
                     findings["fpsMismatch"].append({"clip": name, "clipFps": cfps, "timelineFps": fps})
             except Exception:
                 pass
@@ -327,6 +329,122 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
         bridge.result({"mode": mode, "filesChecked": len(results),
                        "clippedCandidates": [r for r in results if r["clippedCandidate"]],
                        "all": results, "dryRun": dry_run})
+        return
+
+    # ── FIX-modi ──────────────────────────────────────────────────────
+    def _project_root(clips) -> str:
+        """Dominant media-rot: mappen flertallet av tilkoblede klipp bor under."""
+        from collections import Counter
+        roots = Counter()
+        for c in clips:
+            fp = _prop(c, "File Path")
+            if fp and os.path.isfile(fp):
+                parts = fp.split("/")
+                if len(parts) > 3:
+                    roots["/".join(parts[:4])] += 1  # /Volumes/<disk>/<prosjekt>
+        return roots.most_common(1)[0][0] if roots else ""
+
+    def _mdfind(name: str) -> list[str]:
+        try:
+            r = subprocess.run(["mdfind", "-name", name], capture_output=True,
+                               text=True, timeout=20)
+            return [ln for ln in r.stdout.splitlines() if ln.strip()]
+        except Exception:
+            return []
+
+    if mode == "relink":
+        roots = [r.strip() for r in (params.get("searchRoots") or "").split(",") if r.strip()]
+        clips = _walk_clips(conn.media_pool.GetRootFolder())
+        if not roots:
+            root = _project_root(clips)
+            if root:
+                roots = [root]
+        plan, not_found = [], []
+        for c in clips:
+            fp = _prop(c, "File Path")
+            if not fp or os.path.isfile(fp):
+                continue
+            base = os.path.basename(fp)
+            hit = None
+            for r in roots:  # kilde-/prosjektmappene først (veiviserens kunnskap)
+                try:
+                    res = subprocess.run(["find", r, "-name", base, "-maxdepth", "8"],
+                                         capture_output=True, text=True, timeout=60)
+                    hit = next((ln for ln in res.stdout.splitlines() if ln.strip()), None)
+                except Exception:
+                    hit = None
+                if hit:
+                    break
+            if not hit:  # Spotlight-fallback (fant iCloud-LUT-en også)
+                hits = [h for h in _mdfind(base) if os.path.basename(h) == base]
+                hit = hits[0] if hits else None
+            if hit:
+                plan.append({"clip": c.GetName() or "?", "oldPath": fp, "newPath": hit,
+                             "_c": c})
+            else:
+                not_found.append({"clip": c.GetName() or "?", "path": fp})
+        report = {"mode": mode, "searchRoots": roots,
+                  "planned": [{k: v for k, v in p.items() if k != "_c"} for p in plan],
+                  "notFound": not_found, "relinked": 0, "dryRun": dry_run}
+        if not dry_run:
+            for p in plan:
+                try:
+                    if p["_c"].ReplaceClip(p["newPath"]):
+                        report["relinked"] += 1
+                except Exception:
+                    pass
+        bridge.result(report)
+        return
+
+    if mode == "consolidate":
+        target = (params.get("targetDir") or "").strip()
+        clips = _walk_clips(conn.media_pool.GetRootFolder())
+        if not target:
+            root = _project_root(clips)
+            if not root:
+                bridge.error("Fant ikke prosjektrot — oppgi targetDir.")
+                return
+            target = os.path.join(root, "Konsolidert")
+        plan = []
+        for c in clips:
+            fp = _prop(c, "File Path")
+            if fp and os.path.isfile(fp) and TEMP_PATTERNS.search(fp):
+                plan.append({"clip": c.GetName() or "?", "from": fp,
+                             "to": os.path.join(target, os.path.basename(fp)), "_c": c})
+        report = {"mode": mode, "targetDir": target,
+                  "planned": [{k: v for k, v in p.items() if k != "_c"} for p in plan],
+                  "consolidated": 0, "dryRun": dry_run}
+        if not dry_run and plan:
+            os.makedirs(target, exist_ok=True)
+            for p in plan:
+                try:
+                    if not os.path.isfile(p["to"]):
+                        shutil.copy2(p["from"], p["to"])
+                    if p["_c"].ReplaceClip(p["to"]):
+                        report["consolidated"] += 1
+                except Exception:
+                    pass
+        bridge.result(report)
+        return
+
+    if mode == "fixflash":
+        max_frames = int(params.get("maxFrames") or 3)
+        doomed, plan = [], []
+        for t in range(1, (timeline.GetTrackCount("video") or 0) + 1):
+            for it in timeline.GetItemListInTrack("video", t) or []:
+                s, e = int(it.GetStart() or 0), int(it.GetEnd() or 0)
+                if 0 < e - s < max_frames:
+                    doomed.append(it)
+                    plan.append({"tc": _tc(s, fps), "clip": (it.GetName() or "?")[:40],
+                                 "frames": e - s, "track": f"V{t}"})
+        report = {"mode": mode, "planned": plan, "deleted": 0, "dryRun": dry_run}
+        if not dry_run and doomed:
+            try:
+                if timeline.DeleteClips(doomed, False):
+                    report["deleted"] = len(doomed)
+            except Exception:
+                pass
+        bridge.result(report)
         return
 
     bridge.error(f"Ukjent mode «{mode}».")
