@@ -17,6 +17,7 @@ import {
   ArrowBack as BackIcon, MovieCreation as ProductionIcon, OpenInNew as OpenIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
+import { educationRubricService, type RubricCriterion } from './educationRubricService';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import {
   educationAssignmentsService, type Assignment, type AssignmentStatus,
@@ -306,6 +307,8 @@ function SubmissionsView({ assignment, cohortName, onBack, onError, error }: {
         </Card>
       )}
 
+      <RubricEditor assignmentId={assignment.id} onError={onError} />
+
       <Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
           <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Innleveringer</Typography>
@@ -346,6 +349,77 @@ function SubmissionsView({ assignment, cohortName, onBack, onError, error }: {
         )}
       </Box>
     </Box>
+  );
+}
+
+function RubricEditor({ assignmentId, onError }: { assignmentId: string; onError: (m: string | null) => void }) {
+  const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [goal, setGoal] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void educationRubricService.getRubric(assignmentId)
+      .then(setCriteria)
+      .catch(() => { /* tom rubrikk er greit */ })
+      .finally(() => setLoading(false));
+  }, [assignmentId]);
+
+  const add = async () => {
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try {
+      const c = await educationRubricService.addCriterion(assignmentId, { title: title.trim(), learningGoal: goal.trim() || undefined });
+      setCriteria((prev) => [...prev, c]);
+      setTitle(''); setGoal(''); setAdding(false);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke legge til kriterium');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    try {
+      await educationRubricService.deleteCriterion(id);
+      setCriteria((prev) => prev.filter((c) => c.id !== id));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke slette kriterium');
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.2)' }}>
+      <CardContent sx={{ display: 'grid', gap: 1 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Rubrikk (vurderingskriterier)</Typography>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setAdding((v) => !v)} sx={{ color: ACCENT, textTransform: 'none' }}>Nytt kriterium</Button>
+        </Stack>
+        {criteria.length === 0 && !adding && (
+          <Typography sx={{ fontSize: 12.5, color: 'text.disabled' }}>Ingen kriterier enda. Legg til kriterier (f.eks. «Manus/story», «Casting», «Teknisk utførelse») for strukturert vurdering knyttet til læringsmålene.</Typography>
+        )}
+        {criteria.map((c) => (
+          <Stack key={c.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 0.25 }}>
+            <Box>
+              <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{c.title}</Typography>
+              {c.learningGoal && <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>{c.learningGoal}</Typography>}
+            </Box>
+            <IconButton size="small" onClick={() => remove(c.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Slett kriterium"><DeleteIcon fontSize="small" /></IconButton>
+          </Stack>
+        ))}
+        {adding && (
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mt: 0.5 }}>
+            <TextField label="Kriterium" size="small" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus fullWidth placeholder="Manus/story" />
+            <TextField label="Læringsmål (valgfritt)" size="small" value={goal} onChange={(e) => setGoal(e.target.value)} fullWidth />
+            <Button variant="contained" onClick={add} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>Legg til</Button>
+          </Stack>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

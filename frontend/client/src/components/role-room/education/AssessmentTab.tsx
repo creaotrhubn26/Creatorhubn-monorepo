@@ -17,6 +17,7 @@ import {
   CheckCircle as DoneIcon,
 } from '@mui/icons-material';
 import { educationAssessmentService, type AssessmentItem } from './educationAssessmentService';
+import { educationRubricService, RUBRIC_LEVELS, RUBRIC_MAX, type RubricCriterion } from './educationRubricService';
 import { educationAssignmentsService } from './educationAssignmentsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
 
@@ -168,6 +169,8 @@ export function AssessmentTab() {
                     </Box>
                   )}
 
+                  <RubricScoring assignmentId={it.assignmentId} studentId={it.studentId} onError={setError} />
+
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
                     <TextField label="Karakter" size="small" value={draft.grade}
                       onChange={(e) => setDraft(it.submissionId, { grade: e.target.value })}
@@ -193,6 +196,58 @@ export function AssessmentTab() {
           })}
         </Box>
       )}
+    </Box>
+  );
+}
+
+function RubricScoring({ assignmentId, studentId, onError }: { assignmentId: string; studentId: string; onError: (m: string | null) => void }) {
+  const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  const [scores, setScores] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void educationRubricService.getScores(assignmentId, studentId)
+      .then((d) => { if (!cancelled) { setCriteria(d.criteria); setScores(d.scores ?? {}); } })
+      .catch(() => { /* tom rubrikk greit */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [assignmentId, studentId]);
+
+  if (loading || criteria.length === 0) return null;
+
+  const setLevel = async (criterionId: string, level: 0 | 1 | 2) => {
+    setScores((prev) => ({ ...prev, [criterionId]: level }));
+    try {
+      await educationRubricService.setScore({ criterionId, studentId, level });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke lagre rubrikk-score');
+    }
+  };
+
+  const total = criteria.reduce((s, c) => s + (scores[c.id] ?? 0), 0);
+  const max = criteria.length * RUBRIC_MAX;
+  const pct = max ? Math.round((total / max) * 100) : 0;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 1, p: 1.5, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)' }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Rubrikk</Typography>
+        <Chip size="small" label={`${total} / ${max} poeng · ${pct}%`} sx={{ height: 22, fontSize: 11, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+      </Stack>
+      {criteria.map((c) => (
+        <Stack key={c.id} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={0.5}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{c.title}</Typography>
+            {c.learningGoal && <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{c.learningGoal}</Typography>}
+          </Box>
+          <ToggleButtonGroup size="small" exclusive value={scores[c.id] ?? 0}
+            onChange={(_e, v: number | null) => { if (v !== null) void setLevel(c.id, v as 0 | 1 | 2); }}
+            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: 11, py: 0.25, px: 1 }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
+            {RUBRIC_LEVELS.map((l) => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
+          </ToggleButtonGroup>
+        </Stack>
+      ))}
     </Box>
   );
 }
