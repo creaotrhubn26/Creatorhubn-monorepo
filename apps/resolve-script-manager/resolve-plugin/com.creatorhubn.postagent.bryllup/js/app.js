@@ -9,6 +9,8 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     step: "operator",
     ctx: null, prevCtx: null, journal: [],
     voiceTracks: null, render: null,
+    dialog: null, dialogHits: null, dialogPauses: null, dialogReps: null,
+    dialogSel: {},
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -30,6 +32,7 @@ const STEPS = [
     { id: "live",     n: 7, label: "Live-arbeid" },
     { id: "color",    n: 8, label: "Color / QC" },
     { id: "unused",   n: 9, label: "🧠 Ubrukt-materiale", sep: "Etterarbeid" },
+    { id: "dialog",   n: 10, label: "🗣 Dialog" },
 ];
 
 // ── infrastruktur ──
@@ -125,6 +128,7 @@ function suggestionsFor(c) {
         case "edit": case "cut":
             sug.push({ text: "Kjør QC på timelinen: svarte mellomrom + stille partier", act: "op-qc" });
             sug.push({ text: "Ubrukt-materiale: finn klipp som ikke er brukt + AI-anbefalinger", act: "op-unused" });
+            sug.push({ text: "Dialog-verktøy: søk i talen, finn pauser/repetisjoner, bygg assembly", act: "op-dialog" });
             if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): finn ubrukte nabo-klipp fra samme kamera`, act: "op-unused" });
             break;
         case "color":
@@ -276,6 +280,47 @@ const RENDER = {
         ${S.qcWarnings.length ? `<pre class="mini">${esc(S.qcWarnings.join("\n"))}</pre>` : ""}</div>
         ${nextBtn("unused")}`;
     },
+    dialog() {
+        const d = S.dialog;
+        const selCount = Object.values(S.dialogSel).filter(Boolean).length;
+        const segRow = (s, i, selectable) => `<div class="card"><div class="row">
+            ${selectable ? `<input type="checkbox" data-dialog-sel="${i}" ${S.dialogSel[i] ? "checked" : ""}>` : ""}
+            <span class="chip">${esc(s.tc)}</span>
+            <div style="flex:1">${esc(s.text)}</div>
+            <span class="muted">${s.durationSec}s</span>
+            <button class="small" data-jump="${esc(s.tc)}">→</button>
+        </div></div>`;
+        return `<h2>🗣 Dialog — transkripsjonen som råstoff</h2>
+        <div class="sub">Undertekst-sporet (native transkripsjon) blir dialog-kart med tidskoder: søk i det som sies, finn pauser og repetisjoner, bygg assembly av valgte utsnitt.</div>
+        <div class="card"><div class="row">
+            <button id="dlg-subs" ${S.busy ? "disabled" : ""}>1. Generer undertekster fra lyd (native)</button>
+            <button id="dlg-extract" class="primary" ${S.busy ? "disabled" : ""}>2. Les dialog-kartet</button>
+            ${d ? `<span class="ok-text">${d.segments} segmenter · ${Math.round((d.speechSec || 0) / 60)} min tale</span>` : ""}
+        </div>
+        ${d && !d.segments ? `<div class="warn" style="margin-top:6px">${esc(d.note || "")}</div>` : ""}</div>
+        ${d && d.segments ? `
+        <div class="card"><div class="row">
+            <input type="text" id="dlg-query" placeholder="Søk i dialogen … (f.eks. navnet på bruden)">
+            <button id="dlg-search" class="small" ${S.busy ? "disabled" : ""}>Søk</button>
+            <button id="dlg-pauses" class="small" ${S.busy ? "disabled" : ""}>Pauser &gt; 2s</button>
+            <button id="dlg-reps" class="small" ${S.busy ? "disabled" : ""}>Repetisjoner</button>
+        </div></div>
+        ${S.dialogHits ? `<div class="card"><strong>${S.dialogHits.hitCount} treff</strong></div>
+            ${S.dialogHits.hits.slice(0, 30).map((s) => segRow(s, -1, false)).join("")}` : ""}
+        ${S.dialogPauses ? `<div class="card"><div class="row"><strong>${S.dialogPauses.pauseCount} pauser</strong>
+            <button id="dlg-pause-markers" class="small" ${S.busy ? "disabled" : ""}>Sett gule markører</button></div>
+            ${S.dialogPauses.pauses.slice(0, 20).map((p) => `<div class="muted">⏸ ${esc(p.tc)} — ${p.durationSec}s stille &nbsp; «…${esc(p.before)}» → «${esc(p.after)}…»</div>`).join("")}</div>` : ""}
+        ${S.dialogReps ? `<div class="card"><div class="row"><strong>${S.dialogReps.repCount} repetisjons-kandidater</strong>
+            <button id="dlg-rep-markers" class="small" ${S.busy ? "disabled" : ""}>Sett rosa markører</button></div>
+            ${S.dialogReps.repetitions.slice(0, 20).map((r) => `<div class="muted">🔁 ${esc(r.tc)} (${Math.round(r.similarity * 100)} %) «${esc(r.first)}»</div>`).join("")}</div>` : ""}
+        <div class="card"><div class="row">
+            <strong>Dialog-kartet</strong> <span class="muted">velg segmenter → assembly</span>
+            <input type="text" id="dlg-name" value="Assembly fra manus" style="min-width:200px">
+            <button id="dlg-assembly" class="primary" ${!selCount || S.busy ? "disabled" : ""}>Bygg assembly av ${selCount} valgte (ny timeline)</button>
+        </div></div>
+        ${(d.list || []).slice(0, 60).map((s, i) => segRow(s, i, true)).join("")}
+        ${(d.list || []).length > 60 ? `<div class="muted">… ${(d.list || []).length - 60} til (vis alle kommer i neste runde)</div>` : ""}` : ""}`;
+    },
     unused() {
         const c = S.cat;
         return `<h2>🧠 Etterarbeid — Ubrukt-materiale</h2>
@@ -379,6 +424,55 @@ const ACTIONS = {
             { timelineName: info.timelineName, unusedSongs: S.songs, removeOldQc: true }, false, "Setter QC-markører …");
         status(`✓ ${v.markersAdded || 0} QC-markører satt (røde = gap, gule = stille).`, "ok-text");
     },
+    // ── dialog-handlinger ──
+    "dlg-subs": async () => {
+        if (!confirm("Genererer undertekster fra lyd på GJELDENDE timeline (native Resolve-transkripsjon).\n\nDette legger til et undertekst-spor og tar flere minutter på en lang timeline. Fortsette?")) return;
+        S.busy = true; render(); status("Resolve transkriberer timelinen — dette tar minutter …");
+        try {
+            const ok = await PA.createSubtitles();
+            log(ok ? "Genererte undertekster fra lyd (native)" : "Undertekst-generering feilet");
+            status(ok ? "✓ Undertekster generert — trykk «Les dialog-kartet»" : "Undertekst-generering feilet", ok ? "ok-text" : "err");
+        } catch (e) { status("Feil: " + e.message, "err"); }
+        S.busy = false; render();
+    },
+    "dlg-extract": async () => {
+        const v = await run("dialogue_tools", { mode: "extract" }, false, "Leser dialog-kartet …");
+        S.dialog = v; S.dialogSel = {}; S.dialogHits = S.dialogPauses = S.dialogReps = null; render();
+    },
+    "dlg-search": async () => {
+        const q = $("dlg-query").value.trim();
+        if (!q) return;
+        S.dialogHits = await run("dialogue_tools", { mode: "search", query: q }, false, `Søker etter «${q}» …`);
+        S.dialogPauses = S.dialogReps = null; render();
+    },
+    "dlg-pauses": async () => {
+        S.dialogPauses = await run("dialogue_tools", { mode: "pauses", minPauseSec: "2.0" }, false, "Finner pauser …");
+        S.dialogHits = S.dialogReps = null; render();
+    },
+    "dlg-pause-markers": async () => {
+        const v = await run("dialogue_tools", { mode: "pauses", minPauseSec: "2.0", markers: "true" }, false, "Setter pause-markører …");
+        status(`✓ ${v.markersAdded} gule PAUSE-markører satt`, "ok-text");
+    },
+    "dlg-reps": async () => {
+        S.dialogReps = await run("dialogue_tools", { mode: "repetitions" }, false, "Finner repetisjoner …");
+        S.dialogHits = S.dialogPauses = null; render();
+    },
+    "dlg-rep-markers": async () => {
+        const v = await run("dialogue_tools", { mode: "repetitions", markers: "true" }, false, "Setter repetisjons-markører …");
+        status(`✓ ${v.markersAdded} rosa REPETISJON-markører satt`, "ok-text");
+    },
+    "dlg-assembly": async () => {
+        const chosen = (S.dialog?.list || []).filter((_s, i) => S.dialogSel[i]);
+        if (!chosen.length) return;
+        const name = $("dlg-name").value.trim() || "Assembly fra manus";
+        if (!confirm(`Bygger NY timeline «${name}» med ${chosen.length} dialog-utsnitt (video+lyd fra V1).\n\nMaster-timelinen røres ikke — den nye åpnes etterpå. Fortsette?`)) return;
+        const v = await run("dialogue_tools", {
+            mode: "assembly", assemblyName: name,
+            segments: JSON.stringify(chosen.map((s) => ({ start: s.startFrame, end: s.endFrame }))),
+        }, false, "Bygger assembly …");
+        log(`Bygde assembly «${name}»: ${v.built} utsnitt`);
+        status(`✓ ${v.built} utsnitt på ny timeline «${name}» — ${v.note || ""}`, "ok-text");
+    },
     // ── operatør-handlinger (side-bevisste) ──
     "op-transcribe": async () => {
         S.busy = true; render(); status("Transkriberer valgte klipp (native) — kan ta minutter …");
@@ -400,6 +494,7 @@ const ACTIONS = {
     },
     "op-qc": async () => { S.step = "color"; render(); await ACTIONS["run-qc"](); },
     "op-unused": () => { S.step = "unused"; render(); },
+    "op-dialog": () => { S.step = "dialog"; render(); },
     "op-log": () => { S.step = "color"; render(); },
     "op-voice": async () => {
         S.voiceTracks = await PA.voiceIsolationInfo();
@@ -460,6 +555,7 @@ document.addEventListener("click", async (ev) => {
         status(ok ? "Spillehodet flyttet til " + el.dataset.jump : "Kunne ikke flytte spillehodet", ok ? "ok-text" : "err");
         return;
     }
+    if (el.dataset.dialogSel != null) { S.dialogSel[Number(el.dataset.dialogSel)] = el.checked; render(); return; }
     if (el.dataset.insert != null) { await insertRec(Number(el.dataset.insert)); return; }
     if (el.dataset.delSong != null) { S.songs.splice(Number(el.dataset.delSong), 1); render(); return; }
     if (el.dataset.voiceToggle != null) {

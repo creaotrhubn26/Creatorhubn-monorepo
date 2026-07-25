@@ -3518,6 +3518,20 @@
       "requiresTimeline": true
     },
     {
+      "id": "dialogue_tools",
+      "name": "Dialog-verktøy (transkripsjon som råstoff)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/dialogue_tools.py",
+      "description": "Leser undertekst-sporet (generert native med CreateSubtitlesFromAudio) som dialog-kart med tidskoder. Modi: extract (kartet), search (innholdssøk), pauses (opphold i talen + markører), repetitions (nabo-segmenter med ~lik tekst + markører), assembly (bygg NY timeline av valgte utsnitt — master røres aldri).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "insert_unused_clips",
       "name": "Sett inn ubrukte klipp på anbefalt posisjon",
       "category": "timeline",

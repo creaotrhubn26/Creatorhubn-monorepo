@@ -213,6 +213,14 @@ ipcMain.handle('set-voice-isolation', async (_ev, track, isEnabled, amount) => {
     return Boolean(await tl.SetVoiceIsolationState(track, { isEnabled, amount: amount ?? 50 }));
 });
 
+ipcMain.handle('create-subtitles', async () => {
+    const { tl } = await currentTimeline();
+    if (!tl) return false;
+    // Default-innstillinger (språk: auto) — tar minutter på lang timeline.
+    try { return Boolean(await tl.CreateSubtitlesFromAudio()); }
+    catch { return Boolean(await tl.CreateSubtitlesFromAudio({})); }
+});
+
 ipcMain.handle('render-info', async () => {
     const { project } = await currentTimeline();
     if (!project) return { presets: [], jobs: [] };
