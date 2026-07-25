@@ -30,6 +30,7 @@ import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
 import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../ingestion/document-hunt.js';
 import { buildDashboard } from '../ledger/dashboard.js';
+import { createAgreement, listAgreements, reviewAgreements } from '../invoicing/agreements.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
   createOrganization,
@@ -1704,6 +1705,67 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Avtaler / inntektsplaner — CRUD + review (fakturaplan, tapt inntekt, oppsigelse).
+  app.get(
+    '/api/organizations/:orgId/agreements',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.json(toJson(await listAgreements(deps.db, req.params.orgId!)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+  app.post(
+    '/api/organizations/:orgId/agreements',
+    requireAuth,
+    requireOrgPermission('invoices.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            customerId: z.string().uuid(),
+            name: z.string().min(1).max(200),
+            amountMinor: z.string(),
+            cadence: z.enum(['monthly', 'quarterly', 'yearly', 'one_time']),
+            startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+            noticeMonths: z.number().int().min(0).max(24).optional(),
+          })
+          .parse(req.body);
+        const id = await createAgreement(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          customerId: body.customerId,
+          name: body.name,
+          amountMinor: BigInt(body.amountMinor),
+          cadence: body.cadence,
+          startDate: body.startDate,
+          endDate: body.endDate ?? null,
+          ...(body.noticeMonths !== undefined ? { noticeMonths: body.noticeMonths } : {}),
+        });
+        res.status(201).json({ id });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+  app.get(
+    '/api/organizations/:orgId/agreements/review',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const asOf = new Date().toISOString().slice(0, 10);
+        res.json(toJson(await reviewAgreements(deps.db, { organizationId: req.params.orgId!, asOf })));
       } catch (err) {
         next(err);
       }

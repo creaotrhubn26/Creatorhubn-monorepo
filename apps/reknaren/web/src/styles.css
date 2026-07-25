@@ -206,6 +206,8 @@ label { display: block; font-size: 13px; font-weight: 570; color: var(--text-2);
 .panel.impact { background: var(--surface-2); border: 1px solid var(--accent-soft); box-shadow: none; margin: 14px 0 4px; padding: 14px 16px; }
 .panel.impact > strong { display: block; margin-bottom: 8px; }
 .panel.impact .kv dd.pos { color: var(--ok); font-weight: 600; }
+.kv dd.pos { color: var(--ok); }
+.kv dd.neg { color: var(--danger); font-weight: 600; }
 .panel.impact ul.hint { color: var(--text-3); margin-top: 10px; }
 
 /* Oversikt-cockpit */

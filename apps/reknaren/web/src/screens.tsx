@@ -3433,3 +3433,179 @@ export function DocumentHuntScreen({ orgId, onOpenDocument, onNavigate }: { orgI
     </div>
   );
 }
+
+/* ── Avtaler / inntektsplaner ───────────────────────────────────────────── */
+
+interface AgreementReview {
+  agreement: {
+    id: string; customerName: string; name: string; amountMinor: string; cadence: string;
+    startDate: string; endDate: string | null; noticeMonths: number; status: string;
+  };
+  periodsDue: number;
+  expectedInvoicedMinor: string;
+  actualInvoicedMinor: string;
+  gapMinor: string;
+  nextInvoiceDates: string[];
+  noticeDeadline: string | null;
+  flags: string[];
+}
+
+const CADENCE_LABEL: Record<string, string> = { monthly: 'månedlig', quarterly: 'kvartalsvis', yearly: 'årlig', one_time: 'engangs' };
+const FLAG_LABEL: Record<string, { label: string; cls: string }> = {
+  ikke_fakturert: { label: 'Ikke fakturert', cls: 'low' },
+  underfakturert: { label: 'Underfakturert', cls: 'medium' },
+  overfakturert: { label: 'Overfakturert', cls: 'medium' },
+  oppsigelse_naer: { label: 'Oppsigelsesfrist nær', cls: 'medium' },
+  bor_periodiseres: { label: 'Bør periodiseres', cls: 'high' },
+};
+
+export function AgreementsScreen({ orgId }: { orgId: string }) {
+  const review = useLoad(() => api<{ reviews: AgreementReview[]; totalGapMinor: string }>('GET', `/api/organizations/${orgId}/agreements/review`), [orgId]);
+  const customers = useLoad(() => api<{ id: string; name: string }[]>('GET', `/api/organizations/${orgId}/customers`), [orgId]);
+  const toast = useToast();
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ customerId: '', name: '', amountKr: '', cadence: 'monthly', startDate: '', endDate: '', noticeMonths: '0' });
+  const d = review.data;
+
+  const create = async () => {
+    if (!f.customerId || !f.name || !f.amountKr || !f.startDate) {
+      toast('Fyll ut kunde, navn, beløp og startdato.', 'info');
+      return;
+    }
+    setBusy(true);
+    try {
+      const amountMinor = String(BigInt(Math.round(Number(f.amountKr.replace(',', '.')) * 100)));
+      await api('POST', `/api/organizations/${orgId}/agreements`, {
+        customerId: f.customerId, name: f.name, amountMinor, cadence: f.cadence,
+        startDate: f.startDate, endDate: f.endDate || null, noticeMonths: Number(f.noticeMonths) || 0,
+      });
+      toast('Avtale opprettet.', 'ok');
+      setShow(false);
+      setF({ customerId: '', name: '', amountKr: '', cadence: 'monthly', startDate: '', endDate: '', noticeMonths: '0' });
+      review.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke opprette', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Avtaler</h1>
+        <p className="subtitle">Løpende kundeavtaler: fakturaplan, kontroll av avtalt vs. fakturert, og deteksjon av tapte inntekter.</p>
+      </div>
+
+      <div className="actions" style={{ marginBottom: 12 }}>
+        <button className="primary" onClick={() => setShow(!show)}>{show ? 'Avbryt' : 'Ny avtale'}</button>
+      </div>
+
+      {show && (
+        <div className="panel">
+          <h2>Ny avtale</h2>
+          <div className="row">
+            <div>
+              <label htmlFor="a-cust">Kunde</label>
+              <select id="a-cust" value={f.customerId} onChange={(e) => setF({ ...f, customerId: e.target.value })}>
+                <option value="">Velg kunde …</option>
+                {(customers.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="a-name">Navn</label>
+              <input id="a-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="F.eks. Månedlig drift" />
+            </div>
+          </div>
+          <div className="row">
+            <div>
+              <label htmlFor="a-amt">Avtalt beløp (kr/periode)</label>
+              <input id="a-amt" inputMode="decimal" value={f.amountKr} onChange={(e) => setF({ ...f, amountKr: e.target.value })} placeholder="10 000" />
+            </div>
+            <div>
+              <label htmlFor="a-cad">Kadens</label>
+              <select id="a-cad" value={f.cadence} onChange={(e) => setF({ ...f, cadence: e.target.value })}>
+                <option value="monthly">Månedlig</option>
+                <option value="quarterly">Kvartalsvis</option>
+                <option value="yearly">Årlig</option>
+                <option value="one_time">Engangs</option>
+              </select>
+            </div>
+          </div>
+          <div className="row">
+            <div>
+              <label htmlFor="a-start">Startdato</label>
+              <input id="a-start" placeholder="2025-01-01" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} />
+            </div>
+            <div>
+              <label htmlFor="a-end">Sluttdato (valgfritt)</label>
+              <input id="a-end" placeholder="løpende" value={f.endDate} onChange={(e) => setF({ ...f, endDate: e.target.value })} />
+            </div>
+            <div>
+              <label htmlFor="a-notice">Oppsigelsesfrist (mnd)</label>
+              <input id="a-notice" inputMode="numeric" value={f.noticeMonths} onChange={(e) => setF({ ...f, noticeMonths: e.target.value })} />
+            </div>
+          </div>
+          <div className="actions">
+            <button className="primary" disabled={busy} onClick={create}>{busy ? 'Lagrer …' : 'Opprett avtale'}</button>
+          </div>
+        </div>
+      )}
+
+      {review.loading ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        d && (
+          <>
+            {BigInt(d.totalGapMinor) > 0n && (
+              <div className="panel">
+                <div className="panel-head">
+                  <h2>Mulig tapt / ufakturert inntekt</h2>
+                  <span className="confidence low">{kr(d.totalGapMinor)} kr</span>
+                </div>
+                <p className="subtitle">Summen av avtalt beløp som ennå ikke er fakturert til kundene. Kontroller og fakturer.</p>
+              </div>
+            )}
+            {d.reviews.length === 0 ? (
+              <div className="panel"><p className="subtitle">Ingen aktive avtaler ennå. Opprett en for å få fakturaplan og inntektskontroll.</p></div>
+            ) : (
+              d.reviews.map((rv) => (
+                <div className="panel" key={rv.agreement.id}>
+                  <div className="panel-head">
+                    <h2>{rv.agreement.name} · {rv.agreement.customerName}</h2>
+                    <span className="code">{kr(rv.agreement.amountMinor)} kr {CADENCE_LABEL[rv.agreement.cadence]}</span>
+                  </div>
+                  {rv.flags.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '4px 0 10px' }}>
+                      {rv.flags.map((fl) => (
+                        <span key={fl} className={`confidence ${FLAG_LABEL[fl]?.cls ?? 'medium'}`}>{FLAG_LABEL[fl]?.label ?? fl}</span>
+                      ))}
+                    </div>
+                  )}
+                  <dl className="kv">
+                    <dt>Forventet fakturert ({rv.periodsDue} perioder)</dt>
+                    <dd>{kr(rv.expectedInvoicedMinor)} kr</dd>
+                    <dt>Faktisk fakturert</dt>
+                    <dd>{kr(rv.actualInvoicedMinor)} kr</dd>
+                    <dt>Manglende</dt>
+                    <dd className={BigInt(rv.gapMinor) > 0n ? 'neg' : ''}>{kr(rv.gapMinor)} kr</dd>
+                    {rv.noticeDeadline && (
+                      <>
+                        <dt>Oppsigelsesfrist</dt>
+                        <dd>{nb(rv.noticeDeadline)}{rv.agreement.endDate ? ` (utløp ${nb(rv.agreement.endDate)})` : ''}</dd>
+                      </>
+                    )}
+                  </dl>
+                  {rv.nextInvoiceDates.length > 0 && (
+                    <p className="hint">Fakturaplan framover: {rv.nextInvoiceDates.map((x) => nb(x)).join(' · ')}</p>
+                  )}
+                </div>
+              ))
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}

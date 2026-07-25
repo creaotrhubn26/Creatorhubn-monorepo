@@ -5,6 +5,7 @@ import {
   DocumentDetailScreen,
   DocumentsScreen,
   GmailScreen,
+  AgreementsScreen,
   AiScreen,
   AssistantScreen,
   DocumentHuntScreen,
@@ -58,6 +59,7 @@ type Screen =
   | { name: 'period-close' }
   | { name: 'assistant' }
   | { name: 'document-hunt' }
+  | { name: 'agreements' }
   | { name: 'documents' }
   | { name: 'document'; id: string }
   | { name: 'gmail' }
@@ -84,6 +86,7 @@ const NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[] = 
   { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
   { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
   { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
+  { key: 'agreements', label: 'Avtaler', icon: 'chart' },
   { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
   { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
   { key: 'vat', label: 'MVA', icon: 'percent' },
@@ -277,6 +280,7 @@ export default function App() {
           {screen.name === 'gmail' && <GmailScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'bank' && <BankScreen orgId={orgId} />}
           {screen.name === 'invoicing' && <InvoicingScreen orgId={orgId} />}
+          {screen.name === 'agreements' && <AgreementsScreen orgId={orgId} />}
           {screen.name === 'dimensions' && <DimensionsScreen orgId={orgId} />}
           {screen.name === 'ai' && <AiScreen />}
           {screen.name === 'org' && <OrgSettingsScreen orgId={orgId} />}
