@@ -23,7 +23,8 @@ export type ProfessionMode =
   | 'content_creator'   // innholdsskaper
   | 'dance_studio'      // dans — studioeier (PR #2)
   | 'dance_freelance'   // dans — frilanser (PR #2)
-  | 'education';        // utdanningsinstitusjon — kull, studentproduksjoner, faglærer-oversikt
+  | 'education'         // utdanningsinstitusjon — kull, studentproduksjoner, faglærer-oversikt
+  | 'student';          // student ved utdanningsinstitusjon — «Min side» (foreløpig super-admin-preview)
 
 export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'production',
@@ -33,6 +34,7 @@ export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'dance_studio',
   'dance_freelance',
   'education',
+  'student',
 ] as const;
 
 export const DEFAULT_PROFESSION_MODE: ProfessionMode = 'production';
@@ -67,6 +69,8 @@ const URL_ALIASES: Record<string, ProfessionMode> = {
   utdanningsinstitusjon: 'education',
   education: 'education',
   skole: 'education',
+  student: 'student',
+  elev: 'student',
 };
 
 /**
@@ -130,6 +134,10 @@ export const isProductionMode = (mode: ProfessionMode): boolean =>
 /** Utdanningsinstitusjon-modus — egen parallell workspace (EducationWorkspace). */
 export const isEducationMode = (mode: ProfessionMode): boolean =>
   mode === 'education';
+
+/** Student-modus — «Min side» (StudentWorkspace), foreløpig super-admin-preview. */
+export const isStudentMode = (mode: ProfessionMode): boolean =>
+  mode === 'student';
 
 /**
  * Bro fra bruker-profesjon/rolle (server-side `users.profession` / onboarding-

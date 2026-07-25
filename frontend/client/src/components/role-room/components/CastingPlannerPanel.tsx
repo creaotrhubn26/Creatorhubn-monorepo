@@ -7,7 +7,7 @@ import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/access
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck } from '../config/professionMode';
+import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
@@ -242,6 +242,7 @@ const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ def
 // Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
+const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -738,6 +739,17 @@ export function CastingPlannerPanel({
       <ErrorBoundary>
       <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster utdannings-modus…</Box>}>
         <EducationWorkspace />
+      </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Student-modus — «Min side» (foreløpig super-admin-preview), samme
+  // parallell-workspace-mønster som dans/utdanning.
+  if (isStudentModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster student-modus…</Box>}>
+        <StudentWorkspace />
       </Suspense>
       </ErrorBoundary>
     );

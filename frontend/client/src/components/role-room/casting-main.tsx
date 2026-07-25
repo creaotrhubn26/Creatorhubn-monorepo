@@ -79,6 +79,7 @@ const WELCOME_SUBTITLE_BY_MODE: Record<ProfessionMode, string> = {
   dance_studio: 'Dansestudio — her styrer du studioet: produksjoner, dansere og timeplan. Vi tar deg gjennom 3 viktige snarveier.',
   dance_freelance: 'Dans (frilans) — her holder du oversikt over oppdrag, tilgjengelighet og produksjonene du er med i. Vi tar deg gjennom 3 viktige snarveier.',
   education: 'Utdanningsmodus — her underviser du: kull, studentproduksjoner, oppgaver og vurdering. Vi tar deg gjennom 3 viktige snarveier.',
+  student: 'Studentmodus — her ser du produksjonene, oppgavene og tilbakemeldingene dine. Vi tar deg gjennom 3 viktige snarveier.',
 };
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
