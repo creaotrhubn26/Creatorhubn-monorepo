@@ -26,6 +26,7 @@ import {
 } from "express";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
+import { newEntityId } from "./_shared-ids.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 
@@ -115,7 +116,7 @@ export function createEducationStudentViewRouter(
           `SELECT a.id, a.title, a.brief, a.learning_goals, a.due_at, a.status,
                   prod.title AS production_title, prod.project_id AS production_project_id,
                   sub.status AS sub_status, sub.grade AS grade, sub.feedback AS feedback,
-                  sub.submitted_at AS submitted_at, sub.reviewed_at AS reviewed_at
+                  sub.link AS link, sub.submitted_at AS submitted_at, sub.reviewed_at AS reviewed_at
              FROM role_room_education_assignments a
              LEFT JOIN role_room_education_productions prod ON prod.id = a.production_id
              LEFT JOIN role_room_education_submissions sub
@@ -186,6 +187,7 @@ export function createEducationStudentViewRouter(
         submissionStatus: (a.sub_status as string) ?? "not_started",
         grade: (a.grade as string) ?? null,
         feedback: (a.feedback as string) ?? null,
+        link: (a.link as string) ?? null,
         submittedAt: isoOrNull(a.submitted_at),
         reviewedAt: isoOrNull(a.reviewed_at),
         rubric: rubricFor(String(a.id)),
@@ -359,6 +361,43 @@ export function createEducationStudentViewRouter(
       if (isMissingTable(err)) { res.status(404).json({ error: "not_found" }); return; }
       console.error("[education-student-production] failed:", (err as Error).message);
       res.status(500).json({ error: "production_failed" });
+    }
+  });
+
+  // ── Student leverer (isolert sesjon) ─────────────────────────────────────
+  router.put("/education/student/assignment/:assignmentId/submit", async (req, res) => {
+    try {
+      const studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
+      const student = await loadStudent(studentId);
+      if (!student) { res.status(404).json({ error: "not_found" }); return; }
+      const body = (req.body ?? {}) as { link?: string; note?: string };
+      const link = typeof body.link === "string" ? body.link.trim() || null : null;
+      const note = typeof body.note === "string" ? body.note.trim() || null : null;
+      // Oppgaven MÅ tilhøre studentens kull + være publisert.
+      const ok = await pool.query(
+        `SELECT 1 FROM role_room_education_assignments WHERE id = $1 AND cohort_id = $2 AND status = 'published'`,
+        [req.params.assignmentId, student.cohort_id],
+      );
+      if (ok.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const id = newEntityId("edsub");
+      const r = await pool.query(
+        `INSERT INTO role_room_education_submissions
+           (id, assignment_id, student_id, owner_user_id, status, link, note, submitted_at)
+         VALUES ($1,$2,$3,$4,'submitted',$5,$6, now())
+         ON CONFLICT (assignment_id, student_id)
+         DO UPDATE SET status = CASE WHEN role_room_education_submissions.status = 'reviewed' THEN 'reviewed' ELSE 'submitted' END,
+                       link = EXCLUDED.link,
+                       note = COALESCE(EXCLUDED.note, role_room_education_submissions.note),
+                       submitted_at = COALESCE(role_room_education_submissions.submitted_at, EXCLUDED.submitted_at),
+                       updated_at = now()
+         RETURNING status, link`,
+        [id, req.params.assignmentId, studentId, student.owner_user_id, link, note],
+      );
+      res.json({ status: (r.rows[0]?.status as string) ?? "submitted", link: (r.rows[0]?.link as string) ?? null });
+    } catch (err) {
+      console.error("[education-student-submit] failed:", (err as Error).message);
+      res.status(500).json({ error: "submit_failed" });
     }
   });
 

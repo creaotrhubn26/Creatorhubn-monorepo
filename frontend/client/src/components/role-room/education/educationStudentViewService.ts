@@ -30,6 +30,7 @@ export interface StudentViewAssignment {
   submissionStatus: 'not_started' | 'submitted' | 'reviewed';
   grade: string | null;
   feedback: string | null;
+  link: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
   rubric: StudentRubricBreakdown | null;
@@ -111,6 +112,20 @@ export const educationStudentViewService = {
     if (res.status === 401) { clearStudentSession(); throw new Error('Sesjonen er utløpt'); }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as StudentProductionHub;
+  },
+
+  /** Innlogget student leverer en lenke til arbeidet sitt. */
+  async submitAssignment(assignmentId: string, input: { link?: string; note?: string }): Promise<{ status: string; link: string | null }> {
+    const token = getStudentToken();
+    if (!token) throw new Error('Ingen studentsesjon');
+    const res = await fetch(`${BASE}/student/assignment/${encodeURIComponent(assignmentId)}/submit`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-student-token': token },
+      body: JSON.stringify(input),
+    });
+    if (res.status === 401) { clearStudentSession(); throw new Error('Sesjonen er utløpt'); }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as { status: string; link: string | null };
   },
 
   /** Løs inn en invitasjon → lagrer studentsesjon-token. */

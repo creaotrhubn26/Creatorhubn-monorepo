@@ -10,7 +10,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, Button, TextField,
-  Chip, CircularProgress, Alert, ToggleButtonGroup, ToggleButton, Tooltip,
+  Chip, CircularProgress, Alert, ToggleButtonGroup, ToggleButton, Tooltip, Link,
 } from '@mui/material';
 import {
   Grading as AssessmentIcon, OpenInNew as OpenIcon, Download as DownloadIcon,
@@ -167,6 +167,13 @@ export function AssessmentTab() {
                       <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Læringsmål</Typography>
                       <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>{goals.join(' · ')}</Typography>
                     </Box>
+                  )}
+
+                  {it.link && (
+                    <Stack direction="row" alignItems="center" spacing={0.75}>
+                      <OpenIcon sx={{ fontSize: 15, color: ACCENT }} />
+                      <Link href={it.link} target="_blank" rel="noopener" sx={{ color: ACCENT, fontSize: 13, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Studentens levering</Link>
+                    </Stack>
                   )}
 
                   <RubricScoring assignmentId={it.assignmentId} studentId={it.studentId} onError={setError} />
