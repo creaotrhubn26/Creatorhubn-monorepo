@@ -3760,3 +3760,108 @@ export function CompanyRiskModal({ orgId, initialOrgNr, onClose }: { orgId: stri
     </Modal>
   );
 }
+
+/* ── Spør virksomheten ──────────────────────────────────────────────────── */
+
+interface AskEvidence { type: string; label: string; amountMinor?: string; documentId?: string; entryNumber?: number; customerId?: string; account?: string }
+interface AskAnswer {
+  understood: boolean;
+  intent: string;
+  question: string;
+  headline: string;
+  figures: { label: string; value: string }[];
+  calculation: string;
+  evidence: AskEvidence[];
+  followUps: string[];
+}
+
+const ASK_SUGGESTIONS = [
+  'Hva bruker vi på programvare?',
+  'Hva har vi kjøpt fra utlandet?',
+  'Hvilke fakturaer mangler bilag?',
+  'Hvor mye MVA må vi sannsynligvis betale?',
+  'Hva har endret seg siden forrige måned?',
+  'Hvilke kunder har aldri betalt innen fristen?',
+  'Hvilke kunder er mest lønnsomme?',
+];
+
+export function AskScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDocument: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [a, setA] = useState<AskAnswer | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async (question: string) => {
+    const text = question.trim();
+    if (!text) return;
+    setQ(text);
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api<AskAnswer>('GET', `/api/organizations/${orgId}/ask?q=${encodeURIComponent(text)}`);
+      setA(res);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Noe gikk galt');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Spør virksomheten</h1>
+        <p className="subtitle">Spør med vanlig språk. Svaret er alltid forankret i tallene — klikk deg fra forklaringen til bevisene.</p>
+      </div>
+      <div className="row" style={{ maxWidth: 720 }}>
+        <div style={{ flex: 3 }}>
+          <label htmlFor="ask-q">Spørsmål</label>
+          <input id="ask-q" value={q} placeholder="F.eks. Hva bruker vi på programvare?" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run(q)} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <button className="primary" disabled={busy} onClick={() => run(q)}>{busy ? 'Tenker …' : 'Spør'}</button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+        {(a?.followUps ?? ASK_SUGGESTIONS).slice(0, 7).map((s) => (
+          <button key={s} className="chip" onClick={() => run(s)}>{s}</button>
+        ))}
+      </div>
+      {err && <div className="error">{err}</div>}
+
+      {a && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>{a.headline}</h2>
+          {a.figures.length > 0 && (
+            <div className="cards" style={{ marginTop: 8 }}>
+              {a.figures.map((f, i) => (
+                <div className="card" key={i}>
+                  <div className="label">{f.label}</div>
+                  <div className="value" style={{ fontSize: 20 }}>{f.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {a.evidence.length > 0 && (
+            <>
+              <h3>Bevis</h3>
+              <ul className="health-list">
+                {a.evidence.map((ev, i) => (
+                  <li key={i} className="health-item info">
+                    <div className="health-dot" aria-hidden="true" />
+                    <div className="health-body">
+                      <div className="health-title">{ev.label}</div>
+                      {ev.amountMinor && <div className="health-detail">{kr(ev.amountMinor)} kr</div>}
+                    </div>
+                    {ev.documentId && (
+                      <button className="secondary health-action" onClick={() => onOpenDocument(ev.documentId!)}>Se bilaget</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {a.calculation && <p className="hint" style={{ marginTop: 10 }}>Slik er det regnet ut: {a.calculation}</p>}
+        </div>
+      )}
+    </div>
+  );
+}

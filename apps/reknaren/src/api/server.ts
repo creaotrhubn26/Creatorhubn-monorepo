@@ -42,6 +42,7 @@ import {
 import type { VatRegisterLookup } from '../integrations/brreg.js';
 import type { CompanyRegistry } from '../integrations/company-registry.js';
 import { assessCompanyRisk } from '../ledger/company-risk.js';
+import { answerQuestion } from '../ledger/ask.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
 import { buildMvaMeldingXml, MaskinportenError, type VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
@@ -1709,6 +1710,26 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         res.json(toJson(await runHealthCheck(deps.db, { organizationId: req.params.orgId!, asOf })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // «Spør virksomheten» — naturlig-språk-spørsmål, svar forankret i hovedboken.
+  app.get(
+    '/api/organizations/:orgId/ask',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const question = String(req.query.q ?? '').trim();
+        if (!question) {
+          res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Skriv et spørsmål.' } });
+          return;
+        }
+        const asOf = new Date().toISOString().slice(0, 10);
+        res.json(toJson(await answerQuestion(deps.db, deps.rules, { organizationId: req.params.orgId!, question, asOf })));
       } catch (err) {
         next(err);
       }

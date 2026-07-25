@@ -7,6 +7,7 @@ import {
   GmailScreen,
   AgreementsScreen,
   AiScreen,
+  AskScreen,
   AssistantScreen,
   OverviewScreen,
   PeriodCloseScreen,
@@ -54,6 +55,7 @@ const VIEW_MODE_LABELS: Record<ViewMode, string> = {
 
 type Screen =
   | { name: 'overview' }
+  | { name: 'ask' }
   | { name: 'planning' }
   | { name: 'period-close' }
   | { name: 'assistant' }
@@ -95,6 +97,7 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
   {
     section: 'Innsikt',
     items: [
+      { key: 'ask', label: 'Spør virksomheten', icon: 'mail' },
       { key: 'planning', label: 'Framover', icon: 'chart' },
       { key: 'assistant', label: 'Skatteassistent', icon: 'shield' },
     ],
@@ -283,6 +286,7 @@ export default function App() {
               onNavigate={(name) => setScreen({ name } as Screen)}
             />
           )}
+          {screen.name === 'ask' && <AskScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'planning' && (
             <PlanningScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
           )}
