@@ -387,12 +387,19 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                   "planned": [{k: v for k, v in p.items() if k != "_c"} for p in plan],
                   "notFound": not_found, "relinked": 0, "dryRun": dry_run}
         if not dry_run:
+            report["verified"] = 0
             for p in plan:
                 try:
                     if p["_c"].ReplaceClip(p["newPath"]):
                         report["relinked"] += 1
+                        # resultatkontroll: peker klippet på en fil som finnes?
+                        now = p["_c"].GetClipProperty("File Path") or ""
+                        if now == p["newPath"] and os.path.isfile(now):
+                            report["verified"] += 1
                 except Exception:
                     pass
+            if report["verified"] < report["relinked"]:
+                report["warning"] = "Ikke alle relinks kunne verifiseres — sjekk manuelt."
         bridge.result(report)
         return
 
@@ -444,6 +451,16 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                     report["deleted"] = len(doomed)
             except Exception:
                 pass
+            # resultatkontroll: tell på nytt
+            remaining = 0
+            for t in range(1, (timeline.GetTrackCount("video") or 0) + 1):
+                for it in timeline.GetItemListInTrack("video", t) or []:
+                    d = int(it.GetEnd() or 0) - int(it.GetStart() or 0)
+                    if 0 < d < max_frames:
+                        remaining += 1
+            report["remainingAfter"] = remaining
+            if remaining:
+                report["warning"] = f"{remaining} flash-frames igjen etter sletting."
         bridge.result(report)
         return
 

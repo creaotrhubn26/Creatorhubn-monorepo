@@ -7,6 +7,7 @@ const PA = window.postagent;
 
 const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     step: "operator",
+    opMode: localStorage.getItem("pa.opMode") || "analyze",  // analyze|prepare|execute
     ctx: null, prevCtx: null, journal: [],
     voiceTracks: null, render: null,
     dialog: null, dialogHits: null, dialogPauses: null, dialogReps: null,
@@ -55,6 +56,14 @@ PA.onProgress((p) => {
 function progressDone() { $("progress-wrap").classList.add("hidden"); $("progress-bar").style.width = "0%"; }
 
 async function run(scriptId, params, dryRun, busyMsg) {
+    const level = mutationLevel(scriptId, params, Boolean(dryRun));
+    if (!guard(level, scriptId)) throw new Error("blokkert av modus");
+    if (level === 2 && needsBackup(scriptId, params)) {
+        status("Tar sikkerhetskopi av timelinen (DuplicateTimeline) …");
+        const b = await PA.backupTimeline();
+        if (!b.ok) { status("🛡 Backup feilet (" + (b.error || "?") + ") — mutasjonen AVBRYTES.", "err"); throw new Error("backup feilet"); }
+        log(`Sikkerhetskopi: «${b.backupName}»`);
+    }
     S.busy = true; render(); status(busyMsg || "Kjører " + scriptId + " …");
     try {
         const v = await PA.runScript(scriptId, params, Boolean(dryRun));
@@ -73,6 +82,40 @@ function log(msg) {
     S.journal.unshift({ t, msg });
     S.journal = S.journal.slice(0, 40);
     if (S.step === "operator") render();
+}
+
+// ── Sikkerhetsmodell: Analyze (les) ▸ Prepare (plan/nytt) ▸ Execute (muter) ──
+// Nivå per handling: 0 = ren lesing, 1 = lager NYTT (markører/ny timeline/
+// nytt spor — master-innhold røres ikke), 2 = muterer eksisterende.
+function mutationLevel(scriptId, params, dryRun) {
+    if (dryRun) return 0;
+    const mode = String(params?.mode || "").toLowerCase();
+    if (params?.markers === "true" || params?.markersOnly === "true") return 1;
+    switch (scriptId) {
+        case "dialogue_tools": return mode === "assembly" ? 1 : 0;
+        case "insert_unused_clips": return 1;   // nytt spor, aldri oppå eksisterende
+        case "recommend_unused_insertions": return 0;
+        case "edit_assistants": case "unused_clips_placement": return 0;
+        case "technical_qc":
+            return ["relink", "consolidate", "fixflash"].includes(mode) ? 2 : 0;
+        case "copy_attributes_by_camera":
+            return mode === "cameras" ? 0 : 2;
+        case "categorize_unused_clips": return 2; // flytter klipp i media pool
+        case "get_media_pool_state": return 0;
+        default: return 2; // ukjent ekte kjøring = strengest
+    }
+}
+// Irreversible mutasjoner → timeline-backup (DuplicateTimeline) først
+function needsBackup(scriptId, params) {
+    const mode = String(params?.mode || "").toLowerCase();
+    return (scriptId === "copy_attributes_by_camera" && ["grade", "attributes"].includes(mode))
+        || (scriptId === "technical_qc" && mode === "fixflash");
+}
+function guard(level, what) {
+    const allowed = { analyze: 0, prepare: 1, execute: 2 }[S.opMode] ?? 0;
+    if (level <= allowed) return true;
+    status(`🛡 Blokkert i ${S.opMode.toUpperCase()}-modus: «${what}» ${level === 1 ? "lager nytt innhold" : "muterer prosjektet"} — bytt modus øverst for å utføre.`, "warn");
+    return false;
 }
 
 function attrParams(pat) {
@@ -104,6 +147,14 @@ async function pollContext() {
         S.prevCtx = S.ctx; S.ctx = cur;
         renderContextStrip();
     } catch { /* neste poll */ }
+}
+
+function renderModeSwitch() {
+    const el = $("mode-switch");
+    if (!el) return;
+    const M = [["analyze", "🔍 Analyze"], ["prepare", "📋 Prepare"], ["execute", "⚡ Execute"]];
+    el.innerHTML = M.map(([id, label]) =>
+        `<button class="mode-btn ${S.opMode === id ? "on " + id : ""}" data-opmode="${id}">${label}</button>`).join("");
 }
 
 function renderContextStrip() {
@@ -545,6 +596,7 @@ const ACTIONS = {
     },
     // ── dialog-handlinger ──
     "dlg-subs": async () => {
+        if (!guard(2, "generer undertekster")) return;
         if (!confirm("Genererer undertekster fra lyd på GJELDENDE timeline (native Resolve-transkripsjon).\n\nDette legger til et undertekst-spor og tar flere minutter på en lang timeline. Fortsette?")) return;
         S.busy = true; render(); status("Resolve transkriberer timelinen — dette tar minutter …");
         try {
@@ -713,6 +765,7 @@ const ACTIONS = {
     },
     // ── operatør-handlinger (side-bevisste) ──
     "op-transcribe": async () => {
+        if (!guard(2, "op-transcribe")) return;
         S.busy = true; render(); status("Transkriberer valgte klipp (native) — kan ta minutter …");
         try {
             const r = await PA.transcribeSelected(true);
@@ -722,6 +775,7 @@ const ACTIONS = {
         S.busy = false; render();
     },
     "op-intellisearch": async () => {
+        if (!guard(2, "op-intellisearch")) return;
         S.busy = true; render(); status("IntelliSearch-analyse på valgte …");
         try {
             const r = await PA.intellisearchSelected(true);
@@ -747,6 +801,7 @@ const ACTIONS = {
         render();
     },
     "op-start-render": async () => {
+        if (!guard(2, "op-start-render")) return;
         if (!confirm(`Start rendering av ${S.render?.jobs.length ?? 0} jobber i køen?`)) return;
         const ok = await PA.startRendering();
         log(ok ? "Startet rendering av køen" : "Kunne ikke starte rendering");
@@ -787,6 +842,12 @@ function render() {
 document.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-step],[data-next],[data-style],[data-jump],[data-insert],[data-del-song],button");
     if (!el) return;
+    if (el.dataset.opmode) {
+        S.opMode = el.dataset.opmode;
+        localStorage.setItem("pa.opMode", S.opMode);
+        log(`Modus: ${S.opMode.toUpperCase()}`);
+        renderModeSwitch(); render(); return;
+    }
     if (el.dataset.step) { S.step = el.dataset.step; render(); return; }
     if (el.dataset.next) { S.step = el.dataset.next; render(); return; }
     if (el.dataset.style) { S.style = el.dataset.style; S.doneSteps.add("style"); render(); return; }
@@ -804,6 +865,7 @@ document.addEventListener("click", async (ev) => {
     if (el.dataset.insert != null) { await insertRec(Number(el.dataset.insert)); return; }
     if (el.dataset.delSong != null) { S.songs.splice(Number(el.dataset.delSong), 1); render(); return; }
     if (el.dataset.voiceToggle != null) {
+        if (!guard(2, "Voice Isolation")) return;
         const track = Number(el.dataset.voiceToggle);
         const turnOn = el.dataset.voiceOn === "1";
         const ok = await PA.setVoiceIsolation(track, turnOn, 50);
@@ -819,6 +881,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 render();
+renderModeSwitch();
 refreshProject();
 pollContext();
 setInterval(pollContext, 2000);

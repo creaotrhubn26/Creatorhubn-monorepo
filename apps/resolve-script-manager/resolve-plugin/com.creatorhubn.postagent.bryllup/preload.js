@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('postagent', {
     renderInfo: () => ipcRenderer.invoke('render-info'),
     createSubtitles: () => ipcRenderer.invoke('create-subtitles'),
     operatorChat: (history) => ipcRenderer.invoke('operator-chat', history),
+    backupTimeline: () => ipcRenderer.invoke('backup-timeline'),
     startRendering: () => ipcRenderer.invoke('start-rendering'),
     onProgress: (cb) => {
         const handler = (_ev, data) => cb(data);

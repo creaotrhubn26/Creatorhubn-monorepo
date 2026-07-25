@@ -85,3 +85,10 @@ pre.mini { font-size: 11px; background: var(--bg); border-radius: 6px; padding: 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .style-card { text-align: center; padding: 16px 10px; cursor: pointer; }
 .style-card.chosen { border-color: var(--accent); background: rgba(139,92,246,0.1); }
+
+#mode-switch { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.mode-btn { border: none; border-radius: 0; padding: 4px 12px; font-size: 11px; background: var(--card); color: var(--dim); }
+.mode-btn.on { color: #fff; font-weight: 700; }
+.mode-btn.on.analyze { background: #2563eb; }
+.mode-btn.on.prepare { background: #b45309; }
+.mode-btn.on.execute { background: #b91c1c; }

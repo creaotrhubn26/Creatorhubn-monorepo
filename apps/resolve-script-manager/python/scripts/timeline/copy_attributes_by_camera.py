@@ -159,8 +159,21 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                   "warning": "CopyGrades OVERSKRIVER målenes eksisterende grade."}
         if not dry_run and targets:
             try:
+                src_nodes = int(source.GetNodeGraph().GetNumNodes() or 0)
                 if source.CopyGrades([it for _t, it in targets]):
                     report["copied"] = len(targets)
+                # resultatkontroll: stikkprøve — har målene kildens node-tall?
+                ok_sample = 0
+                sample = targets[:5]
+                for _t, it in sample:
+                    try:
+                        if int(it.GetNodeGraph().GetNumNodes() or 0) == src_nodes:
+                            ok_sample += 1
+                    except Exception:
+                        pass
+                report["verifiedSample"] = f"{ok_sample}/{len(sample)}"
+                if ok_sample < len(sample):
+                    report["warning"] = "Stikkprøven avviker — sjekk gradene manuelt."
             except Exception as e:
                 report["error"] = str(e)[:200]
         bridge.result(report)

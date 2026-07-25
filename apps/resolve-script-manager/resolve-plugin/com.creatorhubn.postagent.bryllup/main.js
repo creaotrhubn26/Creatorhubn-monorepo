@@ -28,6 +28,27 @@ let mainWindow = null;
 let resolveObj = null;
 let registry = null;
 
+// ── Audit-logg: ALLE handlinger (panel + chat + direkte-API) → jsonl ──
+const AUDIT_PATH = path.join(process.env.HOME || '', '.config/postagent/audit.jsonl');
+function audit(entry) {
+    try {
+        fs.mkdirSync(path.dirname(AUDIT_PATH), { recursive: true });
+        fs.appendFileSync(AUDIT_PATH, JSON.stringify({
+            ts: new Date().toISOString(), ...entry,
+        }) + '\n');
+    } catch { /* audit skal aldri velte handlingen */ }
+}
+
+function resultSummary(v) {
+    if (!v || typeof v !== 'object') return String(v).slice(0, 120);
+    const keys = ['inserted', 'deleted', 'relinked', 'verified', 'copied', 'assigned',
+        'consolidated', 'markersAdded', 'built', 'moved', 'candidatesTotal', 'segments',
+        'queueJobs', 'counts', 'targets', 'error', 'warning'];
+    const out = {};
+    for (const k of keys) if (v[k] !== undefined) out[k] = v[k];
+    return out;
+}
+
 function loadRegistry() {
     if (!registry) {
         registry = JSON.parse(fs.readFileSync(path.join(PY_ROOT, 'registry.json'), 'utf8'));
@@ -78,6 +99,9 @@ ipcMain.handle('run-script', async (_ev, scriptId, params, dryRun) => {
         });
         child.stderr.on('data', (d) => { errMsg = errMsg || d.toString().slice(0, 400); });
         child.on('close', (code) => {
+            audit({ via: 'panel', scriptId, dryRun: Boolean(dryRun),
+                    params: JSON.stringify(params || {}).slice(0, 400),
+                    ok: result !== null, result: result !== null ? resultSummary(result) : (errMsg || `exit ${code}`).slice(0, 200) });
             if (result !== null) resolvePromise(result);
             else rejectPromise(new Error(errMsg || `script avsluttet med kode ${code}`));
         });
@@ -180,6 +204,7 @@ ipcMain.handle('transcribe-selected', async (_ev, useSpeakers) => {
     for (const c of sel) {
         try { if (await c.TranscribeAudio(Boolean(useSpeakers))) ok++; } catch { /* per-klipp */ }
     }
+    audit({ via: 'panel-api', action: 'transcribe', ok: ok > 0, result: { total: sel.length, ok } });
     return { total: sel.length, ok };
 });
 
@@ -191,6 +216,7 @@ ipcMain.handle('intellisearch-selected', async (_ev, identifyFaces) => {
     for (const c of sel) {
         try { if (await c.AnalyzeForIntellisearch(Boolean(identifyFaces), false)) ok++; } catch { /* per-klipp */ }
     }
+    audit({ via: 'panel-api', action: 'intellisearch', ok: ok > 0, result: { total: sel.length, ok } });
     return { total: sel.length, ok };
 });
 
@@ -211,15 +237,46 @@ ipcMain.handle('voice-isolation-info', async () => {
 ipcMain.handle('set-voice-isolation', async (_ev, track, isEnabled, amount) => {
     const { tl } = await currentTimeline();
     if (!tl) return false;
-    return Boolean(await tl.SetVoiceIsolationState(track, { isEnabled, amount: amount ?? 50 }));
+    const ok = Boolean(await tl.SetVoiceIsolationState(track, { isEnabled, amount: amount ?? 50 }));
+    audit({ via: 'panel-api', action: 'voiceIsolation', ok, result: { track, isEnabled, amount: amount ?? 50 } });
+    return ok;
 });
 
 ipcMain.handle('create-subtitles', async () => {
     const { tl } = await currentTimeline();
     if (!tl) return false;
     // Default-innstillinger (språk: auto) — tar minutter på lang timeline.
-    try { return Boolean(await tl.CreateSubtitlesFromAudio()); }
-    catch { return Boolean(await tl.CreateSubtitlesFromAudio({})); }
+    let ok = false;
+    try { ok = Boolean(await tl.CreateSubtitlesFromAudio()); }
+    catch { ok = Boolean(await tl.CreateSubtitlesFromAudio({})); }
+    audit({ via: 'panel-api', action: 'createSubtitles', ok, result: {} });
+    return ok;
+});
+
+ipcMain.handle('backup-timeline', async () => {
+    const { project, tl } = await currentTimeline();
+    if (!project || !tl) return { ok: false, error: 'ingen timeline' };
+    const orig = await tl.GetName();
+    const stamp = new Date().toTimeString().slice(0, 5).replace(':', '');
+    const backupName = `${orig} [backup ${stamp}]`;
+    const dup = await tl.DuplicateTimeline(backupName);
+    if (!dup) return { ok: false, error: 'DuplicateTimeline feilet' };
+    // DuplicateTimeline kan gjøre KOPIEN aktiv — verifiser og bytt tilbake,
+    // ellers ville mutasjonen truffet backupen i stedet for originalen.
+    const cur = await project.GetCurrentTimeline();
+    const curName = cur ? await cur.GetName() : '';
+    if (curName !== orig) {
+        const count = await project.GetTimelineCount();
+        for (let i = 1; i <= count; i++) {
+            const t = await project.GetTimelineByIndex(i);
+            if (t && (await t.GetName()) === orig) { await project.SetCurrentTimeline(t); break; }
+        }
+    }
+    const nowCur = await project.GetCurrentTimeline();
+    const restored = nowCur && (await nowCur.GetName()) === orig;
+    audit({ via: 'panel-api', action: 'backupTimeline', ok: restored, result: { backupName, restored } });
+    return { ok: Boolean(restored), backupName,
+             error: restored ? undefined : 'kunne ikke bytte tilbake til originalen — AVBRYT mutasjonen' };
 });
 
 ipcMain.handle('render-info', async () => {
@@ -235,7 +292,9 @@ ipcMain.handle('render-info', async () => {
 ipcMain.handle('start-rendering', async () => {
     const { project } = await currentTimeline();
     if (!project) return false;
-    return Boolean(await project.StartRendering());
+    const ok = Boolean(await project.StartRendering());
+    audit({ via: 'panel-api', action: 'startRendering', ok, result: {} });
+    return ok;
 });
 
 // ── 💬 Chat-operatøren: Claude m/ verktøy-tilgang til motoren ──
@@ -314,7 +373,11 @@ async function chatRunScript(scriptId, params) {
                 try { const ev = JSON.parse(line); if (ev.type === 'result') result = ev.value; if (ev.type === 'error') err = ev.message; } catch { /* — */ }
             }
         });
-        child.on('close', () => result !== null ? resolvePromise(result) : rejectPromise(new Error(err || 'ingen result')));
+        child.on('close', () => {
+            audit({ via: 'chat', scriptId, dryRun: dry, params: JSON.stringify(p).slice(0, 400),
+                    ok: result !== null, result: result !== null ? resultSummary(result) : (err || 'ingen result').slice(0, 200) });
+            result !== null ? resolvePromise(result) : rejectPromise(new Error(err || 'ingen result'));
+        });
         child.on('error', rejectPromise);
     });
     return runHandler();
