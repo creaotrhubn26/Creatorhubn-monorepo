@@ -29,8 +29,8 @@ async function runChain(stack: any[], req: any, res: any) {
   }
 }
 
-function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStudentId?: string | null } = {}) {
-  const { studentOwner = "inst-1", invite, sessionStudentId } = opts;
+function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStudentId?: string | null; rubric?: any[] } = {}) {
+  const { studentOwner = "inst-1", invite, sessionStudentId, rubric } = opts;
   const inserts: any[] = [];
   const pool: any = {
     query: vi.fn(async (sql: string, params: any[]) => {
@@ -54,6 +54,9 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
       }
       if (sql.includes("FROM role_room_education_production_members m")) {
         return { rows: [{ id: "ep1", title: "Kortfilm", project_id: "proj-1", project_status: "active", member_role: "lead" }] };
+      }
+      if (sql.includes("FROM role_room_education_rubric_criteria c")) {
+        return { rows: rubric ?? [] };
       }
       if (sql.includes("FROM role_room_education_assignments a")) {
         return { rows: [{ id: "a1", title: "Oppg", brief: null, learning_goals: null, due_at: null, status: "published", production_title: "Kortfilm", production_project_id: "proj-1", sub_status: "submitted", grade: "B", feedback: "Bra", submitted_at: new Date(0).toISOString(), reviewed_at: null }] };
@@ -80,6 +83,26 @@ describe("education student view + claim routes", () => {
       { headers: { authorization: "Bearer owner-tok" }, query: { studentId: "st1" }, params: {} }, res);
     expect(res.body.student).toMatchObject({ id: "st1", name: "Kari" });
     expect(res.body.assignments[0]).toMatchObject({ submissionStatus: "submitted", grade: "B" });
+  });
+
+  it("rubrikk-nedbrytning vises når scoret (pct fra nivåer)", async () => {
+    const res = makeRes();
+    const rubric = [
+      { assignment_id: "a1", criterion_title: "Manus", sort_order: 0, goal_title: "Fortelling", level: 2, scored: true },
+      { assignment_id: "a1", criterion_title: "Casting", sort_order: 1, goal_title: null, level: 1, scored: true },
+    ];
+    await runChain(H(R(makePool({ rubric }).pool), "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer owner-tok" }, query: { studentId: "st1" }, params: {} }, res);
+    expect(res.body.assignments[0].rubric).toMatchObject({ pct: 75 });
+    expect(res.body.assignments[0].rubric.criteria).toHaveLength(2);
+  });
+
+  it("rubrikk skjules når ikke scoret (null)", async () => {
+    const res = makeRes();
+    const rubric = [{ assignment_id: "a1", criterion_title: "Manus", sort_order: 0, goal_title: null, level: null, scored: false }];
+    await runChain(H(R(makePool({ rubric }).pool), "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer owner-tok" }, query: { studentId: "st1" }, params: {} }, res);
+    expect(res.body.assignments[0].rubric).toBeNull();
   });
 
   it("super admin ser fremmed student", async () => {

@@ -126,6 +126,41 @@ export function createEducationStudentViewRouter(
         )
       : { rows: [] as Record<string, unknown>[] };
 
+    // Rubrikk-nedbrytning per oppgave (transparens): kriterier + studentens nivå
+    // + koblet læringsmål. Vises kun der faglærer har scoret (jf. frontend).
+    const rubricRes = cohortId
+      ? await pool.query(
+          `SELECT c.assignment_id, c.title AS criterion_title, c.sort_order,
+                  g.title AS goal_title,
+                  rs.level AS level, (rs.id IS NOT NULL) AS scored
+             FROM role_room_education_rubric_criteria c
+             JOIN role_room_education_assignments a ON a.id = c.assignment_id
+             LEFT JOIN role_room_education_learning_goals g ON g.id = c.learning_goal_id
+             LEFT JOIN role_room_education_rubric_scores rs
+                    ON rs.criterion_id = c.id AND rs.student_id = $2
+            WHERE a.cohort_id = $1
+            ORDER BY c.sort_order ASC, c.created_at ASC`,
+          [cohortId, studentId],
+        )
+      : { rows: [] as Record<string, unknown>[] };
+
+    const rubricByAssignment = new Map<string, { criteria: { title: string; goalTitle: string | null; level: number }[]; scoredCount: number }>();
+    for (const row of rubricRes.rows) {
+      const aid = String(row.assignment_id);
+      if (!rubricByAssignment.has(aid)) rubricByAssignment.set(aid, { criteria: [], scoredCount: 0 });
+      const entry = rubricByAssignment.get(aid)!;
+      const scored = Boolean(row.scored);
+      entry.criteria.push({ title: (row.criterion_title as string) ?? "", goalTitle: (row.goal_title as string) ?? null, level: Number(row.level ?? 0) });
+      if (scored) entry.scoredCount += 1;
+    }
+    const rubricFor = (assignmentId: string) => {
+      const e = rubricByAssignment.get(assignmentId);
+      if (!e || e.scoredCount === 0) return null; // vis kun når vurdert
+      const total = e.criteria.reduce((s, c) => s + c.level, 0);
+      const max = e.criteria.length * 2;
+      return { criteria: e.criteria, pct: max ? Math.round((total / max) * 100) : 0 };
+    };
+
     return {
       student: {
         id: studentId,
@@ -153,6 +188,7 @@ export function createEducationStudentViewRouter(
         feedback: (a.feedback as string) ?? null,
         submittedAt: isoOrNull(a.submitted_at),
         reviewedAt: isoOrNull(a.reviewed_at),
+        rubric: rubricFor(String(a.id)),
       })),
     };
   };

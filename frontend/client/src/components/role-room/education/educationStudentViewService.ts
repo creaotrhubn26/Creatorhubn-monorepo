@@ -15,6 +15,10 @@ export interface StudentViewProduction {
   role: string;
 }
 
+export interface StudentRubricBreakdown {
+  pct: number;
+  criteria: { title: string; goalTitle: string | null; level: number }[];
+}
 export interface StudentViewAssignment {
   id: string;
   title: string;
@@ -28,6 +32,7 @@ export interface StudentViewAssignment {
   feedback: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
+  rubric: StudentRubricBreakdown | null;
 }
 
 export interface StudentView {
