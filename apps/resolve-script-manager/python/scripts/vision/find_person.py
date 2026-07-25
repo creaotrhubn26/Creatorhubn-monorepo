@@ -129,10 +129,19 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
             if not faces:
                 skipped.append({"image": p, "why": "ingen ansikter funnet"})
                 continue
-            emb, _area = max(faces, key=lambda fa: fa[1])  # største ansikt
-            if not dry_run:
-                idx.record_analysis("person_ref", name, {"embedding": emb, "source": p})
-            stored += 1
+            if str(params.get("allFaces", "")).lower() in ("true", "1", "yes"):
+                # gruppe-registrering: ALLE tydelige ansikter (familie-sett)
+                for emb, area in faces:
+                    if area >= 0.002:  # filtrer bitte-små bakgrunnsansikter
+                        if not dry_run:
+                            idx.record_analysis("person_ref", name,
+                                                {"embedding": emb, "source": p})
+                        stored += 1
+            else:
+                emb, _area = max(faces, key=lambda fa: fa[1])  # største ansikt
+                if not dry_run:
+                    idx.record_analysis("person_ref", name, {"embedding": emb, "source": p})
+                stored += 1
         idx.commit()
         idx.close()
         bridge.result({"mode": mode, "person": name, "referencesStored": stored,
@@ -185,10 +194,14 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 for s in folder.GetSubFolderList() or []:
                     walk(s)
             walk(conn.media_pool.GetRootFolder())
-            # prioriter: brukte først (skjermtid-svar), så UBRUKT
-            def prio(c):
-                return 0 if clip_identity(c)["uid"] in used_uids else 1
-            clips.sort(key=prio)
+            # prioriter: brukte først (skjermtid-svar), så UBRUKT —
+            # eller KUN ubrukte (onlyUnused=true: innsettings-kandidater)
+            if str(params.get("onlyUnused", "")).lower() in ("true", "1", "yes"):
+                clips = [c for c in clips if clip_identity(c)["uid"] not in used_uids]
+            else:
+                def prio(c):
+                    return 0 if clip_identity(c)["uid"] in used_uids else 1
+                clips.sort(key=prio)
             for c in clips:
                 if max_clips and scanned >= max_clips:
                     break
