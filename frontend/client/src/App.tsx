@@ -101,6 +101,8 @@ import AdminInviteSystem from '@/pages/admin-invite-system';
 import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
 import AcceptPrototypeTesterInvite from '@/pages/AcceptPrototypeTesterInvite';
 import ClaimStudentAccess from '@/pages/ClaimStudentAccess';
+import ClaimCensorAccess from '@/pages/ClaimCensorAccess';
+import CensorView from '@/pages/CensorView';
 import TesterStatusBanner from '@/components/tester/TesterStatusBanner';
 import GoogleSSOErrorBanner from '@/components/auth/GoogleSSOErrorBanner';
 import EnterpriseOfferModal from '@/components/tester/EnterpriseOfferModal';
@@ -1082,6 +1084,8 @@ function App() {
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
                   <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
                   <Route path="/role-room/student/claim" component={ClaimStudentAccess} />
+                  <Route path="/role-room/censor/claim" component={ClaimCensorAccess} />
+                  <Route path="/role-room/censor" component={CensorView} />
                   <Route path="/link" component={PostAgentLinkPage} />
                   <Route path="/post-agent/mockup-studio" component={MockupVideoStudioPage} />
                   <Route path="/prototype-tester/accept-invite" component={AcceptPrototypeTesterInvite} />
