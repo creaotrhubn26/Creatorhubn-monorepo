@@ -293,6 +293,52 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
   });
 
+  // Auth = enhver innlogget sesjon (launchId er en ugjettbar UUID-kapabilitet).
+  // Brukes av faglærer i en LTI-launchet vurderings-økt.
+  const requireSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+    const s = await resolveUser(pool, deps.activeSessions, bearer);
+    if (!s) { res.status(401).json({ error: "unauthorized" }); return; }
+    (req as Request & { userId: string }).userId = s.userId;
+    next();
+  };
+
+  // ── Faglærer: send karakter til LMS-karakterboka (AGS grade-passback) ─────
+  // Tar en fri-tekst-karakter (mappes til tallscore) ELLER eksplisitt
+  // scoreGiven/scoreMaximum. Poster til launchens AGS line item for launch-
+  // brukeren. 🔑 MVP: målbruker = den som launchet (korrekt for student-launchet
+  // oppgave). Faglærer-vurderer-mange-studenter → hver students LMS-sub trengs
+  // (NRPS roster-sync, neste steg).
+  router.post("/lti/launches/:id/grade", requireSession, async (req, res) => {
+    const b = (req.body ?? {}) as { grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string };
+    let scoreGiven = b.scoreGiven;
+    let scoreMaximum = b.scoreMaximum;
+    if (typeof scoreGiven !== "number" || typeof scoreMaximum !== "number") {
+      if (typeof b.grade === "string" && b.grade.trim()) {
+        const mapped = gradeToScore(b.grade);
+        if (!mapped) {
+          res.status(422).json({ error: "ungradeable", message: "Karakteren kunne ikke tolkes som en tallverdi for LMS-karakterboka." });
+          return;
+        }
+        scoreGiven = mapped.scoreGiven;
+        // Eksplisitt maks (f.eks. rubrikk-maks) vinner om oppgitt.
+        scoreMaximum = typeof b.scoreMaximum === "number" ? b.scoreMaximum : mapped.scoreMaximum;
+      }
+    }
+    if (typeof scoreGiven !== "number" || typeof scoreMaximum !== "number") {
+      res.status(400).json({ error: "grade_or_score_required" });
+      return;
+    }
+    try {
+      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label });
+      if (!result.ok) { res.status(result.status ?? 500).json({ error: result.error }); return; }
+      res.json({ success: true, scoreGiven, scoreMaximum });
+    } catch (err) {
+      console.error("[lti] grade push failed:", (err as Error).message);
+      res.status(500).json({ error: "grade_failed" });
+    }
+  });
+
   // ── Super-admin: push karakter til LMS (AGS grade-passback) ───────────────
   router.post("/lti/launches/:id/score", requireAdmin, async (req, res) => {
     const b = (req.body ?? {}) as { scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string };
@@ -365,4 +411,30 @@ export async function pushScore(
   });
   if (!scoreRes.ok) return { ok: false, error: "score_post_failed", status: 502 };
   return { ok: true };
+}
+
+/**
+ * Mapper en fri-tekst-karakter fra Role Rooms formative vurdering til en
+ * AGS-tallscore (LMS-karakterboka trenger scoreGiven/scoreMaximum). Dekker de
+ * vanlige norske formene: bestått/godkjent (pass/fail), bokstav A–F (UH/ECTS,
+ * A=5…E=1/F=0 av 5), prosent («85 %», av 100) og tallkarakter (1–6 av 6, ellers
+ * poeng av 100). Returnerer null når karakteren ikke lar seg tolke numerisk
+ * (kalleren svarer da 422 i stedet for å pushe noe misvisende).
+ */
+export function gradeToScore(grade: string): { scoreGiven: number; scoreMaximum: number } | null {
+  const g = grade.trim();
+  if (!g) return null;
+  if (/^(best[åa]tt|godkjent|pass(ed)?)$/i.test(g)) return { scoreGiven: 1, scoreMaximum: 1 };
+  if (/^(ikke[\s-]?best[åa]tt|ikke[\s-]?godkjent|underkjent|fail(ed)?)$/i.test(g)) return { scoreGiven: 0, scoreMaximum: 1 };
+  const pct = g.match(/^(\d+(?:[.,]\d+)?)\s*%$/);
+  if (pct) return { scoreGiven: parseFloat(pct[1].replace(",", ".")), scoreMaximum: 100 };
+  const letterMap: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 };
+  const letter = g.toUpperCase();
+  if (letter.length === 1 && letter in letterMap) return { scoreGiven: letterMap[letter], scoreMaximum: 5 };
+  const num = g.replace(",", ".");
+  if (/^\d+(\.\d+)?$/.test(num)) {
+    const n = parseFloat(num);
+    return { scoreGiven: n, scoreMaximum: n <= 6 ? 6 : 100 };
+  }
+  return null;
 }

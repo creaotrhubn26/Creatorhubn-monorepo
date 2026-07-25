@@ -14,9 +14,10 @@ import {
 } from '@mui/material';
 import {
   Grading as AssessmentIcon, OpenInNew as OpenIcon, Download as DownloadIcon,
-  CheckCircle as DoneIcon,
+  CheckCircle as DoneIcon, CloudUpload as LmsPushIcon,
 } from '@mui/icons-material';
 import { educationAssessmentService, type AssessmentItem } from './educationAssessmentService';
+import educationLtiService from './educationLtiService';
 import { educationRubricService, RUBRIC_LEVELS, RUBRIC_MAX, type RubricCriterion } from './educationRubricService';
 import { educationAssignmentsService } from './educationAssignmentsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
@@ -35,6 +36,11 @@ export function AssessmentTab() {
   // Lokale utkast per innlevering (karakter + tilbakemelding).
   const [drafts, setDrafts] = useState<Record<string, { grade: string; feedback: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  // LTI-launch-kontekst → «Send til LMS-karakterbok» (AGS grade-passback).
+  const [launchId] = useState<string | null>(() => educationLtiService.getLaunchId());
+  const [pushingId, setPushingId] = useState<string | null>(null);
+  const [pushedIds, setPushedIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,6 +85,27 @@ export function AssessmentTab() {
       setError(e instanceof Error ? e.message : 'Kunne ikke lagre vurdering');
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const pushToLms = async (it: AssessmentItem) => {
+    if (!launchId) return;
+    const draft = drafts[it.submissionId] ?? { grade: '', feedback: '' };
+    const grade = (draft.grade || it.grade || '').trim();
+    if (!grade) { setError('Sett en karakter før du sender til LMS.'); return; }
+    setPushingId(it.submissionId);
+    setError(null);
+    try {
+      await educationLtiService.pushGrade(launchId, {
+        grade,
+        comment: (draft.feedback || it.feedback || '').trim() || undefined,
+        label: it.assignmentTitle,
+      });
+      setPushedIds((prev) => new Set(prev).add(it.submissionId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kunne ikke sende til LMS');
+    } finally {
+      setPushingId(null);
     }
   };
 
@@ -187,7 +214,19 @@ export function AssessmentTab() {
                       multiline minRows={2} fullWidth placeholder="Hva var sterkt, og hva kan bli bedre — knyttet til læringsmålene?" />
                   </Stack>
 
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
+                    {launchId && (
+                      <Tooltip title="Send karakteren rett til LMS-karakterboka via LTI (AGS). MVP: går til LMS-brukeren som åpnet Role Room fra LMS-en — per-student passback for hele kullet kommer med roster-sync.">
+                        <span>
+                          <Button size="small" variant="outlined"
+                            startIcon={pushedIds.has(it.submissionId) ? <DoneIcon /> : <LmsPushIcon />}
+                            onClick={() => pushToLms(it)} disabled={pushingId === it.submissionId}
+                            sx={{ borderColor: 'rgba(139,92,246,0.5)', color: pushedIds.has(it.submissionId) ? '#10b981' : '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                            {pushingId === it.submissionId ? 'Sender…' : pushedIds.has(it.submissionId) ? 'Sendt til LMS' : 'Send til LMS'}
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    )}
                     <Button size="small" onClick={() => save(it, false)} disabled={savingId === it.submissionId}
                       sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>
                       Lagre utkast

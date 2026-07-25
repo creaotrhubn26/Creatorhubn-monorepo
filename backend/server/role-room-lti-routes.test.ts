@@ -1,6 +1,35 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { createLtiRouter, pushScore, extractLtiIdentity } from "./role-room-lti-routes.js";
+import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore } from "./role-room-lti-routes.js";
+
+describe("gradeToScore (fri-tekst-karakter → AGS-tallscore)", () => {
+  it("bestått/godkjent → 1/1, ikke bestått → 0/1", () => {
+    expect(gradeToScore("Bestått")).toEqual({ scoreGiven: 1, scoreMaximum: 1 });
+    expect(gradeToScore("godkjent")).toEqual({ scoreGiven: 1, scoreMaximum: 1 });
+    expect(gradeToScore("Ikke bestått")).toEqual({ scoreGiven: 0, scoreMaximum: 1 });
+    expect(gradeToScore("underkjent")).toEqual({ scoreGiven: 0, scoreMaximum: 1 });
+  });
+  it("bokstavkarakter A–F → 5..0 av 5", () => {
+    expect(gradeToScore("A")).toEqual({ scoreGiven: 5, scoreMaximum: 5 });
+    expect(gradeToScore("c")).toEqual({ scoreGiven: 3, scoreMaximum: 5 });
+    expect(gradeToScore("F")).toEqual({ scoreGiven: 0, scoreMaximum: 5 });
+  });
+  it("prosent → av 100", () => {
+    expect(gradeToScore("85%")).toEqual({ scoreGiven: 85, scoreMaximum: 100 });
+    expect(gradeToScore("72 %")).toEqual({ scoreGiven: 72, scoreMaximum: 100 });
+  });
+  it("tallkarakter 1–6 → av 6; komma godtas", () => {
+    expect(gradeToScore("4")).toEqual({ scoreGiven: 4, scoreMaximum: 6 });
+    expect(gradeToScore("5,5")).toEqual({ scoreGiven: 5.5, scoreMaximum: 6 });
+  });
+  it("poeng > 6 → av 100", () => {
+    expect(gradeToScore("85")).toEqual({ scoreGiven: 85, scoreMaximum: 100 });
+  });
+  it("utolkbar karakter → null", () => {
+    expect(gradeToScore("Meget bra!")).toBeNull();
+    expect(gradeToScore("")).toBeNull();
+  });
+});
 
 const ROLES = "https://purl.imsglobal.org/spec/lti/claim/roles";
 
