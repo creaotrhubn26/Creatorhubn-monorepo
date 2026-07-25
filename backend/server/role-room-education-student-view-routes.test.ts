@@ -52,8 +52,8 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
           ? { rows: [] }
           : { rows: [{ id: "st1", name: "Kari", owner_user_id: studentOwner, cohort_id: "c1", cohort_name: "Film 1" }] };
       }
-      if (sql.includes("FROM role_room_education_productions p")) {
-        return { rows: [{ id: "ep1", title: "Kortfilm", project_id: "proj-1", project_status: "active" }] };
+      if (sql.includes("FROM role_room_education_production_members m")) {
+        return { rows: [{ id: "ep1", title: "Kortfilm", project_id: "proj-1", project_status: "active", member_role: "lead" }] };
       }
       if (sql.includes("FROM role_room_education_assignments a")) {
         return { rows: [{ id: "a1", title: "Oppg", brief: null, learning_goals: null, due_at: null, status: "published", production_title: "Kortfilm", production_project_id: "proj-1", sub_status: "submitted", grade: "B", feedback: "Bra", submitted_at: new Date(0).toISOString(), reviewed_at: null }] };
