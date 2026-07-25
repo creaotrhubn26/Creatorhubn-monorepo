@@ -71,6 +71,19 @@ export interface StripePaidInvoice {
   sourceProduct: string | null;
 }
 
+/** Enkeltbetaling (one-time charge) UTEN tilknyttet Stripe-faktura — dekker
+ *  Checkout/Payment Links som `listPaidInvoices` ikke fanger. */
+export interface StripeChargeRecord {
+  id: string; // ch_… (idempotensnøkkel)
+  amountMinor: bigint;
+  currency: string;
+  date: string; // ISO yyyy-mm-dd
+  description: string;
+  customerName: string | null;
+  customerEmail: string | null;
+  receiptUrl: string | null;
+}
+
 export interface StripeReadPort {
   /** Er en Stripe-nøkkel konfigurert? Styrer ærlig statusrapportering. */
   readonly hasApiKey: boolean;
@@ -79,6 +92,24 @@ export interface StripeReadPort {
    * (unix-sekunder). Kaster `StripeAuthError` uten nøkkel (før nettverkskall).
    */
   listPaidInvoices(sinceUnix?: number): Promise<StripePaidInvoice[]>;
+  /**
+   * Betalte enkeltbetalinger uten tilknyttet faktura (one-time charges),
+   * valgfritt kun etter `sinceUnix`. Kaster `StripeAuthError` uten nøkkel.
+   */
+  listCharges(sinceUnix?: number): Promise<StripeChargeRecord[]>;
+}
+
+interface StripeChargeRaw {
+  id?: string;
+  amount?: number;
+  currency?: string;
+  created?: number;
+  description?: string | null;
+  receipt_url?: string | null;
+  paid?: boolean;
+  refunded?: boolean;
+  invoice?: string | null;
+  billing_details?: { name?: string | null; email?: string | null } | null;
 }
 
 type FetchLike = (
@@ -176,6 +207,39 @@ export class StripeApiClient implements StripeReadPort {
     return out;
   }
 
+  async listCharges(sinceUnix?: number): Promise<StripeChargeRecord[]> {
+    if (!this.hasApiKey) {
+      throw new StripeAuthError('Stripe er ikke konfigurert (REKNAREN_STRIPE_SECRET_KEY mangler).');
+    }
+    const out: StripeChargeRecord[] = [];
+    let startingAfter: string | undefined;
+    for (let page = 0; page < 100; page++) {
+      const params = new URLSearchParams({ limit: '100' });
+      if (sinceUnix) params.set('created[gte]', String(sinceUnix));
+      if (startingAfter) params.set('starting_after', startingAfter);
+      const body = await this.get(`/charges?${params.toString()}`);
+      const data = Array.isArray(body.data) ? (body.data as StripeChargeRaw[]) : [];
+      for (const ch of data) {
+        // Kun betalte enkeltbetalinger UTEN faktura (unngå dobbelt med listPaidInvoices).
+        if (ch.paid !== true || ch.refunded === true || ch.invoice) continue;
+        out.push({
+          id: ch.id ?? '',
+          amountMinor: BigInt(ch.amount ?? 0),
+          currency: (ch.currency ?? 'nok').toUpperCase(),
+          date: unixToDate(ch.created) ?? new Date().toISOString().slice(0, 10),
+          description: (ch.description && ch.description.trim()) || 'Stripe-betaling',
+          customerName: ch.billing_details?.name ?? null,
+          customerEmail: ch.billing_details?.email ?? null,
+          receiptUrl: ch.receipt_url ?? null,
+        });
+      }
+      if (!body.has_more || data.length === 0) break;
+      startingAfter = data[data.length - 1]?.id;
+      if (!startingAfter) break;
+    }
+    return out;
+  }
+
   private async get(path: string): Promise<{ data?: unknown[]; has_more?: boolean }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -250,13 +314,21 @@ export class StaticStripeStub implements StripeReadPort {
 
   constructor(
     private readonly invoices: StripePaidInvoice[] = [],
-    opts: { hasApiKey?: boolean } = {},
+    opts: { hasApiKey?: boolean; charges?: StripeChargeRecord[] } = {},
   ) {
     this.hasApiKey = opts.hasApiKey ?? true;
+    this.charges = opts.charges ?? [];
   }
 
-  async listPaidInvoices(sinceUnix?: number): Promise<StripePaidInvoice[]> {
+  private readonly charges: StripeChargeRecord[];
+
+  async listPaidInvoices(): Promise<StripePaidInvoice[]> {
     if (!this.hasApiKey) throw new StripeAuthError('Stub uten Stripe-nøkkel.');
     return this.invoices;
+  }
+
+  async listCharges(): Promise<StripeChargeRecord[]> {
+    if (!this.hasApiKey) throw new StripeAuthError('Stub uten Stripe-nøkkel.');
+    return this.charges;
   }
 }

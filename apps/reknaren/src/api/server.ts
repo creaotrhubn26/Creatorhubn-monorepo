@@ -126,6 +126,15 @@ import {
 } from '../integrations/webhooks.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createReknarenMcpServer } from '../mcp/server.js';
+import { buildConnectorRegistry } from '../integrations/connectors/registry.js';
+import {
+  connectConnector,
+  disconnectConnector,
+  listConnectorStatus,
+  syncAllConnectors,
+  syncConnector,
+  type ConnectorDeps,
+} from '../integrations/connectors/sync.js';
 
 /** JSON-serialisering: bigint (øre) blir strenger — aldri flyttall over grensen. */
 function toJson(value: unknown): unknown {
@@ -2596,6 +2605,59 @@ export function createApiServer(deps: ApiDeps): express.Express {
   app.post('/mcp', handleMcp);
   app.get('/mcp', handleMcp);
   app.delete('/mcp', handleMcp);
+
+  // (6) Inngående data-connectors: hent transaksjoner/bilag fra eksterne kilder.
+  const connectorDeps: ConnectorDeps = {
+    db: deps.db,
+    storage: deps.storage,
+    registry: buildConnectorRegistry({ stripe: deps.stripe }),
+  };
+  app.get('/api/organizations/:orgId/connectors', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await listConnectorStatus(connectorDeps, req.params.orgId!)));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/connectors/:connectorId/connect', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ config: z.record(z.unknown()).optional() }).parse(req.body ?? {});
+      await connectConnector(connectorDeps, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        connectorId: req.params.connectorId!,
+        ...(body.config ? { config: body.config } : {}),
+      });
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/connectors/:connectorId/sync', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await syncConnector(connectorDeps, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        connectorId: req.params.connectorId!,
+      })));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/connectors/:connectorId/disconnect', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      await disconnectConnector(connectorDeps, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        connectorId: req.params.connectorId!,
+      });
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  app.post('/api/cron/connector-sync', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      if (!secret || secret.length < 16) { res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler.' } }); return; }
+      const a = Buffer.from(secret); const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } }); return; }
+      res.json(toJson(await syncAllConnectors(connectorDeps)));
+    } catch (err) { next(err); }
+  });
 
   // (4) Versjonert LES-API (API-nøkkel eller sesjon).
   app.get('/api/v1/organizations/:orgId/accounts', requireApiAccess('reports.view'), async (req: AuthedRequest, res, next) => {

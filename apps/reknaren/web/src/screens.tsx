@@ -4068,6 +4068,9 @@ export function IntegrationsScreen({ orgId }: { orgId: string }) {
         )}
       </div>
 
+      {/* Kilder (inngående connectorer) */}
+      <ConnectorsPanel orgId={orgId} />
+
       {/* Leveranselogg */}
       {deliveries.data && deliveries.data.length > 0 && (
         <div className="panel">
@@ -4106,6 +4109,55 @@ export function IntegrationsScreen({ orgId }: { orgId: string }) {
           </div>
         </Disclosure>
       </div>
+    </div>
+  );
+}
+
+interface ConnectorStatus { id: string; label: string; description: string; configured: boolean; connected: boolean; lastSyncAt: string | null }
+
+function ConnectorsPanel({ orgId }: { orgId: string }) {
+  const conns = useLoad(() => api<ConnectorStatus[]>('GET', `/api/organizations/${orgId}/connectors`), [orgId]);
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const act = async (id: string, action: 'connect' | 'sync' | 'disconnect') => {
+    setBusy(id + action);
+    try {
+      const r = await api<{ imported?: number; skipped?: number }>('POST', `/api/organizations/${orgId}/connectors/${id}/${action}`, {});
+      toast(
+        action === 'sync' ? `Synk ferdig: ${r.imported ?? 0} nye bilag, ${r.skipped ?? 0} hoppet over` : action === 'connect' ? 'Kilde koblet på' : 'Kilde koblet fra',
+        'ok',
+      );
+      conns.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Handlingen feilet', 'danger'); } finally { setBusy(null); }
+  };
+  return (
+    <div className="panel">
+      <div className="panel-head"><h2>Kilder (inngående)</h2><span className="confidence medium">{conns.data?.filter((c) => c.connected).length ?? 0}</span></div>
+      <p className="hint" style={{ marginTop: 0 }}>Hent transaksjoner/bilag fra eksterne kilder inn i bilagsinnboksen. Ingenting bokføres automatisk — det havner som bilag til godkjenning.</p>
+      {conns.data && (
+        <ul className="health-list">
+          {conns.data.map((c) => (
+            <li key={c.id} className="health-item">
+              <div className="health-dot" aria-hidden="true" />
+              <div className="health-body">
+                <div className="health-title">{c.label}{!c.configured && <span className="code">ikke konfigurert</span>}{c.connected && <span className="code">tilkoblet</span>}</div>
+                <div className="health-detail">{c.description}</div>
+                {c.lastSyncAt && <div className="hint">Sist synket: {nb(c.lastSyncAt.slice(0, 10))}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {!c.connected ? (
+                  <button className="health-action" disabled={!c.configured || busy === c.id + 'connect'} onClick={() => act(c.id, 'connect')}>Koble på</button>
+                ) : (
+                  <>
+                    <button className="health-action" disabled={busy === c.id + 'sync'} onClick={() => act(c.id, 'sync')}>Synk nå</button>
+                    <button className="secondary health-action" disabled={busy === c.id + 'disconnect'} onClick={() => act(c.id, 'disconnect')}>Koble fra</button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
