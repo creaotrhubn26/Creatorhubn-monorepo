@@ -7,13 +7,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, CardActionArea, Button, TextField,
-  IconButton, Chip, CircularProgress, Divider, Alert,
+  IconButton, Chip, CircularProgress, Divider, Alert, Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Groups as CohortIcon,
-  ArrowBack as BackIcon, PersonAdd as PersonAddIcon,
+  ArrowBack as BackIcon, PersonAdd as PersonAddIcon, VpnKey as InviteIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
+import { educationStudentInvitesService, type StudentInviteStatus } from './educationStudentInvitesService';
 
 const ACCENT = '#8B5CF6';
 
@@ -148,15 +149,22 @@ function StudentsView({ cohort, onBack, onError, error }: {
   cohort: Cohort; onBack: () => void; onError: (m: string | null) => void; error: string | null;
 }) {
   const [students, setStudents] = useState<Student[]>([]);
+  const [invites, setInvites] = useState<Record<string, StudentInviteStatus>>({});
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setStudents(await educationCohortsService.listStudents(cohort.id));
+      const [list, inviteList] = await Promise.all([
+        educationCohortsService.listStudents(cohort.id),
+        educationStudentInvitesService.listCohortInvites(cohort.id).catch(() => []),
+      ]);
+      setStudents(list);
+      setInvites(Object.fromEntries(inviteList.map((iv) => [iv.studentId, iv.status])));
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Kunne ikke hente studenter');
     } finally {
@@ -165,6 +173,30 @@ function StudentsView({ cohort, onBack, onError, error }: {
   }, [cohort.id, onError]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const handleInvite = async (id: string) => {
+    setInvitingId(id);
+    try {
+      const inv = await educationStudentInvitesService.invite(id);
+      setInvites((prev) => ({ ...prev, [id]: inv.status }));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke klargjøre tilgang');
+    } finally {
+      setInvitingId(null);
+    }
+  };
+
+  const handleRevoke = async (id: string) => {
+    setInvitingId(id);
+    try {
+      await educationStudentInvitesService.revoke(id);
+      setInvites((prev) => ({ ...prev, [id]: 'none' }));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake');
+    } finally {
+      setInvitingId(null);
+    }
+  };
 
   const handleAdd = async () => {
     if (!name.trim() || busy) return;
@@ -214,6 +246,10 @@ function StudentsView({ cohort, onBack, onError, error }: {
         </CardContent>
       </Card>
 
+      <Typography sx={{ fontSize: 11.5, color: 'text.disabled' }}>
+        «Inviter» klargjør studenttilgang. Selve studentpåloggingen aktiveres i et neste steg.
+      </Typography>
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
       ) : students.length === 0 ? (
@@ -223,14 +259,35 @@ function StudentsView({ cohort, onBack, onError, error }: {
           {students.map((s, i) => (
             <Box key={s.id}>
               {i > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.25 }}>
-                <Box>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 2, py: 1.25 }}>
+                <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{s.name}</Typography>
                   {s.email && <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{s.email}</Typography>}
                 </Box>
-                <IconButton size="small" onClick={() => handleDelete(s.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Fjern student">
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  {invites[s.id] === 'accepted' ? (
+                    <Chip size="small" label="Aktivert" sx={{ height: 20, fontSize: 10, color: '#10b981', borderColor: '#10b981' }} variant="outlined" />
+                  ) : invites[s.id] === 'pending' ? (
+                    <>
+                      <Chip size="small" label="Invitert" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+                      <Tooltip title="Trekk tilbake tilgang">
+                        <span><IconButton size="small" onClick={() => handleRevoke(s.id)} disabled={invitingId === s.id} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Trekk tilbake"><DeleteIcon fontSize="small" /></IconButton></span>
+                      </Tooltip>
+                    </>
+                  ) : (
+                    <Tooltip title="Klargjør studenttilgang">
+                      <span>
+                        <Button size="small" startIcon={<InviteIcon sx={{ fontSize: '16px !important' }} />} onClick={() => handleInvite(s.id)} disabled={invitingId === s.id}
+                          sx={{ color: ACCENT, textTransform: 'none', fontSize: 12, minWidth: 0 }}>
+                          Inviter
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  )}
+                  <Tooltip title="Fjern student">
+                    <span><IconButton size="small" onClick={() => handleDelete(s.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Fjern student"><DeleteIcon fontSize="small" /></IconButton></span>
+                  </Tooltip>
+                </Stack>
               </Stack>
             </Box>
           ))}

@@ -179,6 +179,7 @@ import { createEducationAssignmentsRouter } from "./role-room-education-assignme
 import { createEducationProductionsRouter } from "./role-room-education-productions-routes.js";
 import { createEducationResourcesRouter } from "./role-room-education-resources-routes.js";
 import { createEducationAssessmentRouter } from "./role-room-education-assessment-routes.js";
+import { createEducationStudentInvitesRouter } from "./role-room-education-student-invites-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
@@ -2584,6 +2585,10 @@ app.use(
 app.use(
   "/api/role-room",
   createEducationAssessmentRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationStudentInvitesRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room/locations/analysis",
