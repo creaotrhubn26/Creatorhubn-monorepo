@@ -13,6 +13,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     dialogSel: {},
     tempo: null, jumpcuts: null, takes: null, angles: null,
     chat: [], chatBusy: false,
+    tqcSweep: null, tqcColor: null, tqcDelivery: null, tqcAudio: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -37,6 +38,7 @@ const STEPS = [
     { id: "unused",   n: 9, label: "🧠 Ubrukt-materiale", sep: "Etterarbeid" },
     { id: "dialog",   n: 10, label: "🗣 Dialog" },
     { id: "assist",   n: 11, label: "✂ Assistenter" },
+    { id: "tqc",      n: 12, label: "🔍 Teknisk QC" },
 ];
 
 // ── infrastruktur ──
@@ -134,6 +136,7 @@ function suggestionsFor(c) {
             sug.push({ text: "Ubrukt-materiale: finn klipp som ikke er brukt + AI-anbefalinger", act: "op-unused" });
             sug.push({ text: "Dialog-verktøy: søk i talen, finn pauser/repetisjoner, bygg assembly", act: "op-dialog" });
             sug.push({ text: "Klippe-assistenter: rytme-analyse, jump-cut-vakt, takes og vinkler", act: "op-assist" });
+            sug.push({ text: "Teknisk QC: offline media, flash-frames, fps/oppløsning, subtitles", act: "op-tqc" });
             if (c.currentItem) sug.push({ text: `Klippet under playhead (${c.currentItem.slice(0, 28)}…): alternative takes / samtidige vinkler`, act: "op-assist" });
             break;
         case "color":
@@ -145,6 +148,7 @@ function suggestionsFor(c) {
             break;
         case "deliver":
             sug.push({ text: "Vis render-kø + presets", act: "op-render" });
+            sug.push({ text: "Teknisk QC: valider render-jobbene mot leveransestandarden", act: "op-tqc" });
             break;
         default:
             sug.push({ text: "Fusion-siden: comp-info per klipp er lesbar (GetFusionCompCount) — dypere Fusion-scripting er fase 2", act: null });
@@ -372,6 +376,44 @@ const RENDER = {
             ${(an.alternatives || []).map((a) => `<div class="muted">${a.used ? "✓" : "○"} ${esc(a.camera)} / ${esc(a.clip)} @ ${esc(a.startTc)}</div>`).join("") || `<div class="muted">${esc(an.note || "")}</div>`}</div>` : ""}
         </div>`;
     },
+    tqc() {
+        const s = S.tqcSweep, c = S.tqcColor, d = S.tqcDelivery, a = S.tqcAudio;
+        const CAT_NO = { offline: "Offline media", tempMedia: "Media fra temp-mapper",
+            fpsMismatch: "Feil frame rate", resolutionMix: "Blandede oppløsninger",
+            missingProxy: "Manglende proxy", audioOutliers: "Lydkanal-avvik",
+            flashFrames: "Flash-frames", shortClips: "Svært korte klipp",
+            coverageGaps: "Udekkede hull", subtitleEmpty: "Tomme subtitles",
+            subtitleOverlap: "Overlappende subtitles", subtitleOverflow: "Subtitle-overflow" };
+        const findRow = (f) => `<div class="row muted" style="margin-top:2px">
+            ${f.tc ? `<button class="small" data-jump="${esc(f.tc)}">→ ${esc(f.tc)}</button>` : ""}
+            <span>${esc(f.clip || f.path || f.resolution || f.channels || "")} ${f.frames != null ? f.frames + " frames" : ""}${f.sec != null ? f.sec + "s" : ""}${f.clipFps ? " @ " + f.clipFps + " fps" : ""}${f.clips ? " (" + f.clips + " klipp)" : ""}</span></div>`;
+        return `<h2>🔍 Teknisk QC</h2>
+        <div class="sub">Leveransekontroll: media, timeline, subtitles, farge og render-innstillinger. Fusion-comp-feil, cache-feil og optimized media eksponeres ikke av API-et — de står igjen som manuell sjekk.</div>
+        <div class="card"><div class="row">
+            <button id="tqc-sweep" class="primary" ${S.busy ? "disabled" : ""}>🧹 Full sveip</button>
+            <button id="tqc-color" ${S.busy ? "disabled" : ""}>🎨 Farge & LUT</button>
+            <button id="tqc-delivery" ${S.busy ? "disabled" : ""}>📦 Leveranse</button>
+            <button id="tqc-audio" ${S.busy ? "disabled" : ""}>🔊 Lyd-peak (dekoder)</button>
+            ${s ? `<button id="tqc-markers" class="small" ${S.busy ? "disabled" : ""}>Sett QC-markører</button>` : ""}
+        </div></div>
+        ${s ? `<div class="card"><strong>Sveip:</strong> ${s.clipsScanned} klipp · timeline ${esc(s.timelineRes)} @ ${s.fps}
+            ${Object.entries(s.counts).filter(([, n]) => n).map(([k, n]) => `<div style="margin-top:6px"><span class="chip yellow">${n}</span> <strong>${esc(CAT_NO[k] || k)}</strong>
+                ${(s.findings[k] || []).slice(0, 6).map(findRow).join("")}</div>`).join("") || `<div class="ok-text" style="margin-top:6px">✓ Ingen funn — teknisk ren</div>`}
+        </div>` : ""}
+        ${c ? `<div class="card"><strong>Farge:</strong> ${c.itemsScanned} items${c.capped ? " (capped)" : ""} · ${c.ungradedItems} uten grade
+            ${(c.lutsOk || []).map((l) => `<div class="muted ok-text">✓ ${esc(l.lut)} (${l.usedByNodes} noder)</div>`).join("")}
+            ${(c.lutsFragile || []).map((l) => `<div class="warn">⚠ ${esc(l.lut)} — utenfor LUT-mappene${l.icloud ? " (iCloud! kan offloades)" : ""}: ${esc(l.foundAt || "")}</div>`).join("")}
+            ${(c.lutsMissing || []).map((l) => `<div class="err">✗ ${esc(l.lut)} — IKKE funnet på disken</div>`).join("")}
+        </div>` : ""}
+        ${d ? `<div class="card"><strong>Leveranse:</strong> ${d.queueJobs} jobber i kø · format ${esc(JSON.stringify(d.currentFormat))}
+            ${(d.jobs || []).map((j) => `<div class="muted">${esc(j.RenderJobName || "?")}: ${esc(j.TimelineName || "")} → ${esc(String(j.FormatWidth || "?"))}x${esc(String(j.FormatHeight || "?"))} @ ${esc(String(j.FrameRate || "?"))} ${esc(j.VideoFormat || "")}/${esc(j.VideoCodec || "")}</div>`).join("")}
+            ${(d.specIssues || []).map((i) => `<div class="err">✗ ${esc(i)}</div>`).join("")}
+            ${d.specApplied && !(d.specIssues || []).length ? `<div class="ok-text">✓ Alle jobber innenfor leveransestandarden</div>` : ""}
+        </div>` : ""}
+        ${a ? `<div class="card"><strong>Lyd-peak:</strong> ${a.filesChecked} filer sjekket
+            ${(a.clippedCandidates || []).map((f) => `<div class="err">✗ ${esc(f.file)} — peak ${esc(String(f.peakDb))} dB (klipping-kandidat)</div>`).join("") || `<div class="ok-text">✓ Ingen klipping-kandidater</div>`}
+        </div>` : ""}`;
+    },
     unused() {
         const c = S.cat;
         return `<h2>🧠 Etterarbeid — Ubrukt-materiale</h2>
@@ -524,6 +566,28 @@ const ACTIONS = {
         log(`Bygde assembly «${name}»: ${v.built} utsnitt`);
         status(`✓ ${v.built} utsnitt på ny timeline «${name}» — ${v.note || ""}`, "ok-text");
     },
+    // ── teknisk QC ──
+    "tqc-sweep": async () => {
+        S.tqcSweep = await run("technical_qc", { mode: "sweep" }, true, "Teknisk sveip — media, timeline, subtitles …");
+        render();
+    },
+    "tqc-color": async () => {
+        S.tqcColor = await run("technical_qc", { mode: "color", maxItems: "200" }, true, "Nodegraf-sveip — LUT-er + grader …");
+        render();
+    },
+    "tqc-delivery": async () => {
+        S.tqcDelivery = await run("technical_qc", { mode: "delivery" }, true, "Leser render-kø + innstillinger …");
+        render();
+    },
+    "tqc-audio": async () => {
+        if (!confirm("Lyd-peak-sjekken dekoder inntil 15 brukte lydkilder med ffmpeg — kan ta et par minutter. Fortsette?")) return;
+        S.tqcAudio = await run("technical_qc", { mode: "audiopeak" }, true, "Måler lyd-peaks (ffmpeg) …");
+        render();
+    },
+    "tqc-markers": async () => {
+        const v = await run("technical_qc", { mode: "sweep", markers: "true" }, false, "Setter QC-markører …");
+        status(`✓ ${v.markersAdded} Cream QC-markører satt`, "ok-text");
+    },
     // ── chat-operatøren ──
     "chat-send": async () => {
         const input = $("chat-input");
@@ -591,6 +655,7 @@ const ACTIONS = {
     "op-unused": () => { S.step = "unused"; render(); },
     "op-dialog": () => { S.step = "dialog"; render(); },
     "op-assist": () => { S.step = "assist"; render(); },
+    "op-tqc": () => { S.step = "tqc"; render(); },
     "op-log": () => { S.step = "color"; render(); },
     "op-voice": async () => {
         S.voiceTracks = await PA.voiceIsolationInfo();

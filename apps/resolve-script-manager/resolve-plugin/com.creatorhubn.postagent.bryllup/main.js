@@ -279,7 +279,8 @@ function anthropicRequest(body) {
 // nektes og henvises til panel-knappene (som har confirm).
 const CHAT_READ_OK = new Set(['get_media_pool_state', 'unused_clips_placement',
     'recommend_unused_insertions', 'dialogue_tools', 'edit_assistants',
-    'detect_timeline_gaps', 'detect_silent_sections_in_timeline', 'detect_log_gamma']);
+    'detect_timeline_gaps', 'detect_silent_sections_in_timeline', 'detect_log_gamma',
+    'technical_qc']);
 const CHAT_DRY_ONLY = new Set(['categorize_unused_clips', 'insert_unused_clips',
     'mark_qc_issues_on_timeline']);
 
@@ -315,7 +316,7 @@ async function chatRunScript(scriptId, params) {
 
 const CHAT_TOOLS = [
     { name: 'get_context', description: 'Øyeblikksbilde av Resolve: side, prosjekt, timeline, playhead, valgte klipp, in/out.', input_schema: { type: 'object', properties: {} } },
-    { name: 'run_script', description: 'Kjør et Post Agent-analyse-script. Kun lesing — mutasjoner (flytting/innsetting/markører/assembly) må brukeren gjøre via panel-fanene. Tilgjengelige id-er: get_media_pool_state, categorize_unused_clips (dry), unused_clips_placement, recommend_unused_insertions (vision="true" for Claude-syn), dialogue_tools (mode=extract|search|pauses|repetitions), edit_assistants (mode=tempo|jumpcuts|takes|angles, tc=playhead for takes/angles), detect_timeline_gaps, detect_silent_sections_in_timeline, detect_log_gamma.', input_schema: { type: 'object', properties: { scriptId: { type: 'string' }, params: { type: 'object' } }, required: ['scriptId'] } },
+    { name: 'run_script', description: 'Kjør et Post Agent-analyse-script. Kun lesing — mutasjoner (flytting/innsetting/markører/assembly) må brukeren gjøre via panel-fanene. Tilgjengelige id-er: get_media_pool_state, categorize_unused_clips (dry), unused_clips_placement, recommend_unused_insertions (vision="true" for Claude-syn), dialogue_tools (mode=extract|search|pauses|repetitions), edit_assistants (mode=tempo|jumpcuts|takes|angles, tc=playhead for takes/angles), detect_timeline_gaps, detect_silent_sections_in_timeline, detect_log_gamma, technical_qc (mode=sweep|color|delivery — teknisk leveransekontroll).', input_schema: { type: 'object', properties: { scriptId: { type: 'string' }, params: { type: 'object' } }, required: ['scriptId'] } },
     { name: 'jump_to', description: 'Flytt spillehodet til en tidskode (HH:MM:SS:FF).', input_schema: { type: 'object', properties: { tc: { type: 'string' } }, required: ['tc'] } },
 ];
 

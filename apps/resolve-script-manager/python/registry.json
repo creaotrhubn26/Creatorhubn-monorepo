@@ -3532,6 +3532,20 @@
       "requiresTimeline": true
     },
     {
+      "id": "technical_qc",
+      "name": "Teknisk QC (media, timeline, subtitles, farge, leveranse)",
+      "category": "qc",
+      "scriptPath": "scripts/qc/technical_qc.py",
+      "description": "sweep: offline media, temp-mappe-media, fps/oppløsnings-avvik, manglende proxy, lydkanal-avvikere, flash-frames, korte klipp, udekkede hull, subtitle-feil (tomme/overlapp/overflow) + Cream-markører. color: manglende LUT-filer + ugraderte items (nodegraf-sveip). delivery: render-kø vs leveransestandard (deliverySpec-JSON). audiopeak (opt-in): 0 dBFS-klipping-kandidater via ffmpeg astats.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "edit_assistants",
       "name": "Klippe-assistenter (jump-cuts, tempo, takes, vinkler)",
       "category": "timeline",
