@@ -19,6 +19,13 @@ Params:
   model=claude-sonnet-4-6
   maxFrames=12           frames samplet GJENNOM det ubrukte klippet (frame-for-frame)
   frameStep=2.0          ~sekunder mellom samplene (styrer antall opp til maxFrames)
+  dedupe=true            duplikat-vakt: (1) dHash mot klipp som alt ligger i
+                         timelinen rundt ankeret, (2) like kandidater klynges →
+                         kun beste per scene, (3) maks maxPerAnchor per anker.
+                         Ekskluderte rapporteres i «excluded» m/ grunn.
+  dupThreshold=12        Hamming-terskel (lavere = strengere likhet)
+  maxPerAnchor=2         maks kandidater per ankerpunkt
+  contextWindowSec=15    vindu rundt ankeret for timeline-sjekken
   cacheDir=/tmp/postagent-thumbs
 
 Vision ser: slutten av forrige brukte klipp + hele det ubrukte (jevnt samplet)
@@ -98,6 +105,44 @@ def _thumb(path: str, at_sec: float, cache: str) -> str | None:
     return out if os.path.exists(out) else None
 
 
+def _dhash(path: str, at_sec: float) -> int | None:
+    """64-bit dHash av én frame (9x8 gråtone via ffmpeg) — til duplikat-sjekk."""
+    if not path or not os.path.isfile(path):
+        return None
+    r = subprocess.run([_ffmpeg(), "-v", "error", "-ss", f"{max(0.1, at_sec):.2f}", "-i", path,
+                        "-frames:v", "1", "-vf", "scale=9:8:flags=area,format=gray",
+                        "-f", "rawvideo", "-"], capture_output=True)
+    d = r.stdout
+    if len(d) < 72:
+        return None
+    bits = 0
+    for y in range(8):
+        for x in range(8):
+            bits = (bits << 1) | (1 if d[y * 9 + x] > d[y * 9 + x + 1] else 0)
+    return bits
+
+
+def _ham(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+def _clip_sig(path: str, dur: float) -> list[int]:
+    """Hash-signatur: frames på 25/50/75 % av klippet."""
+    out = []
+    for p in (0.25, 0.5, 0.75):
+        h = _dhash(path, dur * p)
+        if h is not None:
+            out.append(h)
+    return out
+
+
+def _sim(sig_a: list[int], sig_b: list[int]) -> int | None:
+    """Minste Hamming-avstand mellom to signaturer (lav = likt motiv)."""
+    if not sig_a or not sig_b:
+        return None
+    return min(_ham(a, b) for a in sig_a for b in sig_b)
+
+
 def _clip_duration_sec(clip, fps: float) -> float:
     try:
         frames = clip.GetClipProperty("Frames")
@@ -128,6 +173,7 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
     pos: dict[str, int] = {}
     v1_items: list[tuple[int, int, str, str]] = []   # (start, end, navn, filbane)
     broll: list[tuple[int, int]] = []                # dekning på V2+
+    tl_items: list[tuple[int, int, str, float]] = []  # (start, end, filbane, kilde-midt-sek)
     vtracks = timeline.GetTrackCount("video") or 0
     for t in range(1, vtracks + 1):
         for it in timeline.GetItemListInTrack("video", t) or []:
@@ -143,6 +189,12 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                         pos[key] = start
                 if t == 1:
                     v1_items.append((start, end, mpi.GetName() or "?", fpath))
+                if fpath:
+                    try:
+                        src_mid = (int(it.GetLeftOffset() or 0) + (end - start) / 2) / fps
+                    except Exception:
+                        src_mid = (end - start) / 2 / fps
+                    tl_items.append((start, end, fpath, src_mid))
             if t >= 2:
                 broll.append((start, end))
     for t in range(1, (timeline.GetTrackCount("audio") or 0) + 1):
@@ -257,6 +309,66 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                 })
 
     candidates.sort(key=lambda cnd: -cnd["score"])
+
+    # ── Duplikat-vakt: (1) finnes motivet alt i timelinen? (2) like kandidater ──
+    excluded: list[dict] = []
+    dedupe = str(params.get("dedupe", "true")).lower() in ("true", "1", "yes")
+    if dedupe and candidates:
+        thresh = int(params.get("dupThreshold") or 12)
+        max_per_anchor = int(params.get("maxPerAnchor") or 2)
+        window = int(float(params.get("contextWindowSec") or 15) * fps)
+
+        for cand in candidates:
+            cand["_sig"] = _clip_sig(cand["filePath"], cand["durationSec"] or 4.0)
+
+        # (1) mot timelinen: hash klipp som ligger rundt ankeret (alle spor)
+        ctx_cache: dict[int, list[list[int]]] = {}
+        kept: list[dict] = []
+        for cand in candidates:
+            a = cand["anchorFrame"]
+            if a not in ctx_cache:
+                ctx = [ti for ti in tl_items if ti[0] < a + window and ti[1] > a - window][:16]
+                sigs = []
+                for _s, _e, fp, src_mid in ctx:
+                    h = _dhash(fp, src_mid)
+                    if h is not None:
+                        sigs.append([h])
+                ctx_cache[a] = sigs
+            dists = [_sim(cand["_sig"], s) for s in ctx_cache[a]]
+            dists = [d for d in dists if d is not None]
+            if dists and min(dists) <= thresh:
+                cand["reason"] = f"motivet finnes alt i timelinen rundt {cand['estTc']} (avstand {min(dists)})"
+                excluded.append(cand)
+            else:
+                kept.append(cand)
+
+        # (2) mot hverandre: én representant per scene (beste score først)
+        reps: list[dict] = []
+        for cand in kept:
+            dup_of = next((r for r in reps
+                           if (_sim(cand["_sig"], r["_sig"]) or 99) <= thresh), None)
+            if dup_of:
+                cand["reason"] = f"duplikat-scene av {dup_of['clip']}"
+                excluded.append(cand)
+            else:
+                reps.append(cand)
+
+        # (3) maks N per anker
+        per_anchor: dict[int, int] = {}
+        final: list[dict] = []
+        for cand in reps:
+            n = per_anchor.get(cand["anchorFrame"], 0)
+            if n >= max_per_anchor:
+                cand["reason"] = f"alt {max_per_anchor} kandidater på samme anker {cand['estTc']}"
+                excluded.append(cand)
+            else:
+                per_anchor[cand["anchorFrame"]] = n + 1
+                final.append(cand)
+        candidates = final
+
+    for cand in candidates + excluded:
+        cand.pop("_sig", None)
+
     picks = candidates[:top_n]
 
     # ── Thumbnail per kandidat (til UI-kort) ──
@@ -339,6 +451,39 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
                     vision_ran += 1
                 except Exception as e:  # per-kandidat: fortsett
                     cand["vision"] = {"error": str(e)[:150]}
+
+            # ── Scene-dedup: samme MOTIV beskrevet ulikt lurer piksel-hash —
+            # la Claude gruppere kandidatene på beskrivelsene (tekst, billig).
+            with_desc = [c for c in picks if (c.get("vision") or {}).get("beskrivelse")
+                         and c["vision"].get("passer") is not False]
+            if dedupe and len(with_desc) >= 2:
+                listing = "\n".join(
+                    f"{i}: {c['clip']} (confidence {c['vision'].get('confidence', '?')}) — "
+                    f"{c['vision']['beskrivelse']}" for i, c in enumerate(with_desc))
+                try:
+                    msg = client.messages.create(model=model, max_tokens=400, messages=[{
+                        "role": "user", "content":
+                        "Bryllupsfilm-kandidater til b-roll. Grupper klipp som viser SAMME "
+                        "scene/motiv (f.eks. flere panoreringer av samme dekorerte vegg = én "
+                        "gruppe; en klipper trenger bare ett av dem).\n" + listing +
+                        '\nSvar KUN med JSON: {"grupper": [[indekser som er samme scene], ...]} '
+                        "— kun grupper med 2+ klipp."}])
+                    text = msg.content[0].text
+                    groups = json.loads(text[text.find("{"):text.rfind("}") + 1]).get("grupper", [])
+                    for g in groups:
+                        members = [with_desc[i] for i in g if 0 <= i < len(with_desc)]
+                        if len(members) < 2:
+                            continue
+                        members.sort(key=lambda c: -(c["vision"].get("confidence") or 0))
+                        rep = members[0]
+                        for dup in members[1:]:
+                            dup["vision"]["passer"] = False
+                            dup["vision"]["begrunnelse"] = (
+                                f"Samme scene som {rep['clip']} — velg én. "
+                                + (dup["vision"].get("begrunnelse") or ""))[:300]
+                            excluded.append({**dup, "reason": f"samme scene som {rep['clip']}"})
+                except Exception:
+                    pass  # dedup er best-effort — kandidatene består uansett
         except Exception as e:
             for cand in picks:
                 cand.setdefault("vision", {"error": f"vision utilgjengelig: {str(e)[:120]}"})
@@ -385,6 +530,8 @@ def run(params: dict, dry_run: bool) -> None:  # noqa: C901
         "visionRan": vision_ran,
         "markersAdded": markers_added,
         "recommendations": picks,
+        "excluded": [{"clip": e["clip"], "estTc": e["estTc"], "reason": e.get("reason", "")}
+                     for e in excluded],
         "dryRun": dry_run,
     })
 
