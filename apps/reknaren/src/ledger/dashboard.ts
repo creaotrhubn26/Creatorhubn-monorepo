@@ -7,6 +7,7 @@ import type { Db } from '../db/pool.js';
 import type { OrganizationForm } from '../rules/types.js';
 import type { RuleRegister } from '../rules/register.js';
 import { detectBookkeepingErrors } from './anomalies.js';
+import { detectFraudSignals, type FraudSeverity } from './fraud-detection.js';
 import { runHealthCheck } from './health-check.js';
 import { assessPeriodClose } from './period-close.js';
 import { buildForecast } from './planning.js';
@@ -30,6 +31,7 @@ export interface Dashboard {
   taxReserveMinor: bigint;
   advisories: { risiko: number; mulighet: number; kontrollpunkt: number; total: number };
   documentHunt: { paymentsMissingDoc: number; gapsWithCandidates: number };
+  fraud: { active: number; critical: number; high: number; dismissed: number };
   counts: { documentsWaiting: number; bankUnmatched: number };
   followUp: FollowUpItem[];
 }
@@ -47,14 +49,16 @@ export async function buildDashboard(
   const yearStart = `${year}-01-01`;
 
   // Alle motorene kjøres parallelt — de leser samme hovedbok.
-  const [close, forecast, advisories, hunt, health, errors] = await Promise.all([
+  const [close, forecast, advisories, hunt, health, errors, fraud] = await Promise.all([
     assessPeriodClose(db, rules, { organizationId: org, year, month }),
     buildForecast(db, rules, { organizationId: org, orgForm, asOf }),
     buildTaxAdvisories(db, rules, { organizationId: org, orgForm, asOf }),
     huntDocuments(db, { organizationId: org, asOf }),
     runHealthCheck(db, { organizationId: org, asOf }),
     detectBookkeepingErrors(db, rules, { organizationId: org, fromDate: yearStart, toDate: asOf }),
+    detectFraudSignals(db, rules, { organizationId: org, fromDate: yearStart, toDate: asOf }),
   ]);
+  const fraudSev = (s: FraudSeverity) => fraud.bySeverity[s];
 
   // Handlingsliste: regnskapshelse + reelle bokføringsfeil, alvorssortert.
   const followUp: FollowUpItem[] = [
@@ -73,6 +77,19 @@ export async function buildDashboard(
       actionScreen: 'period-close',
       ...(e.documentId ? { documentId: e.documentId } : {}),
     })),
+    // De alvorligste svindelvarslene (ikke avfeid) løftes til handlingslisten.
+    ...fraud.signals
+      .filter((s) => s.reviewed?.verdict !== 'false_alarm' && (s.severity === 'critical' || s.severity === 'high'))
+      .map((s) => ({
+        id: s.fingerprint,
+        severity: (s.severity === 'critical' ? 'error' : 'warning') as FollowUpItem['severity'],
+        title: s.title,
+        detail: s.detail,
+        actionScreen: 'fraud',
+        ...(s.evidence.find((e) => e.documentId)?.documentId
+          ? { documentId: s.evidence.find((e) => e.documentId)!.documentId }
+          : {}),
+      })),
   ]
     .sort((a, b) => (SEV[a.severity] ?? 3) - (SEV[b.severity] ?? 3))
     .slice(0, 6);
@@ -101,6 +118,7 @@ export async function buildDashboard(
       total: advisories.advisories.length,
     },
     documentHunt: { paymentsMissingDoc: hunt.paymentsMissingDoc, gapsWithCandidates: hunt.gapsWithCandidates },
+    fraud: { active: fraud.activeCount, critical: fraudSev('critical'), high: fraudSev('high'), dismissed: fraud.dismissedCount },
     counts: { documentsWaiting: forecast.mangler.bilagTilBehandling, bankUnmatched: forecast.mangler.uavstemteBanktransaksjoner },
     followUp,
   };

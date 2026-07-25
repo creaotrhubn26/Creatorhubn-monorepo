@@ -25,6 +25,14 @@ import {
 } from '../ledger/reports.js';
 import { runHealthCheck } from '../ledger/health-check.js';
 import { detectBookkeepingErrors } from '../ledger/anomalies.js';
+import { detectFraudSignals } from '../ledger/fraud-detection.js';
+import {
+  approvePayment,
+  getFraudSettings,
+  listPaymentsAwaitingApproval,
+  reviewFraudSignal,
+  updateFraudSettings,
+} from '../ledger/fraud-controls.js';
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
@@ -2072,6 +2080,160 @@ export function createApiServer(deps: ApiDeps): express.Express {
             }),
           ),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Avviks- og svindeldeteksjon ────────────────────────────────────────
+  app.get(
+    '/api/organizations/:orgId/fraud-signals',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const toDate = typeof req.query.to === 'string' ? req.query.to : today;
+        const fromDate =
+          typeof req.query.from === 'string' ? req.query.from : `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`;
+        res.json(
+          toJson(
+            await detectFraudSignals(deps.db, deps.rules, {
+              organizationId: req.params.orgId!,
+              fromDate,
+              toDate,
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/fraud-signals/review',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            signalCode: z.string().min(1),
+            fingerprint: z.string().min(1),
+            verdict: z.enum(['confirmed_fraud', 'false_alarm', 'resolved']),
+            note: z.string().max(2000).optional(),
+            patterns: z
+              .array(
+                z.object({
+                  type: z.enum(['bank_account', 'vendor_org', 'vendor_name']),
+                  value: z.string().min(1),
+                  sourceDocumentId: z.string().uuid().optional(),
+                }),
+              )
+              .optional(),
+          })
+          .parse(req.body);
+        const result = await reviewFraudSignal(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          signalCode: body.signalCode,
+          fingerprint: body.fingerprint,
+          verdict: body.verdict,
+          ...(body.note ? { note: body.note } : {}),
+          ...(body.patterns ? { patterns: body.patterns } : {}),
+        });
+        res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/fraud-settings',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.json(toJson(await getFraudSettings(deps.db, req.params.orgId!)));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.put(
+    '/api/organizations/:orgId/fraud-settings',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            significantThresholdMinor: z.union([z.string(), z.number()]).optional(),
+            requiredApprovers: z.number().int().min(1).max(10).optional(),
+            businessHoursStart: z.number().int().min(0).max(23).optional(),
+            businessHoursEnd: z.number().int().min(1).max(24).optional(),
+          })
+          .parse(req.body);
+        const result = await updateFraudSettings(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ...(body.significantThresholdMinor != null
+            ? { significantThresholdMinor: BigInt(body.significantThresholdMinor) }
+            : {}),
+          ...(body.requiredApprovers != null ? { requiredApprovers: body.requiredApprovers } : {}),
+          ...(body.businessHoursStart != null ? { businessHoursStart: body.businessHoursStart } : {}),
+          ...(body.businessHoursEnd != null ? { businessHoursEnd: body.businessHoursEnd } : {}),
+        });
+        res.json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.get(
+    '/api/organizations/:orgId/payments/awaiting-approval',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const toDate = typeof req.query.to === 'string' ? req.query.to : today;
+        const fromDate =
+          typeof req.query.from === 'string' ? req.query.from : `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`;
+        res.json(
+          toJson(
+            await listPaymentsAwaitingApproval(deps.db, {
+              organizationId: req.params.orgId!,
+              fromDate,
+              toDate,
+            }),
+          ),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/payments/:entryId/approve',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ note: z.string().max(2000).optional() }).parse(req.body ?? {});
+        const result = await approvePayment(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          journalEntryId: req.params.entryId!,
+          ...(body.note ? { note: body.note } : {}),
+        });
+        res.status(201).json(toJson(result));
       } catch (err) {
         next(err);
       }

@@ -50,7 +50,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = unknown>(
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
   path: string,
   body?: unknown,
 ): Promise<T> {

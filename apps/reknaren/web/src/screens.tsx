@@ -174,6 +174,9 @@ export function OverviewScreen({
             <Tile label="Dokumentjakt" value={`${d.documentHunt.gapsWithCandidates} treff`}
               sub={`${d.documentHunt.paymentsMissingDoc} betaling${d.documentHunt.paymentsMissingDoc === 1 ? '' : 'er'} uten bilag`}
               tone={d.documentHunt.gapsWithCandidates > 0 ? 'attention' : 'plain'} onClick={() => go('bank')} />
+            <Tile label="Svindelkontroll" value={d.fraud.active === 0 ? 'Ingen varsler' : `${d.fraud.active} varsler`}
+              sub={d.fraud.critical + d.fraud.high > 0 ? `${d.fraud.critical} kritiske · ${d.fraud.high} høye` : 'ingen alvorlige'}
+              tone={d.fraud.critical > 0 ? 'alert' : d.fraud.high > 0 ? 'attention' : 'ok'} onClick={() => go('fraud')} />
             <Tile label="Skatteassistent" value={`${d.advisories.total} funn`}
               sub={`${d.advisories.risiko} risiko · ${d.advisories.mulighet} muligheter`}
               tone={d.advisories.risiko > 0 ? 'attention' : 'plain'} onClick={() => go('assistant')} />
@@ -225,6 +228,7 @@ interface Dashboard {
   taxReserveMinor: string;
   advisories: { risiko: number; mulighet: number; kontrollpunkt: number; total: number };
   documentHunt: { paymentsMissingDoc: number; gapsWithCandidates: number };
+  fraud: { active: number; critical: number; high: number; dismissed: number };
   counts: { documentsWaiting: number; bankUnmatched: number };
   followUp: { id: string; severity: string; title: string; detail: string; actionScreen?: string; documentId?: string }[];
 }
@@ -3270,6 +3274,296 @@ export function AssistantScreen({ orgId, onNavigate }: { orgId: string; onNaviga
           </>
         )
       )}
+    </div>
+  );
+}
+
+/* ── Avviks- og svindeldeteksjon ────────────────────────────────────────── */
+
+type FraudSeverity = 'critical' | 'high' | 'medium' | 'low';
+interface FraudEvidence {
+  type: string;
+  label: string;
+  documentId?: string;
+  entryId?: string;
+  entryNumber?: number;
+}
+interface FraudSignal {
+  code: string;
+  category: string;
+  severity: FraudSeverity;
+  title: string;
+  detail: string;
+  recommendation: string;
+  evidence: FraudEvidence[];
+  legalReference?: string;
+  fingerprint: string;
+  patternHints?: { type: string; value: string; sourceDocumentId?: string }[];
+  reviewed?: { verdict: 'confirmed_fraud' | 'false_alarm' | 'resolved'; note?: string; at: string } | null;
+}
+interface FraudReport {
+  checkedFrom: string;
+  checkedTo: string;
+  signals: FraudSignal[];
+  activeCount: number;
+  dismissedCount: number;
+  bySeverity: Record<FraudSeverity, number>;
+  settings: { significantThresholdMinor: string; requiredApprovers: number; businessHoursStart: number; businessHoursEnd: number };
+}
+interface AwaitingApproval {
+  requiredApprovers: number;
+  significantThresholdMinor: string;
+  items: { journalEntryId: string; entryNumber: number; entryDate: string; description: string; documentId: string | null; totalMinor: string; approvals: number; requiredApprovers: number }[];
+}
+interface FraudSettings {
+  significantThresholdMinor: string;
+  requiredApprovers: number;
+  businessHoursStart: number;
+  businessHoursEnd: number;
+  isDefault: boolean;
+}
+
+const SEV_META: Record<FraudSeverity, { label: string; cls: string; hl: string }> = {
+  critical: { label: 'Kritisk', cls: 'low', hl: 'warning' },
+  high: { label: 'Høy', cls: 'low', hl: 'warning' },
+  medium: { label: 'Middels', cls: 'medium', hl: 'info' },
+  low: { label: 'Lav', cls: 'high', hl: 'info' },
+};
+const VERDICT_LABEL: Record<string, string> = { confirmed_fraud: 'Bekreftet svindel', false_alarm: 'Falsk alarm', resolved: 'Håndtert' };
+
+export function FraudScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDocument: (id: string) => void }) {
+  const report = useLoad(() => api<FraudReport>('GET', `/api/organizations/${orgId}/fraud-signals`), [orgId]);
+  const awaiting = useLoad(() => api<AwaitingApproval>('GET', `/api/organizations/${orgId}/payments/awaiting-approval`), [orgId]);
+  const settings = useLoad(() => api<FraudSettings>('GET', `/api/organizations/${orgId}/fraud-settings`), [orgId]);
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const d = report.data;
+
+  const review = async (s: FraudSignal, verdict: 'confirmed_fraud' | 'false_alarm' | 'resolved', learn: boolean) => {
+    setBusy(s.fingerprint);
+    try {
+      await api('POST', `/api/organizations/${orgId}/fraud-signals/review`, {
+        signalCode: s.code,
+        fingerprint: s.fingerprint,
+        verdict,
+        ...(verdict === 'confirmed_fraud' && learn && s.patternHints?.length ? { patterns: s.patternHints } : {}),
+      });
+      toast(verdict === 'false_alarm' ? 'Markert som falsk alarm' : verdict === 'confirmed_fraud' ? 'Markert som bekreftet svindel' : 'Markert som håndtert', 'ok');
+      report.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke lagre vurderingen', 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const approve = async (entryId: string) => {
+    setBusy(entryId);
+    try {
+      await api('POST', `/api/organizations/${orgId}/payments/${entryId}/approve`, {});
+      toast('Betaling godkjent', 'ok');
+      awaiting.reload();
+      report.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke godkjenne', 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const groups: FraudSeverity[] = ['critical', 'high', 'medium', 'low'];
+  const active = d?.signals.filter((s) => s.reviewed?.verdict !== 'false_alarm') ?? [];
+  const dismissed = d?.signals.filter((s) => s.reviewed?.verdict === 'false_alarm') ?? [];
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Avviks- og svindelkontroll</h1>
+        <p className="subtitle">
+          Reknaren kontrollerer bilag og betalinger for kjente tegn på feil og svindel. Hvert varsel viser nøyaktig hvilke
+          data det bygger på — ingen ugjennomsiktig score. Du bestemmer.
+        </p>
+      </div>
+      {report.error && <div className="error">{report.error}</div>}
+
+      {report.loading || !d ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        <>
+          {/* Sammendrag */}
+          <div className="panel">
+            <div className="panel-head">
+              <h2>Status</h2>
+              <span className={`confidence ${d.bySeverity.critical > 0 ? 'low' : d.bySeverity.high > 0 ? 'medium' : 'high'}`}>
+                {d.activeCount === 0 ? 'Ingen åpne varsler ✓' : `${d.activeCount} varsler`}
+              </span>
+            </div>
+            <div className="chips">
+              <span className="chip">{d.bySeverity.critical} kritiske</span>
+              <span className="chip">{d.bySeverity.high} høye</span>
+              <span className="chip">{d.bySeverity.medium} middels</span>
+              <span className="chip">{d.bySeverity.low} lave</span>
+              {d.dismissedCount > 0 && <span className="chip">{d.dismissedCount} avfeid</span>}
+            </div>
+          </div>
+
+          {/* Vesentlige betalinger som venter på godkjenning */}
+          {awaiting.data && awaiting.data.items.length > 0 && (
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Betalinger som venter på godkjenning</h2>
+                <span className="confidence medium">{awaiting.data.items.length}</span>
+              </div>
+              <p className="hint" style={{ marginTop: 0 }}>
+                Betalinger over {kr(awaiting.data.significantThresholdMinor)} krever {awaiting.data.requiredApprovers} godkjennere.
+                Den som bokførte kan ikke godkjenne selv.
+              </p>
+              <ul className="health-list">
+                {awaiting.data.items.map((it) => (
+                  <li key={it.journalEntryId} className="health-item warning">
+                    <div className="health-dot" aria-hidden="true" />
+                    <div className="health-body">
+                      <div className="health-title">Bilag {it.entryNumber}: {kr(it.totalMinor)}</div>
+                      <div className="health-detail">{it.description} · {it.approvals} av {it.requiredApprovers} godkjenninger</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {it.documentId && <button className="secondary health-action" onClick={() => onOpenDocument(it.documentId!)}>Åpne</button>}
+                      <button className="health-action" disabled={busy === it.journalEntryId} onClick={() => approve(it.journalEntryId)}>Godkjenn</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Varsler gruppert på alvorsgrad */}
+          {active.length === 0 ? (
+            <div className="panel"><p className="subtitle">Ingen åpne varsler. Vi kontrollerer bilag og betalinger løpende.</p></div>
+          ) : (
+            groups.map((g) => {
+              const items = active.filter((s) => s.severity === g);
+              if (items.length === 0) return null;
+              return (
+                <div className="panel" key={g}>
+                  <div className="panel-head">
+                    <h2>{SEV_META[g].label}</h2>
+                    <span className={`confidence ${SEV_META[g].cls}`}>{items.length}</span>
+                  </div>
+                  <ul className="health-list">
+                    {items.map((s) => (
+                      <li key={s.fingerprint} className={`health-item ${SEV_META[s.severity].hl}`}>
+                        <div className="health-dot" aria-hidden="true" />
+                        <div className="health-body">
+                          <div className="health-title">
+                            {s.title}
+                            <span className="code">{s.category}</span>
+                            {s.reviewed && <span className="code">{VERDICT_LABEL[s.reviewed.verdict]}</span>}
+                          </div>
+                          <div className="health-detail">{s.detail}</div>
+                          <div className="hint" style={{ marginTop: 4 }}>Anbefaling: {s.recommendation}</div>
+                          {s.legalReference && <div className="hint">Grunnlag: {s.legalReference}</div>}
+                          <div className="chips" style={{ marginTop: 8 }}>
+                            {s.evidence.filter((e) => e.documentId).map((e, i) => (
+                              <button key={i} className="secondary" onClick={() => onOpenDocument(e.documentId!)}>{e.label || 'Åpne bilag'}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <button className="secondary health-action" disabled={busy === s.fingerprint} onClick={() => review(s, 'false_alarm', false)}>Falsk alarm</button>
+                          <button className="health-action" disabled={busy === s.fingerprint} onClick={() => review(s, 'confirmed_fraud', true)}>Bekreft svindel</button>
+                          <button className="secondary health-action" disabled={busy === s.fingerprint} onClick={() => review(s, 'resolved', false)}>Håndtert</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
+          )}
+
+          {/* Avfeide varsler */}
+          {dismissed.length > 0 && (
+            <div className="panel">
+              <Disclosure label={`Avfeide varsler (${dismissed.length})`}>
+                <ul className="health-list">
+                  {dismissed.map((s) => (
+                    <li key={s.fingerprint} className="health-item info">
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">{s.title}</div>
+                        <div className="health-detail">{s.reviewed?.note ?? 'Markert som falsk alarm.'}</div>
+                      </div>
+                      <button className="secondary health-action" disabled={busy === s.fingerprint} onClick={() => review(s, 'resolved', false)}>Angre</button>
+                    </li>
+                  ))}
+                </ul>
+              </Disclosure>
+            </div>
+          )}
+
+          {/* Kontrollpolicy */}
+          {settings.data && (
+            <div className="panel">
+              <Disclosure label="Kontrollpolicy">
+                <FraudSettingsForm orgId={orgId} initial={settings.data} onSaved={() => { settings.reload(); report.reload(); awaiting.reload(); }} />
+              </Disclosure>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FraudSettingsForm({ orgId, initial, onSaved }: { orgId: string; initial: FraudSettings; onSaved: () => void }) {
+  const toast = useToast();
+  const [thresholdKr, setThresholdKr] = useState(String(Math.round(Number(initial.significantThresholdMinor) / 100)));
+  const [approvers, setApprovers] = useState(String(initial.requiredApprovers));
+  const [start, setStart] = useState(String(initial.businessHoursStart));
+  const [end, setEnd] = useState(String(initial.businessHoursEnd));
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api('PUT', `/api/organizations/${orgId}/fraud-settings`, {
+        significantThresholdMinor: String(Math.round(Number(thresholdKr) * 100)),
+        requiredApprovers: Number(approvers),
+        businessHoursStart: Number(start),
+        businessHoursEnd: Number(end),
+      });
+      toast('Kontrollpolicy lagret', 'ok');
+      onSaved();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke lagre', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="form-grid">
+      <p className="hint" style={{ gridColumn: '1 / -1', margin: 0 }}>
+        Styrer hva som regnes som en vesentlig betaling (krever flergodkjenning) og hva som er normal arbeidstid.
+        {initial.isDefault && ' Bruker foreløpig standardverdier.'}
+      </p>
+      <div>
+        <label htmlFor="fs-threshold">Vesentlig betaling (kr)</label>
+        <input id="fs-threshold" type="number" value={thresholdKr} onChange={(e) => setThresholdKr(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="fs-approvers">Antall godkjennere</label>
+        <input id="fs-approvers" type="number" min={1} max={10} value={approvers} onChange={(e) => setApprovers(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="fs-start">Arbeidstid fra (time)</label>
+        <input id="fs-start" type="number" min={0} max={23} value={start} onChange={(e) => setStart(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="fs-end">Arbeidstid til (time)</label>
+        <input id="fs-end" type="number" min={1} max={24} value={end} onChange={(e) => setEnd(e.target.value)} />
+      </div>
+      <div style={{ gridColumn: '1 / -1' }}>
+        <button disabled={busy} onClick={save}>Lagre kontrollpolicy</button>
+      </div>
     </div>
   );
 }
