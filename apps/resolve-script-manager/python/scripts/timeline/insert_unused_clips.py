@@ -16,6 +16,10 @@ Params:
   track=<int>          valgfritt: eksisterende spor-indeks; default: nytt
                        video-spor opprettes øverst
   markers=true         Cyan-markør «SATT INN» per innsetting
+  audio=false          default KUN VIDEO (mediaType 1): b-roll skal ikke dra
+                       kamera-lyd over miksen — og linket lyd kolliderer i
+                       lyd-rommet slik at innsettingen feiler stille
+  markersOnly=false    true → kun grønne ANBEFALT-markører, ingen innsetting
 """
 from __future__ import annotations
 
@@ -132,7 +136,13 @@ def run(params: dict, dry_run: bool) -> None:
         entry = {"clip": name, "recordFrame": frame, "tc": _frames_to_tc(frame, fps),
                  "trimmed": sf is not None,
                  "durationSec": round(length_tl / fps, 1)}
-        info = {"mediaPoolItem": clip, "trackIndex": plan_track, "recordFrame": frame}
+        # mediaType 1 = kun video: b-roll skal ikke dra kamera-lyd inn over
+        # miksen, og linket lyd kolliderer i lyd-rommet (auto-opprettede
+        # A-spor) slik at hele innsettingen feiler stille.
+        info = {"mediaPoolItem": clip, "trackIndex": plan_track, "recordFrame": frame,
+                "mediaType": 1}
+        if str(params.get("audio", "")).lower() in ("true", "1", "yes"):
+            info.pop("mediaType")
         if sf is not None:
             info["startFrame"] = sf
         if ef is not None:
@@ -166,7 +176,13 @@ def run(params: dict, dry_run: bool) -> None:
         ok = False
         try:
             res = media_pool.AppendToTimeline([info])
-            ok = bool(res)
+            # API-et kan returnere [None] eller fantom-objekter — stol kun på
+            # at klippet faktisk ligger på sporet.
+            ok = bool(res) and any(r is not None for r in (res if isinstance(res, list) else [res]))
+            if ok:
+                ok = any((i.GetName() or "").strip() == entry["clip"]
+                         and int(i.GetStart() or -1) == entry["recordFrame"]
+                         for i in timeline.GetItemListInTrack("video", info["trackIndex"]) or [])
         except Exception as e:
             entry["error"] = str(e)[:120]
         if ok:
