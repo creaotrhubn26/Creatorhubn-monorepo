@@ -26,7 +26,7 @@ async function connect(scopes: string[]): Promise<Client> {
   await client.connect(clientT);
   return client;
 }
-const textOf = (r: { content: unknown }) => ((r.content as { type: string; text: string }[])[0]?.text ?? '');
+const textOf = (r: unknown) => (((r as { content?: { type: string; text: string }[] }).content ?? [])[0]?.text ?? '');
 
 beforeAll(async () => {
   db = await setupTestDb();
