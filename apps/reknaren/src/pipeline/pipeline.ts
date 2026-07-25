@@ -23,6 +23,7 @@ import { GmailAuthError, type GmailPort, type GmailSearchFilter } from '../inges
 import type { ObjectStorage } from '../storage/port.js';
 import { sanitizeUntrustedText } from '../ingestion/gmail/sanitize.js';
 import { postJournalEntry, type PostedJournalEntry } from '../ledger/engine.js';
+import { resolveLearnedDefaults } from '../ledger/learning.js';
 import type { RuleRegister } from '../rules/register.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { convertToNok, money } from '../shared/money.js';
@@ -293,11 +294,17 @@ async function lookupVendorDefaults(
      LIMIT 1`,
     [organizationId, data.vendorName, data.vendorOrgNumber ?? null],
   );
-  if (!res.rowCount) return undefined;
   const defaults: { accountNumber?: string; vatCode?: string } = {};
-  if (res.rows[0].default_account_number) defaults.accountNumber = res.rows[0].default_account_number;
-  if (res.rows[0].default_vat_code) defaults.vatCode = res.rows[0].default_vat_code;
-  return defaults;
+  if (res.rowCount) {
+    if (res.rows[0].default_account_number) defaults.accountNumber = res.rows[0].default_account_number;
+    if (res.rows[0].default_vat_code) defaults.vatCode = res.rows[0].default_vat_code;
+  }
+  // Bedriftens lærte praksis (godkjente regler) har forrang over rå historikk.
+  const vendorKey = data.vendorOrgNumber || data.vendorName.toLowerCase();
+  const learned = await resolveLearnedDefaults(db, { organizationId, vendorKey });
+  if (learned.accountNumber) defaults.accountNumber = learned.accountNumber;
+  if (learned.vatCode) defaults.vatCode = learned.vatCode;
+  return Object.keys(defaults).length ? defaults : undefined;
 }
 
 export interface ApproveAndPostInput {

@@ -13,6 +13,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../shared/errors.
 import { newId } from '../shared/ids.js';
 import { formatMinorAsKr } from '../invoicing/view.js';
 import { DEFAULT_FRAUD_SETTINGS, loadFraudSettings } from './fraud-detection.js';
+import { getActiveApprovalRules, ROLE_LABELS } from './learning.js';
 
 export interface FraudSettingsDto {
   significantThresholdMinor: string;
@@ -245,6 +246,13 @@ async function statusFor(
   };
 }
 
+export interface ApprovalRequirement {
+  source: 'significant' | 'vendor' | 'threshold';
+  requiredRole: string | null; // null = hvilken som helst godkjenner (vesentlig-grense)
+  reason: string;
+  satisfied: boolean;
+}
+
 export interface AwaitingApprovalItem {
   journalEntryId: string;
   entryNumber: number;
@@ -254,6 +262,8 @@ export interface AwaitingApprovalItem {
   totalMinor: string;
   approvals: number;
   requiredApprovers: number;
+  /** Alle godkjenningskrav som gjelder betalingen (vesentlig-grense + lærte regler). */
+  requirements: ApprovalRequirement[];
 }
 
 export async function listPaymentsAwaitingApproval(
@@ -261,44 +271,99 @@ export async function listPaymentsAwaitingApproval(
   params: { organizationId: string; fromDate: string; toDate: string },
 ): Promise<{ requiredApprovers: number; significantThresholdMinor: string; items: AwaitingApprovalItem[] }> {
   const settings = await loadFraudSettings(db, params.organizationId);
+  const learned = await getActiveApprovalRules(db, params.organizationId);
+  const smallestThreshold = learned.thresholds.reduce(
+    (min, t) => (t.thresholdMinor < min ? t.thresholdMinor : min),
+    settings.significantThresholdMinor,
+  );
+
+  // Kandidater: kjøp/betalinger over laveste relevante grense, ELLER fra en
+  // leverandør med et lært godkjenningskrav (uansett beløp). Tar med godkjenner-
+  // roller for å avgjøre om et rollekrav er oppfylt.
   const rows = (
     await db.query(
       `SELECT je.id, je.entry_number, je.entry_date, je.description, je.source_document_id AS document_id,
-              SUM(l.debit_minor) AS total, COALESCE(ap.n, 0) AS approvals
+              SUM(l.debit_minor) AS total,
+              MAX(COALESCE(v.org_number, lower(v.name))) AS vendor_key,
+              COALESCE(ap.n, 0) AS approvals, COALESCE(ap.roles, ARRAY[]::text[]) AS approver_roles
        FROM journal_entries je
        JOIN journal_lines l ON l.entry_id = je.id
+       LEFT JOIN vendors v ON v.id = l.vendor_id
        LEFT JOIN (
-         SELECT journal_entry_id, COUNT(*) AS n FROM payment_approvals
-         WHERE organization_id = $1 GROUP BY journal_entry_id
+         SELECT journal_entry_id, COUNT(*) AS n, array_agg(approver_role) AS roles
+         FROM payment_approvals WHERE organization_id = $1 GROUP BY journal_entry_id
        ) ap ON ap.journal_entry_id = je.id
        WHERE je.organization_id = $1 AND je.status = 'posted' AND je.entry_date BETWEEN $2 AND $3
          AND (l.account_number ~ '^[4-7]' OR l.vendor_id IS NOT NULL)
-       GROUP BY je.id, je.entry_number, je.entry_date, je.description, je.source_document_id, ap.n
-       HAVING SUM(l.debit_minor) >= $4 AND COALESCE(ap.n, 0) < $5
+       GROUP BY je.id, je.entry_number, je.entry_date, je.description, je.source_document_id, ap.n, ap.roles
+       HAVING SUM(l.debit_minor) >= $4 OR MAX(COALESCE(v.org_number, lower(v.name))) = ANY($5::text[])
        ORDER BY total DESC
-       LIMIT 100`,
+       LIMIT 200`,
       [
         params.organizationId,
         params.fromDate,
         params.toDate,
-        settings.significantThresholdMinor.toString(),
-        settings.requiredApprovers,
+        smallestThreshold.toString(),
+        Array.from(learned.approverByVendorKey.keys()),
       ],
     )
   ).rows;
-  return {
-    requiredApprovers: settings.requiredApprovers,
-    significantThresholdMinor: settings.significantThresholdMinor.toString(),
-    items: rows.map((r) => ({
+
+  const items: AwaitingApprovalItem[] = [];
+  for (const r of rows) {
+    const total = BigInt(r.total);
+    const approvals = Number(r.approvals);
+    const roles: string[] = (r.approver_roles ?? []).filter(Boolean);
+    const vendorKey = r.vendor_key ? String(r.vendor_key).toLowerCase() : null;
+    const requirements: ApprovalRequirement[] = [];
+
+    if (total >= settings.significantThresholdMinor) {
+      requirements.push({
+        source: 'significant',
+        requiredRole: null,
+        reason: `Vesentlig betaling (over ${krLabel(settings.significantThresholdMinor)}) — krever ${settings.requiredApprovers} godkjennere.`,
+        satisfied: approvals >= settings.requiredApprovers,
+      });
+    }
+    const vendorRule = vendorKey ? learned.approverByVendorKey.get(vendorKey) : undefined;
+    if (vendorRule) {
+      requirements.push({
+        source: 'vendor',
+        requiredRole: vendorRule.requiredRole,
+        reason: `Leverandøren «${vendorRule.subjectLabel}» krever godkjenning av ${ROLE_LABELS[vendorRule.requiredRole] ?? vendorRule.requiredRole}.`,
+        satisfied: roles.includes(vendorRule.requiredRole),
+      });
+    }
+    for (const t of learned.thresholds) {
+      if (total >= t.thresholdMinor) {
+        requirements.push({
+          source: 'threshold',
+          requiredRole: t.requiredRole,
+          reason: `Beløp over ${krLabel(t.thresholdMinor)} krever godkjenning av ${ROLE_LABELS[t.requiredRole] ?? t.requiredRole}.`,
+          satisfied: roles.includes(t.requiredRole),
+        });
+      }
+    }
+
+    // Ta bare med de som faktisk har et uoppfylt krav.
+    if (requirements.length === 0 || requirements.every((req) => req.satisfied)) continue;
+    items.push({
       journalEntryId: r.id,
       entryNumber: Number(r.entry_number),
       entryDate: typeof r.entry_date === 'string' ? r.entry_date : new Date(r.entry_date).toISOString().slice(0, 10),
       description: r.description,
       documentId: r.document_id ?? null,
-      totalMinor: String(r.total),
-      approvals: Number(r.approvals),
+      totalMinor: String(total),
+      approvals,
       requiredApprovers: settings.requiredApprovers,
-    })),
+      requirements,
+    });
+  }
+
+  return {
+    requiredApprovers: settings.requiredApprovers,
+    significantThresholdMinor: settings.significantThresholdMinor.toString(),
+    items,
   };
 }
 

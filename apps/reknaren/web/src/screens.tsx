@@ -3310,10 +3310,11 @@ interface FraudReport {
   bySeverity: Record<FraudSeverity, number>;
   settings: { significantThresholdMinor: string; requiredApprovers: number; businessHoursStart: number; businessHoursEnd: number };
 }
+interface ApprovalRequirement { source: 'significant' | 'vendor' | 'threshold'; requiredRole: string | null; reason: string; satisfied: boolean }
 interface AwaitingApproval {
   requiredApprovers: number;
   significantThresholdMinor: string;
-  items: { journalEntryId: string; entryNumber: number; entryDate: string; description: string; documentId: string | null; totalMinor: string; approvals: number; requiredApprovers: number }[];
+  items: { journalEntryId: string; entryNumber: number; entryDate: string; description: string; documentId: string | null; totalMinor: string; approvals: number; requiredApprovers: number; requirements: ApprovalRequirement[] }[];
 }
 interface FraudSettings {
   significantThresholdMinor: string;
@@ -3424,7 +3425,10 @@ export function FraudScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDo
                     <div className="health-dot" aria-hidden="true" />
                     <div className="health-body">
                       <div className="health-title">Bilag {it.entryNumber}: {kr(it.totalMinor)}</div>
-                      <div className="health-detail">{it.description} · {it.approvals} av {it.requiredApprovers} godkjenninger</div>
+                      <div className="health-detail">{it.description} · {it.approvals} godkjenning{it.approvals === 1 ? '' : 'er'}</div>
+                      {it.requirements.filter((r) => !r.satisfied).map((r, i) => (
+                        <div key={i} className="hint" style={{ marginTop: 2 }}>• {r.reason}</div>
+                      ))}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {it.documentId && <button className="secondary health-action" onClick={() => onOpenDocument(it.documentId!)}>Åpne</button>}
@@ -3563,6 +3567,334 @@ function FraudSettingsForm({ orgId, initial, onSaved }: { orgId: string; initial
       </div>
       <div style={{ gridColumn: '1 / -1' }}>
         <button disabled={busy} onClick={save}>Lagre kontrollpolicy</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Lærende regnskapsmodell ─────────────────────────────────────────────── */
+
+interface LearnedExample { entryNumber: number | null; documentId: string | null; description: string; occurredAt: string | null }
+interface LearnedRule {
+  id: string;
+  ruleType: 'account_mapping' | 'project_mapping' | 'approver_requirement' | 'threshold_approval';
+  scope: 'organization' | 'group';
+  scopeLabel: string;
+  subjectType: 'vendor' | 'customer' | 'amount';
+  subjectKey: string | null;
+  subjectLabel: string;
+  target: Record<string, unknown>;
+  targetLabel: string;
+  status: 'suggested' | 'active' | 'dismissed' | 'superseded';
+  supportCount: number;
+  observationCount: number;
+  rationale: string;
+  origin: 'system' | 'manual';
+  approvedBy: string | null;
+  approvedAt: string | null;
+  updatedAt: string;
+  examples: LearnedExample[];
+}
+interface LearnedRulesResponse { groupId: string | null; groupName: string | null; rules: LearnedRule[] }
+
+const RULE_TYPE_LABEL: Record<LearnedRule['ruleType'], string> = {
+  account_mapping: 'Leverandør → konto',
+  project_mapping: 'Kunde → prosjekt',
+  approver_requirement: 'Godkjenningskrav (leverandør)',
+  threshold_approval: 'Godkjenningskrav (beløp)',
+};
+const ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'accounting_manager', label: 'Økonomiansvarlig' },
+  { value: 'general_manager', label: 'Daglig leder' },
+  { value: 'approver', label: 'Prosjektleder/godkjenner' },
+  { value: 'attestant', label: 'Attestant' },
+  { value: 'accountant', label: 'Regnskapsfører' },
+  { value: 'admin', label: 'Administrator' },
+  { value: 'owner', label: 'Eier' },
+];
+
+export function LearningScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDocument: (id: string) => void }) {
+  const load = useLoad(() => api<LearnedRulesResponse>('GET', `/api/organizations/${orgId}/learned-rules`), [orgId]);
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const d = load.data;
+
+  const detect = async () => {
+    setBusy('detect');
+    try {
+      const res = await api<{ proposed: number }>('POST', `/api/organizations/${orgId}/learned-rules/detect`, {});
+      toast(res.proposed > 0 ? `Fant ${res.proposed} ny(e) mønstre å vurdere` : 'Ingen nye mønstre funnet', 'ok');
+      load.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke lære av historikken', 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const act = async (rule: LearnedRule, action: 'approve' | 'dismiss') => {
+    setBusy(rule.id);
+    try {
+      await api('POST', `/api/organizations/${orgId}/learned-rules/${rule.id}/${action}`, {});
+      toast(action === 'approve' ? 'Regel godkjent og aktiv' : 'Regel avslått', 'ok');
+      load.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Handlingen feilet', 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const setScope = async (rule: LearnedRule, scope: 'organization' | 'group') => {
+    setBusy(rule.id);
+    try {
+      await api('PATCH', `/api/organizations/${orgId}/learned-rules/${rule.id}`, { scope });
+      toast(scope === 'group' ? 'Regelen gjelder nå hele konsernet' : 'Regelen gjelder nå kun denne virksomheten', 'ok');
+      load.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke endre omfang', 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const suggested = d?.rules.filter((r) => r.status === 'suggested') ?? [];
+  const active = d?.rules.filter((r) => r.status === 'active') ?? [];
+
+  const RuleCard = ({ r, mode }: { r: LearnedRule; mode: 'suggested' | 'active' }) => (
+    <li className={`health-item ${mode === 'suggested' ? 'info' : ''}`}>
+      <div className="health-dot" aria-hidden="true" />
+      <div className="health-body">
+        <div className="health-title">
+          {r.subjectLabel} → {r.targetLabel}
+          <span className="code">{RULE_TYPE_LABEL[r.ruleType]}</span>
+          <span className="code">{r.origin === 'system' ? 'lært av systemet' : 'manuell'}</span>
+          <span className="code">{r.scopeLabel}</span>
+        </div>
+        <div className="health-detail">{r.rationale}</div>
+        {r.examples.length > 0 && (
+          <div className="hint" style={{ marginTop: 4 }}>
+            Bygger på:{' '}
+            {r.examples.map((e, i) => (
+              <span key={i}>
+                {e.documentId ? (
+                  <button className="linklike" onClick={() => onOpenDocument(e.documentId!)}>{e.description}</button>
+                ) : (
+                  e.description
+                )}
+                {i < r.examples.length - 1 ? ', ' : ''}
+              </span>
+            ))}
+          </div>
+        )}
+        {mode === 'active' && (
+          <div className="hint" style={{ marginTop: 4 }}>
+            {r.approvedBy ? `Godkjent av ${r.approvedBy}` : 'Godkjent'}
+            {r.approvedAt ? ` ${nb(r.approvedAt.slice(0, 10))}` : ''} · Sist endret {nb(r.updatedAt.slice(0, 10))}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {mode === 'suggested' ? (
+          <>
+            <button className="health-action" disabled={busy === r.id} onClick={() => act(r, 'approve')}>Godkjenn</button>
+            <button className="secondary health-action" disabled={busy === r.id} onClick={() => act(r, 'dismiss')}>Avslå</button>
+          </>
+        ) : (
+          <>
+            {d?.groupId && (
+              <button className="secondary health-action" disabled={busy === r.id}
+                onClick={() => setScope(r, r.scope === 'group' ? 'organization' : 'group')}>
+                {r.scope === 'group' ? 'Kun denne bedriften' : 'Gjelder konsernet'}
+              </button>
+            )}
+            <button className="secondary health-action" disabled={busy === r.id} onClick={() => act(r, 'dismiss')}>Deaktiver</button>
+          </>
+        )}
+      </div>
+    </li>
+  );
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Lært praksis</h1>
+        <p className="subtitle">
+          Reknaren lærer bedriftens egen måte å bokføre på — men gjør den aldri til en universell regel. Alt er scopet til
+          din virksomhet (eller ditt konsern), du godkjenner før noe brukes, og hver regel viser hva den bygger på.
+        </p>
+      </div>
+      {load.error && <div className="error">{load.error}</div>}
+
+      <div className="panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <p className="hint" style={{ margin: 0 }}>
+          {d?.groupName ? `Konsern: ${d.groupName}.` : 'Ikke tilknyttet et konsern.'} Systemet kan foreslå regler ved å se
+          etter mønstre i det du allerede har bokført.
+        </p>
+        <button disabled={busy === 'detect'} onClick={detect}>Lær av historikken</button>
+      </div>
+
+      {load.loading || !d ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        <>
+          {suggested.length > 0 && (
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Foreslåtte regler</h2>
+                <span className="confidence medium">{suggested.length}</span>
+              </div>
+              <p className="hint" style={{ marginTop: 0 }}>Systemet har sett et mønster. Godkjenn for å ta det i bruk, eller avslå.</p>
+              <ul className="health-list">{suggested.map((r) => <RuleCard key={r.id} r={r} mode="suggested" />)}</ul>
+            </div>
+          )}
+
+          <div className="panel">
+            <div className="panel-head">
+              <h2>Aktive regler</h2>
+              <span className={`confidence ${active.length ? 'high' : 'medium'}`}>{active.length}</span>
+            </div>
+            {active.length === 0 ? (
+              <p className="subtitle">Ingen aktive regler ennå. La systemet lære av historikken, eller legg til en regel manuelt nedenfor.</p>
+            ) : (
+              <ul className="health-list">{active.map((r) => <RuleCard key={r.id} r={r} mode="active" />)}</ul>
+            )}
+          </div>
+
+          <div className="panel">
+            <Disclosure label="Legg til regel manuelt">
+              <ManualRuleForm orgId={orgId} onSaved={() => load.reload()} />
+            </Disclosure>
+          </div>
+
+          {!d.groupId && (
+            <div className="panel">
+              <Disclosure label="Konsern">
+                <GroupForm orgId={orgId} onSaved={() => load.reload()} />
+              </Disclosure>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ManualRuleForm({ orgId, onSaved }: { orgId: string; onSaved: () => void }) {
+  const toast = useToast();
+  const [ruleType, setRuleType] = useState<LearnedRule['ruleType']>('account_mapping');
+  const [label, setLabel] = useState('');
+  const [key, setKey] = useState('');
+  const [account, setAccount] = useState('');
+  const [project, setProject] = useState('');
+  const [role, setRole] = useState('accounting_manager');
+  const [thresholdKr, setThresholdKr] = useState('20000');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const body: Record<string, unknown> = { ruleType };
+      if (ruleType === 'account_mapping') {
+        body.subjectType = 'vendor'; body.subjectLabel = label; body.subjectKey = key || label.toLowerCase();
+        body.target = { accountNumber: account };
+      } else if (ruleType === 'project_mapping') {
+        body.subjectType = 'customer'; body.subjectLabel = label; body.subjectKey = key || label.toLowerCase();
+        body.target = { project: project.toUpperCase() };
+      } else if (ruleType === 'approver_requirement') {
+        body.subjectType = 'vendor'; body.subjectLabel = label; body.subjectKey = key || label.toLowerCase();
+        body.target = { requiredRole: role };
+      } else {
+        body.subjectType = 'amount'; body.subjectLabel = `Kjøp over ${thresholdKr} kr`;
+        body.target = { thresholdMinor: String(Math.round(Number(thresholdKr) * 100)), requiredRole: role };
+      }
+      await api('POST', `/api/organizations/${orgId}/learned-rules`, body);
+      toast('Regel lagt til', 'ok');
+      setLabel(''); setKey(''); setAccount(''); setProject('');
+      onSaved();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke lagre', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const needsSubject = ruleType !== 'threshold_approval';
+  return (
+    <div className="form-grid">
+      <div>
+        <label htmlFor="mr-type">Type</label>
+        <select id="mr-type" value={ruleType} onChange={(e) => setRuleType(e.target.value as LearnedRule['ruleType'])}>
+          {(Object.keys(RULE_TYPE_LABEL) as LearnedRule['ruleType'][]).map((t) => <option key={t} value={t}>{RULE_TYPE_LABEL[t]}</option>)}
+        </select>
+      </div>
+      {needsSubject && (
+        <>
+          <div>
+            <label htmlFor="mr-label">{ruleType === 'project_mapping' ? 'Kunde' : 'Leverandør'}</label>
+            <input id="mr-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="f.eks. Telia" />
+          </div>
+          <div>
+            <label htmlFor="mr-key">Nøkkel (org.nr eller navn)</label>
+            <input id="mr-key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="valgfritt — navn brukes ellers" />
+          </div>
+        </>
+      )}
+      {ruleType === 'account_mapping' && (
+        <div>
+          <label htmlFor="mr-account">Konto</label>
+          <input id="mr-account" value={account} onChange={(e) => setAccount(e.target.value)} placeholder="f.eks. 6900" />
+        </div>
+      )}
+      {ruleType === 'project_mapping' && (
+        <div>
+          <label htmlFor="mr-project">Prosjektkode</label>
+          <input id="mr-project" value={project} onChange={(e) => setProject(e.target.value)} placeholder="f.eks. PROSJEKT-A" />
+        </div>
+      )}
+      {ruleType === 'threshold_approval' && (
+        <div>
+          <label htmlFor="mr-threshold">Beløpsgrense (kr)</label>
+          <input id="mr-threshold" type="number" value={thresholdKr} onChange={(e) => setThresholdKr(e.target.value)} />
+        </div>
+      )}
+      {(ruleType === 'approver_requirement' || ruleType === 'threshold_approval') && (
+        <div>
+          <label htmlFor="mr-role">Må godkjennes av</label>
+          <select id="mr-role" value={role} onChange={(e) => setRole(e.target.value)}>
+            {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{ gridColumn: '1 / -1' }}>
+        <button disabled={busy} onClick={save}>Legg til regel</button>
+      </div>
+    </div>
+  );
+}
+
+function GroupForm({ orgId, onSaved }: { orgId: string; onSaved: () => void }) {
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api('POST', `/api/organizations/${orgId}/organization-groups`, { name });
+      toast('Konsern opprettet — denne virksomheten er tilknyttet', 'ok');
+      onSaved();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke opprette konsern', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Et konsern lar flere virksomheter dele lærte regler. Regler kan så settes til å gjelde hele konsernet eller kun én bedrift.
+      </p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Konsernnavn, f.eks. Mediehuset AS" />
+        <button disabled={busy || !name.trim()} onClick={save}>Opprett konsern</button>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import {
   AskScreen,
   AssistantScreen,
   FraudScreen,
+  LearningScreen,
   OverviewScreen,
   PeriodCloseScreen,
   PlanningScreen,
@@ -58,6 +59,7 @@ type Screen =
   | { name: 'overview' }
   | { name: 'ask' }
   | { name: 'fraud' }
+  | { name: 'learning' }
   | { name: 'planning' }
   | { name: 'period-close' }
   | { name: 'assistant' }
@@ -102,6 +104,7 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
       { key: 'ask', label: 'Spør virksomheten', icon: 'mail' },
       { key: 'planning', label: 'Framover', icon: 'chart' },
       { key: 'fraud', label: 'Svindelkontroll', icon: 'shield' },
+      { key: 'learning', label: 'Lært praksis', icon: 'overview' },
       { key: 'assistant', label: 'Skatteassistent', icon: 'shield' },
     ],
   },
@@ -291,6 +294,7 @@ export default function App() {
           )}
           {screen.name === 'ask' && <AskScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'fraud' && <FraudScreen orgId={orgId} onOpenDocument={openDocument} />}
+          {screen.name === 'learning' && <LearningScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'planning' && (
             <PlanningScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
           )}

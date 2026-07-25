@@ -33,6 +33,15 @@ import {
   reviewFraudSignal,
   updateFraudSettings,
 } from '../ledger/fraud-controls.js';
+import {
+  approveLearnedRule,
+  createLearnedRule,
+  createOrganizationGroup,
+  detectLearnedRules,
+  dismissLearnedRule,
+  listLearnedRules,
+  updateLearnedRule,
+} from '../ledger/learning.js';
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
@@ -2232,6 +2241,142 @@ export function createApiServer(deps: ApiDeps): express.Express {
           actor: { userId: req.auth!.userId, role: req.orgRole! },
           journalEntryId: req.params.entryId!,
           ...(body.note ? { note: body.note } : {}),
+        });
+        res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // ── Lærende regnskapsmodell (bedriftens egen praksis) ───────────────────
+  app.get(
+    '/api/organizations/:orgId/learned-rules',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.json(toJson(await listLearnedRules(deps.db, { organizationId: req.params.orgId! })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/learned-rules/detect',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.status(201).json(toJson(await detectLearnedRules(deps.db, { organizationId: req.params.orgId! })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/learned-rules',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            ruleType: z.enum(['account_mapping', 'project_mapping', 'approver_requirement', 'threshold_approval']),
+            subjectType: z.enum(['vendor', 'customer', 'amount']),
+            subjectKey: z.string().max(200).nullish(),
+            subjectLabel: z.string().min(1).max(200),
+            target: z.record(z.unknown()),
+            scope: z.enum(['organization', 'group']).optional(),
+          })
+          .parse(req.body);
+        const result = await createLearnedRule(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ruleType: body.ruleType,
+          subjectType: body.subjectType,
+          subjectLabel: body.subjectLabel,
+          target: body.target,
+          ...(body.subjectKey != null ? { subjectKey: body.subjectKey } : {}),
+          ...(body.scope ? { scope: body.scope } : {}),
+        });
+        res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/learned-rules/:ruleId/approve',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        await approveLearnedRule(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ruleId: req.params.ruleId!,
+        });
+        res.json({ ok: true });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/learned-rules/:ruleId/dismiss',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        await dismissLearnedRule(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ruleId: req.params.ruleId!,
+        });
+        res.json({ ok: true });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.patch(
+    '/api/organizations/:orgId/learned-rules/:ruleId',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ target: z.record(z.unknown()).optional(), scope: z.enum(['organization', 'group']).optional() }).parse(req.body);
+        await updateLearnedRule(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          ruleId: req.params.ruleId!,
+          ...(body.target ? { target: body.target } : {}),
+          ...(body.scope ? { scope: body.scope } : {}),
+        });
+        res.json({ ok: true });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  app.post(
+    '/api/organizations/:orgId/organization-groups',
+    requireAuth,
+    requireOrgPermission('org.manage'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ name: z.string().min(1).max(200) }).parse(req.body);
+        const result = await createOrganizationGroup(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          name: body.name,
         });
         res.status(201).json(toJson(result));
       } catch (err) {
