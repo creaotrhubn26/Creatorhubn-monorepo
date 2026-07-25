@@ -100,6 +100,7 @@ import BusinessBrandingPage from '@/pages/BusinessBrandingPage';
 import AdminInviteSystem from '@/pages/admin-invite-system';
 import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
 import AcceptPrototypeTesterInvite from '@/pages/AcceptPrototypeTesterInvite';
+import ClaimStudentAccess from '@/pages/ClaimStudentAccess';
 import TesterStatusBanner from '@/components/tester/TesterStatusBanner';
 import GoogleSSOErrorBanner from '@/components/auth/GoogleSSOErrorBanner';
 import EnterpriseOfferModal from '@/components/tester/EnterpriseOfferModal';
@@ -1080,6 +1081,7 @@ function App() {
                   <Route path="/contracts/:contractId" component={ContractView} />
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
                   <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
+                  <Route path="/role-room/student/claim" component={ClaimStudentAccess} />
                   <Route path="/link" component={PostAgentLinkPage} />
                   <Route path="/post-agent/mockup-studio" component={MockupVideoStudioPage} />
                   <Route path="/prototype-tester/accept-invite" component={AcceptPrototypeTesterInvite} />

@@ -29,9 +29,24 @@ async function runChain(stack: any[], req: any, res: any) {
   }
 }
 
-function makePool(studentOwner: string | null) {
+function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStudentId?: string | null } = {}) {
+  const { studentOwner = "inst-1", invite, sessionStudentId } = opts;
+  const inserts: any[] = [];
   const pool: any = {
-    query: vi.fn(async (sql: string) => {
+    query: vi.fn(async (sql: string, params: any[]) => {
+      if (sql.includes("FROM role_room_education_student_invites")) {
+        return { rows: invite ? [invite] : [] };
+      }
+      if (sql.includes("UPDATE role_room_education_student_invites")) {
+        return { rows: [] };
+      }
+      if (sql.includes("INSERT INTO role_room_education_student_sessions")) {
+        inserts.push({ token: params[0], student_id: params[1], owner: params[2] });
+        return { rows: [] };
+      }
+      if (sql.includes("UPDATE role_room_education_student_sessions")) {
+        return { rows: sessionStudentId ? [{ student_id: sessionStudentId }] : [] };
+      }
       if (sql.includes("FROM role_room_education_students s")) {
         return studentOwner === null
           ? { rows: [] }
@@ -46,7 +61,7 @@ function makePool(studentOwner: string | null) {
       return { rows: [] };
     }),
   };
-  return pool;
+  return { pool, inserts };
 }
 
 const sessions = new Map<string, any>([
@@ -56,39 +71,91 @@ const sessions = new Map<string, any>([
 ]);
 const R = (pool: any) => mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions as any }));
 const H = (rs: any[], method: string, path: string) => rs.find((x) => x.method === method && x.path === path)!.stack;
-const authed = (tok: string, studentId?: string) => ({ headers: { authorization: `Bearer ${tok}` }, query: studentId ? { studentId } : {}, params: {} });
 
-describe("education student view routes", () => {
-  it("eier ser studentens visning (produksjoner + oppgaver m/ innlevering)", async () => {
+describe("education student view + claim routes", () => {
+  // ── Preview-vei (Bearer) ─────────────────────────────────────────────────
+  it("eier ser studentens visning", async () => {
     const res = makeRes();
-    await runChain(H(R(makePool("inst-1")), "GET", "/education/student/view"), authed("owner-tok", "st1"), res);
-    expect(res.body.student).toMatchObject({ id: "st1", name: "Kari", cohortName: "Film 1" });
-    expect(res.body.productions).toHaveLength(1);
+    await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer owner-tok" }, query: { studentId: "st1" }, params: {} }, res);
+    expect(res.body.student).toMatchObject({ id: "st1", name: "Kari" });
     expect(res.body.assignments[0]).toMatchObject({ submissionStatus: "submitted", grade: "B" });
   });
 
-  it("super admin ser en student de IKKE eier", async () => {
+  it("super admin ser fremmed student", async () => {
     const res = makeRes();
-    await runChain(H(R(makePool("inst-1")), "GET", "/education/student/view"), authed("admin-tok", "st1"), res);
+    await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer admin-tok" }, query: { studentId: "st1" }, params: {} }, res);
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("annen bruker → 404", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer other-tok" }, query: { studentId: "st1" }, params: {} }, res);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("Bearer uten studentId → 400", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer owner-tok" }, query: {}, params: {} }, res);
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("ingen auth → 401", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
+      { headers: {}, query: { studentId: "st1" }, params: {} }, res);
+    expect(res.statusCode).toBe(401);
+  });
+
+  // ── Studentsesjon-vei (x-student-token) ──────────────────────────────────
+  it("gyldig studentsesjon → egen visning (ignorerer studentId)", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ sessionStudentId: "st1" }).pool), "GET", "/education/student/view"),
+      { headers: { "x-student-token": "stok-1" }, query: {}, params: {} }, res);
     expect(res.statusCode).toBe(200);
     expect(res.body.student.id).toBe("st1");
   });
 
-  it("annen bruker (ikke eier, ikke admin) → 404", async () => {
+  it("ugyldig/utløpt studentsesjon → 401", async () => {
     const res = makeRes();
-    await runChain(H(R(makePool("inst-1")), "GET", "/education/student/view"), authed("other-tok", "st1"), res);
+    await runChain(H(R(makePool({ sessionStudentId: null }).pool), "GET", "/education/student/view"),
+      { headers: { "x-student-token": "bad" }, query: {}, params: {} }, res);
+    expect(res.statusCode).toBe(401);
+  });
+
+  // ── Claim ────────────────────────────────────────────────────────────────
+  it("claim med gyldig invitasjon → 201 + sesjonstoken", async () => {
+    const { pool, inserts } = makePool({ invite: { id: "i1", student_id: "st1", owner_user_id: "inst-1", status: "pending" } });
+    const res = makeRes();
+    await runChain(H(R(pool), "POST", "/education/student/claim"),
+      { headers: {}, body: { token: "invite-abc" }, params: {}, query: {} }, res);
+    expect(res.statusCode).toBe(201);
+    expect(typeof res.body.sessionToken).toBe("string");
+    expect(res.body.student).toMatchObject({ id: "st1", name: "Kari" });
+    expect(inserts[0].student_id).toBe("st1");
+  });
+
+  it("claim med ukjent token → 404", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ invite: null }).pool), "POST", "/education/student/claim"),
+      { headers: {}, body: { token: "nope" }, params: {}, query: {} }, res);
     expect(res.statusCode).toBe(404);
   });
 
-  it("uten studentId → 400", async () => {
+  it("claim på tilbaketrukket invitasjon → 404", async () => {
     const res = makeRes();
-    await runChain(H(R(makePool("inst-1")), "GET", "/education/student/view"), authed("owner-tok"), res);
-    expect(res.statusCode).toBe(400);
+    await runChain(H(R(makePool({ invite: { id: "i1", student_id: "st1", owner_user_id: "inst-1", status: "revoked" } }).pool), "POST", "/education/student/claim"),
+      { headers: {}, body: { token: "revoked-tok" }, params: {}, query: {} }, res);
+    expect(res.statusCode).toBe(404);
   });
 
-  it("uten Bearer → 401", async () => {
+  it("claim uten token → 400", async () => {
     const res = makeRes();
-    await runChain(H(R(makePool("inst-1")), "GET", "/education/student/view"), { headers: {}, query: { studentId: "st1" }, params: {} }, res);
-    expect(res.statusCode).toBe(401);
+    await runChain(H(R(makePool().pool), "POST", "/education/student/claim"),
+      { headers: {}, body: {}, params: {}, query: {} }, res);
+    expect(res.statusCode).toBe(400);
   });
 });
