@@ -3849,7 +3849,7 @@ export function AskScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDocu
                     <div className="health-dot" aria-hidden="true" />
                     <div className="health-body">
                       <div className="health-title">{ev.label}</div>
-                      {ev.amountMinor && <div className="health-detail">{kr(ev.amountMinor)} kr</div>}
+                      {ev.amountMinor && <div className="health-detail">{kr(ev.amountMinor)}</div>}
                     </div>
                     {ev.documentId && (
                       <button className="secondary health-action" onClick={() => onOpenDocument(ev.documentId!)}>Se bilaget</button>
