@@ -20,6 +20,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     diskScan: null,
     selects: null,
     expDiff: null, fbCheck: null,
+    genPlan: null,
     folder: null, cameras: [], scan: null,
     audioFolder: null, matches: null,
     songs: [], culture: "",
@@ -111,6 +112,7 @@ function mutationLevel(scriptId, params, dryRun) {
         case "build_project_index": return 0; // skriver kun egen lokal DB
         case "selects_builder": return ["edl", "build"].includes(mode) ? 1 : 0;
         case "export_diff": return 0; // ren lesing (+ Claude-vurdering)
+        case "generate_broll": return mode === "generate" ? 2 : 0; // koster kreditter + importerer
         default: return 2; // ukjent ekte kjøring = strengest
     }
 }
@@ -609,7 +611,21 @@ const RENDER = {
         }).join("")}
         ${S.excluded.length ? `<div class="card dim">🛡 ${S.excluded.length} klipp holdt utenfor av duplikat-vakten
             <pre class="mini">${esc(S.excluded.map((e) => `${e.clip} — ${e.reason}`).join("\n"))}</pre></div>` : ""}
-        ${S.recs && !S.recs.length ? `<div class="card ok-text">Ingen kandidater — timelinen dekker materialet 👌</div>` : ""}`;
+        ${S.recs && !S.recs.length ? `<div class="card ok-text">Ingen kandidater — timelinen dekker materialet 👌</div>` : ""}
+        <div class="card"><div class="row"><strong>✨ Generer b-roll (Higgsfield)</strong>
+            <span class="muted">når UBRUKT ikke har det du trenger</span></div>
+        <div class="row" style="margin-top:6px">
+            <input type="text" id="gen-prompt" placeholder="motiv på engelsk (f.eks. slow pan across flower garlands, warm light)" style="flex:1;min-width:260px">
+        </div><div class="row" style="margin-top:6px">
+            <input type="text" id="gen-anchor" placeholder="anker-TC (frame fra klippet der)" style="min-width:150px">
+            <span class="muted">eller</span>
+            <input type="text" id="gen-image" placeholder="fotografens bilde (sti til .jpg → «levende foto»)" style="min-width:220px">
+            <label class="chk"><input type="checkbox" id="gen-people"> bildet har mennesker (behold dem)</label>
+            <button id="gen-plan" ${S.busy ? "disabled" : ""}>Planlegg</button>
+            <button id="gen-run" class="primary" ${!S.genPlan || S.busy ? "disabled" : ""}>Generer</button>
+        </div>
+        ${S.genPlan ? `<div class="muted" style="margin-top:6px">${esc(S.genPlan.account)} · ~${S.genPlan.estCredits} kreditter for ${S.genPlan.duration}s ${esc(S.genPlan.resolution)} · forankring: ${S.genPlan.contextFrameAvailable ? "✓ ekte bilde/frame" : "✗ ren tekst-til-video"}</div>` : ""}
+        <div class="muted" style="margin-top:4px">Forankres i parets eget materiale (ekte frame/foto som startbilde). Egnet for atmosfære + levende fotografier — genererte fremmede mennesker er sperret som default.</div></div>`;
     },
 };
 
@@ -794,6 +810,29 @@ const ACTIONS = {
         if (!confirm(`Sletter ${n} klipp under 3 frames:\n${plan.planned.map((x) => `${x.tc} ${x.track} ${x.clip}`).join("\n")}\n\nNB: stablede 1-frame-klipp KAN være tilsiktede flash-effekter — sjekk tidskodene først. Fortsette?`)) return;
         const v = await run("technical_qc", { mode: "fixflash" }, false, "Sletter flash-frames …");
         status(`✓ ${v.deleted} flash-frames slettet — kjør sveipen på nytt for å verifisere`, "ok-text");
+    },
+    "gen-plan": async () => {
+        const prompt = $("gen-prompt").value.trim();
+        if (!prompt) { status("Skriv motiv-prompt først.", "warn"); return; }
+        S.genPlan = await run("generate_broll", {
+            mode: "plan", prompt,
+            ...($("gen-anchor").value.trim() ? { anchorTc: $("gen-anchor").value.trim() } : {}),
+            ...($("gen-image").value.trim() ? { imagePath: $("gen-image").value.trim() } : {}),
+            noPeople: $("gen-people").checked ? "false" : "true",
+        }, false, "Sjekker Higgsfield-konto og forankring …");
+        render();
+    },
+    "gen-run": async () => {
+        const prompt = $("gen-prompt").value.trim();
+        if (!confirm(`Genererer 5s b-roll via Higgsfield (~${S.genPlan?.estCredits ?? "?"} kreditter) og importerer i GENERERT-binnen. Fortsette?`)) return;
+        const v = await run("generate_broll", {
+            mode: "generate", prompt,
+            ...($("gen-anchor").value.trim() ? { anchorTc: $("gen-anchor").value.trim() } : {}),
+            ...($("gen-image").value.trim() ? { imagePath: $("gen-image").value.trim() } : {}),
+            noPeople: $("gen-people").checked ? "false" : "true",
+        }, false, "Seedance genererer — 1-3 minutter …");
+        status(`✓ Generert (${v.sizeMb} MB, forankret: ${v.groundedInContextFrame ? "ja" : "nei"}) → GENERERT-binnen som «${(v.imported?.clip || "?").slice(0, 40)}»`, "ok-text");
+        log(`Genererte b-roll: ${(v.imported?.clip || "?").slice(0, 44)}`);
     },
     "xd-diff": async () => {
         S.expDiff = await run("export_diff", { scanSeconds: "600" }, false, "Sammenligner eksporten med timelinen (scene-deteksjon tar litt) …");

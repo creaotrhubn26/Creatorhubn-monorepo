@@ -54,6 +54,20 @@
   ],
   "scripts": [
     {
+      "id": "generate_broll",
+      "name": "Generer b-roll (Higgsfield Seedance) — forankret i eget footage",
+      "category": "media",
+      "scriptPath": "scripts/media/generate_broll.py",
+      "description": "Når hull-analysen trenger b-roll UBRUKT ikke har: Seedance 2.0 genererer atmosfære-insert forankret i EKTE frame fra klippet på anchorTc (samme lys/look), «no people» som default — importeres i GENERERT-bin klar for vanlig innsetting. plan: kostnadsestimat + kreditt-status uten kost. generate: KOSTER kreditter (~60 for 5s 1080p).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "export_diff",
       "name": "Eksport-diff + tilbakemeldings-sjekk (er eksporten i synk?)",
       "category": "qc",
