@@ -177,6 +177,9 @@ export function OverviewScreen({
             <Tile label="Svindelkontroll" value={d.fraud.active === 0 ? 'Ingen varsler' : `${d.fraud.active} varsler`}
               sub={d.fraud.critical + d.fraud.high > 0 ? `${d.fraud.critical} kritiske · ${d.fraud.high} høye` : 'ingen alvorlige'}
               tone={d.fraud.critical > 0 ? 'alert' : d.fraud.high > 0 ? 'attention' : 'ok'} onClick={() => go('fraud')} />
+            <Tile label="Faste utgifter" value={d.recurring.overdue === 0 ? 'à jour' : `${d.recurring.overdue} mangler`}
+              sub={d.recurring.overdue > 0 ? `~${kr(d.recurring.overdueAmountMinor)} ubokført` : 'ingen uteblitte'}
+              tone={d.recurring.overdue > 0 ? 'alert' : 'ok'} onClick={() => go('recurring')} />
             <Tile label="Skatteassistent" value={`${d.advisories.total} funn`}
               sub={`${d.advisories.risiko} risiko · ${d.advisories.mulighet} muligheter`}
               tone={d.advisories.risiko > 0 ? 'attention' : 'plain'} onClick={() => go('assistant')} />
@@ -229,6 +232,7 @@ interface Dashboard {
   advisories: { risiko: number; mulighet: number; kontrollpunkt: number; total: number };
   documentHunt: { paymentsMissingDoc: number; gapsWithCandidates: number };
   fraud: { active: number; critical: number; high: number; dismissed: number };
+  recurring: { overdue: number; overdueAmountMinor: string };
   counts: { documentsWaiting: number; bankUnmatched: number };
   followUp: { id: string; severity: string; title: string; detail: string; actionScreen?: string; documentId?: string }[];
 }
@@ -3896,6 +3900,188 @@ function GroupForm({ orgId, onSaved }: { orgId: string; onSaved: () => void }) {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Konsernnavn, f.eks. Mediehuset AS" />
         <button disabled={busy || !name.trim()} onClick={save}>Opprett konsern</button>
       </div>
+    </div>
+  );
+}
+
+/* ── Faste utgifter / abonnementsvakt ───────────────────────────────────── */
+
+interface RecurringItem {
+  ruleId: string; vendor: string; cadence: string; channel: 'auto' | 'manual';
+  accountNumber: string | null; minSideUrl: string | null; connectorId: string | null;
+  expectedAmountMinor: string;
+  overdue: { period: string; dueDate: string; inInbox: boolean }[];
+  dueSoon: { period: string; dueDate: string }[];
+  anomalies: { period: string; bookedMinor: string; expectedMinor: string }[];
+}
+interface RecurringResp {
+  asOf: string; overdueCount: number; overdueAmountMinor: string;
+  items: RecurringItem[];
+  expectations: { id: string; subjectLabel: string; status: string; targetLabel: string; rationale: string; origin: string }[];
+}
+
+export function RecurringScreen({ orgId }: { orgId: string }) {
+  const load = useLoad(() => api<RecurringResp>('GET', `/api/organizations/${orgId}/recurring`), [orgId]);
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const d = load.data;
+
+  const detect = async () => {
+    setBusy('detect');
+    try {
+      const r = await api<{ proposed: number }>('POST', `/api/organizations/${orgId}/recurring/detect`, {});
+      toast(r.proposed > 0 ? `Fant ${r.proposed} ny(e) faste utgifter å bekrefte` : 'Ingen nye faste mønstre funnet', 'ok');
+      load.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Kunne ikke lære', 'danger'); } finally { setBusy(null); }
+  };
+  const approve = async (id: string) => {
+    setBusy(id);
+    try { await api('POST', `/api/organizations/${orgId}/learned-rules/${id}/approve`, {}); toast('Bekreftet — vaktposten overvåker den nå', 'ok'); load.reload(); }
+    catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+  const resolve = async (ruleId: string, period: string, status: 'handled' | 'snoozed' | 'dismissed') => {
+    setBusy(ruleId + period);
+    try {
+      const body: Record<string, unknown> = { period, status };
+      if (status === 'snoozed') { const dt = new Date(); dt.setMonth(dt.getMonth() + 1); body.snoozeUntil = dt.toISOString().slice(0, 10); }
+      await api('POST', `/api/organizations/${orgId}/recurring/${ruleId}/resolve`, body);
+      toast(status === 'handled' ? 'Markert håndtert' : status === 'snoozed' ? 'Utsatt en måned' : 'Avvist for perioden', 'ok');
+      load.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+  const fetchInvoice = async (it: RecurringItem) => {
+    if (it.minSideUrl) window.open(it.minSideUrl, '_blank');
+    setBusy(it.ruleId + 'fetch');
+    try {
+      const r = await api<{ mode: string; message?: string; imported?: number }>('POST', `/api/organizations/${orgId}/recurring/${it.ruleId}/fetch`, {});
+      toast(r.mode === 'connector' ? `Hentet automatisk: ${r.imported ?? 0} bilag` : (r.message ?? 'Hent fakturaen manuelt fra Min side'), 'ok');
+      load.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+
+  const suggested = d?.expectations.filter((e) => e.status === 'suggested') ?? [];
+  const overdueItems = d?.items.filter((i) => i.overdue.length) ?? [];
+  const dueSoonItems = d?.items.filter((i) => i.dueSoon.length && !i.overdue.length) ?? [];
+  const anomalyItems = d?.items.filter((i) => i.anomalies.length) ?? [];
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Faste utgifter</h1>
+        <p className="subtitle">
+          Vaktposten lærer de faste kostnadene dine (abonnementer, telefon, internett) og sier fra når en forventet
+          faktura uteblir — så du ikke glemmer å hente og bokføre den. Bygger på den samme lærings-motoren.
+        </p>
+      </div>
+      {load.error && <div className="error">{load.error}</div>}
+
+      <div className="panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <p className="hint" style={{ margin: 0 }}>
+          {d && d.overdueCount > 0 ? <><b>{d.overdueCount}</b> forventede faste utgifter mangler (~{kr(d.overdueAmountMinor)} ubokført).</> : 'Alt ser à jour ut.'}
+        </p>
+        <button disabled={busy === 'detect'} onClick={detect}>Lær faste utgifter</button>
+      </div>
+
+      {load.loading || !d ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : (
+        <>
+          {suggested.length > 0 && (
+            <div className="panel">
+              <div className="panel-head"><h2>Foreslåtte faste utgifter</h2><span className="confidence medium">{suggested.length}</span></div>
+              <p className="hint" style={{ marginTop: 0 }}>Bekreft for at vaktposten skal overvåke at de kommer hver periode.</p>
+              <ul className="health-list">
+                {suggested.map((e) => (
+                  <li key={e.id} className="health-item info">
+                    <div className="health-dot" aria-hidden="true" />
+                    <div className="health-body">
+                      <div className="health-title">{e.subjectLabel} <span className="code">{e.targetLabel}</span></div>
+                      <div className="health-detail">{e.rationale}</div>
+                    </div>
+                    <button className="health-action" disabled={busy === e.id} onClick={() => approve(e.id)}>Bekreft</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {overdueItems.length > 0 && (
+            <div className="panel">
+              <div className="panel-head"><h2>Mangler — forfalt</h2><span className="confidence low">{d.overdueCount}</span></div>
+              <ul className="health-list">
+                {overdueItems.map((it) => (
+                  <li key={it.ruleId} className="health-item warning">
+                    <div className="health-dot" aria-hidden="true" />
+                    <div className="health-body">
+                      <div className="health-title">
+                        {it.vendor} <span className="code">{it.channel === 'manual' ? 'hent fra Min side' : 'kommer automatisk'}</span>
+                        {it.accountNumber && <span className="code">konto {it.accountNumber}</span>}
+                      </div>
+                      <div className="health-detail">
+                        Mangler: {it.overdue.map((o) => o.period).join(', ')} · forventet ~{kr(it.expectedAmountMinor)}/gang
+                      </div>
+                      <div className="chips" style={{ marginTop: 8 }}>
+                        {it.overdue.slice(0, 6).map((o) => (
+                          <span key={o.period} className="chip" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                            {o.period}{o.inInbox ? ' (i innboks)' : ''}
+                            <button className="linklike" onClick={() => resolve(it.ruleId, o.period, 'handled')} title="Håndtert">✓</button>
+                            <button className="linklike" onClick={() => resolve(it.ruleId, o.period, 'snoozed')} title="Utsett 1 mnd">⏰</button>
+                            <button className="linklike" onClick={() => resolve(it.ruleId, o.period, 'dismissed')} title="Ikke relevant">✕</button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button className="health-action" disabled={busy === it.ruleId + 'fetch'} onClick={() => fetchInvoice(it)}>
+                      {it.connectorId ? 'Hent automatisk' : 'Hent faktura'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {anomalyItems.length > 0 && (
+            <div className="panel">
+              <div className="panel-head"><h2>Beløpsavvik</h2><span className="confidence medium">{anomalyItems.length}</span></div>
+              <ul className="health-list">
+                {anomalyItems.map((it) => (
+                  <li key={it.ruleId} className="health-item info">
+                    <div className="health-dot" aria-hidden="true" />
+                    <div className="health-body">
+                      <div className="health-title">{it.vendor}</div>
+                      {it.anomalies.map((a) => (
+                        <div key={a.period} className="health-detail">{a.period}: bokført {kr(a.bookedMinor)} vs. forventet ~{kr(a.expectedMinor)} — sjekk</div>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {dueSoonItems.length > 0 && (
+            <div className="panel">
+              <Disclosure label={`Kommer snart (${dueSoonItems.length})`}>
+                <ul className="health-list">
+                  {dueSoonItems.map((it) => (
+                    <li key={it.ruleId} className="health-item">
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">{it.vendor} <span className="code">{it.channel === 'manual' ? 'hent fra Min side' : 'auto'}</span></div>
+                        <div className="health-detail">Neste: {it.dueSoon.map((s) => s.dueDate).join(', ')} · ~{kr(it.expectedAmountMinor)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Disclosure>
+            </div>
+          )}
+
+          {overdueItems.length === 0 && suggested.length === 0 && anomalyItems.length === 0 && (
+            <div className="panel"><p className="subtitle">Ingen faste utgifter registrert ennå. Trykk «Lær faste utgifter» for å oppdage mønstre i det du allerede har bokført.</p></div>
+          )}
+        </>
+      )}
     </div>
   );
 }

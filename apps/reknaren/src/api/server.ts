@@ -126,6 +126,11 @@ import {
 } from '../integrations/webhooks.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createReknarenMcpServer } from '../mcp/server.js';
+import {
+  assessRecurringDue,
+  detectRecurringExpectations,
+  resolveRecurring,
+} from '../ledger/recurring.js';
 import { buildConnectorRegistry } from '../integrations/connectors/registry.js';
 import {
   connectConnector,
@@ -2656,6 +2661,87 @@ export function createApiServer(deps: ApiDeps): express.Express {
       const a = Buffer.from(secret); const b = Buffer.from(provided);
       if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } }); return; }
       res.json(toJson(await syncAllConnectors(connectorDeps)));
+    } catch (err) { next(err); }
+  });
+
+  // ── Abonnements-/forventningsvakt (faste utgifter som uteblir) ───────────
+  app.get('/api/organizations/:orgId/recurring', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const asOf = typeof req.query.asOf === 'string' ? req.query.asOf : today;
+      const [due, rules] = await Promise.all([
+        assessRecurringDue(deps.db, { organizationId: req.params.orgId!, asOf }),
+        listLearnedRules(deps.db, { organizationId: req.params.orgId! }),
+      ]);
+      const expectations = rules.rules.filter((r) => r.ruleType === 'recurring_expectation');
+      res.json(toJson({ ...due, expectations }));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/recurring/detect', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.status(201).json(toJson(await detectRecurringExpectations(deps.db, { organizationId: req.params.orgId! })));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/recurring/:ruleId/resolve', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({
+        period: z.string().regex(/^\d{4}(-\d{2})?$/),
+        status: z.enum(['handled', 'snoozed', 'dismissed']),
+        snoozeUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        note: z.string().max(500).optional(),
+      }).parse(req.body);
+      await resolveRecurring(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        ruleId: req.params.ruleId!,
+        period: body.period,
+        status: body.status,
+        ...(body.snoozeUntil ? { snoozeUntil: body.snoozeUntil } : {}),
+        ...(body.note ? { note: body.note } : {}),
+      });
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  // Nivå 3: hent faktura automatisk der en connector finnes; ellers manuell (Min side).
+  app.post('/api/organizations/:orgId/recurring/:ruleId/fetch', requireAuth, requireOrgPermission('integrations.manage'), async (req: AuthedRequest, res, next) => {
+    try {
+      const rules = await listLearnedRules(deps.db, { organizationId: req.params.orgId! });
+      const rule = rules.rules.find((r) => r.id === req.params.ruleId && r.ruleType === 'recurring_expectation');
+      if (!rule) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Forventningen finnes ikke.' } }); return; }
+      const t = rule.target as { connectorId?: string; minSideUrl?: string };
+      if (t.connectorId && connectorDeps.registry[t.connectorId]?.configured()) {
+        const result = await syncConnector(connectorDeps, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          connectorId: t.connectorId,
+        });
+        res.json(toJson({ mode: 'connector', ...result }));
+        return;
+      }
+      // Ingen connector → ærlig: må hentes manuelt fra Min side.
+      res.json(toJson({ mode: 'manual', minSideUrl: t.minSideUrl ?? null, message: 'Ingen automatisk kilde — hent fakturaen fra leverandørens «Min side» og last den opp.' }));
+    } catch (err) { next(err); }
+  });
+  // Cron: sjekk forfalte faste utgifter for alle org + varsle abonnenter.
+  app.post('/api/cron/recurring-check', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      if (!secret || secret.length < 16) { res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler.' } }); return; }
+      const a = Buffer.from(secret); const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } }); return; }
+      const today = new Date().toISOString().slice(0, 10);
+      const orgs = (await deps.db.query(`SELECT DISTINCT organization_id FROM learned_rules WHERE rule_type='recurring_expectation' AND status='active'`)).rows;
+      let notified = 0;
+      for (const o of orgs) {
+        const due = await assessRecurringDue(deps.db, { organizationId: o.organization_id, asOf: today });
+        if (due.overdueCount > 0) {
+          await emitEvent(deps.db, { organizationId: o.organization_id, event: 'recurring.due', data: { overdueCount: due.overdueCount, overdueAmountMinor: due.overdueAmountMinor, items: due.items.map((i) => ({ vendor: i.vendor, overdue: i.overdue.length })) } });
+          notified++;
+        }
+      }
+      kickDelivery(deps.db);
+      res.json(toJson({ orgsChecked: orgs.length, notified }));
     } catch (err) { next(err); }
   });
 

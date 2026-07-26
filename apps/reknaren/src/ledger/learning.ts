@@ -19,7 +19,7 @@ import { formatMinorAsKr } from '../invoicing/view.js';
 import { ConflictError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { newId } from '../shared/ids.js';
 
-export type LearnedRuleType = 'account_mapping' | 'project_mapping' | 'approver_requirement' | 'threshold_approval';
+export type LearnedRuleType = 'account_mapping' | 'project_mapping' | 'approver_requirement' | 'threshold_approval' | 'recurring_expectation';
 export type LearnedRuleScope = 'organization' | 'group';
 export type LearnedRuleStatus = 'suggested' | 'active' | 'dismissed' | 'superseded';
 
@@ -87,6 +87,10 @@ function targetLabel(ruleType: LearnedRuleType, target: Record<string, unknown>)
   if (ruleType === 'approver_requirement') return `Må godkjennes av ${ROLE_LABELS[String(target.requiredRole)] ?? target.requiredRole}`;
   if (ruleType === 'threshold_approval')
     return `Over ${formatMinorAsKr(BigInt(String(target.thresholdMinor ?? '0')))} kr → ${ROLE_LABELS[String(target.requiredRole)] ?? target.requiredRole}`;
+  if (ruleType === 'recurring_expectation') {
+    const cad = { monthly: 'månedlig', quarterly: 'kvartalsvis', yearly: 'årlig' }[String(target.cadence)] ?? '';
+    return `Fast ${cad} ~${formatMinorAsKr(BigInt(String(target.expectedAmountMinor ?? '0')))} kr`;
+  }
   return '';
 }
 
@@ -531,6 +535,9 @@ function validateTarget(ruleType: LearnedRuleType, target: Record<string, unknow
   } else if (ruleType === 'threshold_approval') {
     if (!KNOWN_ROLES.includes(String(target.requiredRole) as (typeof KNOWN_ROLES)[number])) throw new ValidationError('Ukjent rolle.');
     if (BigInt(String(target.thresholdMinor ?? '0')) <= 0n) throw new ValidationError('Beløpsgrense må være positiv.');
+  } else if (ruleType === 'recurring_expectation') {
+    if (!['monthly', 'quarterly', 'yearly'].includes(String(target.cadence))) throw new ValidationError('Ugyldig kadens.');
+    if (BigInt(String(target.expectedAmountMinor ?? '0')) <= 0n) throw new ValidationError('Forventet beløp må være positivt.');
   }
 }
 

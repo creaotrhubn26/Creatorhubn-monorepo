@@ -23,6 +23,7 @@ export const WEBHOOK_EVENTS = [
   'document.received',
   'saft.exported',
   'vat_report.ready',
+  'recurring.due',
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 

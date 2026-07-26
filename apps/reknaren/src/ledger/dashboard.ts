@@ -8,6 +8,7 @@ import type { OrganizationForm } from '../rules/types.js';
 import type { RuleRegister } from '../rules/register.js';
 import { detectBookkeepingErrors } from './anomalies.js';
 import { detectFraudSignals, type FraudSeverity } from './fraud-detection.js';
+import { assessRecurringDue } from './recurring.js';
 import { runHealthCheck } from './health-check.js';
 import { assessPeriodClose } from './period-close.js';
 import { buildForecast } from './planning.js';
@@ -32,6 +33,7 @@ export interface Dashboard {
   advisories: { risiko: number; mulighet: number; kontrollpunkt: number; total: number };
   documentHunt: { paymentsMissingDoc: number; gapsWithCandidates: number };
   fraud: { active: number; critical: number; high: number; dismissed: number };
+  recurring: { overdue: number; overdueAmountMinor: bigint };
   counts: { documentsWaiting: number; bankUnmatched: number };
   followUp: FollowUpItem[];
 }
@@ -49,7 +51,7 @@ export async function buildDashboard(
   const yearStart = `${year}-01-01`;
 
   // Alle motorene kjøres parallelt — de leser samme hovedbok.
-  const [close, forecast, advisories, hunt, health, errors, fraud] = await Promise.all([
+  const [close, forecast, advisories, hunt, health, errors, fraud, recurring] = await Promise.all([
     assessPeriodClose(db, rules, { organizationId: org, year, month }),
     buildForecast(db, rules, { organizationId: org, orgForm, asOf }),
     buildTaxAdvisories(db, rules, { organizationId: org, orgForm, asOf }),
@@ -57,6 +59,7 @@ export async function buildDashboard(
     runHealthCheck(db, { organizationId: org, asOf }),
     detectBookkeepingErrors(db, rules, { organizationId: org, fromDate: yearStart, toDate: asOf }),
     detectFraudSignals(db, rules, { organizationId: org, fromDate: yearStart, toDate: asOf }),
+    assessRecurringDue(db, { organizationId: org, asOf }),
   ]);
   const fraudSev = (s: FraudSeverity) => fraud.bySeverity[s];
 
@@ -119,6 +122,7 @@ export async function buildDashboard(
     },
     documentHunt: { paymentsMissingDoc: hunt.paymentsMissingDoc, gapsWithCandidates: hunt.gapsWithCandidates },
     fraud: { active: fraud.activeCount, critical: fraudSev('critical'), high: fraudSev('high'), dismissed: fraud.dismissedCount },
+    recurring: { overdue: recurring.overdueCount, overdueAmountMinor: BigInt(recurring.overdueAmountMinor) },
     counts: { documentsWaiting: forecast.mangler.bilagTilBehandling, bankUnmatched: forecast.mangler.uavstemteBanktransaksjoner },
     followUp,
   };
