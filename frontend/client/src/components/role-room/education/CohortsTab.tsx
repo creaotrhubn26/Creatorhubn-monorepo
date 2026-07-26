@@ -18,11 +18,12 @@ import {
 import {
   Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon,
   CheckCircle as CheckIcon, PersonAdd as InviteIcon, UploadFile as CsvIcon,
-  ChevronRight as ChevronIcon, Search as SearchIcon, FilterList as FilterIcon,
+  ChevronRight as ChevronIcon, Search as SearchIcon,
   Sync as SyncIcon, CloudUpload as ImportIcon, Delete as DeleteIcon,
   KeyboardArrowDown as CaretIcon, Inventory2 as ArchiveIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
+import type { EducationTabId } from './EducationWorkspace';
 
 const ACCENT = '#8B5CF6';
 const CARD = 'rgba(255,255,255,0.035)';
@@ -47,12 +48,14 @@ function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: React.R
   );
 }
 
-export function CohortsTab() {
+export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) => void }) {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [bannerOpen, setBannerOpen] = useState(true);
+  const [studentQuery, setStudentQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   // Opprett-kull-skjema.
   const [creating, setCreating] = useState(false);
@@ -137,6 +140,13 @@ export function CohortsTab() {
     return { label: 'Ingen tilgang', color: 'rgba(255,255,255,0.6)', bg: 'rgba(255,255,255,0.07)' };
   };
   const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+
+  const visibleCohorts = useMemo(() => cohorts.filter((c) => showArchived ? c.archived : !c.archived), [cohorts, showArchived]);
+  const visibleStudents = useMemo(() => {
+    const q = studentQuery.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) => s.name.toLowerCase().includes(q) || (s.email ?? '').toLowerCase().includes(q));
+  }, [students, studentQuery]);
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
 
@@ -241,11 +251,11 @@ export function CohortsTab() {
         <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', md: '300px 1fr' }, alignItems: 'start' }}>
           <Panel>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-              <T eid="edu-ks-kulllist-title" sx={{ fontWeight: 700, fontSize: 15 }}>Kull ({cohorts.length})</T>
+              <T eid="edu-ks-kulllist-title" sx={{ fontWeight: 700, fontSize: 15 }}>{showArchived ? `Arkiverte (${visibleCohorts.length})` : `Kull (${visibleCohorts.length})`}</T>
             </Stack>
-            {cohorts.length === 0 ? (
-              <T eid="edu-ks-kulllist-empty" sx={{ fontSize: 13, color: 'text.secondary', py: 1 }}>Ingen kull ennå. Opprett ditt første over.</T>
-            ) : cohorts.map((c) => {
+            {visibleCohorts.length === 0 ? (
+              <T eid="edu-ks-kulllist-empty" sx={{ fontSize: 13, color: 'text.secondary', py: 1 }}>{showArchived ? 'Ingen arkiverte kull.' : 'Ingen kull ennå. Opprett ditt første over.'}</T>
+            ) : visibleCohorts.map((c) => {
               const active = c.id === selectedId;
               return (
                 <Box key={c.id} sx={{ position: 'relative', mb: 1 }}>
@@ -259,22 +269,20 @@ export function CohortsTab() {
                 </Box>
               );
             })}
-            <Button fullWidth startIcon={<ArchiveIcon />} sx={{ mt: 0.5, borderRadius: 2, textTransform: 'none', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
-              <T eid="edu-ks-archived" component="span">Arkiverte kull</T>
+            <Button fullWidth startIcon={<ArchiveIcon />} onClick={() => setShowArchived((v) => !v)} sx={{ mt: 0.5, borderRadius: 2, textTransform: 'none', color: showArchived ? '#c4b5fd' : 'rgba(255,255,255,0.7)', border: `1px solid ${showArchived ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.12)'}` }}>
+              <T eid="edu-ks-archived" component="span">{showArchived ? 'Vis aktive kull' : 'Arkiverte kull'}</T>
             </Button>
           </Panel>
 
           <Panel sx={{ p: 0, overflow: 'hidden' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
-              <T eid="edu-ks-studenttbl-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>{selected ? `Studenter i ${selected.name} (${students.length})` : 'Velg et kull'}</T>
+              <T eid="edu-ks-studenttbl-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>{selected ? `Studenter i ${selected.name} (${visibleStudents.length}${studentQuery.trim() ? ` av ${students.length}` : ''})` : 'Velg et kull'}</T>
               <Stack direction="row" spacing={1}>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.6, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
                   <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-                  <InputBase placeholder="Søk etter student" sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+                  <InputBase placeholder="Søk etter student" value={studentQuery} onChange={(e) => setStudentQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+                  {studentQuery && <IconButton size="small" onClick={() => setStudentQuery('')} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>}
                 </Stack>
-                <Button startIcon={<FilterIcon sx={{ fontSize: '15px !important' }} />} sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12.5, color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                  <T eid="edu-ks-filter" component="span" sx={{ fontSize: 12.5 }}>Filter</T>
-                </Button>
               </Stack>
             </Stack>
             {/* add-student-rad */}
@@ -294,7 +302,9 @@ export function CohortsTab() {
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box>
             ) : students.length === 0 ? (
               <T eid="edu-ks-students-empty" sx={{ p: 3, textAlign: 'center', color: 'text.secondary', fontSize: 13, display: 'block' }}>Ingen studenter i dette kullet ennå — legg til over eller importer fra Canvas.</T>
-            ) : students.map((s) => {
+            ) : visibleStudents.length === 0 ? (
+              <T eid="edu-ks-students-nomatch" sx={{ p: 3, textAlign: 'center', color: 'text.secondary', fontSize: 13, display: 'block' }}>Ingen studenter matcher «{studentQuery}».</T>
+            ) : visibleStudents.map((s) => {
               const b = statusBadge(s.status);
               return (
                 <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', alignItems: 'center', px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -320,10 +330,10 @@ export function CohortsTab() {
       <Stack spacing={2}>
         <Panel>
           <T eid="edu-ks-rail-qa-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1 }}>Hurtighandlinger</T>
-          <QuickAction eid="edu-ks-qa-invite" icon={<InviteIcon />} label="Inviter student" onClick={() => setCreating(true)} />
+          <QuickAction eid="edu-ks-qa-invite" icon={<InviteIcon />} label="Inviter student" onClick={() => { setCreating(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
           <QuickAction eid="edu-ks-qa-csv" icon={<CsvIcon />} label="Importer CSV" />
           <QuickAction eid="edu-ks-qa-group" icon={<CohortIcon />} label="Opprett gruppe" />
-          <QuickAction eid="edu-ks-qa-assign" icon={<CheckIcon />} label="Tildel oppgave" />
+          <QuickAction eid="edu-ks-qa-assign" icon={<CheckIcon />} label="Tildel oppgave" onClick={() => onNavigate?.('assignments')} />
         </Panel>
         <Panel>
           <T eid="edu-ks-rail-sync-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1.25 }}>Synkronisering</T>

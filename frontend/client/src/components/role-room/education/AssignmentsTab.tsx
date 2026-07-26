@@ -12,7 +12,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, InputBase, LinearProgress,
+  CircularProgress, Alert, InputBase, LinearProgress, Select,
 } from '@mui/material';
 import {
   Assignment as AssignmentIcon, Add as AddIcon, GridView as TemplateIcon,
@@ -53,6 +53,10 @@ export function AssignmentsTab() {
 
   const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '' });
   const setField = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatus>('all');
+  const [cohortFilter, setCohortFilter] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -100,6 +104,16 @@ export function AssignmentsTab() {
       { id: 'mangler', label: 'Manglende innleveringer', value: missing, hint: 'Krever oppfølging', icon: <MissingIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
     ];
   }, [assignments]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return assignments.filter((a) => {
+      if (q && !a.title.toLowerCase().includes(q) && !(a.brief ?? '').toLowerCase().includes(q)) return false;
+      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
+      if (cohortFilter !== 'all' && a.cohortId !== cohortFilter) return false;
+      return true;
+    });
+  }, [assignments, query, statusFilter, cohortFilter]);
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
 
@@ -170,15 +184,22 @@ export function AssignmentsTab() {
       {/* Filter + tabell */}
       <Panel sx={{ p: 0, overflow: 'hidden' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
-          {[['status', 'Alle status'], ['kull', 'Alle kull'], ['typer', 'Alle typer']].map(([id, label]) => (
-            <Stack key={id} direction="row" alignItems="center" spacing={0.5} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
-              <T eid={`edu-op-filter-${id}`} component="span" sx={{ fontSize: 12.5 }}>{label}</T><CaretIcon sx={{ fontSize: 15 }} />
-            </Stack>
-          ))}
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | AssignmentStatus)} size="small" IconComponent={CaretIcon}
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle status</MenuItem>
+            <MenuItem value="published" sx={{ fontSize: 12.5 }}>Pågår</MenuItem>
+            <MenuItem value="draft" sx={{ fontSize: 12.5 }}>Utkast</MenuItem>
+            <MenuItem value="archived" sx={{ fontSize: 12.5 }}>Arkivert</MenuItem>
+          </Select>
+          <Select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} size="small" IconComponent={CaretIcon}
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle kull</MenuItem>
+            {cohorts.map((c) => <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12.5 }}>{c.name}</MenuItem>)}
+          </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
             <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-            <InputBase placeholder="Søk i oppgaver" sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+            <InputBase placeholder="Søk i oppgaver" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
           </Stack>
         </Stack>
 
@@ -190,7 +211,9 @@ export function AssignmentsTab() {
 
         {assignments.length === 0 ? (
           <T eid="edu-op-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen oppgaver ennå — opprett din første over.</T>
-        ) : assignments.map((a) => {
+        ) : visible.length === 0 ? (
+          <T eid="edu-op-nomatch" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen oppgaver matcher filteret.</T>
+        ) : visible.map((a) => {
           const sm = STATUS_META[a.status];
           const due = relDue(a.dueAt);
           const pct = a.submittedCount > 0 ? Math.round((a.reviewedCount / a.submittedCount) * 100) : 0;

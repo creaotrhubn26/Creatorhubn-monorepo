@@ -13,7 +13,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, InputBase,
+  CircularProgress, Alert, InputBase, Select,
 } from '@mui/material';
 import {
   MenuBook as LibraryIcon, Add as AddIcon, UploadFile as UploadIcon,
@@ -47,6 +47,9 @@ export function FagstoffTab() {
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState({ title: '', category: 'idea' as ResourceCategory, description: '', url: '' });
+  const [query, setQuery] = useState('');
+  const [stegFilter, setStegFilter] = useState<'all' | ResourceCategory>('all');
+  const [typeFilter, setTypeFilter] = useState('all');
   const setField = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const load = useCallback(async () => {
@@ -78,8 +81,16 @@ export function FagstoffTab() {
   };
 
   const grouped = useMemo(() => {
-    return RESOURCE_CATEGORIES.map((cat) => ({ cat, items: resources.filter((r) => r.category === cat.key) })).filter((g) => g.items.length > 0);
-  }, [resources]);
+    const q = query.trim().toLowerCase();
+    const cats = stegFilter === 'all' ? RESOURCE_CATEGORIES : RESOURCE_CATEGORIES.filter((c) => c.key === stegFilter);
+    return cats.map((cat) => ({
+      cat,
+      items: resources.filter((r) => r.category === cat.key
+        && (!q || r.title.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q))
+        && (typeFilter === 'all' || resourceType(r).label === typeFilter)),
+    })).filter((g) => g.items.length > 0);
+  }, [resources, query, stegFilter, typeFilter]);
+  const anyFilter = query.trim() !== '' || stegFilter !== 'all' || typeFilter !== 'all';
   const existingTitles = useMemo(() => new Set(resources.map((r) => r.title.toLowerCase())), [resources]);
   const suggestions = SUGGESTED_RESOURCES.filter((s) => !existingTitles.has(s.title.toLowerCase())).slice(0, 4);
 
@@ -152,21 +163,25 @@ export function FagstoffTab() {
 
         {/* Filter-bar */}
         <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-          {[['steg', 'Alle produksjonssteg'], ['typer', 'Alle typer']].map(([id, label]) => (
-            <Stack key={id} direction="row" alignItems="center" spacing={0.5} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
-              <T eid={`edu-fs-filter-${id}`} component="span" sx={{ fontSize: 12.5 }}>{label}</T><CaretIcon sx={{ fontSize: 15 }} />
-            </Stack>
-          ))}
+          <Select value={stegFilter} onChange={(e) => setStegFilter(e.target.value as 'all' | ResourceCategory)} size="small" IconComponent={CaretIcon}
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 160, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle produksjonssteg</MenuItem>
+            {RESOURCE_CATEGORIES.map((c) => <MenuItem key={c.key} value={c.key} sx={{ fontSize: 12.5 }}>{c.label}</MenuItem>)}
+          </Select>
+          <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} size="small" IconComponent={CaretIcon}
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 120, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            {['all', 'VIDEO', 'PDF', 'ARTIKKEL', 'LENKE', 'NOTAT'].map((t) => <MenuItem key={t} value={t} sx={{ fontSize: 12.5 }}>{t === 'all' ? 'Alle typer' : t}</MenuItem>)}
+          </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
             <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-            <InputBase placeholder="Søk i fagstoff" sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+            <InputBase placeholder="Søk i fagstoff" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
           </Stack>
         </Stack>
 
         {/* Ressurser gruppert per kategori */}
         {grouped.length === 0 ? (
-          <Panel><T eid="edu-fs-empty" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 13.5, py: 3, display: 'block' }}>Ingen leksjoner ennå — legg til en, eller bruk et startforslag fra høyre.</T></Panel>
+          <Panel><T eid="edu-fs-empty" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 13.5, py: 3, display: 'block' }}>{anyFilter ? 'Ingen leksjoner matcher filteret.' : 'Ingen leksjoner ennå — legg til en, eller bruk et startforslag fra høyre.'}</T></Panel>
         ) : grouped.map((g) => (
           <Box key={g.cat.key}>
             <Typography sx={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.5)', mb: 1.25 }}>{g.cat.label}</Typography>

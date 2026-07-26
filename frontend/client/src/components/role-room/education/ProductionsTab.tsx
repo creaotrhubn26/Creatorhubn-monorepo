@@ -13,7 +13,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, InputBase,
+  CircularProgress, Alert, InputBase, Select,
 } from '@mui/material';
 import {
   MovieCreation as ProductionIcon, Add as AddIcon, CalendarMonth as CalendarIcon,
@@ -25,6 +25,9 @@ import {
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { ACCENT, Panel, T, QuickAction, RailTips } from './_eduUi';
+import type { EducationTabId } from './EducationWorkspace';
+
+const STATUS_OPTIONS = ['Alle status', 'Planlegging', 'Pre-produksjon', 'Innspilling', 'Redigering', 'Levert'];
 
 const PIPE_LABELS = ['Brief', 'Pre-prod.', 'Opptak', 'Post', 'Levering'];
 
@@ -61,7 +64,7 @@ function Pipeline({ stage, color }: { stage: number; color: string }) {
 
 const THUMBS = ['linear-gradient(135deg,#1e3a5f,#2a4a6f)', 'linear-gradient(135deg,#1a4a2e,#2f6b3f)', 'linear-gradient(135deg,#3a3550,#4a4560)', 'linear-gradient(135deg,#3a1f5f,#4a2f6f)'];
 
-export function ProductionsTab() {
+export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) => void }) {
   const [productions, setProductions] = useState<Production[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +73,8 @@ export function ProductionsTab() {
   const [title, setTitle] = useState('');
   const [cohortId, setCohortId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Alle status');
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -95,6 +100,15 @@ export function ProductionsTab() {
     catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke slette'); }
   };
   const cohortName = (id: string | null) => cohorts.find((c) => c.id === id)?.name ?? '—';
+
+  const visibleProductions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return productions.filter((p) => {
+      if (q && !p.title.toLowerCase().includes(q)) return false;
+      if (statusFilter !== 'Alle status' && mapPipeline(p.projectStatus).pill !== statusFilter) return false;
+      return true;
+    });
+  }, [productions, query, statusFilter]);
 
   const activeCount = productions.length;
   const inProd = productions.filter((p) => mapPipeline(p.projectStatus).stage === 2).length;
@@ -177,19 +191,22 @@ export function ProductionsTab() {
           <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <T eid="edu-sp-list-title" sx={{ fontWeight: 700, fontSize: 17 }}>Produksjoner</T>
             <Stack direction="row" spacing={1}>
-              <Stack direction="row" alignItems="center" spacing={0.75} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)', fontSize: 12.5 }}>
-                <T eid="edu-sp-filter-status" component="span" sx={{ fontSize: 12.5 }}>Alle status</T><CaretIcon sx={{ fontSize: 15 }} />
-              </Stack>
+              <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="small" IconComponent={CaretIcon}
+                sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+                {STATUS_OPTIONS.map((o) => <MenuItem key={o} value={o} sx={{ fontSize: 12.5 }}>{o}</MenuItem>)}
+              </Select>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
                 <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-                <InputBase placeholder="Søk i produksjoner" sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+                <InputBase placeholder="Søk i produksjoner" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
               </Stack>
             </Stack>
           </Stack>
 
           {productions.length === 0 ? (
             <T eid="edu-sp-empty" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 13.5, py: 4, display: 'block' }}>Ingen produksjoner ennå — opprett din første under.</T>
-          ) : productions.map((p, i) => {
+          ) : visibleProductions.length === 0 ? (
+            <T eid="edu-sp-nomatch" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 13.5, py: 4, display: 'block' }}>Ingen produksjoner matcher filteret.</T>
+          ) : visibleProductions.map((p, i) => {
             const pl = mapPipeline(p.projectStatus);
             return (
               <Stack key={p.id} direction="row" alignItems="center" spacing={2.25} sx={{ py: 2, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none', flexWrap: { xs: 'wrap', xl: 'nowrap' } }}>
@@ -252,10 +269,10 @@ export function ProductionsTab() {
         </Panel>
         <Panel>
           <T eid="edu-sp-rail-qa-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1 }}>Hurtighandlinger</T>
-          <QuickAction eid="edu-sp-qa-invite" icon={<InviteIcon />} label="Inviter team" />
-          <QuickAction eid="edu-sp-qa-callsheet" icon={<CallSheetIcon />} label="Opprett call sheet" />
-          <QuickAction eid="edu-sp-qa-deliver" icon={<DeliverIcon />} label="Legg til leveranse" />
-          <QuickAction eid="edu-sp-qa-review" icon={<ReviewIcon />} label="Start review" />
+          <QuickAction eid="edu-sp-qa-invite" icon={<InviteIcon />} label="Inviter team" onClick={() => onNavigate?.('cohorts')} />
+          <QuickAction eid="edu-sp-qa-callsheet" icon={<CallSheetIcon />} label="Opprett call sheet" onClick={() => { const p = productions[0]; if (p) openProductionInRoleRoom(p.projectId); }} />
+          <QuickAction eid="edu-sp-qa-deliver" icon={<DeliverIcon />} label="Legg til leveranse" onClick={() => onNavigate?.('assignments')} />
+          <QuickAction eid="edu-sp-qa-review" icon={<ReviewIcon />} label="Start review" onClick={() => onNavigate?.('assessment')} />
         </Panel>
         <RailTips idPrefix="edu-sp" title="Tips fra The Role Room" body="Bruk maler for å sikre at alle prosjekter har en rød tråd og at viktige leveranser ikke glemmes." link="Se alle tips →" />
       </Stack>

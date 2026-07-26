@@ -42,7 +42,7 @@ import {
   KeyboardArrowDown as CaretIcon,
 } from '@mui/icons-material';
 
-type EducationTabId =
+export type EducationTabId =
   | 'overview'
   | 'cohorts'
   | 'productions'
@@ -209,8 +209,8 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
   const renderTab = () => {
     switch (active.id) {
       case 'overview': return <OverviewTab onNavigate={setActiveTab} />;
-      case 'cohorts': return <CohortsTab />;
-      case 'productions': return <ProductionsTab />;
+      case 'cohorts': return <CohortsTab onNavigate={setActiveTab} />;
+      case 'productions': return <ProductionsTab onNavigate={setActiveTab} />;
       case 'assignments': return <AssignmentsTab />;
       case 'fagstoff': return <FagstoffTab />;
       case 'assessment': return <AssessmentTab />;

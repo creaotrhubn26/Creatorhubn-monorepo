@@ -33,6 +33,7 @@ export function PortfolioTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cohortFilter, setCohortFilter] = useState('');
+  const [query, setQuery] = useState('');
   const [sharing, setSharing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -72,7 +73,10 @@ export function PortfolioTab() {
     } catch { setToast('Kunne ikke åpne studentens portefølje.'); }
   };
 
-  const visible = useMemo(() => cohortFilter ? rows.filter((r) => r.cohort.id === cohortFilter) : rows, [rows, cohortFilter]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((r) => (!cohortFilter || r.cohort.id === cohortFilter) && (!q || r.student.name.toLowerCase().includes(q)));
+  }, [rows, cohortFilter, query]);
 
   const kpis = [
     { id: 'porteflojer', label: 'Porteføljer', value: rows.length, hint: 'På tvers av alle kull', icon: <PortfolioIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
@@ -134,7 +138,7 @@ export function PortfolioTab() {
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
             <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-            <InputBase placeholder="Søk etter student" sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+            <InputBase placeholder="Søk etter student" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
           </Stack>
         </Stack>
 
@@ -145,7 +149,7 @@ export function PortfolioTab() {
         </Box>
 
         {visible.length === 0 ? (
-          <T eid="edu-pf-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen studentporteføljer ennå — legg til studenter i Kull &amp; studenter først.</T>
+          <T eid="edu-pf-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>{rows.length === 0 ? 'Ingen studentporteføljer ennå — legg til studenter i Kull & studenter først.' : 'Ingen studenter matcher filteret.'}</T>
         ) : visible.map((r) => (
           <Box key={r.student.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 100px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
