@@ -1,492 +1,352 @@
 /**
- * CohortsTab.tsx — «Kull & studenter»-flaten i utdannings-workspacet.
- * Full CRUD mot educationCohortsService: opprett kull, legg til studenter,
- * slett. Owner-scopet server-side (institusjonen ser kun sine egne).
+ * CohortsTab.tsx — «Kull & studenter» (redesign, CMS-koblet).
+ *
+ * Ekte data via educationCohortsService (kull + studenter + CRUD). Design speiler
+ * mockup: Canvas-oppdagelsesbanner, oppsett-stepper, KPI-kort, kull-liste og
+ * student-tabell + høyre skinne. Canvas-spesifikke deler (kurs-import, live sync)
+ * er statiske «kommer»-flater til Canvas-API-integrasjonen er bygd.
+ *
+ * 🔑 CMS: hvert statiske element har en stabil data-edit-id, så visual-editoren
+ * (useElementEdits/WorkspaceDesignOverlay i App.tsx) kan redigere alt drift-sikkert.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Box, Stack, Typography, Card, CardContent, CardActionArea, Button, TextField,
-  IconButton, Chip, CircularProgress, Divider, Alert, Tooltip, LinearProgress,
+  Box, Stack, Typography, Card, CardActionArea, Button, IconButton, Chip,
+  CircularProgress, Alert, Collapse, TextField, Tooltip, InputBase, Avatar,
 } from '@mui/material';
 import {
-  Add as AddIcon, Delete as DeleteIcon, Groups as CohortIcon,
-  ArrowBack as BackIcon, PersonAdd as PersonAddIcon, VpnKey as InviteIcon,
-  ContentCopy as CopyIcon, Check as CheckIcon,
+  Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon,
+  CheckCircle as CheckIcon, PersonAdd as InviteIcon, UploadFile as CsvIcon,
+  ChevronRight as ChevronIcon, Search as SearchIcon, FilterList as FilterIcon,
+  Sync as SyncIcon, CloudUpload as ImportIcon, Delete as DeleteIcon,
+  KeyboardArrowDown as CaretIcon, Inventory2 as ArchiveIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
-import { educationStudentInvitesService, type StudentInvite } from './educationStudentInvitesService';
-import { educationCensorService, type CensorInvite } from './educationCensorService';
-import { educationLearningGoalsService, type LearningGoal, type GoalAttainment } from './educationLearningGoalsService';
-import { FactCheck as CensorIcon, Flag as GoalIcon } from '@mui/icons-material';
-
-const claimLink = (token: string) => `${window.location.origin}/role-room/student/claim?token=${encodeURIComponent(token)}`;
-const censorLink = (token: string) => `${window.location.origin}/role-room/censor/claim?token=${encodeURIComponent(token)}`;
 
 const ACCENT = '#8B5CF6';
+const CARD = 'rgba(255,255,255,0.035)';
+const BORDER = '1px solid rgba(255,255,255,0.08)';
+
+/** data-edit-id-tagget Typography (kortform for CMS-redigerbar tekst). */
+function T({ eid, children, sx, variant, component }: { eid: string; children: React.ReactNode; sx?: object; variant?: 'inherit' | 'h5' | 'h6'; component?: React.ElementType }) {
+  return <Typography data-edit-id={eid} variant={variant} component={component} sx={sx}>{children}</Typography>;
+}
+
+function Panel({ children, sx }: { children: React.ReactNode; sx?: object }) {
+  return <Card sx={{ bgcolor: CARD, border: BORDER, borderRadius: 3, p: 2.5, ...sx }}>{children}</Card>;
+}
+
+function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
+  return (
+    <Stack direction="row" alignItems="center" spacing={1.25} onClick={onClick} sx={{ py: 1.1, cursor: 'pointer', color: 'rgba(255,255,255,0.85)', '&:hover': { color: '#fff' } }}>
+      <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', flexShrink: 0, '& svg': { fontSize: 16 } }}>{icon}</Box>
+      <T eid={eid} sx={{ fontSize: 13, flex: 1 }}>{label}</T>
+      <ChevronIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }} />
+    </Stack>
+  );
+}
 
 export function CohortsTab() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Cohort | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [bannerOpen, setBannerOpen] = useState(true);
 
+  // Opprett-kull-skjema.
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newProgram, setNewProgram] = useState('');
   const [newTerm, setNewTerm] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Studenter for valgt kull.
+  const [students, setStudents] = useState<Student[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+
   const loadCohorts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      setCohorts(await educationCohortsService.listCohorts());
+      const list = await educationCohortsService.listCohorts();
+      setCohorts(list);
+      setSelectedId((prev) => prev ?? list[0]?.id ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kunne ikke hente kull');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, []);
-
   useEffect(() => { void loadCohorts(); }, [loadCohorts]);
+
+  const selected = useMemo(() => cohorts.find((c) => c.id === selectedId) ?? null, [cohorts, selectedId]);
+
+  const loadStudents = useCallback(async (id: string) => {
+    setStudentsLoading(true);
+    try { setStudents(await educationCohortsService.listStudents(id)); }
+    catch { setStudents([]); }
+    finally { setStudentsLoading(false); }
+  }, []);
+  useEffect(() => { if (selectedId) void loadStudents(selectedId); }, [selectedId, loadStudents]);
 
   const handleCreate = async () => {
     if (!newName.trim() || busy) return;
-    setBusy(true);
+    setBusy(true); setError(null);
     try {
-      const cohort = await educationCohortsService.createCohort({
-        name: newName.trim(),
-        program: newProgram.trim() || undefined,
-        term: newTerm.trim() || undefined,
-      });
-      setCohorts((prev) => [cohort, ...prev]);
+      const c = await educationCohortsService.createCohort({ name: newName.trim(), program: newProgram.trim() || undefined, term: newTerm.trim() || undefined });
       setNewName(''); setNewProgram(''); setNewTerm(''); setCreating(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke opprette kull');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDeleteCohort = async (id: string) => {
-    try {
-      await educationCohortsService.deleteCohort(id);
-      setCohorts((prev) => prev.filter((c) => c.id !== id));
-      if (selected?.id === id) setSelected(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke slette kull');
-    }
-  };
-
-  if (selected) {
-    return <StudentsView cohort={selected} onBack={() => { setSelected(null); void loadCohorts(); }} onError={setError} error={error} />;
-  }
-
-  return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>Kull & studenter</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)}
-          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT, opacity: 0.9 } }}>
-          Nytt kull
-        </Button>
-      </Stack>
-
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-
-      {creating && (
-        <Card sx={{ bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.24)' }}>
-          <CardContent sx={{ display: 'grid', gap: 1.5 }}>
-            <TextField label="Navn på kull" size="small" value={newName} onChange={(e) => setNewName(e.target.value)}
-              autoFocus required placeholder="Film 1. år 2026" />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <TextField label="Studieprogram (valgfritt)" size="small" value={newProgram} onChange={(e) => setNewProgram(e.target.value)} fullWidth />
-              <TextField label="Termin (valgfritt)" size="small" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} placeholder="Høst 2026" fullWidth />
-            </Stack>
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button onClick={() => setCreating(false)} disabled={busy}>Avbryt</Button>
-              <Button variant="contained" onClick={handleCreate} disabled={!newName.trim() || busy}
-                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT } }}>
-                {busy ? 'Oppretter…' : 'Opprett kull'}
-              </Button>
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
-      ) : cohorts.length === 0 ? (
-        <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(139,92,246,0.3)' }}>
-          <CardContent sx={{ textAlign: 'center', p: 4 }}>
-            <CohortIcon sx={{ fontSize: 40, color: ACCENT, mb: 1 }} />
-            <Typography sx={{ color: 'rgba(255,255,255,0.72)' }}>Ingen kull enda. Opprett ditt første kull for å legge til studenter.</Typography>
-          </CardContent>
-        </Card>
-      ) : (
-        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' } }}>
-          {cohorts.map((c) => (
-            <Card key={c.id} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
-              <CardActionArea onClick={() => setSelected(c)} sx={{ p: 2 }}>
-                <Stack spacing={0.5}>
-                  <Typography sx={{ fontWeight: 700 }}>{c.name}</Typography>
-                  {c.program && <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{c.program}</Typography>}
-                  <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                    {c.term && <Chip size="small" label={c.term} sx={{ height: 20, fontSize: 10 }} />}
-                    <Chip size="small" label={`${c.studentCount} student${c.studentCount === 1 ? '' : 'er'}`}
-                      sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
-                    {c.archived && <Chip size="small" label="Arkivert" sx={{ height: 20, fontSize: 10 }} />}
-                  </Stack>
-                </Stack>
-              </CardActionArea>
-              <IconButton size="small" onClick={() => handleDeleteCohort(c.id)}
-                sx={{ position: 'absolute', top: 4, right: 4, color: 'rgba(255,255,255,0.4)' }} aria-label="Slett kull">
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Card>
-          ))}
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function StudentsView({ cohort, onBack, onError, error }: {
-  cohort: Cohort; onBack: () => void; onError: (m: string | null) => void; error: string | null;
-}) {
-  const [students, setStudents] = useState<Student[]>([]);
-  const [invites, setInvites] = useState<Record<string, StudentInvite>>({});
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [invitingId, setInvitingId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [list, inviteList] = await Promise.all([
-        educationCohortsService.listStudents(cohort.id),
-        educationStudentInvitesService.listCohortInvites(cohort.id).catch(() => []),
-      ]);
-      setStudents(list);
-      setInvites(Object.fromEntries(inviteList.map((iv) => [iv.studentId, iv])));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke hente studenter');
-    } finally {
-      setLoading(false);
-    }
-  }, [cohort.id, onError]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const handleInvite = async (id: string) => {
-    setInvitingId(id);
-    try {
-      const inv = await educationStudentInvitesService.invite(id);
-      setInvites((prev) => ({ ...prev, [id]: inv }));
-      if (inv.token) void handleCopy(id, inv.token);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke klargjøre tilgang');
-    } finally {
-      setInvitingId(null);
-    }
-  };
-
-  const handleCopy = async (id: string, token: string) => {
-    try {
-      await navigator.clipboard.writeText(claimLink(token));
-      setCopiedId(id);
-      window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1800);
-    } catch { /* utrygg kontekst / no-op */ }
-  };
-
-  const handleRevoke = async (id: string) => {
-    setInvitingId(id);
-    try {
-      await educationStudentInvitesService.revoke(id);
-      setInvites((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake');
-    } finally {
-      setInvitingId(null);
-    }
-  };
-
-  const handleAdd = async () => {
-    if (!name.trim() || busy) return;
-    setBusy(true);
-    try {
-      const s = await educationCohortsService.addStudent(cohort.id, { name: name.trim(), email: email.trim() || undefined });
-      setStudents((prev) => [...prev, s]);
-      setName(''); setEmail('');
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke legge til student');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await educationCohortsService.deleteStudent(id);
-      setStudents((prev) => prev.filter((s) => s.id !== id));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke slette student');
-    }
-  };
-
-  return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Stack direction="row" alignItems="center" spacing={1}>
-        <IconButton onClick={onBack} sx={{ color: '#fff' }} aria-label="Tilbake"><BackIcon /></IconButton>
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{cohort.name}</Typography>
-          {cohort.program && <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{cohort.program}{cohort.term ? ` · ${cohort.term}` : ''}</Typography>}
-        </Box>
-      </Stack>
-
-      {error && <Alert severity="error" onClose={() => onError(null)}>{error}</Alert>}
-
-      <Card sx={{ bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.24)' }}>
-        <CardContent>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
-            <TextField label="Navn" size="small" value={name} onChange={(e) => setName(e.target.value)} fullWidth />
-            <TextField label="E-post (valgfritt)" size="small" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
-            <Button variant="contained" startIcon={<PersonAddIcon />} onClick={handleAdd} disabled={!name.trim() || busy}
-              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>
-              Legg til
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Typography sx={{ fontSize: 11.5, color: 'text.disabled' }}>
-        «Inviter» lager en innloggingslenke — kopier den (📋) og del med studenten. De logger inn og ser Min side.
-      </Typography>
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
-      ) : students.length === 0 ? (
-        <Typography sx={{ color: 'text.disabled', textAlign: 'center', p: 2 }}>Ingen studenter i dette kullet enda.</Typography>
-      ) : (
-        <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {students.map((s, i) => (
-            <Box key={s.id}>
-              {i > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
-              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 2, py: 1.25 }}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{s.name}</Typography>
-                  {s.email && <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{s.email}</Typography>}
-                </Box>
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  {invites[s.id]?.status === 'accepted' ? (
-                    <Chip size="small" label="Aktivert" sx={{ height: 20, fontSize: 10, color: '#10b981', borderColor: '#10b981' }} variant="outlined" />
-                  ) : invites[s.id]?.status === 'pending' ? (
-                    <>
-                      <Chip size="small" label="Invitert" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
-                      {invites[s.id]?.token && (
-                        <Tooltip title={copiedId === s.id ? 'Lenke kopiert' : 'Kopier innloggingslenke'}>
-                          <span><IconButton size="small" onClick={() => handleCopy(s.id, invites[s.id]!.token as string)} sx={{ color: copiedId === s.id ? '#10b981' : ACCENT }} aria-label="Kopier lenke">
-                            {copiedId === s.id ? <CheckIcon fontSize="small" /> : <CopyIcon fontSize="small" />}
-                          </IconButton></span>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="Trekk tilbake tilgang">
-                        <span><IconButton size="small" onClick={() => handleRevoke(s.id)} disabled={invitingId === s.id} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Trekk tilbake"><DeleteIcon fontSize="small" /></IconButton></span>
-                      </Tooltip>
-                    </>
-                  ) : (
-                    <Tooltip title="Klargjør studenttilgang">
-                      <span>
-                        <Button size="small" startIcon={<InviteIcon sx={{ fontSize: '16px !important' }} />} onClick={() => handleInvite(s.id)} disabled={invitingId === s.id}
-                          sx={{ color: ACCENT, textTransform: 'none', fontSize: 12, minWidth: 0 }}>
-                          Inviter
-                        </Button>
-                      </span>
-                    </Tooltip>
-                  )}
-                  <Tooltip title="Fjern student">
-                    <span><IconButton size="small" onClick={() => handleDelete(s.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Fjern student"><DeleteIcon fontSize="small" /></IconButton></span>
-                  </Tooltip>
-                </Stack>
-              </Stack>
-            </Box>
-          ))}
-        </Card>
-      )}
-
-      <LearningGoalsPanel cohortId={cohort.id} onError={onError} />
-      <CensorInvitePanel cohortId={cohort.id} onError={onError} />
-    </Box>
-  );
-}
-
-function LearningGoalsPanel({ cohortId, onError }: { cohortId: string; onError: (m: string | null) => void }) {
-  const [goals, setGoals] = useState<LearningGoal[]>([]);
-  const [attainment, setAttainment] = useState<GoalAttainment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [code, setCode] = useState('');
-  const [title, setTitle] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const [g, a] = await Promise.all([
-        educationLearningGoalsService.listGoals(cohortId),
-        educationLearningGoalsService.getAttainment(cohortId).catch(() => []),
-      ]);
-      setGoals(g); setAttainment(a);
-    } catch { /* tomt greit */ } finally { setLoading(false); }
-  }, [cohortId]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const add = async () => {
-    if (!title.trim() || busy) return;
-    setBusy(true);
-    try {
-      const g = await educationLearningGoalsService.addGoal(cohortId, { code: code.trim() || undefined, title: title.trim() });
-      setGoals((prev) => [...prev, g]);
-      setCode(''); setTitle('');
-    } catch (e) { onError(e instanceof Error ? e.message : 'Kunne ikke legge til læringsmål'); }
+      await loadCohorts(); setSelectedId(c.id);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette kull'); }
     finally { setBusy(false); }
   };
 
-  const remove = async (id: string) => {
-    try {
-      await educationLearningGoalsService.deleteGoal(id);
-      setGoals((prev) => prev.filter((g) => g.id !== id));
-      setAttainment((prev) => prev.filter((a) => a.goalId !== id));
-    } catch (e) { onError(e instanceof Error ? e.message : 'Kunne ikke slette'); }
+  const handleDeleteCohort = async (id: string) => {
+    try { await educationCohortsService.deleteCohort(id); if (selectedId === id) setSelectedId(null); await loadCohorts(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke slette'); }
   };
 
-  if (loading) return null;
-  const attMap = new Map(attainment.map((a) => [a.goalId, a]));
-
-  return (
-    <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.2)' }}>
-      <CardContent sx={{ display: 'grid', gap: 1 }}>
-        <Stack direction="row" alignItems="center" spacing={0.75}>
-          <GoalIcon sx={{ fontSize: 18, color: ACCENT }} />
-          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Læringsmål & måloppnåelse</Typography>
-        </Stack>
-        <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>
-          Definer læringsmålene for kullet. Koble rubrikk-kriterier til dem (i oppgavene), så beregnes måloppnåelsen automatisk her — for faglærer og sensor.
-        </Typography>
-        {goals.length === 0 && <Typography sx={{ fontSize: 12.5, color: 'text.disabled' }}>Ingen læringsmål enda.</Typography>}
-        {goals.map((g) => {
-          const a = attMap.get(g.id);
-          const hasScores = a && a.scoreCount > 0;
-          return (
-            <Box key={g.id} sx={{ display: 'grid', gap: 0.5 }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{g.code ? `${g.code}: ` : ''}{g.title}</Typography>
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  {a && a.criteriaCount > 0 && <Chip size="small" label={hasScores ? `${a.pct}%` : `${a.criteriaCount} kriterier`} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />}
-                  <IconButton size="small" onClick={() => remove(g.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Slett læringsmål"><DeleteIcon fontSize="small" /></IconButton>
-                </Stack>
-              </Stack>
-              {hasScores && <LinearProgress variant="determinate" value={a!.pct} sx={{ height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: a!.pct >= 67 ? '#10b981' : a!.pct >= 34 ? ACCENT : '#ef4444' } }} />}
-            </Box>
-          );
-        })}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 0.5 }}>
-          <TextField label="Kode" size="small" value={code} onChange={(e) => setCode(e.target.value)} placeholder="LM1" sx={{ width: { xs: '100%', sm: 90 } }} />
-          <TextField label="Læringsmål" size="small" value={title} onChange={(e) => setTitle(e.target.value)} fullWidth placeholder="Kan bygge en troverdig fortelling" />
-          <Button variant="contained" onClick={add} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>Legg til</Button>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CensorInvitePanel({ cohortId, onError }: { cohortId: string; onError: (m: string | null) => void }) {
-  const [invites, setInvites] = useState<CensorInvite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    void educationCensorService.listCohortInvites(cohortId)
-      .then(setInvites)
-      .catch(() => { /* tomt greit */ })
-      .finally(() => setLoading(false));
-  }, [cohortId]);
-
-  const create = async () => {
-    if (busy) return;
+  const handleAddStudent = async () => {
+    if (!addName.trim() || !selectedId || busy) return;
     setBusy(true);
     try {
-      const inv = await educationCensorService.createInvite({ cohortId, name: name.trim() || undefined });
-      setInvites((prev) => [inv, ...prev]);
-      setName('');
-      void copy(inv.id, inv.token);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke invitere sensor');
-    } finally {
-      setBusy(false);
-    }
+      await educationCohortsService.addStudent(selectedId, { name: addName.trim(), email: addEmail.trim() || undefined });
+      setAddName(''); setAddEmail(''); await loadStudents(selectedId); await loadCohorts();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke legge til student'); }
+    finally { setBusy(false); }
   };
 
-  const copy = async (id: string, token: string) => {
-    try {
-      await navigator.clipboard.writeText(censorLink(token));
-      setCopiedId(id);
-      window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1800);
-    } catch { /* no-op */ }
+  const handleDeleteStudent = async (id: string) => {
+    if (!selectedId) return;
+    try { await educationCohortsService.deleteStudent(id); await loadStudents(selectedId); await loadCohorts(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke fjerne student'); }
   };
 
-  const revoke = async (id: string) => {
-    try {
-      await educationCensorService.revokeInvite(id);
-      setInvites((prev) => prev.filter((i) => i.id !== id));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake');
-    }
-  };
+  const totalStudents = useMemo(() => cohorts.reduce((a, c) => a + (c.studentCount || 0), 0), [cohorts]);
+  const ungrouped = students.filter((s) => s.status === 'invited' || s.status === 'pending').length;
 
-  if (loading) return null;
+  const kpis = [
+    { id: 'studenter', label: 'Studenter', value: totalStudents, hint: 'På tvers av alle kull', color: '#c4b5fd', bg: 'rgba(139,92,246,0.16)', icon: <CohortIcon /> },
+    { id: 'kull', label: 'Kull', value: cohorts.filter((c) => !c.archived).length, hint: 'Aktive dette semesteret', color: '#38bdf8', bg: 'rgba(56,189,248,0.16)', icon: <CanvasIcon /> },
+    { id: 'grupper', label: 'Grupper', value: 0, hint: 'På tvers av alle kull', color: '#34d399', bg: 'rgba(16,185,129,0.16)', icon: <CohortIcon /> },
+    { id: 'utengruppe', label: 'Studenter uten gruppe', value: ungrouped, hint: 'Klar for gruppering', color: '#f59e0b', bg: 'rgba(245,158,11,0.16)', icon: <InviteIcon /> },
+  ];
+
+  const statusBadge = (status: string): { label: string; color: string; bg: string } => {
+    if (status === 'active') return { label: 'Aktiv', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
+    if (status === 'invited' || status === 'pending') return { label: 'Invitert', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+    return { label: 'Ingen tilgang', color: 'rgba(255,255,255,0.6)', bg: 'rgba(255,255,255,0.07)' };
+  };
+  const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
 
   return (
-    <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.2)' }}>
-      <CardContent sx={{ display: 'grid', gap: 1 }}>
-        <Stack direction="row" alignItems="center" spacing={0.75}>
-          <CensorIcon sx={{ fontSize: 18, color: ACCENT }} />
-          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Ekstern sensor</Typography>
-        </Stack>
-        <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>
-          Gi en sensor tidsbegrenset tilgang til å se kullets arbeid + din vurdering, og gi sin egen. Lenken utløper automatisk.
-        </Typography>
-        {invites.map((inv) => (
-          <Stack key={inv.id} direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{inv.name || 'Sensor'}</Typography>
-              <Chip size="small" label={inv.status === 'accepted' ? 'Aktivert' : 'Invitert'} sx={{ height: 18, fontSize: 9.5, mt: 0.25, bgcolor: inv.status === 'accepted' ? 'transparent' : 'rgba(139,92,246,0.22)', color: inv.status === 'accepted' ? '#10b981' : '#e9d5ff', borderColor: inv.status === 'accepted' ? '#10b981' : undefined }} variant={inv.status === 'accepted' ? 'outlined' : 'filled'} />
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 300px' }, gap: 2.75, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gap: 2.5, minWidth: 0 }}>
+        {/* Header */}
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
+          <Stack direction="row" spacing={1.75} alignItems="flex-start">
+            <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CohortIcon /></Box>
+            <Box>
+              <T eid="edu-ks-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Kull &amp; studenter</T>
+              <T eid="edu-ks-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Administrer kull, studenter, roller og synkronisering mot Canvas.</T>
             </Box>
-            <Stack direction="row" spacing={0.5}>
-              <Tooltip title={copiedId === inv.id ? 'Lenke kopiert' : 'Kopier sensor-lenke'}>
-                <span><IconButton size="small" onClick={() => copy(inv.id, inv.token)} sx={{ color: copiedId === inv.id ? '#10b981' : ACCENT }} aria-label="Kopier sensor-lenke">
-                  {copiedId === inv.id ? <CheckIcon fontSize="small" /> : <CopyIcon fontSize="small" />}
-                </IconButton></span>
-              </Tooltip>
-              <Tooltip title="Trekk tilbake">
-                <span><IconButton size="small" onClick={() => revoke(inv.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Trekk tilbake"><DeleteIcon fontSize="small" /></IconButton></span>
-              </Tooltip>
-            </Stack>
           </Stack>
-        ))}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mt: 0.5 }}>
-          <TextField label="Sensorens navn (valgfritt)" size="small" value={name} onChange={(e) => setName(e.target.value)} fullWidth />
-          <Button variant="contained" startIcon={<CensorIcon />} onClick={create} disabled={busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>
-            {busy ? 'Lager…' : 'Inviter sensor'}
-          </Button>
+          <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+            <Button variant="outlined" startIcon={<ImportIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+              <T eid="edu-ks-btn-import" component="span" sx={{ fontWeight: 600 }}>Importer fra Canvas</T>
+            </Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)}
+              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+              <T eid="edu-ks-btn-create" component="span" sx={{ fontWeight: 700 }}>Opprett kull</T>
+            </Button>
+          </Stack>
         </Stack>
-      </CardContent>
-    </Card>
+
+        {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        {/* Opprett-kull-skjema */}
+        <Collapse in={creating}>
+          <Panel sx={{ border: '1px solid rgba(139,92,246,0.35)' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField size="small" label="Navn (f.eks. Film 1. år 2026)" value={newName} onChange={(e) => setNewName(e.target.value)} fullWidth />
+              <TextField size="small" label="Program (valgfritt)" value={newProgram} onChange={(e) => setNewProgram(e.target.value)} fullWidth />
+              <TextField size="small" label="Semester (valgfritt)" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} sx={{ minWidth: 160 }} />
+            </Stack>
+            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1.5 }}>
+              <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+              <Button variant="contained" onClick={handleCreate} disabled={!newName.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Opprett'}</Button>
+            </Stack>
+          </Panel>
+        </Collapse>
+
+        {/* Canvas-oppdagelsesbanner (statisk «kommer») */}
+        <Collapse in={bannerOpen}>
+          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2.25, p: 2.5, borderRadius: 3.5, background: 'linear-gradient(100deg, rgba(139,92,246,0.16), rgba(99,102,241,0.08))', border: '1px solid rgba(139,92,246,0.32)', flexWrap: 'wrap' }}>
+            <Box sx={{ width: 58, height: 58, borderRadius: 3.5, bgcolor: 'rgba(139,92,246,0.22)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CanvasIcon sx={{ fontSize: 28 }} /></Box>
+            <Box sx={{ flex: 1, minWidth: 200 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <T eid="edu-ks-canvas-title" sx={{ fontWeight: 700, fontSize: 16 }}>Canvas-kurs funnet</T>
+                <Chip data-edit-id="edu-ks-canvas-tag" label="NYTT" size="small" sx={{ height: 18, bgcolor: ACCENT, color: '#fff', fontWeight: 800, fontSize: 9.5 }} />
+              </Stack>
+              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#e9d5ff', fontWeight: 600, mt: 0.25 }}>MED101 – Kommunikasjon og samhandling</T>
+              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.5 }}>28 studenter · 2 faglærere · Høst 2024</T>
+            </Box>
+            <Button variant="contained" startIcon={<InviteIcon />} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+              <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>Importer studenter</T>
+            </Button>
+            <Button variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2, whiteSpace: 'nowrap' }}>
+              <T eid="edu-ks-canvas-other" component="span" sx={{ fontWeight: 600 }}>Velg et annet kurs</T>
+            </Button>
+            <IconButton size="small" onClick={() => setBannerOpen(false)} sx={{ position: 'absolute', top: 8, right: 10, color: 'rgba(255,255,255,0.4)' }}><CloseIcon fontSize="small" /></IconButton>
+          </Box>
+        </Collapse>
+
+        {/* Oppsett-stepper (statisk) */}
+        <Panel>
+          <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} spacing={{ xs: 1.5, sm: 0 }}>
+            {[
+              { id: 'koble', n: <CheckIcon sx={{ fontSize: 16 }} />, done: true, t: 'Koble til kurs', s: 'Canvas tilkoblet' },
+              { id: 'liste', n: '2', done: false, t: 'Kontroller deltakerliste', s: `${totalStudents} studenter, 2 faglærere` },
+              { id: 'grupper', n: '3', done: false, t: 'Opprett grupper', s: 'Grupper ikke opprettet' },
+              { id: 'oppgave', n: '4', done: false, t: 'Tildel første oppgave', s: 'Kom i gang med oppgaver' },
+            ].map((step, i, arr) => (
+              <Stack key={step.id} direction="row" alignItems="center" spacing={1.25} sx={{ flex: 1 }}>
+                <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0, bgcolor: step.done ? ACCENT : 'rgba(255,255,255,0.06)', color: step.done ? '#fff' : 'rgba(255,255,255,0.55)' }}>{step.n}</Box>
+                <Box sx={{ minWidth: 0 }}>
+                  <T eid={`edu-ks-step-${step.id}-t`} sx={{ fontSize: 13.5, fontWeight: 600 }}>{step.t}</T>
+                  <T eid={`edu-ks-step-${step.id}-s`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>{step.s}</T>
+                </Box>
+                {i < arr.length - 1 && <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: 1, display: { xs: 'none', sm: 'block' } }} />}
+              </Stack>
+            ))}
+          </Stack>
+        </Panel>
+
+        {/* KPI-kort */}
+        <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+          {kpis.map((k) => (
+            <Panel key={k.id} sx={{ p: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                <T eid={`edu-ks-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+                <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.color, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
+              </Stack>
+              <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+              <T eid={`edu-ks-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+            </Panel>
+          ))}
+        </Box>
+
+        {/* Kull-liste + student-tabell */}
+        <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', md: '300px 1fr' }, alignItems: 'start' }}>
+          <Panel>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+              <T eid="edu-ks-kulllist-title" sx={{ fontWeight: 700, fontSize: 15 }}>Kull ({cohorts.length})</T>
+            </Stack>
+            {cohorts.length === 0 ? (
+              <T eid="edu-ks-kulllist-empty" sx={{ fontSize: 13, color: 'text.secondary', py: 1 }}>Ingen kull ennå. Opprett ditt første over.</T>
+            ) : cohorts.map((c) => {
+              const active = c.id === selectedId;
+              return (
+                <Box key={c.id} sx={{ position: 'relative', mb: 1 }}>
+                  <Card sx={{ bgcolor: active ? 'rgba(139,92,246,0.08)' : 'transparent', border: `1px solid ${active ? 'rgba(139,92,246,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
+                    <CardActionArea onClick={() => setSelectedId(c.id)} sx={{ p: 1.5, pr: 5 }}>
+                      <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</Typography>
+                      <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3 }}>{[c.term, `${c.studentCount} studenter`].filter(Boolean).join(' · ')}</Typography>
+                    </CardActionArea>
+                  </Card>
+                  <IconButton size="small" onClick={() => handleDeleteCohort(c.id)} sx={{ position: 'absolute', top: 8, right: 8, color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton>
+                </Box>
+              );
+            })}
+            <Button fullWidth startIcon={<ArchiveIcon />} sx={{ mt: 0.5, borderRadius: 2, textTransform: 'none', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
+              <T eid="edu-ks-archived" component="span">Arkiverte kull</T>
+            </Button>
+          </Panel>
+
+          <Panel sx={{ p: 0, overflow: 'hidden' }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
+              <T eid="edu-ks-studenttbl-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>{selected ? `Studenter i ${selected.name} (${students.length})` : 'Velg et kull'}</T>
+              <Stack direction="row" spacing={1}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.6, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+                  <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
+                  <InputBase placeholder="Søk etter student" sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+                </Stack>
+                <Button startIcon={<FilterIcon sx={{ fontSize: '15px !important' }} />} sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12.5, color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                  <T eid="edu-ks-filter" component="span" sx={{ fontSize: 12.5 }}>Filter</T>
+                </Button>
+              </Stack>
+            </Stack>
+            {/* add-student-rad */}
+            {selected && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ px: 2, pb: 1.5 }}>
+                <TextField size="small" placeholder="Navn" value={addName} onChange={(e) => setAddName(e.target.value)} sx={{ flex: 1 }} />
+                <TextField size="small" placeholder="E-post (valgfritt)" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} sx={{ flex: 1 }} />
+                <Button variant="outlined" startIcon={<InviteIcon />} onClick={handleAddStudent} disabled={!addName.trim() || busy} sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Legg til</Button>
+              </Stack>
+            )}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: BORDER, borderBottom: BORDER }}>
+              {[['student', 'Student'], ['kull', 'Kull'], ['gruppe', 'Gruppe'], ['status', 'Status'], ['a', '']].map(([id, label]) => (
+                <T key={id} eid={`edu-ks-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+              ))}
+            </Box>
+            {studentsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box>
+            ) : students.length === 0 ? (
+              <T eid="edu-ks-students-empty" sx={{ p: 3, textAlign: 'center', color: 'text.secondary', fontSize: 13, display: 'block' }}>Ingen studenter i dette kullet ennå — legg til over eller importer fra Canvas.</T>
+            ) : students.map((s) => {
+              const b = statusBadge(s.status);
+              return (
+                <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', alignItems: 'center', px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
+                    <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(s.name)}</Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</Typography>
+                      {s.email && <Typography sx={{ fontSize: 11, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.email}</Typography>}
+                    </Box>
+                  </Stack>
+                  <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>{selected?.name?.split(' ')[0] ?? '—'}</Typography>
+                  <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>—</Typography>
+                  <Box><Chip label={b.label} size="small" sx={{ height: 22, fontSize: 11, fontWeight: 600, bgcolor: b.bg, color: b.color }} /></Box>
+                  <Tooltip title="Fjern"><IconButton size="small" onClick={() => handleDeleteStudent(s.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                </Box>
+              );
+            })}
+          </Panel>
+        </Box>
+      </Box>
+
+      {/* Høyre skinne */}
+      <Stack spacing={2}>
+        <Panel>
+          <T eid="edu-ks-rail-qa-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1 }}>Hurtighandlinger</T>
+          <QuickAction eid="edu-ks-qa-invite" icon={<InviteIcon />} label="Inviter student" onClick={() => setCreating(true)} />
+          <QuickAction eid="edu-ks-qa-csv" icon={<CsvIcon />} label="Importer CSV" />
+          <QuickAction eid="edu-ks-qa-group" icon={<CohortIcon />} label="Opprett gruppe" />
+          <QuickAction eid="edu-ks-qa-assign" icon={<CheckIcon />} label="Tildel oppgave" />
+        </Panel>
+        <Panel>
+          <T eid="edu-ks-rail-sync-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1.25 }}>Synkronisering</T>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: '#10b981', mb: 0.75 }}>
+            <CheckIcon sx={{ fontSize: 15 }} />
+            <T eid="edu-ks-sync-status" sx={{ fontSize: 12.5, color: '#10b981' }}>Canvas tilkoblet</T>
+          </Stack>
+          <Stack direction="row" justifyContent="space-between" sx={{ mb: 1.5 }}>
+            <T eid="edu-ks-sync-last" sx={{ fontSize: 12, color: 'text.secondary' }}>Sist synkronisert</T>
+            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>i dag 00:54</Typography>
+          </Stack>
+          <Button fullWidth variant="contained" startIcon={<SyncIcon />} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+            <T eid="edu-ks-sync-btn" component="span" sx={{ fontWeight: 700 }}>Synkroniser nå</T>
+          </Button>
+          <QuickAction eid="edu-ks-sync-log" icon={<CaretIcon />} label="Se logg" />
+        </Panel>
+        <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
+          <T eid="edu-ks-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>
+          <T eid="edu-ks-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5, mb: 1 }}>Importer studenter fra Canvas for å komme i gang raskt med vurdering og oppgaver.</T>
+          <T eid="edu-ks-tips-link" sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Les mer →</T>
+        </Panel>
+      </Stack>
+    </Box>
   );
 }
 
