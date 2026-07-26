@@ -113,6 +113,13 @@ describe("LTI routes: jwks + config (offentlig)", () => {
     expect(res.body).toMatchObject({ title: "The Role Room" });
     expect(res.body.oidc_initiation_url).toContain("/lti/login");
     expect(res.body.scopes.length).toBeGreaterThan(0);
+    // Må advertise BÅDE AGS- og NRPS-scope (ellers gir ikke Canvas roster-tilgang).
+    expect(res.body.scopes).toContain("https://purl.imsglobal.org/spec/lti-ags/scope/score");
+    expect(res.body.scopes).toContain("https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly");
+    // Canvas-extensions m/ course_navigation-placement + public privacy_level.
+    const canvasExt = res.body.extensions?.find((e: any) => e.platform === "canvas.instructure.com");
+    expect(canvasExt?.privacy_level).toBe("public");
+    expect(canvasExt?.settings?.placements?.map((p: any) => p.placement)).toContain("course_navigation");
   });
 });
 

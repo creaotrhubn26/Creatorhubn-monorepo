@@ -167,13 +167,55 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
   });
 
   router.get("/lti/config", (_req, res) => {
+    const targetLinkUri = `${TOOL_BASE}/lti/launch`;
+    // Alle scopes vi trenger: AGS (grade-passback) + NRPS (klasse-roster). Uten
+    // NRPS-scopet ville Canvas ikke gi tilgang til roster → per-student-karakter
+    // feiler. Domene utledes fra TOOL_BASE for Canvas-extensions-blokken.
+    let domain = "www.theroleroom.com";
+    try { domain = new URL(TOOL_BASE).host; } catch { /* behold default */ }
     res.json({
       title: "The Role Room",
       description: "Studentproduksjoner, oppgaver, rubrikker og vurdering — med karakter tilbake i LMS.",
       oidc_initiation_url: `${TOOL_BASE}/lti/login`,
-      target_link_uri: `${TOOL_BASE}/lti/launch`,
+      target_link_uri: targetLinkUri,
       public_jwk_url: `${TOOL_BASE}/lti/jwks`,
-      scopes: AGS_SCOPES,
+      scopes: [...AGS_SCOPES, NRPS_SCOPE],
+      // Canvas-spesifikk registrering (Developer Key = LTI). privacy_level=public
+      // gir navn/e-post i id_token (kreves for sesjon + roster-matching). Andre
+      // plattformer (saLTIre m.fl.) ignorerer extensions.
+      extensions: [
+        {
+          domain,
+          platform: "canvas.instructure.com",
+          privacy_level: "public",
+          settings: {
+            text: "The Role Room",
+            placements: [
+              {
+                placement: "course_navigation",
+                message_type: "LtiResourceLinkRequest",
+                target_link_uri: targetLinkUri,
+                text: "The Role Room",
+                enabled: true,
+                default: "enabled",
+                visibility: "members",
+              },
+              {
+                placement: "assignment_selection",
+                message_type: "LtiResourceLinkRequest",
+                target_link_uri: targetLinkUri,
+                text: "The Role Room",
+              },
+              {
+                placement: "link_selection",
+                message_type: "LtiResourceLinkRequest",
+                target_link_uri: targetLinkUri,
+                text: "The Role Room",
+              },
+            ],
+          },
+        },
+      ],
       custom_fields: {},
     });
   });
