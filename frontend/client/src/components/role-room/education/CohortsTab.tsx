@@ -14,7 +14,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Card, CardActionArea, Button, IconButton, Chip,
   CircularProgress, Alert, Collapse, TextField, Tooltip, InputBase, Avatar,
-  Select, MenuItem,
+  Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar,
 } from '@mui/material';
 import {
   Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon,
@@ -38,6 +38,24 @@ function T({ eid, children, sx, variant, component }: { eid: string; children: R
 
 function Panel({ children, sx }: { children: React.ReactNode; sx?: object }) {
   return <Card sx={{ bgcolor: CARD, border: BORDER, borderRadius: 3, p: 2.5, ...sx }}>{children}</Card>;
+}
+
+/**
+ * Parser CSV/limt-inn tekst til student-rader. Kolonnerekkefølge: navn, e-post,
+ * studentnr. Godtar komma eller semikolon; hopper over header-rad (navn/e-post).
+ */
+function parseCsvStudents(text: string): { name: string; email?: string; studentNumber?: string }[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const out: { name: string; email?: string; studentNumber?: string }[] = [];
+  lines.forEach((line, i) => {
+    const cols = line.split(/[,;]/).map((c) => c.trim());
+    const lower = line.toLowerCase();
+    if (i === 0 && (lower.includes('navn') || lower.includes('name') || lower.includes('e-post') || lower.includes('email'))) return; // header
+    const name = cols[0] ?? '';
+    if (!name) return;
+    out.push({ name, email: cols[1] || undefined, studentNumber: cols[2] || undefined });
+  });
+  return out;
 }
 
 function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
@@ -75,6 +93,12 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   // Grupper for valgt kull.
   const [groups, setGroups] = useState<EducationGroup[]>([]);
 
+  // CSV-import.
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
   const loadCohorts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -109,6 +133,19 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
       await educationGroupsService.createGroup(selectedId, `Gruppe ${groups.length + 1}`);
       await loadGroups(selectedId);
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette gruppe'); }
+  };
+
+  const csvPreview = useMemo(() => parseCsvStudents(csvText), [csvText]);
+  const handleImportCsv = async () => {
+    if (!selectedId || csvPreview.length === 0 || csvBusy) return;
+    setCsvBusy(true); setError(null);
+    try {
+      const { added, skipped } = await educationCohortsService.addStudentsBulk(selectedId, csvPreview);
+      setCsvOpen(false); setCsvText('');
+      setToast(`Importerte ${added} student${added === 1 ? '' : 'er'}${skipped ? ` · hoppet over ${skipped}` : ''}.`);
+      await loadStudents(selectedId); await loadCohorts();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke importere'); }
+    finally { setCsvBusy(false); }
   };
 
   const handleSetStudentGroup = async (studentId: string, groupId: string | null) => {
@@ -366,7 +403,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         <Panel>
           <T eid="edu-ks-rail-qa-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1 }}>Hurtighandlinger</T>
           <QuickAction eid="edu-ks-qa-invite" icon={<InviteIcon />} label="Inviter student" onClick={() => { setCreating(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
-          <QuickAction eid="edu-ks-qa-csv" icon={<CsvIcon />} label="Importer CSV" />
+          <QuickAction eid="edu-ks-qa-csv" icon={<CsvIcon />} label="Importer CSV" onClick={() => { if (selectedId) setCsvOpen(true); else setError('Velg et kull først.'); }} />
           <QuickAction eid="edu-ks-qa-group" icon={<CohortIcon />} label="Opprett gruppe" onClick={() => { void handleCreateGroup(); }} />
           <QuickAction eid="edu-ks-qa-assign" icon={<CheckIcon />} label="Tildel oppgave" onClick={() => onNavigate?.('assignments')} />
         </Panel>
@@ -391,6 +428,31 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           <T eid="edu-ks-tips-link" sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Les mer →</T>
         </Panel>
       </Stack>
+
+      {/* CSV-import-dialog */}
+      <Dialog open={csvOpen} onClose={() => setCsvOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Importer studenter fra CSV</DialogTitle>
+        <DialogContent>
+          <T eid="edu-ks-csv-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 1.5 }}>
+            Lim inn eller last opp CSV. Kolonner: <b>navn, e-post, studentnr</b> (komma eller semikolon). Header-rad hoppes over.
+          </T>
+          <Button component="label" size="small" startIcon={<CsvIcon />} sx={{ mb: 1.5, color: '#c4b5fd', textTransform: 'none' }}>
+            Last opp .csv-fil
+            <input hidden type="file" accept=".csv,text/csv,text/plain" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(setCsvText); }} />
+          </Button>
+          <TextField value={csvText} onChange={(e) => setCsvText(e.target.value)} multiline minRows={6} fullWidth
+            placeholder={'Ola Nordmann, ola@skole.no, S12345\nKari Hansen; kari@skole.no; S12346'}
+            sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 12.5 } }} />
+          {csvText.trim() && <T eid="edu-ks-csv-count" sx={{ fontSize: 12.5, color: csvPreview.length ? '#34d399' : '#f59e0b', mt: 1 }}>{csvPreview.length} gyldige rader funnet.</T>}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCsvOpen(false)} disabled={csvBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+          <Button variant="contained" onClick={handleImportCsv} disabled={csvPreview.length === 0 || csvBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{csvBusy ? 'Importerer…' : `Importer ${csvPreview.length || ''}`}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }
