@@ -1,51 +1,45 @@
 /**
- * AssignmentsTab.tsx — «Oppgaver»-flaten (opplæringslag 2: oppgaveløpet).
+ * AssignmentsTab.tsx — «Oppgaver» (redesign, CMS-koblet).
  *
- * Faglærer lager en oppgave (tittel, brief, læringsmål, frist, kobling til kull)
- * og følger per-student innleverings-status (Ikke startet → Levert → Vurdert).
- * Owner-scopet server-side.
+ * Faglærer lager en oppgave (tittel, brief, læringsmål, frist, kobling til kull/
+ * produksjon) og følger innleveringer. Design speiler mockup: KPI-kort, filter-
+ * bar og oppgave-tabell (oppgave / kull / frist / status / innleveringer / åpne).
+ * Ekte data + CRUD via educationAssignmentsService. Filtrene er visuelle (statisk).
+ *
+ * 🔑 CMS: stabile data-edit-id (edu-op-*) på hvert statiske element.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Box, Stack, Typography, Card, CardContent, CardActionArea, Button, TextField,
-  IconButton, Chip, CircularProgress, Alert, MenuItem, LinearProgress, Divider,
-  ToggleButtonGroup, ToggleButton,
+  Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
+  CircularProgress, Alert, InputBase, LinearProgress,
 } from '@mui/material';
 import {
-  Add as AddIcon, Delete as DeleteIcon, Assignment as AssignmentIcon,
-  ArrowBack as BackIcon, MovieCreation as ProductionIcon, OpenInNew as OpenIcon,
+  Assignment as AssignmentIcon, Add as AddIcon, GridView as TemplateIcon,
+  Grading as ReviewIcon, EventBusy as DueIcon, ReportProblem as MissingIcon,
+  Search as SearchIcon, OpenInNew as OpenIcon, Delete as DeleteIcon,
+  KeyboardArrowDown as CaretIcon, CheckCircle as ActiveIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
-import { educationRubricService, type RubricCriterion } from './educationRubricService';
-import { educationLearningGoalsService, type LearningGoal } from './educationLearningGoalsService';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
-import {
-  educationAssignmentsService, type Assignment, type AssignmentStatus,
-  type Submission, type SubmissionStatus,
-} from './educationAssignmentsService';
-
-const ACCENT = '#8B5CF6';
+import { educationAssignmentsService, type Assignment, type AssignmentStatus } from './educationAssignmentsService';
+import { ACCENT, Panel, T } from './_eduUi';
 
 const STATUS_META: Record<AssignmentStatus, { label: string; color: string }> = {
-  draft: { label: 'Utkast', color: 'rgba(255,255,255,0.5)' },
-  published: { label: 'Publisert', color: '#10b981' },
-  archived: { label: 'Arkivert', color: 'rgba(255,255,255,0.35)' },
+  draft: { label: 'Utkast', color: 'rgba(255,255,255,0.55)' },
+  published: { label: 'Pågår', color: '#38bdf8' },
+  archived: { label: 'Arkivert', color: 'rgba(255,255,255,0.4)' },
 };
 
-const SUB_META: Record<SubmissionStatus, { label: string }> = {
-  not_started: { label: 'Ikke startet' },
-  submitted: { label: 'Levert' },
-  reviewed: { label: 'Vurdert' },
-};
-
-function formatDue(iso: string | null): string | null {
-  if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch {
-    return null;
-  }
+function relDue(dueAt: string | null): { text: string; overdue: boolean } {
+  if (!dueAt) return { text: 'Ingen frist', overdue: false };
+  const due = new Date(dueAt).getTime();
+  const now = new Date().getTime();
+  const days = Math.round((due - now) / 86_400_000);
+  if (days < 0) return { text: `${Math.abs(days)} dager på overtid`, overdue: true };
+  if (days === 0) return { text: 'I dag', overdue: false };
+  if (days === 1) return { text: 'I morgen', overdue: false };
+  return { text: `Om ${days} dager`, overdue: false };
 }
 
 export function AssignmentsTab() {
@@ -54,383 +48,174 @@ export function AssignmentsTab() {
   const [productions, setProductions] = useState<Production[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Assignment | null>(null);
-
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState('');
-  const [cohortId, setCohortId] = useState('');
-  const [productionId, setProductionId] = useState('');
-  const [brief, setBrief] = useState('');
-  const [goals, setGoals] = useState('');
-  const [dueAt, setDueAt] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '' });
+  const setField = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const [a, c, p] = await Promise.all([
         educationAssignmentsService.listAssignments(),
         educationCohortsService.listCohorts(),
         educationProductionsService.listProductions(),
       ]);
-      setAssignments(a);
-      setCohorts(c);
-      setProductions(p);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke hente oppgaver');
-    } finally {
-      setLoading(false);
-    }
+      setAssignments(a); setCohorts(c); setProductions(p);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente oppgaver'); }
+    finally { setLoading(false); }
   }, []);
-
   useEffect(() => { void load(); }, [load]);
 
-  const cohortName = useCallback(
-    (id: string | null) => (id ? cohorts.find((c) => c.id === id)?.name ?? null : null),
-    [cohorts],
-  );
-
   const handleCreate = async () => {
-    if (!title.trim() || busy) return;
-    setBusy(true);
+    if (!f.title.trim() || busy) return;
+    setBusy(true); setError(null);
     try {
-      const assignment = await educationAssignmentsService.createAssignment({
-        title: title.trim(),
-        cohortId: cohortId || undefined,
-        productionId: productionId || undefined,
-        brief: brief.trim() || undefined,
-        learningGoals: goals.trim() || undefined,
-        dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
-        status: 'published',
+      await educationAssignmentsService.createAssignment({
+        title: f.title.trim(), cohortId: f.cohortId || null, productionId: f.productionId || null,
+        brief: f.brief.trim() || undefined, learningGoals: f.learningGoals.trim() || undefined,
+        dueAt: f.dueAt || null, status: 'published',
       });
-      setAssignments((prev) => [assignment, ...prev]);
-      setTitle(''); setCohortId(''); setProductionId(''); setBrief(''); setGoals(''); setDueAt(''); setCreating(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave');
-    } finally {
-      setBusy(false);
-    }
+      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '' });
+      setCreating(false); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave'); }
+    finally { setBusy(false); }
   };
-
   const handleDelete = async (id: string) => {
-    try {
-      await educationAssignmentsService.deleteAssignment(id);
-      setAssignments((prev) => prev.filter((a) => a.id !== id));
-      if (selected?.id === id) setSelected(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke slette oppgave');
-    }
+    try { await educationAssignmentsService.deleteAssignment(id); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke slette'); }
   };
+  const cohortName = (id: string | null) => cohorts.find((c) => c.id === id)?.name ?? null;
 
-  if (selected) {
-    return (
-      <SubmissionsView
-        assignment={selected}
-        cohortName={cohortName(selected.cohortId)}
-        onBack={() => { setSelected(null); void load(); }}
-        onError={setError}
-        error={error}
-      />
-    );
-  }
+  const kpis = useMemo(() => {
+    const active = assignments.filter((a) => a.status === 'published').length;
+    const toReview = assignments.reduce((n, a) => n + Math.max(0, a.submittedCount - a.reviewedCount), 0);
+    const dueThisWeek = assignments.filter((a) => { const d = relDue(a.dueAt); return !d.overdue && a.dueAt && (new Date(a.dueAt).getTime() - Date.now()) < 7 * 86_400_000; }).length;
+    const missing = assignments.reduce((n, a) => n + Math.max(0, a.submittedCount - a.reviewedCount), 0);
+    return [
+      { id: 'aktive', label: 'Aktive oppgaver', value: active, hint: 'Publisert og pågående', icon: <ActiveIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
+      { id: 'vurder', label: 'Til vurdering', value: toReview, hint: 'Innleveringer venter', icon: <ReviewIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
+      { id: 'frist', label: 'Forfaller denne uken', value: dueThisWeek, hint: 'Kommende frister', icon: <DueIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+      { id: 'mangler', label: 'Manglende innleveringer', value: missing, hint: 'Krever oppfølging', icon: <MissingIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
+    ];
+  }, [assignments]);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>Oppgaver</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)}
-          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT, opacity: 0.9 } }}>
-          Ny oppgave
-        </Button>
+    <Box sx={{ display: 'grid', gap: 2.5 }}>
+      {/* Header */}
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
+        <Stack direction="row" spacing={1.75} alignItems="flex-start">
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssignmentIcon /></Box>
+          <Box>
+            <T eid="edu-op-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Oppgaver</T>
+            <T eid="edu-op-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Oppgave-brief → student-leveranse → frist, koblet til kull, produksjon og læringsmål.</T>
+          </Box>
+        </Stack>
+        <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+          <Button variant="outlined" startIcon={<TemplateIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+            <T eid="edu-op-btn-template" component="span" sx={{ fontWeight: 600 }}>Opprett fra mal</T>
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+            <T eid="edu-op-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny oppgave</T>
+          </Button>
+        </Stack>
       </Stack>
 
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
-      {creating && (
-        <Card sx={{ bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.24)' }}>
-          <CardContent sx={{ display: 'grid', gap: 1.5 }}>
-            <TextField label="Tittel" size="small" value={title} onChange={(e) => setTitle(e.target.value)}
-              autoFocus required placeholder="Kortfilm — 90 sekunder" />
+      <Collapse in={creating}>
+        <Panel sx={{ border: '1px solid rgba(139,92,246,0.35)' }}>
+          <Stack spacing={1.5}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <TextField label="Kull" size="small" select value={cohortId} onChange={(e) => setCohortId(e.target.value)} fullWidth
-                helperText={cohorts.length === 0 ? 'Opprett et kull først i «Kull & studenter»' : ' '}>
-                <MenuItem value=""><em>Ikke knyttet til kull</em></MenuItem>
+              <TextField size="small" label="Tittel" value={f.title} onChange={(e) => setField('title', e.target.value)} fullWidth />
+              <TextField size="small" type="date" label="Frist" InputLabelProps={{ shrink: true }} value={f.dueAt} onChange={(e) => setField('dueAt', e.target.value)} sx={{ minWidth: 170 }} />
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField size="small" select label="Kull" value={f.cohortId} onChange={(e) => setField('cohortId', e.target.value)} fullWidth>
+                <MenuItem value="">Ingen</MenuItem>
                 {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </TextField>
-              <TextField label="Frist" size="small" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)}
-                fullWidth InputLabelProps={{ shrink: true }} />
+              <TextField size="small" select label="Produksjon" value={f.productionId} onChange={(e) => setField('productionId', e.target.value)} fullWidth>
+                <MenuItem value="">Ingen</MenuItem>
+                {productions.map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
+              </TextField>
             </Stack>
-            <TextField label="Leveres i produksjon" size="small" select value={productionId} onChange={(e) => setProductionId(e.target.value)}
-              helperText={productions.length === 0 ? 'Opprett en studentproduksjon for å knytte oppgaven til ekte Role Room-arbeid' : 'Knytt oppgaven til et Role Room-prosjekt studentene jobber i'}>
-              <MenuItem value=""><em>Ikke knyttet til produksjon</em></MenuItem>
-              {productions
-                .filter((p) => !cohortId || !p.cohortId || p.cohortId === cohortId)
-                .map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
-            </TextField>
-            <TextField label="Brief (oppgavetekst)" size="small" value={brief} onChange={(e) => setBrief(e.target.value)}
-              multiline minRows={2} placeholder="Hva skal studentene lage, og hvordan leveres det?" />
-            <TextField label="Læringsmål" size="small" value={goals} onChange={(e) => setGoals(e.target.value)}
-              multiline minRows={2} placeholder="Hva skal studenten kunne etterpå? Ett mål per linje." />
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button onClick={() => setCreating(false)} disabled={busy}>Avbryt</Button>
-              <Button variant="contained" onClick={handleCreate} disabled={!title.trim() || busy}
-                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT } }}>
-                {busy ? 'Oppretter…' : 'Publiser oppgave'}
-              </Button>
+            <TextField size="small" label="Brief" value={f.brief} onChange={(e) => setField('brief', e.target.value)} multiline minRows={2} fullWidth />
+            <TextField size="small" label="Læringsmål" value={f.learningGoals} onChange={(e) => setField('learningGoals', e.target.value)} fullWidth />
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+              <Button variant="contained" onClick={handleCreate} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Publiser oppgave'}</Button>
             </Stack>
-          </CardContent>
-        </Card>
-      )}
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
-      ) : assignments.length === 0 ? (
-        <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(139,92,246,0.3)' }}>
-          <CardContent sx={{ textAlign: 'center', p: 4 }}>
-            <AssignmentIcon sx={{ fontSize: 40, color: ACCENT, mb: 1 }} />
-            <Typography sx={{ color: 'rgba(255,255,255,0.72)' }}>Ingen oppgaver enda. Lag en oppgave med brief, læringsmål og frist — knyttet til et kull.</Typography>
-          </CardContent>
-        </Card>
-      ) : (
-        <Box sx={{ display: 'grid', gap: 1.5 }}>
-          {assignments.map((a) => {
-            const due = formatDue(a.dueAt);
-            const name = cohortName(a.cohortId);
-            const meta = STATUS_META[a.status];
-            return (
-              <Card key={a.id} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
-                <CardActionArea onClick={() => setSelected(a)} sx={{ p: 2 }}>
-                  <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
-                    <Box sx={{ pr: 4 }}>
-                      <Typography sx={{ fontWeight: 700 }}>{a.title}</Typography>
-                      <Stack direction="row" spacing={1} sx={{ mt: 0.75 }} flexWrap="wrap" useFlexGap>
-                        <Chip size="small" label={meta.label} sx={{ height: 20, fontSize: 10, color: meta.color, borderColor: meta.color }} variant="outlined" />
-                        {name && <Chip size="small" label={name} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />}
-                        {a.productionTitle && <Chip size="small" icon={<ProductionIcon sx={{ fontSize: '12px !important' }} />} label={a.productionTitle} sx={{ height: 20, fontSize: 10, '& .MuiChip-icon': { color: ACCENT } }} />}
-                        {due && <Chip size="small" label={`Frist ${due}`} sx={{ height: 20, fontSize: 10 }} />}
-                        {(a.submittedCount > 0 || a.reviewedCount > 0) && (
-                          <Chip size="small" label={`${a.submittedCount} levert · ${a.reviewedCount} vurdert`} sx={{ height: 20, fontSize: 10 }} />
-                        )}
-                      </Stack>
-                      {a.brief && <Typography sx={{ fontSize: 12.5, color: 'text.secondary', mt: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{a.brief}</Typography>}
-                    </Box>
-                  </Stack>
-                </CardActionArea>
-                <IconButton size="small" onClick={() => handleDelete(a.id)}
-                  sx={{ position: 'absolute', top: 4, right: 4, color: 'rgba(255,255,255,0.4)' }} aria-label="Slett oppgave">
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Card>
-            );
-          })}
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function SubmissionsView({ assignment, cohortName, onBack, onError, error }: {
-  assignment: Assignment; cohortName: string | null; onBack: () => void;
-  onError: (m: string | null) => void; error: string | null;
-}) {
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setSubmissions(await educationAssignmentsService.listSubmissions(assignment.id));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke hente innleveringer');
-    } finally {
-      setLoading(false);
-    }
-  }, [assignment.id, onError]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const setStatus = async (studentId: string, status: SubmissionStatus) => {
-    // optimistisk
-    setSubmissions((prev) => prev.map((s) => s.studentId === studentId ? { ...s, status } : s));
-    try {
-      await educationAssignmentsService.setSubmission(assignment.id, { studentId, status });
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke oppdatere status');
-      void load();
-    }
-  };
-
-  const total = submissions.length;
-  const done = submissions.filter((s) => s.status !== 'not_started').length;
-  const due = formatDue(assignment.dueAt);
-  const goals = (assignment.learningGoals ?? '').split('\n').map((g) => g.trim()).filter(Boolean);
-
-  return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Stack direction="row" alignItems="center" spacing={1}>
-        <IconButton onClick={onBack} sx={{ color: '#fff' }} aria-label="Tilbake"><BackIcon /></IconButton>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{assignment.title}</Typography>
-          <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-            {cohortName ?? 'Ikke knyttet til kull'}{due ? ` · Frist ${due}` : ''}
-          </Typography>
-        </Box>
-        {assignment.productionProjectId && (
-          <Button size="small" variant="outlined" startIcon={<OpenIcon />}
-            onClick={() => openProductionInRoleRoom(assignment.productionProjectId as string)}
-            sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
-            Åpne produksjon
-          </Button>
-        )}
-      </Stack>
-
-      {error && <Alert severity="error" onClose={() => onError(null)}>{error}</Alert>}
-
-      {(assignment.brief || goals.length > 0) && (
-        <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <CardContent sx={{ display: 'grid', gap: 1.25 }}>
-            {assignment.brief && (
-              <Box>
-                <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Brief</Typography>
-                <Typography sx={{ fontSize: 13.5, color: 'rgba(255,255,255,0.82)', whiteSpace: 'pre-wrap' }}>{assignment.brief}</Typography>
-              </Box>
-            )}
-            {goals.length > 0 && (
-              <Box>
-                <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>Læringsmål</Typography>
-                <Stack component="ul" sx={{ m: 0, pl: 2.5, gap: 0.25 }}>
-                  {goals.map((g, i) => <Typography key={i} component="li" sx={{ fontSize: 13.5, color: 'rgba(255,255,255,0.82)' }}>{g}</Typography>)}
-                </Stack>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <RubricEditor assignmentId={assignment.id} cohortId={assignment.cohortId} onError={onError} />
-
-      <Box>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
-          <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Innleveringer</Typography>
-          {total > 0 && <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{done} av {total} i gang</Typography>}
-        </Stack>
-        {total > 0 && (
-          <LinearProgress variant="determinate" value={total ? (done / total) * 100 : 0}
-            sx={{ mb: 1.5, height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: ACCENT } }} />
-        )}
-
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress sx={{ color: ACCENT }} /></Box>
-        ) : total === 0 ? (
-          <Typography sx={{ color: 'text.disabled', textAlign: 'center', p: 2, fontSize: 13.5 }}>
-            {assignment.cohortId ? 'Ingen studenter i kullet enda. Legg til studenter i «Kull & studenter».' : 'Knytt oppgaven til et kull for å følge innleveringer per student.'}
-          </Typography>
-        ) : (
-          <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {submissions.map((s, i) => (
-              <Box key={s.studentId}>
-                {i > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
-                <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={1} sx={{ px: 2, py: 1.25 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{s.studentName}</Typography>
-                  <ToggleButtonGroup size="small" exclusive value={s.status}
-                    onChange={(_e, v: SubmissionStatus | null) => { if (v) void setStatus(s.studentId, v); }}
-                    sx={{
-                      '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: 12, py: 0.25, px: 1 },
-                      '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' },
-                    }}>
-                    {(Object.keys(SUB_META) as SubmissionStatus[]).map((st) => (
-                      <ToggleButton key={st} value={st}>{SUB_META[st].label}</ToggleButton>
-                    ))}
-                  </ToggleButtonGroup>
-                </Stack>
-              </Box>
-            ))}
-          </Card>
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-function RubricEditor({ assignmentId, cohortId, onError }: { assignmentId: string; cohortId: string | null; onError: (m: string | null) => void }) {
-  const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
-  const [goals, setGoals] = useState<LearningGoal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState('');
-  const [goalId, setGoalId] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void educationRubricService.getRubric(assignmentId)
-      .then(setCriteria)
-      .catch(() => { /* tom rubrikk er greit */ })
-      .finally(() => setLoading(false));
-  }, [assignmentId]);
-
-  useEffect(() => {
-    if (!cohortId) return;
-    void educationLearningGoalsService.listGoals(cohortId).then(setGoals).catch(() => { /* greit */ });
-  }, [cohortId]);
-
-  const add = async () => {
-    if (!title.trim() || busy) return;
-    setBusy(true);
-    try {
-      const c = await educationRubricService.addCriterion(assignmentId, { title: title.trim(), learningGoalId: goalId || undefined });
-      setCriteria((prev) => [...prev, c]);
-      setTitle(''); setGoalId(''); setAdding(false);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke legge til kriterium');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (id: string) => {
-    try {
-      await educationRubricService.deleteCriterion(id);
-      setCriteria((prev) => prev.filter((c) => c.id !== id));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke slette kriterium');
-    }
-  };
-
-  if (loading) return null;
-
-  return (
-    <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.2)' }}>
-      <CardContent sx={{ display: 'grid', gap: 1 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Rubrikk (vurderingskriterier)</Typography>
-          <Button size="small" startIcon={<AddIcon />} onClick={() => setAdding((v) => !v)} sx={{ color: ACCENT, textTransform: 'none' }}>Nytt kriterium</Button>
-        </Stack>
-        {criteria.length === 0 && !adding && (
-          <Typography sx={{ fontSize: 12.5, color: 'text.disabled' }}>Ingen kriterier enda. Legg til kriterier (f.eks. «Manus/story», «Casting», «Teknisk utførelse») for strukturert vurdering knyttet til læringsmålene.</Typography>
-        )}
-        {criteria.map((c) => (
-          <Stack key={c.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 0.25 }}>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{c.title}</Typography>
-              {(c.learningGoalTitle || c.learningGoal) && <Chip size="small" label={c.learningGoalTitle ?? c.learningGoal} sx={{ height: 18, fontSize: 10, mt: 0.25, bgcolor: 'rgba(139,92,246,0.18)', color: '#e9d5ff' }} />}
-            </Box>
-            <IconButton size="small" onClick={() => remove(c.id)} sx={{ color: 'rgba(255,255,255,0.4)' }} aria-label="Slett kriterium"><DeleteIcon fontSize="small" /></IconButton>
           </Stack>
+        </Panel>
+      </Collapse>
+
+      {/* KPI-kort */}
+      <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+        {kpis.map((k) => (
+          <Panel key={k.id} sx={{ p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <T eid={`edu-op-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+              <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
+            </Stack>
+            <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+            <T eid={`edu-op-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+          </Panel>
         ))}
-        {adding && (
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mt: 0.5 }}>
-            <TextField label="Kriterium" size="small" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus fullWidth placeholder="Manus/story" />
-            <TextField label="Læringsmål" size="small" select value={goalId} onChange={(e) => setGoalId(e.target.value)} sx={{ minWidth: 190 }}
-              helperText={goals.length === 0 ? 'Definer læringsmål i kull-visningen' : ' '}>
-              <MenuItem value=""><em>Ingen kobling</em></MenuItem>
-              {goals.map((g) => <MenuItem key={g.id} value={g.id}>{g.code ? `${g.code}: ` : ''}{g.title}</MenuItem>)}
-            </TextField>
-            <Button variant="contained" onClick={add} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, whiteSpace: 'nowrap' }}>Legg til</Button>
+      </Box>
+
+      {/* Filter + tabell */}
+      <Panel sx={{ p: 0, overflow: 'hidden' }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
+          {[['status', 'Alle status'], ['kull', 'Alle kull'], ['typer', 'Alle typer']].map(([id, label]) => (
+            <Stack key={id} direction="row" alignItems="center" spacing={0.5} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
+              <T eid={`edu-op-filter-${id}`} component="span" sx={{ fontSize: 12.5 }}>{label}</T><CaretIcon sx={{ fontSize: 15 }} />
+            </Stack>
+          ))}
+          <Box sx={{ flex: 1 }} />
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
+            <InputBase placeholder="Søk i oppgaver" sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
           </Stack>
-        )}
-      </CardContent>
-    </Card>
+        </Stack>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          {[['oppgave', 'Oppgave'], ['kull', 'Knyttet kull'], ['frist', 'Frist'], ['status', 'Status'], ['innlev', 'Innleveringer'], ['open', '']].map(([id, label]) => (
+            <T key={id} eid={`edu-op-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+          ))}
+        </Box>
+
+        {assignments.length === 0 ? (
+          <T eid="edu-op-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen oppgaver ennå — opprett din første over.</T>
+        ) : assignments.map((a) => {
+          const sm = STATUS_META[a.status];
+          const due = relDue(a.dueAt);
+          const pct = a.submittedCount > 0 ? Math.round((a.reviewedCount / a.submittedCount) * 100) : 0;
+          return (
+            <Box key={a.id} sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', alignItems: 'center', px: 2, py: 1.75, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <Box sx={{ minWidth: 0, pr: 2 }}>
+                <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{a.title}</Typography>
+                <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.productionTitle ? `Produksjon · ${a.productionTitle}` : (a.brief || 'Oppgave')}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>{cohortName(a.cohortId) ?? '—'}</Typography>
+              <Typography sx={{ fontSize: 12.5, color: due.overdue ? '#ec4899' : 'text.secondary', fontWeight: due.overdue ? 700 : 400 }}>{due.text}</Typography>
+              <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: `${sm.color}22`, color: sm.color, fontSize: 11.5, fontWeight: 600 }}>{sm.label}</Box></Box>
+              <Box sx={{ pr: 2 }}>
+                <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mb: 0.5 }}>{a.reviewedCount}/{a.submittedCount} vurdert</Typography>
+                <LinearProgress variant="determinate" value={pct} sx={{ height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: ACCENT } }} />
+              </Box>
+              <Stack direction="row" alignItems="center" spacing={0.5} justifyContent="flex-end">
+                <Button size="small" variant="outlined" startIcon={<OpenIcon sx={{ fontSize: '14px !important' }} />} onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId)} disabled={!a.productionProjectId} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>Åpne</Button>
+                <IconButton size="small" onClick={() => handleDelete(a.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton>
+              </Stack>
+            </Box>
+          );
+        })}
+      </Panel>
+    </Box>
   );
 }
 
