@@ -14,34 +14,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { DEVICE_FRAMES, type FrameVariant } from './deviceFrames';
 
-/* ── Corner-pin (2D projektiv homografi → CSS matrix3d) ──────────────────────
- * Mapper et W×H-rektangel nøyaktig til fire mål-hjørner, så flatt innhold får
- * skjermens ekte perspektiv/keystone (verifisert: hjørner treffer eksakt). */
-type Pt = [number, number];
-function mmult(a: number[], b: number[]): number[] {
-  const c = new Array(9).fill(0);
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { let s = 0; for (let k = 0; k < 3; k++) s += a[i * 3 + k] * b[k * 3 + j]; c[i * 3 + j] = s; }
-  return c;
-}
-function madj(m: number[]): number[] {
-  return [m[4] * m[8] - m[5] * m[7], m[2] * m[7] - m[1] * m[8], m[1] * m[5] - m[2] * m[4],
-    m[5] * m[6] - m[3] * m[8], m[0] * m[8] - m[2] * m[6], m[2] * m[3] - m[0] * m[5],
-    m[3] * m[7] - m[4] * m[6], m[1] * m[6] - m[0] * m[7], m[0] * m[4] - m[1] * m[3]];
-}
-function mvmult(m: number[], v: number[]): number[] {
-  return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
-}
-function homoBasis(p: Pt[]): number[] {
-  const m = [p[0][0], p[1][0], p[2][0], p[0][1], p[1][1], p[2][1], 1, 1, 1];
-  const v = mvmult(madj(m), [p[3][0], p[3][1], 1]);
-  return mmult(m, [v[0], 0, 0, 0, v[1], 0, 0, 0, v[2]]);
-}
-function cornerPinMatrix(W: number, H: number, dst: Pt[]): string {
-  const t = mmult(homoBasis(dst), madj(homoBasis([[0, 0], [W, 0], [W, H], [0, H]])));
-  const n = t[8] || 1; const T = t.map((x) => x / n);
-  return `matrix3d(${[T[0], T[3], 0, T[6], T[1], T[4], 0, T[7], 0, 0, 1, 0, T[2], T[5], 0, T[8]].join(',')})`;
-}
-
 /** Logisk viewport-bredde (CSS-px) per enhet, så nettsiden rendrer riktig
  *  responsiv layout (mobil/tablet/desktop) — ikke desktop-layout overalt. */
 export const VIEWPORT_W: Record<FrameVariant, number> = {
@@ -73,8 +45,7 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   const f = DEVICE_FRAMES[variant];
   const s = f.screen;
   const screenRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const scale = size.w > 0 ? size.w / VIEWPORT_W[variant] : 0;
+  const [scale, setScale] = useState(0);
   // Tegne-hotspot: rubber-band-rektangel mens man drar (viewport-prosent 0–1).
   const [draw, setDraw] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   // Redigere eksisterende hotspot: aktiv flytt/skaler-interaksjon + live preview.
@@ -89,21 +60,12 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   useLayoutEffect(() => {
     const el = screenRef.current;
     if (!el) return;
-    const update = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    const update = () => setScale(el.clientWidth / vw);
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
   }, [vw]);
-
-  // Corner-pin-transform for skjermer med en quad (perspektiv). Mapper container-
-  // boksen (size.w×size.h) til de fire ekte skjerm-hjørnene i container-piksler.
-  const warpTransform = (() => {
-    const q = f.quad;
-    if (!q || size.w <= 0 || size.h <= 0) return undefined;
-    const toPx = (p: [number, number]): Pt => [((p[0] - s.x) / s.w) * size.w, ((p[1] - s.y) / s.h) * size.h];
-    return cornerPinMatrix(size.w, size.h, [toPx(q.tl), toPx(q.tr), toPx(q.br), toPx(q.bl)]);
-  })();
 
   return (
     <div style={{ position: 'relative', width, aspectRatio: String(f.aspect), filter: shadow ? `drop-shadow(${shadow})` : 'drop-shadow(0 8px 22px rgba(0,0,0,0.12))' }}>
@@ -120,9 +82,6 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
           transformOrigin: focusZoom ? `${focusZoom.cx * 100}% ${focusZoom.cy * 100}%` : '50% 50%',
           transition: 'transform 700ms cubic-bezier(.2,.7,.3,1)',
         }}>
-        {/* Warp-lag: corner-pinner innhold + overlay til skjermens ekte quad
-            (perspektiv/keystone). Uten quad = ingen transform (fyller rektangelet). */}
-        <div style={{ position: 'absolute', inset: 0, transformOrigin: '0 0', transform: warpTransform, opacity: size.w > 0 ? 1 : 0 }}>
         {screenshot ? (
           // Fase 1b: vis ekte scan-screenshot (riktig scroll-bånd) i stedet for
           // live-iframe. Bilde + hotspot kommer fra samme scan → perfekt align,
@@ -134,11 +93,11 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
             style={{
               width: vw, height: vh, border: 0, display: 'block',
               transform: `scale(${scale || 0.001})`, transformOrigin: '0 0',
+              opacity: scale > 0 ? 1 : 0,
             }} />
         )}
         {/* Overlay (hotspot/cursor/touch) over skjermen */}
         {overlay}
-        </div>{/* /warp-lag */}
         </div>{/* /zoom-lag */}
         {/* Klikk/tegne-fanger for hotspot (kun når onScreenClick/onScreenDraw er satt).
             Tom flate: dra = tegn nytt rektangel, kort drag/klikk = standard-boks.
