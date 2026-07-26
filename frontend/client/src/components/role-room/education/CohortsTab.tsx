@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationGroupsService, type EducationGroup } from './educationGroupsService';
+import { educationAssignmentsService } from './educationAssignmentsService';
 import educationLtiService from './educationLtiService';
 import type { EducationTabId } from './EducationWorkspace';
 
@@ -93,6 +94,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
 
   // Grupper for valgt kull.
   const [groups, setGroups] = useState<EducationGroup[]>([]);
+  const [assignmentsCount, setAssignmentsCount] = useState(0);
 
   // CSV-import.
   const [csvOpen, setCsvOpen] = useState(false);
@@ -116,6 +118,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { void loadCohorts(); }, [loadCohorts]);
+  useEffect(() => { void educationAssignmentsService.listAssignments().then((a) => setAssignmentsCount(a.length)).catch(() => setAssignmentsCount(0)); }, []);
 
   const selected = useMemo(() => cohorts.find((c) => c.id === selectedId) ?? null, [cohorts, selectedId]);
 
@@ -309,17 +312,17 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           </Box>
         </Collapse>
 
-        {/* Oppsett-stepper (statisk) */}
+        {/* Oppsett-stepper — avledet fra ekte tilstand */}
         <Panel>
           <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} spacing={{ xs: 1.5, sm: 0 }}>
             {[
-              { id: 'koble', n: <CheckIcon sx={{ fontSize: 16 }} />, done: true, t: 'Koble til kurs', s: 'Canvas tilkoblet' },
-              { id: 'liste', n: '2', done: false, t: 'Kontroller deltakerliste', s: `${totalStudents} studenter, 2 faglærere` },
-              { id: 'grupper', n: '3', done: false, t: 'Opprett grupper', s: 'Grupper ikke opprettet' },
-              { id: 'oppgave', n: '4', done: false, t: 'Tildel første oppgave', s: 'Kom i gang med oppgaver' },
+              { id: 'koble', done: !!launchId, t: 'Koble til kurs', s: launchId ? 'Canvas tilkoblet' : 'Ikke koblet — åpne fra Canvas' },
+              { id: 'liste', done: totalStudents > 0, t: 'Kontroller deltakerliste', s: totalStudents > 0 ? `${totalStudents} studenter` : 'Ingen studenter ennå' },
+              { id: 'grupper', done: groups.length > 0, t: 'Opprett grupper', s: groups.length > 0 ? `${groups.length} grupper` : 'Ingen grupper ennå' },
+              { id: 'oppgave', done: assignmentsCount > 0, t: 'Tildel første oppgave', s: assignmentsCount > 0 ? `${assignmentsCount} oppgaver` : 'Ingen oppgaver ennå' },
             ].map((step, i, arr) => (
               <Stack key={step.id} direction="row" alignItems="center" spacing={1.25} sx={{ flex: 1 }}>
-                <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0, bgcolor: step.done ? ACCENT : 'rgba(255,255,255,0.06)', color: step.done ? '#fff' : 'rgba(255,255,255,0.55)' }}>{step.n}</Box>
+                <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0, bgcolor: step.done ? ACCENT : 'rgba(255,255,255,0.06)', color: step.done ? '#fff' : 'rgba(255,255,255,0.55)' }}>{step.done ? <CheckIcon sx={{ fontSize: 16 }} /> : i + 1}</Box>
                 <Box sx={{ minWidth: 0 }}>
                   <T eid={`edu-ks-step-${step.id}-t`} sx={{ fontSize: 13.5, fontWeight: 600 }}>{step.t}</T>
                   <T eid={`edu-ks-step-${step.id}-s`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>{step.s}</T>

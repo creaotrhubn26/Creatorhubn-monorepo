@@ -25,7 +25,7 @@ import {
 } from '@mui/icons-material';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
-import { educationAssignmentsService } from './educationAssignmentsService';
+import { educationAssignmentsService, type Assignment } from './educationAssignmentsService';
 import { PRODUCTION_TEMPLATES } from './educationTemplates';
 import { ACCENT, Panel, T, QuickAction, RailTips } from './_eduUi';
 import type { EducationTabId } from './EducationWorkspace';
@@ -67,9 +67,18 @@ function Pipeline({ stage, color }: { stage: number; color: string }) {
 
 const THUMBS = ['linear-gradient(135deg,#1e3a5f,#2a4a6f)', 'linear-gradient(135deg,#1a4a2e,#2f6b3f)', 'linear-gradient(135deg,#3a3550,#4a4560)', 'linear-gradient(135deg,#3a1f5f,#4a2f6f)'];
 
+function fmtDue(dueAt: string): string {
+  const days = Math.round((new Date(dueAt).getTime() - Date.now()) / 86_400_000);
+  if (days <= 0) return 'I dag';
+  if (days === 1) return 'I morgen';
+  if (days < 7) return `Om ${days} dager`;
+  return new Date(dueAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' });
+}
+
 export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) => void }) {
   const [productions, setProductions] = useState<Production[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -119,8 +128,12 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [prods, chs] = await Promise.all([educationProductionsService.listProductions(), educationCohortsService.listCohorts()]);
-      setProductions(prods); setCohorts(chs);
+      const [prods, chs, asg] = await Promise.all([
+        educationProductionsService.listProductions(),
+        educationCohortsService.listCohorts(),
+        educationAssignmentsService.listAssignments().catch(() => [] as Assignment[]),
+      ]);
+      setProductions(prods); setCohorts(chs); setAssignments(asg);
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente produksjoner'); }
     finally { setLoading(false); }
   }, []);
@@ -149,6 +162,14 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
       return true;
     });
   }, [productions, query, statusFilter]);
+
+  const upcoming = useMemo(() => {
+    const now = Date.now();
+    return assignments
+      .filter((a) => a.dueAt && new Date(a.dueAt).getTime() >= now)
+      .sort((x, y) => new Date(x.dueAt as string).getTime() - new Date(y.dueAt as string).getTime())
+      .slice(0, 5);
+  }, [assignments]);
 
   const activeCount = productions.length;
   const inProd = productions.filter((p) => mapPipeline(p.projectStatus).stage === 2).length;
@@ -292,20 +313,24 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
       <Stack spacing={2}>
         <Panel>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-            <T eid="edu-sp-rail-events-title" sx={{ fontWeight: 700, fontSize: 15 }}>Kommende aktiviteter</T>
-            <T eid="edu-sp-rail-events-link" sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Se kalender</T>
+            <T eid="edu-sp-rail-events-title" sx={{ fontWeight: 700, fontSize: 15 }}>Kommende frister</T>
+            <T eid="edu-sp-rail-events-link" onClick={() => onNavigate?.('assignments')} sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Alle oppgaver</T>
           </Stack>
-          {[
-            { id: 'a', bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd', icon: <CalendarIcon sx={{ fontSize: 15 }} />, t: 'Workshop: Story arc', s: 'I morgen, 10:00 – 11:30' },
-            { id: 'b', bg: 'rgba(56,189,248,0.16)', c: '#38bdf8', icon: <ProductionIcon sx={{ fontSize: 15 }} />, t: 'Opptaksdag – MED101', s: 'Torsdag 2. mai, 09:00 – 17:00' },
-            { id: 'c', bg: 'rgba(245,158,11,0.16)', c: '#f59e0b', icon: <StudentsIcon sx={{ fontSize: 15 }} />, t: 'Review session – MKD200', s: 'Fredag 3. mai, 13:00 – 15:00' },
-            { id: 'd', bg: 'rgba(236,72,153,0.16)', c: '#ec4899', icon: <DeliverIcon sx={{ fontSize: 15 }} />, t: 'Leveransefrist – Kampanjevideo', s: '1. juni 2024' },
-          ].map((e) => (
-            <Stack key={e.id} direction="row" spacing={1.25} sx={{ py: 1 }}>
-              <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: e.bg, color: e.c, flexShrink: 0 }}>{e.icon}</Box>
-              <Box><T eid={`edu-sp-evt-${e.id}-t`} sx={{ fontSize: 13, fontWeight: 600 }}>{e.t}</T><T eid={`edu-sp-evt-${e.id}-s`} sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.25 }}>{e.s}</T></Box>
-            </Stack>
-          ))}
+          {upcoming.length === 0 ? (
+            <T eid="edu-sp-events-empty" sx={{ fontSize: 12.5, color: 'text.secondary', py: 1 }}>Ingen kommende frister. Frister fra oppgaver vises her.</T>
+          ) : upcoming.map((a) => {
+            const soon = new Date(a.dueAt as string).getTime() - Date.now() < 3 * 86_400_000;
+            return (
+              <Stack key={a.id} direction="row" spacing={1.25} sx={{ py: 1, cursor: a.productionProjectId ? 'pointer' : 'default' }}
+                onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId)}>
+                <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: soon ? 'rgba(236,72,153,0.16)' : 'rgba(139,92,246,0.16)', color: soon ? '#ec4899' : '#c4b5fd', flexShrink: 0 }}><DeliverIcon sx={{ fontSize: 15 }} /></Box>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
+                  <Typography sx={{ fontSize: 11.5, color: soon ? '#ec4899' : 'text.secondary', mt: 0.25 }}>{fmtDue(a.dueAt as string)}{a.productionTitle ? ` · ${a.productionTitle}` : ''}</Typography>
+                </Box>
+              </Stack>
+            );
+          })}
         </Panel>
         <Panel>
           <T eid="edu-sp-rail-qa-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1 }}>Hurtighandlinger</T>

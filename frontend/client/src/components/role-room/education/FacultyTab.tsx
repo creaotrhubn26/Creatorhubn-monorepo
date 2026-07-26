@@ -248,7 +248,9 @@ export function FacultyTab() {
               disabled={cohorts.length === 0}>
               {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </Select>
-            <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: 'rgba(16,185,129,0.15)', color: '#34d399', fontSize: 11.5, fontWeight: 600 }}>Aktiv</Box></Box>
+            <Box>{(() => { const assigned = f.cohortIds.length > 0; return (
+              <Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: assigned ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: assigned ? '#34d399' : 'rgba(255,255,255,0.55)', fontSize: 11.5, fontWeight: 600 }}>{assigned ? 'Aktiv' : 'Uten kull'}</Box>
+            ); })()}</Box>
             <IconButton size="small" onClick={() => remove(f.id)} sx={{ color: 'rgba(255,255,255,0.3)' }} aria-label="Fjern"><DeleteIcon fontSize="small" /></IconButton>
           </Box>
         ))}
