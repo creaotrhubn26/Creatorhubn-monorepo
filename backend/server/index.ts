@@ -22666,6 +22666,19 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// Hvilken commit kjører prod akkurat nå. Offentlig + lettvekt: brukes til
+// deploy-deteksjon (f.eks. auto-migrate-workflowen venter til den utplasserte
+// commit-en matcher før den trigger migrate → unngår 502 midt i deploy-
+// rolloveren). RENDER_GIT_COMMIT settes av Render på hver deploy.
+app.get("/api/version", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
+    branch: process.env.RENDER_GIT_BRANCH ?? null,
+    node: process.version,
+  });
+});
+
 // AI-queue health for observability (Leadgrid skalering nivå 2).
 // Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
 app.get("/api/leadgrid/ai-queue/health", async (req, res) => {
