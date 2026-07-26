@@ -233,9 +233,14 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <TopBar onHelp={() => setTourOpen(true)} />
         <Box sx={{ flex: 1, position: 'relative' }}>
-          {/* Hero-glød øverst i innholdet */}
-          <Box sx={{ position: 'absolute', top: 0, right: 0, width: '60%', height: 320, pointerEvents: 'none',
-            background: 'radial-gradient(120% 90% at 90% -20%, rgba(139,92,246,0.22), transparent 60%)' }} />
+          {/* Ambient The Role Room-backdrop (lilla lys top-høyre + fage merker
+              i hjørnet) — glir ned i solid mørk så innholdskortene forblir rene. */}
+          <Box sx={{
+            position: 'absolute', top: 0, right: 0, width: '78%', height: 560, pointerEvents: 'none', opacity: 0.7,
+            backgroundImage: 'url(/trr-edu-content-bg.png)', backgroundSize: 'cover', backgroundPosition: 'top right', backgroundRepeat: 'no-repeat',
+            WebkitMaskImage: 'linear-gradient(to bottom, #000 35%, transparent 100%)',
+            maskImage: 'linear-gradient(to bottom, #000 35%, transparent 100%)',
+          }} />
           <Box sx={{ position: 'relative', p: { xs: 2, md: 4 } }}>
             {renderTab()}
           </Box>
