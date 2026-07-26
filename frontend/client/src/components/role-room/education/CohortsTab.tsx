@@ -463,8 +463,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         </Panel>
         <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
           <T eid="edu-ks-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>
-          <T eid="edu-ks-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5, mb: 1 }}>Importer studenter fra Canvas for å komme i gang raskt med vurdering og oppgaver.</T>
-          <T eid="edu-ks-tips-link" sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Les mer →</T>
+          <T eid="edu-ks-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5 }}>Importer studenter fra Canvas (åpne Role Room fra emnet) eller via CSV for å komme raskt i gang.</T>
         </Panel>
       </Stack>
 

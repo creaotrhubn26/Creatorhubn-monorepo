@@ -32,13 +32,14 @@ export function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: 
   );
 }
 
-/** Standard tips-boks i høyre skinne. */
-export function RailTips({ idPrefix, title, body, link }: { idPrefix: string; title: string; body: string; link: string }) {
+/** Standard tips-boks i høyre skinne. `link`/`onLink` er valgfritt — utelates
+ *  når det ikke finnes et ekte mål (unngår døde lenker). */
+export function RailTips({ idPrefix, title, body, link, onLink }: { idPrefix: string; title: string; body: string; link?: string; onLink?: () => void }) {
   return (
     <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
       <T eid={`${idPrefix}-tips-title`} sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>{title}</T>
-      <T eid={`${idPrefix}-tips-body`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5, mb: 1 }}>{body}</T>
-      <T eid={`${idPrefix}-tips-link`} sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{link}</T>
+      <T eid={`${idPrefix}-tips-body`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5, mb: link ? 1 : 0 }}>{body}</T>
+      {link && <T eid={`${idPrefix}-tips-link`} sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}><span onClick={onLink} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onLink?.(); }}>{link}</span></T>}
     </Panel>
   );
 }

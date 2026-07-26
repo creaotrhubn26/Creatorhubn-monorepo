@@ -31,11 +31,13 @@ type TabId = 'overview' | 'cohorts' | 'productions' | 'assignments' | 'fagstoff'
 interface ActivityItem { id: string; title: string; source: string; when: string; icon: React.ReactNode; }
 
 // Onboarding-/system-feed vises til ekte aktivitet finnes (matcher fersk workspace).
+// Onboarding-veiledning (vises som «Kom i gang» når det ikke finnes ekte
+// aktivitet ennå). Ingen falske tidsstempler — dette er system-veiledning.
 const WELCOME_FEED: ActivityItem[] = [
-  { id: 'w1', title: 'Velkommen til The Role Room!', source: 'System', when: '2 u siden', icon: <SparkleIcon sx={{ fontSize: 16 }} /> },
-  { id: 'w2', title: 'Kom i gang med workspace', source: 'System', when: '2 u siden', icon: <CohortIcon sx={{ fontSize: 16 }} /> },
-  { id: 'w3', title: 'Tips: Opprett ditt første kull', source: 'System', when: '2 u siden', icon: <AssignmentIcon sx={{ fontSize: 16 }} /> },
-  { id: 'w4', title: 'Tips: Lag din første oppgave', source: 'System', when: '2 u siden', icon: <AssignmentIcon sx={{ fontSize: 16 }} /> },
+  { id: 'w1', title: 'Velkommen til The Role Room!', source: 'Kom i gang', when: '', icon: <SparkleIcon sx={{ fontSize: 16 }} /> },
+  { id: 'w2', title: 'Opprett ditt første kull', source: 'Kull & studenter', when: '', icon: <CohortIcon sx={{ fontSize: 16 }} /> },
+  { id: 'w3', title: 'Legg til studenter (Canvas eller CSV)', source: 'Kull & studenter', when: '', icon: <AssignmentIcon sx={{ fontSize: 16 }} /> },
+  { id: 'w4', title: 'Lag din første oppgave', source: 'Oppgaver', when: '', icon: <AssignmentIcon sx={{ fontSize: 16 }} /> },
 ];
 
 function Panel({ title, action, children, sx }: { title: string; action?: React.ReactNode; children: React.ReactNode; sx?: object }) {
@@ -262,7 +264,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
               sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2 }}>Opprett ny oppgave</Button>} />
         </Panel>
 
-        <Panel title="Nylig aktivitet" action={<SeeAllLink label="Se all aktivitet" onClick={() => onNavigate('assessment')} />}>
+        <Panel title="Kom i gang" action={<SeeAllLink label="Oversikt" onClick={() => onNavigate('cohorts')} />}>
           <Stack divider={<Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}>
             {WELCOME_FEED.map((a) => (
               <Stack key={a.id} direction="row" alignItems="center" spacing={1.25} sx={{ py: 1.1 }}>

@@ -177,10 +177,10 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
   const totalStudents = useMemo(() => cohorts.reduce((a, c) => a + (c.studentCount || 0), 0), [cohorts]);
 
   const kpis = [
-    { id: 'aktive', label: 'Aktive produksjoner', value: activeCount, hint: `${inProd} i produksjon, ${inPost} i post`, icon: <ProductionIcon />, spark: '0,20 12,15 24,17 36,8 48,12 60,4' },
-    { id: 'innspill', label: 'Innspillinger denne uken', value: inProd, hint: `${activeCount} planlagt totalt`, icon: <CalendarIcon />, spark: '0,16 12,18 24,10 36,13 48,6 60,9' },
-    { id: 'leveranser', label: 'Leveranser til vurdering', value: productions.reduce((a, p) => a + (p.assignmentCount || 0), 0), hint: 'Klar for gjennomgang', icon: <DeliverIcon />, spark: '0,18 12,12 24,14 36,7 48,10 60,4' },
-    { id: 'studenter', label: 'Studenter involvert', value: totalStudents, hint: 'På tvers av alle prosjekter', icon: <StudentsIcon />, spark: '0,12 12,10 24,11 36,9 48,7 60,6' },
+    { id: 'aktive', label: 'Aktive produksjoner', value: activeCount, hint: `${inProd} i produksjon, ${inPost} i post`, icon: <ProductionIcon /> },
+    { id: 'innspill', label: 'Innspillinger denne uken', value: inProd, hint: `${activeCount} planlagt totalt`, icon: <CalendarIcon /> },
+    { id: 'leveranser', label: 'Leveranser til vurdering', value: productions.reduce((a, p) => a + (p.assignmentCount || 0), 0), hint: 'Klar for gjennomgang', icon: <DeliverIcon /> },
+    { id: 'studenter', label: 'Studenter involvert', value: totalStudents, hint: 'På tvers av alle prosjekter', icon: <StudentsIcon /> },
   ];
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
@@ -228,7 +228,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
           </Panel>
         </Collapse>
 
-        {/* KPI-kort m/ sparkline */}
+        {/* KPI-kort */}
         <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
           {kpis.map((k) => (
             <Panel key={k.id} sx={{ p: 2 }}>
@@ -239,10 +239,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
                   <Typography sx={{ fontSize: 28, fontWeight: 800, lineHeight: 1, mt: 0.25 }}>{k.value}</Typography>
                 </Box>
               </Stack>
-              <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mt: 1.25 }}>
-                <T eid={`edu-sp-kpi-${k.id}-hint`} sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{k.hint}</T>
-                <Box component="svg" width="52" height="22" viewBox="0 0 60 22" sx={{ flexShrink: 0 }}><polyline points={k.spark} fill="none" stroke={ACCENT} strokeWidth="2" /></Box>
-              </Stack>
+              <T eid={`edu-sp-kpi-${k.id}-hint`} sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', mt: 1.25, display: 'block' }}>{k.hint}</T>
             </Panel>
           ))}
         </Box>
@@ -271,7 +268,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
             const pl = mapPipeline(p.projectStatus);
             return (
               <Stack key={p.id} direction="row" alignItems="center" spacing={2.25} sx={{ py: 2, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none', flexWrap: { xs: 'wrap', xl: 'nowrap' } }}>
-                <Box sx={{ width: 104, height: 70, borderRadius: 2.25, flexShrink: 0, background: THUMBS[i % THUMBS.length], border: '1px solid rgba(255,255,255,0.1)' }} />
+                <Box sx={{ width: 104, height: 70, borderRadius: 2.25, flexShrink: 0, background: THUMBS[i % THUMBS.length], border: '1px solid rgba(255,255,255,0.1)', display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,0.35)' }}><ProductionIcon sx={{ fontSize: 24 }} /></Box>
                 <Box sx={{ width: 240, flexShrink: 0, minWidth: 180 }}>
                   <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{p.title}</Typography>
                   <Typography sx={{ fontSize: 12, color: 'text.secondary', mt: 0.5 }}>{cohortName(p.cohortId)}</Typography>
@@ -339,7 +336,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
           <QuickAction eid="edu-sp-qa-deliver" icon={<DeliverIcon />} label="Legg til leveranse" onClick={() => onNavigate?.('assignments')} />
           <QuickAction eid="edu-sp-qa-review" icon={<ReviewIcon />} label="Start review" onClick={() => onNavigate?.('assessment')} />
         </Panel>
-        <RailTips idPrefix="edu-sp" title="Tips fra The Role Room" body="Bruk maler for å sikre at alle prosjekter har en rød tråd og at viktige leveranser ikke glemmes." link="Se alle tips →" />
+        <RailTips idPrefix="edu-sp" title="Tips fra The Role Room" body="Bruk maler for å sikre at alle prosjekter har en rød tråd og at viktige leveranser ikke glemmes." />
       </Stack>
 
       {/* Mal-dialog */}

@@ -95,11 +95,13 @@ export function FagstoffTab() {
   const suggestions = SUGGESTED_RESOURCES.filter((s) => !existingTitles.has(s.title.toLowerCase())).slice(0, 4);
 
   const videoCount = resources.filter((r) => resourceType(r).label === 'VIDEO').length;
+  const stegDekket = new Set(resources.map((r) => r.category)).size;
+  const medLenke = resources.filter((r) => r.url).length;
   const kpis = [
     { id: 'leksjoner', label: 'Leksjoner', value: resources.length, hint: `På tvers av ${grouped.length || RESOURCE_CATEGORIES.length} produksjonssteg`, icon: <LibraryIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
     { id: 'video', label: 'Videoleksjoner', value: videoCount, hint: 'Korte «hvordan»-videoer', icon: <VideoIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
-    { id: 'visninger', label: 'Visninger denne uken', value: '—', hint: 'Kommer med Canvas-analyse', icon: <ViewsIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
-    { id: 'fullfort', label: 'Fullført-rate', value: '—', hint: 'Snitt over alle kull', icon: <DoneIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
+    { id: 'steg', label: 'Produksjonssteg dekket', value: `${stegDekket}/${RESOURCE_CATEGORIES.length}`, hint: 'Steg med fagstoff', icon: <ViewsIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'lenker', label: 'Med lenke/ressurs', value: medLenke, hint: 'Video, PDF eller artikkel', icon: <DoneIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
   ];
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
