@@ -250,7 +250,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setDemoVidResult(out.path);
       setDemoVidQa(out.qa); setDemoVidScriptQa(out.scriptQa);
       const bad = out.qa.filter((g) => g && !g.ok).length;
-      setDemoVidMsg(bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)');
+      const warn = out.warnings?.length ? ' · ⚠ ' + out.warnings.join(' ') : '';
+      setDemoVidMsg((bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)') + warn);
       void systemOpen(out.path).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
@@ -286,7 +287,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         elevenKey: elevenKey.trim() || undefined,
       });
       setDemoVidResult(out.path); setDemoVidQa(out.qa);
-      { const bad = out.qa.filter((g) => g && !g.ok).length; setDemoVidMsg(bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)'); }
+      { const bad = out.qa.filter((g) => g && !g.ok).length; const warn = out.warnings?.length ? ' · ⚠ ' + out.warnings.join(' ') : ''; setDemoVidMsg((bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)') + warn); }
       void systemOpen(out.path).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
@@ -930,7 +931,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}
         </button>
         <button style={{ ...primaryBtn, padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span style={{ opacity: 0.8 }}>⌄</span></button>
+          onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span style={{ opacity: 0.8 }}>→</span></button>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -1338,10 +1339,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
               {/* ── Visning (render-toggles) ── */}
               <div style={{ ...secHd, marginTop: 22, marginBottom: 6 }}>Visning</div>
-              {(Object.keys(RENDER_OPTION_LABELS) as (keyof DemoRenderOptions)[]).map((k) => (
-                <Toggle key={k} label={RENDER_OPTION_LABELS[k]} on={(project.render ?? defaultRenderOptions())[k]}
-                  onChange={(v) => setRenderOption(k, v)} />
-              ))}
+              {(Object.keys(RENDER_OPTION_LABELS) as (keyof DemoRenderOptions)[]).map((k) => {
+                // Safe Area har ingen effekt på desktop (0 inset) → merk «kun mobil» så
+                // toggelen ikke ser død ut når MacBook-scenen er valgt.
+                const dead = k === 'safeArea' && previewDevice === 'macbook';
+                return (
+                  <Toggle key={k} label={RENDER_OPTION_LABELS[k] + (dead ? '  ·  kun mobil' : '')} on={(project.render ?? defaultRenderOptions())[k]}
+                    onChange={(v) => setRenderOption(k, v)} />
+                );
+              })}
 
               {/* ── Responsive Check ── */}
               <button style={{ ...outlineBtn, width: '100%', justifyContent: 'center', marginTop: 16, opacity: respBusy ? 0.6 : 1 }}
@@ -1590,8 +1596,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <input style={field} value={selected.title} onChange={(e) => updateScene(selected.id, { title: e.target.value })} />
 
                   <div style={fldLabel}>{tab === 'Notes' ? 'Notater' : 'Manus / narration'}</div>
-                  <textarea style={{ ...field, height: 70, resize: 'vertical', fontFamily: 'inherit' }} value={selected.narration}
-                    placeholder="Hva som skal sies i denne scenen…" onChange={(e) => updateScene(selected.id, { narration: e.target.value })} />
+                  {/* Notes-fanen redigerer det EGNE notat-feltet (vises ikke i demoen),
+                      ikke narration — ellers ville produksjonsnotater overskrevet manus. */}
+                  <textarea style={{ ...field, height: 70, resize: 'vertical', fontFamily: 'inherit' }}
+                    value={tab === 'Notes' ? (selected.notes || '') : selected.narration}
+                    placeholder={tab === 'Notes' ? 'Produksjonsnotater (kun for deg — vises ikke i demoen)…' : 'Hva som skal sies i denne scenen…'}
+                    onChange={(e) => updateScene(selected.id, tab === 'Notes' ? { notes: e.target.value } : { narration: e.target.value })} />
                   {tab !== 'Notes' && <WebSpeechBar scene={selected} language={project.language} />}
 
                   <div style={row2}>
