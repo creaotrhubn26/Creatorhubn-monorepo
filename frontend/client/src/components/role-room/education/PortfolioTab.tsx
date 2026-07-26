@@ -1,10 +1,11 @@
 /**
- * PortfolioTab.tsx — «Portefølje» (redesign, CMS-koblet).
+ * PortfolioTab.tsx — «Portefølje» (CMS-koblet, ekte backend).
  *
- * Studentenes showreels og eksamensmapper. Rader drives av EKTE kull + studenter
- * (educationCohortsService); «Del med sensor» oppretter en ekte sensor-invitasjon
- * for valgt kull (educationCensorService). Publiserings-/showreel-tellinger er
- * porteføljespesifikke og markert «kommer» til porteføljelageret er bygd.
+ * Studentenes showreels og eksamensmapper — ekte porteføljeelementer via
+ * educationPortfolioService (opprett, publiser/avpubliser, slett). Hver rad er
+ * et porteføljeelement knyttet til en student. «Del med sensor» oppretter en
+ * ekte sensor-invitasjon (educationCensorService); «Åpne» går til lenke eller
+ * studentens produksjon (educationStudentViewService).
  *
  * 🔑 CMS: stabile data-edit-id (edu-pf-*) på hvert statiske element.
  */
@@ -12,41 +13,57 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, CircularProgress, Alert, MenuItem, TextField,
-  InputBase, Avatar, Snackbar,
+  InputBase, Avatar, Snackbar, Select, Chip, IconButton, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import {
   CollectionsBookmark as PortfolioIcon, Add as AddIcon, IosShare as ShareIcon,
   Search as SearchIcon, KeyboardArrowDown as CaretIcon, Movie as ShowreelIcon,
   FolderSpecial as ExamIcon, Verified as PublishedIcon, OpenInNew as OpenIcon,
+  Delete as DeleteIcon, Publish as PublishIcon, Undo as UnpublishIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationCensorService } from './educationCensorService';
 import { educationStudentViewService } from './educationStudentViewService';
+import { educationPortfolioService, type Portfolio, type PortfolioKind } from './educationPortfolioService';
 import { ACCENT, Panel, T } from './_eduUi';
 
-type Row = { student: Student; cohort: Cohort };
 const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
 export function PortfolioTab() {
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [students, setStudents] = useState<{ student: Student; cohort: Cohort }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cohortFilter, setCohortFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Ny-portefølje-dialog.
+  const [newOpen, setNewOpen] = useState(false);
+  const [newStudentId, setNewStudentId] = useState('');
+  const [newKind, setNewKind] = useState<PortfolioKind>('showreel');
+  const [newTitle, setNewTitle] = useState('');
+  const [newUrl, setNewUrl] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const chs = await educationCohortsService.listCohorts();
-      setCohorts(chs);
+      const [chs, pfs] = await Promise.all([
+        educationCohortsService.listCohorts(),
+        educationPortfolioService.listPortfolios(),
+      ]);
+      setCohorts(chs); setPortfolios(pfs);
       const perCohort = await Promise.all(chs.map(async (c) => {
         try { return (await educationCohortsService.listStudents(c.id)).map((s) => ({ student: s, cohort: c })); }
-        catch { return [] as Row[]; }
+        catch { return [] as { student: Student; cohort: Cohort }[]; }
       }));
-      setRows(perCohort.flat());
+      setStudents(perCohort.flat());
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente porteføljer'); }
     finally { setLoading(false); }
   }, []);
@@ -64,26 +81,58 @@ export function PortfolioTab() {
     finally { setSharing(false); }
   };
 
-  const openStudent = async (studentId: string) => {
+  const handleCreate = async () => {
+    if (!newStudentId || creating) return;
+    setCreating(true); setError(null);
     try {
-      const view = await educationStudentViewService.getStudentView(studentId);
+      const pf = await educationPortfolioService.createPortfolio({ studentId: newStudentId, kind: newKind, title: newTitle.trim() || undefined, url: newUrl.trim() || undefined });
+      setPortfolios((prev) => [pf, ...prev]);
+      setNewOpen(false); setNewStudentId(''); setNewKind('showreel'); setNewTitle(''); setNewUrl('');
+      setToast('Portefølje opprettet.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette portefølje'); }
+    finally { setCreating(false); }
+  };
+
+  const togglePublish = async (p: Portfolio) => {
+    setBusyId(p.id);
+    try {
+      const updated = await educationPortfolioService.updatePortfolio(p.id, { status: p.status === 'published' ? 'draft' : 'published' });
+      setPortfolios((prev) => prev.map((x) => x.id === p.id ? updated : x));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke endre status'); }
+    finally { setBusyId(null); }
+  };
+
+  const handleDelete = async (id: string) => {
+    try { await educationPortfolioService.deletePortfolio(id); setPortfolios((prev) => prev.filter((p) => p.id !== id)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke slette'); }
+  };
+
+  const openPortfolio = async (p: Portfolio) => {
+    if (p.url) { window.open(p.url, '_blank', 'noopener'); return; }
+    try {
+      const view = await educationStudentViewService.getStudentView(p.studentId);
       const prod = view.productions?.[0];
       if (prod?.projectId) window.open(`/theroleroom?project=${encodeURIComponent(prod.projectId)}`, '_blank', 'noopener');
-      else setToast('Studenten har ingen publisert produksjon ennå.');
-    } catch { setToast('Kunne ikke åpne studentens portefølje.'); }
+      else setToast('Ingen lenke eller produksjon å åpne ennå.');
+    } catch { setToast('Kunne ikke åpne porteføljen.'); }
   };
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((r) => (!cohortFilter || r.cohort.id === cohortFilter) && (!q || r.student.name.toLowerCase().includes(q)));
-  }, [rows, cohortFilter, query]);
+    return portfolios.filter((p) =>
+      (!cohortFilter || p.cohortId === cohortFilter)
+      && (statusFilter === 'all' || p.status === statusFilter)
+      && (!q || p.studentName.toLowerCase().includes(q) || (p.title ?? '').toLowerCase().includes(q)));
+  }, [portfolios, cohortFilter, statusFilter, query]);
 
   const kpis = [
-    { id: 'porteflojer', label: 'Porteføljer', value: rows.length, hint: 'På tvers av alle kull', icon: <PortfolioIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
-    { id: 'publiserte', label: 'Publiserte', value: '—', hint: 'Klare for visning', icon: <PublishedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
-    { id: 'showreels', label: 'Showreels', value: '—', hint: 'Videosammendrag', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
-    { id: 'eksamen', label: 'Eksamensmapper', value: '—', hint: 'Sendt til sensur', icon: <ExamIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'porteflojer', label: 'Porteføljer', value: portfolios.length, hint: 'På tvers av alle kull', icon: <PortfolioIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
+    { id: 'publiserte', label: 'Publiserte', value: portfolios.filter((p) => p.status === 'published').length, hint: 'Klare for visning', icon: <PublishedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
+    { id: 'showreels', label: 'Showreels', value: portfolios.filter((p) => p.kind === 'showreel').length, hint: 'Videosammendrag', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
+    { id: 'eksamen', label: 'Eksamensmapper', value: portfolios.filter((p) => p.kind === 'exam').length, hint: 'Sendt til sensur', icon: <ExamIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
   ];
+
+  const kindLabel = (k: PortfolioKind) => k === 'exam' ? 'Eksamensmappe' : 'Showreel';
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
 
@@ -102,7 +151,7 @@ export function PortfolioTab() {
           <Button variant="outlined" startIcon={<ShareIcon />} onClick={shareWithCensor} disabled={sharing} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-pf-btn-share" component="span" sx={{ fontWeight: 600 }}>{sharing ? 'Deler…' : 'Del med sensor'}</T>
           </Button>
-          <Button variant="contained" startIcon={<AddIcon />} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { if (students.length === 0) { setError('Legg til studenter i Kull & studenter først.'); return; } setNewOpen(true); }} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-pf-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny portefølje</T>
           </Button>
         </Stack>
@@ -128,13 +177,17 @@ export function PortfolioTab() {
       <Panel sx={{ p: 0, overflow: 'hidden' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <T eid="edu-pf-list-title" sx={{ fontWeight: 700, fontSize: 15, mr: 1 }}>Studentporteføljer</T>
-          <TextField size="small" select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} SelectProps={{ displayEmpty: true }} sx={{ minWidth: 150, '& .MuiInputBase-root': { fontSize: 12.5 } }}>
-            <MenuItem value="">Alle kull</MenuItem>
-            {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-          </TextField>
-          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
-            <T eid="edu-pf-filter-status" component="span" sx={{ fontSize: 12.5 }}>Alle statuser</T><CaretIcon sx={{ fontSize: 15 }} />
-          </Stack>
+          <Select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} size="small" displayEmpty IconComponent={CaretIcon}
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            <MenuItem value="" sx={{ fontSize: 12.5 }}>Alle kull</MenuItem>
+            {cohorts.map((c) => <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12.5 }}>{c.name}</MenuItem>)}
+          </Select>
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="small" IconComponent={CaretIcon}
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 120, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle statuser</MenuItem>
+            <MenuItem value="published" sx={{ fontSize: 12.5 }}>Publisert</MenuItem>
+            <MenuItem value="draft" sx={{ fontSize: 12.5 }}>Utkast</MenuItem>
+          </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
             <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
@@ -142,26 +195,61 @@ export function PortfolioTab() {
           </Stack>
         </Stack>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 100px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          {[['student', 'Student'], ['prosjekt', 'Kull · prosjekt'], ['status', 'Status'], ['open', '']].map(([id, label]) => (
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 120px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          {[['student', 'Student'], ['prosjekt', 'Kull · portefølje'], ['status', 'Status'], ['open', '']].map(([id, label]) => (
             <T key={id} eid={`edu-pf-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
           ))}
         </Box>
 
-        {visible.length === 0 ? (
-          <T eid="edu-pf-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>{rows.length === 0 ? 'Ingen studentporteføljer ennå — legg til studenter i Kull & studenter først.' : 'Ingen studenter matcher filteret.'}</T>
-        ) : visible.map((r) => (
-          <Box key={r.student.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 100px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-              <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(r.student.name)}</Avatar>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.student.name}</Typography>
-            </Stack>
-            <Typography sx={{ fontSize: 12.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pr: 2 }}>{r.cohort.name}</Typography>
-            <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', fontSize: 11.5, fontWeight: 600 }}>Utkast</Box></Box>
-            <Button size="small" variant="outlined" startIcon={<OpenIcon sx={{ fontSize: '14px !important' }} />} onClick={() => openStudent(r.student.id)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, justifySelf: 'end', whiteSpace: 'nowrap' }}>Åpne</Button>
-          </Box>
-        ))}
+        {portfolios.length === 0 ? (
+          <T eid="edu-pf-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen porteføljer ennå — trykk «Ny portefølje» for å opprette den første.</T>
+        ) : visible.length === 0 ? (
+          <T eid="edu-pf-nomatch" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen porteføljer matcher filteret.</T>
+        ) : visible.map((p) => {
+          const published = p.status === 'published';
+          return (
+            <Box key={p.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 120px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
+                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(p.studentName)}</Avatar>
+                <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.studentName}</Typography>
+              </Stack>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0, pr: 2 }}>
+                <Typography sx={{ fontSize: 12.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[p.cohortName, p.title || kindLabel(p.kind)].filter(Boolean).join(' · ')}</Typography>
+                <Chip label={kindLabel(p.kind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: p.kind === 'exam' ? 'rgba(56,189,248,0.15)' : 'rgba(236,72,153,0.15)', color: p.kind === 'exam' ? '#38bdf8' : '#ec4899', flexShrink: 0 }} />
+              </Stack>
+              <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: published ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: published ? '#34d399' : 'rgba(255,255,255,0.6)', fontSize: 11.5, fontWeight: 600 }}>{published ? 'Publisert' : 'Utkast'}</Box></Box>
+              <Stack direction="row" alignItems="center" spacing={0.25} justifyContent="flex-end">
+                <Tooltip title={published ? 'Avpubliser' : 'Publiser'}><span><IconButton size="small" onClick={() => togglePublish(p)} disabled={busyId === p.id} sx={{ color: published ? '#34d399' : 'rgba(255,255,255,0.5)' }}>{published ? <UnpublishIcon fontSize="small" /> : <PublishIcon fontSize="small" />}</IconButton></span></Tooltip>
+                <Tooltip title="Åpne"><IconButton size="small" onClick={() => openPortfolio(p)} sx={{ color: 'rgba(255,255,255,0.5)' }}><OpenIcon fontSize="small" /></IconButton></Tooltip>
+                <Tooltip title="Slett"><IconButton size="small" onClick={() => handleDelete(p.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+              </Stack>
+            </Box>
+          );
+        })}
       </Panel>
+
+      {/* Ny-portefølje-dialog */}
+      <Dialog open={newOpen} onClose={() => setNewOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Ny portefølje</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.75} sx={{ mt: 0.5 }}>
+            <TextField select size="small" label="Student" value={newStudentId} onChange={(e) => setNewStudentId(e.target.value)} fullWidth>
+              {students.map(({ student, cohort }) => <MenuItem key={student.id} value={student.id}>{student.name} · {cohort.name}</MenuItem>)}
+            </TextField>
+            <TextField select size="small" label="Type" value={newKind} onChange={(e) => setNewKind(e.target.value as PortfolioKind)} fullWidth>
+              <MenuItem value="showreel">Showreel</MenuItem>
+              <MenuItem value="exam">Eksamensmappe</MenuItem>
+            </TextField>
+            <TextField size="small" label="Tittel (valgfritt)" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} fullWidth />
+            <TextField size="small" label="Lenke (valgfritt)" value={newUrl} onChange={(e) => setNewUrl(e.target.value)} fullWidth />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setNewOpen(false)} disabled={creating} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!newStudentId || creating} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{creating ? 'Oppretter…' : 'Opprett'}</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
