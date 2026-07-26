@@ -184,6 +184,34 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
 
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
+      {/* Første-gangs-hero (kinematisk backdrop) når workspacet er helt tomt */}
+      {firstRun && (
+        <Box sx={{
+          position: 'relative', overflow: 'hidden', borderRadius: 3, minHeight: 210, display: 'flex', alignItems: 'center',
+          border: '1px solid rgba(139,92,246,0.28)',
+          backgroundImage: 'linear-gradient(90deg, rgba(9,7,14,0.94) 0%, rgba(9,7,14,0.62) 46%, rgba(9,7,14,0.12) 100%), url(/trr-edu-hero-bg.png)',
+          backgroundSize: 'cover', backgroundPosition: 'center right',
+        }}>
+          <Box sx={{ p: { xs: 3, md: 4 }, maxWidth: 620 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#c4b5fd', letterSpacing: 0.6, textTransform: 'uppercase', mb: 1 }}>Kom i gang</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>Velkommen til utdannings-workspacet</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 14.5, mb: 2.5, maxWidth: 520 }}>
+              Opprett ditt første kull, legg inn studentene og start en produksjon. Undervisning, oppgaver og vurdering samles her — koblet rett til skolens LMS.
+            </Typography>
+            <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+              <Button variant="contained" startIcon={<CohortIcon />} onClick={() => onNavigate('cohorts')}
+                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+                Opprett ditt første kull
+              </Button>
+              <Button variant="outlined" startIcon={<AssignmentIcon />} onClick={() => onNavigate('assignments')}
+                sx={{ borderColor: 'rgba(255,255,255,0.2)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2, '&:hover': { borderColor: 'rgba(255,255,255,0.35)' } }}>
+                Lag en oppgave
+              </Button>
+            </Stack>
+          </Box>
+        </Box>
+      )}
+
       {/* KPI-kort */}
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
         {kpis.map((k) => (

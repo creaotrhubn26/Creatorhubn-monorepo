@@ -17,6 +17,7 @@ import { FagstoffTab } from './FagstoffTab';
 import { AssessmentTab } from './AssessmentTab';
 import { FacultyTab } from './FacultyTab';
 import educationLtiService from './educationLtiService';
+import { RoleRoomEduLogo } from './RoleRoomEduLogo';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Typography, Card, CardContent, Chip, Stack, Button, InputBase, IconButton, Tooltip, Avatar,
@@ -99,19 +100,10 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
       backgroundPosition: 'center',
       display: { xs: 'none', md: 'flex' }, flexDirection: 'column', p: 1.75,
     }}>
-      {/* Logo (ekte The Role Room-merke, transparent — beskjært for å fjerne
-          PNG-ens topp/bunn-luft via background-crop). */}
-      <Box
-        role="img"
-        aria-label="The Role Room"
-        sx={{
-          width: '100%', height: 66, mb: 1, mt: 0.5,
-          backgroundImage: 'url(/TheRoleRoom_Logo_v2.png)',
-          backgroundSize: '100% auto',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-        }}
-      />
+      {/* Logo — ekte merke + hvitt ordmerke (lesbart på mørk backdrop). */}
+      <Box sx={{ px: 0.75, pt: 1.25, pb: 1, mb: 0.5 }}>
+        <RoleRoomEduLogo markSize={46} />
+      </Box>
 
       {/* Nav */}
       <Stack spacing={0.4} sx={{ flex: 1, overflow: 'auto' }}>
