@@ -91,7 +91,12 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
   return (
     <Box component="nav" sx={{
       width: 252, flexShrink: 0, height: '100vh', position: 'sticky', top: 0,
-      borderRight: '1px solid rgba(255,255,255,0.07)', bgcolor: 'rgba(255,255,255,0.015)',
+      borderRight: '1px solid rgba(255,255,255,0.07)',
+      // Kinematisk The Role Room-backdrop (klaffbrett + lilla lys) med mørk
+      // gradient-overlegg så nav-teksten holder seg lesbar.
+      background: 'linear-gradient(180deg, rgba(10,10,10,0.5) 0%, rgba(12,8,22,0.86) 100%), url(/trr-edu-sidebar-bg.png)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
       display: { xs: 'none', md: 'flex' }, flexDirection: 'column', p: 1.75,
     }}>
       {/* Logo (ekte The Role Room-merke, transparent — beskjært for å fjerne
