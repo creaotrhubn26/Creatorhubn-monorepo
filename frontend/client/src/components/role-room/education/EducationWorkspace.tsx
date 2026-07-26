@@ -94,13 +94,19 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
       borderRight: '1px solid rgba(255,255,255,0.07)', bgcolor: 'rgba(255,255,255,0.015)',
       display: { xs: 'none', md: 'flex' }, flexDirection: 'column', p: 1.75,
     }}>
-      {/* Logo */}
-      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 1, py: 1, mb: 1.5 }}>
-        <Box sx={{ width: 34, height: 34, borderRadius: 2, background: 'linear-gradient(135deg,#8B5CF6,#6366f1)', display: 'grid', placeItems: 'center', boxShadow: '0 4px 14px rgba(139,92,246,0.4)' }}>
-          <SchoolIcon sx={{ fontSize: 20, color: '#fff' }} />
-        </Box>
-        <Typography sx={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, lineHeight: 1.05 }}>THE ROLE<br />ROOM</Typography>
-      </Stack>
+      {/* Logo (ekte The Role Room-merke, transparent — beskjært for å fjerne
+          PNG-ens topp/bunn-luft via background-crop). */}
+      <Box
+        role="img"
+        aria-label="The Role Room"
+        sx={{
+          width: '100%', height: 66, mb: 1, mt: 0.5,
+          backgroundImage: 'url(/TheRoleRoom_Logo_v2.png)',
+          backgroundSize: '100% auto',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      />
 
       {/* Nav */}
       <Stack spacing={0.4} sx={{ flex: 1, overflow: 'auto' }}>
