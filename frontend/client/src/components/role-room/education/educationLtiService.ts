@@ -88,6 +88,26 @@ export const educationLtiService = {
     const data = (await res.json()) as { members?: LtiRosterMember[] };
     return data.members ?? [];
   },
+
+  /**
+   * Importerer LMS-klasse-rosteret (NRPS) inn i et utdannings-kull. Uten
+   * cohortId opprettes et nytt kull (cohortName). Idempotent på e-post = «synk».
+   */
+  async importStudents(
+    launchId: string,
+    input: { cohortId?: string; cohortName?: string } = {},
+  ): Promise<{ cohortId: string; added: number; skipped: number; total: number }> {
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/import-students`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return (await res.json()) as { cohortId: string; added: number; skipped: number; total: number };
+  },
 };
 
 export interface LtiRosterMember {

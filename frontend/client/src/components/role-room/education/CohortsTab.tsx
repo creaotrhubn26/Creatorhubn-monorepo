@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationGroupsService, type EducationGroup } from './educationGroupsService';
+import educationLtiService from './educationLtiService';
 import type { EducationTabId } from './EducationWorkspace';
 
 const ACCENT = '#8B5CF6';
@@ -99,6 +100,11 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   const [csvBusy, setCsvBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Canvas/LTI: er vi i en launchet økt? + roster-forhåndsvisning.
+  const [launchId] = useState<string | null>(() => educationLtiService.getLaunchId());
+  const [rosterCount, setRosterCount] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+
   const loadCohorts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -133,6 +139,27 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
       await educationGroupsService.createGroup(selectedId, `Gruppe ${groups.length + 1}`);
       await loadGroups(selectedId);
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette gruppe'); }
+  };
+
+  // Roster-forhåndsvisning når vi er launchet fra Canvas (ærlig antall i banneret).
+  useEffect(() => {
+    if (!launchId) return;
+    let cancelled = false;
+    void educationLtiService.getRoster(launchId)
+      .then((members) => { if (!cancelled) setRosterCount(members.filter((m) => m.roles.some((r) => /learner|student/i.test(r)) || m.roles.length === 0).length); })
+      .catch(() => { if (!cancelled) setRosterCount(null); });
+    return () => { cancelled = true; };
+  }, [launchId]);
+
+  const handleImportFromCanvas = async (opts: { cohortId?: string; cohortName?: string }) => {
+    if (!launchId || importing) return;
+    setImporting(true); setError(null);
+    try {
+      const { cohortId, added, skipped } = await educationLtiService.importStudents(launchId, opts);
+      await loadCohorts(); setSelectedId(cohortId); await loadStudents(cohortId);
+      setToast(`Importert fra Canvas: ${added} lagt til${skipped ? ` · ${skipped} fantes fra før` : ''}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke importere fra Canvas'); }
+    finally { setImporting(false); }
   };
 
   const csvPreview = useMemo(() => parseCsvStudents(csvText), [csvText]);
@@ -227,9 +254,13 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             </Box>
           </Stack>
           <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
-            <Button variant="outlined" startIcon={<ImportIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
-              <T eid="edu-ks-btn-import" component="span" sx={{ fontWeight: 600 }}>Importer fra Canvas</T>
-            </Button>
+            <Tooltip title={launchId ? 'Importer klasse-rosteret fra Canvas' : 'Åpne Role Room fra Canvas-emnet for å importere rosteret'}>
+              <span>
+                <Button variant="outlined" startIcon={<ImportIcon />} disabled={!launchId || importing} onClick={() => handleImportFromCanvas({})} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+                  <T eid="edu-ks-btn-import" component="span" sx={{ fontWeight: 600 }}>{importing ? 'Importerer…' : 'Importer fra Canvas'}</T>
+                </Button>
+              </span>
+            </Tooltip>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)}
               sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
               <T eid="edu-ks-btn-create" component="span" sx={{ fontWeight: 700 }}>Opprett kull</T>
@@ -254,24 +285,26 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           </Panel>
         </Collapse>
 
-        {/* Canvas-oppdagelsesbanner (statisk «kommer») */}
-        <Collapse in={bannerOpen}>
+        {/* Canvas-oppdagelsesbanner — vises kun i en ekte LTI-launchet økt */}
+        <Collapse in={!!launchId && bannerOpen}>
           <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2.25, p: 2.5, borderRadius: 3.5, background: 'linear-gradient(100deg, rgba(139,92,246,0.16), rgba(99,102,241,0.08))', border: '1px solid rgba(139,92,246,0.32)', flexWrap: 'wrap' }}>
             <Box sx={{ width: 58, height: 58, borderRadius: 3.5, bgcolor: 'rgba(139,92,246,0.22)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CanvasIcon sx={{ fontSize: 28 }} /></Box>
             <Box sx={{ flex: 1, minWidth: 200 }}>
               <Stack direction="row" alignItems="center" spacing={1}>
-                <T eid="edu-ks-canvas-title" sx={{ fontWeight: 700, fontSize: 16 }}>Canvas-kurs funnet</T>
-                <Chip data-edit-id="edu-ks-canvas-tag" label="NYTT" size="small" sx={{ height: 18, bgcolor: ACCENT, color: '#fff', fontWeight: 800, fontSize: 9.5 }} />
+                <T eid="edu-ks-canvas-title" sx={{ fontWeight: 700, fontSize: 16 }}>Canvas-emne tilkoblet</T>
+                <Chip data-edit-id="edu-ks-canvas-tag" label="LTI" size="small" sx={{ height: 18, bgcolor: ACCENT, color: '#fff', fontWeight: 800, fontSize: 9.5 }} />
               </Stack>
-              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#e9d5ff', fontWeight: 600, mt: 0.25 }}>MED101 – Kommunikasjon og samhandling</T>
-              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.5 }}>28 studenter · 2 faglærere · Høst 2024</T>
+              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#e9d5ff', fontWeight: 600, mt: 0.25 }}>Klasse-roster fra LMS-en er klart</T>
+              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.5 }}>{rosterCount === null ? 'Henter roster…' : `${rosterCount} studenter i rosteret · via NRPS`}</T>
             </Box>
-            <Button variant="contained" startIcon={<InviteIcon />} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
-              <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>Importer studenter</T>
+            <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: 'Importert fra Canvas' })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+              <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : 'Importer studenter'}</T>
             </Button>
-            <Button variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2, whiteSpace: 'nowrap' }}>
-              <T eid="edu-ks-canvas-other" component="span" sx={{ fontWeight: 600 }}>Velg et annet kurs</T>
-            </Button>
+            {selected && (
+              <Button variant="outlined" disabled={importing} onClick={() => handleImportFromCanvas({ cohortId: selected.id })} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2, whiteSpace: 'nowrap' }}>
+                <T eid="edu-ks-canvas-other" component="span" sx={{ fontWeight: 600 }}>Legg i «{selected.name}»</T>
+              </Button>
+            )}
             <IconButton size="small" onClick={() => setBannerOpen(false)} sx={{ position: 'absolute', top: 8, right: 10, color: 'rgba(255,255,255,0.4)' }}><CloseIcon fontSize="small" /></IconButton>
           </Box>
         </Collapse>
@@ -409,18 +442,21 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         </Panel>
         <Panel>
           <T eid="edu-ks-rail-sync-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1.25 }}>Synkronisering</T>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: '#10b981', mb: 0.75 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: launchId ? '#10b981' : 'rgba(255,255,255,0.5)', mb: 0.75 }}>
             <CheckIcon sx={{ fontSize: 15 }} />
-            <T eid="edu-ks-sync-status" sx={{ fontSize: 12.5, color: '#10b981' }}>Canvas tilkoblet</T>
+            <T eid="edu-ks-sync-status" sx={{ fontSize: 12.5, color: launchId ? '#10b981' : 'rgba(255,255,255,0.5)' }}>{launchId ? 'Canvas tilkoblet (LTI)' : 'Ikke koblet — åpne fra Canvas'}</T>
           </Stack>
           <Stack direction="row" justifyContent="space-between" sx={{ mb: 1.5 }}>
-            <T eid="edu-ks-sync-last" sx={{ fontSize: 12, color: 'text.secondary' }}>Sist synkronisert</T>
-            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>i dag 00:54</Typography>
+            <T eid="edu-ks-sync-last" sx={{ fontSize: 12, color: 'text.secondary' }}>Roster</T>
+            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{launchId ? (rosterCount === null ? 'henter…' : `${rosterCount} studenter`) : '—'}</Typography>
           </Stack>
-          <Button fullWidth variant="contained" startIcon={<SyncIcon />} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
-            <T eid="edu-ks-sync-btn" component="span" sx={{ fontWeight: 700 }}>Synkroniser nå</T>
-          </Button>
-          <QuickAction eid="edu-ks-sync-log" icon={<CaretIcon />} label="Se logg" />
+          <Tooltip title={launchId ? (selected ? `Synk rosteret inn i «${selected.name}»` : 'Synk rosteret til et nytt kull') : 'Åpne Role Room fra Canvas for å synkronisere'}>
+            <span style={{ display: 'block' }}>
+              <Button fullWidth variant="contained" startIcon={<SyncIcon />} disabled={!launchId || importing} onClick={() => handleImportFromCanvas(selected ? { cohortId: selected.id } : { cohortName: 'Importert fra Canvas' })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+                <T eid="edu-ks-sync-btn" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Synkroniserer…' : 'Synkroniser nå'}</T>
+              </Button>
+            </span>
+          </Tooltip>
         </Panel>
         <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
           <T eid="edu-ks-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>

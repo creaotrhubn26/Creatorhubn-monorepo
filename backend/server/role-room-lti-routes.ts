@@ -376,6 +376,65 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
   // scoreGiven/scoreMaximum. Målbruker: `ltiUserSub` (fra roster) ELLER
   // `studentEmail` (slås opp mot roster) — ellers launch-brukeren (student-
   // launchet oppgave). Poster til launchens AGS line item.
+
+  // ── Faglærer: importer LMS-klasse-roster (NRPS) → utdannings-kull ─────────
+  // Henter rosteret via NRPS og upserter studentene (roller = Learner/Student)
+  // inn i et utdannings-kull. `cohortId` importerer inn i et eksisterende kull
+  // (eier-sjekket); uten den opprettes et nytt kull (`cohortName`). Duplikater
+  // hoppes over på e-post (case-insensitivt). Trygg å kjøre på nytt = «synk».
+  router.post("/lti/launches/:id/import-students", requireSession, async (req, res) => {
+    const body = (req.body ?? {}) as { cohortId?: string; cohortName?: string };
+    const userId = (req as Request & { userId: string }).userId;
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 500).json({ error: roster.error }); return; }
+      const students = roster.members.filter((m) =>
+        m.roles.some((r) => /learner|student/i.test(r)) || m.roles.length === 0);
+
+      // Mål-kull: eksisterende (eier-sjekk) eller nytt.
+      let cohortId = typeof body.cohortId === "string" ? body.cohortId.trim() : "";
+      if (cohortId) {
+        const owns = await pool.query(
+          `SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`,
+          [cohortId, userId],
+        );
+        if (owns.rows.length === 0) { res.status(404).json({ error: "cohort_not_found" }); return; }
+      } else {
+        cohortId = newEntityId("cohort");
+        await pool.query(
+          `INSERT INTO role_room_education_cohorts (id, owner_user_id, name) VALUES ($1,$2,$3)`,
+          [cohortId, userId, (body.cohortName?.trim() || "Importert fra Canvas")],
+        );
+      }
+
+      const existing = await pool.query(
+        `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
+        [cohortId],
+      );
+      const seen = new Set<string>(existing.rows.map((r) => String(r.email)));
+      let added = 0;
+      let skipped = 0;
+      for (const m of students) {
+        const email = (m.email ?? "").trim();
+        const emailKey = email.toLowerCase();
+        const name = (m.name ?? "").trim() || (email ? email.split("@")[0] : "");
+        if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
+        if (emailKey) seen.add(emailKey);
+        // eslint-disable-next-line no-await-in-loop -- sekvensiell insert holder det enkelt
+        await pool.query(
+          `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [newEntityId("student"), cohortId, userId, name, email || null],
+        );
+        added++;
+      }
+      res.status(201).json({ cohortId, added, skipped, total: students.length });
+    } catch (err) {
+      console.error("[lti] import-students failed:", (err as Error).message);
+      res.status(500).json({ error: "import_failed" });
+    }
+  });
+
   router.post("/lti/launches/:id/grade", requireSession, async (req, res) => {
     const b = (req.body ?? {}) as {
       grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string;
