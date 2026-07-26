@@ -15,6 +15,7 @@ import { AssignmentsTab } from './AssignmentsTab';
 import { ProductionsTab } from './ProductionsTab';
 import { FagstoffTab } from './FagstoffTab';
 import { AssessmentTab } from './AssessmentTab';
+import { PortfolioTab } from './PortfolioTab';
 import { FacultyTab } from './FacultyTab';
 import educationLtiService from './educationLtiService';
 import { RoleRoomEduLogo } from './RoleRoomEduLogo';
@@ -213,6 +214,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
       case 'assignments': return <AssignmentsTab />;
       case 'fagstoff': return <FagstoffTab />;
       case 'assessment': return <AssessmentTab />;
+      case 'portfolio': return <PortfolioTab />;
       case 'faculty': return <FacultyTab />;
       default: return <EmptyState tab={active} />;
     }
