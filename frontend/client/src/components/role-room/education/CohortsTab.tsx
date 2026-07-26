@@ -14,6 +14,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Card, CardActionArea, Button, IconButton, Chip,
   CircularProgress, Alert, Collapse, TextField, Tooltip, InputBase, Avatar,
+  Select, MenuItem,
 } from '@mui/material';
 import {
   Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon,
@@ -23,6 +24,7 @@ import {
   KeyboardArrowDown as CaretIcon, Inventory2 as ArchiveIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
+import { educationGroupsService, type EducationGroup } from './educationGroupsService';
 import type { EducationTabId } from './EducationWorkspace';
 
 const ACCENT = '#8B5CF6';
@@ -70,6 +72,9 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
 
+  // Grupper for valgt kull.
+  const [groups, setGroups] = useState<EducationGroup[]>([]);
+
   const loadCohorts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -91,6 +96,28 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
     finally { setStudentsLoading(false); }
   }, []);
   useEffect(() => { if (selectedId) void loadStudents(selectedId); }, [selectedId, loadStudents]);
+
+  const loadGroups = useCallback(async (id: string) => {
+    try { setGroups(await educationGroupsService.listGroups(id)); }
+    catch { setGroups([]); }
+  }, []);
+  useEffect(() => { if (selectedId) void loadGroups(selectedId); else setGroups([]); }, [selectedId, loadGroups]);
+
+  const handleCreateGroup = async () => {
+    if (!selectedId) return;
+    try {
+      await educationGroupsService.createGroup(selectedId, `Gruppe ${groups.length + 1}`);
+      await loadGroups(selectedId);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette gruppe'); }
+  };
+
+  const handleSetStudentGroup = async (studentId: string, groupId: string | null) => {
+    setStudents((prev) => prev.map((s) => s.id === studentId ? { ...s, groupId, groupName: groups.find((g) => g.id === groupId)?.name ?? null } : s));
+    try {
+      await educationCohortsService.setStudentGroup(studentId, groupId);
+      if (selectedId) await loadGroups(selectedId);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke tildele gruppe'); if (selectedId) await loadStudents(selectedId); }
+  };
 
   const handleCreate = async () => {
     if (!newName.trim() || busy) return;
@@ -125,12 +152,12 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   };
 
   const totalStudents = useMemo(() => cohorts.reduce((a, c) => a + (c.studentCount || 0), 0), [cohorts]);
-  const ungrouped = students.filter((s) => s.status === 'invited' || s.status === 'pending').length;
+  const ungrouped = students.filter((s) => !s.groupId).length;
 
   const kpis = [
     { id: 'studenter', label: 'Studenter', value: totalStudents, hint: 'På tvers av alle kull', color: '#c4b5fd', bg: 'rgba(139,92,246,0.16)', icon: <CohortIcon /> },
     { id: 'kull', label: 'Kull', value: cohorts.filter((c) => !c.archived).length, hint: 'Aktive dette semesteret', color: '#38bdf8', bg: 'rgba(56,189,248,0.16)', icon: <CanvasIcon /> },
-    { id: 'grupper', label: 'Grupper', value: 0, hint: 'På tvers av alle kull', color: '#34d399', bg: 'rgba(16,185,129,0.16)', icon: <CohortIcon /> },
+    { id: 'grupper', label: 'Grupper', value: groups.length, hint: selected ? `I ${selected.name}` : 'Velg et kull', color: '#34d399', bg: 'rgba(16,185,129,0.16)', icon: <CohortIcon /> },
     { id: 'utengruppe', label: 'Studenter uten gruppe', value: ungrouped, hint: 'Klar for gruppering', color: '#f59e0b', bg: 'rgba(245,158,11,0.16)', icon: <InviteIcon /> },
   ];
 
@@ -316,7 +343,15 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                     </Box>
                   </Stack>
                   <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>{selected?.name?.split(' ')[0] ?? '—'}</Typography>
-                  <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>—</Typography>
+                  {groups.length === 0 ? (
+                    <Typography sx={{ fontSize: 12.5, color: 'text.disabled' }}>—</Typography>
+                  ) : (
+                    <Select value={s.groupId ?? ''} onChange={(e) => handleSetStudentGroup(s.id, e.target.value || null)} variant="standard" disableUnderline displayEmpty
+                      sx={{ fontSize: 12.5, color: s.groupId ? '#34d399' : 'rgba(255,255,255,0.4)', '& .MuiSelect-select': { py: 0.25, pr: '18px !important' }, '& .MuiSvgIcon-root': { fontSize: 16, color: 'rgba(255,255,255,0.35)' } }}>
+                      <MenuItem value="" sx={{ fontSize: 12.5 }}>Ingen gruppe</MenuItem>
+                      {groups.map((g) => <MenuItem key={g.id} value={g.id} sx={{ fontSize: 12.5 }}>{g.name}</MenuItem>)}
+                    </Select>
+                  )}
                   <Box><Chip label={b.label} size="small" sx={{ height: 22, fontSize: 11, fontWeight: 600, bgcolor: b.bg, color: b.color }} /></Box>
                   <Tooltip title="Fjern"><IconButton size="small" onClick={() => handleDeleteStudent(s.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                 </Box>
@@ -332,7 +367,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           <T eid="edu-ks-rail-qa-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1 }}>Hurtighandlinger</T>
           <QuickAction eid="edu-ks-qa-invite" icon={<InviteIcon />} label="Inviter student" onClick={() => { setCreating(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
           <QuickAction eid="edu-ks-qa-csv" icon={<CsvIcon />} label="Importer CSV" />
-          <QuickAction eid="edu-ks-qa-group" icon={<CohortIcon />} label="Opprett gruppe" />
+          <QuickAction eid="edu-ks-qa-group" icon={<CohortIcon />} label="Opprett gruppe" onClick={() => { void handleCreateGroup(); }} />
           <QuickAction eid="edu-ks-qa-assign" icon={<CheckIcon />} label="Tildel oppgave" onClick={() => onNavigate?.('assignments')} />
         </Panel>
         <Panel>

@@ -56,6 +56,8 @@ export interface StudentView {
   email: string | null;
   studentNumber: string | null;
   status: string;
+  groupId: string | null;
+  groupName: string | null;
   createdAt: string;
 }
 
@@ -80,6 +82,8 @@ function studentRowToView(r: Record<string, unknown>): StudentView {
     email: (r.email as string) ?? null,
     studentNumber: (r.student_number as string) ?? null,
     status: (r.status as string) ?? "active",
+    groupId: (r.group_id as string) ?? null,
+    groupName: (r.group_name as string) ?? null,
     createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : "",
   };
 }
@@ -215,10 +219,24 @@ export function createEducationCohortsRouter(
         [req.params.id, uid(req)],
       );
       if (owns.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
-      const r = await pool.query(
-        `SELECT * FROM role_room_education_students WHERE cohort_id = $1 ORDER BY created_at ASC`,
-        [req.params.id],
-      );
+      let r;
+      try {
+        r = await pool.query(
+          `SELECT s.*, g.name AS group_name
+             FROM role_room_education_students s
+             LEFT JOIN role_room_education_groups g ON g.id = s.group_id
+            WHERE s.cohort_id = $1
+            ORDER BY s.created_at ASC`,
+          [req.params.id],
+        );
+      } catch (joinErr) {
+        // Grupper-migrasjonen (0426) ikke kjørt ennå → fall tilbake uten gruppe.
+        if ((joinErr as { code?: string })?.code !== "42P01" && (joinErr as { code?: string })?.code !== "42703") throw joinErr;
+        r = await pool.query(
+          `SELECT * FROM role_room_education_students WHERE cohort_id = $1 ORDER BY created_at ASC`,
+          [req.params.id],
+        );
+      }
       res.json({ students: r.rows.map(studentRowToView) });
     } catch (err) {
       if (isMissingTable(err)) { res.json({ students: [] }); return; }
@@ -247,6 +265,47 @@ export function createEducationCohortsRouter(
     } catch (err) {
       console.error("[education-cohorts] add student failed:", (err as Error).message);
       res.status(500).json({ error: "add_student_failed" });
+    }
+  });
+
+  // Bulk-innlegging (CSV-import). Hopper over rader uten navn + duplikat-e-post
+  // (case-insensitivt) mot studenter som allerede finnes i kullet.
+  router.post("/education/cohorts/:id/students/bulk", requireAuth, async (req, res) => {
+    const body = (req.body ?? {}) as { students?: { name?: string; email?: string; studentNumber?: string }[] };
+    const rows = Array.isArray(body.students) ? body.students : [];
+    if (rows.length === 0) { res.status(400).json({ error: "students_required" }); return; }
+    if (rows.length > 1000) { res.status(400).json({ error: "too_many" }); return; }
+    try {
+      const owns = await pool.query(
+        `SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`,
+        [req.params.id, uid(req)],
+      );
+      if (owns.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const existing = await pool.query(
+        `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
+        [req.params.id],
+      );
+      const seen = new Set<string>(existing.rows.map((r) => String(r.email)));
+      let added = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const name = typeof row.name === "string" ? row.name.trim() : "";
+        const email = typeof row.email === "string" ? row.email.trim() : "";
+        const emailKey = email.toLowerCase();
+        if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
+        if (emailKey) seen.add(emailKey);
+        // eslint-disable-next-line no-await-in-loop -- sekvensiell insert holder skjemaet enkelt
+        await pool.query(
+          `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email, student_number)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [newEntityId("student"), req.params.id, uid(req), name, email || null, row.studentNumber?.trim() || null],
+        );
+        added++;
+      }
+      res.status(201).json({ added, skipped });
+    } catch (err) {
+      console.error("[education-cohorts] bulk add failed:", (err as Error).message);
+      res.status(500).json({ error: "bulk_add_failed" });
     }
   });
 
