@@ -59,21 +59,28 @@ jobs:
             echo "::error::MIGRATE_TRIGGER_TOKEN secret er ikke satt"
             exit 1
           fi
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
+          # Fire-and-confirm: /run spawner migrate.sh detached og svarer 202
+          # raskt. MEN hvis instansen hikker mens migrate kjører kan 202-svaret
+          # gå tapt — DERFOR kort -m 30 + IKKE-fatal på timeout (uten -m hang
+          # jobben i 30 min). Status-pollingen under er autoritativ.
+          set +e
+          HTTP_CODE=$(curl -s -o /tmp/run_body.txt -m 30 -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
             -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" \
             -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
             -d '{}' \
             "$BACKEND_URL/api/admin-room/migrations/run")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          echo "HTTP $HTTP_CODE"
-          echo "Body: $BODY"
-          if [ "$HTTP_CODE" = "409" ]; then
-            echo "::warning::En migrate-run pågår allerede. Hopper over trigger, poller status."
-          elif [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Migrate-trigger feilet (HTTP $HTTP_CODE)"
+          CURL_EXIT=$?
+          set -e
+          echo "curl-exit=$CURL_EXIT HTTP=${HTTP_CODE:-<ingen>}"
+          echo "Body: $(cat /tmp/run_body.txt 2>/dev/null)"
+          if [ "$CURL_EXIT" = "28" ] || [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ]; then
+            echo "::warning::Trigger-respons uteble (timeout/tapt). migrate.sh er sannsynligvis startet — går til status-polling."
+          elif [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "409" ]; then
+            echo "Migrate trigget (eller pågår alt). Poller status."
+          else
+            echo "::error::Migrate-trigger avvist (HTTP $HTTP_CODE) — sjekk at MIGRATE_TRIGGER_TOKEN-secret matcher backend-env."
             exit 1
           fi
 
@@ -81,8 +88,11 @@ jobs:
         env:
           MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
         run: |
+          # pendingCount er autoritativt (DB: migrations/*.sql minus
+          # _migrations_applied) og overlever en evt. instans-restart som
+          # nullstiller in-memory status. Suksess = ingen pending igjen.
           for i in $(seq 1 40); do   # opptil 40 × 15s = 10 min
-            STATUS_JSON=$(curl -s -m 10 -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status")
+            STATUS_JSON=$(curl -s -m 10 -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status" || echo '{}')
             STATUS=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
             PENDING=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('pendingCount',''))" 2>/dev/null || echo "")
             echo "  [$i] status=$STATUS pending=$PENDING"
@@ -91,11 +101,12 @@ jobs:
               echo "::error::Migrate-run FEILET. Se Admin Room → Database-migrasjoner → Vis logg."
               exit 1
             fi
-            if [ "$STATUS" = "completed" ] || { [ "$STATUS" = "idle" ] && [ "$PENDING" = "0" ]; }; then
-              APPLIED=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('appliedThisRun',''))" 2>/dev/null || echo "?")
-              echo "✅ Migrate ferdig (applied=$APPLIED, pending=$PENDING)."
+            # Ferdig når ingen migrasjoner er pending (autoritativt fra DB).
+            if [ "$PENDING" = "0" ] && [ "$STATUS" != "running" ]; then
+              echo "✅ Migrate ferdig — ingen pending migrasjoner igjen (status=$STATUS)."
               exit 0
             fi
             sleep 15
           done
-          echo "::warning::Tidsavbrudd på status-polling. Sjekk Admin Room → Database-migrasjoner."
+          echo "::warning::Tidsavbrudd på status-polling. Sjekk Admin Room → Database-migrasjoner → Vis logg."
+          # Ikke feil jobben på timeout alene — migrate kan fortsatt være i gang.
