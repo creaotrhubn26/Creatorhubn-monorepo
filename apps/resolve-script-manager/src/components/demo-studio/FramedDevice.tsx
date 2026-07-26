@@ -11,8 +11,9 @@
  * Delt mellom Guided Recorder og Flow Builder / Device Preview (shell).
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DEVICE_FRAMES, type FrameVariant } from './deviceFrames';
+import { checkUrlEmbeddable } from '../../api';
 
 /** Logisk viewport-bredde (CSS-px) per enhet, så nettsiden rendrer riktig
  *  responsiv layout (mobil/tablet/desktop) — ikke desktop-layout overalt. */
@@ -57,6 +58,29 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   const screenPxAspect = (s.w / s.h) * f.aspect;
   const vh = vw / screenPxAspect;
 
+  // Embeddbarhet: en LIVE, responsiv iframe er alltid å foretrekke i preview —
+  // den rendrer nettsidens ekte layout for AKKURAT denne enheten (mobil/tablet/
+  // desktop) og er interaktiv. Vi faller kun tilbake til et scan-screenshot når
+  // siden faktisk blokkerer innbygging (X-Frame-Options/CSP). Fail-open: ukjent
+  // (mens sjekken kjører, eller uten capture-backend) → vis live-iframe.
+  const [embeddable, setEmbeddable] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!url) { setEmbeddable(null); return; }
+    let cancelled = false;
+    setEmbeddable(null);
+    checkUrlEmbeddable(url)
+      .then((r) => { if (!cancelled) setEmbeddable(r.embeddable); })
+      .catch(() => { if (!cancelled) setEmbeddable(true); }); // fail-open → live
+    return () => { cancelled = true; };
+  }, [url]);
+  // Vis screenshot KUN når vi vet siden er blokkert (og vi faktisk har et bilde).
+  // Ellers alltid live-iframe. Har vi ingen url i det hele tatt, bruk bildet.
+  const useShot = !!screenshot && (!url || embeddable === false);
+  // Portrett-rammer (iPhone/iPad stående) + et desktop-bredt screenshot ville
+  // blitt sidebeskåret av objectFit:cover → vis i stedet full bredde, toppforankret
+  // (hele sidens topp, ubeskåret). Landskaps-rammer matcher desktop-bildet → cover.
+  const portrait = f.aspect < 1;
+
   useLayoutEffect(() => {
     const el = screenRef.current;
     if (!el) return;
@@ -82,13 +106,17 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
           transformOrigin: focusZoom ? `${focusZoom.cx * 100}% ${focusZoom.cy * 100}%` : '50% 50%',
           transition: 'transform 700ms cubic-bezier(.2,.7,.3,1)',
         }}>
-        {screenshot ? (
-          // Fase 1b: vis ekte scan-screenshot (riktig scroll-bånd) i stedet for
-          // live-iframe. Bilde + hotspot kommer fra samme scan → perfekt align,
-          // og funker for sider iframe ikke kan vise (auth/lagrings-tunge SPA-er).
+        {useShot ? (
+          // Fallback (kun blokkerte sider): vis ekte scan-screenshot. Portrett-
+          // rammer får toppforankret full-bredde (ubeskåret topp); landskap får
+          // cover (desktop-bildet matcher). Hotspot ligger i viewport-% → align.
           <img src={screenshot} alt="" draggable={false}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
+            style={portrait
+              ? { position: 'absolute', top: 0, left: 0, width: '100%', height: 'auto', display: 'block' }
+              : { width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
         ) : (
+          // Foretrukket: LIVE, responsiv iframe rendret ved enhetens logiske
+          // viewport (390/834/1440) og skalert til å fylle skjerm-hullet.
           <iframe ref={iframeRef} title={variant} src={url} scrolling="no"
             style={{
               width: vw, height: vh, border: 0, display: 'block',
@@ -98,7 +126,7 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
         )}
         {/* Overlay (hotspot/cursor/touch) over skjermen */}
         {overlay}
-        </div>{/* /zoom-lag */}
+        </div>
         {/* Klikk/tegne-fanger for hotspot (kun når onScreenClick/onScreenDraw er satt).
             Tom flate: dra = tegn nytt rektangel, kort drag/klikk = standard-boks.
             editRect satt: dra boksen for å flytte, dra håndtak for å endre størrelse. */}
