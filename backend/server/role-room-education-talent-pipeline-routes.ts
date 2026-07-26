@@ -61,6 +61,62 @@ function isMissingTable(err: unknown): boolean {
   return (err as { code?: string })?.code === "42P01";
 }
 
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+interface TalentAttrs {
+  playingAgeMin: number | null;
+  playingAgeMax: number | null;
+  gender: string | null;
+  city: string | null;
+  heightCm: number | null;
+  skills: string[];
+  languages: string[];
+  dialects: string[];
+  nsfMember: boolean;
+}
+
+function normAttrs(raw: unknown): TalentAttrs {
+  const a = (raw ?? {}) as Record<string, unknown>;
+  const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : null; };
+  const strList = (v: unknown) => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => (x as string).trim()) : [];
+  const str = (v: unknown) => typeof v === "string" && v.trim() ? v.trim() : null;
+  return {
+    playingAgeMin: num(a.playingAgeMin),
+    playingAgeMax: num(a.playingAgeMax),
+    gender: str(a.gender),
+    city: str(a.city),
+    heightCm: num(a.heightCm),
+    skills: strList(a.skills),
+    languages: strList(a.languages),
+    dialects: strList(a.dialects),
+    nsfMember: !!a.nsfMember,
+  };
+}
+
+/** Prosjekterer attributter til talents' søkbare kolonner (+ badges). */
+function attrsToTalentCols(n: TalentAttrs): { cols: Record<string, unknown>; badges: string[] } {
+  const badges = ["education_verified"];
+  if (n.nsfMember) badges.push("nsf_member");
+  return {
+    cols: {
+      playing_age_min: n.playingAgeMin,
+      playing_age_max: n.playingAgeMax,
+      gender: n.gender,
+      city: n.city,
+      height_cm: n.heightCm,
+      skills: JSON.stringify(n.skills.map((l) => ({ id: slug(l), label: l }))),
+      languages: JSON.stringify(n.languages.map((l) => ({ label: l }))),
+      dialects: JSON.stringify(n.dialects),
+    },
+    badges,
+  };
+}
+
+/** «Søkbar» = har minst ett felt casting-søket filtrerer på. */
+function isSearchable(n: TalentAttrs): boolean {
+  return n.playingAgeMin != null || n.playingAgeMax != null || n.skills.length > 0 || n.languages.length > 0 || n.dialects.length > 0;
+}
+
 export interface PipelineRow {
   studentId: string;
   name: string;
@@ -69,6 +125,9 @@ export interface PipelineRow {
   talentId: string | null;
   status: "none" | "claimable" | "claimed";
   hasShowreel: boolean;
+  searchable: boolean;
+  nsfMember: boolean;
+  attributes: TalentAttrs;
 }
 
 export interface CreateEducationTalentPipelineRouterDeps {
@@ -114,7 +173,7 @@ export function createEducationTalentPipelineRouter(
 
   // ── Promoter avgangsstudent → claimable talent-profil ────────────────────
   router.post("/education/students/:id/promote-to-talent", requireAuth, async (req, res) => {
-    const body = (req.body ?? {}) as { institution?: string; program?: string; year?: number; showreelPortfolioId?: string };
+    const body = (req.body ?? {}) as { institution?: string; program?: string; year?: number; showreelPortfolioId?: string; attributes?: unknown };
     try {
       const stu = await pool.query(
         `SELECT s.*, c.program AS cohort_program, c.name AS cohort_name
@@ -138,28 +197,77 @@ export function createEducationTalentPipelineRouter(
         verifiedAt: new Date().toISOString(),
         source: "education_workspace",
       };
+      // Attributter: body overstyrer lagrede student-attributter.
+      const attrs = normAttrs({ ...(student.talent_attributes as object ?? {}), ...((body.attributes as object) ?? {}) });
+      const { cols, badges } = attrsToTalentCols(attrs);
 
       const ins = await pool.query(
         `INSERT INTO talents
            (owner_user_id, display_name, email, showreel_url, showreel_updated_at,
-            profile_status, badges, metadata)
-         VALUES (NULL, $1, $2, $3, ${showreel ? "now()" : "NULL"}, 'draft', $4::jsonb, $5::jsonb)
+            profile_status, badges, metadata,
+            playing_age_min, playing_age_max, gender, city, height_cm, skills, languages, dialects)
+         VALUES (NULL, $1, $2, $3, ${showreel ? "now()" : "NULL"}, 'draft', $4::jsonb, $5::jsonb,
+                 $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb)
          RETURNING id`,
         [
-          String(student.name),
-          student.email ?? null,
-          showreel,
-          JSON.stringify(["education_verified"]),
-          JSON.stringify({ education: credential }),
+          String(student.name), student.email ?? null, showreel,
+          JSON.stringify(badges), JSON.stringify({ education: credential }),
+          cols.playing_age_min, cols.playing_age_max, cols.gender, cols.city, cols.height_cm,
+          cols.skills, cols.languages, cols.dialects,
         ],
       );
       const talentId = String(ins.rows[0].id);
-      await pool.query(`UPDATE role_room_education_students SET talent_id = $2 WHERE id = $1`, [req.params.id, talentId]);
-      res.status(201).json({ talentId, claimable: true, hasShowreel: !!showreel });
+      await pool.query(
+        `UPDATE role_room_education_students SET talent_id = $2, talent_attributes = $3::jsonb WHERE id = $1`,
+        [req.params.id, talentId, JSON.stringify(attrs)],
+      );
+      res.status(201).json({ talentId, claimable: true, hasShowreel: !!showreel, searchable: isSearchable(attrs) });
     } catch (err) {
       if (isMissingTable(err)) { res.status(503).json({ error: "talents_unavailable" }); return; }
       console.error("[edu-talent-pipeline] promote failed:", (err as Error).message);
       res.status(500).json({ error: "promote_failed" });
+    }
+  });
+
+  // ── Sett/oppdater casting-attributter for en student (+ synk til talent) ──
+  router.put("/education/students/:id/talent-attributes", requireAuth, async (req, res) => {
+    const attrs = normAttrs((req.body ?? {}) as unknown);
+    try {
+      const stu = await pool.query(
+        `SELECT talent_id FROM role_room_education_students WHERE id = $1 AND owner_user_id = $2`,
+        [req.params.id, uid(req)],
+      );
+      if (stu.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      await pool.query(
+        `UPDATE role_room_education_students SET talent_attributes = $2::jsonb WHERE id = $1`,
+        [req.params.id, JSON.stringify(attrs)],
+      );
+      // Synk til talent-profilen hvis promotert (behold andre badges enn våre to).
+      const talentId = stu.rows[0].talent_id ? String(stu.rows[0].talent_id) : null;
+      if (talentId) {
+        const { cols, badges } = attrsToTalentCols(attrs);
+        await pool.query(
+          `UPDATE talents SET
+             playing_age_min = $2, playing_age_max = $3, gender = $4, city = $5, height_cm = $6,
+             skills = $7::jsonb, languages = $8::jsonb, dialects = $9::jsonb,
+             badges = (
+               SELECT COALESCE(jsonb_agg(DISTINCT b), '[]'::jsonb)
+               FROM jsonb_array_elements_text(
+                 COALESCE((SELECT badges FROM talents WHERE id = $1), '[]'::jsonb)
+                   - 'education_verified' - 'nsf_member' || $10::jsonb
+               ) b
+             ),
+             updated_at = now()
+           WHERE id = $1`,
+          [talentId, cols.playing_age_min, cols.playing_age_max, cols.gender, cols.city, cols.height_cm,
+           cols.skills, cols.languages, cols.dialects, JSON.stringify(badges)],
+        );
+      }
+      res.json({ success: true, searchable: isSearchable(attrs), attributes: attrs });
+    } catch (err) {
+      if (isMissingTable(err)) { res.status(503).json({ error: "unavailable" }); return; }
+      console.error("[edu-talent-pipeline] set attributes failed:", (err as Error).message);
+      res.status(500).json({ error: "attributes_failed" });
     }
   });
 
@@ -171,7 +279,7 @@ export function createEducationTalentPipelineRouter(
       let cohortFilter = "";
       if (cohortId) { params.push(cohortId); cohortFilter = ` AND s.cohort_id = $${params.length}`; }
       const r = await pool.query(
-        `SELECT s.id, s.name, s.email, s.cohort_id, s.talent_id,
+        `SELECT s.id, s.name, s.email, s.cohort_id, s.talent_id, s.talent_attributes,
                 t.owner_user_id AS talent_owner, t.showreel_url AS talent_showreel
            FROM role_room_education_students s
            LEFT JOIN talents t ON t.id = s.talent_id
@@ -179,15 +287,21 @@ export function createEducationTalentPipelineRouter(
           ORDER BY s.created_at ASC`,
         params,
       );
-      const rows: PipelineRow[] = r.rows.map((x) => ({
-        studentId: String(x.id),
-        name: (x.name as string) ?? "",
-        email: (x.email as string) ?? null,
-        cohortId: (x.cohort_id as string) ?? null,
-        talentId: x.talent_id ? String(x.talent_id) : null,
-        status: !x.talent_id ? "none" : (x.talent_owner ? "claimed" : "claimable"),
-        hasShowreel: !!x.talent_showreel,
-      }));
+      const rows: PipelineRow[] = r.rows.map((x) => {
+        const attrs = normAttrs(x.talent_attributes);
+        return {
+          studentId: String(x.id),
+          name: (x.name as string) ?? "",
+          email: (x.email as string) ?? null,
+          cohortId: (x.cohort_id as string) ?? null,
+          talentId: x.talent_id ? String(x.talent_id) : null,
+          status: !x.talent_id ? "none" : (x.talent_owner ? "claimed" : "claimable"),
+          hasShowreel: !!x.talent_showreel,
+          searchable: isSearchable(attrs),
+          nsfMember: attrs.nsfMember,
+          attributes: attrs,
+        };
+      });
       res.json({ pipeline: rows });
     } catch (err) {
       if (isMissingTable(err)) { res.json({ pipeline: [] }); return; }

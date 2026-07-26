@@ -305,9 +305,10 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
     masked.skills = row.skills;
     masked.languages = row.languages;
     masked.dialects = row.dialects;
-    // Skole-verifisert utdanning = tillitssignal (bransje-akkreditert trening).
+    // Skole-verifisert utdanning + NSF-medlemskap = tillitssignaler.
     const badges = Array.isArray(row.badges) ? row.badges as string[] : [];
     masked.education_verified = badges.includes("education_verified");
+    masked.nsf_member = badges.includes("nsf_member");
     const edu = (row.metadata as { education?: { institution?: string | null; program?: string | null; year?: number | null } } | null)?.education;
     if (edu) masked.education = { institution: edu.institution ?? null, program: edu.program ?? null, year: edu.year ?? null };
   }

@@ -5,6 +5,18 @@
 
 import authSessionService from '../services/authSessionService';
 
+export interface TalentAttributes {
+  playingAgeMin: number | null;
+  playingAgeMax: number | null;
+  gender: string | null;
+  city: string | null;
+  heightCm: number | null;
+  skills: string[];
+  languages: string[];
+  dialects: string[];
+  nsfMember: boolean;
+}
+
 export interface PipelineRow {
   studentId: string;
   name: string;
@@ -13,6 +25,9 @@ export interface PipelineRow {
   talentId: string | null;
   status: 'none' | 'claimable' | 'claimed';
   hasShowreel: boolean;
+  searchable: boolean;
+  nsfMember: boolean;
+  attributes: TalentAttributes;
 }
 
 export interface ShowcaseEntry {
@@ -48,8 +63,11 @@ export const educationTalentPipelineService = {
     const data = await req<{ pipeline: PipelineRow[] }>(`${BASE}/talent-pipeline${qs}`);
     return data.pipeline ?? [];
   },
-  async promote(studentId: string, input: { institution?: string; program?: string; year?: number; showreelPortfolioId?: string }): Promise<{ talentId: string; alreadyPromoted?: boolean; claimable?: boolean; hasShowreel?: boolean }> {
+  async promote(studentId: string, input: { institution?: string; program?: string; year?: number; showreelPortfolioId?: string; attributes?: Partial<TalentAttributes> }): Promise<{ talentId: string; alreadyPromoted?: boolean; claimable?: boolean; hasShowreel?: boolean; searchable?: boolean }> {
     return req(`${BASE}/students/${encodeURIComponent(studentId)}/promote-to-talent`, { method: 'POST', body: JSON.stringify(input) });
+  },
+  async setAttributes(studentId: string, attrs: Partial<TalentAttributes>): Promise<{ success: boolean; searchable: boolean; attributes: TalentAttributes }> {
+    return req(`${BASE}/students/${encodeURIComponent(studentId)}/talent-attributes`, { method: 'PUT', body: JSON.stringify(attrs) });
   },
   async getShowcase(cohortId: string): Promise<ShowcaseEntry[]> {
     const data = await req<{ showcase: ShowcaseEntry[] }>(`${BASE}/cohorts/${encodeURIComponent(cohortId)}/showcase`);

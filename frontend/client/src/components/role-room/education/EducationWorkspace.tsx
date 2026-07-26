@@ -16,6 +16,7 @@ import { ProductionsTab } from './ProductionsTab';
 import { FagstoffTab } from './FagstoffTab';
 import { AssessmentTab } from './AssessmentTab';
 import { PortfolioTab } from './PortfolioTab';
+import { IndustryTab } from './IndustryTab';
 import { FacultyTab } from './FacultyTab';
 import educationLtiService from './educationLtiService';
 import { RoleRoomEduLogo } from './RoleRoomEduLogo';
@@ -30,6 +31,7 @@ import {
   Assignment as AssignmentIcon,
   Grading as AssessmentIcon,
   CollectionsBookmark as PortfolioIcon,
+  Storefront as IndustryIcon,
   SupervisorAccount as FacultyIcon,
   MenuBook as LibraryIcon,
   DashboardCustomize as OverviewIcon,
@@ -50,6 +52,7 @@ export type EducationTabId =
   | 'fagstoff'
   | 'assessment'
   | 'portfolio'
+  | 'industry'
   | 'faculty';
 
 interface EducationTabDef {
@@ -67,6 +70,7 @@ const EDUCATION_TABS: EducationTabDef[] = [
   { id: 'fagstoff', label: 'Fagstoff', icon: <LibraryIcon fontSize="small" />, blurb: 'Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.' },
   { id: 'assessment', label: 'Vurdering', icon: <AssessmentIcon fontSize="small" />, blurb: 'Karakter og tilbakemelding på leveranser (gjenbruker godkjennings-/review-flyten).' },
   { id: 'portfolio', label: 'Portefølje', icon: <PortfolioIcon fontSize="small" />, blurb: 'Studentenes showreels og eksamensmapper.' },
+  { id: 'industry', label: 'Bransje', icon: <IndustryIcon fontSize="small" />, blurb: 'Avgangs-pipeline: promoter studenter til Role Room Talents (talent registry), gjør profilene søkbare for byråer/casting og styr avgangs-showcase.' },
   { id: 'faculty', label: 'Fakultet', icon: <FacultyIcon fontSize="small" />, blurb: 'Stab-seter, lærer-roller og hvem som veileder hvilket kull.' },
 ];
 
@@ -215,6 +219,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
       case 'fagstoff': return <FagstoffTab />;
       case 'assessment': return <AssessmentTab />;
       case 'portfolio': return <PortfolioTab />;
+      case 'industry': return <IndustryTab />;
       case 'faculty': return <FacultyTab />;
       default: return <EmptyState tab={active} />;
     }
