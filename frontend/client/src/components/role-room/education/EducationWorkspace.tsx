@@ -3,19 +3,9 @@
  * (professionMode = 'education'), montert av CastingPlannerPanel sitt mode-short-
  * circuit (som DanceWorkspace for dans).
  *
- * SCAFFOLD (fase 1): gjør at workspacet EKSISTERER og er nåbart med en ekte
- * faglærer-oversikt-struktur + tom-tilstander som beskriver hva hver flate skal
- * inneholde. Innholdet fylles i senere skiver:
- *   - Kull & studenter (roster/grupper, student-seter)
- *   - Studentproduksjoner (hver = fullt Role Room-prosjekt: story-arc/casting/
- *     call-sheet/leveranser)
- *   - Oppgaver & innleveringer (brief → leveranse → frist)
- *   - Vurdering & tilbakemelding (karakter/feedback, gjenbruk godkjenningsflyt)
- *   - Portfolio (showreels/eksamensmapper)
- *   - Fakultet & roller (stab-seter, veileder-tilganger)
- *
- * Selvstendig (ingen backend-kall enda) — plain norske labels, ikke branding-
- * token-systemet, for å holde scaffoldet isolert til education-modus.
+ * Redesign: venstre sidemeny (nav + kom-i-gang-kort + konto) + toppbar (modus-
+ * velger, søk, varsler, tema, avatar) + innholdsområde som rendrer aktiv fane.
+ * Hver fane eier sin egen sidetittel; Oversikt = det aggregerte dashbordet.
  */
 
 import { useState, useEffect, type ReactNode } from 'react';
@@ -29,7 +19,7 @@ import { FacultyTab } from './FacultyTab';
 import educationLtiService from './educationLtiService';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
-  Box, Tabs, Tab, Typography, Card, CardContent, Chip, Stack, Button,
+  Box, Typography, Card, CardContent, Chip, Stack, Button, InputBase, IconButton, Tooltip, Avatar,
 } from '@mui/material';
 import {
   School as SchoolIcon,
@@ -40,7 +30,14 @@ import {
   CollectionsBookmark as PortfolioIcon,
   SupervisorAccount as FacultyIcon,
   MenuBook as LibraryIcon,
-  Explore as TourIcon,
+  DashboardCustomize as OverviewIcon,
+  Search as SearchIcon,
+  NotificationsNone as BellIcon,
+  HelpOutline as HelpIcon,
+  DarkModeOutlined as ThemeIcon,
+  UnfoldMore as SwitchIcon,
+  ChatBubbleOutline as FeedbackIcon,
+  KeyboardArrowDown as CaretIcon,
 } from '@mui/icons-material';
 
 type EducationTabId =
@@ -57,22 +54,21 @@ interface EducationTabDef {
   id: EducationTabId;
   label: string;
   icon: ReactNode;
-  /** Hva flaten skal inneholde (vises i tom-tilstand). */
   blurb: string;
 }
 
 const EDUCATION_TABS: EducationTabDef[] = [
-  { id: 'overview', label: 'Oversikt', icon: <SchoolIcon fontSize="small" />, blurb: 'Faglærer-oversikt: alle kull, aktive studentproduksjoner, progresjon, frister og flagg i én flate.' },
+  { id: 'overview', label: 'Oversikt', icon: <OverviewIcon fontSize="small" />, blurb: 'Faglærer-oversikt: alle kull, aktive studentproduksjoner, progresjon, frister og flagg i én flate.' },
   { id: 'cohorts', label: 'Kull & studenter', icon: <CohortIcon fontSize="small" />, blurb: 'Klasse-/kull-grupper, student-roster og student-seter.' },
   { id: 'productions', label: 'Studentproduksjoner', icon: <ProductionIcon fontSize="small" />, blurb: 'Hver produksjon er et fullt Role Room-prosjekt (story-arc, roller, call-sheet, leveranser). Opprett, tildel og overvåk.' },
   { id: 'assignments', label: 'Oppgaver', icon: <AssignmentIcon fontSize="small" />, blurb: 'Oppgave-brief → student-leveranse → frist. Emner, moduler og læringsmål.' },
   { id: 'fagstoff', label: 'Fagstoff', icon: <LibraryIcon fontSize="small" />, blurb: 'Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.' },
   { id: 'assessment', label: 'Vurdering', icon: <AssessmentIcon fontSize="small" />, blurb: 'Karakter og tilbakemelding på leveranser (gjenbruker godkjennings-/review-flyten).' },
-  { id: 'portfolio', label: 'Portfolio', icon: <PortfolioIcon fontSize="small" />, blurb: 'Studentenes showreels og eksamensmapper.' },
+  { id: 'portfolio', label: 'Portefølje', icon: <PortfolioIcon fontSize="small" />, blurb: 'Studentenes showreels og eksamensmapper.' },
   { id: 'faculty', label: 'Fakultet', icon: <FacultyIcon fontSize="small" />, blurb: 'Stab-seter, lærer-roller og hvem som veileder hvilket kull.' },
 ];
 
-const ACCENT = '#8B5CF6'; // matcher ProfessionModeChip education-fargen
+const ACCENT = '#8B5CF6';
 
 interface EducationWorkspaceProps {
   projectId?: string;
@@ -91,81 +87,149 @@ function EmptyState({ tab }: { tab: EducationTabDef }) {
   );
 }
 
+function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavigate: (t: EducationTabId) => void }) {
+  return (
+    <Box component="nav" sx={{
+      width: 252, flexShrink: 0, height: '100vh', position: 'sticky', top: 0,
+      borderRight: '1px solid rgba(255,255,255,0.07)', bgcolor: 'rgba(255,255,255,0.015)',
+      display: { xs: 'none', md: 'flex' }, flexDirection: 'column', p: 1.75,
+    }}>
+      {/* Logo */}
+      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 1, py: 1, mb: 1.5 }}>
+        <Box sx={{ width: 34, height: 34, borderRadius: 2, background: 'linear-gradient(135deg,#8B5CF6,#6366f1)', display: 'grid', placeItems: 'center', boxShadow: '0 4px 14px rgba(139,92,246,0.4)' }}>
+          <SchoolIcon sx={{ fontSize: 20, color: '#fff' }} />
+        </Box>
+        <Typography sx={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, lineHeight: 1.05 }}>THE ROLE<br />ROOM</Typography>
+      </Stack>
+
+      {/* Nav */}
+      <Stack spacing={0.4} sx={{ flex: 1, overflow: 'auto' }}>
+        {EDUCATION_TABS.map((t) => {
+          const active = t.id === activeTab;
+          return (
+            <Box key={t.id} onClick={() => onNavigate(t.id)} sx={{
+              display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.05, borderRadius: 2, cursor: 'pointer',
+              color: active ? '#fff' : 'rgba(255,255,255,0.62)',
+              bgcolor: active ? 'rgba(139,92,246,0.16)' : 'transparent',
+              boxShadow: active ? 'inset 3px 0 0 #8B5CF6' : 'none',
+              transition: 'background .15s, color .15s',
+              '&:hover': { bgcolor: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', color: '#fff' },
+              '& svg': { fontSize: 20, color: active ? ACCENT : 'inherit' },
+            }}>
+              {t.icon}
+              <Typography sx={{ fontSize: 13.5, fontWeight: active ? 700 : 500 }}>{t.label}</Typography>
+            </Box>
+          );
+        })}
+      </Stack>
+
+      {/* Kom i gang-kort */}
+      <Card sx={{ bgcolor: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.28)', borderRadius: 2.5, p: 1.75, mt: 1 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.5 }}>Kom i gang med workspace</Typography>
+        <Typography sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.6)', mb: 1.25 }}>Opprett ditt første kull og inviter studenter for å komme i gang.</Typography>
+        <Button fullWidth size="small" variant="contained" onClick={() => onNavigate('cohorts')}
+          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>Opprett kull</Button>
+      </Card>
+
+      {/* Feedback */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.1, mt: 0.5, borderRadius: 2, cursor: 'pointer', color: 'rgba(255,255,255,0.6)', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fff' } }}>
+        <FeedbackIcon sx={{ fontSize: 19 }} />
+        <Typography sx={{ fontSize: 13 }}>Gi tilbakemelding</Typography>
+      </Box>
+
+      {/* Konto */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1, py: 1, mt: 0.5, borderTop: '1px solid rgba(255,255,255,0.07)', pt: 1.25 }}>
+        <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff', fontSize: 12, fontWeight: 700 }}>TRR</Avatar>
+        <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1 }}>The Role Room</Typography>
+        <CaretIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />
+      </Box>
+    </Box>
+  );
+}
+
+function TopBar({ onHelp }: { onHelp: () => void }) {
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: '2-digit' }) +
+    ' ' + now.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <Box sx={{
+      display: 'flex', alignItems: 'center', gap: 2, px: { xs: 2, md: 3 }, py: 1.5,
+      borderBottom: '1px solid rgba(255,255,255,0.06)', bgcolor: 'rgba(10,10,10,0.6)',
+      backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 5,
+    }}>
+      {/* Modus-velger */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', bgcolor: 'rgba(139,92,246,0.1)', flexShrink: 0 }}>
+        <SchoolIcon sx={{ fontSize: 17, color: ACCENT }} />
+        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Utdannings-modus</Typography>
+        <SwitchIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }} />
+      </Box>
+
+      {/* Søk */}
+      <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1, flex: 1, maxWidth: 460, px: 1.5, py: 0.6, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+        <SearchIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />
+        <InputBase placeholder="Søk i workspace…" sx={{ flex: 1, color: '#fff', fontSize: 13.5, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+        <Chip label="⌘K" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }} />
+      </Box>
+      <Box sx={{ flex: { xs: 1, sm: 0 } }} />
+
+      {/* Ikoner */}
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}><BellIcon fontSize="small" /></IconButton>
+        <Tooltip title="Rundtur"><IconButton size="small" onClick={onHelp} sx={{ color: 'rgba(255,255,255,0.6)' }}><HelpIcon fontSize="small" /></IconButton></Tooltip>
+        <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}><ThemeIcon fontSize="small" /></IconButton>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ pl: 1 }}>
+          <Box sx={{ textAlign: 'right', display: { xs: 'none', md: 'block' } }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>{dateLabel}</Typography>
+            <Typography sx={{ fontSize: 11, color: ACCENT, lineHeight: 1.2 }}>Faglærer</Typography>
+          </Box>
+          <Avatar sx={{ width: 34, height: 34, bgcolor: 'rgba(139,92,246,0.35)', color: '#e9d5ff', fontSize: 13, fontWeight: 700 }}>F</Avatar>
+        </Stack>
+      </Stack>
+    </Box>
+  );
+}
+
 export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
   const [activeTab, setActiveTab] = useState<EducationTabId>('overview');
   const [tourOpen, setTourOpen] = useState(false);
   const active = EDUCATION_TABS.find((t) => t.id === activeTab) ?? EDUCATION_TABS[0];
 
-  // Vis rundturen automatisk én gang for nye faglærere.
   useEffect(() => {
     if (!hasSeenEducationTour()) setTourOpen(true);
   }, []);
 
-  // Fang LTI-launch-kontekst (?lti_launch=<id>) → localStorage, slik at
-  // «Send til LMS-karakterbok» i Vurdering kan pushe karakter via AGS.
   useEffect(() => {
     educationLtiService.captureLaunchContext();
   }, []);
 
+  const renderTab = () => {
+    switch (active.id) {
+      case 'overview': return <OverviewTab onNavigate={setActiveTab} />;
+      case 'cohorts': return <CohortsTab />;
+      case 'productions': return <ProductionsTab />;
+      case 'assignments': return <AssignmentsTab />;
+      case 'fagstoff': return <FagstoffTab />;
+      case 'assessment': return <AssessmentTab />;
+      case 'faculty': return <FacultyTab />;
+      default: return <EmptyState tab={active} />;
+    }
+  };
+
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff', p: { xs: 2, md: 4 } }}>
-      <EducationTour
-        open={tourOpen}
-        onClose={() => setTourOpen(false)}
-        onNavigate={(tab) => setActiveTab(tab)}
-      />
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 0.5 }}>
-        <SchoolIcon sx={{ color: ACCENT }} />
-        <Typography variant="h5" sx={{ fontWeight: 800 }}>Utdannings-workspace</Typography>
-        <Chip label="Faglærer" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
-        <Box sx={{ flexGrow: 1 }} />
-        <Button
-          size="small"
-          startIcon={<TourIcon />}
-          onClick={() => setTourOpen(true)}
-          sx={{ color: ACCENT, textTransform: 'none', fontWeight: 600 }}
-        >
-          Rundtur
-        </Button>
-      </Stack>
-      <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 13.5, mb: 3 }}>
-        Undervisning, studentproduksjoner og samarbeid med eksterne oppdragsgivere — i én flate.
-      </Typography>
-
-      <Tabs
-        value={activeTab}
-        onChange={(_e, v: EducationTabId) => setActiveTab(v)}
-        variant="scrollable"
-        scrollButtons="auto"
-        sx={{
-          mb: 3,
-          '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', minHeight: 44, fontWeight: 600 },
-          '& .Mui-selected': { color: '#fff' },
-          '& .MuiTabs-indicator': { backgroundColor: ACCENT },
-        }}
-      >
-        {EDUCATION_TABS.map((t) => (
-          <Tab key={t.id} value={t.id} icon={t.icon as React.ReactElement} iconPosition="start" label={t.label} />
-        ))}
-      </Tabs>
-
-      {active.id === 'overview' ? (
-        <OverviewTab onNavigate={setActiveTab} />
-      ) : active.id === 'cohorts' ? (
-        <CohortsTab />
-      ) : active.id === 'productions' ? (
-        <ProductionsTab />
-      ) : active.id === 'assignments' ? (
-        <AssignmentsTab />
-      ) : active.id === 'fagstoff' ? (
-        <FagstoffTab />
-      ) : active.id === 'assessment' ? (
-        <AssessmentTab />
-      ) : active.id === 'faculty' ? (
-        <FacultyTab />
-      ) : (
-        <EmptyState tab={active} />
-      )}
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff' }}>
+      <EducationTour open={tourOpen} onClose={() => setTourOpen(false)} onNavigate={(tab) => setActiveTab(tab)} />
+      <Sidebar activeTab={activeTab} onNavigate={setActiveTab} />
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <TopBar onHelp={() => setTourOpen(true)} />
+        <Box sx={{ flex: 1, position: 'relative' }}>
+          {/* Hero-glød øverst i innholdet */}
+          <Box sx={{ position: 'absolute', top: 0, right: 0, width: '60%', height: 320, pointerEvents: 'none',
+            background: 'radial-gradient(120% 90% at 90% -20%, rgba(139,92,246,0.22), transparent 60%)' }} />
+          <Box sx={{ position: 'relative', p: { xs: 2, md: 4 } }}>
+            {renderTab()}
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 }
