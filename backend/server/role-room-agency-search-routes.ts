@@ -264,6 +264,7 @@ function buildSearchSql(
       t.availability_windows, t.availability_confirmed_at,
       t.willing_to_travel,
       t.represented, t.agency_name,
+      t.badges, t.metadata,
       t.created_at, t.updated_at,
       array_agg(DISTINCT c.scope) AS granted_scopes,
       MAX(c.granted_at) AS last_consent_at
@@ -304,6 +305,11 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
     masked.skills = row.skills;
     masked.languages = row.languages;
     masked.dialects = row.dialects;
+    // Skole-verifisert utdanning = tillitssignal (bransje-akkreditert trening).
+    const badges = Array.isArray(row.badges) ? row.badges as string[] : [];
+    masked.education_verified = badges.includes("education_verified");
+    const edu = (row.metadata as { education?: { institution?: string | null; program?: string | null; year?: number | null } } | null)?.education;
+    if (edu) masked.education = { institution: edu.institution ?? null, program: edu.program ?? null, year: edu.year ?? null };
   }
   if (has("media_portfolio")) {
     masked.headshot_url = row.headshot_url;

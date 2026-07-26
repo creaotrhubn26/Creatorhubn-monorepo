@@ -21,11 +21,13 @@ import {
   Search as SearchIcon, KeyboardArrowDown as CaretIcon, Movie as ShowreelIcon,
   FolderSpecial as ExamIcon, Verified as PublishedIcon, OpenInNew as OpenIcon,
   Delete as DeleteIcon, Publish as PublishIcon, Undo as UnpublishIcon,
+  TheaterComedy as TalentIcon, Verified as VerifiedIcon, Storefront as ShowcaseIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationCensorService } from './educationCensorService';
 import { educationStudentViewService } from './educationStudentViewService';
 import { educationPortfolioService, type Portfolio, type PortfolioKind } from './educationPortfolioService';
+import { educationTalentPipelineService, type PipelineRow, type ShowcaseEntry } from './educationTalentPipelineService';
 import { ACCENT, Panel, T } from './_eduUi';
 
 const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -51,14 +53,26 @@ export function PortfolioTab() {
   const [newUrl, setNewUrl] = useState('');
   const [creating, setCreating] = useState(false);
 
+  // Avgangs-pipeline (utdanning → Talents).
+  const [pipeline, setPipeline] = useState<PipelineRow[]>([]);
+  const [promoteStudent, setPromoteStudent] = useState<{ id: string; name: string; program: string | null } | null>(null);
+  const [promoteInstitution, setPromoteInstitution] = useState('');
+  const [promoteProgram, setPromoteProgram] = useState('');
+  const [promoteYear, setPromoteYear] = useState(String(new Date().getFullYear()));
+  const [promoteBusy, setPromoteBusy] = useState(false);
+  const [showcaseOpen, setShowcaseOpen] = useState(false);
+  const [showcase, setShowcase] = useState<ShowcaseEntry[]>([]);
+  const [showcaseBusy, setShowcaseBusy] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [chs, pfs] = await Promise.all([
+      const [chs, pfs, pipe] = await Promise.all([
         educationCohortsService.listCohorts(),
         educationPortfolioService.listPortfolios(),
+        educationTalentPipelineService.getPipeline().catch(() => [] as PipelineRow[]),
       ]);
-      setCohorts(chs); setPortfolios(pfs);
+      setCohorts(chs); setPortfolios(pfs); setPipeline(pipe);
       const perCohort = await Promise.all(chs.map(async (c) => {
         try { return (await educationCohortsService.listStudents(c.id)).map((s) => ({ student: s, cohort: c })); }
         catch { return [] as { student: Student; cohort: Cohort }[]; }
@@ -67,6 +81,40 @@ export function PortfolioTab() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente porteføljer'); }
     finally { setLoading(false); }
   }, []);
+
+  const talentStatusFor = useCallback((studentId: string): PipelineRow['status'] => pipeline.find((r) => r.studentId === studentId)?.status ?? 'none', [pipeline]);
+
+  const openPromote = (studentId: string, name: string, program: string | null) => {
+    setPromoteStudent({ id: studentId, name, program });
+    setPromoteInstitution(localStorage.getItem('rr_edu_institution') ?? '');
+    setPromoteProgram(program ?? '');
+    setPromoteYear(String(new Date().getFullYear()));
+  };
+  const confirmPromote = async () => {
+    if (!promoteStudent || promoteBusy) return;
+    setPromoteBusy(true); setError(null);
+    try {
+      if (promoteInstitution.trim()) localStorage.setItem('rr_edu_institution', promoteInstitution.trim());
+      const r = await educationTalentPipelineService.promote(promoteStudent.id, {
+        institution: promoteInstitution.trim() || undefined,
+        program: promoteProgram.trim() || undefined,
+        year: Number(promoteYear) || undefined,
+      });
+      setPromoteStudent(null);
+      setToast(r.alreadyPromoted ? 'Studenten er allerede på Talents.' : `${promoteStudent.name} promotert til Talents (claimable)${r.hasShowreel ? ' m/ showreel' : ''}.`);
+      setPipeline(await educationTalentPipelineService.getPipeline().catch(() => pipeline));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke promotere'); }
+    finally { setPromoteBusy(false); }
+  };
+
+  const openShowcase = async () => {
+    const cohortId = cohortFilter || cohorts[0]?.id;
+    if (!cohortId) { setError('Velg et kull for å se avgangs-showcase.'); return; }
+    setShowcaseOpen(true); setShowcaseBusy(true);
+    try { setShowcase(await educationTalentPipelineService.getShowcase(cohortId)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente showcase'); }
+    finally { setShowcaseBusy(false); }
+  };
   useEffect(() => { void load(); }, [load]);
 
   const shareWithCensor = async () => {
@@ -148,6 +196,9 @@ export function PortfolioTab() {
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+          <Button variant="outlined" startIcon={<ShowcaseIcon />} onClick={openShowcase} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+            <T eid="edu-pf-btn-showcase" component="span" sx={{ fontWeight: 600 }}>Avgangs-showcase</T>
+          </Button>
           <Button variant="outlined" startIcon={<ShareIcon />} onClick={shareWithCensor} disabled={sharing} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-pf-btn-share" component="span" sx={{ fontWeight: 600 }}>{sharing ? 'Deler…' : 'Del med sensor'}</T>
           </Button>
@@ -195,7 +246,7 @@ export function PortfolioTab() {
           </Stack>
         </Stack>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 120px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 150px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['student', 'Student'], ['prosjekt', 'Kull · portefølje'], ['status', 'Status'], ['open', '']].map(([id, label]) => (
             <T key={id} eid={`edu-pf-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
           ))}
@@ -207,8 +258,14 @@ export function PortfolioTab() {
           <T eid="edu-pf-nomatch" sx={{ p: 4, textAlign: 'center', color: 'text.secondary', fontSize: 13.5, display: 'block' }}>Ingen porteføljer matcher filteret.</T>
         ) : visible.map((p) => {
           const published = p.status === 'published';
+          const tstatus = talentStatusFor(p.studentId);
+          const tMeta = tstatus === 'claimed'
+            ? { title: 'På Talents ✓ (studenten har overtatt)', color: '#34d399', icon: <VerifiedIcon fontSize="small" /> }
+            : tstatus === 'claimable'
+              ? { title: 'Claimable på Talents — venter på at studenten overtar', color: '#f59e0b', icon: <TalentIcon fontSize="small" /> }
+              : { title: 'Promoter til Talents-registeret', color: 'rgba(255,255,255,0.5)', icon: <TalentIcon fontSize="small" /> };
           return (
-            <Box key={p.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 120px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <Box key={p.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 150px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
                 <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(p.studentName)}</Avatar>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.studentName}</Typography>
@@ -219,6 +276,7 @@ export function PortfolioTab() {
               </Stack>
               <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: published ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: published ? '#34d399' : 'rgba(255,255,255,0.6)', fontSize: 11.5, fontWeight: 600 }}>{published ? 'Publisert' : 'Utkast'}</Box></Box>
               <Stack direction="row" alignItems="center" spacing={0.25} justifyContent="flex-end">
+                <Tooltip title={tMeta.title}><span><IconButton size="small" onClick={() => tstatus === 'none' && openPromote(p.studentId, p.studentName, p.cohortName)} disabled={tstatus !== 'none'} sx={{ color: tMeta.color, '&.Mui-disabled': { color: tMeta.color } }}>{tMeta.icon}</IconButton></span></Tooltip>
                 <Tooltip title={published ? 'Avpubliser' : 'Publiser'}><span><IconButton size="small" onClick={() => togglePublish(p)} disabled={busyId === p.id} sx={{ color: published ? '#34d399' : 'rgba(255,255,255,0.5)' }}>{published ? <UnpublishIcon fontSize="small" /> : <PublishIcon fontSize="small" />}</IconButton></span></Tooltip>
                 <Tooltip title="Åpne"><IconButton size="small" onClick={() => openPortfolio(p)} sx={{ color: 'rgba(255,255,255,0.5)' }}><OpenIcon fontSize="small" /></IconButton></Tooltip>
                 <Tooltip title="Slett"><IconButton size="small" onClick={() => handleDelete(p.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
@@ -248,6 +306,57 @@ export function PortfolioTab() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setNewOpen(false)} disabled={creating} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
           <Button variant="contained" onClick={handleCreate} disabled={!newStudentId || creating} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{creating ? 'Oppretter…' : 'Opprett'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Promoter-til-Talents-dialog */}
+      <Dialog open={!!promoteStudent} onClose={() => setPromoteStudent(null)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Promoter til Talents</DialogTitle>
+        <DialogContent>
+          <T eid="edu-pf-promote-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+            Oppretter en <b>claimable</b> talent-profil for {promoteStudent?.name} i Role Room Talents — forhåndsfylt med publisert showreel + skole-verifisert credential. Studenten overtar profilen selv (matcher e-post) og styrer samtykke; den blir <b>ikke</b> synlig for byråer før studenten gir consent.
+          </T>
+          <Stack spacing={1.5}>
+            <TextField size="small" label="Institusjon" value={promoteInstitution} onChange={(e) => setPromoteInstitution(e.target.value)} placeholder="f.eks. Kunsthøgskolen i Oslo" fullWidth />
+            <TextField size="small" label="Program" value={promoteProgram} onChange={(e) => setPromoteProgram(e.target.value)} placeholder="f.eks. Bachelor skuespillerfag" fullWidth />
+            <TextField size="small" type="number" label="Avgangsår" value={promoteYear} onChange={(e) => setPromoteYear(e.target.value)} sx={{ width: 140 }} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setPromoteStudent(null)} disabled={promoteBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+          <Button variant="contained" startIcon={<TalentIcon />} onClick={confirmPromote} disabled={promoteBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{promoteBusy ? 'Promoterer…' : 'Promoter'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Avgangs-showcase-dialog */}
+      <Dialog open={showcaseOpen} onClose={() => setShowcaseOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Avgangs-showcase</DialogTitle>
+        <DialogContent>
+          <T eid="edu-pf-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+            Avgangskullet som er promotert til Talents. Byråer/casting ser kun de studentene selv har gitt samtykke til (via Talents-profilen sin).
+          </T>
+          {showcaseBusy ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress size={24} sx={{ color: ACCENT }} /></Box>
+          ) : showcase.length === 0 ? (
+            <Typography sx={{ fontSize: 13, color: 'text.secondary', py: 2 }}>Ingen promoterte talenter i dette kullet ennå. Bruk «Promoter til Talents» på en student.</Typography>
+          ) : showcase.map((s) => (
+            <Stack key={s.talentId} direction="row" alignItems="center" spacing={1.5} sx={{ py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(s.name)}</Avatar>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Stack direction="row" alignItems="center" spacing={0.75}>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</Typography>
+                  {s.claimed ? <VerifiedIcon sx={{ fontSize: 15, color: '#34d399' }} /> : <Chip label="Claimable" size="small" sx={{ height: 17, fontSize: 9.5, bgcolor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }} />}
+                </Stack>
+                <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>{[s.credential?.program, s.credential?.institution, s.credential?.year].filter(Boolean).join(' · ') || 'Skuespiller'}</Typography>
+              </Box>
+              {s.showreelUrl && <Button size="small" href={s.showreelUrl} target="_blank" rel="noopener" startIcon={<ShowreelIcon sx={{ fontSize: '15px !important' }} />} sx={{ color: '#c4b5fd', textTransform: 'none', fontSize: 12 }}>Showreel</Button>}
+            </Stack>
+          ))}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShowcaseOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
