@@ -14,14 +14,17 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
   Select, OutlinedInput, Chip, CircularProgress, Alert, Avatar, Snackbar,
+  Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox, Tooltip,
 } from '@mui/material';
 import {
   SupervisorAccount as FacultyIcon, Add as AddIcon, Delete as DeleteIcon,
   PersonAddAlt as InviteTeacherIcon, HowToReg as InviteCensorIcon,
   Groups as CohortIcon, EventSeat as SeatIcon, Gavel as CensorIcon,
+  Tune as LicenseIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationCensorService } from './educationCensorService';
+import { educationLicenseService, type License } from './educationLicenseService';
 import {
   educationFacultyService, FACULTY_ROLE_LABELS, FACULTY_ROLE_ORDER,
   type Faculty, type FacultyRole,
@@ -38,9 +41,16 @@ export function FacultyTab() {
   const [faculty, setFaculty] = useState<Faculty[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [censorCount, setCensorCount] = useState<number | null>(null);
+  const [license, setLicense] = useState<License | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Lisens-editor.
+  const [licOpen, setLicOpen] = useState(false);
+  const [licUnlimited, setLicUnlimited] = useState(false);
+  const [licSeats, setLicSeats] = useState('');
+  const [licBusy, setLicBusy] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -59,6 +69,7 @@ export function FacultyTab() {
         const invites = await Promise.all(c.map((co) => educationCensorService.listCohortInvites(co.id).catch(() => [])));
         setCensorCount(invites.flat().filter((i) => i.status !== 'revoked').length);
       } catch { setCensorCount(null); }
+      try { setLicense(await educationLicenseService.getLicense()); } catch { setLicense(null); }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kunne ikke hente fakultet');
     } finally {
@@ -68,6 +79,24 @@ export function FacultyTab() {
   useEffect(() => { void load(); }, [load]);
 
   const cohortName = useCallback((id: string) => cohorts.find((c) => c.id === id)?.name ?? id, [cohorts]);
+
+  const openLicenseEditor = () => {
+    setLicUnlimited(license?.unlimited ?? false);
+    setLicSeats(license?.seatLimit != null ? String(license.seatLimit) : '');
+    setLicOpen(true);
+  };
+  const saveLicense = async () => {
+    setLicBusy(true); setError(null);
+    try {
+      const updated = await educationLicenseService.updateLicense({
+        unlimited: licUnlimited,
+        seatLimit: licUnlimited ? null : (licSeats.trim() === '' ? null : Number(licSeats)),
+      });
+      setLicense(updated); setLicOpen(false);
+      setToast('TRR-lisens oppdatert.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke lagre lisens'); }
+    finally { setLicBusy(false); }
+  };
 
   const create = async () => {
     if (!name.trim() || busy) return;
@@ -110,7 +139,14 @@ export function FacultyTab() {
     { id: 'faglaerere', label: 'Faglærere', value: faculty.filter((f) => f.role !== 'guest').length, hint: 'Aktive dette semesteret', icon: <FacultyIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
     { id: 'sensorer', label: 'Sensorer', value: censorCount ?? '—', hint: 'Eksterne, tilgang på eksamen', icon: <CensorIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
     { id: 'kull', label: 'Kull tildelt', value: `${assignedCohortIds.size}/${cohorts.length}`, hint: assignedCohortIds.size >= cohorts.length && cohorts.length > 0 ? 'Alle kull har veileder' : 'Har minst én veileder', icon: <CohortIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
-    { id: 'seter', label: 'Ledige seter', value: '—', hint: 'Av lisensen deres', icon: <SeatIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    {
+      id: 'seter',
+      label: 'Ledige TRR-seter',
+      value: !license ? '—' : license.unlimited ? 'Ubegrenset' : (license.available != null ? license.available : '—'),
+      hint: !license ? 'Laster lisens…' : license.unlimited ? 'Site-/FTE-lisens' : (license.seatLimit != null ? `${license.used} av ${license.seatLimit} i bruk` : 'Lisens ikke satt — klikk tannhjulet'),
+      icon: <SeatIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8',
+      onEdit: openLicenseEditor,
+    },
   ];
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
@@ -157,16 +193,22 @@ export function FacultyTab() {
 
       {/* KPI-kort */}
       <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
-        {kpis.map((k) => (
+        {kpis.map((k) => {
+          const onEdit = (k as { onEdit?: () => void }).onEdit;
+          return (
           <Panel key={k.id} sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
               <T eid={`edu-fk-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
-              <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                {onEdit && <Tooltip title="Rediger lisens"><IconButton size="small" onClick={onEdit} sx={{ color: 'rgba(255,255,255,0.4)' }}><LicenseIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>}
+                <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
+              </Stack>
             </Stack>
             <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
             <T eid={`edu-fk-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
           </Panel>
-        ))}
+          );
+        })}
       </Box>
 
       {/* Fakultet-tabell */}
@@ -211,6 +253,24 @@ export function FacultyTab() {
           </Box>
         ))}
       </Panel>
+
+      {/* Lisens-editor */}
+      <Dialog open={licOpen} onClose={() => setLicOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>TRR-lisens</DialogTitle>
+        <DialogContent>
+          <T eid="edu-fk-lic-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+            Ett TRR-sete = én aktiv Role Room-bruker (faglærer eller student). Settes etter avtalen med institusjonen. {license ? `${license.used} i bruk nå.` : ''}
+          </T>
+          <FormControlLabel control={<Checkbox checked={licUnlimited} onChange={(e) => setLicUnlimited(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: ACCENT } }} />}
+            label={<Typography sx={{ fontSize: 13.5 }}>Ubegrenset (site-/FTE-lisens)</Typography>} />
+          <TextField size="small" type="number" label="Antall TRR-seter" value={licSeats} onChange={(e) => setLicSeats(e.target.value)} disabled={licUnlimited} fullWidth sx={{ mt: 1.5 }} inputProps={{ min: 0 }} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setLicOpen(false)} disabled={licBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+          <Button variant="contained" onClick={saveLicense} disabled={licBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{licBusy ? 'Lagrer…' : 'Lagre'}</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>

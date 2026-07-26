@@ -177,6 +177,7 @@ import { createCrewNotificationsRouter } from "./crew-notifications-routes.js";
 import { createEducationCohortsRouter } from "./role-room-education-cohorts-routes.js";
 import { createEducationGroupsRouter } from "./role-room-education-groups-routes.js";
 import { createEducationPortfoliosRouter } from "./role-room-education-portfolios-routes.js";
+import { createEducationLicenseRouter } from "./role-room-education-license-routes.js";
 import { createEducationAssignmentsRouter } from "./role-room-education-assignments-routes.js";
 import { createEducationProductionsRouter } from "./role-room-education-productions-routes.js";
 import { createEducationResourcesRouter } from "./role-room-education-resources-routes.js";
@@ -2588,6 +2589,10 @@ app.use(
 app.use(
   "/api/role-room",
   createEducationPortfoliosRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationLicenseRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room",
