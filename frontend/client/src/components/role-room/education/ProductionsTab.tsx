@@ -13,7 +13,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, InputBase, Select,
+  CircularProgress, Alert, InputBase, Select, Snackbar, Card, CardActionArea,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import {
   MovieCreation as ProductionIcon, Add as AddIcon, CalendarMonth as CalendarIcon,
@@ -24,6 +25,8 @@ import {
 } from '@mui/icons-material';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
+import { educationAssignmentsService } from './educationAssignmentsService';
+import { PRODUCTION_TEMPLATES } from './educationTemplates';
 import { ACCENT, Panel, T, QuickAction, RailTips } from './_eduUi';
 import type { EducationTabId } from './EducationWorkspace';
 
@@ -75,6 +78,43 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('Alle status');
+
+  // Maler.
+  const [tmplOpen, setTmplOpen] = useState(false);
+  const [tmplId, setTmplId] = useState(PRODUCTION_TEMPLATES[0].id);
+  const [tmplTitle, setTmplTitle] = useState('');
+  const [tmplCohortId, setTmplCohortId] = useState('');
+  const [tmplBusy, setTmplBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const openTemplateDialog = () => {
+    const t = PRODUCTION_TEMPLATES[0];
+    setTmplId(t.id); setTmplTitle(t.name); setTmplCohortId(''); setTmplOpen(true);
+  };
+  const selectedTmpl = PRODUCTION_TEMPLATES.find((t) => t.id === tmplId) ?? PRODUCTION_TEMPLATES[0];
+
+  const handleCreateFromTemplate = async () => {
+    if (!tmplTitle.trim() || tmplBusy) return;
+    setTmplBusy(true); setError(null);
+    try {
+      const prod = await educationProductionsService.createProduction({ title: tmplTitle.trim(), cohortId: tmplCohortId || undefined });
+      let seeded = 0;
+      for (const a of selectedTmpl.assignments) {
+        const dueAt = new Date(Date.now() + a.dueInDays * 86_400_000).toISOString();
+        try {
+          // eslint-disable-next-line no-await-in-loop -- sekvensiell så-ing holder rekkefølgen
+          await educationAssignmentsService.createAssignment({
+            title: a.title, productionId: prod.id, cohortId: tmplCohortId || null,
+            brief: a.brief, learningGoals: a.learningGoals, dueAt, status: 'published',
+          });
+          seeded++;
+        } catch { /* hopp over enkelt-oppgave-feil, fortsett */ }
+      }
+      setTmplOpen(false); await load();
+      setToast(`Opprettet «${prod.title}» fra mal · ${seeded} oppgaver lagt til.`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette fra mal'); }
+    finally { setTmplBusy(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -140,7 +180,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
             <T eid="edu-sp-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.6 }}>Hver produksjon er et fullt Role Room-prosjekt med team, story arc, call sheet, oppgaver og leveranser.</T>
           </Box>
           <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
-            <Button variant="outlined" startIcon={<TemplateIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+            <Button variant="outlined" startIcon={<TemplateIcon />} onClick={openTemplateDialog} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
               <T eid="edu-sp-btn-template" component="span" sx={{ fontWeight: 600 }}>Opprett fra mal</T>
             </Button>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
@@ -242,7 +282,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
           <Button variant="contained" onClick={() => setCreating(true)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-sp-cta-btn" component="span" sx={{ fontWeight: 700 }}>Opprett første produksjon</T>
           </Button>
-          <Button variant="outlined" startIcon={<TemplateIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+          <Button variant="outlined" startIcon={<TemplateIcon />} onClick={openTemplateDialog} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-sp-cta-template" component="span" sx={{ fontWeight: 600 }}>Bruk produksjonsmal</T>
           </Button>
         </Stack>
@@ -276,6 +316,42 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
         </Panel>
         <RailTips idPrefix="edu-sp" title="Tips fra The Role Room" body="Bruk maler for å sikre at alle prosjekter har en rød tråd og at viktige leveranser ikke glemmes." link="Se alle tips →" />
       </Stack>
+
+      {/* Mal-dialog */}
+      <Dialog open={tmplOpen} onClose={() => setTmplOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Opprett produksjon fra mal</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: '1fr 1fr', mb: 2 }}>
+            {PRODUCTION_TEMPLATES.map((t) => {
+              const active = t.id === tmplId;
+              return (
+                <Card key={t.id} sx={{ bgcolor: active ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(139,92,246,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
+                  <CardActionArea onClick={() => { setTmplId(t.id); setTmplTitle(t.name); }} sx={{ p: 1.5, height: '100%' }}>
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t.name}</Typography>
+                    <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.4 }}>{t.description}</Typography>
+                    <Typography sx={{ fontSize: 11, color: '#c4b5fd', mt: 0.75, fontWeight: 600 }}>{t.assignments.length} oppgaver</Typography>
+                  </CardActionArea>
+                </Card>
+              );
+            })}
+          </Box>
+          <Stack spacing={1.5}>
+            <TextField size="small" label="Tittel på produksjonen" value={tmplTitle} onChange={(e) => setTmplTitle(e.target.value)} fullWidth />
+            <TextField size="small" select label="Kull (valgfritt)" value={tmplCohortId} onChange={(e) => setTmplCohortId(e.target.value)} fullWidth>
+              <MenuItem value="">Ingen</MenuItem>
+              {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+            </TextField>
+            <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Såer {selectedTmpl.assignments.length} oppgaver: {selectedTmpl.assignments.map((a) => a.title).join(', ')}.</Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setTmplOpen(false)} disabled={tmplBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+          <Button variant="contained" onClick={handleCreateFromTemplate} disabled={!tmplTitle.trim() || tmplBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{tmplBusy ? 'Oppretter…' : 'Opprett fra mal'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }

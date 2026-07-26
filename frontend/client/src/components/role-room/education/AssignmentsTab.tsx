@@ -12,7 +12,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, InputBase, LinearProgress, Select,
+  CircularProgress, Alert, InputBase, LinearProgress, Select, Menu, ListItemText,
 } from '@mui/material';
 import {
   Assignment as AssignmentIcon, Add as AddIcon, GridView as TemplateIcon,
@@ -23,6 +23,7 @@ import {
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import { educationAssignmentsService, type Assignment, type AssignmentStatus } from './educationAssignmentsService';
+import { ASSIGNMENT_TEMPLATES } from './educationTemplates';
 import { ACCENT, Panel, T } from './_eduUi';
 
 const STATUS_META: Record<AssignmentStatus, { label: string; color: string }> = {
@@ -57,6 +58,12 @@ export function AssignmentsTab() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatus>('all');
   const [cohortFilter, setCohortFilter] = useState('all');
+  const [tmplAnchor, setTmplAnchor] = useState<null | HTMLElement>(null);
+
+  const applyTemplate = (t: { name: string; brief: string; learningGoals: string }) => {
+    setF((p) => ({ ...p, title: t.name, brief: t.brief, learningGoals: t.learningGoals }));
+    setCreating(true); setTmplAnchor(null);
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -129,9 +136,19 @@ export function AssignmentsTab() {
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
-          <Button variant="outlined" startIcon={<TemplateIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+          <Button variant="outlined" startIcon={<TemplateIcon />} onClick={(e) => setTmplAnchor(e.currentTarget)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-op-btn-template" component="span" sx={{ fontWeight: 600 }}>Opprett fra mal</T>
           </Button>
+          <Menu anchorEl={tmplAnchor} open={!!tmplAnchor} onClose={() => setTmplAnchor(null)}
+            PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', maxWidth: 320 } }}>
+            {ASSIGNMENT_TEMPLATES.map((t) => (
+              <MenuItem key={t.id} onClick={() => applyTemplate(t)} sx={{ display: 'block', py: 1 }}>
+                <ListItemText primary={t.name} secondary={t.description}
+                  primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }}
+                  secondaryTypographyProps={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', sx: { whiteSpace: 'normal' } }} />
+              </MenuItem>
+            ))}
+          </Menu>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-op-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny oppgave</T>
           </Button>
