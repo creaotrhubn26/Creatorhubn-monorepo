@@ -16,10 +16,16 @@ export type FrameVariant = 'iphone' | 'ipad' | 'ipad_landscape' | 'macbook';
 export interface FrameSpec {
   src: string;
   aspect: number; // frameW / frameH
-  /** Skjerm-rektangel, relativt til hele frame-PNG-en (0..1). */
+  /** Skjerm-rektangel (bounding-box av skjermflaten), relativt til frame-PNG (0..1). */
   screen: { x: number; y: number; w: number; h: number };
   /** Skjerm-hjørneradius som andel av frame-bredde. */
   radius: number;
+  /** Valgfri presis skjerm-QUAD (4 hjørner rel. frame 0..1) for enheter der skjermen
+   *  har perspektiv/keystone (f.eks. den vinklede MacBook-en). Når satt, corner-pinnes
+   *  innholdet nøyaktig til disse hjørnene i stedet for å fylle et akse-rett rektangel
+   *  → ser ut akkurat som på en ekte skjerm. Flate enheter (telefon/nettbrett) trenger
+   *  ingen quad. Rekkefølge: TL, TR, BR, BL. */
+  quad?: { tl: [number, number]; tr: [number, number]; br: [number, number]; bl: [number, number] };
 }
 
 // Rene mockups (Daniels Desktop-kilder, 2026-06-03), skjerm presist detektert:
@@ -47,8 +53,15 @@ export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
     radius: 20 / 1448,
   },
   macbook: {
+    // screen = bounding-box av display-quaden; quad = de fire ekte hjørnene (kant-fit
+    // fra macbook.png): TL(256,20) TR(1329,20) BR(1325,759) BL(260,759). Topp-bredde
+    // 1073 vs bunn 1065 → subtil keystone som corner-pinnes i FramedDevice/eksport.
     src: macbookFrame, aspect: 1586 / 992,
-    screen: { x: 259 / 1586, y: 30 / 992, w: 1064 / 1586, h: 729 / 992 },
+    screen: { x: 256 / 1586, y: 20 / 992, w: 1073 / 1586, h: 739 / 992 },
+    quad: {
+      tl: [256 / 1586, 20 / 992], tr: [1329 / 1586, 20 / 992],
+      br: [1325 / 1586, 759 / 992], bl: [260 / 1586, 759 / 992],
+    },
     radius: 6 / 1586,
   },
 };
