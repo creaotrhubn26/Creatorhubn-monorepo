@@ -124,6 +124,11 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
   }, []);
 
   const stats = data?.stats;
+  // Første-gangs-tilstand: data lastet, men workspacet er helt tomt.
+  const firstRun = !!data
+    && (stats?.dueThisWeek ?? 0) === 0 && (stats?.toReview ?? 0) === 0
+    && (stats?.missingSubmissions ?? 0) === 0 && (stats?.productions ?? 0) === 0
+    && (data.dueSoon?.length ?? 0) === 0 && (data.reviewQueue?.length ?? 0) === 0;
   const kpis = useMemo(() => [
     { id: 'frister', label: 'Frister denne uken', value: stats?.dueThisWeek ?? 0, icon: <DueIcon />, color: ACCENT, tab: 'assignments' as TabId,
       hint: (stats?.dueThisWeek ?? 0) === 0 ? 'Ingen frister de neste 7 dagene' : 'Neste 7 dager' },
