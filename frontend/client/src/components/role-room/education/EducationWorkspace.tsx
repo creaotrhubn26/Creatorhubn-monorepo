@@ -110,7 +110,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
         {EDUCATION_TABS.map((t) => {
           const active = t.id === activeTab;
           return (
-            <Box key={t.id} onClick={() => onNavigate(t.id)} sx={{
+            <Box key={t.id} onClick={() => onNavigate(t.id)} data-edit-id={`edu-nav-${t.id}`} sx={{
               display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.05, borderRadius: 2, cursor: 'pointer',
               color: active ? '#fff' : 'rgba(255,255,255,0.62)',
               bgcolor: active ? 'rgba(139,92,246,0.16)' : 'transparent',
@@ -120,7 +120,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
               '& svg': { fontSize: 20, color: active ? ACCENT : 'inherit' },
             }}>
               {t.icon}
-              <Typography sx={{ fontSize: 13.5, fontWeight: active ? 700 : 500 }}>{t.label}</Typography>
+              <Typography data-edit-id={`edu-nav-lbl-${t.id}`} sx={{ fontSize: 13.5, fontWeight: active ? 700 : 500 }}>{t.label}</Typography>
             </Box>
           );
         })}

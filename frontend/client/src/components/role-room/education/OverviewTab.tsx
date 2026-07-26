@@ -125,13 +125,13 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
 
   const stats = data?.stats;
   const kpis = useMemo(() => [
-    { label: 'Frister denne uken', value: stats?.dueThisWeek ?? 0, icon: <DueIcon />, color: ACCENT, tab: 'assignments' as TabId,
+    { id: 'frister', label: 'Frister denne uken', value: stats?.dueThisWeek ?? 0, icon: <DueIcon />, color: ACCENT, tab: 'assignments' as TabId,
       hint: (stats?.dueThisWeek ?? 0) === 0 ? 'Ingen frister de neste 7 dagene' : 'Neste 7 dager' },
-    { label: 'Til vurdering', value: stats?.toReview ?? 0, icon: <ReviewIcon />, color: '#10b981', tab: 'assessment' as TabId,
+    { id: 'vurdering', label: 'Til vurdering', value: stats?.toReview ?? 0, icon: <ReviewIcon />, color: '#10b981', tab: 'assessment' as TabId,
       hint: (stats?.toReview ?? 0) === 0 ? 'Ingen innleveringer venter' : 'Innleveringer venter' },
-    { label: 'Manglende innleveringer', value: stats?.missingSubmissions ?? 0, icon: <MissingIcon />, color: (stats?.missingSubmissions ?? 0) > 0 ? '#f59e0b' : ACCENT, tab: 'assessment' as TabId,
+    { id: 'mangler', label: 'Manglende innleveringer', value: stats?.missingSubmissions ?? 0, icon: <MissingIcon />, color: (stats?.missingSubmissions ?? 0) > 0 ? '#f59e0b' : ACCENT, tab: 'assessment' as TabId,
       hint: (stats?.missingSubmissions ?? 0) === 0 ? 'Alt er levert – flott jobb!' : 'Følg opp studentene' },
-    { label: 'Aktive produksjoner', value: stats?.productions ?? 0, icon: <ProductionIcon />, color: ACCENT, tab: 'productions' as TabId,
+    { id: 'produksjoner', label: 'Aktive produksjoner', value: stats?.productions ?? 0, icon: <ProductionIcon />, color: ACCENT, tab: 'productions' as TabId,
       hint: (stats?.productions ?? 0) === 0 ? 'Ingen aktive produksjoner' : 'I gang nå' },
   ], [stats]);
 
@@ -159,10 +159,10 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Box>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>Utdannings-workspace</Typography>
-            <Chip label="Faglærer" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
+            <Typography data-edit-id="edu-ov-title" variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>Utdannings-workspace</Typography>
+            <Chip data-edit-id="edu-ov-rolechip" label="Faglærer" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
           </Stack>
-          <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, mt: 0.5 }}>
+          <Typography data-edit-id="edu-ov-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, mt: 0.5 }}>
             Undervisning, studentproduksjoner og samarbeid med eksterne oppdragsgivere — i én flate.
           </Typography>
         </Box>
@@ -221,8 +221,8 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
                 <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: `${k.color}22`, color: k.color, flexShrink: 0, '& svg': { fontSize: 22 } }}>{k.icon}</Box>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontSize: 30, fontWeight: 800, lineHeight: 1 }}>{k.value}</Typography>
-                  <Typography sx={{ fontSize: 13.5, fontWeight: 600, mt: 0.5 }}>{k.label}</Typography>
-                  <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.25 }}>{k.hint}</Typography>
+                  <Typography data-edit-id={`edu-ov-kpi-${k.id}-label`} sx={{ fontSize: 13.5, fontWeight: 600, mt: 0.5 }}>{k.label}</Typography>
+                  <Typography data-edit-id={`edu-ov-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.25 }}>{k.hint}</Typography>
                 </Box>
               </Stack>
             </CardActionArea>
