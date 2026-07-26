@@ -2,7 +2,7 @@
  * GuidedRecorderView — piksel-matchet Guided Recorder (fasit: Daniels mockup
  * + spec §2.4/§3.4). Kjernen i Product Demo Studio.
  *
- * Layout: mørk sidebar · topbar (URL + device-toggle + Generate Demo Flow +
+ * Layout: mørk sidebar · topbar (URL + device-toggle + Manual/Auto +
  * Record) · device-trio-preview i senter (Mac+iPad+iPhone) m/ "Recording
  * Paused"-badge · høyre Guide/Script/Notes-panel med Step X of N, Narration,
  * REQUIRED ACTION (m/ knapp-preview) + Retake/Mark as Done/Next Step · bunn
@@ -57,6 +57,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const macFrameRef = useRef<HTMLIFrameElement | null>(null);
   const autoAbort = useRef(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [autoWarn, setAutoWarn] = useState<string | null>(null);
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
@@ -187,14 +188,19 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
    * Same-origin kreves for DOM-tilgang; cross-origin → vi simulerer kun
    * scroll/wait på toppnivå. Aldri fatal.
    */
-  const performAction = async (scene: typeof cur) => {
+  const performAction = async (scene: typeof cur): Promise<'ok' | 'noop' | 'blocked'> => {
     const type = scene.actionType ?? 'click';
     const win = macFrameRef.current?.contentWindow;
     const doc = (() => { try { return macFrameRef.current?.contentDocument ?? null; } catch { return null; } })();
     try {
       if (type === 'scroll') {
         win?.scrollBy({ top: 500, behavior: 'smooth' });
-      } else if ((type === 'click' || type === 'hover' || type === 'highlight') && doc) {
+        return 'ok';
+      }
+      if (type === 'click' || type === 'hover' || type === 'highlight') {
+        // Cross-origin → ingen DOM-tilgang. Rapporter «blocked» så auto-kjøringen
+        // kan varsle brukeren i stedet for å vente stille uten å klikke.
+        if (!doc) return 'blocked';
         const label = targetLabel(scene.requiredAction).toLowerCase();
         const el = Array.from(doc.querySelectorAll('a,button,[role=button]'))
           .find((e) => (e.textContent ?? '').toLowerCase().includes(label)) as HTMLElement | undefined;
@@ -203,9 +209,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
           el.style.outline = '3px solid #8b5cf6'; el.style.outlineOffset = '2px';
           await sleep(500);
           if (type === 'click') el.click();
+          return 'ok';
         }
+        return 'noop';
       }
-    } catch { /* cross-origin/blokkert — hopp over */ }
+    } catch { return 'blocked'; }
+    return 'noop';
   };
 
   /** Les gjeldende scene FERSKT fra storen (unngår stale closure-indeks). */
@@ -239,6 +248,18 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const runAuto = async () => {
     autoAbort.current = false;
     setAutoRunning(true);
+    // Cross-origin preview → ingen DOM-tilgang → kan ikke klikke. Varsle brukeren
+    // i stedet for å vente stille (før: klikk-scener gjorde ingenting, kun venting).
+    setAutoWarn(null);
+    {
+      const stPre = useDemoStudio.getState();
+      const listPre = stPre.project?.scenes ?? [];
+      const crossOrigin = (() => { try { return !macFrameRef.current?.contentDocument; } catch { return true; } })();
+      const needsDom = listPre.some((s) => ['click', 'hover', 'highlight'].includes(s.actionType ?? 'click'));
+      if (crossOrigin && needsDom) {
+        setAutoWarn('Auto-modus kan ikke klikke på eksterne nettsider (cross-origin) — scenene tas opp med riktig varighet, men uten simulerte klikk. Bruk «Kjør automatisk» i opptaks-sesjonen for ekte klikk på eksterne sider.');
+      }
+    }
     // Les start-indeks og scener FERSKT fra storen: beginRecording kaller
     // startRecorder() rett før oss, så render-closurens recorderStepIndex
     // kan peke på feil scene.
@@ -536,6 +557,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 </div>
               )}
                 </>
+              )}
+              {autoWarn && (
+                <div style={{ display: 'flex', gap: 8, background: '#fdecec', border: '1px solid #f3c0c0', borderRadius: 10, padding: '10px 12px', marginBottom: 16 }}>
+                  <span style={{ color: '#c0392b' }}>⚠</span>
+                  <div style={{ fontSize: 11.5, color: '#8a2a2a', lineHeight: 1.45 }}>{autoWarn}</div>
+                </div>
               )}
               {rec.error === REC_UNAVAILABLE ? (
                 <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 10, padding: 10, border: `1px solid ${C.line}`, borderRadius: 8, background: C.cream }}>
