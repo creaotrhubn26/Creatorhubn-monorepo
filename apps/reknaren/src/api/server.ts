@@ -128,9 +128,12 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createReknarenMcpServer } from '../mcp/server.js';
 import {
   assessRecurringDue,
+  createRecurringFromVendor,
   detectRecurringExpectations,
+  recurringHintForVendor,
   resolveRecurring,
 } from '../ledger/recurring.js';
+import { buildPaymentCalendar } from '../ledger/calendar.js';
 import { buildConnectorRegistry } from '../integrations/connectors/registry.js';
 import {
   connectConnector,
@@ -2680,6 +2683,78 @@ export function createApiServer(deps: ApiDeps): express.Express {
   app.post('/api/organizations/:orgId/recurring/detect', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
     try {
       res.status(201).json(toJson(await detectRecurringExpectations(deps.db, { organizationId: req.params.orgId! })));
+    } catch (err) { next(err); }
+  });
+  // Betalingskalender: betalt (bakover) + forventet (framover) på én tidslinje.
+  app.get('/api/organizations/:orgId/payment-calendar', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const org = (await deps.db.query(`SELECT org_form FROM organizations WHERE id=$1`, [req.params.orgId!])).rows[0];
+      if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
+      const today = new Date().toISOString().slice(0, 10);
+      const iso = (d: unknown, fb: string) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : fb);
+      const defFrom = `${today.slice(0, 4)}-01-01`;
+      const defTo = new Date(Date.parse(today + 'T00:00:00Z') + 90 * 86400000).toISOString().slice(0, 10);
+      res.json(toJson(await buildPaymentCalendar(deps.db, deps.rules, {
+        organizationId: req.params.orgId!,
+        orgForm: org.org_form,
+        from: iso(req.query.from, defFrom),
+        to: iso(req.query.to, defTo),
+        asOf: today,
+      })));
+    } catch (err) { next(err); }
+  });
+  // Inline-nudge: ser dette bilagets leverandør periodisk ut?
+  app.get('/api/organizations/:orgId/vendors/:vendorId/recurring-hint', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await recurringHintForVendor(deps.db, { organizationId: req.params.orgId!, vendorId: req.params.vendorId! })));
+    } catch (err) { next(err); }
+  });
+  // Bekreft nudgen: opprett aktiv fast forventning fra leverandørens historikk.
+  app.post('/api/organizations/:orgId/vendors/:vendorId/recurring', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const result = await createRecurringFromVendor(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        vendorId: req.params.vendorId!,
+      });
+      res.status(201).json(toJson(result));
+    } catch (err) { next(err); }
+  });
+  // Dokument-scopet nudge: løs opp leverandøren for bilaget (postert eller uttrukket) og vurder gjentakelse.
+  const resolveDocVendor = async (org: string, documentId: string): Promise<string | null> => {
+    const posted = (await deps.db.query(
+      `SELECT l.vendor_id::text AS vid FROM journal_entries je JOIN journal_lines l ON l.entry_id=je.id
+       WHERE je.organization_id=$1 AND je.source_document_id=$2 AND l.vendor_id IS NOT NULL LIMIT 1`,
+      [org, documentId],
+    )).rows[0];
+    if (posted?.vid) return posted.vid;
+    const matched = (await deps.db.query(
+      `SELECT v.id::text AS vid FROM extracted_document_data e
+       JOIN vendors v ON v.organization_id=e.organization_id
+         AND (NULLIF(v.org_number,'')=NULLIF(e.vendor_org_number,'') OR lower(v.name)=lower(e.vendor_name))
+       WHERE e.organization_id=$1 AND e.document_id=$2 LIMIT 1`,
+      [org, documentId],
+    )).rows[0];
+    return matched?.vid ?? null;
+  };
+  app.get('/api/organizations/:orgId/documents/:documentId/recurring-hint', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const vendorId = await resolveDocVendor(req.params.orgId!, req.params.documentId!);
+      if (!vendorId) { res.json({ looksRecurring: false, alreadyTracked: false, vendorId: null }); return; }
+      const hint = await recurringHintForVendor(deps.db, { organizationId: req.params.orgId!, vendorId });
+      res.json(toJson({ ...hint, vendorId }));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/documents/:documentId/recurring', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const vendorId = await resolveDocVendor(req.params.orgId!, req.params.documentId!);
+      if (!vendorId) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Fant ingen leverandør for bilaget.' } }); return; }
+      const result = await createRecurringFromVendor(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        vendorId,
+      });
+      res.status(201).json(toJson(result));
     } catch (err) { next(err); }
   });
   app.post('/api/organizations/:orgId/recurring/:ruleId/resolve', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {

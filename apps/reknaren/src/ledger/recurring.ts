@@ -277,6 +277,134 @@ export async function assessRecurringDue(db: Db, params: { organizationId: strin
   return { asOf, items, overdueCount, overdueAmountMinor: overdueAmt.toString() };
 }
 
+/* ── Inline-nudge: «dette virker gjentakende — legg til faste utgifter?» ─── */
+
+export interface RecurringHint {
+  looksRecurring: boolean;
+  alreadyTracked: boolean;
+  trackedStatus: string | null;
+  cadence: Cadence | null;
+  expectedAmountMinor: string | null;
+  occurrences: number;
+  reason: string;
+}
+
+/**
+ * Kalles idet et bilag registreres. Ser på leverandørens tidligere BOKFØRTE
+ * forekomster og avgjør om dette ser periodisk ut — grunnlaget for en diskré
+ * «legg til faste utgifter?»-nudge. Bokfører ingenting; ren analyse.
+ */
+export async function recurringHintForVendor(db: Db, params: { organizationId: string; vendorId: string }): Promise<RecurringHint> {
+  const org = params.organizationId;
+  const vrow = (await db.query(`SELECT name, org_number FROM vendors WHERE id=$1 AND organization_id=$2`, [params.vendorId, org])).rows[0];
+  const none: RecurringHint = { looksRecurring: false, alreadyTracked: false, trackedStatus: null, cadence: null, expectedAmountMinor: null, occurrences: 0, reason: '' };
+  if (!vrow) return none;
+  const subjectKey = (vrow.org_number || String(vrow.name).toLowerCase()).trim();
+  const tracked = (
+    await db.query(
+      `SELECT status FROM learned_rules WHERE rule_type='recurring_expectation' AND subject_type='vendor'
+         AND COALESCE(subject_key,'')=$1 AND (organization_id=$2 OR group_id=(SELECT group_id FROM organizations WHERE id=$2))`,
+      [subjectKey, org],
+    )
+  ).rows[0];
+  const occ = (
+    await db.query(
+      `SELECT je.entry_date::text AS d, SUM(l.debit_minor) AS amt
+       FROM journal_entries je JOIN journal_lines l ON l.entry_id = je.id
+       WHERE je.organization_id=$1 AND je.status='posted' AND je.is_closing=FALSE
+         AND l.vendor_id=$2 AND l.debit_minor>0 AND l.account_number ~ '^[4-7]'
+       GROUP BY je.id, je.entry_date ORDER BY je.entry_date`,
+      [org, params.vendorId],
+    )
+  ).rows.map((r) => ({ d: r.d as string, amt: BigInt(r.amt) }));
+  if (tracked) return { ...none, alreadyTracked: true, trackedStatus: tracked.status, occurrences: occ.length, reason: `${vrow.name} følges allerede som fast utgift.` };
+  if (occ.length < 2) return { ...none, occurrences: occ.length };
+  const days = occ.map((o) => dayMs(o.d));
+  const intervals: number[] = [];
+  for (let i = 1; i < days.length; i++) intervals.push(Math.round((days[i]! - days[i - 1]!) / 86400000));
+  const medInt = median(intervals);
+  const cadence: Cadence | null = medInt >= 25 && medInt <= 35 ? 'monthly' : medInt >= 80 && medInt <= 100 ? 'quarterly' : medInt >= 350 && medInt <= 380 ? 'yearly' : null;
+  if (!cadence) return { ...none, occurrences: occ.length };
+  const medAmt = medianBig(occ.map((o) => o.amt));
+  const kadensN = cadence === 'monthly' ? 'måned' : cadence === 'quarterly' ? 'kvartal' : 'år';
+  return {
+    looksRecurring: true,
+    alreadyTracked: false,
+    trackedStatus: null,
+    cadence,
+    expectedAmountMinor: medAmt.toString(),
+    occurrences: occ.length,
+    reason: `${vrow.name} har kommet omtrent hver ${kadensN} (${occ.length + 1}. gang, typisk ${kr(medAmt)} kr). Legg til i faste utgifter?`,
+  };
+}
+
+/**
+ * Bekrefter nudgen: oppretter en AKTIV fast forventning fra leverandørens
+ * historikk (kadens/beløp/dag/kanal utledet). Idempotent på leverandør.
+ */
+export async function createRecurringFromVendor(
+  db: Db,
+  params: { organizationId: string; actor: Actor; vendorId: string },
+): Promise<{ ruleId: string; created: boolean }> {
+  const org = params.organizationId;
+  const hint = await recurringHintForVendor(db, { organizationId: org, vendorId: params.vendorId });
+  const vrow = (await db.query(`SELECT name, org_number FROM vendors WHERE id=$1 AND organization_id=$2`, [params.vendorId, org])).rows[0];
+  if (!vrow) throw new NotFoundError('Leverandøren finnes ikke.');
+  const subjectKey = (vrow.org_number || String(vrow.name).toLowerCase()).trim();
+  const occ = (
+    await db.query(
+      `SELECT je.entry_date::text AS d, SUM(l.debit_minor) AS amt,
+              (array_agg(l.account_number ORDER BY l.debit_minor DESC))[1] AS acc,
+              bool_or(je.source_document_id IS NOT NULL) AS has_doc
+       FROM journal_entries je JOIN journal_lines l ON l.entry_id = je.id
+       WHERE je.organization_id=$1 AND je.status='posted' AND je.is_closing=FALSE
+         AND l.vendor_id=$2 AND l.debit_minor>0 AND l.account_number ~ '^[4-7]'
+       GROUP BY je.id, je.entry_date ORDER BY je.entry_date`,
+      [org, params.vendorId],
+    )
+  ).rows;
+  const cadence: Cadence = hint.cadence ?? 'monthly';
+  const amounts = occ.map((o) => BigInt(o.amt));
+  const medAmt = amounts.length ? medianBig(amounts) : 0n;
+  const dueDay = occ.length ? median(occ.map((o) => Number(o.d.slice(8, 10)))) : 1;
+  const accCount = new Map<string, number>();
+  for (const o of occ) accCount.set(o.acc, (accCount.get(o.acc) ?? 0) + 1);
+  const accountNumber = [...accCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const docRatio = occ.length ? occ.filter((o) => o.has_doc).length / occ.length : 0;
+  const target: RecurringTarget = {
+    cadence,
+    expectedAmountMinor: medAmt.toString(),
+    dueDay: Math.max(1, Math.min(28, dueDay)),
+    channel: docRatio >= 0.6 ? 'auto' : 'manual',
+    ...(accountNumber ? { accountNumber } : {}),
+    ...(occ.length ? { lastSeen: occ[occ.length - 1]!.d } : {}),
+  };
+  return withTransaction(db, async (client) => {
+    const id = newId();
+    const rationale = `Lagt til manuelt av bruker fra bilagsregistrering. ${vrow.name}, ${cadence === 'monthly' ? 'månedlig' : cadence === 'quarterly' ? 'kvartalsvis' : 'årlig'}, typisk ${kr(medAmt)} kr.`;
+    const res = await client.query(
+      `INSERT INTO learned_rules
+         (id, organization_id, scope, rule_type, subject_type, subject_key, subject_label, target,
+          status, support_count, observation_count, rationale, created_by, approved_by, approved_at)
+       VALUES ($1,$2,'organization','recurring_expectation','vendor',$3,$4,$5,'active',$6,$6,$7,$8,$8,now())
+       ON CONFLICT ((COALESCE(group_id, organization_id)), rule_type, subject_type, COALESCE(subject_key, ''))
+       DO UPDATE SET status='active', target=EXCLUDED.target, approved_by=EXCLUDED.approved_by, approved_at=now(), updated_at=now()
+       RETURNING id, (xmax = 0) AS inserted`,
+      [id, org, subjectKey, vrow.name, JSON.stringify(target), Math.max(occ.length, 1), rationale, params.actor.userId],
+    );
+    const row = res.rows[0];
+    await recordAuditEvent(client, {
+      organizationId: org,
+      actor: params.actor,
+      action: 'recurring.added_from_vendor',
+      entityType: 'learned_rule',
+      entityId: row.id,
+      newValue: { vendor: vrow.name, cadence, expectedAmountMinor: medAmt.toString() },
+    });
+    return { ruleId: row.id, created: !!row.inserted };
+  });
+}
+
 /* ── 3) Menneskets handling: marker håndtert / utsett / avvis ────────────── */
 
 export async function resolveRecurring(

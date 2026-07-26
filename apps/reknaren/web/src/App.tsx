@@ -13,6 +13,7 @@ import {
   IntegrationsScreen,
   LearningScreen,
   OverviewScreen,
+  PaymentCalendarScreen,
   RecurringScreen,
   PeriodCloseScreen,
   PlanningScreen,
@@ -63,6 +64,7 @@ type Screen =
   | { name: 'fraud' }
   | { name: 'learning' }
   | { name: 'recurring' }
+  | { name: 'calendar' }
   | { name: 'planning' }
   | { name: 'period-close' }
   | { name: 'assistant' }
@@ -107,6 +109,7 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
     items: [
       { key: 'ask', label: 'Spør virksomheten', icon: 'mail' },
       { key: 'planning', label: 'Framover', icon: 'chart' },
+      { key: 'calendar', label: 'Betalingskalender', icon: 'chart' },
       { key: 'fraud', label: 'Svindelkontroll', icon: 'shield' },
       { key: 'recurring', label: 'Faste utgifter', icon: 'chart' },
       { key: 'learning', label: 'Lært praksis', icon: 'overview' },
@@ -302,6 +305,7 @@ export default function App() {
           {screen.name === 'fraud' && <FraudScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'learning' && <LearningScreen orgId={orgId} onOpenDocument={openDocument} />}
           {screen.name === 'recurring' && <RecurringScreen orgId={orgId} />}
+          {screen.name === 'calendar' && <PaymentCalendarScreen orgId={orgId} />}
           {screen.name === 'planning' && (
             <PlanningScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />
           )}

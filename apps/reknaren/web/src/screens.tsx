@@ -481,6 +481,30 @@ export function DocumentDetailScreen({
         : Promise.resolve(null),
     [orgId, documentId, isPosted, showTechnical],
   );
+  // Inline-nudge: ser leverandøren på bilaget gjentakende ut? (fyres når bilaget er postert/kan matches)
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [nudgeBusy, setNudgeBusy] = useState(false);
+  const hint = useLoad(
+    () =>
+      api<{ looksRecurring: boolean; alreadyTracked: boolean; reason: string; vendorId: string | null }>(
+        'GET',
+        `/api/organizations/${orgId}/documents/${documentId}/recurring-hint`,
+      ),
+    [orgId, documentId, isPosted, posted?.entryNumber],
+  );
+  const addRecurring = async () => {
+    setNudgeBusy(true);
+    try {
+      await api('POST', `/api/organizations/${orgId}/documents/${documentId}/recurring`, {});
+      toast('Lagt til i faste utgifter — vaktposten følger den nå', 'ok');
+      setNudgeDismissed(true);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke legge til', 'danger');
+    } finally {
+      setNudgeBusy(false);
+    }
+  };
+
   const suggestion = d?.suggestions.find((s) => s.status === 'proposed') ?? d?.suggestions[0];
   const decidedBy = d?.suggestions.find((s) => s.decided_at) ?? null;
   const needsRate = d?.extraction?.currency && d.extraction.currency !== 'NOK';
@@ -578,6 +602,17 @@ export function DocumentDetailScreen({
               </ul>
             </>
           )}
+        </div>
+      )}
+
+      {hint.data?.looksRecurring && !hint.data.alreadyTracked && !nudgeDismissed && (
+        <div className="panel">
+          <div className="health-title">🔁 Gjentakende betaling?</div>
+          <p className="hint" style={{ marginTop: 4 }}>{hint.data.reason}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button disabled={nudgeBusy} onClick={addRecurring}>Ja, legg til i faste utgifter</button>
+            <button className="secondary" disabled={nudgeBusy} onClick={() => setNudgeDismissed(true)}>Ikke nå</button>
+          </div>
         </div>
       )}
 
@@ -4081,6 +4116,115 @@ export function RecurringScreen({ orgId }: { orgId: string }) {
             <div className="panel"><p className="subtitle">Ingen faste utgifter registrert ennå. Trykk «Lær faste utgifter» for å oppdage mønstre i det du allerede har bokført.</p></div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/* ── Betalingskalender ──────────────────────────────────────────────────── */
+
+interface CalEvent {
+  date: string;
+  kind: 'paid' | 'recurring' | 'vat' | 'tax' | 'invoice_in';
+  direction: 'in' | 'out';
+  label: string;
+  amountMinor: string;
+  status: 'paid' | 'expected' | 'overdue';
+  vendor?: string;
+}
+interface CalResp { from: string; to: string; asOf: string; events: CalEvent[] }
+
+const KIND_LABEL: Record<CalEvent['kind'], string> = {
+  paid: 'Betalt/ført',
+  recurring: 'Fast utgift',
+  vat: 'MVA',
+  tax: 'Skatt',
+  invoice_in: 'Kundefaktura',
+};
+const MONTH_NB = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'];
+function monthKey(iso: string) { return iso.slice(0, 7); }
+function monthTitle(key: string) { const [y, m] = key.split('-'); return `${MONTH_NB[Number(m) - 1]} ${y}`; }
+
+export function PaymentCalendarScreen({ orgId }: { orgId: string }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [from, setFrom] = useState(`${today.slice(0, 4)}-01-01`);
+  const [to, setTo] = useState(new Date(Date.parse(today + 'T00:00:00Z') + 120 * 86400000).toISOString().slice(0, 10));
+  const load = useLoad(() => api<CalResp>('GET', `/api/organizations/${orgId}/payment-calendar?from=${from}&to=${to}`), [orgId, from, to]);
+  const d = load.data;
+
+  const events = d?.events ?? [];
+  const paidOutMinor = events.filter((e) => e.status === 'paid').reduce((s, e) => s + BigInt(e.amountMinor), 0n);
+  const expectedOutMinor = events.filter((e) => e.status !== 'paid' && e.direction === 'out').reduce((s, e) => s + BigInt(e.amountMinor), 0n);
+  const overdue = events.filter((e) => e.status === 'overdue');
+
+  // Grupper på måned, bevar sortering.
+  const months: { key: string; events: CalEvent[] }[] = [];
+  for (const e of events) {
+    const k = monthKey(e.date);
+    let g = months.find((m) => m.key === k);
+    if (!g) { g = { key: k, events: [] }; months.push(g); }
+    g.events.push(e);
+  }
+
+  const rowTone = (e: CalEvent) => (e.status === 'overdue' ? 'warning' : e.status === 'expected' ? 'info' : '');
+  const nowKey = monthKey(today);
+
+  return (
+    <div>
+      <div className="page-head">
+        <h1>Betalingskalender</h1>
+        <p className="subtitle">
+          Én tidslinje over det som er betalt (bakover) og det som kommer (framover): faste utgifter, MVA- og
+          skatteforfall, og forfalte kundefakturaer. De færreste regnskapssystemer viser deg dette samlet.
+        </p>
+      </div>
+      {load.error && <div className="error">{load.error}</div>}
+
+      <div className="panel" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>Fra
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={{ width: 'auto' }} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>Til
+          <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} style={{ width: 'auto' }} />
+        </label>
+        <div className="spacer" style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 24 }}>
+          <div><div className="hint" style={{ margin: 0 }}>Betalt i perioden</div><b>{kr(paidOutMinor.toString())}</b></div>
+          <div><div className="hint" style={{ margin: 0 }}>Ventet framover</div><b>{kr(expectedOutMinor.toString())}</b></div>
+          <div><div className="hint" style={{ margin: 0 }}>Forfalt</div><b className={overdue.length ? 'neg' : undefined}>{overdue.length}</b></div>
+        </div>
+      </div>
+
+      {load.loading || !d ? (
+        <div className="cards"><CardSkeleton /><CardSkeleton /></div>
+      ) : events.length === 0 ? (
+        <div className="panel"><p className="subtitle">Ingen hendelser i valgt periode. Bokfør kostnader eller bekreft faste utgifter for å fylle kalenderen.</p></div>
+      ) : (
+        months.map((g) => (
+          <div className="panel" key={g.key}>
+            <div className="panel-head">
+              <h2>{monthTitle(g.key)}{g.key === nowKey && <span className="code" style={{ marginLeft: 8 }}>nå</span>}</h2>
+            </div>
+            <ul className="health-list">
+              {g.events.map((e, i) => (
+                <li key={`${e.date}-${i}`} className={`health-item ${rowTone(e)}`}>
+                  <div className="health-dot" aria-hidden="true" />
+                  <div className="health-body">
+                    <div className="health-title">
+                      <span className="code">{e.date.slice(8, 10)}.</span> {e.label}
+                      <span className="code">{KIND_LABEL[e.kind]}</span>
+                      {e.status === 'overdue' && <span className="code">forfalt</span>}
+                      {e.status === 'expected' && <span className="code">forventet</span>}
+                    </div>
+                  </div>
+                  <div className={`num ${e.direction === 'in' ? 'pos' : ''}`} style={{ fontWeight: 600 }}>
+                    {e.direction === 'in' ? '+' : '−'}{kr(e.amountMinor)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
       )}
     </div>
   );

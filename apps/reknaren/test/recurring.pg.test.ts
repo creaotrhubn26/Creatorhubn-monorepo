@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { assessRecurringDue, detectRecurringExpectations, resolveRecurring } from '../src/ledger/recurring.js';
+import type { RecurringDueItem } from '../src/ledger/recurring.js';
 import { approveLearnedRule, listLearnedRules } from '../src/ledger/learning.js';
 import { postJournalEntry } from '../src/ledger/engine.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
@@ -99,7 +100,7 @@ describe('forventningsvakt', () => {
     // Bokfør juli → juli faller ut av forfalt.
     await postCost(org.id, v, '2025-07-05', 70000n);
     let due = await assessRecurringDue(db, { organizationId: org.id, asOf: '2025-09-15' });
-    let item = due.items.find((i) => i.vendor === 'Telia')!;
+    let item: RecurringDueItem | undefined = due.items.find((i) => i.vendor === 'Telia')!;
     expect(item.overdue.map((o) => o.period)).not.toContain('2025-07');
     expect(item.overdue.map((o) => o.period)).toContain('2025-08');
     // Marker august som håndtert → faller ut.
