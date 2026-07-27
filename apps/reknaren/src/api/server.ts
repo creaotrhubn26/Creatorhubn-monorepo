@@ -4267,6 +4267,46 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // Automatisk daglig bank-synk: henter nye transaksjoner for ALLE tilkoblede
+  // bankkontoer (på tvers av org-er) og kjører dem gjennom samme idempotente
+  // import + matchingsforslag som manuell synk. Idempotent på external_id → 30-
+  // dagers vindu gir ingen dubletter. Bokfører ALDRI selv (kun forslag).
+  app.post('/api/cron/bank-sync', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      if (!secret || secret.length < 16) { res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler.' } }); return; }
+      const a = Buffer.from(secret); const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } }); return; }
+      if (!deps.bankFeed?.configured) { res.json({ configured: false, message: 'Ingen bank-feed konfigurert.' }); return; }
+      const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      const accounts = (await deps.db.query(
+        `SELECT id, organization_id, created_by, feed_connection_id FROM bank_accounts
+         WHERE feed_connection_id IS NOT NULL AND status = 'active'`,
+      )).rows;
+      let synced = 0, importedTotal = 0, failed = 0;
+      const errors: { bankAccountId: string; message: string }[] = [];
+      for (const acct of accounts) {
+        try {
+          const feed = await deps.bankFeed!.fetchTransactions({ connectionId: acct.feed_connection_id, sinceDate: since });
+          const result = await importBankTransactions(deps.db, {
+            organizationId: acct.organization_id,
+            actor: { userId: acct.created_by, role: 'owner' },
+            bankAccountId: acct.id,
+            transactions: feed.transactions,
+          });
+          await suggestMatches(deps.db, { organizationId: acct.organization_id, bankAccountId: acct.id });
+          synced++;
+          importedTotal += result.imported;
+        } catch (err) {
+          failed++;
+          errors.push({ bankAccountId: acct.id, message: err instanceof Error ? err.message : 'ukjent feil' });
+        }
+      }
+      res.json(toJson({ configured: true, since, accounts: accounts.length, synced, imported: importedTotal, failed, errors: errors.slice(0, 10) }));
+    } catch (err) { next(err); }
+  });
+
   // Redirect-mål etter bank-samtykke. UAUTENTISERT (frisk nettlesernavigasjon fra
   // banken uten Bearer-token) — vi kan derfor ikke fullføre koblingen her. I stedet
   // mellomlagrer vi `code` på bankkontoen (nøkkel = `state`=orgId:bankAccountId), og
