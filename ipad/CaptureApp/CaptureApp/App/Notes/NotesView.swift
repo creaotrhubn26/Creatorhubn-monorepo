@@ -137,6 +137,7 @@ struct NoteEditorView: View {
                         .frame(minHeight: 160)
                         .foregroundStyle(CHTheme.textPrimary)
                         .scrollContentBackground(.hidden)
+                        .appWritingTools(.complete)
                         .focused($bodyFocused)
                         .overlay(alignment: .topLeading) {
                             if note.body.isEmpty {

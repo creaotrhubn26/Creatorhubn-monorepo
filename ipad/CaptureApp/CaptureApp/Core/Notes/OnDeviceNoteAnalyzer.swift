@@ -81,4 +81,28 @@ struct FoundationModelsNoteGenerator: NoteInsightGenerating {
     }
 }
 
+@available(iOS 26, *)
+struct FoundationModelsTextGenerator: TextGenerating {
+    func generate(_ prompt: TextGenPrompt) async throws -> String {
+        let (instructions, userPrompt) = Self.build(prompt)
+        let session = LanguageModelSession(instructions: instructions)
+        return try await session.respond(to: userPrompt).content
+    }
+
+    static func build(_ prompt: TextGenPrompt) -> (instructions: String, prompt: String) {
+        switch prompt {
+        case .emailDraft(let recipient, let subject, let notes):
+            return (
+                "Du er en fotograf som skriver profesjonelle, vennlige og korte norske klient-e-poster. Bruk en naturlig, høflig tone.",
+                "Skriv en e-post til \(recipient.isEmpty ? "kunden" : recipient). Emne: \(subject). Innhold/stikkord: \(notes)"
+            )
+        case .galleryDescription(let project, let notes):
+            return (
+                "Du er en fotograf som skriver korte, innbydende galleri-beskrivelser på norsk.",
+                "Skriv en kort beskrivelse for galleriet «\(project)». Stikkord: \(notes)"
+            )
+        }
+    }
+}
+
 #endif
