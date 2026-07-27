@@ -18,7 +18,7 @@ interface IntegrationApiKeyRow extends QueryResultRow {
   created_at: string;
 }
 
-interface IntegrationUserContext {
+export interface IntegrationUserContext {
   apiKeyId: string;
   apiKeyName: string;
   userId: string;
@@ -400,7 +400,7 @@ const webhookDispatchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
-function hashApiKey(key: string): string {
+export function hashApiKey(key: string): string {
   return crypto.createHash('sha256').update(key).digest('hex');
 }
 
@@ -500,7 +500,7 @@ function parseStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
 }
 
-function parseScopes(value: unknown): string[] {
+export function parseScopes(value: unknown): string[] {
   return parseStringArray(value);
 }
 
@@ -533,7 +533,7 @@ function buildScopeKey(user: IntegrationUserContext): string {
   return user.accountId ? `account:${user.accountId}` : `legacy:${user.apiKeyId}`;
 }
 
-function hasScope(scopes: string[], requiredScope: string): boolean {
+export function hasScope(scopes: string[], requiredScope: string): boolean {
   if (scopes.includes('admin')) return true;
   const [resource, action] = requiredScope.split('.');
   if (!resource || !action) return scopes.includes(requiredScope);
@@ -824,7 +824,7 @@ async function requireProjectAccess(pool: Pool, projectId: string, userId: strin
 const integrationPhase2TableReady = new WeakMap<Pool, Promise<void>>();
 const integrationRateLimitState = new Map<string, { windowStartedAt: number; count: number }>();
 
-async function ensureIntegrationPhase2Tables(pool: Pool): Promise<void> {
+export async function ensureIntegrationPhase2Tables(pool: Pool): Promise<void> {
   const existing = integrationPhase2TableReady.get(pool);
   if (existing) {
     await existing;
@@ -976,7 +976,7 @@ async function ensureIntegrationPhase2Tables(pool: Pool): Promise<void> {
   }
 }
 
-function resolveEffectiveScopes(rawScopes: string[], allowedScopes: string[]): string[] {
+export function resolveEffectiveScopes(rawScopes: string[], allowedScopes: string[]): string[] {
   if (allowedScopes.length === 0) {
     return rawScopes;
   }
