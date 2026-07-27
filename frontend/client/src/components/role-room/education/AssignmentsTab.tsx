@@ -12,7 +12,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, InputBase, LinearProgress, Select, Menu, ListItemText,
+  CircularProgress, Alert, InputBase, LinearProgress, Select, Menu, ListItemText, Chip,
 } from '@mui/material';
 import {
   Assignment as AssignmentIcon, Add as AddIcon, GridView as TemplateIcon,
@@ -25,6 +25,19 @@ import { educationProductionsService, openProductionInRoleRoom, type Production 
 import { educationAssignmentsService, type Assignment, type AssignmentStatus } from './educationAssignmentsService';
 import { ASSIGNMENT_TEMPLATES } from './educationTemplates';
 import { ACCENT, Panel, T } from './_eduUi';
+
+// Produksjons-artefakt en oppgave kan peke på (fane-nøkkel i produksjonsverktøyet).
+const ARTIFACT_OPTIONS: { key: string; label: string }[] = [
+  { key: '', label: 'Fri leveranse' },
+  { key: 'story-arc', label: 'Story Arc' },
+  { key: 'storyboard', label: 'Storyboard' },
+  { key: 'shotlist', label: 'Shot list' },
+  { key: 'callsheet', label: 'Call sheet' },
+  { key: 'roles', label: 'Roller' },
+  { key: 'candidates', label: 'Kandidater' },
+  { key: 'delivery', label: 'Levering' },
+];
+const artifactLabel = (k: string | null) => ARTIFACT_OPTIONS.find((o) => o.key === k)?.label ?? null;
 
 const STATUS_META: Record<AssignmentStatus, { label: string; color: string }> = {
   draft: { label: 'Utkast', color: 'rgba(255,255,255,0.55)' },
@@ -52,7 +65,7 @@ export function AssignmentsTab() {
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '' });
+  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '' });
   const setField = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
   const [query, setQuery] = useState('');
@@ -87,8 +100,9 @@ export function AssignmentsTab() {
         title: f.title.trim(), cohortId: f.cohortId || null, productionId: f.productionId || null,
         brief: f.brief.trim() || undefined, learningGoals: f.learningGoals.trim() || undefined,
         dueAt: f.dueAt || null, status: 'published',
+        artifactKind: (f.productionId && f.artifactKind) ? f.artifactKind : undefined,
       });
-      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '' });
+      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '' });
       setCreating(false); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave'); }
     finally { setBusy(false); }
@@ -173,6 +187,9 @@ export function AssignmentsTab() {
                 <MenuItem value="">Ingen</MenuItem>
                 {productions.map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
               </TextField>
+              <TextField size="small" select label="Artefakt" value={f.artifactKind} onChange={(e) => setField('artifactKind', e.target.value)} disabled={!f.productionId} helperText={!f.productionId ? 'Velg produksjon først' : undefined} sx={{ minWidth: 150 }}>
+                {ARTIFACT_OPTIONS.map((o) => <MenuItem key={o.key || 'free'} value={o.key}>{o.label}</MenuItem>)}
+              </TextField>
             </Stack>
             <TextField size="small" label="Brief" value={f.brief} onChange={(e) => setField('brief', e.target.value)} multiline minRows={2} fullWidth />
             <TextField size="small" label="Læringsmål" value={f.learningGoals} onChange={(e) => setField('learningGoals', e.target.value)} fullWidth />
@@ -237,7 +254,10 @@ export function AssignmentsTab() {
           return (
             <Box key={a.id} sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', alignItems: 'center', px: 2, py: 1.75, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Box sx={{ minWidth: 0, pr: 2 }}>
-                <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{a.title}</Typography>
+                <Stack direction="row" alignItems="center" spacing={0.75}>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
+                  {artifactLabel(a.artifactKind) && <Chip label={artifactLabel(a.artifactKind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.18)', color: '#c4b5fd', flexShrink: 0 }} />}
+                </Stack>
                 <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.productionTitle ? `Produksjon · ${a.productionTitle}` : (a.brief || 'Oppgave')}</Typography>
               </Box>
               <Typography sx={{ fontSize: 12.5, color: 'text.secondary' }}>{cohortName(a.cohortId) ?? '—'}</Typography>
@@ -248,7 +268,7 @@ export function AssignmentsTab() {
                 <LinearProgress variant="determinate" value={pct} sx={{ height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: ACCENT } }} />
               </Box>
               <Stack direction="row" alignItems="center" spacing={0.5} justifyContent="flex-end">
-                <Button size="small" variant="outlined" startIcon={<OpenIcon sx={{ fontSize: '14px !important' }} />} onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId)} disabled={!a.productionProjectId} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>Åpne</Button>
+                <Button size="small" variant="outlined" startIcon={<OpenIcon sx={{ fontSize: '14px !important' }} />} onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId, a.artifactKind || undefined)} disabled={!a.productionProjectId} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>Åpne</Button>
                 <IconButton size="small" onClick={() => handleDelete(a.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton>
               </Stack>
             </Box>

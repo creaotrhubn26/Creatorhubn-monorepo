@@ -47,6 +47,7 @@ export interface AssignmentView {
   learningGoals: string | null;
   dueAt: string | null;
   status: string;
+  artifactKind: string | null;
   submittedCount: number;
   reviewedCount: number;
   createdAt: string;
@@ -83,6 +84,7 @@ function assignmentRowToView(r: Record<string, unknown>): AssignmentView {
     learningGoals: (r.learning_goals as string) ?? null,
     dueAt: isoOrNull(r.due_at),
     status: (r.status as string) ?? "draft",
+    artifactKind: (r.artifact_kind as string) ?? null,
     submittedCount: Number(r.submitted_count ?? 0),
     reviewedCount: Number(r.reviewed_count ?? 0),
     createdAt: isoOrNull(r.created_at) ?? "",
@@ -172,7 +174,7 @@ export function createEducationAssignmentsRouter(
   router.post("/education/assignments", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as {
       title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
-      learningGoals?: string; dueAt?: string | null; status?: string;
+      learningGoals?: string; dueAt?: string | null; status?: string; artifactKind?: string | null;
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) { res.status(400).json({ error: "title_required" }); return; }
@@ -181,15 +183,15 @@ export function createEducationAssignmentsRouter(
       const id = newEntityId("edassign");
       const r = await pool.query(
         `INSERT INTO role_room_education_assignments
-           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status, artifact_kind)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING *, 0 AS submitted_count, 0 AS reviewed_count,
            (SELECT title FROM role_room_education_productions WHERE id = $4) AS production_title,
            (SELECT project_id FROM role_room_education_productions WHERE id = $4) AS production_project_id`,
         [
           id, uid(req), body.cohortId || null, body.productionId || null, title,
           body.brief?.trim() || null, body.learningGoals?.trim() || null,
-          body.dueAt || null, status,
+          body.dueAt || null, status, (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null,
         ],
       );
       res.status(201).json({ assignment: assignmentRowToView(r.rows[0]) });
@@ -202,7 +204,7 @@ export function createEducationAssignmentsRouter(
   router.patch("/education/assignments/:id", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as {
       title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
-      learningGoals?: string; dueAt?: string | null; status?: string;
+      learningGoals?: string; dueAt?: string | null; status?: string; artifactKind?: string | null;
     };
     const status = typeof body.status === "string" && ASSIGNMENT_STATUSES.has(body.status) ? body.status : null;
     try {
@@ -215,6 +217,7 @@ export function createEducationAssignmentsRouter(
                 due_at = COALESCE($7, due_at),
                 status = COALESCE($8, status),
                 production_id = COALESCE($9, production_id),
+                artifact_kind = COALESCE($10, artifact_kind),
                 updated_at = now()
           WHERE id = $1 AND owner_user_id = $2
           RETURNING *,
@@ -231,6 +234,7 @@ export function createEducationAssignmentsRouter(
           body.dueAt ?? null,
           status,
           body.productionId ?? null,
+          typeof body.artifactKind === "string" ? (body.artifactKind.trim() || null) : null,
         ],
       );
       if (r.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }

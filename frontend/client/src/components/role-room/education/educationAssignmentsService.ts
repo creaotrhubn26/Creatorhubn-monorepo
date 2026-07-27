@@ -21,6 +21,7 @@ export interface Assignment {
   learningGoals: string | null;
   dueAt: string | null;
   status: AssignmentStatus;
+  artifactKind: string | null;
   submittedCount: number;
   reviewedCount: number;
   createdAt: string;
@@ -63,6 +64,7 @@ export interface AssignmentInput {
   learningGoals?: string;
   dueAt?: string | null;
   status?: AssignmentStatus;
+  artifactKind?: string | null;
 }
 
 export const educationAssignmentsService = {
