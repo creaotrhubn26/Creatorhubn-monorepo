@@ -28,14 +28,15 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   });
   it("modus-filter «education» → kun utdannings-verktøy + globale (*)", () => {
     const names = listCapabilitiesFor(["projects.read"], "education").map((c) => c.name);
-    expect(names).toContain("rr_list_cohorts");
-    expect(names).toContain("rr_list_projects"); // modes:"*"
+    expect(names).toEqual(expect.arrayContaining(["rr_list_cohorts", "rr_list_assignments", "rr_list_courses", "rr_list_projects"]));
     expect(names).not.toContain("rr_list_auditions"); // kun PROD_MODES
+    expect(names).not.toContain("rr_list_roles");
   });
-  it("modus-filter «production» → casting/produksjon, ikke utdanning", () => {
+  it("modus-filter «production» → casting/produksjon/producer, ikke utdanning", () => {
     const names = listCapabilitiesFor(["projects.read"], "production").map((c) => c.name);
-    expect(names).toContain("rr_list_auditions");
+    expect(names).toEqual(expect.arrayContaining(["rr_list_auditions", "rr_list_roles", "rr_list_timeline", "rr_list_budget_items"]));
     expect(names).not.toContain("rr_list_cohorts");
+    expect(names).not.toContain("rr_list_assignments");
   });
 });
 

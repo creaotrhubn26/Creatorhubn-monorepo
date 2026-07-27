@@ -181,6 +181,226 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       return { students: r.rows };
     },
   },
+
+  // ── Casting/produksjon (PROD_MODES) ──────────────────────────────────────
+  {
+    name: "rr_list_roles",
+    description: "List roller som skal castes på et prosjekt (navn, alder/kjønn, status, tildelt kandidat). Dekker Roller-fanen.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, name, description, age_range, gender, role_type, status, assigned_candidate_id
+           FROM casting_roles WHERE project_id = $1 ORDER BY created_at LIMIT 500`, [projectId]);
+      return { roles: r.rows };
+    },
+  },
+  {
+    name: "rr_list_locations",
+    description: "List lokasjoner på et prosjekt (navn, adresse, type). Dekker Lokasjoner-fanen.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, name, address, type, access_notes FROM casting_locations WHERE project_id = $1 ORDER BY name LIMIT 300`, [projectId]);
+      return { locations: r.rows };
+    },
+  },
+  {
+    name: "rr_list_props",
+    description: "List rekvisitter på et prosjekt (navn, kategori, antall, tilgjengelighet). Dekker Rekvisitter-fanen.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, name, category, quantity, availability FROM casting_props WHERE project_id = $1 ORDER BY name LIMIT 500`, [projectId]);
+      return { props: r.rows };
+    },
+  },
+  {
+    name: "rr_list_production_days",
+    description: "List produksjonsdager/opptaksdager på et prosjekt (dato, status, notat). Dekker Produksjonsplan-fanen.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, date, status, notes, location_id FROM casting_production_days WHERE project_id = $1 ORDER BY date LIMIT 300`, [projectId]);
+      return { productionDays: r.rows };
+    },
+  },
+  {
+    name: "rr_list_manuscripts",
+    description: "List manus på et prosjekt (kun metadata: tittel, format, versjon, status — ikke selve teksten). Dekker Story Arc/manus.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, title, format, version, status, updated_at FROM casting_manuscripts WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 100`, [projectId]);
+      return { manuscripts: r.rows };
+    },
+  },
+  {
+    name: "rr_list_scenes",
+    description: "List scener på et prosjekt (scenenr, tittel, INT/EXT, tid, karakterer). Valgfritt filtrer på manuskript.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), manuscriptId: STR("Valgfritt: filtrer på ett manus") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const manuscriptId = typeof args.manuscriptId === "string" ? args.manuscriptId.trim() : "";
+      const r = await pool.query(
+        `SELECT id, scene_number, title, int_ext, time_of_day, setting, characters
+           FROM casting_scenes WHERE project_id = $1 ${manuscriptId ? "AND manuscript_id = $2" : ""} ORDER BY scene_number LIMIT 1000`,
+        manuscriptId ? [projectId, manuscriptId] : [projectId]);
+      return { scenes: r.rows };
+    },
+  },
+  {
+    name: "rr_list_equipment",
+    description: "List utstyr tilgjengelig for et prosjekt (prosjektets eget + globalt katalog-utstyr). Dekker Utstyr.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, name, brand, model, category, status, quantity, is_global FROM casting_equipment
+          WHERE project_id = $1 OR is_global = TRUE ORDER BY name LIMIT 500`, [projectId]);
+      return { equipment: r.rows };
+    },
+  },
+
+  // ── Producer-arbeidsflyt (planlegging/økonomi/godkjenning/brief) ──────────
+  {
+    name: "rr_list_timeline",
+    description: "List planlegger/tidslinje-oppgaver på et prosjekt (fase, tittel, eier, frist, status). Dekker Producer-tidslinje.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), phase: STR("Valgfritt fase-filter (pre/prod/post)") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const phase = typeof args.phase === "string" ? args.phase.trim() : "";
+      const r = await pool.query(
+        `SELECT id, phase, title, description, due_at, status FROM role_room_phase_timeline_items
+          WHERE project_id = $1 ${phase ? "AND phase = $2" : ""} ORDER BY sort_order, due_at NULLS LAST LIMIT 500`,
+        phase ? [projectId, phase] : [projectId]);
+      return { timeline: r.rows };
+    },
+  },
+  {
+    name: "rr_list_budget_items",
+    description: "List budsjettlinjer på et prosjekt (fase, kategori, estimat/godkjent/faktisk, status). Dekker Producer-økonomi.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, phase, category, item_name, estimate, approved, actual, currency, status FROM role_room_budget_items
+          WHERE project_id = $1 ORDER BY sort_order LIMIT 500`, [projectId]);
+      return { budgetItems: r.rows };
+    },
+  },
+  {
+    name: "rr_list_client_reviews",
+    description: "List klient-godkjenninger på et prosjekt (type, mål, status, forfall). Dekker Producer-godkjenning.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), status: STR("Valgfritt statusfilter") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const status = typeof args.status === "string" ? args.status.trim() : "";
+      const r = await pool.query(
+        `SELECT id, review_type, title, target_entity_type, status, due_at, decision_at FROM role_room_client_reviews
+          WHERE project_id = $1 ${status ? "AND status = $2" : ""} ORDER BY requested_at DESC LIMIT 300`,
+        status ? [projectId, status] : [projectId]);
+      return { reviews: r.rows };
+    },
+  },
+  {
+    name: "rr_get_client_intake",
+    description: "Hent klient-brief for et prosjekt (mål, leveranser, målgruppe, budskap, føringer). Dekker Client intake.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT project_goal, deliverables, target_audience, key_message, timing_constraints, brand_notes, additional_notes, updated_at
+           FROM role_room_client_intake WHERE project_id = $1 LIMIT 1`, [projectId]);
+      return { intake: r.rows[0] ?? null };
+    },
+  },
+  {
+    name: "rr_list_client_materials",
+    description: "List referansemateriell/lenker klienten har delt på et prosjekt (tittel, type, URL, fase). Dekker Client materials.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT id, entry_type, title, external_url, phase, status FROM role_room_client_materials
+          WHERE project_id = $1 ORDER BY created_at DESC LIMIT 300`, [projectId]);
+      return { materials: r.rows };
+    },
+  },
+
+  // ── Utdanning (education-modus, eier-scopet) ─────────────────────────────
+  {
+    name: "rr_list_assignments",
+    description: "List oppgaver/arbeidskrav i utdannings-workspacet (tittel, frist, status, vurderingsform, eksamen). Valgfritt filtrer på kull.",
+    scope: "projects.read", modes: ["education"], projectScoped: false,
+    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull") }),
+    handler: async (pool, ctx, args) => {
+      const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
+      const r = await pool.query(
+        `SELECT id, cohort_id, title, due_at, status, vurderingsform, is_arbeidskrav, is_exam, course_id
+           FROM role_room_education_assignments WHERE owner_user_id = $1 ${cohortId ? "AND cohort_id = $2" : ""}
+          ORDER BY due_at NULLS LAST LIMIT 500`,
+        cohortId ? [ctx.userId, cohortId] : [ctx.userId]);
+      return { assignments: r.rows };
+    },
+  },
+  {
+    name: "rr_list_courses",
+    description: "List emner i utdannings-workspacet (kode, tittel, studiepoeng, semester, vurderingsform). Dekker Emner-fanen.",
+    scope: "projects.read", modes: ["education"], projectScoped: false,
+    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull") }),
+    handler: async (pool, ctx, args) => {
+      const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
+      const r = await pool.query(
+        `SELECT id, cohort_id, code, title, credits, term, vurderingsform FROM role_room_education_courses
+          WHERE owner_user_id = $1 ${cohortId ? "AND cohort_id = $2" : ""} ORDER BY code LIMIT 300`,
+        cohortId ? [ctx.userId, cohortId] : [ctx.userId]);
+      return { courses: r.rows };
+    },
+  },
+  {
+    name: "rr_list_education_productions",
+    description: "List studentproduksjoner (koblet til ekte casting_projects) i utdannings-workspacet. Dekker Studentproduksjoner-fanen.",
+    scope: "projects.read", modes: ["education"], projectScoped: false,
+    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull") }),
+    handler: async (pool, ctx, args) => {
+      const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
+      const r = await pool.query(
+        `SELECT id, cohort_id, project_id, title, updated_at FROM role_room_education_productions
+          WHERE owner_user_id = $1 ${cohortId ? "AND cohort_id = $2" : ""} ORDER BY updated_at DESC LIMIT 300`,
+        cohortId ? [ctx.userId, cohortId] : [ctx.userId]);
+      return { productions: r.rows };
+    },
+  },
+  {
+    name: "rr_list_groups",
+    description: "List grupper i et eid utdannings-kull. Dekker Grupper.",
+    scope: "projects.read", modes: ["education"], projectScoped: false,
+    inputSchema: OBJ({ cohortId: STR("Kullets id") }, ["cohortId"]),
+    handler: async (pool, ctx, args) => {
+      const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
+      if (!cohortId) throw new McpToolError(-32602, "cohortId er påkrevd.");
+      const r = await pool.query(
+        `SELECT id, name FROM role_room_education_groups WHERE owner_user_id = $1 AND cohort_id = $2 ORDER BY name`, [ctx.userId, cohortId]);
+      return { groups: r.rows };
+    },
+  },
 ];
 
 /** Verktøy nøkkelen har scope for (+ valgfritt modus-filter) → MCP tool-definisjoner. */
