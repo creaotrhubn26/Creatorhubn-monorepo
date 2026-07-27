@@ -48,6 +48,7 @@ struct RootTabs: View {
     var body: some View {
         TabView {
             LeadsTabRoot()
+            WatchQuickNoteView()
             PondusLynkortView()
         }
         .tabViewStyle(.verticalPage)

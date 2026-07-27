@@ -16,7 +16,7 @@ settings:
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: "20260725"
+    CURRENT_PROJECT_VERSION: "20260727"
     MARKETING_VERSION: "1.4.0"
 
 targets:
@@ -323,6 +323,22 @@ targets:
         SUPPORTS_MACCATALYST: YES
         MACOSX_DEPLOYMENT_TARGET: "26.0"
 
+  # Logikk-unit-tester (Tier 0 i AI-verifiseringsstigen): rute-/fallback-
+  # logikken i TranscriptIntelligence testes deterministisk uten modellen
+  # og uten nettverk — kjørbart i CI på Xcode 26.6 / iOS 26.5.
+  LeadMapAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LeadMapAppTests
+    dependencies:
+      - target: LeadMapApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
 # Eksplisitt scheme så UI-test-target-et er koblet til test-action.
 # archive-config beholdt for TestFlight-CI (fastlane bruker samme scheme).
 schemes:
@@ -335,6 +351,7 @@ schemes:
     test:
       config: Debug
       targets:
+        - LeadMapAppTests
         - LeadMapAppUITests
     profile:
       config: Release

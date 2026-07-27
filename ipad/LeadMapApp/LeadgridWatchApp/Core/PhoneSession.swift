@@ -77,6 +77,33 @@ final class PhoneSession: NSObject, ObservableObject {
         pendingAction = (lead, Date())
     }
 
+    /// Send et diktert notat til iPhone for analyse (Apple Intelligence på
+    /// telefonen, eller backend). Resultatet kommer tilbake via
+    /// `transcript.analyze.result` og lander i `WatchTranscriptStore`.
+    /// Returnerer requestId slik at kalleren kan følge egen forespørsel.
+    @discardableResult
+    func requestTranscriptAnalysis(text: String, leadId: String?) -> String {
+        let requestId = UUID().uuidString
+        let payload: [String: Any] = [
+            "type": WatchTranscriptMessageType.analyzeRequest,
+            "requestId": requestId,
+            "lead_id": leadId ?? NSNull(),
+            "text": text,
+            "ts": Date().timeIntervalSince1970,
+        ]
+        // sendMessage (foreground, raskt) med queued fallback — så notatet
+        // ikke går tapt om iPhone er utenfor rekkevidde et øyeblikk.
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: { [session] _ in
+                session.transferUserInfo(payload)
+            })
+        } else {
+            session.transferUserInfo(payload)
+        }
+        WatchTranscriptStore.shared.begin(requestId: requestId)
+        return requestId
+    }
+
     /// Signaliser til iPhone at brukeren valgte en Pondus-mal på Watch.
     /// iPhone-siden switcher Leadbook > Pondus + speiler valget.
     /// Bruker `sendMessage` (foreground) hvis iPhone er reachable —
@@ -176,6 +203,25 @@ extension PhoneSession: WCSessionDelegate {
             else { return }
             Task { @MainActor in
                 WatchPondusStore.shared.apply(decoded)
+            }
+        case WatchTranscriptMessageType.analyzeResult:
+            // Trekk ut primitive (Sendable) verdier før aktør-hoppet.
+            let requestId = payload["requestId"] as? String ?? ""
+            let resolvedText = payload["resolved_text"] as? String ?? ""
+            let actionItems = payload["action_items"] as? [String] ?? []
+            let followUp = payload["follow_up_date"] as? String
+            let sentiment = payload["sentiment"] as? String ?? "nøytral"
+            let source = payload["source"] as? String ?? "backend"
+            let result = WatchTranscriptResult(
+                id: requestId,
+                resolvedText: resolvedText,
+                actionItems: actionItems,
+                followUpDate: followUp,
+                sentiment: sentiment,
+                source: source
+            )
+            Task { @MainActor in
+                WatchTranscriptStore.shared.complete(result)
             }
         default:
             break

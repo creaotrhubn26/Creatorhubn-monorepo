@@ -48,6 +48,16 @@ struct LeadMapApp: App {
                     // Flush eventuell buffret Pondus-deep-link fra en Intent
                     // som kjørte før scene-init var ferdig.
                     AppStateBridge.shared.flushPendingDeepLinks()
+                    // Apple Watch-bro: aktiver + koble transkript-analyse fra
+                    // klokka til den delte TranscriptIntelligence (on-device
+                    // på telefonen, ellers backend). watchOS < 27 har ikke
+                    // Foundation Models, så klokka relayer hit.
+                    WatchSession.shared.activate()
+                    WatchSession.shared.onTranscriptRequest = { leadId, transcript in
+                        guard let api = appState.api else { return nil }
+                        let intel = TranscriptIntelligenceFactory.make(api: api, leadId: leadId)
+                        return try? await intel.analyze(transcript: transcript, leadName: "")
+                    }
                     // MapKit SwiftUI-`Map` respekterer IKKE preferredColorScheme
                     // — flisene følger vinduets UITraitCollection. Uten dette
                     // fikk kart-fanene lyse fliser når systemet sto i lys modus
