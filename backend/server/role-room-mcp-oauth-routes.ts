@@ -7,7 +7,7 @@
  * skjer med brukerens EKTE Role Room-sesjon (loadPersistedAuthSession).
  */
 
-import express, { Router, type Request, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Router as ExpressRouter } from "express";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import {
@@ -24,10 +24,10 @@ const OAUTH_BASE = "/api/role-room/mcp/oauth";
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 
 export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
+  // Body-parsing (JSON/urlencoded) kommer fra app-nivå (samme som MCP-ruteren) —
+  // vi monterer IKKE parsere her, siden ruteren ligger på "/" (ville kjørt på
+  // hver request og dobbelt-parset globalt).
   const router = Router();
-  // Selv-stendig body-parsing (DCR=JSON, authorize/token=form) — uavhengig av global config.
-  router.use(express.json());
-  router.use(express.urlencoded({ extended: true }));
 
   // ── Discovery: Protected Resource Metadata (RFC 9728) ────────────────────
   router.get("/.well-known/oauth-protected-resource", (req, res) => {
