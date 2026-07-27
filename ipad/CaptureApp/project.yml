@@ -69,6 +69,7 @@ targets:
         NSMicrophoneUsageDescription: Record short voice memos attached to individual shots so you can dictate retouch + delivery instructions while shooting continues.
         NSSpeechRecognitionUsageDescription: Transcribe your voice memos on-device so dictated retouch and delivery notes become searchable text.
         NSLocationWhenInUseUsageDescription: Used to show accurate golden-hour and weather for your current shoot location on the "I dag" dashboard.
+        NSCalendarsWriteOnlyAccessUsageDescription: Add a shoot to your calendar. Write-only — the app never reads your existing events.
         # Google OAuth — one-time setup per Google Cloud project:
         #   1. Register an OAuth 2.0 Client ID of type "iOS" with bundle
         #      identifier `com.creatorhubn.capture`.
