@@ -27,6 +27,7 @@ import {
   type Router as ExpressRouter,
 } from "express";
 import type { Pool } from "pg";
+import nodemailer from "nodemailer";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 
 interface SessionData {
@@ -141,6 +142,64 @@ export const ROLE_ROOM_TALENTS_INFO = {
   controller: "Behandlingsansvarlig for selve registeret er The Role Room; skolen er ansvarlig for den verifiserte utdannings-bekreftelsen.",
 };
 
+/** SMTP-config (gjenbruker gmail-mønsteret fra password-reset-service). */
+function readGmailConfig(): { user: string; password: string } | null {
+  const user = (process.env.GMAIL_USER ?? process.env.GOOGLE_WORKSPACE_EMAIL ?? process.env.GOOGLE_ADMIN_EMAIL ?? "").trim();
+  const password = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s+/g, "");
+  if (!user || !password) return null;
+  return { user, password };
+}
+
+interface Credential { institution?: string | null; program?: string | null; year?: number | null }
+
+/**
+ * Proaktivt varsel til studenten (GDPR art. 14): en profil er opprettet, hva
+ * det er, og at DE selv velger å overta eller avslå. Best-effort — hopper
+ * grasiøst over hvis SMTP ikke er konfigurert; blokkerer aldri promote.
+ */
+async function notifyStudentPromoted(email: string, name: string, credential: Credential): Promise<void> {
+  const cfg = readGmailConfig();
+  if (!cfg) { console.warn("[edu-talent-pipeline] e-postvarsel hoppet over (GMAIL ikke konfigurert)"); return; }
+  const base = (process.env.PUBLIC_APP_URL ?? process.env.APP_URL ?? "").replace(/\/$/, "") || "https://theroleroom.com";
+  const cred = credential.institution ? [credential.program, credential.institution, credential.year].filter(Boolean).join(", ") : "utdanningen din";
+  const subject = "Du er invitert til Role Room Talents";
+  const text = [
+    `Hei ${name},`,
+    "",
+    `Skolen din har opprettet et utkast til en talent-profil for deg i Role Room Talents, basert på ${cred}.`,
+    "",
+    ROLE_ROOM_TALENTS_INFO.summary,
+    "",
+    ROLE_ROOM_TALENTS_INFO.visibility,
+    "",
+    `Logg inn på Role Room med denne e-postadressen for å lese mer og velge om du vil overta profilen eller avslå (da slettes utkastet): ${base}`,
+    "",
+    "Du bestemmer helt selv. Gjør du ingenting, forblir profilen et usynlig utkast.",
+    "",
+    "Mvh,",
+    "The Role Room",
+  ].join("\n");
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6">
+      <p>Hei ${name},</p>
+      <p>Skolen din har opprettet et <b>utkast</b> til en talent-profil for deg i <b>Role Room Talents</b>, basert på ${cred}.</p>
+      <p>${ROLE_ROOM_TALENTS_INFO.summary}</p>
+      <p style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;color:#166534;font-size:13px">${ROLE_ROOM_TALENTS_INFO.visibility}</p>
+      <p style="margin:24px 0">
+        <a href="${base}" style="background:#8B5CF6;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Les mer og velg selv</a>
+      </p>
+      <p style="font-size:12px;color:#666">Logg inn med denne e-postadressen for å overta profilen eller avslå (da slettes utkastet). Gjør du ingenting, forblir profilen et usynlig utkast.</p>
+      <p>Mvh,<br>The Role Room</p>
+    </div>`;
+  try {
+    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: cfg.user, pass: cfg.password } });
+    await transporter.sendMail({ from: cfg.user, to: email, subject, text, html });
+    console.log("[edu-talent-pipeline] promote-varsel sendt til student");
+  } catch (err) {
+    console.error("[edu-talent-pipeline] e-postvarsel feilet:", (err as Error).message);
+  }
+}
+
 export interface PipelineRow {
   studentId: string;
   name: string;
@@ -253,6 +312,8 @@ export function createEducationTalentPipelineRouter(
         `UPDATE role_room_education_students SET talent_id = $2, talent_attributes = $3::jsonb WHERE id = $1`,
         [req.params.id, talentId, JSON.stringify(attrs)],
       );
+      // Proaktivt varsel til studenten (art. 14) — best-effort, blokkerer ikke.
+      void notifyStudentPromoted(String(student.email), String(student.name), credential);
       res.status(201).json({ talentId, claimable: true, hasShowreel: !!showreel, searchable: isSearchable(attrs) });
     } catch (err) {
       if (isMissingTable(err)) { res.status(503).json({ error: "talents_unavailable" }); return; }

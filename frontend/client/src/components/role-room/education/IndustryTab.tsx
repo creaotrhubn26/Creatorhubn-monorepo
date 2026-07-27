@@ -295,7 +295,7 @@ export function IndustryTab() {
                 <ConsentIcon sx={{ fontSize: 18, color: '#f59e0b', mt: 0.25 }} />
                 <Box>
                   <T eid="edu-br-consent-note" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>
-                    Samtykke først: profilen opprettes som et <b>utkast</b> og er usynlig for byråer. Studenten får lese hva Role Room Talents er og må selv bekrefte (eller avslå) før noe blir aktivt.
+                    Samtykke først: profilen opprettes som et <b>utkast</b> og er usynlig for byråer. Studenten <b>varsles på e-post</b>, får lese hva Role Room Talents er, og må selv bekrefte (eller avslå) før noe blir aktivt.
                   </T>
                   <FormControlLabel sx={{ mt: 0.5 }} control={<Checkbox checked={attested} onChange={(e) => setAttested(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
                     label={<Typography sx={{ fontSize: 12.5 }}>Jeg bekrefter at studenten har samtykket til å bli lagt til i Role Room Talents.</Typography>} />
