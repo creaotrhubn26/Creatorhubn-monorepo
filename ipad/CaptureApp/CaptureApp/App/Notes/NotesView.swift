@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Full "Notater" surface — contextual field notes. Pinned float to the
 /// top; search across body/tags/context. Tap the I dag Notater card to get
@@ -103,6 +104,13 @@ struct NoteEditorView: View {
     @State private var tagText: String
     @FocusState private var bodyFocused: Bool
 
+    // On-device notat-innsikt (Apple Intelligence) + foto-kontekst.
+    @State private var ai = NotesIntelligenceFactory.make()
+    @State private var aiLoading = false
+    @State private var insights: NoteInsights?
+    @State private var aiError: String?
+    @State private var photoItem: PhotosPickerItem?
+
     init(note: FieldNote, onSave: @escaping (FieldNote) -> Void, onDelete: @escaping (FieldNote) -> Void) {
         _note = State(initialValue: note)
         self.onSave = onSave
@@ -127,6 +135,65 @@ struct NoteEditorView: View {
                         }
                         .listRowBackground(CHTheme.surface)
                 }
+
+                // Foto-kontekst + on-device innsikt.
+                Section {
+                    if let photo = note.photo, !photo.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label("Bilde registrert", systemImage: "camera.metering.matrix")
+                                .font(.caption.weight(.semibold)).foregroundStyle(CHTheme.accentSoft)
+                            Text(photo.summaryLine)
+                                .font(.caption2).foregroundStyle(CHTheme.textSecondary)
+                        }
+                        .listRowBackground(CHTheme.surface)
+                    }
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Label(note.photo == nil ? "Koble til bilde (EXIF)" : "Bytt bilde",
+                              systemImage: "photo.badge.plus")
+                    }
+                    .listRowBackground(CHTheme.surface)
+
+                    if ai.isAvailable {
+                        Button { runInsights() } label: {
+                            HStack {
+                                Image(systemName: "sparkles")
+                                Text(aiLoading ? "Analyserer…" : "Oppsummer + oppgaver")
+                                if aiLoading { Spacer(); ProgressView() }
+                            }
+                        }
+                        .disabled(aiLoading || note.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .listRowBackground(CHTheme.surface)
+                    } else if let reason = ai.unavailableReason {
+                        Label(reason.userMessage, systemImage: "sparkles")
+                            .font(.caption).foregroundStyle(CHTheme.textMuted)
+                            .listRowBackground(CHTheme.surface)
+                    }
+
+                    if let insights {
+                        if !insights.summary.isEmpty {
+                            Text(insights.summary)
+                                .font(.callout).foregroundStyle(CHTheme.textPrimary)
+                                .listRowBackground(CHTheme.surface)
+                        }
+                        ForEach(insights.tasks, id: \.self) { task in
+                            Label(task, systemImage: "checkmark.circle")
+                                .font(.callout).foregroundStyle(CHTheme.textPrimary)
+                                .listRowBackground(CHTheme.surface)
+                        }
+                        if !insights.tasks.isEmpty {
+                            Button("Legg oppgavene i notatet") { appendTasks(insights.tasks) }
+                                .font(.caption).foregroundStyle(CHTheme.accent)
+                                .listRowBackground(CHTheme.surface)
+                        }
+                    }
+                    if let aiError {
+                        Text(aiError).font(.caption).foregroundStyle(.orange)
+                            .listRowBackground(CHTheme.surface)
+                    }
+                } header: {
+                    Text("Innsikt (på enheten)")
+                }
+
                 Section("Kobling") {
                     Picker("Kontekst", selection: $note.contextKind) {
                         ForEach(FieldNote.ContextKind.allCases, id: \.self) { kind in
@@ -166,7 +233,46 @@ struct NoteEditorView: View {
                 }
             }
             .onAppear { if note.body.isEmpty { bodyFocused = true } }
+            .onChange(of: photoItem) { _, newItem in
+                loadPhotoMetadata(newItem)
+            }
         }
         .chBranded()
+    }
+
+    /// Kjør on-device oppsummering + oppgave-uttrekk (med evt. foto-EXIF).
+    private func runInsights() {
+        let body = note.body
+        let photo = note.photo
+        aiLoading = true
+        aiError = nil
+        Task {
+            do {
+                insights = try await ai.insights(for: body, photo: photo)
+            } catch let failure as NotesIntelligence.Failure {
+                switch failure {
+                case .emptyNote: aiError = "Skriv litt tekst først."
+                case .unavailable(let reason): aiError = reason.userMessage
+                }
+            } catch {
+                aiError = "Kunne ikke analysere akkurat nå."
+            }
+            aiLoading = false
+        }
+    }
+
+    private func appendTasks(_ tasks: [String]) {
+        let block = tasks.map { "• \($0)" }.joined(separator: "\n")
+        note.body = note.body.isEmpty ? block : note.body + "\n\n" + block
+    }
+
+    /// Registrer EXIF (+ evt. filnavn) fra et valgt bilde på notatet.
+    private func loadPhotoMetadata(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+            let meta = PhotoMetadataExtractor.extract(from: data, fileName: nil)
+            await MainActor.run { note.photo = meta }
+        }
     }
 }
