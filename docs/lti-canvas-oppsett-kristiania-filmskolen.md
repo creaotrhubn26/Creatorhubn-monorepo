@@ -57,6 +57,17 @@ Appen dukker opp i emnemenyen som **«The Role Room»**.
 
 ---
 
+## Anbefalt: kjør piloten i test-miljøet først (ingen prod-risiko)
+Hver Instructure-hostede Canvas har et **test-miljø** som oppdateres fra prod hver helg — ideelt for å prøve integrasjonen mot ekte emne-/FS-data **uten** å røre live Canvas:
+
+- Adresse: `https://<institusjon>.test.instructure.com` (f.eks. `kristiania.test.instructure.com`)
+- Registrer Developer Key-en her **først** (samme steg 1–3 som over).
+- 🔑 **Viktig:** i test-miljøet er *issuer* alltid `https://canvas.test.instructure.com` (ikke deres subdomene). Oppgi dette som «Canvas-adresse» til oss for test — så registrerer vi test som en egen plattform hos oss, adskilt fra prod.
+
+Når piloten er verifisert i test, gjentar dere steg 1–3 i prod.
+
+---
+
 ## Steg 4 — Send oss fire verdier
 Fra Developer Key-en og Canvas-oppsettet, send oss:
 
