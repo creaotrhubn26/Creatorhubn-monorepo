@@ -21,6 +21,7 @@
  */
 
 import type { Pool } from "pg";
+import { resolveEducationProductionRole, EDU_TAB_ACCESS } from "./role-room-education-production-access.js";
 
 export type TabAccessLevel = "hidden" | "view" | "manage";
 type OverrideMap = Record<string, "view" | "manage">;
@@ -97,6 +98,12 @@ async function resolve(pool: Pool, projectId: string, viewerId: string): Promise
       if (map) return { kind: "map", map };
     }
   }
+
+  // Utdannings-bro: student tildelt via education-workspacet får fane-RBAC
+  // mappet fra education-rollen (viewer/contributor/lead). Kjøres etter leder/
+  // eksplisitte overstyringer, så en leders delegering vinner fortsatt.
+  const eduRole = await resolveEducationProductionRole(pool, projectId, viewerId);
+  if (eduRole) return { kind: "map", map: { ...EDU_TAB_ACCESS[eduRole] } };
 
   return { kind: "none" };
 }

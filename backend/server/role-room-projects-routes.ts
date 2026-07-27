@@ -66,6 +66,7 @@ import type { Pool } from "pg";
 
 import { getProjectItems, setProjectItems } from "./_shared";
 import type { RoleRoomLiveSetService } from "./role-room-live-set-service";
+import { resolveEducationProductionRole } from "./role-room-education-production-access.js";
 
 /**
  * Authorize a user as a member of a role-room (casting) project. Mirrors the
@@ -92,7 +93,11 @@ export async function canAccessRoleRoomProject(
       `SELECT 1 FROM casting_user_roles WHERE project_id = $1 AND user_id = $2 LIMIT 1`,
       [projectId, userId],
     );
-    return (member.rowCount ?? 0) > 0;
+    if ((member.rowCount ?? 0) > 0) return true;
+    // Utdannings-bro: student tildelt en studentproduksjon (via education-workspacet)
+    // får tilgang med sin ekte konto — uten casting_user_roles (ingen sete-billing).
+    const eduRole = await resolveEducationProductionRole(pool, userId, projectId);
+    return eduRole !== null;
   } catch (e) {
     console.error("[role-room] canAccessRoleRoomProject error:", e);
     return false; // fail closed

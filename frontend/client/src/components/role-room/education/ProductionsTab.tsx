@@ -26,6 +26,7 @@ import {
 import { educationProductionsService, openProductionInRoleRoom, type Production } from './educationProductionsService';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationAssignmentsService, type Assignment } from './educationAssignmentsService';
+import { educationProductionMembersService, MEMBER_ROLE_LABELS, type ProductionMember, type MemberRole } from './educationProductionMembersService';
 import { PRODUCTION_TEMPLATES } from './educationTemplates';
 import { ACCENT, Panel, T, QuickAction, RailTips } from './_eduUi';
 import type { EducationTabId } from './EducationWorkspace';
@@ -95,6 +96,26 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
   const [tmplCohortId, setTmplCohortId] = useState('');
   const [tmplBusy, setTmplBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Team/medlemmer (utdannings-bro → ekte prosjekt-tilgang).
+  const [teamProd, setTeamProd] = useState<Production | null>(null);
+  const [members, setMembers] = useState<ProductionMember[]>([]);
+  const [membersBusy, setMembersBusy] = useState(false);
+
+  const openTeam = async (prod: Production) => {
+    setTeamProd(prod); setMembers([]); setMembersBusy(true); setError(null);
+    try { setMembers(await educationProductionMembersService.listMembers(prod.id)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente team'); }
+    finally { setMembersBusy(false); }
+  };
+  const setMemberRole = async (studentId: string, role: MemberRole | 'none') => {
+    if (!teamProd) return;
+    setMembers((prev) => prev.map((m) => m.studentId === studentId ? { ...m, assigned: role !== 'none', role: role === 'none' ? m.role : role } : m));
+    try {
+      if (role === 'none') await educationProductionMembersService.removeMember(teamProd.id, studentId);
+      else await educationProductionMembersService.setMember(teamProd.id, { studentId, role });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke lagre'); void openTeam(teamProd); }
+  };
 
   const openTemplateDialog = () => {
     const t = PRODUCTION_TEMPLATES[0];
@@ -282,7 +303,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
                 <Pipeline stage={pl.stage} color={pl.color} />
                 <Stack spacing={1} sx={{ flexShrink: 0 }}>
                   <Button size="small" variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(p.projectId)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Åpne prosjekt</Button>
-                  <Button size="small" variant="outlined" startIcon={<CallSheetIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Call sheet</Button>
+                  <Button size="small" variant="outlined" startIcon={<StudentsIcon />} onClick={() => openTeam(p)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Team</Button>
                 </Stack>
                 <IconButton size="small" onClick={() => handleDelete(p.id)} sx={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}><DeleteIcon fontSize="small" /></IconButton>
               </Stack>
@@ -370,6 +391,34 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTmplOpen(false)} disabled={tmplBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
           <Button variant="contained" onClick={handleCreateFromTemplate} disabled={!tmplTitle.trim() || tmplBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{tmplBusy ? 'Oppretter…' : 'Opprett fra mal'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Team-dialog — utdannings-bro til ekte prosjekt-tilgang */}
+      <Dialog open={!!teamProd} onClose={() => setTeamProd(null)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Team — {teamProd?.title}</DialogTitle>
+        <DialogContent>
+          <T eid="edu-sp-team-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+            Tildel studenter en rolle i produksjonen. Rollen gir tilgang til de EKTE produksjonsverktøyene (studenten logger inn med sin egen konto): <b>Ser på</b> = les alt · <b>Bidragsyter</b> = redigér det kreative · <b>Ansvarlig</b> = redigér det meste. Studenter uten konto får tilgang når de oppretter/overtar en konto med samme e-post.
+          </T>
+          {membersBusy ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress size={24} sx={{ color: ACCENT }} /></Box>
+          ) : members.length === 0 ? (
+            <Typography sx={{ fontSize: 13, color: 'text.secondary', py: 2 }}>Ingen studenter i kullet. Legg til studenter i Kull &amp; studenter først.</Typography>
+          ) : members.map((m) => (
+            <Stack key={m.studentId} direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <Typography sx={{ fontSize: 13.5, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.studentName}</Typography>
+              <Select size="small" value={m.assigned ? m.role : 'none'} onChange={(e) => setMemberRole(m.studentId, e.target.value as MemberRole | 'none')}
+                sx={{ fontSize: 12.5, minWidth: 150, color: m.assigned ? '#e9d5ff' : 'rgba(255,255,255,0.5)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 } }}>
+                <MenuItem value="none" sx={{ fontSize: 12.5 }}>Ikke med</MenuItem>
+                {(['viewer', 'contributor', 'lead'] as MemberRole[]).map((r) => <MenuItem key={r} value={r} sx={{ fontSize: 12.5 }}>{MEMBER_ROLE_LABELS[r]}</MenuItem>)}
+              </Select>
+            </Stack>
+          ))}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setTeamProd(null)} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
