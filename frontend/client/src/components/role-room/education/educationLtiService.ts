@@ -90,6 +90,23 @@ export const educationLtiService = {
   },
 
   /**
+   * Eksamensklar-status LEST FRA CANVAS (AGS Results): per student hvor mange
+   * arbeidskrav som er godkjent i Canvas-karakterboka, og om alle er godkjent.
+   * Canvas = fasit — ingen parallell Role Room-sannhet.
+   */
+  async getExamReadiness(launchId: string, cohortId?: string): Promise<ExamReadiness> {
+    const qs = cohortId ? `?cohortId=${encodeURIComponent(cohortId)}` : '';
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/exam-readiness${qs}`, {
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return (await res.json()) as ExamReadiness;
+  },
+
+  /**
    * Importerer LMS-klasse-rosteret (NRPS) inn i et utdannings-kull. Uten
    * cohortId opprettes et nytt kull (cohortName). Idempotent på e-post = «synk».
    */
@@ -116,6 +133,20 @@ export interface LtiRosterMember {
   email: string | null;
   roles: string[];
   status: string;
+}
+
+export interface ExamReadinessStudent {
+  sub: string;
+  name: string | null;
+  email: string | null;
+  godkjent: number;
+  total: number;
+  examReady: boolean;
+}
+export interface ExamReadiness {
+  totalArbeidskrav: number;
+  arbeidskrav: { id: string; title: string }[];
+  students: ExamReadinessStudent[];
 }
 
 export default educationLtiService;

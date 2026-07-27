@@ -371,6 +371,57 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
   });
 
+  // ── Eksamensklar (Canvas-synkronisert): arbeidskrav godkjent FRA Canvas ───
+  // Kjernen i «alt styres fra Canvas»: leser hvert arbeidskravs status via AGS
+  // Results (Canvas = fasit), matcher mot NRPS-rosteret, og beregner om hver
+  // student har fått ALLE arbeidskrav godkjent → eksamensklar. Ingen parallell
+  // Role Room-sannhet: godkjennelsen bor i Canvas-karakterboka.
+  router.get("/lti/launches/:id/exam-readiness", requireSession, async (req, res) => {
+    const cohortId = typeof req.query.cohortId === "string" ? req.query.cohortId : null;
+    const uid = (req as Request & { userId: string }).userId;
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 502).json({ error: roster.error }); return; }
+      // Arbeidskravene (våre) for kullet — eid av faglæreren.
+      let arbeidskrav: { id: string; title: string }[] = [];
+      try {
+        const params: unknown[] = [uid];
+        let cohortFilter = "";
+        if (cohortId) { params.push(cohortId); cohortFilter = ` AND cohort_id = $${params.length}`; }
+        const ar = await pool.query(
+          `SELECT id, title FROM role_room_education_assignments
+            WHERE owner_user_id = $1 AND is_arbeidskrav = true AND status = 'published'${cohortFilter}`,
+          params,
+        );
+        arbeidskrav = ar.rows.map((r) => ({ id: String(r.id), title: String(r.title) }));
+      } catch { arbeidskrav = []; }
+
+      // Les hvert arbeidskravs Canvas-resultater (godkjent = full score).
+      const perTag = new Map<string, Map<string, boolean>>();
+      for (const ak of arbeidskrav) {
+        // eslint-disable-next-line no-await-in-loop -- få arbeidskrav; sekvensielt er greit
+        const rr = await fetchResults(pool, req.params.id, ak.id);
+        const passed = new Map<string, boolean>();
+        if (rr.ok) {
+          for (const [sub, v] of rr.results) passed.set(sub, v.max > 0 && v.score >= v.max);
+        }
+        perTag.set(ak.id, passed);
+      }
+
+      const total = arbeidskrav.length;
+      const students = roster.members
+        .filter((m) => m.roles.some((r) => /learner|student/i.test(r)) || m.roles.length === 0)
+        .map((m) => {
+          const godkjent = arbeidskrav.filter((ak) => perTag.get(ak.id)?.get(m.sub)).length;
+          return { sub: m.sub, name: m.name, email: m.email, godkjent, total, examReady: total > 0 && godkjent === total };
+        });
+      res.json({ totalArbeidskrav: total, arbeidskrav, students });
+    } catch (err) {
+      console.error("[lti] exam-readiness failed:", (err as Error).message);
+      res.status(500).json({ error: "readiness_failed" });
+    }
+  });
+
   // ── Faglærer: send karakter til LMS-karakterboka (AGS grade-passback) ─────
   // Tar en fri-tekst-karakter (mappes til tallscore) ELLER eksplisitt
   // scoreGiven/scoreMaximum. Målbruker: `ltiUserSub` (fra roster) ELLER
@@ -619,6 +670,65 @@ export async function fetchRoster(
   if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
   const container = await memRes.json();
   return { ok: true, members: parseRosterMembers(container) };
+}
+
+/**
+ * AGS Results: leser tilbake hva Canvas har registrert på en gradebook-kolonne
+ * (line item) identifisert ved tag (oppgave-id). Returnerer per LMS-sub:
+ * score/maks. Slik leser Role Room arbeidskrav-status FRA Canvas (Canvas = fasit),
+ * i stedet for kun egen DB — hele eksamens-gaten er dermed Canvas-synkronisert.
+ * Fail-safe: tom map ved manglende kolonne/feil (ingen registrerte resultater).
+ */
+export async function fetchResults(
+  pool: Pool, launchId: string, resourceTag: string,
+): Promise<{ ok: true; results: Map<string, { score: number; max: number }> } | { ok: false; error: string; status?: number }> {
+  const lr = await pool.query(`SELECT * FROM role_room_lti_launches WHERE id = $1`, [launchId]);
+  const launch = lr.rows[0];
+  if (!launch) return { ok: false, error: "launch_not_found", status: 404 };
+  if (!launch.ags_lineitems) return { ok: true, results: new Map() };
+  const pr = await pool.query(`SELECT * FROM role_room_lti_platforms WHERE id = $1`, [launch.platform_id]);
+  const platform = pr.rows[0];
+  if (!platform) return { ok: false, error: "platform_not_found", status: 404 };
+
+  const key = await ensureToolKey(pool);
+  const assertion = signClientAssertion({ clientId: String(platform.client_id), tokenUrl: String(platform.token_url), privatePem: key.privatePem, kid: key.kid });
+  const tokenRes = await fetch(String(platform.token_url), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: assertion,
+      scope: AGS_SCOPES.join(" "),
+    }).toString(),
+  });
+  if (!tokenRes.ok) return { ok: false, error: "token_failed", status: 502 };
+  const { access_token } = (await tokenRes.json()) as { access_token?: string };
+  if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
+
+  const base = String(launch.ags_lineitems);
+  const sep = base.includes("?") ? "&" : "?";
+  const findRes = await fetch(`${base}${sep}tag=${encodeURIComponent(resourceTag)}`, {
+    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
+  });
+  if (!findRes.ok) return { ok: true, results: new Map() };
+  const arr = (await findRes.json()) as Array<{ id?: string }>;
+  const lineitem = Array.isArray(arr) && arr[0]?.id ? String(arr[0].id) : null;
+  if (!lineitem) return { ok: true, results: new Map() };
+
+  const resultsUrl = lineitem.includes("/results") ? lineitem : `${lineitem.replace(/\?.*$/, "")}/results`;
+  const resRes = await fetch(resultsUrl, {
+    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.resultcontainer+json" },
+  });
+  if (!resRes.ok) return { ok: true, results: new Map() };
+  const rc = (await resRes.json()) as Array<{ userId?: string; resultScore?: number; resultMaximum?: number }>;
+  const map = new Map<string, { score: number; max: number }>();
+  if (Array.isArray(rc)) {
+    for (const r of rc) {
+      if (r.userId) map.set(String(r.userId), { score: Number(r.resultScore ?? 0), max: Number(r.resultMaximum ?? 0) });
+    }
+  }
+  return { ok: true, results: map };
 }
 
 /**

@@ -15,7 +15,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Card, CardContent, Button, TextField,
-  Chip, CircularProgress, Alert, ToggleButtonGroup, ToggleButton, Tooltip, Link,
+  Chip, CircularProgress, Alert, ToggleButtonGroup, ToggleButton, Tooltip, Link, Divider,
 } from '@mui/material';
 import {
   Grading as AssessmentIcon, OpenInNew as OpenIcon, Download as DownloadIcon,
@@ -47,6 +47,17 @@ export function AssessmentTab() {
   const [launchId] = useState<string | null>(() => educationLtiService.getLaunchId());
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [pushedIds, setPushedIds] = useState<Set<string>>(new Set());
+
+  // Eksamensklar-status lest FRA Canvas (AGS Results).
+  const [readiness, setReadiness] = useState<import('./educationLtiService').ExamReadiness | null>(null);
+  const [readinessBusy, setReadinessBusy] = useState(false);
+  const loadReadiness = async () => {
+    if (!launchId) return;
+    setReadinessBusy(true); setError(null);
+    try { setReadiness(await educationLtiService.getExamReadiness(launchId)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke hente eksamensklar-status'); }
+    finally { setReadinessBusy(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -199,6 +210,38 @@ export function AssessmentTab() {
       </Alert>
 
       {launchId && <LmsRosterPanel launchId={launchId} />}
+
+      {/* Eksamensklar — arbeidskrav godkjent, lest FRA Canvas */}
+      {launchId && (
+        <Panel sx={{ p: 2.25 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: readiness ? 1.5 : 0, flexWrap: 'wrap', gap: 1 }}>
+            <Box>
+              <T eid="edu-vu-exam-title" sx={{ fontWeight: 700, fontSize: 15 }}>Eksamensklar</T>
+              <T eid="edu-vu-exam-sub" sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>Alle arbeidskrav må være godkjent i Canvas før eksamen. Status leses fra Canvas-karakterboka.</T>
+            </Box>
+            <Button size="small" variant="outlined" startIcon={<LmsPushIcon sx={{ fontSize: '15px !important' }} />} onClick={loadReadiness} disabled={readinessBusy}
+              sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2 }}>{readinessBusy ? 'Henter fra Canvas…' : 'Sjekk mot Canvas'}</Button>
+          </Stack>
+          {readiness && (
+            readiness.totalArbeidskrav === 0 ? (
+              <T eid="edu-vu-exam-none" sx={{ fontSize: 12.5, color: 'text.secondary', display: 'block' }}>Ingen publiserte arbeidskrav i kullet ennå.</T>
+            ) : (
+              <Stack divider={<Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}>
+                {readiness.students.map((s) => (
+                  <Stack key={s.sub} direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ py: 0.9 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || s.email || s.sub}</Typography>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{s.godkjent}/{s.total} arbeidskrav</Typography>
+                      <Chip size="small" label={s.examReady ? 'Eksamensklar' : 'Ikke klar'} icon={s.examReady ? <DoneIcon sx={{ fontSize: '13px !important' }} /> : undefined}
+                        sx={{ height: 20, fontSize: 10.5, fontWeight: 600, bgcolor: s.examReady ? 'rgba(16,185,129,0.16)' : 'rgba(245,158,11,0.14)', color: s.examReady ? '#34d399' : '#f59e0b', '& .MuiChip-icon': { color: '#34d399' } }} />
+                    </Stack>
+                  </Stack>
+                ))}
+              </Stack>
+            )
+          )}
+        </Panel>
+      )}
 
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
