@@ -26,6 +26,8 @@ export type RoleRoomMode = (typeof ROLE_ROOM_MODES)[number];
 
 /** Alle produksjons-lignende moduser (deler casting/produksjons-domenet). */
 const PROD_MODES: RoleRoomMode[] = ["production", "photographer", "content_producer", "content_creator"];
+/** Dans-modusene (eget dans-domene: koreografi, klasser, forestillinger). */
+const DANCE_MODES: RoleRoomMode[] = ["dance_studio", "dance_freelance"];
 
 export interface McpCallContext {
   userId: string;
@@ -399,6 +401,91 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       const r = await pool.query(
         `SELECT id, name FROM role_room_education_groups WHERE owner_user_id = $1 AND cohort_id = $2 ORDER BY name`, [ctx.userId, cohortId]);
       return { groups: r.rows };
+    },
+  },
+
+  // ── Avtaler (compat-store: legacy_compat_store JSONB-blober per prosjekt) ──
+  {
+    name: "rr_list_offers",
+    description: "List tilbud sendt til kandidater på et prosjekt. Dekker Avtaler/tilbud.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(`SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`, [`casting:offers:${projectId}`]);
+      return { offers: (r.rows[0]?.store_value as unknown[]) ?? [] };
+    },
+  },
+  {
+    name: "rr_list_contracts",
+    description: "List kontrakter på et prosjekt (status/type). Dekker Avtaler/kontrakter.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(`SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`, [`casting:contracts:${projectId}`]);
+      return { contracts: (r.rows[0]?.store_value as unknown[]) ?? [] };
+    },
+  },
+  {
+    name: "rr_list_shot_lists",
+    description: "List shot-lists (bilde-/opptaksplaner) på et prosjekt. Dekker Storyboard/shot-list.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(`SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`, [`casting:shot-lists:${projectId}`]);
+      return { shotLists: (r.rows[0]?.store_value as unknown[]) ?? [] };
+    },
+  },
+
+  // ── Dans (dance_studio/dance_freelance) — egne SQL-tabeller, eier-scopet ──
+  {
+    name: "rr_list_dance_pieces",
+    description: "List koreografier/danseverk (tittel, koreograf, musikk, varighet). Dekker Verk-fanen (dans).",
+    scope: "projects.read", modes: DANCE_MODES, projectScoped: false,
+    inputSchema: OBJ({}),
+    handler: async (pool, ctx) => {
+      const r = await pool.query(
+        `SELECT id, title, choreographer, music_title, total_duration_sec, updated_at FROM dance_choreography
+          WHERE owner_user_id = $1 ORDER BY updated_at DESC LIMIT 300`, [ctx.userId]);
+      return { pieces: r.rows };
+    },
+  },
+  {
+    name: "rr_list_dance_performances",
+    description: "List forestillinger (tittel, dato, sted, status, billetter). Dekker Forestillinger-fanen (dans).",
+    scope: "projects.read", modes: DANCE_MODES, projectScoped: false,
+    inputSchema: OBJ({}),
+    handler: async (pool, ctx) => {
+      const r = await pool.query(
+        `SELECT id, title, performance_date, venue, status, capacity, tickets_sold FROM dance_performance
+          WHERE owner_user_id = $1 ORDER BY performance_date DESC NULLS LAST LIMIT 300`, [ctx.userId]);
+      return { performances: r.rows };
+    },
+  },
+  {
+    name: "rr_list_dance_classes",
+    description: "List klasser/timeplan (tittel, type, tidspunkt, instruktør, rom). Dekker Klasser-fanen (dansestudio).",
+    scope: "projects.read", modes: ["dance_studio"], projectScoped: false,
+    inputSchema: OBJ({}),
+    handler: async (pool, ctx) => {
+      const r = await pool.query(
+        `SELECT id, title, kind, schedule_pattern, starts_at, ends_at, instructor_id, room_id, max_students FROM dance_class
+          WHERE owner_user_id = $1 ORDER BY starts_at NULLS LAST LIMIT 300`, [ctx.userId]);
+      return { classes: r.rows };
+    },
+  },
+  {
+    name: "rr_list_dance_instructors",
+    description: "List instruktører (navn, stiler, kontrakt, timer). Dekker Instruktører-fanen (dansestudio).",
+    scope: "projects.read", modes: ["dance_studio"], projectScoped: false,
+    inputSchema: OBJ({}),
+    handler: async (pool, ctx) => {
+      const r = await pool.query(
+        `SELECT id, display_name, styles, contract_kind, hours_logged FROM dance_instructor
+          WHERE owner_user_id = $1 ORDER BY display_name LIMIT 300`, [ctx.userId]);
+      return { instructors: r.rows };
     },
   },
 ];

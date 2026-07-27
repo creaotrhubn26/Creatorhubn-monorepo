@@ -34,9 +34,22 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   });
   it("modus-filter «production» → casting/produksjon/producer, ikke utdanning", () => {
     const names = listCapabilitiesFor(["projects.read"], "production").map((c) => c.name);
-    expect(names).toEqual(expect.arrayContaining(["rr_list_auditions", "rr_list_roles", "rr_list_timeline", "rr_list_budget_items"]));
+    expect(names).toEqual(expect.arrayContaining(["rr_list_auditions", "rr_list_roles", "rr_list_timeline", "rr_list_budget_items", "rr_list_offers"]));
     expect(names).not.toContain("rr_list_cohorts");
     expect(names).not.toContain("rr_list_assignments");
+    expect(names).not.toContain("rr_list_dance_pieces");
+  });
+  it("modus-filter «dance_studio» → dans-verktøy, ikke casting/utdanning", () => {
+    const names = listCapabilitiesFor(["projects.read"], "dance_studio").map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(["rr_list_dance_pieces", "rr_list_dance_classes", "rr_list_dance_instructors"]));
+    expect(names).not.toContain("rr_list_roles");
+    expect(names).not.toContain("rr_list_assignments");
+  });
+  it("modus-filter «dance_freelance» → kun frilans-relevant dans (ikke klasser/instruktører)", () => {
+    const names = listCapabilitiesFor(["projects.read"], "dance_freelance").map((c) => c.name);
+    expect(names).toContain("rr_list_dance_pieces");
+    expect(names).toContain("rr_list_dance_performances");
+    expect(names).not.toContain("rr_list_dance_classes");
   });
 });
 
