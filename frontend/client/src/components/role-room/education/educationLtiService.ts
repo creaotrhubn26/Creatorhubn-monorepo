@@ -63,7 +63,7 @@ export const educationLtiService = {
    */
   async pushGrade(
     launchId: string,
-    input: { grade: string; comment?: string; label?: string; scoreMaximum?: number; ltiUserSub?: string; studentEmail?: string },
+    input: { grade: string; comment?: string; label?: string; scoreMaximum?: number; ltiUserSub?: string; studentEmail?: string; resourceTag?: string },
   ): Promise<void> {
     const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/grade`, {
       method: 'POST',

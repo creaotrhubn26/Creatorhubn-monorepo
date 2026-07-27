@@ -438,7 +438,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
   router.post("/lti/launches/:id/grade", requireSession, async (req, res) => {
     const b = (req.body ?? {}) as {
       grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string;
-      ltiUserSub?: string; studentEmail?: string;
+      ltiUserSub?: string; studentEmail?: string; resourceTag?: string;
     };
     let scoreGiven = b.scoreGiven;
     let scoreMaximum = b.scoreMaximum;
@@ -469,7 +469,8 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         if (!member) { res.status(404).json({ error: "student_not_in_roster" }); return; }
         targetUserSub = member.sub;
       }
-      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label, targetUserSub });
+      const resourceTag = typeof b.resourceTag === "string" && b.resourceTag.trim() ? b.resourceTag.trim() : undefined;
+      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label, targetUserSub, resourceTag });
       if (!result.ok) { res.status(result.status ?? 500).json({ error: result.error }); return; }
       res.json({ success: true, scoreGiven, scoreMaximum });
     } catch (err) {
@@ -503,7 +504,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
  */
 export async function pushScore(
   pool: Pool, launchId: string,
-  input: { scoreGiven: number; scoreMaximum: number; comment?: string; label?: string; targetUserSub?: string },
+  input: { scoreGiven: number; scoreMaximum: number; comment?: string; label?: string; targetUserSub?: string; resourceTag?: string },
 ): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
   const lr = await pool.query(`SELECT * FROM role_room_lti_launches WHERE id = $1`, [launchId]);
   const launch = lr.rows[0];
@@ -531,16 +532,42 @@ export async function pushScore(
   const { access_token } = (await tokenRes.json()) as { access_token?: string };
   if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
 
-  // Line item: bruk eksisterende, ellers opprett ett.
-  let lineitem: string | null = launch.ags_lineitem ?? null;
-  if (!lineitem && launch.ags_lineitems) {
-    const liRes = await fetch(String(launch.ags_lineitems), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
-      body: JSON.stringify(buildLineItem({ label: input.label ?? "The Role Room", scoreMaximum: input.scoreMaximum, resourceLinkId: launch.resource_link_id ?? undefined })),
-    });
-    if (!liRes.ok) return { ok: false, error: "lineitem_failed", status: 502 };
-    lineitem = String(((await liRes.json()) as { id?: string }).id ?? "");
+  // Line item (Canvas gradebook-kolonne). Med resourceTag (oppgave-id) får HVER
+  // oppgave sin EGEN kolonne: finn line item m/ tag=oppgave-id, ellers opprett.
+  // Uten resourceTag: eksisterende oppførsel (launchens default line item).
+  let lineitem: string | null = null;
+  if (input.resourceTag && launch.ags_lineitems) {
+    const base = String(launch.ags_lineitems);
+    const sep = base.includes("?") ? "&" : "?";
+    try {
+      const findRes = await fetch(`${base}${sep}tag=${encodeURIComponent(input.resourceTag)}`, {
+        headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
+      });
+      if (findRes.ok) {
+        const arr = (await findRes.json()) as Array<{ id?: string }>;
+        if (Array.isArray(arr) && arr[0]?.id) lineitem = String(arr[0].id);
+      }
+    } catch { /* faller gjennom til opprettelse */ }
+    if (!lineitem) {
+      const liRes = await fetch(base, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
+        body: JSON.stringify(buildLineItem({ label: input.label ?? "Oppgave", scoreMaximum: input.scoreMaximum, tag: input.resourceTag, resourceLinkId: launch.resource_link_id ?? undefined })),
+      });
+      if (!liRes.ok) return { ok: false, error: "lineitem_failed", status: 502 };
+      lineitem = String(((await liRes.json()) as { id?: string }).id ?? "");
+    }
+  } else {
+    lineitem = launch.ags_lineitem ?? null;
+    if (!lineitem && launch.ags_lineitems) {
+      const liRes = await fetch(String(launch.ags_lineitems), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
+        body: JSON.stringify(buildLineItem({ label: input.label ?? "The Role Room", scoreMaximum: input.scoreMaximum, resourceLinkId: launch.resource_link_id ?? undefined })),
+      });
+      if (!liRes.ok) return { ok: false, error: "lineitem_failed", status: 502 };
+      lineitem = String(((await liRes.json()) as { id?: string }).id ?? "");
+    }
   }
   if (!lineitem) return { ok: false, error: "no_lineitem", status: 400 };
 

@@ -112,6 +112,7 @@ export function AssessmentTab() {
         grade,
         comment: (draft.feedback || it.feedback || '').trim() || undefined,
         label: it.assignmentTitle,
+        resourceTag: it.assignmentId, // → egen Canvas gradebook-kolonne per oppgave
       });
       setPushedIds((prev) => new Set(prev).add(it.submissionId));
     } catch (e) {
