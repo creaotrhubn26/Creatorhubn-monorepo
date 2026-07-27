@@ -13,6 +13,8 @@ export interface ProductionMember {
   studentName: string;
   role: MemberRole;
   assigned: boolean;
+  email: string | null;
+  hasAccount: boolean;
 }
 
 export const MEMBER_ROLE_LABELS: Record<MemberRole, string> = {
@@ -48,5 +50,9 @@ export const educationProductionMembersService = {
   },
   async removeMember(productionId: string, studentId: string): Promise<void> {
     await req(`${BASE}/productions/${encodeURIComponent(productionId)}/members/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
+  },
+  /** Inviter en tildelt student til å opprette ekte konto (broen matcher på e-post). */
+  async inviteAccount(productionId: string, studentId: string): Promise<{ invited: boolean; email: string }> {
+    return req(`${BASE}/productions/${encodeURIComponent(productionId)}/members/${encodeURIComponent(studentId)}/invite-account`, { method: 'POST', body: '{}' });
   },
 };

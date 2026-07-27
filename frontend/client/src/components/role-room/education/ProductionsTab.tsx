@@ -116,6 +116,13 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
       else await educationProductionMembersService.setMember(teamProd.id, { studentId, role });
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke lagre'); void openTeam(teamProd); }
   };
+  const inviteAccount = async (m: ProductionMember) => {
+    if (!teamProd) return;
+    try {
+      const r = await educationProductionMembersService.inviteAccount(teamProd.id, m.studentId);
+      setToast(`Konto-invitasjon sendt til ${r.email}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke invitere'); }
+  };
 
   const openTemplateDialog = () => {
     const t = PRODUCTION_TEMPLATES[0];
@@ -408,7 +415,17 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
             <Typography sx={{ fontSize: 13, color: 'text.secondary', py: 2 }}>Ingen studenter i kullet. Legg til studenter i Kull &amp; studenter først.</Typography>
           ) : members.map((m) => (
             <Stack key={m.studentId} direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.studentName}</Typography>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.studentName}</Typography>
+                {m.assigned && (
+                  m.hasAccount
+                    ? <Typography sx={{ fontSize: 11, color: '#34d399' }}>Har konto · tilgang aktiv</Typography>
+                    : <Stack direction="row" alignItems="center" spacing={0.75}>
+                        <Typography sx={{ fontSize: 11, color: '#f59e0b' }}>Ingen konto ennå</Typography>
+                        <Button size="small" onClick={() => inviteAccount(m)} sx={{ fontSize: 10.5, minWidth: 0, p: 0, color: '#c4b5fd', textTransform: 'none' }}>Inviter til konto</Button>
+                      </Stack>
+                )}
+              </Box>
               <Select size="small" value={m.assigned ? m.role : 'none'} onChange={(e) => setMemberRole(m.studentId, e.target.value as MemberRole | 'none')}
                 sx={{ fontSize: 12.5, minWidth: 150, color: m.assigned ? '#e9d5ff' : 'rgba(255,255,255,0.5)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 } }}>
                 <MenuItem value="none" sx={{ fontSize: 12.5 }}>Ikke med</MenuItem>

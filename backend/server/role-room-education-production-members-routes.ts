@@ -24,6 +24,7 @@ import {
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { newEntityId } from "./_shared-ids.js";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 interface SessionData {
   userId: string;
@@ -41,6 +42,8 @@ export interface ProductionMemberView {
   studentName: string;
   role: string;
   assigned: boolean;
+  email: string | null;
+  hasAccount: boolean; // finnes en ekte users-konto m/ studentens e-post? (broen matcher da)
 }
 
 async function resolveUser(
@@ -103,8 +106,9 @@ export function createEducationProductionMembersRouter(
       if (cohortId === undefined) { res.status(404).json({ error: "not_found" }); return; }
       if (!cohortId) { res.json({ members: [] }); return; }
       const r = await pool.query(
-        `SELECT st.id AS student_id, st.name AS student_name,
-                m.role AS role, (m.id IS NOT NULL) AS assigned
+        `SELECT st.id AS student_id, st.name AS student_name, st.email AS email,
+                m.role AS role, (m.id IS NOT NULL) AS assigned,
+                EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = lower(st.email)) AS has_account
            FROM role_room_education_students st
            LEFT JOIN role_room_education_production_members m
                   ON m.student_id = st.id AND m.production_id = $1
@@ -117,6 +121,8 @@ export function createEducationProductionMembersRouter(
         studentName: (row.student_name as string) ?? "",
         role: (row.role as string) ?? "contributor",
         assigned: Boolean(row.assigned),
+        email: (row.email as string) ?? null,
+        hasAccount: Boolean(row.has_account),
       }));
       res.json({ members });
     } catch (err) {
@@ -171,6 +177,57 @@ export function createEducationProductionMembersRouter(
     } catch (err) {
       console.error("[education-production-members] remove failed:", (err as Error).message);
       res.status(500).json({ error: "remove_failed" });
+    }
+  });
+
+  // ── Inviter en tildelt student til å opprette EKTE Role Room-konto ────────
+  // Vi oppretter IKKE kontoen (auth = for sensitivt å hånd-rulle). Vi sender et
+  // varsel som ber studenten registrere seg / logge inn med SKOLE-e-posten sin —
+  // da matcher produksjons-broen automatisk (users.email → tilgang + fane-RBAC).
+  router.post("/education/productions/:id/members/:studentId/invite-account", requireAuth, async (req, res) => {
+    try {
+      const cohortId = await ownedProductionCohort(req.params.id, uid(req));
+      if (cohortId === undefined) { res.status(404).json({ error: "not_found" }); return; }
+      const stu = await pool.query(
+        `SELECT st.name, st.email, p.title
+           FROM role_room_education_students st
+           JOIN role_room_education_productions p ON p.id = $1
+          WHERE st.id = $2 AND st.owner_user_id = $3`,
+        [req.params.id, req.params.studentId, uid(req)],
+      );
+      const student = stu.rows[0];
+      if (!student) { res.status(404).json({ error: "student_not_found" }); return; }
+      if (!student.email) { res.status(400).json({ error: "student_email_required" }); return; }
+      const base = (process.env.PUBLIC_APP_URL ?? process.env.APP_URL ?? "").replace(/\/$/, "") || "https://theroleroom.com";
+      const name = String(student.name);
+      const title = String(student.title ?? "en produksjon");
+      const text = [
+        `Hei ${name},`,
+        "",
+        `Du er satt opp som medlem av produksjonen «${title}» i The Role Room, og får tilgang til de ekte produksjonsverktøyene.`,
+        "",
+        `For å få tilgang: registrer deg / logg inn på The Role Room med DENNE e-postadressen (${String(student.email)}). Da kobles kontoen din automatisk til produksjonen.`,
+        "",
+        base,
+        "",
+        "Mvh,",
+        "The Role Room",
+      ].join("\n");
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6">
+          <p>Hei ${name},</p>
+          <p>Du er satt opp som medlem av produksjonen <b>«${title}»</b> i The Role Room, og får tilgang til de ekte produksjonsverktøyene.</p>
+          <p>For å få tilgang: registrer deg / logg inn med <b>denne e-postadressen</b> (${String(student.email)}). Da kobles kontoen din automatisk til produksjonen.</p>
+          <p style="margin:24px 0"><a href="${base}" style="background:#8B5CF6;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Kom i gang</a></p>
+          <p>Mvh,<br>The Role Room</p>
+        </div>`;
+      void sendTransactionalEmail({ to: String(student.email), subject: `Tilgang til produksjonen «${title}»`, html, text, fromLabel: "The Role Room", kind: "production_access_invite", pool })
+        .then((r) => console.log(`[education-production-members] konto-invite ${r.sent ? "sendt" : "ikke sendt"}`))
+        .catch((e) => console.error("[education-production-members] konto-invite feilet:", (e as Error).message));
+      res.json({ invited: true, email: String(student.email) });
+    } catch (err) {
+      console.error("[education-production-members] invite-account failed:", (err as Error).message);
+      res.status(500).json({ error: "invite_failed" });
     }
   });
 
