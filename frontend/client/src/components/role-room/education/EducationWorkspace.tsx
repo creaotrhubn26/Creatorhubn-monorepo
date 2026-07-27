@@ -200,6 +200,8 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
 export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
   const [activeTab, setActiveTab] = useState<EducationTabId>('overview');
   const [tourOpen, setTourOpen] = useState(false);
+  // «Legg til oppgave» fra en produksjon → forhåndsvelg produksjonen i Oppgaver.
+  const [assignmentPrefillProd, setAssignmentPrefillProd] = useState<string | null>(null);
   const active = EDUCATION_TABS.find((t) => t.id === activeTab) ?? EDUCATION_TABS[0];
 
   useEffect(() => {
@@ -214,8 +216,8 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
     switch (active.id) {
       case 'overview': return <OverviewTab onNavigate={setActiveTab} />;
       case 'cohorts': return <CohortsTab onNavigate={setActiveTab} />;
-      case 'productions': return <ProductionsTab onNavigate={setActiveTab} />;
-      case 'assignments': return <AssignmentsTab />;
+      case 'productions': return <ProductionsTab onNavigate={setActiveTab} onAddAssignment={(pid) => { setAssignmentPrefillProd(pid); setActiveTab('assignments'); }} />;
+      case 'assignments': return <AssignmentsTab prefillProductionId={assignmentPrefillProd} onPrefillConsumed={() => setAssignmentPrefillProd(null)} />;
       case 'fagstoff': return <FagstoffTab />;
       case 'assessment': return <AssessmentTab />;
       case 'portfolio': return <PortfolioTab />;

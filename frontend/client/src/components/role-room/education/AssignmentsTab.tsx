@@ -56,7 +56,7 @@ function relDue(dueAt: string | null): { text: string; overdue: boolean } {
   return { text: `Om ${days} dager`, overdue: false };
 }
 
-export function AssignmentsTab() {
+export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { prefillProductionId?: string | null; onPrefillConsumed?: () => void } = {}) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
@@ -91,6 +91,15 @@ export function AssignmentsTab() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  // «Legg til oppgave» fra en produksjon → forhåndsvelg produksjon + kull, åpne skjema.
+  useEffect(() => {
+    if (!prefillProductionId || productions.length === 0) return;
+    const prod = productions.find((p) => p.id === prefillProductionId);
+    setF((prev) => ({ ...prev, productionId: prefillProductionId, cohortId: prod?.cohortId ?? prev.cohortId }));
+    setCreating(true);
+    onPrefillConsumed?.();
+  }, [prefillProductionId, productions, onPrefillConsumed]);
 
   const handleCreate = async () => {
     if (!f.title.trim() || busy) return;

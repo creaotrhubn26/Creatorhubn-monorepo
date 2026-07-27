@@ -76,7 +76,7 @@ function fmtDue(dueAt: string): string {
   return new Date(dueAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' });
 }
 
-export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) => void }) {
+export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (t: EducationTabId) => void; onAddAssignment?: (productionId: string) => void }) {
   const [productions, setProductions] = useState<Production[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -311,6 +311,7 @@ export function ProductionsTab({ onNavigate }: { onNavigate?: (t: EducationTabId
                 <Stack spacing={1} sx={{ flexShrink: 0 }}>
                   <Button size="small" variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(p.projectId)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Åpne prosjekt</Button>
                   <Button size="small" variant="outlined" startIcon={<StudentsIcon />} onClick={() => openTeam(p)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Team</Button>
+                  <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => onAddAssignment?.(p.id)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Ny oppgave</Button>
                 </Stack>
                 <IconButton size="small" onClick={() => handleDelete(p.id)} sx={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}><DeleteIcon fontSize="small" /></IconButton>
               </Stack>
