@@ -3,10 +3,10 @@
  * Nummer og KID tildeles av serveren ved utstedelse — aldri i UI-et.
  */
 import { useState } from 'react';
-import { api, apiText, kr, parseKrToMinor } from './api';
+import { api, ApiError, apiText, kr, parseKrToMinor } from './api';
 import { useLoad } from './App';
 import { DimensionSelect } from './screens-dimensions';
-import { EmptyState, StatusBadge, TableSkeleton, useToast } from './ui';
+import { EmptyState, Modal, StatusBadge, TableSkeleton, useToast } from './ui';
 import { CompanyRiskModal } from './screens';
 
 interface Customer {
@@ -83,6 +83,52 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // EHF/PEPPOL-sending
+  interface PeppolCap { registered: boolean; supportsEhfInvoice: boolean; name: string | null; note: string }
+  const [ehfInv, setEhfInv] = useState<{ id: string; number: string | null } | null>(null);
+  const [ehfCap, setEhfCap] = useState<PeppolCap | null>(null);
+  const [ehfBusy, setEhfBusy] = useState(false);
+
+  const openEhf = async (inv: InvoiceRow) => {
+    setEhfInv({ id: inv.id, number: inv.invoice_number });
+    setEhfCap(null);
+    setEhfBusy(true);
+    try {
+      setEhfCap(await api<PeppolCap>('GET', `/api/organizations/${orgId}/invoices/${inv.id}/peppol-capability`));
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke sjekke EHF-mottak', 'danger');
+    } finally {
+      setEhfBusy(false);
+    }
+  };
+  const downloadEhf = async () => {
+    if (!ehfInv) return;
+    try {
+      const xml = await apiText(`/api/organizations/${orgId}/invoices/${ehfInv.id}/ehf`);
+      const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `EHF-${ehfInv.number ?? ehfInv.id}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Kunne ikke laste ned', 'danger');
+    }
+  };
+  const sendEhf = async () => {
+    if (!ehfInv) return;
+    setEhfBusy(true);
+    try {
+      await api('POST', `/api/organizations/${orgId}/invoices/${ehfInv.id}/ehf/send`, {});
+      toast('EHF-faktura sendt via PEPPOL ✓', 'ok');
+      setEhfInv(null);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Sending feilet', 'danger');
+    } finally {
+      setEhfBusy(false);
+    }
+  };
 
   const setLine = (index: number, patch: Partial<LineDraft>) =>
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -414,6 +460,11 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
                         </button>
                       )}
                       {(inv.status === 'issued' || inv.status === 'paid') && inv.kind === 'invoice' && (
+                        <button className="secondary" onClick={() => openEhf(inv)}>
+                          EHF
+                        </button>
+                      )}
+                      {(inv.status === 'issued' || inv.status === 'paid') && inv.kind === 'invoice' && (
                         <button className="danger" onClick={() => creditInvoice(inv.id)}>
                           Krediter
                         </button>
@@ -428,6 +479,37 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
       )}
       {riskOrg !== null && (
         <CompanyRiskModal orgId={orgId} initialOrgNr={riskOrg || undefined} onClose={() => setRiskOrg(null)} />
+      )}
+      {ehfInv && (
+        <Modal title={`EHF-faktura ${ehfInv.number ?? ''}`} onClose={() => setEhfInv(null)}>
+          <p className="subtitle">
+            EHF er den elektroniske fakturaen offentlig sektor krever. Vi sjekker i PEPPOL-katalogen om
+            mottakeren kan ta imot den — så vet du at den når frem før du sender.
+          </p>
+          {ehfBusy && !ehfCap ? (
+            <p className="hint">Sjekker PEPPOL-mottak …</p>
+          ) : ehfCap ? (
+            <div className={`panel threshold-panel ${ehfCap.supportsEhfInvoice ? 'ok' : 'accent'}`} style={{ marginTop: 4 }}>
+              <div className="threshold-head">
+                <h2>{ehfCap.name ?? 'Mottaker'}</h2>
+                <span className={`badge ${ehfCap.supportsEhfInvoice ? 'ok' : 'neutral plain'}`}>
+                  {ehfCap.supportsEhfInvoice ? 'Kan motta EHF ✓' : ehfCap.registered ? 'Ingen EHF-tjeneste' : 'Ikke i PEPPOL'}
+                </span>
+              </div>
+              <p className="subtitle" style={{ margin: 0 }}>{ehfCap.note}</p>
+            </div>
+          ) : null}
+          <div className="actions" style={{ marginTop: 14 }}>
+            <button className="secondary" onClick={downloadEhf}>Last ned EHF (XML)</button>
+            <button className="primary" disabled={ehfBusy} onClick={sendEhf}>
+              {ehfBusy ? 'Sender …' : 'Send via PEPPOL'}
+            </button>
+          </div>
+          <p className="hint" style={{ marginTop: 8 }}>
+            Uten aksesspunkt-avtale er automatisk sending ikke aktiv ennå — da laster du ned XML-en og
+            sender den via ditt aksesspunkt. Sjekken over virker uansett.
+          </p>
+        </Modal>
       )}
     </div>
   );

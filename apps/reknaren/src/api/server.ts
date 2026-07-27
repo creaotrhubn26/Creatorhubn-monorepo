@@ -76,6 +76,7 @@ import { renderInvoiceDocument } from '../invoicing/document.js';
 import { loadInvoiceView } from '../invoicing/view.js';
 import { renderInvoicePdf } from '../invoicing/pdf.js';
 import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoicing/ehf.js';
+import { lookupPeppolParticipant } from '../invoicing/peppol-lookup.js';
 import {
   addOrUpdateMember,
   changeMemberRole,
@@ -3902,6 +3903,31 @@ export function createApiServer(deps: ApiDeps): express.Express {
           });
         });
         res.json({ sent: true, invoiceNumber: data.invoiceNumber, recipient: data.buyer.orgNumber });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // PEPPOL/ELMA-oppslag: kan fakturaens mottaker ta imot EHF? Ren lesing mot
+  // OpenPeppols offentlige katalog — alltid tilgjengelig (ingen aksesspunkt kreves).
+  app.get(
+    '/api/organizations/:orgId/invoices/:invoiceId/peppol-capability',
+    requireAuth,
+    requireOrgPermission('invoices.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const row = (await deps.db.query(
+          `SELECT c.org_number, c.name FROM invoices i JOIN customers c ON c.id = i.customer_id
+           WHERE i.id = $1 AND i.organization_id = $2`,
+          [req.params.invoiceId, req.params.orgId],
+        )).rows[0];
+        if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Fakturaen finnes ikke.' } }); return; }
+        if (!row.org_number) {
+          res.json(toJson({ participantId: null, registered: false, supportsEhfInvoice: false, name: row.name, note: 'Mottaker mangler organisasjonsnummer — kreves for EHF/PEPPOL.' }));
+          return;
+        }
+        res.json(toJson(await lookupPeppolParticipant(String(row.org_number).replace(/\D/g, ''))));
       } catch (err) {
         next(err);
       }
