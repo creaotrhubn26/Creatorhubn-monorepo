@@ -3994,7 +3994,18 @@ export function RecurringScreen({ orgId }: { orgId: string }) {
     } catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
   };
 
+  const deactivate = async (id: string, label: string) => {
+    if (!window.confirm(`Skru av overvåking av «${label}»? Vaktposten slutter å minne deg om den. Du kan alltid lære den på nytt senere.`)) return;
+    setBusy(id);
+    try {
+      await api('POST', `/api/organizations/${orgId}/learned-rules/${id}/dismiss`, {});
+      toast(`Skrudd av — «${label}» overvåkes ikke lenger`, 'ok');
+      load.reload();
+    } catch (err) { toast(err instanceof ApiError ? err.message : 'Feilet', 'danger'); } finally { setBusy(null); }
+  };
+
   const suggested = d?.expectations.filter((e) => e.status === 'suggested') ?? [];
+  const active = d?.expectations.filter((e) => e.status === 'active') ?? [];
   const overdueItems = d?.items.filter((i) => i.overdue.length) ?? [];
   const dueSoonItems = d?.items.filter((i) => i.dueSoon.length && !i.overdue.length) ?? [];
   const anomalyItems = d?.items.filter((i) => i.anomalies.length) ?? [];
@@ -4037,6 +4048,28 @@ export function RecurringScreen({ orgId }: { orgId: string }) {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {active.length > 0 && (
+            <div className="panel">
+              <Disclosure label={`Overvåkes nå (${active.length})`}>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  Dette er de faste utgiftene vaktposten følger. Slutter du å bruke en leverandør, skru den av så du ikke får unødige påminnelser.
+                </p>
+                <ul className="health-list">
+                  {active.map((e) => (
+                    <li key={e.id} className="health-item">
+                      <div className="health-dot" aria-hidden="true" />
+                      <div className="health-body">
+                        <div className="health-title">{e.subjectLabel} <span className="code">{e.targetLabel}</span></div>
+                        <div className="health-detail">{e.rationale}</div>
+                      </div>
+                      <button className="secondary health-action" disabled={busy === e.id} onClick={() => deactivate(e.id, e.subjectLabel)}>Skru av</button>
+                    </li>
+                  ))}
+                </ul>
+              </Disclosure>
             </div>
           )}
 
@@ -4112,7 +4145,7 @@ export function RecurringScreen({ orgId }: { orgId: string }) {
             </div>
           )}
 
-          {overdueItems.length === 0 && suggested.length === 0 && anomalyItems.length === 0 && (
+          {overdueItems.length === 0 && suggested.length === 0 && anomalyItems.length === 0 && active.length === 0 && (
             <div className="panel"><p className="subtitle">Ingen faste utgifter registrert ennå. Trykk «Lær faste utgifter» for å oppdage mønstre i det du allerede har bokført.</p></div>
           )}
         </>
