@@ -1832,6 +1832,8 @@ export function VatScreen({ orgId }: { orgId: string }) {
   const threshold = useLoad(() => api<Threshold>('GET', `/api/organizations/${orgId}/vat/threshold`), [orgId]);
   const [meldBusy, setMeldBusy] = useState(false);
   const [meldMsg, setMeldMsg] = useState<string | null>(null);
+  const [meldValidated, setMeldValidated] = useState(false);
+  const [meldReceipt, setMeldReceipt] = useState<{ reference: string; status: string } | null>(null);
   const meldToast = useToast();
 
   const downloadMvaMelding = async () => {
@@ -1862,8 +1864,27 @@ export function VatScreen({ orgId }: { orgId: string }) {
         `/api/organizations/${orgId}/vat/mva-melding/validate`,
         { from, to },
       );
-      if (res.valid) meldToast('MVA-meldingen er gyldig hos Skatteetaten ✓', 'ok');
-      else setMeldMsg(`Skatteetaten fant ${res.messages.length} merknad(er): ${res.messages.slice(0, 5).join(' · ')}`);
+      if (res.valid) { setMeldValidated(true); meldToast('MVA-meldingen er gyldig hos Skatteetaten ✓', 'ok'); }
+      else { setMeldValidated(false); setMeldMsg(`Skatteetaten fant ${res.messages.length} merknad(er): ${res.messages.slice(0, 5).join(' · ')}`); }
+    } catch (err) {
+      setMeldMsg((err as Error).message);
+    } finally {
+      setMeldBusy(false);
+    }
+  };
+
+  const submitMvaMelding = async () => {
+    if (!window.confirm('Sende MVA-meldingen til Skatteetaten for valgt periode? Dette er en formell innsending.')) return;
+    setMeldBusy(true);
+    setMeldMsg(null);
+    try {
+      const receipt = await api<{ reference: string; status: string }>(
+        'POST',
+        `/api/organizations/${orgId}/vat/mva-melding/submit`,
+        { from, to },
+      );
+      setMeldReceipt(receipt);
+      meldToast(`MVA-meldingen er sendt inn ✓ (ref. ${receipt.reference})`, 'ok');
     } catch (err) {
       setMeldMsg((err as Error).message);
     } finally {
@@ -1926,11 +1947,11 @@ export function VatScreen({ orgId }: { orgId: string }) {
       <div className="row" style={{ maxWidth: 460 }}>
         <div>
           <label htmlFor="vfrom">Fra</label>
-          <input id="vfrom" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input id="vfrom" value={from} onChange={(e) => { setFrom(e.target.value); setMeldValidated(false); setMeldReceipt(null); }} />
         </div>
         <div>
           <label htmlFor="vto">Til</label>
-          <input id="vto" value={to} onChange={(e) => setTo(e.target.value)} />
+          <input id="vto" value={to} onChange={(e) => { setTo(e.target.value); setMeldValidated(false); setMeldReceipt(null); }} />
         </div>
       </div>
 
@@ -1945,12 +1966,25 @@ export function VatScreen({ orgId }: { orgId: string }) {
           Meldingen bygges automatisk fra tallene i valgt periode, i Skatteetatens format.
         </p>
         {meldMsg && <div className="error">{meldMsg}</div>}
+        {meldReceipt && (
+          <div className="panel threshold-panel ok" style={{ marginTop: 8 }}>
+            <div className="threshold-head"><h2>Sendt inn ✓</h2><span className="badge ok">{meldReceipt.status}</span></div>
+            <p className="subtitle">Referanse fra Skatteetaten: <b>{meldReceipt.reference}</b>.</p>
+          </div>
+        )}
         <div className="actions">
           <button onClick={downloadMvaMelding}>Last ned MVA-melding (XML)</button>
-          {threshold.data?.altinnActive ? (
-            <button className="primary" disabled={meldBusy} onClick={validateMvaMelding}>
-              {meldBusy ? 'Validerer…' : 'Valider hos Skatteetaten'}
-            </button>
+          {threshold.data?.altinnActive && !meldReceipt ? (
+            <>
+              <button className={meldValidated ? 'secondary' : 'primary'} disabled={meldBusy} onClick={validateMvaMelding}>
+                {meldBusy ? 'Validerer…' : meldValidated ? 'Valider på nytt' : 'Valider hos Skatteetaten'}
+              </button>
+              {meldValidated && (
+                <button className="primary" disabled={meldBusy} onClick={submitMvaMelding}>
+                  {meldBusy ? 'Sender…' : 'Send inn til Skatteetaten'}
+                </button>
+              )}
+            </>
           ) : null}
         </div>
         {!threshold.data?.altinnActive && (

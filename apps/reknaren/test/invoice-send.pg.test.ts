@@ -200,7 +200,8 @@ describe('MVA-melding', () => {
       .expect(200);
     expect(res.headers['content-type']).toContain('application/xml');
     expect(res.text).toContain('mvaMeldingDto');
-    expect(res.text).toContain('<mvaLinjer>');
+    expect(res.text).toContain('<mvaSpesifikasjonslinje>');
+    expect(res.text).toContain('<skattleggingsperiodeToMaaneder>');
   });
 
   it('validering/innsending svarer 503 uten aktivert Maskinporten', async () => {

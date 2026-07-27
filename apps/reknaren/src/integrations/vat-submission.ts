@@ -65,7 +65,7 @@ export interface VatSubmissionPort {
   /** Miljøet det sendes mot ('test'/'prod'). */
   readonly env: MaskinportenEnv;
   /** Validerer mva-meldingen mot Skatteetatens grensesnittstøtte. Krever token. */
-  validate(report: VatReport): Promise<VatValidationResult>;
+  validate(report: VatReport, options: { orgNumber: string }): Promise<VatValidationResult>;
   /** Sender inn mva-meldingen via Altinn 3. Krever token + autorisert virksomhet. */
   submit(report: VatReport, options: { orgNumber: string }): Promise<VatSubmissionReceipt>;
 }
@@ -82,37 +82,77 @@ type FetchLike = (
 
 const MVA_NS = 'no:skatteetaten:fastsetting:avgift:mva:skattemeldingformerverdiavgift:v1.0';
 
-/** Formaterer bigint øre til desimalkroner (eksakt, uten flyttall). */
-function minorToKroner(minor: bigint): string {
+/** Runder bigint øre til HELE kroner (mva-meldingen bruker heltall kr), half-away-from-zero. */
+function roundToKroner(minor: bigint): bigint {
   const neg = minor < 0n;
   const abs = neg ? -minor : minor;
-  const kr = abs / 100n;
-  const ore = abs % 100n;
-  return `${neg ? '-' : ''}${kr}.${ore.toString().padStart(2, '0')}`;
+  const kr = (abs + 50n) / 100n;
+  return neg ? -kr : kr;
+}
+
+/** Utleder terminnavnet (skattleggingsperiodeToMaaneder) + år fra rapportperioden. */
+const TWO_MONTH_TERMS = ['januar-februar', 'mars-april', 'mai-juni', 'juli-august', 'september-oktober', 'november-desember'];
+function periodeElement(fromDate: string): string {
+  const month = Number(fromDate.slice(5, 7));
+  const term = TWO_MONTH_TERMS[Math.floor((month - 1) / 2)] ?? 'januar-februar';
+  return `<periode><skattleggingsperiodeToMaaneder>${term}</skattleggingsperiodeToMaaneder></periode><aar>${fromDate.slice(0, 4)}</aar>`;
+}
+
+export interface MvaMeldingOptions {
+  /** Virksomhetens organisasjonsnummer (9 sifre) — påkrevd i <skattepliktig>. */
+  orgNumber: string;
+  /** Unik referanse for innsendingen fra vårt system. Default utledes fra perioden. */
+  reference?: string;
+  /** Programvareversjon (<regnskapssystem>). */
+  systemVersion?: string;
 }
 
 /**
- * MVP-SKJELETT for mva-melding-XML fra en `VatReport`. Bygger konvolutten i riktig
- * namespace med linjer per mva-melding-kode. MÅ valideres mot Skatteetatens XSD før
- * reell innsending — valideringstjenesten (`validate`) er nettopp den kontrollen.
- * Eksportert for testbarhet.
+ * Bygger mva-melding-XML fra en `VatReport`, i tråd med Skatteetatens offisielle
+ * XSD `no.skatteetaten.fastsetting.avgift.mva.skattemeldingformerverdiavgift.v1.0`
+ * (vendored i vendor/mva/, XSD-validert i test). Beløp i HELE kroner (heltall).
+ * `grunnlag`/`sats` tas med når linja har et grunnlag (base ≠ 0); begge er valgfrie
+ * i skjemaet, så XML-en er alltid XSD-gyldig — `validate()` mot Skatteetatens
+ * grensesnittstøtte er den semantiske fasiten før innsending. Eksportert for test.
  */
-export function buildMvaMeldingXml(report: VatReport): string {
-  const lines = report.lines
-    .map(
-      (l) =>
-        `    <mvaLinje kode="${escapeXml(l.mvaMeldingCode)}">` +
-        `<grunnlag>${minorToKroner(l.baseMinor)}</grunnlag>` +
-        `<merverdiavgift>${minorToKroner(l.vatMinor)}</merverdiavgift>` +
-        `</mvaLinje>`,
-    )
+export function buildMvaMeldingXml(report: VatReport, opts: MvaMeldingOptions): string {
+  if (!/^\d{9}$/.test(opts.orgNumber)) {
+    throw new MaskinportenError('Organisasjonsnummer (9 sifre) mangler på virksomheten — kreves i mva-meldingen.');
+  }
+  const reference = opts.reference ?? `Reknaren-${report.fromDate}-${report.toDate}`;
+  let fastsattKroner = 0n;
+  const spesifikasjonslinjer = report.lines
+    .map((l) => {
+      const vatKr = roundToKroner(l.vatMinor);
+      const baseKr = roundToKroner(l.baseMinor);
+      fastsattKroner += vatKr;
+      const parts = [`<mvaKode>${escapeXml(l.mvaMeldingCode)}</mvaKode>`];
+      if (l.name) parts.push(`<mvaKodeRegnskapsystem>${escapeXml(l.name)}</mvaKodeRegnskapsystem>`);
+      if (l.baseMinor !== 0n) {
+        parts.push(`<grunnlag>${baseKr.toString()}</grunnlag>`);
+        // sats utledes av forholdet mva/grunnlag (25/15/12/0). Streng i skjemaet.
+        const sats = baseKr !== 0n ? ((vatKr < 0n ? -vatKr : vatKr) * 100n + (baseKr < 0n ? -baseKr : baseKr) / 2n) / (baseKr < 0n ? -baseKr : baseKr) : 0n;
+        parts.push(`<sats>${sats.toString()}</sats>`);
+      }
+      parts.push(`<merverdiavgift>${vatKr.toString()}</merverdiavgift>`);
+      return `      <mvaSpesifikasjonslinje>${parts.join('')}</mvaSpesifikasjonslinje>`;
+    })
     .join('\n');
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<mvaMeldingDto xmlns="${MVA_NS}">\n` +
-    `  <periode><fra>${report.fromDate}</fra><til>${report.toDate}</til></periode>\n` +
-    `  <mvaLinjer>\n${lines}\n  </mvaLinjer>\n` +
-    `  <sumBetalbar>${minorToKroner(report.netPayableMinor)}</sumBetalbar>\n` +
+    `  <innsending>\n` +
+    `    <regnskapssystemsreferanse>${escapeXml(reference)}</regnskapssystemsreferanse>\n` +
+    `    <regnskapssystem><systemnavn>Reknaren</systemnavn><systemversjon>${escapeXml(opts.systemVersion ?? '1.0')}</systemversjon></regnskapssystem>\n` +
+    `  </innsending>\n` +
+    `  <skattegrunnlagOgBeregnetSkatt>\n` +
+    `    <skattleggingsperiode>${periodeElement(report.fromDate)}</skattleggingsperiode>\n` +
+    `    <fastsattMerverdiavgift>${fastsattKroner.toString()}</fastsattMerverdiavgift>\n` +
+    `${spesifikasjonslinjer}\n` +
+    `  </skattegrunnlagOgBeregnetSkatt>\n` +
+    `  <betalingsinformasjon/>\n` +
+    `  <skattepliktig><organisasjonsnummer>${opts.orgNumber}</organisasjonsnummer></skattepliktig>\n` +
+    `  <meldingskategori>alminnelig</meldingskategori>\n` +
     `</mvaMeldingDto>`
   );
 }
@@ -173,9 +213,9 @@ export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
     return this.maskinporten.env;
   }
 
-  async validate(report: VatReport): Promise<VatValidationResult> {
+  async validate(report: VatReport, options: { orgNumber: string }): Promise<VatValidationResult> {
     const token = await this.token(); // kaster MaskinportenAuthError uten legitimasjon
-    const xml = buildMvaMeldingXml(report);
+    const xml = buildMvaMeldingXml(report, options);
     const res = await this.call(
       `${this.ep.validateBase}/api/mva/grensesnittstoette/mva-melding/valider`,
       {
@@ -227,7 +267,7 @@ export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
     const upMelding = await this.call(`${instanceUrl}/data?dataType=mvamelding`, {
       method: 'POST',
       headers: { ...auth, 'content-type': 'application/xml' },
-      body: buildMvaMeldingXml(report),
+      body: buildMvaMeldingXml(report, options),
     });
     if (!upMelding.ok) throw new MaskinportenError(`Opplasting av mva-melding feilet (${upMelding.status}).`);
 
@@ -308,7 +348,7 @@ export class StubVatSubmission implements VatSubmissionPort {
     this.env = opts.env ?? 'test';
   }
 
-  async validate(_report: VatReport): Promise<VatValidationResult> {
+  async validate(_report: VatReport, _options: { orgNumber: string }): Promise<VatValidationResult> {
     if (!this.active) throw new MaskinportenAuthError('Stub uten Maskinporten-legitimasjon.');
     return this.result;
   }

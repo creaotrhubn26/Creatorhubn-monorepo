@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   MaskinportenAuthError,
   MaskinportenClient,
@@ -28,6 +32,8 @@ const report: VatReport = {
   warnings: [],
 };
 
+const OPTS = { orgNumber: '910023764' };
+
 function fakeFetch(responder: (url: string, method: string, body?: string) => { status: number; body?: unknown; text?: string }) {
   const calls: Array<{ url: string; method: string; body: string | undefined; headers: Record<string, string> }> = [];
   const impl = async (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
@@ -47,19 +53,46 @@ function fakeFetch(responder: (url: string, method: string, body?: string) => { 
 }
 
 describe('buildMvaMeldingXml', () => {
-  it('bygger konvolutt i riktig namespace med eksakt kronebeløp (øre uten flyttall)', () => {
-    const xml = buildMvaMeldingXml(report);
+  it('bygger mva-melding i riktig namespace, hele kroner, med periode/kode/skattepliktig', () => {
+    const xml = buildMvaMeldingXml(report, OPTS);
     expect(xml).toContain('xmlns="no:skatteetaten:fastsetting:avgift:mva:skattemeldingformerverdiavgift:v1.0"');
-    expect(xml).toContain('<fra>2026-01-01</fra>');
-    expect(xml).toContain('<mvaLinje kode="3">');
-    expect(xml).toContain('<grunnlag>1000.00</grunnlag>'); // 100000 øre
-    expect(xml).toContain('<merverdiavgift>250.00</merverdiavgift>'); // 25000 øre
-    expect(xml).toContain('<sumBetalbar>150.00</sumBetalbar>'); // 15000 øre
+    expect(xml).toContain('<skattleggingsperiodeToMaaneder>januar-februar</skattleggingsperiodeToMaaneder>');
+    expect(xml).toContain('<aar>2026</aar>');
+    expect(xml).toContain('<mvaKode>3</mvaKode>');
+    expect(xml).toContain('<grunnlag>1000</grunnlag>'); // 100000 øre → hele kroner
+    expect(xml).toContain('<sats>25</sats>'); // 250/1000
+    expect(xml).toContain('<merverdiavgift>250</merverdiavgift>'); // 25000 øre
+    expect(xml).toContain('<fastsattMerverdiavgift>350</fastsattMerverdiavgift>'); // 250 + 100
+    expect(xml).toContain('<organisasjonsnummer>910023764</organisasjonsnummer>');
+    expect(xml).toContain('<meldingskategori>alminnelig</meldingskategori>');
   });
 
-  it('formaterer negative beløp (til gode) med fortegn', () => {
-    const credit = buildMvaMeldingXml({ ...report, netPayableMinor: -15005n });
-    expect(credit).toContain('<sumBetalbar>-150.05</sumBetalbar>');
+  it('formaterer negative beløp (til gode) med fortegn i hele kroner', () => {
+    const credit = buildMvaMeldingXml(
+      { ...report, lines: [{ vatCode: '1', name: 'Inngående', mvaMeldingCode: '1', baseMinor: 0n, vatMinor: -2500n }] },
+      OPTS,
+    );
+    expect(credit).toContain('<merverdiavgift>-25</merverdiavgift>');
+    expect(credit).toContain('<fastsattMerverdiavgift>-25</fastsattMerverdiavgift>');
+    expect(credit).not.toContain('<grunnlag>'); // base 0 → ingen grunnlag/sats
+  });
+
+  it('krever gyldig organisasjonsnummer (9 sifre)', () => {
+    expect(() => buildMvaMeldingXml(report, { orgNumber: '123' })).toThrow();
+  });
+
+  it('validerer mot Skatteetatens offisielle XSD (xmllint)', () => {
+    const xml = buildMvaMeldingXml(report, OPTS);
+    const dir = mkdtempSync(join(tmpdir(), 'mva-'));
+    const file = join(dir, 'mva-melding.xml');
+    writeFileSync(file, xml, 'utf8');
+    execFileSync('xmllint', ['--noout', file]); // velformet
+    execFileSync('xmllint', [
+      '--noout',
+      '--schema',
+      join(process.cwd(), 'vendor/mva/skattemeldingformerverdiavgift.v1.0.xsd'),
+      file,
+    ]); // kaster ved skjemabrudd
   });
 });
 
@@ -68,7 +101,7 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
     const { impl, calls } = fakeFetch(() => ({ status: 200, body: {} }));
     const client = new SkatteetatenVatSubmissionClient(new MaskinportenClient(undefined), impl);
     expect(client.active).toBe(false);
-    await expect(client.validate(report)).rejects.toBeInstanceOf(MaskinportenAuthError);
+    await expect(client.validate(report, OPTS)).rejects.toBeInstanceOf(MaskinportenAuthError);
     expect(calls).toHaveLength(0);
   });
 
@@ -79,7 +112,7 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
       return { status: 200, body: { messages: [] } };
     });
     const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), validateFetch.impl);
-    const res = await client.validate(report);
+    const res = await client.validate(report, OPTS);
     expect(res.valid).toBe(true);
     expect(validateFetch.calls[0]!.headers['authorization']).toBe('Bearer stub-access-token');
     expect(validateFetch.calls[0]!.headers['content-type']).toBe('application/xml');
@@ -89,7 +122,7 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
   it('valideringsavvik gir valid=false med meldinger', async () => {
     const validateFetch = fakeFetch(() => ({ status: 200, body: { valideringsfeil: ['Ugyldig periode'] } }));
     const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), validateFetch.impl);
-    const res = await client.validate(report);
+    const res = await client.validate(report, OPTS);
     expect(res.valid).toBe(false);
     expect(res.messages).toContain('Ugyldig periode');
   });
@@ -132,13 +165,13 @@ describe('StubVatSubmission', () => {
       { valid: true, messages: [], raw: null },
       { reference: 'ALTINN-1', status: 'submitted', submittedAt: '2026-03-01T00:00:00.000Z' },
     );
-    expect((await stub.validate(report)).valid).toBe(true);
+    expect((await stub.validate(report, OPTS)).valid).toBe(true);
     expect((await stub.submit(report, { orgNumber: '910023764' })).reference).toBe('ALTINN-1');
   });
 
   it('inaktiv stub kaster på validate/submit', async () => {
     const stub = new StubVatSubmission(undefined, null, { active: false });
     expect(stub.active).toBe(false);
-    await expect(stub.validate(report)).rejects.toBeInstanceOf(MaskinportenAuthError);
+    await expect(stub.validate(report, OPTS)).rejects.toBeInstanceOf(MaskinportenAuthError);
   });
 });

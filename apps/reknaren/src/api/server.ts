@@ -1744,7 +1744,12 @@ export function createApiServer(deps: ApiDeps): express.Express {
           .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
           .parse(req.query);
         const report = await buildVatReport(deps.db, req.params.orgId!, q.from, q.to);
-        const xml = buildMvaMeldingXml(report);
+        const orgNumber = (await deps.db.query(`SELECT org_number FROM organizations WHERE id = $1`, [req.params.orgId])).rows[0]?.org_number as string | undefined;
+        if (!orgNumber || !/^\d{9}$/.test(orgNumber)) {
+          res.status(400).json({ error: { code: 'ORG_NUMBER_MISSING', message: 'Virksomheten mangler et gyldig organisasjonsnummer (9 sifre) — kreves i mva-meldingen. Fyll inn under Virksomhet.' } });
+          return;
+        }
+        const xml = buildMvaMeldingXml(report, { orgNumber });
         res.setHeader('Content-Disposition', `attachment; filename="mva-melding_${q.from}_${q.to}.xml"`);
         res.type('application/xml').send(xml);
       } catch (err) {
@@ -1773,7 +1778,12 @@ export function createApiServer(deps: ApiDeps): express.Express {
           .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
           .parse(req.body);
         const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
-        const result = await deps.vatSubmission.validate(report);
+        const orgNumber = (await deps.db.query(`SELECT org_number FROM organizations WHERE id = $1`, [req.params.orgId])).rows[0]?.org_number as string | undefined;
+        if (!orgNumber || !/^\d{9}$/.test(orgNumber)) {
+          res.status(400).json({ error: { code: 'ORG_NUMBER_MISSING', message: 'Virksomheten mangler et gyldig organisasjonsnummer (9 sifre) — kreves i mva-meldingen.' } });
+          return;
+        }
+        const result = await deps.vatSubmission.validate(report, { orgNumber });
         res.json(toJson(result));
       } catch (err) {
         next(err);
