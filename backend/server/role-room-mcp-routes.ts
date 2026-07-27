@@ -34,8 +34,10 @@ interface JsonRpcReq { jsonrpc?: string; id?: string | number | null; method?: s
 const rpcOk = (id: unknown, result: unknown) => ({ jsonrpc: "2.0", id: id ?? null, result });
 const rpcErr = (id: unknown, code: number, message: string, data?: unknown) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message, ...(data ? { data } : {}) } });
 
-const toolDef = (c: { name: string; description: string; inputSchema: Record<string, unknown> }) => ({
+const toolDef = (c: { name: string; description: string; inputSchema: Record<string, unknown>; mutates?: boolean }) => ({
   name: c.name, description: c.description, inputSchema: c.inputSchema,
+  // Utkast-verktøy skriver, men er ikke destruktive (upublisert utkast).
+  annotations: { readOnlyHint: !c.mutates, destructiveHint: false },
 });
 
 export function createRoleRoomMcpRouter(pool: Pool): ExpressRouter {

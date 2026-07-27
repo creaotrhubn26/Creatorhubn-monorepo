@@ -46,6 +46,7 @@ export interface McpCapability {
   scope: string;                 // v1-scope som kreves (f.eks. projects.read)
   modes: RoleRoomMode[] | "*";    // hvilke moduser verktøyet hører til (katalog/filter)
   projectScoped: boolean;         // krever projectId + eier/medlem-sjekk
+  mutates?: boolean;              // true = skriver (utkast). Default read-only → readOnlyHint.
   inputSchema: Record<string, unknown>;
   handler: (pool: Pool, ctx: McpCallContext, args: Record<string, unknown>) => Promise<unknown>;
 }
@@ -486,6 +487,57 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
         `SELECT id, display_name, styles, contract_kind, hours_logged FROM dance_instructor
           WHERE owner_user_id = $1 ORDER BY display_name LIMIT 300`, [ctx.userId]);
       return { instructors: r.rows };
+    },
+  },
+
+  // ── Fase 2: UTKAST-verktøy (skriver, men KUN upubliserte utkast som en
+  // produsent må godkjenne/publisere i UI). Aldri auto-utsendelse utad. ──────
+  {
+    name: "rr_draft_task",
+    description: "Opprett en UTKASTS-oppgave i prosjektets planlegger (tidslinje). Utkastet er upublisert (status=draft) og må godkjennes/publiseres av en produsent i UI-et — det sender ingenting utad. Krever projects.write.",
+    scope: "projects.write", modes: PROD_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      title: STR("Oppgavens tittel"),
+      description: STR("Valgfri beskrivelse"),
+      phase: { type: "string", description: "Fase: pre | production | post (default production)" },
+    }, ["projectId", "title"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const phase = typeof args.phase === "string" && args.phase.trim() ? args.phase.trim() : "production";
+      const description = typeof args.description === "string" ? args.description.trim() : null;
+      const ins = await pool.query(
+        `INSERT INTO role_room_phase_timeline_items (id, project_id, phase, title, description, status, created_by, metadata)
+         VALUES (gen_random_uuid(), $1,$2,$3,$4,'draft',$5,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
+        [projectId, phase, title, description, ctx.userId]);
+      return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — publiseres/godkjennes i Role Room-UI." };
+    },
+  },
+  {
+    name: "rr_draft_budget_item",
+    description: "Opprett en UTKASTS-budsjettlinje på et prosjekt (upublisert, status=draft — må godkjennes/publiseres i UI). Sender ingenting utad. Krever projects.write.",
+    scope: "projects.write", modes: PROD_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      itemName: STR("Budsjettlinjens navn"),
+      category: STR("Kategori (f.eks. utstyr, lønn, reise)"),
+      estimate: { type: "number", description: "Estimert beløp" },
+      phase: { type: "string", description: "Fase: pre | production | post (default production)" },
+    }, ["projectId", "itemName", "category"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const itemName = typeof args.itemName === "string" ? args.itemName.trim() : "";
+      const category = typeof args.category === "string" ? args.category.trim() : "";
+      if (!itemName || !category) throw new McpToolError(-32602, "itemName og category er påkrevd.");
+      const phase = typeof args.phase === "string" && args.phase.trim() ? args.phase.trim() : "production";
+      const estimate = Number.isFinite(Number(args.estimate)) ? Number(args.estimate) : 0;
+      const ins = await pool.query(
+        `INSERT INTO role_room_budget_items (id, project_id, phase, category, item_name, estimate, status, created_by, metadata)
+         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,'draft',$6,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
+        [projectId, phase, category, itemName, estimate, ctx.userId]);
+      return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — publiseres/godkjennes i Role Room-UI." };
     },
   },
 ];

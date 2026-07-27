@@ -20,11 +20,17 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   it("uten projects.read → ingen verktøy", () => {
     expect(listCapabilitiesFor([])).toHaveLength(0);
   });
-  it("med projects.read → alle lese-verktøy", () => {
-    expect(listCapabilitiesFor(["projects.read"]).length).toBe(ROLE_ROOM_CAPABILITIES.length);
+  it("med projects.read → alle lese-verktøy (ikke utkast/skriv)", () => {
+    const readOnly = ROLE_ROOM_CAPABILITIES.filter((c) => c.scope === "projects.read");
+    expect(listCapabilitiesFor(["projects.read"]).length).toBe(readOnly.length);
+    expect(listCapabilitiesFor(["projects.read"]).map((c) => c.name)).not.toContain("rr_draft_task");
   });
-  it("admin arver projects.read (scope-hierarki)", () => {
+  it("admin arver alt inkl. skrive-verktøy (scope-hierarki)", () => {
     expect(listCapabilitiesFor(["admin"]).length).toBe(ROLE_ROOM_CAPABILITIES.length);
+  });
+  it("projects.write ser BÅDE lese- og utkast-verktøy", () => {
+    const names = listCapabilitiesFor(["projects.write"]).map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(["rr_list_projects", "rr_draft_task", "rr_draft_budget_item"]));
   });
   it("modus-filter «education» → kun utdannings-verktøy + globale (*)", () => {
     const names = listCapabilitiesFor(["projects.read"], "education").map((c) => c.name);
@@ -88,5 +94,25 @@ describe("rr_list_students (eier-sjekk på kull)", () => {
     const pool = makePool([{ match: /role_room_education_cohorts WHERE id = \$1 AND owner_user_id/, rows: [] }]);
     const cap = findCapability("rr_list_students")!;
     await expect(cap.handler(pool, CTX, { cohortId: "c1" })).rejects.toMatchObject({ code: -32004 });
+  });
+});
+
+describe("Fase 2 utkast-verktøy (skriver kun upubliserte utkast)", () => {
+  const WRITE_CTX: McpCallContext = { userId: "u1", scopes: ["projects.write"], apiKeyId: "k1" };
+  it("rr_draft_task er merket mutates (→ readOnlyHint false)", () => {
+    expect(findCapability("rr_draft_task")!.mutates).toBe(true);
+    expect(findCapability("rr_list_projects")!.mutates).toBeFalsy();
+  });
+  it("rr_draft_task uten title → -32602", async () => {
+    const pool = makePool([{ match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] }]);
+    await expect(findCapability("rr_draft_task")!.handler(pool, WRITE_CTX, { projectId: "p1" })).rejects.toMatchObject({ code: -32602 });
+  });
+  it("rr_draft_task oppretter draft (status=draft, RETURNING id)", async () => {
+    const pool = makePool([
+      { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] },
+      { match: /INSERT INTO role_room_phase_timeline_items/, rows: [{ id: "new-id" }] },
+    ]);
+    const out = await findCapability("rr_draft_task")!.handler(pool, WRITE_CTX, { projectId: "p1", title: "Oppgave" }) as { status: string; id: string };
+    expect(out).toMatchObject({ status: "draft", id: "new-id" });
   });
 });
