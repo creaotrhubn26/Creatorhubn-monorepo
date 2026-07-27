@@ -9,6 +9,7 @@ struct NotesView: View {
     @State private var query = ""
     @State private var editing: FieldNote?
     @State private var creating = false
+    @State private var showVisionTools = false
 
     private var results: [FieldNote] { store.search(query) }
 
@@ -50,9 +51,19 @@ struct NotesView: View {
         .navigationTitle("Notater")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if #available(iOS 18, *) {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button { showVisionTools = true } label: {
+                        Label("Vision-verktøy", systemImage: "text.viewfinder")
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { creating = true } label: { Image(systemName: "square.and.pencil") }
             }
+        }
+        .sheet(isPresented: $showVisionTools) {
+            if #available(iOS 18, *) { VisionToolsView() }
         }
         .sheet(item: $editing) { note in
             NoteEditorView(note: note) { store.update($0) } onDelete: { store.delete($0) }
