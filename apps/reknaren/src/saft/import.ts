@@ -12,7 +12,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { moneyFromDecimalString } from '../shared/money.js';
 import type { Db } from '../db/pool.js';
 import type { Actor } from '../audit/audit.js';
-import { postJournalEntry } from '../ledger/engine.js';
+import { postJournalEntry, type JournalLineInput } from '../ledger/engine.js';
 import { getAccountDef, type AccountType } from '../coa/accounts.js';
 import { newId } from '../shared/ids.js';
 import { ValidationError } from '../shared/errors.js';
@@ -69,6 +69,20 @@ function toMinor(value: unknown): bigint {
 /** Sluttsaldo = debet − kredit (SAF-T oppgir dem som separate elementer). */
 function closingOf(node: any): bigint {
   return toMinor(node?.ClosingDebitBalance) - toMinor(node?.ClosingCreditBalance);
+}
+
+/** Inngående balanse = debet − kredit. */
+function openingOf(node: any): bigint {
+  return toMinor(node?.OpeningDebitBalance) - toMinor(node?.OpeningCreditBalance);
+}
+
+function saftParser(): XMLParser {
+  return new XMLParser({ ignoreAttributes: true, removeNSPrefix: true, parseTagValue: false, trimValues: true });
+}
+
+function addDaysIso(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
 function str(v: unknown): string | null {
@@ -238,5 +252,264 @@ export async function importSaftOpeningBalance(
     customersCreated,
     suppliersCreated,
     openingLines: lines.length,
+  };
+}
+
+// ── Full transaksjons-replay fra SAF-T ───────────────────────────────────────
+//
+// Åpningsbalanse-importen over gir bare netto-saldoer. Denne spiller av HVER
+// enkelt bokføring (GeneralLedgerEntries) som en egen postering i Reknaren, med
+// dato, tekst og reskontro-kobling bevart — så hele historikken faktisk finnes
+// i hovedboken (grunnlaget for læring, faste utgifter, avstemming osv.).
+// Idempotent på Fikens SystemID → trygt å kjøre flere filer/år etter hverandre.
+
+export interface SaftTxnLine {
+  accountNumber: string; // basiskonto (før evt. «:sub»)
+  debitMinor: bigint;
+  creditMinor: bigint;
+  supplierRef: string | null; // Fikens interne SupplierID
+  customerRef: string | null; // Fikens interne CustomerID
+  description: string | null;
+}
+export interface SaftTransaction {
+  id: string; // SystemID (globalt unikt hos Fiken) → idempotensnøkkel
+  date: string;
+  description: string | null;
+  lines: SaftTxnLine[];
+  balanced: boolean;
+}
+export interface SaftPartyRef {
+  internalId: string;
+  name: string;
+  orgNumber: string | null;
+}
+export interface SaftTransactionsPreview {
+  periodStart: string | null;
+  periodEnd: string | null;
+  openingByAccount: { number: string; name: string; openingMinor: bigint }[];
+  suppliers: SaftPartyRef[];
+  customers: SaftPartyRef[];
+  transactions: SaftTransaction[];
+  transactionCount: number;
+  lineCount: number;
+  unbalancedCount: number;
+}
+
+/** Parser GeneralLedgerEntries til enkelt-transaksjoner (ren lesing). */
+export function parseSaftTransactions(xml: string): SaftTransactionsPreview {
+  if (!xml || !xml.includes('AuditFile')) throw new SaftParseError('Fant ikke <AuditFile> — er dette en SAF-T-fil?');
+  let doc: any;
+  try {
+    doc = saftParser().parse(xml);
+  } catch (e) {
+    throw new SaftParseError('Klarte ikke å lese XML-fila: ' + (e as Error).message);
+  }
+  const audit = doc?.AuditFile;
+  if (!audit) throw new SaftParseError('Fant ikke <AuditFile> — er dette en SAF-T-fil?');
+  const master = audit.MasterFiles ?? {};
+
+  const openingByAccount = toArray<any>(master.GeneralLedgerAccounts?.Account)
+    .map((a) => ({ number: String(a.AccountID ?? '').trim(), name: String(a.AccountDescription ?? a.AccountID ?? '').trim(), openingMinor: openingOf(a) }))
+    .filter((a) => a.number);
+
+  const partyRefs = (nodes: any[], idKey: string): SaftPartyRef[] =>
+    nodes
+      .map((n) => ({ internalId: str(n[idKey]) ?? '', name: String(n.Name ?? '').trim(), orgNumber: str(n.RegistrationNumber) }))
+      .filter((p) => p.internalId && p.name);
+  const suppliers = partyRefs(toArray<any>(master.Suppliers?.Supplier), 'SupplierID');
+  const customers = partyRefs(toArray<any>(master.Customers?.Customer), 'CustomerID');
+
+  const transactions: SaftTransaction[] = [];
+  let lineCount = 0;
+  let unbalancedCount = 0;
+  for (const j of toArray<any>(audit.GeneralLedgerEntries?.Journal)) {
+    for (const t of toArray<any>(j.Transaction)) {
+      const id = str(t.SystemID) ?? str(t.TransactionID);
+      const date = str(t.TransactionDate) ?? str(t.GLPostingDate);
+      if (!id || !date) continue;
+      const lines: SaftTxnLine[] = [];
+      for (const l of toArray<any>(t.Line)) {
+        const rawAcc = String(l.AccountID ?? '').trim();
+        if (!rawAcc) continue;
+        const accountNumber = (rawAcc.split(':')[0] ?? rawAcc).trim();
+        const debitMinor = toMinor(l.DebitAmount?.Amount);
+        const creditMinor = toMinor(l.CreditAmount?.Amount);
+        if (debitMinor === 0n && creditMinor === 0n) continue;
+        lines.push({ accountNumber, debitMinor, creditMinor, supplierRef: str(l.SupplierID), customerRef: str(l.CustomerID), description: str(l.Description) });
+      }
+      if (lines.length < 2) continue;
+      const dr = lines.reduce((s, l) => s + l.debitMinor, 0n);
+      const cr = lines.reduce((s, l) => s + l.creditMinor, 0n);
+      const balanced = dr === cr;
+      if (!balanced) unbalancedCount++;
+      lineCount += lines.length;
+      transactions.push({ id, date, description: str(t.Description), lines, balanced });
+    }
+  }
+  // Deterministisk kronologisk avspilling (dato, så id).
+  transactions.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  const header = audit.Header ?? {};
+  const sel = header.SelectionCriteria ?? {};
+  return {
+    periodStart: str(sel.SelectionStartDate ?? sel.PeriodStart),
+    periodEnd: str(sel.SelectionEndDate ?? sel.PeriodEnd),
+    openingByAccount,
+    suppliers,
+    customers,
+    transactions,
+    transactionCount: transactions.length,
+    lineCount,
+    unbalancedCount,
+  };
+}
+
+export interface SaftReplayResult {
+  periodStart: string | null;
+  periodEnd: string | null;
+  openingEntryNumber: number | null;
+  accountsEnsured: number;
+  suppliersCreated: number;
+  customersCreated: number;
+  transactionsPosted: number;
+  transactionsSkipped: number;
+  linesPosted: number;
+  unbalanced: string[]; // SystemID-er som ikke balanserte (hoppet over)
+}
+
+async function ensurePartyMap(
+  db: Db,
+  table: 'vendors' | 'customers',
+  org: string,
+  userId: string,
+  parties: SaftPartyRef[],
+): Promise<{ map: Map<string, string>; created: number }> {
+  const map = new Map<string, string>();
+  let created = 0;
+  for (const p of parties) {
+    const ins = await db.query(
+      `INSERT INTO ${table} (id, organization_id, name, org_number, created_by)
+       SELECT $1,$2,$3,$4,$5
+       WHERE NOT EXISTS (
+         SELECT 1 FROM ${table}
+         WHERE organization_id=$2 AND (
+           ($4 <> '' AND org_number=$4) OR (($4 = '' OR $4 IS NULL) AND lower(name)=lower($3))
+         )
+       )`,
+      [newId(), org, p.name, p.orgNumber ?? '', userId],
+    );
+    if (ins.rowCount) created++;
+    const row = (
+      await db.query(
+        `SELECT id::text AS id FROM ${table}
+         WHERE organization_id=$1 AND (($2 <> '' AND org_number=$2) OR lower(name)=lower($3))
+         ORDER BY (org_number=$2) DESC LIMIT 1`,
+        [org, p.orgNumber ?? '', p.name],
+      )
+    ).rows[0];
+    if (row) map.set(p.internalId, row.id);
+  }
+  return { map, created };
+}
+
+/**
+ * Spiller av alle enkelt-transaksjoner fra en SAF-T-fil inn i hovedboken.
+ * `includeOpening` fører i tillegg inngående balanse (kun for det TIDLIGSTE
+ * året — for påfølgende år er inngående = utgående fra forrige avspilling).
+ * Idempotent: hver postering nøkles på Fikens SystemID, hver konto/part på
+ * eksistens — trygt å kjøre om igjen og å kjøre flere år etter hverandre.
+ */
+export async function replaySaftTransactions(
+  db: Db,
+  params: { organizationId: string; actor: Actor; xml: string; includeOpening: boolean },
+): Promise<SaftReplayResult> {
+  const parsed = parseSaftTransactions(params.xml);
+  const org = params.organizationId;
+
+  // 1) Sikre alle kontoer (balanse-listen + evt. kontoer som bare finnes i linjer).
+  const accountNames = new Map<string, string>();
+  for (const a of parsed.openingByAccount) accountNames.set(a.number, a.name || a.number);
+  for (const t of parsed.transactions) for (const l of t.lines) if (!accountNames.has(l.accountNumber)) accountNames.set(l.accountNumber, l.accountNumber);
+  let accountsEnsured = 0;
+  for (const [number, name] of accountNames) {
+    const r = await db.query(
+      `INSERT INTO ledger_accounts (id, organization_id, account_number, name, account_type)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (organization_id, account_number) DO NOTHING`,
+      [newId(), org, number, name, deriveAccountType(number)],
+    );
+    if (r.rowCount) accountsEnsured++;
+  }
+
+  // 2) Sikre parter + bygg intern-id → rad-id-kart for reskontro-kobling.
+  const sup = await ensurePartyMap(db, 'vendors', org, params.actor.userId, parsed.suppliers);
+  const cus = await ensurePartyMap(db, 'customers', org, params.actor.userId, parsed.customers);
+
+  // 3) Inngående balanse (valgfritt, kun tidligste år).
+  let openingEntryNumber: number | null = null;
+  if (params.includeOpening) {
+    const openLines: JournalLineInput[] = parsed.openingByAccount
+      .filter((a) => a.openingMinor !== 0n)
+      .map((a) => (a.openingMinor > 0n ? { accountNumber: a.number, debitMinor: a.openingMinor } : { accountNumber: a.number, creditMinor: -a.openingMinor }));
+    const dr = openLines.reduce((s, l) => s + (l.debitMinor ?? 0n), 0n);
+    const cr = openLines.reduce((s, l) => s + (l.creditMinor ?? 0n), 0n);
+    if (openLines.length >= 2 && dr === cr) {
+      const openDate = parsed.periodStart ? addDaysIso(parsed.periodStart, -1) : '1970-01-01';
+      const e = await postJournalEntry(db, {
+        organizationId: org,
+        actor: params.actor,
+        entryDate: openDate,
+        description: `Inngående balanse importert fra SAF-T (${parsed.periodStart ?? ''})`.trim(),
+        idempotencyKey: `saft-replay-open:${parsed.periodStart ?? 'na'}`,
+        lines: openLines,
+      });
+      openingEntryNumber = e.entryNumber;
+    }
+  }
+
+  // 4) Spill av hver transaksjon (kronologisk). Ubalanserte hoppes over og rapporteres.
+  let transactionsPosted = 0;
+  let transactionsSkipped = 0;
+  let linesPosted = 0;
+  const unbalanced: string[] = [];
+  for (const t of parsed.transactions) {
+    if (!t.balanced) {
+      unbalanced.push(t.id);
+      transactionsSkipped++;
+      continue;
+    }
+    const lines: JournalLineInput[] = t.lines.map((l) => {
+      const line: JournalLineInput = { accountNumber: l.accountNumber };
+      if (l.debitMinor > 0n) line.debitMinor = l.debitMinor;
+      if (l.creditMinor > 0n) line.creditMinor = l.creditMinor;
+      if (l.description) line.description = l.description;
+      const vid = l.supplierRef ? sup.map.get(l.supplierRef) : undefined;
+      const cid = l.customerRef ? cus.map.get(l.customerRef) : undefined;
+      if (vid) line.vendorId = vid;
+      if (cid) line.customerId = cid;
+      return line;
+    });
+    await postJournalEntry(db, {
+      organizationId: org,
+      actor: params.actor,
+      entryDate: t.date,
+      description: t.description ?? `SAF-T ${t.id}`,
+      idempotencyKey: `saft-txn:${t.id}`,
+      lines,
+    });
+    transactionsPosted++;
+    linesPosted += lines.length;
+  }
+
+  return {
+    periodStart: parsed.periodStart,
+    periodEnd: parsed.periodEnd,
+    openingEntryNumber,
+    accountsEnsured,
+    suppliersCreated: sup.created,
+    customersCreated: cus.created,
+    transactionsPosted,
+    transactionsSkipped,
+    linesPosted,
+    unbalanced,
   };
 }

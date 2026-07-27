@@ -2061,6 +2061,28 @@ interface SaftPreview {
   suppliers: SaftParty[];
 }
 
+interface ReplayPreview {
+  periodStart: string | null;
+  periodEnd: string | null;
+  transactionCount: number;
+  lineCount: number;
+  unbalancedCount: number;
+  suppliers: number;
+  customers: number;
+}
+interface ReplayResult {
+  periodStart: string | null;
+  periodEnd: string | null;
+  openingEntryNumber: number | null;
+  accountsEnsured: number;
+  suppliersCreated: number;
+  customersCreated: number;
+  transactionsPosted: number;
+  transactionsSkipped: number;
+  linesPosted: number;
+  unbalanced: string[];
+}
+
 export function SaftImportScreen({ orgId }: { orgId: string }) {
   const [preview, setPreview] = useState<SaftPreview | null>(null);
   const [xml, setXml] = useState<string | null>(null);
@@ -2069,6 +2091,9 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
   const [imported, setImported] = useState<{ entryNumber: number; accountsEnsured: number; customersCreated: number; suppliersCreated: number; openingLines: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [replayPreview, setReplayPreview] = useState<ReplayPreview | null>(null);
+  const [includeOpening, setIncludeOpening] = useState(true);
+  const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
   const toast = useToast();
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -2079,12 +2104,18 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
     setError(null);
     setPreview(null);
     setImported(null);
+    setReplayPreview(null);
+    setReplayResult(null);
     try {
       const content = await f.text();
       const p = await api<SaftPreview>('POST', `/api/organizations/${orgId}/saft-import/preview`, { xml: content });
       setPreview(p);
       setXml(content);
       if (p.periodEnd) setAsOfDate(p.periodEnd);
+      try {
+        const rp = await api<ReplayPreview>('POST', `/api/organizations/${orgId}/saft-import/replay/preview`, { xml: content });
+        setReplayPreview(rp);
+      } catch { /* replay-forhåndsvisning er valgfri */ }
       toast('Fila ble lest ✓', 'ok');
     } catch (err) {
       setError((err as Error).message);
@@ -2107,6 +2138,27 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
       });
       setImported(res);
       toast(`Åpningsbalanse bokført som bilag nr. ${res.entryNumber} ✓`, 'ok');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const replayAll = async () => {
+    if (!xml) return;
+    if (!window.confirm(
+      `Spille av HELE transaksjonshistorikken for ${replayPreview?.periodStart ?? ''}–${replayPreview?.periodEnd ?? ''}? ` +
+      `${replayPreview?.transactionCount ?? ''} posteringer føres inn i hovedboken.` +
+      (includeOpening ? ' Inngående balanse føres også (bruk kun for det tidligste året).' : '') +
+      ' Trygt å kjøre om igjen — hver postering føres nøyaktig én gang.',
+    )) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<ReplayResult>('POST', `/api/organizations/${orgId}/saft-import/replay`, { xml, includeOpening });
+      setReplayResult(res);
+      toast(`${res.transactionsPosted} posteringer spilt av ✓`, 'ok');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -2200,6 +2252,50 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
                     </button>
                   </div>
                 </div>
+              </div>
+            )
+          )}
+
+          {replayPreview && replayPreview.transactionCount > 0 && (
+            replayResult ? (
+              <div className="panel threshold-panel ok">
+                <div className="threshold-head">
+                  <h2>Transaksjonshistorikk spilt av ✓</h2>
+                  <span className="badge ok">{replayResult.transactionsPosted} posteringer</span>
+                </div>
+                <p className="subtitle">
+                  {replayResult.linesPosted} linjer ført · {replayResult.accountsEnsured} nye kontoer ·{' '}
+                  {replayResult.suppliersCreated} leverandører · {replayResult.customersCreated} kunder
+                  {replayResult.openingEntryNumber ? ` · inngående balanse som bilag nr. ${replayResult.openingEntryNumber}` : ''}
+                  {replayResult.transactionsSkipped > 0 ? ` · ${replayResult.transactionsSkipped} hoppet over (ubalanserte)` : ''}.
+                  Hele historikken finnes nå i hovedboken — grunnlaget for læring, faste utgifter og avstemming.
+                </p>
+                {replayResult.unbalanced.length > 0 && (
+                  <p className="hint">Ubalanserte (ikke ført): {replayResult.unbalanced.slice(0, 20).join(', ')}{replayResult.unbalanced.length > 20 ? ' …' : ''}</p>
+                )}
+              </div>
+            ) : (
+              <div className="panel">
+                <h2>4. Full transaksjons-import (hele historikken)</h2>
+                <p className="subtitle">
+                  I stedet for bare én åpningssaldo kan du spille av <b>hver enkelt bokføring</b> fra fila inn i
+                  hovedboken — med dato, tekst og leverandør/kunde bevart. Da får Reknaren den faktiske historikken
+                  (som driver læring, faste utgifter og avstemming), ikke bare nettosaldoene.
+                </p>
+                <div className="cards">
+                  <div className="card"><div className="label">Posteringer</div><div className="value">{replayPreview.transactionCount}</div></div>
+                  <div className="card"><div className="label">Linjer</div><div className="value">{replayPreview.lineCount}</div></div>
+                  <div className="card"><div className="label">Periode</div><div className="value" style={{ fontSize: 15 }}>{replayPreview.periodStart}–{replayPreview.periodEnd}</div></div>
+                  <div className="card"><div className="label">Ubalanserte</div><div className="value">{replayPreview.unbalancedCount}</div></div>
+                </div>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '12px 0' }}>
+                  <input type="checkbox" checked={includeOpening} onChange={(e) => setIncludeOpening(e.target.checked)} style={{ width: 'auto', marginTop: 3 }} />
+                  <span>Før også <b>inngående balanse</b> (start-saldoene). Huk av kun for det <b>tidligste</b> året — for påfølgende år er inngående balanse allerede resultatet av forrige avspilling.</span>
+                </label>
+                <button className="primary" disabled={busy} onClick={replayAll}>
+                  {busy ? 'Spiller av…' : `Spill av ${replayPreview.transactionCount} posteringer`}
+                </button>
+                <p className="hint" style={{ marginTop: 8 }}>Trygt å kjøre om igjen — hver postering føres nøyaktig én gang (idempotent på Fikens transaksjons-ID). Har du flere år, importer eldste fil først.</p>
               </div>
             )
           )}

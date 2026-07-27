@@ -100,7 +100,7 @@ import { bankCategoriesFor, categorizeBankTransaction } from '../bank/categorize
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
-import { parseSaft, importSaftOpeningBalance } from '../saft/import.js';
+import { parseSaft, importSaftOpeningBalance, parseSaftTransactions, replaySaftTransactions } from '../saft/import.js';
 import { newId } from '../shared/ids.js';
 import type { RuleRegister } from '../rules/register.js';
 import type { ObjectStorage } from '../storage/port.js';
@@ -3140,6 +3140,76 @@ export function createApiServer(deps: ApiDeps): express.Express {
             entityType: 'organization',
             entityId: req.params.orgId!,
             newValue: { asOfDate: body.asOfDate, entryNumber: result.entryNumber, lines: result.openingLines },
+          }),
+        );
+        res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Forhåndsvis full transaksjons-replay: antall transaksjoner/linjer + ubalanserte.
+  app.post(
+    '/api/organizations/:orgId/saft-import/replay/preview',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z.object({ xml: z.string().min(1).max(40_000_000) }).parse(req.body);
+        const p = parseSaftTransactions(body.xml);
+        res.json(
+          toJson({
+            periodStart: p.periodStart,
+            periodEnd: p.periodEnd,
+            transactionCount: p.transactionCount,
+            lineCount: p.lineCount,
+            unbalancedCount: p.unbalancedCount,
+            suppliers: p.suppliers.length,
+            customers: p.customers.length,
+          }),
+        );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Full transaksjons-replay: spill av HVER bokføring fra SAF-T inn i hovedboken.
+  // includeOpening=true fører også inngående balanse (bruk kun for tidligste år).
+  // Idempotent på Fikens SystemID → trygt å kjøre flere år etter hverandre / om igjen.
+  app.post(
+    '/api/organizations/:orgId/saft-import/replay',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            xml: z.string().min(1).max(40_000_000),
+            includeOpening: z.boolean().optional(),
+          })
+          .parse(req.body);
+        const result = await replaySaftTransactions(deps.db, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          xml: body.xml,
+          includeOpening: body.includeOpening ?? false,
+        });
+        await withTransaction(deps.db, (client) =>
+          recordAuditEvent(client, {
+            organizationId: req.params.orgId!,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'saft.transactions_replayed',
+            entityType: 'organization',
+            entityId: req.params.orgId!,
+            newValue: {
+              periodStart: result.periodStart,
+              periodEnd: result.periodEnd,
+              posted: result.transactionsPosted,
+              skipped: result.transactionsSkipped,
+              includeOpening: body.includeOpening ?? false,
+            },
           }),
         );
         res.status(201).json(toJson(result));
