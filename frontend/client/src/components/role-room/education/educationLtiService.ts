@@ -139,6 +139,42 @@ export const educationLtiService = {
   },
 
   /**
+   * Canvas-seksjoner i rosteret (FS lager én seksjon per kull). Tom liste =
+   * plattformen leverer ikke seksjonsdata (da brukes vanlig samle-import).
+   */
+  async getSections(launchId: string): Promise<LtiSections> {
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/sections`, {
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return (await res.json()) as LtiSections;
+  },
+
+  /**
+   * Importerer rosteret gruppert per Canvas-seksjon → ett kull PER seksjon.
+   * Idempotent «synk» (gjenbruker kull m/ samme navn). `namePrefix` gir lesbare
+   * kull-navn (f.eks. emnekode); `includeUnsectioned` lager et «Uten seksjon»-kull.
+   */
+  async importBySection(
+    launchId: string,
+    input: { namePrefix?: string; includeUnsectioned?: boolean; nameMap?: Record<string, string> } = {},
+  ): Promise<{ cohorts: ImportedSectionCohort[]; unsectioned: number }> {
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/import-students-by-section`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      throw new Error(body.message || body.error || `HTTP ${res.status}`);
+    }
+    return (await res.json()) as { cohorts: ImportedSectionCohort[]; unsectioned: number };
+  },
+
+  /**
    * Importerer LMS-klasse-rosteret (NRPS) inn i et utdannings-kull. Uten
    * cohortId opprettes et nytt kull (cohortName). Idempotent på e-post = «synk».
    */
@@ -174,6 +210,22 @@ export interface LtiRosterMember {
   email: string | null;
   roles: string[];
   status: string;
+  sections: string[];
+}
+
+export interface LtiSections {
+  sections: { section: string; studentCount: number }[];
+  unsectioned: number;
+  totalStudents: number;
+}
+
+export interface ImportedSectionCohort {
+  cohortId: string;
+  section: string;
+  name: string;
+  added: number;
+  skipped: number;
+  total: number;
 }
 
 export interface ExamReadinessStudent {

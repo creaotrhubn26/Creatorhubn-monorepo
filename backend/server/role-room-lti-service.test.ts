@@ -6,6 +6,7 @@ import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken,
   extractAgs, buildLineItem, buildScore, AGS_SCOPES,
   extractNrps, parseRosterMembers, signDeepLinkingResponse,
+  extractMemberSections, groupStudentsBySection, isStudentRole,
 } from "./role-room-lti-service.js";
 
 const NRPS_CLAIM = "https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice";
@@ -98,6 +99,58 @@ describe("parseRosterMembers (NRPS membership container → medlemmer)", () => {
     expect(parseRosterMembers({ members: [{ name: "Ingen ID" }] })).toEqual([]);
     expect(parseRosterMembers({})).toEqual([]);
     expect(parseRosterMembers(null)).toEqual([]);
+  });
+  it("uten seksjonsdata → sections = []", () => {
+    const m = parseRosterMembers({ members: [{ user_id: "u1", roles: ["...#Learner"] }] });
+    expect(m[0].sections).toEqual([]);
+  });
+});
+
+const LIS = "https://purl.imsglobal.org/spec/lti/claim/lis";
+const CUSTOM = "https://purl.imsglobal.org/spec/lti/claim/custom";
+
+describe("extractMemberSections (Canvas-seksjon per medlem via NRPS message/lis)", () => {
+  it("leser lis.course_section_sourcedid fra member.message[] (rlid-scopet NRPS)", () => {
+    const sections = extractMemberSections({
+      user_id: "u1",
+      message: [{ [LIS]: { course_section_sourcedid: "BA-Film-3D" } }],
+    });
+    expect(sections).toEqual(["BA-Film-3D"]);
+  });
+  it("leser custom.section_sourcedids (komma-separert) + dedup mot lis", () => {
+    const sections = extractMemberSections({
+      [LIS]: { course_section_sourcedid: "KULL-2024" },
+      message: [{ [CUSTOM]: { section_sourcedids: "KULL-2024, KULL-2024B" } }],
+    });
+    expect(sections.sort()).toEqual(["KULL-2024", "KULL-2024B"]);
+  });
+  it("tåler array-form og manglende seksjonsdata", () => {
+    expect(extractMemberSections({ message: [{ [LIS]: { course_section_sourcedid: ["A", "B"] } }] }).sort()).toEqual(["A", "B"]);
+    expect(extractMemberSections({ user_id: "u1" })).toEqual([]);
+  });
+});
+
+describe("groupStudentsBySection (kull ← Canvas-seksjon; kun studenter)", () => {
+  const roster = parseRosterMembers({
+    members: [
+      { user_id: "s1", name: "Kari", email: "kari@s.no", roles: ["...#Learner"], message: [{ [LIS]: { course_section_sourcedid: "3D" } }] },
+      { user_id: "s2", name: "Ola", email: "ola@s.no", roles: ["...#Learner"], message: [{ [LIS]: { course_section_sourcedid: "3D" } }] },
+      { user_id: "s3", name: "Nils", email: "nils@s.no", roles: ["...#Learner"], message: [{ [LIS]: { course_section_sourcedid: "3F" } }] },
+      { user_id: "s4", name: "Uten seksjon", email: "u@s.no", roles: ["...#Learner"] },
+      { user_id: "t1", name: "Faglærer", email: "f@s.no", roles: ["...#Instructor"], message: [{ [LIS]: { course_section_sourcedid: "3D" } }] },
+    ],
+  });
+  it("grupperer studenter per seksjon, sorterer, og ekskluderer faglærer", () => {
+    const { sections, unsectioned } = groupStudentsBySection(roster);
+    expect(sections.map((s) => s.section)).toEqual(["3D", "3F"]);
+    expect(sections[0].members.map((m) => m.sub)).toEqual(["s1", "s2"]); // ikke t1 (Instructor)
+    expect(sections[1].members.map((m) => m.sub)).toEqual(["s3"]);
+    expect(unsectioned.map((m) => m.sub)).toEqual(["s4"]);
+  });
+  it("isStudentRole: Learner/tom → true, Instructor → false", () => {
+    expect(isStudentRole(["...#Learner"])).toBe(true);
+    expect(isStudentRole([])).toBe(true);
+    expect(isStudentRole(["...#Instructor"])).toBe(false);
   });
 });
 

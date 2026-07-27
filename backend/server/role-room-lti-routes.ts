@@ -18,7 +18,7 @@ import { newEntityId } from "./_shared-ids.js";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken, extractAgs,
   buildLineItem, buildScore, AGS_SCOPES, extractNrps, parseRosterMembers, NRPS_SCOPE,
-  signDeepLinkingResponse,
+  signDeepLinkingResponse, groupStudentsBySection, isStudentRole,
   type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
 
@@ -232,7 +232,12 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         },
       ],
       // Canvas-substitusjoner → sendes som custom-claim ved launch (semester m.m.).
-      custom_fields: { term_name: "$Canvas.term.name" },
+      // section_* resolves per-medlem i NRPS-`message` (rlid-scopet) → kull→seksjon-mapping.
+      custom_fields: {
+        term_name: "$Canvas.term.name",
+        section_ids: "$Canvas.course.sectionIds",
+        section_sourcedids: "$Canvas.course.sectionSourcedIds",
+      },
     });
   });
 
@@ -588,6 +593,103 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
   });
 
+  // ── Kull → Canvas-seksjon: forhåndsvis seksjonene i rosteret ──────────────
+  // FS lager én Canvas-seksjon per kull; NRPS (rlid-scopet) bærer per-student
+  // seksjon. Returnerer distinkte seksjoner m/ antall + hvor mange som mangler
+  // seksjonsdata (da degraderer vi til vanlig samle-import). Tom liste = plattformen
+  // leverer ikke seksjoner (saLTIre / Canvas uten seksjons-config).
+  router.get("/lti/launches/:id/sections", requireSession, async (req, res) => {
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 500).json({ error: roster.error }); return; }
+      const { sections, unsectioned } = groupStudentsBySection(roster.members);
+      res.json({
+        sections: sections.map((s) => ({ section: s.section, studentCount: s.members.length })),
+        unsectioned: unsectioned.length,
+        totalStudents: roster.members.filter((m) => isStudentRole(m.roles)).length,
+      });
+    } catch (err) {
+      console.error("[lti] sections failed:", (err as Error).message);
+      res.status(500).json({ error: "sections_failed" });
+    }
+  });
+
+  // ── Importer roster gruppert per Canvas-seksjon → ett kull PER seksjon ─────
+  // Idempotent «synk»: gjenbruker eksisterende kull m/ samme navn (eier), ellers
+  // oppretter det. Studenter uten seksjonsdata hoppes over (rapporteres) med
+  // mindre `includeUnsectioned` — da havner de i ett «Uten seksjon»-kull.
+  // `nameMap` lar klienten gi seksjonene lesbare kull-navn (ellers = seksjons-id).
+  router.post("/lti/launches/:id/import-students-by-section", requireSession, async (req, res) => {
+    const body = (req.body ?? {}) as { nameMap?: Record<string, string>; includeUnsectioned?: boolean; namePrefix?: string };
+    const userId = (req as Request & { userId: string }).userId;
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 500).json({ error: roster.error }); return; }
+      const { sections, unsectioned } = groupStudentsBySection(roster.members);
+      if (sections.length === 0 && !(body.includeUnsectioned && unsectioned.length)) {
+        res.status(422).json({ error: "no_sections", message: "Rosteret har ingen seksjonsdata fra Canvas — bruk vanlig import." });
+        return;
+      }
+
+      const prefix = (body.namePrefix ?? "").trim();
+      const cohortName = (section: string): string => {
+        const mapped = body.nameMap?.[section]?.trim();
+        if (mapped) return mapped;
+        return prefix ? `${prefix} · ${section}` : section;
+      };
+
+      const groups = [
+        ...sections.map((s) => ({ key: s.section, name: cohortName(s.section), members: s.members })),
+        ...(body.includeUnsectioned && unsectioned.length ? [{ key: "__unsectioned__", name: prefix ? `${prefix} · Uten seksjon` : "Uten seksjon", members: unsectioned }] : []),
+      ];
+
+      const results: { cohortId: string; section: string; name: string; added: number; skipped: number; total: number }[] = [];
+      for (const g of groups) {
+        // Find-or-create kull på (eier, navn) → re-import = synk, ikke duplikat.
+        // eslint-disable-next-line no-await-in-loop -- sekvensielt per seksjon holder det enkelt
+        const found = await pool.query(
+          `SELECT id FROM role_room_education_cohorts WHERE owner_user_id = $1 AND name = $2 LIMIT 1`,
+          [userId, g.name],
+        );
+        let cohortId = found.rows[0]?.id as string | undefined;
+        if (!cohortId) {
+          cohortId = newEntityId("cohort");
+          // eslint-disable-next-line no-await-in-loop
+          await pool.query(
+            `INSERT INTO role_room_education_cohorts (id, owner_user_id, name) VALUES ($1,$2,$3)`,
+            [cohortId, userId, g.name],
+          );
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const existing = await pool.query(
+          `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
+          [cohortId],
+        );
+        const seen = new Set<string>(existing.rows.map((r) => String(r.email)));
+        let added = 0, skipped = 0;
+        for (const m of g.members) {
+          const email = (m.email ?? "").trim();
+          const emailKey = email.toLowerCase();
+          const name = (m.name ?? "").trim() || (email ? email.split("@")[0] : "");
+          if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
+          if (emailKey) seen.add(emailKey);
+          // eslint-disable-next-line no-await-in-loop
+          await pool.query(
+            `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [newEntityId("student"), cohortId, userId, name, email || null],
+          );
+          added++;
+        }
+        results.push({ cohortId, section: g.key, name: g.name, added, skipped, total: g.members.length });
+      }
+      res.status(201).json({ cohorts: results, unsectioned: body.includeUnsectioned ? 0 : unsectioned.length });
+    } catch (err) {
+      console.error("[lti] import-by-section failed:", (err as Error).message);
+      res.status(500).json({ error: "import_failed" });
+    }
+  });
+
   router.post("/lti/launches/:id/grade", requireSession, async (req, res) => {
     const b = (req.body ?? {}) as {
       grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string;
@@ -801,11 +903,26 @@ export async function fetchRoster(
   const { access_token } = (await tokenRes.json()) as { access_token?: string };
   if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
 
-  const memRes = await fetch(String(launch.nrps_url), {
-    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lti-nrps.v2.membershipcontainer+json" },
-  });
-  if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
-  const container = await memRes.json();
+  const nrpsHeaders = { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lti-nrps.v2.membershipcontainer+json" };
+
+  // rlid-scopet NRPS får Canvas til å inkludere per-medlem `message` med
+  // seksjonsdata (lis.course_section_sourcedid / custom.section_*). Vi prøver
+  // dét FØRST (for kull→seksjon-mapping); faller trygt tilbake til den ustopte
+  // varianten (E2E-verifisert mot saLTIre) om plattformen ikke svarer OK.
+  let container: unknown | null = null;
+  if (launch.resource_link_id) {
+    try {
+      const scopedUrl = new URL(String(launch.nrps_url));
+      scopedUrl.searchParams.set("rlid", String(launch.resource_link_id));
+      const scopedRes = await fetch(scopedUrl.toString(), { headers: nrpsHeaders });
+      if (scopedRes.ok) container = await scopedRes.json();
+    } catch { /* fall through til uscopet under */ }
+  }
+  if (container === null) {
+    const memRes = await fetch(String(launch.nrps_url), { headers: nrpsHeaders });
+    if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
+    container = await memRes.json();
+  }
   return { ok: true, members: parseRosterMembers(container) };
 }
 

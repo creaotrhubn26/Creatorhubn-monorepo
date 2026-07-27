@@ -26,7 +26,7 @@ import {
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationGroupsService, type EducationGroup } from './educationGroupsService';
 import { educationAssignmentsService } from './educationAssignmentsService';
-import educationLtiService, { type LtiContext } from './educationLtiService';
+import educationLtiService, { type LtiContext, type LtiSections } from './educationLtiService';
 import type { EducationTabId } from './EducationWorkspace';
 
 const ACCENT = '#8B5CF6';
@@ -106,6 +106,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   const [launchId] = useState<string | null>(() => educationLtiService.getLaunchId());
   const [rosterCount, setRosterCount] = useState<number | null>(null);
   const [ctx, setCtx] = useState<LtiContext | null>(null);
+  const [sections, setSections] = useState<LtiSections | null>(null);
   const [importing, setImporting] = useState(false);
 
   // Kull-navn avledet fra Canvas-emnet (emnekode + emne), fallback til generisk.
@@ -174,6 +175,16 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
     return () => { cancelled = true; };
   }, [launchId]);
 
+  // Canvas-seksjoner (≈ FS-kull) i rosteret → tilbud om ett kull per seksjon.
+  useEffect(() => {
+    if (!launchId) return;
+    let cancelled = false;
+    void educationLtiService.getSections(launchId)
+      .then((s) => { if (!cancelled) setSections(s); })
+      .catch(() => { if (!cancelled) setSections(null); });
+    return () => { cancelled = true; };
+  }, [launchId]);
+
   const handleImportFromCanvas = async (opts: { cohortId?: string; cohortName?: string }) => {
     if (!launchId || importing) return;
     setImporting(true); setError(null);
@@ -182,6 +193,22 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
       await loadCohorts(); setSelectedId(cohortId); await loadStudents(cohortId);
       setToast(`Importert fra Canvas: ${added} lagt til${skipped ? ` · ${skipped} fantes fra før` : ''}.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke importere fra Canvas'); }
+    finally { setImporting(false); }
+  };
+
+  // Ett kull per Canvas-seksjon. Prefikser kull-navnet med emnekoden (fra FS via
+  // launch-kontekst) så «BA-3D» blir «FILM2100 · BA-3D».
+  const handleImportBySection = async () => {
+    if (!launchId || importing || !sections?.sections.length) return;
+    setImporting(true); setError(null);
+    try {
+      const prefix = ctx?.courseCode?.trim() || undefined;
+      const { cohorts } = await educationLtiService.importBySection(launchId, { namePrefix: prefix });
+      await loadCohorts();
+      if (cohorts[0]) { setSelectedId(cohorts[0].cohortId); await loadStudents(cohorts[0].cohortId); }
+      const totalAdded = cohorts.reduce((n, c) => n + c.added, 0);
+      setToast(`Importert ${cohorts.length} kull fra Canvas-seksjoner · ${totalAdded} studenter lagt til.`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke importere per seksjon'); }
     finally { setImporting(false); }
   };
 
@@ -328,9 +355,22 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                 {rosterCount === null ? 'henter roster…' : `${rosterCount} studenter · via NRPS`}
               </T>
             </Box>
-            <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
-              <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : 'Importer studenter'}</T>
-            </Button>
+            {sections && sections.sections.length > 0 ? (
+              <Tooltip title={`Oppretter ett kull per Canvas-seksjon (${sections.sections.map((s) => `${s.section}: ${s.studentCount}`).join(' · ')})${sections.unsectioned ? ` · ${sections.unsectioned} uten seksjon` : ''}`}>
+                <Button variant="contained" startIcon={<CohortIcon />} disabled={importing} onClick={handleImportBySection} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+                  <T eid="edu-ks-canvas-import-sections" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : `Importer ${sections.sections.length} kull (seksjoner)`}</T>
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+                <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : 'Importer studenter'}</T>
+              </Button>
+            )}
+            {sections && sections.sections.length > 0 && (
+              <Button variant="text" disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: canvasCohortName })} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none', fontWeight: 600, borderRadius: 2, whiteSpace: 'nowrap' }}>
+                <T eid="edu-ks-canvas-import-flat" component="span" sx={{ fontWeight: 600 }}>Alle i ett kull</T>
+              </Button>
+            )}
             {selected && (
               <Button variant="outlined" disabled={importing} onClick={() => handleImportFromCanvas({ cohortId: selected.id })} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2, whiteSpace: 'nowrap' }}>
                 <T eid="edu-ks-canvas-other" component="span" sx={{ fontWeight: 600 }}>Legg i «{selected.name}»</T>

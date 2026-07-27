@@ -116,10 +116,47 @@ export function extractNrps(claims: Record<string, unknown>): { url: string; ser
   return { url: nrps.context_memberships_url, serviceVersions: nrps.service_versions ?? [] };
 }
 
-/** Ett medlem i LMS-klasse-rosteret (NRPS membership container). */
-export interface RosterMember { sub: string; name: string | null; email: string | null; roles: string[]; status: string; }
+/** Ett medlem i LMS-klasse-rosteret (NRPS membership container). `sections` =
+ * Canvas-seksjoner medlemmet tilhører (FS lager én seksjon per kull) — tomt om
+ * plattformen ikke leverer seksjonsdata. */
+export interface RosterMember { sub: string; name: string | null; email: string | null; roles: string[]; status: string; sections: string[]; }
 
-/** Parser en NRPS membership-container → normaliserte medlemmer (LMS-sub + navn/e-post/roller). */
+const LIS_CLAIM = "https://purl.imsglobal.org/spec/lti/claim/lis";
+const CUSTOM_CLAIM = "https://purl.imsglobal.org/spec/lti/claim/custom";
+// Custom-felt Canvas KAN fylle per medlem (rlid-scopet NRPS) med seksjonsdata.
+const SECTION_CUSTOM_KEYS = ["section_names", "section_ids", "canvas_section_names", "canvas_section_ids", "section_sourcedids"];
+
+/** Normaliserer en verdi som kan være streng, komma-separert streng eller array → distinkte ikke-tomme strenger. */
+function toStringList(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean);
+  if (typeof v === "string") return v.split(",").map((s) => s.trim()).filter(Boolean);
+  return [];
+}
+
+/**
+ * Trekker ut hvilke Canvas-seksjoner (≈ FS-kull) et NRPS-medlem tilhører.
+ * Sjekker flere kjente steder (defensivt, siden dette er Canvas-spesifikt og
+ * kun tilstede når NRPS hentes rlid-scopet): member.message[].lis.course_section_sourcedid,
+ * member.message[].custom.section_*, og top-level member.lis.course_section_sourcedid.
+ */
+export function extractMemberSections(mm: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+  const collectFromLis = (lis: unknown) => {
+    const l = lis as { course_section_sourcedid?: unknown } | null;
+    if (l && l.course_section_sourcedid != null) toStringList(l.course_section_sourcedid).forEach((s) => out.add(s));
+  };
+  collectFromLis(mm[LIS_CLAIM] ?? (mm as { lis?: unknown }).lis);
+  const messages = Array.isArray(mm.message) ? (mm.message as unknown[]) : [];
+  for (const msg of messages) {
+    const m = (msg ?? {}) as Record<string, unknown>;
+    collectFromLis(m[LIS_CLAIM]);
+    const custom = (m[CUSTOM_CLAIM] ?? {}) as Record<string, unknown>;
+    for (const k of SECTION_CUSTOM_KEYS) toStringList(custom[k]).forEach((s) => out.add(s));
+  }
+  return [...out];
+}
+
+/** Parser en NRPS membership-container → normaliserte medlemmer (LMS-sub + navn/e-post/roller + seksjoner). */
 export function parseRosterMembers(container: unknown): RosterMember[] {
   const c = container as { members?: unknown[] } | null;
   const members = Array.isArray(c?.members) ? (c as { members: unknown[] }).members : [];
@@ -140,9 +177,41 @@ export function parseRosterMembers(container: unknown): RosterMember[] {
         email: typeof mm.email === "string" && mm.email.trim() ? mm.email.trim().toLowerCase() : null,
         roles,
         status: typeof mm.status === "string" ? mm.status : "Active",
+        sections: extractMemberSections(mm),
       };
     })
     .filter((m) => Boolean(m.sub));
+}
+
+/** True hvis en NRPS-rolleliste indikerer en student (Learner/Student, eller ingen rolle oppgitt). */
+export function isStudentRole(roles: string[]): boolean {
+  return roles.length === 0 || roles.some((r) => /learner|student/i.test(r));
+}
+
+/**
+ * Grupperer roster-medlemmer etter Canvas-seksjon (≈ FS-kull). Kun studenter tas
+ * med. Medlemmer i flere seksjoner telles i hver. Returnerer seksjoner (sortert,
+ * med medlemmer) + medlemmer uten seksjonsdata (`unsectioned`).
+ */
+export function groupStudentsBySection(members: RosterMember[]): {
+  sections: { section: string; members: RosterMember[] }[];
+  unsectioned: RosterMember[];
+} {
+  const students = members.filter((m) => isStudentRole(m.roles));
+  const bySection = new Map<string, RosterMember[]>();
+  const unsectioned: RosterMember[] = [];
+  for (const m of students) {
+    if (m.sections.length === 0) { unsectioned.push(m); continue; }
+    for (const s of m.sections) {
+      const list = bySection.get(s) ?? [];
+      list.push(m);
+      bySection.set(s, list);
+    }
+  }
+  const sections = [...bySection.entries()]
+    .map(([section, mem]) => ({ section, members: mem }))
+    .sort((a, b) => a.section.localeCompare(b.section, "nb"));
+  return { sections, unsectioned };
 }
 
 /** AGS LineItem (karakterbok-kolonne). */
