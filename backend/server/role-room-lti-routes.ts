@@ -18,6 +18,7 @@ import { newEntityId } from "./_shared-ids.js";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken, extractAgs,
   buildLineItem, buildScore, AGS_SCOPES, extractNrps, parseRosterMembers, NRPS_SCOPE,
+  signDeepLinkingResponse,
   type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
 
@@ -59,7 +60,14 @@ async function ensureToolKey(pool: Pool): Promise<{ privatePem: string; publicJw
 let nrpsColumnEnsured = false;
 async function ensureNrpsColumn(pool: Pool): Promise<void> {
   if (nrpsColumnEnsured) return;
+  // NRPS + Canvas-metadata fra launchen (emne/emnekode/semester/institusjon).
   await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS nrps_url TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS context_title TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS context_label TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS platform_name TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS term TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS deep_link_return_url TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS deep_link_data TEXT`);
   nrpsColumnEnsured = true;
 }
 
@@ -202,21 +210,29 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
               },
               {
                 placement: "assignment_selection",
-                message_type: "LtiResourceLinkRequest",
+                message_type: "LtiDeepLinkingRequest",
+                target_link_uri: targetLinkUri,
+                text: "The Role Room — velg produksjon",
+              },
+              {
+                placement: "link_selection",
+                message_type: "LtiDeepLinkingRequest",
                 target_link_uri: targetLinkUri,
                 text: "The Role Room",
               },
               {
-                placement: "link_selection",
-                message_type: "LtiResourceLinkRequest",
+                placement: "editor_button",
+                message_type: "LtiDeepLinkingRequest",
                 target_link_uri: targetLinkUri,
                 text: "The Role Room",
+                icon_url: `${TOOL_BASE}/favicon.ico`,
               },
             ],
           },
         },
       ],
-      custom_fields: {},
+      // Canvas-substitusjoner → sendes som custom-claim ved launch (semester m.m.).
+      custom_fields: { term_name: "$Canvas.term.name" },
     });
   });
 
@@ -276,15 +292,23 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
 
       const ags = extractAgs(claims);
       const nrps = extractNrps(claims);
-      const context = claims["https://purl.imsglobal.org/spec/lti/claim/context"] as { id?: string } | undefined;
+      const context = claims["https://purl.imsglobal.org/spec/lti/claim/context"] as { id?: string; title?: string; label?: string } | undefined;
       const resourceLink = claims["https://purl.imsglobal.org/spec/lti/claim/resource_link"] as { id?: string } | undefined;
+      const toolPlatform = claims["https://purl.imsglobal.org/spec/lti/claim/tool_platform"] as { name?: string; guid?: string } | undefined;
+      const custom = claims["https://purl.imsglobal.org/spec/lti/claim/custom"] as Record<string, unknown> | undefined;
+      const termVal = custom ? (String(custom.term_name ?? custom.term ?? "").trim() || null) : null;
+      // Deep Linking: message_type + deep_linking_settings (retur-URL + data).
+      const messageType = String(claims["https://purl.imsglobal.org/spec/lti/claim/message_type"] ?? "LtiResourceLinkRequest");
+      const dlSettings = claims["https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings"] as { deep_link_return_url?: string; data?: string } | undefined;
       const launchId = newEntityId("ltilaunch");
       await ensureNrpsColumn(pool);
       await pool.query(
-        `INSERT INTO role_room_lti_launches (id, platform_id, lti_user_sub, context_id, resource_link_id, ags_lineitems, ags_lineitem, ags_scopes, nrps_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO role_room_lti_launches (id, platform_id, lti_user_sub, context_id, resource_link_id, ags_lineitems, ags_lineitem, ags_scopes, nrps_url, context_title, context_label, platform_name, term, deep_link_return_url, deep_link_data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [launchId, platform.id, String(claims.sub ?? ""), context?.id ?? null, resourceLink?.id ?? null,
-         ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? []), nrps?.url ?? null],
+         ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? []), nrps?.url ?? null,
+         context?.title ?? null, context?.label ?? null, toolPlatform?.name ?? null, termVal,
+         dlSettings?.deep_link_return_url ?? null, dlSettings?.data ?? null],
       );
       // Auto-provisjon fra LTI-claims: LMS-en har alt autentisert brukeren, så
       // vi minter en utdannings-sesjon og sender den via ?rr_session= (samme
@@ -301,6 +325,22 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         } catch (e) {
           console.warn("[lti] sesjon-mint feilet (fortsetter uautentisert):", (e as Error).message);
         }
+      }
+      // Deep-linket ressurs: launchen bærer custom.production_id → åpne produksjonen.
+      const customProject = custom ? String(custom.production_id ?? "").trim() : "";
+      if (messageType !== "LtiDeepLinkingRequest" && customProject) {
+        const pParams = new URLSearchParams({ mode: "production", project: customProject });
+        if (sessionToken) pParams.set("rr_session", sessionToken);
+        res.redirect(`${APP_URL}?${pParams.toString()}`);
+        return;
+      }
+      // Deep Linking: læreren skal VELGE/OPPRETTE innhold (produksjonsoppgave) →
+      // send til deep-link-plukkeren i stedet for vanlig workspace-landing.
+      if (messageType === "LtiDeepLinkingRequest") {
+        const dlParams = new URLSearchParams({ mode: "education", lti_launch: launchId, deeplink: "1" });
+        if (sessionToken) dlParams.set("rr_session", sessionToken);
+        res.redirect(`${APP_URL}?${dlParams.toString()}`);
+        return;
       }
       // Landing: inn i utdannings-workspacet (launch-kontekst lagret for grade-push).
       const redirectParams = new URLSearchParams({ mode: "education", lti_launch: launchId });
@@ -368,6 +408,68 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     } catch (err) {
       console.error("[lti] roster failed:", (err as Error).message);
       res.status(500).json({ error: "roster_failed" });
+    }
+  });
+
+  // ── Canvas-kontekst fra launchen (emne/emnekode/semester/institusjon) ─────
+  router.get("/lti/launches/:id/context", requireSession, async (req, res) => {
+    try {
+      const r = await pool.query(
+        `SELECT context_id, context_title, context_label, platform_name, term, deep_link_return_url
+           FROM role_room_lti_launches WHERE id = $1`,
+        [req.params.id],
+      );
+      const row = r.rows[0];
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({
+        courseId: (row.context_id as string) ?? null,
+        courseTitle: (row.context_title as string) ?? null,
+        courseCode: (row.context_label as string) ?? null,
+        institution: (row.platform_name as string) ?? null,
+        term: (row.term as string) ?? null,
+        isDeepLink: !!row.deep_link_return_url,
+      });
+    } catch (err) {
+      // Kolonner mangler (launch ikke self-healet ennå) → tom kontekst.
+      if ((err as { code?: string })?.code === "42703") { res.json({ courseId: null, courseTitle: null, courseCode: null, institution: null, term: null, isDeepLink: false }); return; }
+      console.warn("[lti] context failed:", (err as Error).message);
+      res.status(500).json({ error: "context_failed" });
+    }
+  });
+
+  // ── Deep Linking-respons: lærer valgte/opprettet produksjon → signert JWT ─
+  // tilbake til Canvas (ltiResourceLink som launcher produksjonen). Frontend
+  // auto-poster {jwt} til deep_link_return_url.
+  router.post("/lti/launches/:id/deep-link-response", requireSession, async (req, res) => {
+    const body = (req.body ?? {}) as { projectId?: string; title?: string };
+    try {
+      const lr = await pool.query(
+        `SELECT l.deep_link_return_url, l.deep_link_data, p.client_id, p.issuer, p.deployment_id
+           FROM role_room_lti_launches l JOIN role_room_lti_platforms p ON p.id = l.platform_id
+          WHERE l.id = $1`,
+        [req.params.id],
+      );
+      const launch = lr.rows[0];
+      if (!launch) { res.status(404).json({ error: "not_found" }); return; }
+      if (!launch.deep_link_return_url) { res.status(400).json({ error: "not_a_deep_link_launch" }); return; }
+      const key = await ensureToolKey(pool);
+      const title = (typeof body.title === "string" && body.title.trim()) ? body.title.trim() : "The Role Room-produksjon";
+      const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+      // ltiResourceLink → neste launch bærer custom.production_id og åpner produksjonen.
+      const contentItems: Record<string, unknown>[] = [{
+        type: "ltiResourceLink",
+        title,
+        url: `${TOOL_BASE}/lti/launch`,
+        custom: { production_id: projectId },
+      }];
+      const jwtStr = signDeepLinkingResponse({
+        clientId: String(launch.client_id), issuer: String(launch.issuer), deploymentId: launch.deployment_id ?? null,
+        privatePem: key.privatePem, kid: key.kid, data: (launch.deep_link_data as string) ?? null, contentItems,
+      });
+      res.json({ returnUrl: String(launch.deep_link_return_url), jwt: jwtStr });
+    } catch (err) {
+      console.error("[lti] deep-link-response failed:", (err as Error).message);
+      res.status(500).json({ error: "deep_link_failed" });
     }
   });
 

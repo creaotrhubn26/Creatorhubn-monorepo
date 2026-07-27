@@ -47,6 +47,38 @@ export const educationLtiService = {
     }
   },
 
+  /** True hvis launchen er en Deep Linking-forespørsel (?deeplink=1). */
+  isDeepLinkMode(): boolean {
+    if (typeof window === 'undefined') return false;
+    try { return new URLSearchParams(window.location.search).get('deeplink') === '1'; } catch { return false; }
+  },
+
+  /** Canvas-kontekst fra launchen: emne, emnekode, semester, institusjon. */
+  async getContext(launchId: string): Promise<LtiContext> {
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/context`, {
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as LtiContext;
+  },
+
+  /**
+   * Deep Linking-respons: sender valgt produksjon tilbake til Canvas. Returnerer
+   * { returnUrl, jwt } — kalleren auto-poster JWT-en til returnUrl (skjema-POST).
+   */
+  async deepLinkResponse(launchId: string, input: { projectId: string; title?: string }): Promise<{ returnUrl: string; jwt: string }> {
+    const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/deep-link-response`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return (await res.json()) as { returnUrl: string; jwt: string };
+  },
+
   clear(): void {
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -126,6 +158,15 @@ export const educationLtiService = {
     return (await res.json()) as { cohortId: string; added: number; skipped: number; total: number };
   },
 };
+
+export interface LtiContext {
+  courseId: string | null;
+  courseTitle: string | null;
+  courseCode: string | null;
+  institution: string | null;
+  term: string | null;
+  isDeepLink: boolean;
+}
 
 export interface LtiRosterMember {
   sub: string;

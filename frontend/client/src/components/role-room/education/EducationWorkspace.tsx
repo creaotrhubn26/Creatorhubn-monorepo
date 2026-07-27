@@ -11,6 +11,7 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { CohortsTab } from './CohortsTab';
 import { CoursesTab } from './CoursesTab';
+import { DeepLinkPicker } from './DeepLinkPicker';
 import { OverviewTab } from './OverviewTab';
 import { AssignmentsTab } from './AssignmentsTab';
 import { ProductionsTab } from './ProductionsTab';
@@ -202,6 +203,9 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
 }
 
 export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
+  // Deep Linking: fanger launch-kontekst synkront + avgjør om Canvas ber oss velge
+  // innhold (?deeplink=1) → vis plukkeren i stedet for hele workspacet.
+  const [isDeepLink] = useState(() => { educationLtiService.captureLaunchContext(); return educationLtiService.isDeepLinkMode(); });
   const [activeTab, setActiveTab] = useState<EducationTabId>('overview');
   const [tourOpen, setTourOpen] = useState(false);
   // «Legg til oppgave» fra en produksjon → forhåndsvelg produksjonen i Oppgaver.
@@ -231,6 +235,10 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
       default: return <EmptyState tab={active} />;
     }
   };
+
+  // Deep Linking-launch fra Canvas: la faglærer velge/opprette en produksjon og
+  // send den tilbake — ikke hele workspacet.
+  if (isDeepLink) return <DeepLinkPicker />;
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff' }}>

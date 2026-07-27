@@ -26,7 +26,7 @@ import {
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationGroupsService, type EducationGroup } from './educationGroupsService';
 import { educationAssignmentsService } from './educationAssignmentsService';
-import educationLtiService from './educationLtiService';
+import educationLtiService, { type LtiContext } from './educationLtiService';
 import type { EducationTabId } from './EducationWorkspace';
 
 const ACCENT = '#8B5CF6';
@@ -102,10 +102,20 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   const [csvBusy, setCsvBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Canvas/LTI: er vi i en launchet økt? + roster-forhåndsvisning.
+  // Canvas/LTI: er vi i en launchet økt? + roster-forhåndsvisning + emne-kontekst.
   const [launchId] = useState<string | null>(() => educationLtiService.getLaunchId());
   const [rosterCount, setRosterCount] = useState<number | null>(null);
+  const [ctx, setCtx] = useState<LtiContext | null>(null);
   const [importing, setImporting] = useState(false);
+
+  // Kull-navn avledet fra Canvas-emnet (emnekode + emne), fallback til generisk.
+  const canvasCohortName = useMemo(() => {
+    if (!ctx) return 'Importert fra Canvas';
+    const code = ctx.courseCode?.trim();
+    const title = ctx.courseTitle?.trim();
+    const base = [code, title].filter(Boolean).join(' – ') || 'Importert fra Canvas';
+    return ctx.term ? `${base} (${ctx.term})` : base;
+  }, [ctx]);
 
   const loadCohorts = useCallback(async () => {
     setLoading(true); setError(null);
@@ -151,6 +161,16 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
     void educationLtiService.getRoster(launchId)
       .then((members) => { if (!cancelled) setRosterCount(members.filter((m) => m.roles.some((r) => /learner|student/i.test(r)) || m.roles.length === 0).length); })
       .catch(() => { if (!cancelled) setRosterCount(null); });
+    return () => { cancelled = true; };
+  }, [launchId]);
+
+  // Emne-kontekst fra Canvas-launchen (emne/emnekode/semester/institusjon).
+  useEffect(() => {
+    if (!launchId) return;
+    let cancelled = false;
+    void educationLtiService.getContext(launchId)
+      .then((c) => { if (!cancelled) setCtx(c); })
+      .catch(() => { if (!cancelled) setCtx(null); });
     return () => { cancelled = true; };
   }, [launchId]);
 
@@ -297,10 +317,18 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                 <T eid="edu-ks-canvas-title" sx={{ fontWeight: 700, fontSize: 16 }}>Canvas-emne tilkoblet</T>
                 <Chip data-edit-id="edu-ks-canvas-tag" label="LTI" size="small" sx={{ height: 18, bgcolor: ACCENT, color: '#fff', fontWeight: 800, fontSize: 9.5 }} />
               </Stack>
-              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#e9d5ff', fontWeight: 600, mt: 0.25 }}>Klasse-roster fra LMS-en er klart</T>
-              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.5 }}>{rosterCount === null ? 'Henter roster…' : `${rosterCount} studenter i rosteret · via NRPS`}</T>
+              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#e9d5ff', fontWeight: 600, mt: 0.25 }}>
+                {ctx && (ctx.courseTitle || ctx.courseCode)
+                  ? [ctx.courseCode, ctx.courseTitle].filter(Boolean).join(' – ')
+                  : 'Klasse-roster fra LMS-en er klart'}
+              </T>
+              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.5 }}>
+                {[ctx?.institution, ctx?.term].filter(Boolean).join(' · ')}
+                {(ctx?.institution || ctx?.term) ? ' · ' : ''}
+                {rosterCount === null ? 'henter roster…' : `${rosterCount} studenter · via NRPS`}
+              </T>
             </Box>
-            <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: 'Importert fra Canvas' })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+            <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
               <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : 'Importer studenter'}</T>
             </Button>
             {selected && (
@@ -455,7 +483,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           </Stack>
           <Tooltip title={launchId ? (selected ? `Synk rosteret inn i «${selected.name}»` : 'Synk rosteret til et nytt kull') : 'Åpne Role Room fra Canvas for å synkronisere'}>
             <span style={{ display: 'block' }}>
-              <Button fullWidth variant="contained" startIcon={<SyncIcon />} disabled={!launchId || importing} onClick={() => handleImportFromCanvas(selected ? { cohortId: selected.id } : { cohortName: 'Importert fra Canvas' })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+              <Button fullWidth variant="contained" startIcon={<SyncIcon />} disabled={!launchId || importing} onClick={() => handleImportFromCanvas(selected ? { cohortId: selected.id } : { cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
                 <T eid="edu-ks-sync-btn" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Synkroniserer…' : 'Synkroniser nå'}</T>
               </Button>
             </span>

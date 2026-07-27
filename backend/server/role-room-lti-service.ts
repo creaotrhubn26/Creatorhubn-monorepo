@@ -48,6 +48,30 @@ export function signClientAssertion(input: {
   );
 }
 
+/**
+ * Signert LTI Deep Linking Response (message_type LtiDeepLinkingResponse) —
+ * det verktøyet sender TILBAKE til plattformen når læreren har valgt/opprettet
+ * innhold (f.eks. en produksjonsoppgave). Signeres med tool-nøkkelen (RS256);
+ * aud = plattformens issuer. `data` ekkoes fra deep_linking_settings.
+ */
+export function signDeepLinkingResponse(input: {
+  clientId: string; issuer: string; deploymentId?: string | null; privatePem: string; kid: string;
+  data?: string | null; contentItems: Record<string, unknown>[]; now?: number;
+}): string {
+  const iat = Math.floor((input.now ?? Date.now()) / 1000);
+  const payload: Record<string, unknown> = {
+    iss: input.clientId,
+    aud: input.issuer,
+    iat, exp: iat + 600, nonce: crypto.randomBytes(16).toString("hex"),
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiDeepLinkingResponse",
+    "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/content_items": input.contentItems,
+  };
+  if (input.deploymentId) payload["https://purl.imsglobal.org/spec/lti/claim/deployment_id"] = input.deploymentId;
+  if (input.data) payload["https://purl.imsglobal.org/spec/lti-dl/claim/data"] = input.data;
+  return jwt.sign(payload, input.privatePem, { algorithm: ALG, keyid: input.kid });
+}
+
 export interface PlatformJwk { kid?: string; kty: string; n?: string; e?: string; [k: string]: unknown; }
 
 /**
