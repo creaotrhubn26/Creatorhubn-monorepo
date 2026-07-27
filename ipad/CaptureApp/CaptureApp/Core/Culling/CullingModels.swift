@@ -1,0 +1,81 @@
+// CullingModels.swift
+//
+// Smart culling: ranger en shoot etter kvalitet og finn nesten-identiske
+// frames — helt on-device via Vision (gratis). Denne fila er den RENE,
+// TESTBARE kjernen: score-modell + rank/dedupe-logikk uten Vision-avhengighet.
+// Vision-analysen (score + feature-print) bor i VisionCullAnalyzer.swift.
+
+import Foundation
+
+/// Kvalitets-score for ett bilde (0…1-verdier fra Vision).
+struct PhotoScore: Sendable, Equatable {
+    let id: String
+    /// Estetikk-score (CalculateImageAestheticsScoresRequest.overallScore, ~ -1…1
+    /// normalisert til 0…1 av analysatoren).
+    let aesthetics: Float
+    /// Apples «utility»-flagg: kvittering/skjermbilde/dokument o.l. → demoteres.
+    let isUtility: Bool
+    /// Beste ansikts-fangst-kvalitet i bildet (DetectFaceCaptureQuality), eller
+    /// nil hvis ingen ansikter (landskap/produkt).
+    let faceQuality: Float?
+
+    /// Samlet rangerings-score. Vekter estetikk + ansikts-kvalitet (når ansikt
+    /// finnes); utility halverer.
+    var rank: Float {
+        let face = faceQuality ?? aesthetics
+        let combined = faceQuality == nil ? aesthetics : (0.6 * aesthetics + 0.4 * face)
+        return isUtility ? combined * 0.5 : combined
+    }
+}
+
+struct CullingResult: Sendable, Equatable {
+    /// Alle bilder, beste først.
+    let ranked: [PhotoScore]
+    /// Anbefalte «keepers» — beste av hver duplikat-gruppe + alle unike.
+    let keep: [String]
+    /// Grupper av nesten-identiske bilder (hver gruppe > 1). Andre enn beste
+    /// i gruppen er kandidater for å skjules.
+    let duplicates: [[String]]
+}
+
+enum CullingEngine {
+    /// Grupper bilder hvis parvise feature-print-distanse er under terskelen
+    /// (union-find). Returnerer kun ekte grupper (> 1 medlem).
+    static func groupDuplicates(
+        ids: [String],
+        threshold: Double,
+        distance: (String, String) -> Double
+    ) -> [[String]] {
+        var parent: [String: String] = [:]
+        for id in ids { parent[id] = id }
+        func find(_ x: String) -> String {
+            var r = x
+            while let p = parent[r], p != r { r = p }
+            return r
+        }
+        func union(_ a: String, _ b: String) { parent[find(a)] = find(b) }
+
+        for i in 0..<ids.count {
+            for j in (i + 1)..<ids.count where distance(ids[i], ids[j]) < threshold {
+                union(ids[i], ids[j])
+            }
+        }
+        var groups: [String: [String]] = [:]
+        for id in ids { groups[find(id), default: []].append(id) }
+        return groups.values.filter { $0.count > 1 }.map { $0.sorted() }.sorted { $0[0] < $1[0] }
+    }
+
+    /// Ranger + velg keepers. Beholder høyest-rangerte i hver duplikat-gruppe.
+    static func cull(scores: [PhotoScore], duplicateGroups: [[String]]) -> CullingResult {
+        let ranked = scores.sorted { $0.rank > $1.rank }
+        let byId = Dictionary(scores.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
+        var demoted = Set<String>()
+        for group in duplicateGroups {
+            let best = group.max { (byId[$0]?.rank ?? 0) < (byId[$1]?.rank ?? 0) }
+            for id in group where id != best { demoted.insert(id) }
+        }
+        let keep = ranked.map(\.id).filter { !demoted.contains($0) }
+        return CullingResult(ranked: ranked, keep: keep, duplicates: duplicateGroups)
+    }
+}
