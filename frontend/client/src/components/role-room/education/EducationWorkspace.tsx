@@ -10,6 +10,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { CohortsTab } from './CohortsTab';
+import { CoursesTab } from './CoursesTab';
 import { OverviewTab } from './OverviewTab';
 import { AssignmentsTab } from './AssignmentsTab';
 import { ProductionsTab } from './ProductionsTab';
@@ -27,6 +28,7 @@ import {
 import {
   School as SchoolIcon,
   Groups as CohortIcon,
+  Class as CourseTabIcon,
   MovieCreation as ProductionIcon,
   Assignment as AssignmentIcon,
   Grading as AssessmentIcon,
@@ -47,6 +49,7 @@ import {
 export type EducationTabId =
   | 'overview'
   | 'cohorts'
+  | 'courses'
   | 'productions'
   | 'assignments'
   | 'fagstoff'
@@ -65,6 +68,7 @@ interface EducationTabDef {
 const EDUCATION_TABS: EducationTabDef[] = [
   { id: 'overview', label: 'Oversikt', icon: <OverviewIcon fontSize="small" />, blurb: 'Faglærer-oversikt: alle kull, aktive studentproduksjoner, progresjon, frister og flagg i én flate.' },
   { id: 'cohorts', label: 'Kull & studenter', icon: <CohortIcon fontSize="small" />, blurb: 'Klasse-/kull-grupper, student-roster og student-seter.' },
+  { id: 'courses', label: 'Emner', icon: <CourseTabIcon fontSize="small" />, blurb: 'Studiepoenggivende emner med læringsutbytte (kunnskap/ferdigheter/generell kompetanse), vurderingsform og oppgaver.' },
   { id: 'productions', label: 'Studentproduksjoner', icon: <ProductionIcon fontSize="small" />, blurb: 'Hver produksjon er et fullt Role Room-prosjekt (story-arc, roller, call-sheet, leveranser). Opprett, tildel og overvåk.' },
   { id: 'assignments', label: 'Oppgaver', icon: <AssignmentIcon fontSize="small" />, blurb: 'Oppgave-brief → student-leveranse → frist. Emner, moduler og læringsmål.' },
   { id: 'fagstoff', label: 'Fagstoff', icon: <LibraryIcon fontSize="small" />, blurb: 'Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.' },
@@ -216,6 +220,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
     switch (active.id) {
       case 'overview': return <OverviewTab onNavigate={setActiveTab} />;
       case 'cohorts': return <CohortsTab onNavigate={setActiveTab} />;
+      case 'courses': return <CoursesTab />;
       case 'productions': return <ProductionsTab onNavigate={setActiveTab} onAddAssignment={(pid) => { setAssignmentPrefillProd(pid); setActiveTab('assignments'); }} />;
       case 'assignments': return <AssignmentsTab prefillProductionId={assignmentPrefillProd} onPrefillConsumed={() => setAssignmentPrefillProd(null)} />;
       case 'fagstoff': return <FagstoffTab />;

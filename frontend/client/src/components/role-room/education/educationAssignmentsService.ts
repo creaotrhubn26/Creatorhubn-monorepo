@@ -24,6 +24,7 @@ export interface Assignment {
   artifactKind: string | null;
   isArbeidskrav: boolean;
   vurderingsform: string | null;
+  courseId: string | null;
   submittedCount: number;
   reviewedCount: number;
   createdAt: string;
@@ -69,6 +70,7 @@ export interface AssignmentInput {
   artifactKind?: string | null;
   isArbeidskrav?: boolean;
   vurderingsform?: string | null;
+  courseId?: string | null;
 }
 
 export const educationAssignmentsService = {
