@@ -5247,6 +5247,9 @@ final class LiveCaptureModel {
             self.downloadDirectory = tempDir
             self.currentSessionId = dbSession.id
             self.sessionName = dbSession.name
+            if #available(iOS 16.1, *) {
+                ShootActivityManager.shared.start(sessionName: dbSession.name)
+            }
             self.backendClient = makeBackendClientFromDefaults()
             if let backend = self.backendClient {
                 self.autoCleanService = AutoCleanService(store: store, backend: backend)
@@ -5354,6 +5357,9 @@ final class LiveCaptureModel {
     }
 
     func disconnect() async {
+        if #available(iOS 16.1, *) {
+            await ShootActivityManager.shared.end()
+        }
         await teardown()
     }
 

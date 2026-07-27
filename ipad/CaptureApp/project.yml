@@ -37,6 +37,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - target: CaptureWidgets
+        embed: true
     info:
       path: CaptureApp/Generated/Info.plist
       properties:
@@ -46,6 +48,7 @@ targets:
         # er bygget VALID men «not in internally testable state» til noen svarer
         # på export-compliance manuelt i App Store Connect.
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
         UILaunchScreen:
           UIColorName: LaunchSplashBackground
           UIImageName: CreatorHubOneLogo
@@ -86,6 +89,13 @@ targets:
             CFBundleURLName: com.creatorhubn.capture.google-oauth
             CFBundleURLSchemes:
               - com.googleusercontent.apps.256648631702-s96ihgei36g0pgc11t4o27arcjoc35g5
+    entitlements:
+      path: CaptureApp/Generated/CaptureApp.entitlements
+      properties:
+        # WeatherKit: golden hour / vær on-device. Krever at WeatherKit-
+        # capability aktiveres for App ID-en i Apple Developer-portalen før
+        # TestFlight-signering lykkes (se aktiverings-sjekklisten).
+        com.apple.developer.weatherkit: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture
@@ -103,3 +113,25 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+
+  # Widget-extension: «shoot i gang»-Live Activity (låseskjerm + Dynamic
+  # Island). Deler ShootActivityAttributes.swift med app-target-et.
+  # NB (provisioning): egen bundle-id må registreres for TestFlight-signering —
+  # fastlane -allowProvisioningUpdates + ASC-nøkkel oppretter den vanligvis auto.
+  CaptureWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: CaptureWidgets
+      - path: CaptureApp/Core/LiveActivity/ShootActivityAttributes.swift
+    info:
+      path: CaptureWidgets/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: CreatorHub Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture.widgets
+        TARGETED_DEVICE_FAMILY: "2"
+        GENERATE_INFOPLIST_FILE: NO
