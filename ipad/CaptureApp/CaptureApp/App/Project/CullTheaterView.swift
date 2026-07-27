@@ -120,6 +120,8 @@ final class CullTheaterModel {
     private(set) var sentCount = 0
     var errorMessage: String?
     private(set) var hasAutoCulled = false
+    /// On-device (Vision) smart-cull-oppsummering, f.eks. «2 duplikat-grupper».
+    private(set) var smartCullSummary: String?
 
     init(sessionId: UUID, jobId: String, pricePerImage: Double?, ownerUserId: String) {
         self.sessionId = sessionId
@@ -187,6 +189,36 @@ final class CullTheaterModel {
         } catch {
             errorMessage = (error as? DashboardError)?.localizedDescription ?? "Auto-cull feilet."
         }
+    }
+
+    /// On-device smart cull (gratis, offline): Vision rangerer etter estetikk +
+    /// ansikts-fangst og deduperer nesten-identiske frames. Beholder beste av
+    /// hver duplikat-gruppe og dropper «utility»-shots. Komplement til den
+    /// backend-drevne auto-cullen — fungerer uten nett.
+    @available(iOS 18, *)
+    func runSmartCull() async {
+        culling = true; defer { culling = false }
+        errorMessage = nil
+        var items: [(id: String, image: CGImage)] = []
+        for a in assets {
+            guard let path = a.displayPreviewKey,
+                  let ui = UIImage(contentsOfFile: path),
+                  let cg = ui.cgImage else { continue }
+            items.append((id: a.id.uuidString, image: cg))
+        }
+        guard !items.isEmpty else { errorMessage = "Ingen bilder å analysere."; return }
+
+        let service = CullingService()
+        await service.cull(items)
+        guard let result = service.result else { return }
+
+        // Behold anbefalte keepers (beste av hver duplikat-gruppe), minus utility.
+        let utilityIds = Set(result.ranked.filter(\.isUtility).map(\.id))
+        let keepSet = Set(result.keep).subtracting(utilityIds)
+        keptIds = Set(assets.filter { keepSet.contains($0.id.uuidString) }.map(\.id))
+        RedigeringEditStore.saveKept(sessionId, keptIds)
+        hasAutoCulled = true
+        smartCullSummary = "På enheten: \(result.duplicates.count) duplikat-grupper funnet, beholder \(keptIds.count) av \(items.count)."
     }
 
     func toggle(_ asset: Asset) {
@@ -318,8 +350,28 @@ struct CullTheaterView: View {
             .controlSize(.large)
             .tint(CHTheme.accent)
             .disabled(model.culling || model.total == 0)
-            Text("Auto-cull bruker skarphet, øyne, eksponering og duplikat-grupper. Du kan flytte hvert bilde manuelt etterpå — du har siste ord.")
+            if #available(iOS 18, *) {
+                Button {
+                    Task { await model.runSmartCull() }
+                } label: {
+                    HStack {
+                        if model.culling { ProgressView().controlSize(.small) }
+                        Image(systemName: "sparkles")
+                        Text("Smart cull på enheten")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(CHTheme.accent)
+                .disabled(model.culling || model.total == 0)
+            }
+            Text("Auto-cull bruker skarphet, øyne, eksponering og duplikat-grupper. «Smart cull på enheten» kjører helt lokalt (Vision) uten nett. Du kan flytte hvert bilde manuelt etterpå — du har siste ord.")
                 .font(.caption2).foregroundStyle(CHTheme.textMuted)
+            if let summary = model.smartCullSummary {
+                Label(summary, systemImage: "checkmark.seal")
+                    .font(.caption).foregroundStyle(CHTheme.accent)
+            }
             if let msg = model.errorMessage {
                 Text(msg).font(.caption).foregroundStyle(CHTheme.warning)
             }

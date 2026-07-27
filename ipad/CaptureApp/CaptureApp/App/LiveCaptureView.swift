@@ -464,6 +464,11 @@ struct LiveCaptureView: View {
                             guard let id = model.focusedAsset?.id else { return }
                             model.deleteVoiceMemo(assetId: id)
                         },
+                        onTranscribeVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            Task { await model.transcribeVoiceMemo(assetId: id) }
+                        },
+                        voiceMemoTranscript: model.focusedAsset.flatMap { model.voiceMemoTranscripts[$0.id] },
                         onDismissNotes: {
                             guard let id = model.focusedAsset?.id else { return }
                             model.dismissNotes(assetId: id)
@@ -1219,6 +1224,8 @@ private struct HeroStage: View {
     let onStopVoiceMemo: () -> Void
     let onPlayVoiceMemo: () -> Void
     let onDeleteVoiceMemo: () -> Void
+    let onTranscribeVoiceMemo: () -> Void
+    let voiceMemoTranscript: String?
     let onDismissNotes: () -> Void
 
     var body: some View {
@@ -1304,8 +1311,19 @@ private struct HeroStage: View {
                             onStart: onStartVoiceMemo,
                             onStop: onStopVoiceMemo,
                             onPlay: onPlayVoiceMemo,
-                            onDelete: onDeleteVoiceMemo
+                            onDelete: onDeleteVoiceMemo,
+                            onTranscribe: onTranscribeVoiceMemo
                         )
+                    }
+
+                    if let voiceMemoTranscript {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "waveform.and.mic").foregroundStyle(.purple)
+                            Text(voiceMemoTranscript)
+                                .font(.caption).foregroundStyle(.white.opacity(0.85))
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 24)
                     }
 
                     HStack(spacing: 12) {
@@ -2717,6 +2735,7 @@ private struct VoiceMemoControls: View {
     let onStop: () -> Void
     let onPlay: () -> Void
     let onDelete: () -> Void
+    var onTranscribe: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 6) {
@@ -2751,6 +2770,11 @@ private struct VoiceMemoControls: View {
                 button(icon: "stop.fill", tint: .white, background: Color.blue.opacity(0.55), action: onPlay)
                     .accessibilityLabel("Stop voice memo playback")
                     .onLongPressGesture(minimumDuration: 0.6) { onDelete() }
+            }
+            if memoExists {
+                button(icon: "text.bubble", tint: .white.opacity(0.8),
+                       background: Color.purple.opacity(0.5), action: onTranscribe)
+                    .accessibilityLabel("Transcribe voice memo")
             }
         }
     }
@@ -6054,6 +6078,25 @@ final class LiveCaptureModel {
         guard let voiceMemoService, let store else { return }
         voiceMemoService.deleteMemo(for: assetId)
         Task { try? await store.attachVoiceMemoKey(id: assetId, key: nil) }
+    }
+
+    /// Transiente transkript per asset (vises under voice-kontrollene).
+    var voiceMemoTranscripts: [UUID: String] = [:]
+
+    /// Transkriber `assetId`'s voice-memo on-device (SFSpeechRecognizer, nb-NO).
+    /// Til nå var memoen bare lyd; nå blir dikterte retusj-/leverings-notater
+    /// søkbar tekst.
+    func transcribeVoiceMemo(assetId: UUID) async {
+        guard let voiceMemoService else { return }
+        let url = voiceMemoService.memoURL(for: assetId)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        voiceMemoTranscripts[assetId] = "Transkriberer…"
+        do {
+            let text = try await VoiceMemoTranscriber().transcribe(fileURL: url)
+            voiceMemoTranscripts[assetId] = text.isEmpty ? "Ingen tale funnet." : text
+        } catch {
+            voiceMemoTranscripts[assetId] = "Transkribering feilet."
+        }
     }
 
     func renameSession(_ newName: String) async {
