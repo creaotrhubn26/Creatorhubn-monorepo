@@ -52,6 +52,7 @@ function StudentRubricBreakdown({ rubric }: { rubric: StudentRubricBreakdownData
   );
 }
 import { MEMBER_ROLE_LABELS, type MemberRole } from './educationProductionMembersService';
+import { TalentConsentCard } from './TalentConsentCard';
 
 const ACCENT = '#8B5CF6';
 
@@ -212,6 +213,9 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
           Hei, {student.name}! {student.cohortName && <Typography component="span" sx={{ color: 'text.secondary', fontWeight: 400, fontSize: 13 }}>· {student.cohortName}</Typography>}
         </Typography>
       )}
+
+      {/* Ventende Role Room Talents-invitasjon (GDPR: les + aksepter/avslå) */}
+      <TalentConsentCard />
 
       <Box>
         <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>

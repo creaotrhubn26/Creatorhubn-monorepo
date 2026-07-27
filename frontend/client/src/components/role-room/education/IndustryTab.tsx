@@ -20,6 +20,7 @@ import {
   Storefront as IndustryIcon, TheaterComedy as TalentIcon, Verified as VerifiedIcon,
   Movie as ShowreelIcon, Search as SearchIcon, KeyboardArrowDown as CaretIcon,
   Edit as EditIcon, WorkspacePremium as NsfIcon, Groups as ClaimedIcon,
+  Close as CloseIcon, Shield as ConsentIcon,
 } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationTalentPipelineService, type PipelineRow, type ShowcaseEntry, type TalentAttributes } from './educationTalentPipelineService';
@@ -51,6 +52,7 @@ export function IndustryTab() {
   const [languages, setLanguages] = useState('');
   const [dialects, setDialects] = useState('');
   const [nsf, setNsf] = useState(false);
+  const [attested, setAttested] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Showcase.
@@ -87,6 +89,15 @@ export function IndustryTab() {
     setLanguages(joinList(a.languages));
     setDialects(joinList(a.dialects));
     setNsf(a.nsfMember);
+    setAttested(false);
+  };
+
+  const withdraw = async (row: PipelineRow) => {
+    try {
+      await educationTalentPipelineService.withdraw(row.studentId);
+      setToast(`Invitasjonen for ${row.name} er trukket tilbake.`);
+      setPipeline(await educationTalentPipelineService.getPipeline().catch(() => pipeline));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake'); }
   };
 
   const buildAttrs = (): Partial<TalentAttributes> => ({
@@ -111,8 +122,9 @@ export function IndustryTab() {
           program: program.trim() || undefined,
           year: Number(year) || undefined,
           attributes: buildAttrs(),
+          consentAttested: attested,
         });
-        setToast(`${edit.name} promotert til Talents.`);
+        setToast(`${edit.name} invitert til Talents — venter på studentens samtykke.`);
       } else {
         await educationTalentPipelineService.setAttributes(edit.studentId, buildAttrs());
         setToast(`Attributter lagret for ${edit.name}.`);
@@ -231,14 +243,15 @@ export function IndustryTab() {
                 {r.searchable && <Chip icon={<SearchIcon sx={{ fontSize: '12px !important' }} />} label="Søkbar" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(56,189,248,0.12)', color: '#38bdf8', '& .MuiChip-icon': { color: '#38bdf8' } }} />}
                 {r.nsfMember && <Chip icon={<NsfIcon sx={{ fontSize: '12px !important' }} />} label="NSF" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(245,158,11,0.12)', color: '#f59e0b', '& .MuiChip-icon': { color: '#f59e0b' } }} />}
               </Stack>
-              <Box sx={{ justifySelf: 'end' }}>
+              <Stack direction="row" spacing={0.25} sx={{ justifySelf: 'end' }} alignItems="center">
                 <Button size="small" variant={r.status === 'none' ? 'contained' : 'outlined'} startIcon={r.status === 'none' ? <TalentIcon sx={{ fontSize: '15px !important' }} /> : <EditIcon sx={{ fontSize: '15px !important' }} />} onClick={() => openEdit(r)}
                   sx={r.status === 'none'
                     ? { bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }
                     : { borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>
                   {r.status === 'none' ? 'Promoter' : 'Rediger'}
                 </Button>
-              </Box>
+                {r.status === 'claimable' && <Tooltip title="Trekk tilbake invitasjonen (sletter utkastet)"><IconButton size="small" onClick={() => withdraw(r)} sx={{ color: 'rgba(255,255,255,0.35)', fontSize: 15 }}><CloseIcon fontSize="inherit" /></IconButton></Tooltip>}
+              </Stack>
             </Box>
           );
         })}
@@ -275,10 +288,25 @@ export function IndustryTab() {
             <FormControlLabel control={<Checkbox checked={nsf} onChange={(e) => setNsf(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
               label={<Typography sx={{ fontSize: 13 }}>Medlem av Norsk Skuespillerforbund (NSF)</Typography>} />
           </Stack>
+
+          {edit?.status === 'none' && (
+            <Box sx={{ mt: 2, p: 1.75, borderRadius: 2, bgcolor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+              <Stack direction="row" alignItems="flex-start" spacing={1}>
+                <ConsentIcon sx={{ fontSize: 18, color: '#f59e0b', mt: 0.25 }} />
+                <Box>
+                  <T eid="edu-br-consent-note" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>
+                    Samtykke først: profilen opprettes som et <b>utkast</b> og er usynlig for byråer. Studenten får lese hva Role Room Talents er og må selv bekrefte (eller avslå) før noe blir aktivt.
+                  </T>
+                  <FormControlLabel sx={{ mt: 0.5 }} control={<Checkbox checked={attested} onChange={(e) => setAttested(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
+                    label={<Typography sx={{ fontSize: 12.5 }}>Jeg bekrefter at studenten har samtykket til å bli lagt til i Role Room Talents.</Typography>} />
+                </Box>
+              </Stack>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEdit(null)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={save} disabled={busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{busy ? 'Lagrer…' : edit?.status === 'none' ? 'Promoter' : 'Lagre attributter'}</Button>
+          <Button variant="contained" onClick={save} disabled={busy || (edit?.status === 'none' && !attested)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{busy ? 'Lagrer…' : edit?.status === 'none' ? 'Promoter' : 'Lagre attributter'}</Button>
         </DialogActions>
       </Dialog>
 

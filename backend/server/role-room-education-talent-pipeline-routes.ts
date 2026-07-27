@@ -117,6 +117,30 @@ function isSearchable(n: TalentAttrs): boolean {
   return n.playingAgeMin != null || n.playingAgeMax != null || n.skills.length > 0 || n.languages.length > 0 || n.dialects.length > 0;
 }
 
+/**
+ * Transparens (GDPR art. 13/14): forklaringen studenten leser FØR de bekrefter.
+ * Informert samtykke krever at den registrerte forstår hva de sier ja til.
+ */
+export const ROLE_ROOM_TALENTS_INFO = {
+  title: "Hva er Role Room Talents?",
+  summary:
+    "Role Room Talents er et talent-register der skuespillere kan bli funnet av byråer og casting-ansvarlige. Skolen din har opprettet et utkast til profil for deg med showreel og en verifisert bekreftelse på utdanningen din. Du bestemmer selv om du vil overta profilen — og ingen ser den før du aktivt gir samtykke.",
+  dataShared: [
+    "Navn og (valgfritt) kontaktinfo",
+    "Showreel/portefølje fra studiet",
+    "Skole-verifisert utdanning (institusjon, program, år)",
+    "Casting-attributter du selv kan redigere (spillealder, ferdigheter, språk, dialekt)",
+  ],
+  visibility:
+    "Profilen er USYNLIG for byråer/casting til du selv har overtatt den og gitt eksplisitt samtykke — per byrå. Du kan trekke samtykket når som helst.",
+  yourRights: [
+    "Overta (claim) profilen og styre den selv",
+    "Avslå — da slettes utkastet",
+    "Når du eier profilen: redigere, skjule eller slette den, og styre nøyaktig hvem som ser hva",
+  ],
+  controller: "Behandlingsansvarlig for selve registeret er The Role Room; skolen er ansvarlig for den verifiserte utdannings-bekreftelsen.",
+};
+
 export interface PipelineRow {
   studentId: string;
   name: string;
@@ -173,7 +197,10 @@ export function createEducationTalentPipelineRouter(
 
   // ── Promoter avgangsstudent → claimable talent-profil ────────────────────
   router.post("/education/students/:id/promote-to-talent", requireAuth, async (req, res) => {
-    const body = (req.body ?? {}) as { institution?: string; program?: string; year?: number; showreelPortfolioId?: string; attributes?: unknown };
+    const body = (req.body ?? {}) as { institution?: string; program?: string; year?: number; showreelPortfolioId?: string; attributes?: unknown; consentAttested?: boolean };
+    // Samtykke-først: faglærer MÅ attestere at studenten har samtykket før vi
+    // oppretter en profil m/ studentens persondata (behandlingsgrunnlag + spor).
+    if (body.consentAttested !== true) { res.status(400).json({ error: "consent_attestation_required" }); return; }
     try {
       const stu = await pool.query(
         `SELECT s.*, c.program AS cohort_program, c.name AS cohort_name
@@ -185,6 +212,8 @@ export function createEducationTalentPipelineRouter(
       const student = stu.rows[0];
       if (!student) { res.status(404).json({ error: "not_found" }); return; }
       if (student.talent_id) { res.json({ talentId: String(student.talent_id), alreadyPromoted: true }); return; }
+      // Studenten må ha e-post — det er slik de identifiseres for å bekrefte/avslå.
+      if (!student.email) { res.status(400).json({ error: "student_email_required" }); return; }
 
       const showreel = await resolveShowreel(req.params.id, body.showreelPortfolioId);
       const year = Number.isInteger(body.year) ? body.year : new Date().getFullYear();
@@ -211,7 +240,10 @@ export function createEducationTalentPipelineRouter(
          RETURNING id`,
         [
           String(student.name), student.email ?? null, showreel,
-          JSON.stringify(badges), JSON.stringify({ education: credential }),
+          JSON.stringify(badges), JSON.stringify({
+            education: credential,
+            consent: { status: "invited", attestedByOwner: uid(req), attestedAt: new Date().toISOString() },
+          }),
           cols.playing_age_min, cols.playing_age_max, cols.gender, cols.city, cols.height_cm,
           cols.skills, cols.languages, cols.dialects,
         ],
@@ -353,7 +385,13 @@ export function createEducationTalentPipelineRouter(
     try {
       const r = await pool.query(
         `UPDATE talents
-            SET owner_user_id = $1, profile_status = CASE WHEN profile_status = 'draft' THEN 'active' ELSE profile_status END, updated_at = now()
+            SET owner_user_id = $1,
+                profile_status = CASE WHEN profile_status = 'draft' THEN 'active' ELSE profile_status END,
+                metadata = COALESCE(metadata, '{}'::jsonb)
+                  || jsonb_build_object('consent',
+                       COALESCE(metadata->'consent', '{}'::jsonb)
+                       || jsonb_build_object('status', 'accepted', 'confirmedAt', now()::text)),
+                updated_at = now()
           WHERE owner_user_id IS NULL
             AND lower(email) = lower($2)
             AND metadata->'education'->>'source' = 'education_workspace'
@@ -365,6 +403,79 @@ export function createEducationTalentPipelineRouter(
       if (isMissingTable(err)) { res.json({ claimed: 0, talentIds: [] }); return; }
       console.error("[edu-talent-pipeline] claim failed:", (err as Error).message);
       res.status(500).json({ error: "claim_failed" });
+    }
+  });
+
+  // ── Student: hva venter på meg + hva ER Role Room Talents (transparens) ───
+  router.get("/education/talent/pending", requireAuth, async (req, res) => {
+    const email = (req as AuthedRequest).userEmail;
+    if (!email) { res.json({ pending: [], info: ROLE_ROOM_TALENTS_INFO }); return; }
+    try {
+      const r = await pool.query(
+        `SELECT id, display_name, showreel_url, metadata
+           FROM talents
+          WHERE owner_user_id IS NULL
+            AND lower(email) = lower($1)
+            AND metadata->'education'->>'source' = 'education_workspace'`,
+        [email],
+      );
+      const pending = r.rows.map((x) => ({
+        talentId: String(x.id),
+        name: (x.display_name as string) ?? "",
+        showreelUrl: (x.showreel_url as string) ?? null,
+        credential: (x.metadata as { education?: unknown })?.education ?? null,
+      }));
+      res.json({ pending, info: ROLE_ROOM_TALENTS_INFO });
+    } catch (err) {
+      if (isMissingTable(err)) { res.json({ pending: [], info: ROLE_ROOM_TALENTS_INFO }); return; }
+      console.warn("[edu-talent-pipeline] pending failed:", (err as Error).message);
+      res.json({ pending: [], info: ROLE_ROOM_TALENTS_INFO });
+    }
+  });
+
+  // ── Student avslår → utkastet slettes (rett til å motsette seg / slette) ──
+  router.post("/education/talent/decline", requireAuth, async (req, res) => {
+    const email = (req as AuthedRequest).userEmail;
+    if (!email) { res.status(400).json({ error: "no_email" }); return; }
+    try {
+      const del = await pool.query(
+        `DELETE FROM talents
+          WHERE owner_user_id IS NULL
+            AND lower(email) = lower($1)
+            AND metadata->'education'->>'source' = 'education_workspace'
+          RETURNING id`,
+        [email],
+      );
+      const ids = del.rows.map((x) => String(x.id));
+      if (ids.length > 0) {
+        await pool.query(`UPDATE role_room_education_students SET talent_id = NULL WHERE talent_id = ANY($1::uuid[])`, [ids]);
+      }
+      res.json({ declined: ids.length });
+    } catch (err) {
+      if (isMissingTable(err)) { res.json({ declined: 0 }); return; }
+      console.error("[edu-talent-pipeline] decline failed:", (err as Error).message);
+      res.status(500).json({ error: "decline_failed" });
+    }
+  });
+
+  // ── Faglærer trekker tilbake en UCLAIMET invitasjon (rett til sletting) ──
+  router.delete("/education/students/:id/talent", requireAuth, async (req, res) => {
+    try {
+      const stu = await pool.query(
+        `SELECT talent_id FROM role_room_education_students WHERE id = $1 AND owner_user_id = $2`,
+        [req.params.id, uid(req)],
+      );
+      if (stu.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const talentId = stu.rows[0].talent_id ? String(stu.rows[0].talent_id) : null;
+      if (!talentId) { res.json({ withdrawn: false }); return; }
+      // Kun uclaimet (owner NULL) kan trekkes tilbake av skolen — en claimet
+      // profil eies av studenten og kan bare slettes av studenten selv.
+      const del = await pool.query(`DELETE FROM talents WHERE id = $1 AND owner_user_id IS NULL RETURNING id`, [talentId]);
+      await pool.query(`UPDATE role_room_education_students SET talent_id = NULL WHERE id = $1`, [req.params.id]);
+      res.json({ withdrawn: del.rows.length > 0, wasClaimed: del.rows.length === 0 });
+    } catch (err) {
+      console.error("[edu-talent-pipeline] withdraw failed:", (err as Error).message);
+      res.status(500).json({ error: "withdraw_failed" });
     }
   });
 
