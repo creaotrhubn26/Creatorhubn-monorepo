@@ -477,13 +477,24 @@ export async function replaySaftTransactions(
       transactionsSkipped++;
       continue;
     }
+    // Fiken legger SupplierID/CustomerID på RESKONTRO-linjen (2400/1500), ikke på
+    // kostnads-/inntektslinjen. For at leverandør-/kunde-analyse (faste utgifter,
+    // avstemming) skal virke må parten tagges på HELE bilaget — slik en vanlig
+    // postering i Reknaren gjør. Propager derfor en entydig transaksjons-part til
+    // alle linjer som ikke har en eksplisitt part.
+    const supRefs = new Set(t.lines.map((l) => l.supplierRef).filter((x): x is string => !!x));
+    const cusRefs = new Set(t.lines.map((l) => l.customerRef).filter((x): x is string => !!x));
+    const txnSup = supRefs.size === 1 && cusRefs.size === 0 ? [...supRefs][0]! : null;
+    const txnCus = cusRefs.size === 1 && supRefs.size === 0 ? [...cusRefs][0]! : null;
     const lines: JournalLineInput[] = t.lines.map((l) => {
       const line: JournalLineInput = { accountNumber: l.accountNumber };
       if (l.debitMinor > 0n) line.debitMinor = l.debitMinor;
       if (l.creditMinor > 0n) line.creditMinor = l.creditMinor;
       if (l.description) line.description = l.description;
-      const vid = l.supplierRef ? sup.map.get(l.supplierRef) : undefined;
-      const cid = l.customerRef ? cus.map.get(l.customerRef) : undefined;
+      const supRef = l.supplierRef ?? txnSup;
+      const cusRef = l.customerRef ?? txnCus;
+      const vid = supRef ? sup.map.get(supRef) : undefined;
+      const cid = cusRef ? cus.map.get(cusRef) : undefined;
       if (vid) line.vendorId = vid;
       if (cid) line.customerId = cid;
       return line;

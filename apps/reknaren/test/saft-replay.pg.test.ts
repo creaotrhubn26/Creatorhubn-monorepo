@@ -40,7 +40,7 @@ const SAFT = `<?xml version="1.0"?>
         <Line><RecordID>3</RecordID><AccountID>2700</AccountID><CreditAmount><Amount>250.00</Amount></CreditAmount></Line>
       </Transaction>
       <Transaction><TransactionID>2</TransactionID><TransactionDate>2025-04-01</TransactionDate><Description>Kjoep fra Lev AS</Description><SystemID>SYS-2</SystemID>
-        <Line><RecordID>4</RecordID><AccountID>6800</AccountID><SupplierID>S1</SupplierID><DebitAmount><Amount>800.00</Amount></DebitAmount></Line>
+        <Line><RecordID>4</RecordID><AccountID>6800</AccountID><DebitAmount><Amount>800.00</Amount></DebitAmount></Line>
         <Line><RecordID>5</RecordID><AccountID>2710</AccountID><DebitAmount><Amount>200.00</Amount></DebitAmount></Line>
         <Line><RecordID>6</RecordID><AccountID>2400:20001</AccountID><SupplierID>S1</SupplierID><CreditAmount><Amount>1000.00</Amount></CreditAmount></Line>
       </Transaction>
