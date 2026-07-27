@@ -77,11 +77,14 @@ describe("education productions routes", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("POST uten projectId → 400", async () => {
-    const { pool } = makePool({ ownsProject: true });
+  it("POST uten projectId → oppretter EKTE casting_project (bro, 201)", async () => {
+    // «Ny produksjon»-broen: mangler projectId → opprett et ekte casting_projects
+    // for faglæreren og koble produksjonen til det (ikke lenger 400).
+    const { pool, inserts } = makePool({ ownsProject: true });
     const res = makeRes();
     await runChain(H(R(pool), "POST", "/education/productions"), authed({ title: "X" }), res);
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(201);
+    expect(inserts[0]?.project_id).toBeTruthy();
   });
 
   it("uten Bearer → 401", async () => {

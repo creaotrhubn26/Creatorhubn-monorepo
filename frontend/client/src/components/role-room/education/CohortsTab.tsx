@@ -15,6 +15,7 @@ import {
   Box, Stack, Typography, Card, CardActionArea, Button, IconButton, Chip,
   CircularProgress, Alert, Collapse, TextField, Tooltip, InputBase, Avatar,
   Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar,
+  type TypographyProps,
 } from '@mui/material';
 import {
   Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon,
@@ -34,8 +35,8 @@ const CARD = 'rgba(255,255,255,0.035)';
 const BORDER = '1px solid rgba(255,255,255,0.08)';
 
 /** data-edit-id-tagget Typography (kortform for CMS-redigerbar tekst). */
-function T({ eid, children, sx, variant, component }: { eid: string; children: React.ReactNode; sx?: object; variant?: 'inherit' | 'h5' | 'h6'; component?: React.ElementType }) {
-  return <Typography data-edit-id={eid} variant={variant} component={component} sx={sx}>{children}</Typography>;
+function T({ eid, children, ...rest }: { eid: string; children: React.ReactNode } & Omit<TypographyProps, 'children'>) {
+  return <Typography data-edit-id={eid} {...rest}>{children}</Typography>;
 }
 
 function Panel({ children, sx }: { children: React.ReactNode; sx?: object }) {

@@ -6,16 +6,17 @@
  * for konsistent stil (sidemeny-shell + lilla aksent).
  */
 
-import { Box, Stack, Typography, Card } from '@mui/material';
+import { Box, Stack, Typography, Card, type TypographyProps } from '@mui/material';
 import { ChevronRight as ChevronIcon } from '@mui/icons-material';
 
 export const ACCENT = '#8B5CF6';
 export const CARD = 'rgba(255,255,255,0.035)';
 export const BORDER = '1px solid rgba(255,255,255,0.08)';
 
-/** data-edit-id-tagget Typography — CMS-redigerbar tekst. */
-export function T({ eid, children, sx, variant, component }: { eid: string; children: React.ReactNode; sx?: object; variant?: 'inherit' | 'h5' | 'h6'; component?: React.ElementType }) {
-  return <Typography data-edit-id={eid} variant={variant} component={component} sx={sx}>{children}</Typography>;
+/** data-edit-id-tagget Typography — CMS-redigerbar tekst. Videresender alle
+ *  Typography-props (variant/component/onClick/sx …) uendret. */
+export function T({ eid, children, ...rest }: { eid: string; children: React.ReactNode } & Omit<TypographyProps, 'children'>) {
+  return <Typography data-edit-id={eid} {...rest}>{children}</Typography>;
 }
 
 export function Panel({ children, sx }: { children: React.ReactNode; sx?: object }) {
