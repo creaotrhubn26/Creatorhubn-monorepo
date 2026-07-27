@@ -33,6 +33,11 @@ export function isLoggedIn(): boolean {
   return token !== null;
 }
 
+/** Auth-header for direkte fetch (f.eks. strømmende SSE-import). */
+export function authHeaders(): Record<string, string> {
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 export function logout(): void {
   token = null;
   currentOrgId = null;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { api, ApiError, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
+import { api, ApiError, authHeaders, kr, loadCodeLibrary, type AccountInfo, type VatCodeInfo } from './api';
 import { useLoad, type ViewMode } from './App';
 import { DimensionSelect } from './screens-dimensions';
 import { PostingLines } from './screens-pro';
@@ -2092,9 +2092,47 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [replayPreview, setReplayPreview] = useState<ReplayPreview | null>(null);
-  const [includeOpening, setIncludeOpening] = useState(true);
   const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
+  const [progress, setProgress] = useState<{ posted: number; total: number; company: string | null; periodStart: string | null; periodEnd: string | null; includeOpening: boolean } | null>(null);
   const toast = useToast();
+
+  // Full historikk via strømmende import (SSE) — gir ekte framdrift i %.
+  const importFull = async () => {
+    if (!xml) return;
+    setError(null); setReplayResult(null); setProgress(null); setBusy(true);
+    try {
+      const resp = await fetch(`/api/organizations/${orgId}/saft-import/replay/stream`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ xml }),
+      });
+      if (!resp.ok || !resp.body) throw new Error('Kunne ikke starte importen.');
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i: number;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const line = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          if (!line.startsWith('data: ')) continue;
+          const ev = JSON.parse(line.slice(6));
+          if (ev.phase === 'start') setProgress({ posted: 0, total: 0, company: ev.company, periodStart: ev.periodStart, periodEnd: ev.periodEnd, includeOpening: ev.includeOpening });
+          else if (ev.phase === 'posting') setProgress((p) => (p ? { ...p, posted: ev.posted, total: ev.total } : p));
+          else if (ev.phase === 'done') { setReplayResult(ev.result); toast(`${ev.result.transactionsPosted} bilag importert ✓`, 'ok'); }
+          else if (ev.phase === 'error') setError(ev.message);
+        }
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  };
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -2145,27 +2183,6 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
     }
   };
 
-  const replayAll = async () => {
-    if (!xml) return;
-    if (!window.confirm(
-      `Spille av HELE transaksjonshistorikken for ${replayPreview?.periodStart ?? ''}–${replayPreview?.periodEnd ?? ''}? ` +
-      `${replayPreview?.transactionCount ?? ''} posteringer føres inn i hovedboken.` +
-      (includeOpening ? ' Inngående balanse føres også (bruk kun for det tidligste året).' : '') +
-      ' Trygt å kjøre om igjen — hver postering føres nøyaktig én gang.',
-    )) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api<ReplayResult>('POST', `/api/organizations/${orgId}/saft-import/replay`, { xml, includeOpening });
-      setReplayResult(res);
-      toast(`${res.transactionsPosted} posteringer spilt av ✓`, 'ok');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div>
       <div className="page-head">
@@ -2178,41 +2195,32 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
       {error && <div className="error">{error}</div>}
 
       <div className="panel">
-        <h2>1. Last opp SAF-T-fila</h2>
-        <p className="subtitle">Vi leser fila og viser deg hva som finnes før noe importeres.</p>
-        <input type="file" accept=".xml,text/xml,application/xml" onChange={onFile} disabled={busy} aria-label="SAF-T-fil" />
+        <h2>Last opp SAF-T-filen</h2>
+        <p className="subtitle">Vi leser filen og viser deg nøyaktig hva den inneholder før noe som helst importeres.</p>
+        <input type="file" accept=".xml,text/xml,application/xml" onChange={onFile} disabled={busy || !!progress} aria-label="SAF-T-fil" />
         {fileName && <p className="hint">Valgt fil: {fileName}</p>}
-        {busy && <p className="hint">Leser fila …</p>}
+        {busy && !progress && <p className="hint">Leser filen …</p>}
       </div>
 
       {preview && (
         <>
           <div className="panel threshold-panel">
             <div className="threshold-head">
-              <h2>2. Forhåndsvisning</h2>
+              <h2>Dette fant vi i filen</h2>
               <span className={`badge ${preview.balanced ? 'ok' : 'accent'}`}>
                 {preview.balanced ? 'Balanserer ✓' : 'Balanserer ikke'}
               </span>
             </div>
             <p className="subtitle">
-              {preview.company ?? 'Ukjent virksomhet'}
-              {preview.companyOrgNumber ? ` · ${preview.companyOrgNumber}` : ''}
-              {preview.software ? ` · fra ${preview.software}` : ''}
-              {preview.periodStart ? ` · periode ${preview.periodStart}–${preview.periodEnd}` : ''}
+              Regnskapet for <b>{preview.company ?? 'ukjent virksomhet'}</b>
+              {preview.periodStart ? <>, perioden {preview.periodStart}–{preview.periodEnd}</> : null}
+              {preview.software ? <>, eksportert fra {preview.software}</> : null}.
+              {replayPreview ? <> Filen inneholder <b>{replayPreview.transactionCount} bilag</b>.</> : null}
             </p>
             <div className="cards">
-              <div className="card">
-                <div className="label">Kontoer</div>
-                <div className="value">{preview.counts.accounts}</div>
-              </div>
-              <div className="card">
-                <div className="label">Kunder</div>
-                <div className="value">{preview.counts.customers}</div>
-              </div>
-              <div className="card">
-                <div className="label">Leverandører</div>
-                <div className="value">{preview.counts.suppliers}</div>
-              </div>
+              <div className="card"><div className="label">Kontoer</div><div className="value">{preview.counts.accounts}</div></div>
+              <div className="card"><div className="label">Kunder</div><div className="value">{preview.counts.customers}</div></div>
+              <div className="card"><div className="label">Leverandører</div><div className="value">{preview.counts.suppliers}</div></div>
               <div className="card">
                 <div className="label">Sum debet / kredit</div>
                 <div className="value">{kr(preview.totalDebitMinor)}</div>
@@ -2221,83 +2229,85 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
             </div>
           </div>
 
-          {imported ? (
+          {/* Framdrift under import (ekte %) */}
+          {progress && (() => {
+            const pct = progress.total ? Math.round((progress.posted / progress.total) * 100) : 0;
+            return (
+              <div className="panel">
+                <h2>Henter inn regnskapet …</h2>
+                <p className="subtitle">
+                  {progress.company ? <>Fra <b>{progress.company}</b>{progress.periodStart ? ` · ${progress.periodStart}–${progress.periodEnd}` : ''}</> : 'Starter …'}
+                </p>
+                <div style={{ height: 14, borderRadius: 8, background: 'rgba(120,120,140,0.18)', overflow: 'hidden' }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent, #5b4bff)', transition: 'width .25s ease' }} />
+                </div>
+                <p className="hint" style={{ marginTop: 8 }}>
+                  {progress.total ? <><b>{pct}%</b> · {progress.posted} av {progress.total} bilag ført</> : 'Klargjør kontoer og kontakter …'}
+                  {progress.includeOpening ? ' · fører også inngående balanse' : ''}
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* Resultat: hele historikken */}
+          {replayResult && (
             <div className="panel threshold-panel ok">
               <div className="threshold-head">
-                <h2>Åpningsbalanse bokført ✓</h2>
+                <h2>Hele regnskapet er importert ✓</h2>
+                <span className="badge ok">{replayResult.transactionsPosted} bilag</span>
+              </div>
+              <p className="subtitle">
+                {replayResult.linesPosted} linjer ført · {replayResult.accountsEnsured} nye kontoer ·{' '}
+                {replayResult.suppliersCreated} leverandører · {replayResult.customersCreated} kunder
+                {replayResult.openingEntryNumber ? ` · inngående balanse som bilag nr. ${replayResult.openingEntryNumber}` : ''}
+                {replayResult.transactionsSkipped > 0 ? ` · ${replayResult.transactionsSkipped} hoppet over (balanserte ikke)` : ''}.
+                Hele historikken din finnes nå i Reknaren. Har du flere år, last opp neste fil — den legger seg oppå.
+              </p>
+            </div>
+          )}
+
+          {/* Resultat: bare startsaldo */}
+          {imported && (
+            <div className="panel threshold-panel ok">
+              <div className="threshold-head">
+                <h2>Startsaldo bokført ✓</h2>
                 <span className="badge ok">Bilag nr. {imported.entryNumber}</span>
               </div>
               <p className="subtitle">
-                {imported.openingLines} kontosaldoer ført · {imported.accountsEnsured} nye kontoer opprettet ·{' '}
-                {imported.customersCreated} kunder · {imported.suppliersCreated} leverandører. Regnskapet i
-                Reknaren starter nå fra Fiken-tallene dine.
+                {imported.openingLines} kontosaldoer ført · {imported.accountsEnsured} nye kontoer ·{' '}
+                {imported.customersCreated} kunder · {imported.suppliersCreated} leverandører. Regnskapet starter nå fra tallene dine.
               </p>
             </div>
-          ) : (
-            preview.balanced && (
-              <div className="panel">
-                <h2>3. Bokfør åpningsbalanse</h2>
-                <p className="subtitle">
-                  Vi fører saldoene over som én åpningspostering på datoen du velger. Du kan ikke føre
-                  samme dato to ganger. Kontoer som mangler opprettes automatisk.
-                </p>
-                <div className="row">
-                  <div>
-                    <label htmlFor="asof">Åpningsdato</label>
-                    <input id="asof" placeholder="ÅÅÅÅ-MM-DD" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
-                  </div>
-                  <div>
-                    <button className="primary" disabled={busy} onClick={bookOpening}>
-                      {busy ? 'Bokfører…' : 'Bokfør åpningsbalanse'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
           )}
 
-          {replayPreview && replayPreview.transactionCount > 0 && (
-            replayResult ? (
-              <div className="panel threshold-panel ok">
-                <div className="threshold-head">
-                  <h2>Transaksjonshistorikk spilt av ✓</h2>
-                  <span className="badge ok">{replayResult.transactionsPosted} posteringer</span>
+          {/* Valg: hva vil du importere? */}
+          {!progress && !replayResult && !imported && preview.balanced && (
+            <div className="panel">
+              <h2>Hva vil du importere?</h2>
+              <div className="cards">
+                <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                  <span className="badge ok">Anbefalt</span>
+                  <div className="value" style={{ fontSize: 18 }}>Hele regnskapet</div>
+                  <p className="hint" style={{ margin: 0 }}>
+                    Alle {replayPreview?.transactionCount ?? ''} bilag med dato, tekst og hvem de er fra — så Reknaren
+                    kjenner hele historikken din og kan lære faste utgifter, avstemme og mer.
+                  </p>
+                  <button className="primary" disabled={busy || !replayPreview?.transactionCount} onClick={importFull}>Importer hele regnskapet</button>
                 </div>
-                <p className="subtitle">
-                  {replayResult.linesPosted} linjer ført · {replayResult.accountsEnsured} nye kontoer ·{' '}
-                  {replayResult.suppliersCreated} leverandører · {replayResult.customersCreated} kunder
-                  {replayResult.openingEntryNumber ? ` · inngående balanse som bilag nr. ${replayResult.openingEntryNumber}` : ''}
-                  {replayResult.transactionsSkipped > 0 ? ` · ${replayResult.transactionsSkipped} hoppet over (ubalanserte)` : ''}.
-                  Hele historikken finnes nå i hovedboken — grunnlaget for læring, faste utgifter og avstemming.
-                </p>
-                {replayResult.unbalanced.length > 0 && (
-                  <p className="hint">Ubalanserte (ikke ført): {replayResult.unbalanced.slice(0, 20).join(', ')}{replayResult.unbalanced.length > 20 ? ' …' : ''}</p>
-                )}
-              </div>
-            ) : (
-              <div className="panel">
-                <h2>4. Full transaksjons-import (hele historikken)</h2>
-                <p className="subtitle">
-                  I stedet for bare én åpningssaldo kan du spille av <b>hver enkelt bokføring</b> fra fila inn i
-                  hovedboken — med dato, tekst og leverandør/kunde bevart. Da får Reknaren den faktiske historikken
-                  (som driver læring, faste utgifter og avstemming), ikke bare nettosaldoene.
-                </p>
-                <div className="cards">
-                  <div className="card"><div className="label">Posteringer</div><div className="value">{replayPreview.transactionCount}</div></div>
-                  <div className="card"><div className="label">Linjer</div><div className="value">{replayPreview.lineCount}</div></div>
-                  <div className="card"><div className="label">Periode</div><div className="value" style={{ fontSize: 15 }}>{replayPreview.periodStart}–{replayPreview.periodEnd}</div></div>
-                  <div className="card"><div className="label">Ubalanserte</div><div className="value">{replayPreview.unbalancedCount}</div></div>
+                <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                  <span className="badge plain">Rask</span>
+                  <div className="value" style={{ fontSize: 18 }}>Bare startsaldoen</div>
+                  <p className="hint" style={{ margin: 0 }}>Dagens saldoer som ett åpningsbilag. Raskt å komme i gang, men uten bilagshistorikk.</p>
+                  <input placeholder="Startdato ÅÅÅÅ-MM-DD" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} style={{ width: 'auto' }} />
+                  <button className="secondary" disabled={busy} onClick={bookOpening}>{busy ? 'Bokfører …' : 'Bokfør bare startsaldo'}</button>
                 </div>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '12px 0' }}>
-                  <input type="checkbox" checked={includeOpening} onChange={(e) => setIncludeOpening(e.target.checked)} style={{ width: 'auto', marginTop: 3 }} />
-                  <span>Før også <b>inngående balanse</b> (start-saldoene). Huk av kun for det <b>tidligste</b> året — for påfølgende år er inngående balanse allerede resultatet av forrige avspilling.</span>
-                </label>
-                <button className="primary" disabled={busy} onClick={replayAll}>
-                  {busy ? 'Spiller av…' : `Spill av ${replayPreview.transactionCount} posteringer`}
-                </button>
-                <p className="hint" style={{ marginTop: 8 }}>Trygt å kjøre om igjen — hver postering føres nøyaktig én gang (idempotent på Fikens transaksjons-ID). Har du flere år, importer eldste fil først.</p>
               </div>
-            )
+              <p className="hint" style={{ marginTop: 10 }}>
+                Trygt å kjøre om igjen — hvert bilag føres nøyaktig én gang. Har du flere år, last opp eldste fil først;
+                inngående balanse føres automatisk når regnskapet er tomt.
+                {replayPreview && replayPreview.unbalancedCount > 0 ? ` ${replayPreview.unbalancedCount} bilag i filen balanserer ikke og hoppes over.` : ''}
+              </p>
+            </div>
           )}
 
           <h2>Kontoplan med saldo</h2>

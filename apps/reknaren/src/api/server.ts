@@ -3219,6 +3219,60 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // Strømmende replay (SSE): sender framdrift underveis så UI kan vise %,
+  // hvilket år, og hvem regnskapet er fra. includeOpening avgjøres automatisk
+  // (inngående balanse føres kun når org-en er tom) med mindre den overstyres.
+  app.post(
+    '/api/organizations/:orgId/saft-import/replay/stream',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res) => {
+      const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.flushHeaders?.();
+      try {
+        const body = z.object({ xml: z.string().min(1).max(40_000_000), includeOpening: z.boolean().optional() }).parse(req.body);
+        const org = req.params.orgId!;
+        const meta = parseSaft(body.xml);
+        const hasEntries = ((await deps.db.query(`SELECT 1 FROM journal_entries WHERE organization_id=$1 LIMIT 1`, [org])).rowCount ?? 0) > 0;
+        const includeOpening = body.includeOpening ?? !hasEntries;
+        send({ phase: 'start', company: meta.company, periodStart: meta.periodStart, periodEnd: meta.periodEnd, software: meta.software, includeOpening });
+        let lastSent = 0;
+        const result = await replaySaftTransactions(deps.db, {
+          organizationId: org,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          xml: body.xml,
+          includeOpening,
+          onProgress: (posted, total) => {
+            // Send ~100 oppdateringer (hvert steg) + alltid siste.
+            const step = Math.max(1, Math.floor(total / 100));
+            if (posted - lastSent >= step || posted === total) { lastSent = posted; send({ phase: 'posting', posted, total }); }
+          },
+        });
+        await withTransaction(deps.db, (client) =>
+          recordAuditEvent(client, {
+            organizationId: org,
+            actor: { userId: req.auth!.userId, role: req.orgRole! },
+            action: 'saft.transactions_replayed',
+            entityType: 'organization',
+            entityId: org,
+            newValue: { periodStart: result.periodStart, periodEnd: result.periodEnd, posted: result.transactionsPosted, skipped: result.transactionsSkipped, includeOpening },
+          }),
+        );
+        send({ phase: 'done', result });
+      } catch (err) {
+        send({ phase: 'error', message: err instanceof Error ? err.message : 'Ukjent feil under import.' });
+      } finally {
+        res.end();
+      }
+    },
+  );
+
   // ── Periodelås og korrigering ────────────────────────────────────────────
   app.post(
     '/api/organizations/:orgId/periods/:year/:month/lock',

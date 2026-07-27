@@ -421,7 +421,14 @@ async function ensurePartyMap(
  */
 export async function replaySaftTransactions(
   db: Db,
-  params: { organizationId: string; actor: Actor; xml: string; includeOpening: boolean },
+  params: {
+    organizationId: string;
+    actor: Actor;
+    xml: string;
+    includeOpening: boolean;
+    /** Kalles underveis for framdrift (postert antall av totalt). */
+    onProgress?: (posted: number, total: number) => void;
+  },
 ): Promise<SaftReplayResult> {
   const parsed = parseSaftTransactions(params.xml);
   const org = params.organizationId;
@@ -471,10 +478,14 @@ export async function replaySaftTransactions(
   let transactionsSkipped = 0;
   let linesPosted = 0;
   const unbalanced: string[] = [];
+  const total = parsed.transactions.length;
+  let processed = 0;
   for (const t of parsed.transactions) {
+    processed++;
     if (!t.balanced) {
       unbalanced.push(t.id);
       transactionsSkipped++;
+      params.onProgress?.(processed, total);
       continue;
     }
     // Fiken legger SupplierID/CustomerID på RESKONTRO-linjen (2400/1500), ikke på
@@ -509,6 +520,7 @@ export async function replaySaftTransactions(
     });
     transactionsPosted++;
     linesPosted += lines.length;
+    params.onProgress?.(processed, total);
   }
 
   return {
