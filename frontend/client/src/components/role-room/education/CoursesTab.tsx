@@ -11,14 +11,17 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  CircularProgress, Alert, Chip,
+  CircularProgress, Alert, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  Snackbar, Card, CardActionArea,
 } from '@mui/material';
 import {
   School as CourseIcon, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
-  Assignment as AssignmentIcon, WorkspacePremium as CreditIcon,
+  Assignment as AssignmentIcon, WorkspacePremium as CreditIcon, GridView as PackIcon,
 } from '@mui/icons-material';
 import { educationCoursesService, type Course, type CourseInput, type LearningOutcomes } from './educationCoursesService';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
+import { educationAssignmentsService } from './educationAssignmentsService';
+import { STUDY_PLAN_PACKS } from './educationStudyPlanPacks';
 import { ACCENT, Panel, T } from './_eduUi';
 
 const VURDERINGSFORM_OPTIONS: { key: string; label: string }[] = [
@@ -43,6 +46,44 @@ export function CoursesTab() {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [f, setF] = useState<FormState>(blankForm());
   const [busy, setBusy] = useState(false);
+
+  // Studieplan-mal-pakke.
+  const [packOpen, setPackOpen] = useState(false);
+  const [packId, setPackId] = useState(STUDY_PLAN_PACKS[0].id);
+  const [packCohortId, setPackCohortId] = useState('');
+  const [packBusy, setPackBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const selectedPack = STUDY_PLAN_PACKS.find((p) => p.id === packId) ?? STUDY_PLAN_PACKS[0];
+
+  const adoptPack = async () => {
+    if (packBusy) return;
+    setPackBusy(true); setError(null);
+    try {
+      let courseN = 0; let assignN = 0;
+      for (const pc of selectedPack.courses) {
+        // eslint-disable-next-line no-await-in-loop -- sekvensiell for rekkefølge + FK
+        const course = await educationCoursesService.createCourse({
+          code: pc.code, title: pc.title, credits: pc.credits, term: pc.term,
+          cohortId: packCohortId || null, vurderingsform: pc.vurderingsform, learningOutcomes: pc.learningOutcomes,
+        });
+        courseN++;
+        for (const a of pc.assignments) {
+          try {
+            // eslint-disable-next-line no-await-in-loop -- sekvensiell så-ing
+            await educationAssignmentsService.createAssignment({
+              title: a.title, brief: a.brief, learningGoals: a.learningGoals,
+              cohortId: packCohortId || null, courseId: course.id,
+              isArbeidskrav: a.isArbeidskrav, vurderingsform: pc.vurderingsform, status: 'published',
+            });
+            assignN++;
+          } catch { /* hopp over enkelt-feil */ }
+        }
+      }
+      setPackOpen(false); await load();
+      setToast(`Adopterte «${selectedPack.program}»: ${courseN} emner + ${assignN} oppgaver.`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke adoptere pakke'); }
+    finally { setPackBusy(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -107,9 +148,14 @@ export function CoursesTab() {
             <T eid="edu-em-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Studiepoenggivende enheter med læringsutbytte (kunnskap / ferdigheter / generell kompetanse), vurderingsform og oppgaver.</T>
           </Box>
         </Stack>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openNew} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
-          <T eid="edu-em-btn-new" component="span" sx={{ fontWeight: 700 }}>Nytt emne</T>
-        </Button>
+        <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+          <Button variant="outlined" startIcon={<PackIcon />} onClick={() => setPackOpen(true)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+            <T eid="edu-em-btn-pack" component="span" sx={{ fontWeight: 600 }}>Fra studieplan-mal</T>
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openNew} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+            <T eid="edu-em-btn-new" component="span" sx={{ fontWeight: 700 }}>Nytt emne</T>
+          </Button>
+        </Stack>
       </Stack>
 
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
@@ -209,6 +255,43 @@ export function CoursesTab() {
           })}
         </Box>
       )}
+
+      {/* Studieplan-mal-pakke */}
+      <Dialog open={packOpen} onClose={() => setPackOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Adopter studieplan-mal</DialogTitle>
+        <DialogContent>
+          <T eid="edu-em-pack-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+            Oppretter et sett emner (m/ læringsutbytte + vurderingsform) og tilhørende oppgaver/arbeidskrav. Generiske start-strukturer du redigerer etterpå.
+          </T>
+          <Stack spacing={1} sx={{ mb: 2 }}>
+            {STUDY_PLAN_PACKS.map((p) => {
+              const active = p.id === packId;
+              const arbeidskrav = p.courses.reduce((n, c) => n + c.assignments.filter((a) => a.isArbeidskrav).length, 0);
+              return (
+                <Card key={p.id} sx={{ bgcolor: active ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(139,92,246,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
+                  <CardActionArea onClick={() => setPackId(p.id)} sx={{ p: 1.75 }}>
+                    <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{p.program}</Typography>
+                    <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3 }}>{p.description}</Typography>
+                    <Typography sx={{ fontSize: 11, color: '#c4b5fd', mt: 0.75, fontWeight: 600 }}>{p.courses.length} emner · {arbeidskrav} arbeidskrav · {p.exampleInstitutions}</Typography>
+                  </CardActionArea>
+                </Card>
+              );
+            })}
+          </Stack>
+          <TextField size="small" select label="Kull (valgfritt)" value={packCohortId} onChange={(e) => setPackCohortId(e.target.value)} fullWidth>
+            <MenuItem value="">Ingen</MenuItem>
+            {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+          </TextField>
+          <Typography sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 1.25 }}>Emner: {selectedPack.courses.map((c) => c.title).join(', ')}.</Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setPackOpen(false)} disabled={packBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
+          <Button variant="contained" onClick={adoptPack} disabled={packBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{packBusy ? 'Oppretter…' : 'Adopter'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }
