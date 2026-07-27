@@ -411,6 +411,74 @@ enum BusinessCardOCR {
             DispatchQueue.main.async { completion(CardFields(), 0) }
             return
         }
+        // iOS 26+: Apples nye RecognizeDocumentsRequest (Swift-async Vision)
+        // gir bedre OCR + lese-rekkefølge + STRUKTURERT data-deteksjon
+        // (e-post/telefon/URL/adresse via DataDetection) — erstatter
+        // NSDataDetector-heuristikken for kontaktdata. Faller tilbake til
+        // VNRecognizeTextRequest under iOS 26 eller om forespørselen feiler.
+        if #available(iOS 26, *) {
+            Task.detached(priority: .userInitiated) {
+                if let (fields, conf) = await extractFieldsWithDocumentRequest(from: cg) {
+                    await MainActor.run { completion(fields, conf) }
+                } else {
+                    legacyExtractFields(from: cg, completion: completion)
+                }
+            }
+        } else {
+            legacyExtractFields(from: cg, completion: completion)
+        }
+    }
+
+    /// iOS 26+ dokument-OCR: strukturert felt-ekstraksjon.
+    @available(iOS 26, *)
+    static func extractFieldsWithDocumentRequest(from cg: CGImage) async -> (CardFields, Double)? {
+        let request = RecognizeDocumentsRequest()
+        guard let observations = try? await request.perform(on: cg, orientation: .up),
+              let document = observations.first?.document else {
+            return nil
+        }
+        let text = document.text
+        var f = CardFields()
+
+        // Strukturert kontaktdata fra Apples DataDetection (høyere presisjon
+        // enn regex — normaliserte telefonnr, validerte e-poster, adresser).
+        for detected in text.detectedData {
+            switch detected.match.details {
+            case .emailAddress(let email) where f.email.isEmpty:
+                f.email = email.emailAddress
+            case .phoneNumber(let phone) where f.phone.isEmpty:
+                f.phone = phone.phoneNumber
+            case .link(let link) where f.website.isEmpty:
+                f.website = link.url.absoluteString
+            case .postalAddress(let addr) where f.address.isEmpty:
+                f.address = addr.fullAddress
+            default:
+                break
+            }
+        }
+
+        // Navn/firma/tittel: gjenbruk de eksisterende heuristikkene på
+        // transkriptet (i korrekt lese-rekkefølge fra dokument-modellen).
+        let lines = text.transcript
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let (heur, _) = parseLines(lines)
+        f.firstName = heur.firstName
+        f.lastName = heur.lastName
+        f.company = heur.company
+        f.title = heur.title
+        if f.email.isEmpty { f.email = heur.email }
+        if f.phone.isEmpty { f.phone = heur.phone }
+        if f.website.isEmpty { f.website = heur.website }
+        if f.address.isEmpty { f.address = heur.address }
+
+        return (f, Double(observations.first?.confidence ?? 0))
+    }
+
+    /// iOS 17-vei: VNRecognizeTextRequest + NSDataDetector-heuristikk.
+    static func legacyExtractFields(from cg: CGImage,
+                                    completion: @escaping @Sendable (CardFields, Double) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
