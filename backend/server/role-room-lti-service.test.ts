@@ -128,6 +128,13 @@ describe("extractMemberSections (Canvas-seksjon per medlem via NRPS message/lis)
     expect(extractMemberSections({ message: [{ [LIS]: { course_section_sourcedid: ["A", "B"] } }] }).sort()).toEqual(["A", "B"]);
     expect(extractMemberSections({ user_id: "u1" })).toEqual([]);
   });
+  it("filtrerer bort uløste LMS-variabler ($Canvas.…) — Canvas sender dem ordrett når substitusjon mangler", () => {
+    // Ekte Canvas-observasjon: section_ids resolves, men section_sourcedids kom ordrett.
+    const sections = extractMemberSections({
+      message: [{ [CUSTOM]: { section_ids: "1", section_sourcedids: "$Canvas.course.sectionSourcedIds" } }],
+    });
+    expect(sections).toEqual(["1"]);
+  });
 });
 
 describe("groupStudentsBySection (kull ← Canvas-seksjon; kun studenter)", () => {

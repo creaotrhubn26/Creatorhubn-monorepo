@@ -126,10 +126,15 @@ const CUSTOM_CLAIM = "https://purl.imsglobal.org/spec/lti/claim/custom";
 // Custom-felt Canvas KAN fylle per medlem (rlid-scopet NRPS) med seksjonsdata.
 const SECTION_CUSTOM_KEYS = ["section_names", "section_ids", "canvas_section_names", "canvas_section_ids", "section_sourcedids"];
 
-/** Normaliserer en verdi som kan være streng, komma-separert streng eller array → distinkte ikke-tomme strenger. */
+/** Normaliserer en verdi som kan være streng, komma-separert streng eller array →
+ * distinkte ikke-tomme strenger. Uløste LMS-variabler (f.eks. Canvas sender
+ * «$Canvas.course.sectionSourcedIds» ordrett når substitusjonen ikke er
+ * tilgjengelig) filtreres bort — de er ikke ekte seksjoner. */
 function toStringList(v: unknown): string[] {
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean);
-  if (typeof v === "string") return v.split(",").map((s) => s.trim()).filter(Boolean);
+  const clean = (s: string) => s.trim();
+  const keep = (s: string) => Boolean(s) && !s.startsWith("$");
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string").map(clean).filter(keep);
+  if (typeof v === "string") return v.split(",").map(clean).filter(keep);
   return [];
 }
 
