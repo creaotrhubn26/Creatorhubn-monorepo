@@ -540,6 +540,54 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — publiseres/godkjennes i Role Room-UI." };
     },
   },
+  {
+    name: "rr_request_review",
+    description: "Opprett en UTKASTS-forespørsel om klient-godkjenning på et prosjekt (upublisert, status=pending — produsenten publiserer/sender den i UI). Sender ingenting til klient automatisk. Krever projects.write.",
+    scope: "projects.write", modes: PROD_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      title: STR("Hva skal godkjennes"),
+      reviewType: { type: "string", description: "Type (f.eks. cut, storyboard, general) — default general" },
+      description: STR("Valgfri beskrivelse"),
+    }, ["projectId", "title"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const reviewType = typeof args.reviewType === "string" && args.reviewType.trim() ? args.reviewType.trim() : "general";
+      const description = typeof args.description === "string" ? args.description.trim() : null;
+      const ins = await pool.query(
+        `INSERT INTO role_room_client_reviews (id, project_id, review_type, title, description, status, requested_by_user_id, metadata)
+         VALUES (gen_random_uuid(), $1,$2,$3,$4,'pending',$5,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
+        [projectId, reviewType, title, description, ctx.userId]);
+      return { ok: true, id: ins.rows[0].id, status: "pending", note: "Upublisert godkjennings-forespørsel — publiseres/sendes til klient i Role Room-UI." };
+    },
+  },
+  {
+    name: "rr_draft_client_material",
+    description: "Legg til et UTKAST av referansemateriell/lenke på et prosjekt (status=draft — bekreftes i UI). Sender ingenting utad. Krever projects.write.",
+    scope: "projects.write", modes: PROD_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      title: STR("Tittel"),
+      entryType: { type: "string", description: "Type: reference | link (default reference)" },
+      externalUrl: STR("Valgfri URL"),
+      phase: { type: "string", description: "Fase: pre | production | post" },
+    }, ["projectId", "title"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const entryType = typeof args.entryType === "string" && args.entryType.trim() ? args.entryType.trim() : "reference";
+      const externalUrl = typeof args.externalUrl === "string" ? args.externalUrl.trim() : null;
+      const phase = typeof args.phase === "string" ? args.phase.trim() : null;
+      const ins = await pool.query(
+        `INSERT INTO role_room_client_materials (id, project_id, entry_type, title, external_url, phase, status, created_by_user_id, metadata)
+         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,'draft',$6,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
+        [projectId, entryType, title, externalUrl, phase, ctx.userId]);
+      return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — bekreftes i Role Room-UI." };
+    },
+  },
 ];
 
 /** Verktøy nøkkelen har scope for (+ valgfritt modus-filter) → MCP tool-definisjoner. */

@@ -3,6 +3,21 @@ import {
   ROLE_ROOM_CAPABILITIES, listCapabilitiesFor, findCapability, McpToolError,
   type McpCallContext,
 } from "./role-room-mcp-registry.js";
+import { extractApiKey } from "./role-room-mcp-routes.js";
+
+describe("extractApiKey (Bearer eller x-api-key)", () => {
+  const mk = (headers: Record<string, string>) => ({ headers } as any);
+  it("leser Authorization: Bearer rri_…", () => {
+    expect(extractApiKey(mk({ authorization: "Bearer rri_abc" }))).toBe("rri_abc");
+    expect(extractApiKey(mk({ authorization: "bearer rri_xyz" }))).toBe("rri_xyz");
+  });
+  it("faller tilbake til x-api-key", () => {
+    expect(extractApiKey(mk({ "x-api-key": "rri_k" }))).toBe("rri_k");
+  });
+  it("uten noe → undefined", () => {
+    expect(extractApiKey(mk({}))).toBeUndefined();
+  });
+});
 
 const CTX: McpCallContext = { userId: "u1", scopes: ["projects.read"], apiKeyId: "k1" };
 

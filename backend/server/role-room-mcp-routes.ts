@@ -30,6 +30,17 @@ function rateLimited(apiKeyId: string, perMinute: number, nowMs: number): boolea
   b.count += 1; return false;
 }
 
+/** Nøkkel fra `Authorization: Bearer rri_…` (foretrukket av MCP-klienter) ELLER `x-api-key`. */
+export function extractApiKey(req: Request): string | undefined {
+  const authz = req.headers.authorization;
+  if (typeof authz === "string") {
+    const m = authz.match(/^Bearer\s+(.+)$/i);
+    if (m) return m[1].trim();
+  }
+  const xk = req.headers["x-api-key"];
+  return typeof xk === "string" ? xk : undefined;
+}
+
 interface JsonRpcReq { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> }
 const rpcOk = (id: unknown, result: unknown) => ({ jsonrpc: "2.0", id: id ?? null, result });
 const rpcErr = (id: unknown, code: number, message: string, data?: unknown) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message, ...(data ? { data } : {}) } });
@@ -62,7 +73,7 @@ export function createRoleRoomMcpRouter(pool: Pool): ExpressRouter {
     if (method === "ping") { res.json(rpcOk(id, {})); return; }
 
     // Alt annet krever en gyldig rri_-nøkkel.
-    const auth = await authenticateMcpKey(pool, req.headers["x-api-key"] as string | undefined);
+    const auth = await authenticateMcpKey(pool, extractApiKey(req));
     if (!auth.ok) { res.json(rpcErr(id, auth.status === 401 ? -32001 : -32003, auth.message, { code: auth.code })); return; }
     const user = auth.user;
     if (rateLimited(user.apiKeyId, user.rateLimitPerMinute, nowMs)) {
@@ -124,7 +135,7 @@ export function createRoleRoomMcpRouter(pool: Pool): ExpressRouter {
   router.get("/mcp/manifest", (_req, res) => {
     res.json({
       server: SERVER_INFO, protocolVersion: PROTOCOL_VERSION, transport: "POST /api/role-room/mcp (JSON-RPC 2.0)",
-      auth: "x-api-key: rri_… (Integration v1-nøkkel)",
+      auth: "Authorization: Bearer rri_…  (eller x-api-key: rri_…) — Integration v1-nøkkel",
       tools: ROLE_ROOM_CAPABILITIES.map((c) => ({ name: c.name, scope: c.scope, modes: c.modes, description: c.description })),
     });
   });
