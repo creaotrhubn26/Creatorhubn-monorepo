@@ -27,8 +27,8 @@ import {
   type Router as ExpressRouter,
 } from "express";
 import type { Pool } from "pg";
-import nodemailer from "nodemailer";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 interface SessionData {
   userId: string;
@@ -142,27 +142,17 @@ export const ROLE_ROOM_TALENTS_INFO = {
   controller: "Behandlingsansvarlig for selve registeret er The Role Room; skolen er ansvarlig for den verifiserte utdannings-bekreftelsen.",
 };
 
-/** SMTP-config (gjenbruker gmail-mønsteret fra password-reset-service). */
-function readGmailConfig(): { user: string; password: string } | null {
-  const user = (process.env.GMAIL_USER ?? process.env.GOOGLE_WORKSPACE_EMAIL ?? process.env.GOOGLE_ADMIN_EMAIL ?? "").trim();
-  const password = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s+/g, "");
-  if (!user || !password) return null;
-  return { user, password };
-}
-
 interface Credential { institution?: string | null; program?: string | null; year?: number | null }
 
 /**
  * Proaktivt varsel til studenten (GDPR art. 14): en profil er opprettet, hva
- * det er, og at DE selv velger å overta eller avslå. Best-effort — hopper
- * grasiøst over hvis SMTP ikke er konfigurert; blokkerer aldri promote.
+ * det er, og at DE selv velger å overta eller avslå. Bruker den kanoniske
+ * transactional-email-tjenesten (Resend først → SMTP-fallback → logges).
+ * Best-effort — blokkerer aldri promote.
  */
-async function notifyStudentPromoted(email: string, name: string, credential: Credential): Promise<void> {
-  const cfg = readGmailConfig();
-  if (!cfg) { console.warn("[edu-talent-pipeline] e-postvarsel hoppet over (GMAIL ikke konfigurert)"); return; }
+async function notifyStudentPromoted(pool: Pool, email: string, name: string, credential: Credential): Promise<void> {
   const base = (process.env.PUBLIC_APP_URL ?? process.env.APP_URL ?? "").replace(/\/$/, "") || "https://theroleroom.com";
   const cred = credential.institution ? [credential.program, credential.institution, credential.year].filter(Boolean).join(", ") : "utdanningen din";
-  const subject = "Du er invitert til Role Room Talents";
   const text = [
     `Hei ${name},`,
     "",
@@ -192,9 +182,16 @@ async function notifyStudentPromoted(email: string, name: string, credential: Cr
       <p>Mvh,<br>The Role Room</p>
     </div>`;
   try {
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: cfg.user, pass: cfg.password } });
-    await transporter.sendMail({ from: cfg.user, to: email, subject, text, html });
-    console.log("[edu-talent-pipeline] promote-varsel sendt til student");
+    const r = await sendTransactionalEmail({
+      to: email,
+      subject: "Du er invitert til Role Room Talents",
+      html, text,
+      fromLabel: "The Role Room",
+      kind: "talent_invite",
+      pool,
+    });
+    if (r.sent) console.log(`[edu-talent-pipeline] promote-varsel sendt (${r.provider})`);
+    else console.warn(`[edu-talent-pipeline] promote-varsel ikke sendt: ${r.reason ?? r.errorMessage ?? "ukjent"}`);
   } catch (err) {
     console.error("[edu-talent-pipeline] e-postvarsel feilet:", (err as Error).message);
   }
@@ -313,7 +310,7 @@ export function createEducationTalentPipelineRouter(
         [req.params.id, talentId, JSON.stringify(attrs)],
       );
       // Proaktivt varsel til studenten (art. 14) — best-effort, blokkerer ikke.
-      void notifyStudentPromoted(String(student.email), String(student.name), credential);
+      void notifyStudentPromoted(pool, String(student.email), String(student.name), credential);
       res.status(201).json({ talentId, claimable: true, hasShowreel: !!showreel, searchable: isSearchable(attrs) });
     } catch (err) {
       if (isMissingTable(err)) { res.status(503).json({ error: "talents_unavailable" }); return; }
