@@ -74,6 +74,8 @@ struct RootView: View {
                 OnboardingView(onFinish: finishOnboarding)
             case .mainShell:
                 CreatorHubOneRootView()
+            case .demoAI:
+                DemoAIView()
             }
         }
         // Globalt overlegg som dukker opp uansett hvilken surface som
@@ -112,9 +114,13 @@ struct RootView: View {
         case onboardingForced
         case onboarding
         case mainShell
+        case demoAI
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-ai") {
+            return .demoAI
+        }
         if launchArguments.contains("--legacy-capture-only") {
             return .legacyCapture
         }

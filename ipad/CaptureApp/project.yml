@@ -96,6 +96,11 @@ targets:
         # capability aktiveres for App ID-en i Apple Developer-portalen før
         # TestFlight-signering lykkes (se aktiverings-sjekklisten).
         com.apple.developer.weatherkit: true
+        # Når vi først har en entitlements-fil MÅ keychain-gruppa deklareres
+        # eksplisitt, ellers mister appen default-tilgangen (errSecMissing-
+        # Entitlement -34018 på innlogging i simulator).
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.creatorhubn.capture
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture
