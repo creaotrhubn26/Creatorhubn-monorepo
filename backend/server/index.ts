@@ -242,6 +242,7 @@ import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createDesktopAuthRouter } from "./desktop-auth-routes.js";
 import { setupStorageProvidersRoutes } from "./storage-providers-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
+import { createRoleRoomMcpRouter } from "./role-room-mcp-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
 import { createLightroomRouter } from "./lightroom-routes.js";
@@ -829,13 +830,16 @@ import { registerLeadgridAcademyRoutes } from "./leadgrid-academy-routes";
 import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
 import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
-import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
+import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
 import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
+import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
+import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
+import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
@@ -2430,6 +2434,8 @@ app.use(
   "/api/integrations/v1/role-room",
   createRoleRoomIntegrationsV1Router(pool),
 );
+// The Role Room MCP-server (JSON-RPC 2.0) — eksterne AI-klienter mot rri_-nøkler.
+app.use("/api/role-room", createRoleRoomMcpRouter(pool));
 app.use(
   "/api/consent",
   createConsentPortalRouter(pool, { activeSessions }),
@@ -65669,6 +65675,10 @@ registerRoutesAdherenceRoutes({ app, pool, requireUserSession });
 // (adresse i HUD) + Team-fanen (ekte kommunegrenser).
 registerLeadgridKartverketRoutes({ app, requireUserSession });
 
+// Dørsalg-modus: husstandsadresser fra Kartverket (EGEN modus — blandes
+// aldri med bedrifts-leads; ren proxy, ingen lagring).
+registerLeadgridAdresseRoutes({ app, requireUserSession });
+
 // Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
 // alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
 registerLeadgridEnturRoutes({ app, requireUserSession });
@@ -65692,6 +65702,17 @@ registerLeadgridTripsRoutes({ app, pool, requireUserSession });
 // Kvalitet-avdelingen — verifiseringskø for vunnede salg + samtale-maler
 // (mig 0377). Roller: kvalitet/admin/salgssjef.
 registerLeadgridQualityRoutes({ app, pool, requireUserSession });
+
+// Leadbook Eksempler — org-egne salgssamtale-caser + leder-tilbakemeldinger
+// (mig 0379). Fylles fra Kvalitet-flagget eller manuelt av leder.
+registerLeadgridLeadbookExamplesRoutes({ app, pool, requireUserSession });
+
+// Utstyrsregister — org-eid utstyr (nettbrett/telefon/laptop/klær/ID-kort)
+// m/ tildeling + hendelseslogg (mig 0385).
+registerLeadgridEquipmentRoutes({ app, pool, requireUserSession });
+
+// Krasjrapportering — MetricKit-diagnostikk fra iPad-appen (mig 0387).
+registerLeadgridCrashRoutes({ app, pool, requireUserSession });
 
 // «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
 registerLeadgridSignupInterestRoutes({ app, pool });
