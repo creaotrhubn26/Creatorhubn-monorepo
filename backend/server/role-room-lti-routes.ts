@@ -521,6 +521,41 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         targetUserSub = member.sub;
       }
       const resourceTag = typeof b.resourceTag === "string" && b.resourceTag.trim() ? b.resourceTag.trim() : undefined;
+
+      // ── HARD EKSAMENS-GATE (Canvas = fasit) ──────────────────────────────
+      // Er oppgaven en eksamen/sluttvurdering? Da MÅ alle kullets arbeidskrav
+      // være godkjent i Canvas for studenten før karakteren kan settes.
+      if (resourceTag && targetUserSub) {
+        const ax = await pool.query(
+          `SELECT is_exam, cohort_id, owner_user_id FROM role_room_education_assignments WHERE id = $1`,
+          [resourceTag],
+        );
+        const exam = ax.rows[0];
+        if (exam?.is_exam && exam.cohort_id) {
+          const akRes = await pool.query(
+            `SELECT id, title FROM role_room_education_assignments
+              WHERE owner_user_id = $1 AND cohort_id = $2 AND is_arbeidskrav = true AND status = 'published'`,
+            [exam.owner_user_id, exam.cohort_id],
+          );
+          const missing: string[] = [];
+          for (const ak of akRes.rows) {
+            // eslint-disable-next-line no-await-in-loop -- få arbeidskrav; sekvensielt greit
+            const rr = await fetchResults(pool, req.params.id, String(ak.id));
+            const v = rr.ok ? rr.results.get(String(targetUserSub)) : undefined;
+            const passed = !!v && v.max > 0 && v.score >= v.max;
+            if (!passed) missing.push(String(ak.title));
+          }
+          if (missing.length > 0) {
+            res.status(409).json({
+              error: "arbeidskrav_not_complete",
+              message: `Kan ikke sette eksamenskarakter: ${missing.length} arbeidskrav er ikke godkjent i Canvas (${missing.slice(0, 3).join(", ")}${missing.length > 3 ? " …" : ""}).`,
+              missing,
+            });
+            return;
+          }
+        }
+      }
+
       const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label, targetUserSub, resourceTag });
       if (!result.ok) { res.status(result.status ?? 500).json({ error: result.error }); return; }
       res.json({ success: true, scoreGiven, scoreMaximum });

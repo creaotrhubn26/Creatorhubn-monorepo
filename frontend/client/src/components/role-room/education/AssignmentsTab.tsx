@@ -76,7 +76,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, vurderingsform: '', courseId: '' });
+  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, isExam: false, vurderingsform: '', courseId: '' });
   const setField = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const [query, setQuery] = useState('');
@@ -123,10 +123,11 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
         dueAt: f.dueAt || null, status: 'published',
         artifactKind: (f.productionId && f.artifactKind) ? f.artifactKind : undefined,
         isArbeidskrav: f.isArbeidskrav,
+        isExam: f.isExam,
         vurderingsform: f.vurderingsform || undefined,
         courseId: f.courseId || undefined,
       });
-      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, vurderingsform: '', courseId: '' });
+      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, isExam: false, vurderingsform: '', courseId: '' });
       setCreating(false); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave'); }
     finally { setBusy(false); }
@@ -225,8 +226,10 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               <TextField size="small" select label="Vurderingsform" value={f.vurderingsform} onChange={(e) => setField('vurderingsform', e.target.value)} sx={{ minWidth: 220 }}>
                 {VURDERINGSFORM_OPTIONS.map((o) => <MenuItem key={o.key || 'none'} value={o.key}>{o.label}</MenuItem>)}
               </TextField>
-              <FormControlLabel control={<Checkbox checked={f.isArbeidskrav} onChange={(e) => setField('isArbeidskrav', e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
+              <FormControlLabel control={<Checkbox checked={f.isArbeidskrav} onChange={(e) => setField('isArbeidskrav', e.target.checked)} disabled={f.isExam} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
                 label={<Typography sx={{ fontSize: 13 }}>Arbeidskrav (må godkjennes før eksamen)</Typography>} />
+              <FormControlLabel control={<Checkbox checked={f.isExam} onChange={(e) => setField('isExam', e.target.checked)} disabled={f.isArbeidskrav} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#ec4899' } }} />}
+                label={<Typography sx={{ fontSize: 13 }}>Eksamen / sluttvurdering</Typography>} />
             </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
               <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
@@ -293,6 +296,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
                   <Typography sx={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
                   {(() => { const co = courses.find((c) => c.id === a.courseId); return co ? <Chip label={co.code || co.title} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(56,189,248,0.16)', color: '#38bdf8', flexShrink: 0 }} /> : null; })()}
                   {a.isArbeidskrav && <Chip label="Arbeidskrav" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', flexShrink: 0 }} />}
+                  {a.isExam && <Chip label="Eksamen" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(236,72,153,0.18)', color: '#ec4899', flexShrink: 0 }} />}
                   {vurderingsformLabel(a.vurderingsform) && <Chip label={vurderingsformLabel(a.vurderingsform)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 600, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)', flexShrink: 0 }} />}
                   {artifactLabel(a.artifactKind) && <Chip label={artifactLabel(a.artifactKind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.18)', color: '#c4b5fd', flexShrink: 0 }} />}
                 </Stack>

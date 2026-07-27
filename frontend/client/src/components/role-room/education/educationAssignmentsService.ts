@@ -23,6 +23,7 @@ export interface Assignment {
   status: AssignmentStatus;
   artifactKind: string | null;
   isArbeidskrav: boolean;
+  isExam: boolean;
   vurderingsform: string | null;
   courseId: string | null;
   submittedCount: number;
@@ -69,6 +70,7 @@ export interface AssignmentInput {
   status?: AssignmentStatus;
   artifactKind?: string | null;
   isArbeidskrav?: boolean;
+  isExam?: boolean;
   vurderingsform?: string | null;
   courseId?: string | null;
 }

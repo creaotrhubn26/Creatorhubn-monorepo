@@ -124,6 +124,7 @@ export function AssessmentTab() {
         comment: (draft.feedback || it.feedback || '').trim() || undefined,
         label: it.assignmentTitle,
         resourceTag: it.assignmentId, // → egen Canvas gradebook-kolonne per oppgave
+        studentEmail: it.studentEmail || undefined, // per-student (+ eksamens-gate mot Canvas)
       });
       setPushedIds((prev) => new Set(prev).add(it.submissionId));
     } catch (e) {
@@ -279,6 +280,8 @@ export function AssessmentTab() {
                         <Typography sx={{ fontWeight: 700 }}>{it.studentName}</Typography>
                         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
                           <Chip size="small" label={it.assignmentTitle} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+                          {it.isArbeidskrav && <Chip size="small" label="Arbeidskrav" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(245,158,11,0.16)', color: '#f59e0b' }} />}
+                          {it.isExam && <Chip size="small" label="Eksamen" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(236,72,153,0.16)', color: '#ec4899' }} />}
                           {it.cohortName && <Chip size="small" label={it.cohortName} sx={{ height: 20, fontSize: 10 }} />}
                           {it.status === 'reviewed' && <Chip size="small" icon={<DoneIcon sx={{ fontSize: '12px !important' }} />} label="Vurdert" sx={{ height: 20, fontSize: 10, color: '#10b981', '& .MuiChip-icon': { color: '#10b981' } }} variant="outlined" />}
                         </Stack>
