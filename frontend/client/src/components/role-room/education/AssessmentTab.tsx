@@ -264,9 +264,26 @@ export function AssessmentTab() {
                     <RubricScoring assignmentId={it.assignmentId} studentId={it.studentId} onError={setError} />
 
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
-                      <TextField label="Karakter" size="small" value={draft.grade}
-                        onChange={(e) => setDraft(it.submissionId, { grade: e.target.value })}
-                        placeholder="A / B / bestått / 5" sx={{ width: { xs: '100%', sm: 160 } }} />
+                      {(it.isArbeidskrav || it.vurderingsform === 'bestatt') ? (
+                        (() => {
+                          const pass = it.isArbeidskrav ? 'Godkjent' : 'Bestått';
+                          const fail = it.isArbeidskrav ? 'Ikke godkjent' : 'Ikke bestått';
+                          return (
+                            <Box sx={{ width: { xs: '100%', sm: 240 } }}>
+                              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: it.isArbeidskrav ? '#f59e0b' : ACCENT, textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>{it.isArbeidskrav ? 'Arbeidskrav' : 'Bestått / ikke bestått'}</Typography>
+                              <ToggleButtonGroup size="small" exclusive value={draft.grade} onChange={(_e, v: string | null) => { if (v) setDraft(it.submissionId, { grade: v }); }}
+                                sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', px: 1.5 }, '& .Mui-selected': { bgcolor: 'rgba(16,185,129,0.28) !important', color: '#fff !important' } }}>
+                                <ToggleButton value={pass}>{pass}</ToggleButton>
+                                <ToggleButton value={fail}>{fail}</ToggleButton>
+                              </ToggleButtonGroup>
+                            </Box>
+                          );
+                        })()
+                      ) : (
+                        <TextField label="Karakter" size="small" value={draft.grade}
+                          onChange={(e) => setDraft(it.submissionId, { grade: e.target.value })}
+                          placeholder={it.vurderingsform === 'bokstav' ? 'A / B / C …' : 'A / B / bestått / 5'} sx={{ width: { xs: '100%', sm: 160 } }} />
+                      )}
                       <TextField label="Tilbakemelding" size="small" value={draft.feedback}
                         onChange={(e) => setDraft(it.submissionId, { feedback: e.target.value })}
                         multiline minRows={2} fullWidth placeholder="Hva var sterkt, og hva kan bli bedre — knyttet til læringsmålene?" />

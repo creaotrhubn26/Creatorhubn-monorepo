@@ -13,6 +13,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
   CircularProgress, Alert, InputBase, LinearProgress, Select, Menu, ListItemText, Chip,
+  Checkbox, FormControlLabel,
 } from '@mui/material';
 import {
   Assignment as AssignmentIcon, Add as AddIcon, GridView as TemplateIcon,
@@ -38,6 +39,14 @@ const ARTIFACT_OPTIONS: { key: string; label: string }[] = [
   { key: 'delivery', label: 'Levering' },
 ];
 const artifactLabel = (k: string | null) => ARTIFACT_OPTIONS.find((o) => o.key === k)?.label ?? null;
+
+const VURDERINGSFORM_OPTIONS: { key: string; label: string }[] = [
+  { key: '', label: 'Ikke satt' },
+  { key: 'bestatt', label: 'Bestått / ikke bestått' },
+  { key: 'bokstav', label: 'Bokstavkarakter (A–F)' },
+  { key: 'mappe', label: 'Mappevurdering' },
+];
+const vurderingsformLabel = (k: string | null) => VURDERINGSFORM_OPTIONS.find((o) => o.key === k)?.label ?? null;
 
 const STATUS_META: Record<AssignmentStatus, { label: string; color: string }> = {
   draft: { label: 'Utkast', color: 'rgba(255,255,255,0.55)' },
@@ -65,8 +74,8 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '' });
-  const setField = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, vurderingsform: '' });
+  const setField = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatus>('all');
@@ -110,8 +119,10 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
         brief: f.brief.trim() || undefined, learningGoals: f.learningGoals.trim() || undefined,
         dueAt: f.dueAt || null, status: 'published',
         artifactKind: (f.productionId && f.artifactKind) ? f.artifactKind : undefined,
+        isArbeidskrav: f.isArbeidskrav,
+        vurderingsform: f.vurderingsform || undefined,
       });
-      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '' });
+      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, vurderingsform: '' });
       setCreating(false); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave'); }
     finally { setBusy(false); }
@@ -201,7 +212,14 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               </TextField>
             </Stack>
             <TextField size="small" label="Brief" value={f.brief} onChange={(e) => setField('brief', e.target.value)} multiline minRows={2} fullWidth />
-            <TextField size="small" label="Læringsmål" value={f.learningGoals} onChange={(e) => setField('learningGoals', e.target.value)} fullWidth />
+            <TextField size="small" label="Læringsmål (kunnskap / ferdigheter / generell kompetanse)" value={f.learningGoals} onChange={(e) => setField('learningGoals', e.target.value)} fullWidth />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+              <TextField size="small" select label="Vurderingsform" value={f.vurderingsform} onChange={(e) => setField('vurderingsform', e.target.value)} sx={{ minWidth: 220 }}>
+                {VURDERINGSFORM_OPTIONS.map((o) => <MenuItem key={o.key || 'none'} value={o.key}>{o.label}</MenuItem>)}
+              </TextField>
+              <FormControlLabel control={<Checkbox checked={f.isArbeidskrav} onChange={(e) => setField('isArbeidskrav', e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
+                label={<Typography sx={{ fontSize: 13 }}>Arbeidskrav (må godkjennes før eksamen)</Typography>} />
+            </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
               <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
               <Button variant="contained" onClick={handleCreate} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Publiser oppgave'}</Button>
@@ -265,6 +283,8 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               <Box sx={{ minWidth: 0, pr: 2 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
+                  {a.isArbeidskrav && <Chip label="Arbeidskrav" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', flexShrink: 0 }} />}
+                  {vurderingsformLabel(a.vurderingsform) && <Chip label={vurderingsformLabel(a.vurderingsform)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 600, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)', flexShrink: 0 }} />}
                   {artifactLabel(a.artifactKind) && <Chip label={artifactLabel(a.artifactKind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.18)', color: '#c4b5fd', flexShrink: 0 }} />}
                 </Stack>
                 <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.productionTitle ? `Produksjon · ${a.productionTitle}` : (a.brief || 'Oppgave')}</Typography>

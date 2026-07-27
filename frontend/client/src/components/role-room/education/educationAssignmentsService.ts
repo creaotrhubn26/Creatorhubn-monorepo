@@ -22,6 +22,8 @@ export interface Assignment {
   dueAt: string | null;
   status: AssignmentStatus;
   artifactKind: string | null;
+  isArbeidskrav: boolean;
+  vurderingsform: string | null;
   submittedCount: number;
   reviewedCount: number;
   createdAt: string;
@@ -65,6 +67,8 @@ export interface AssignmentInput {
   dueAt?: string | null;
   status?: AssignmentStatus;
   artifactKind?: string | null;
+  isArbeidskrav?: boolean;
+  vurderingsform?: string | null;
 }
 
 export const educationAssignmentsService = {

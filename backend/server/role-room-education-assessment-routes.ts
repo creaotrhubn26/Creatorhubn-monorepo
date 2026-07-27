@@ -46,6 +46,8 @@ export interface AssessmentItemView {
   grade: string | null;
   feedback: string | null;
   link: string | null;
+  isArbeidskrav: boolean;
+  vurderingsform: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }
@@ -69,6 +71,8 @@ function rowToItem(r: Record<string, unknown>): AssessmentItemView {
     grade: (r.grade as string) ?? null,
     feedback: (r.feedback as string) ?? null,
     link: (r.link as string) ?? null,
+    isArbeidskrav: Boolean(r.is_arbeidskrav),
+    vurderingsform: (r.vurderingsform as string) ?? null,
     submittedAt: isoOrNull(r.submitted_at),
     reviewedAt: isoOrNull(r.reviewed_at),
   };
@@ -130,6 +134,7 @@ export function createEducationAssessmentRouter(
               s.grade, s.feedback, s.link, s.submitted_at, s.reviewed_at,
               st.name AS student_name,
               a.title AS assignment_title, a.learning_goals, a.cohort_id,
+              a.is_arbeidskrav, a.vurderingsform,
               c.name AS cohort_name,
               prod.project_id AS production_project_id
          FROM role_room_education_submissions s

@@ -22,6 +22,8 @@ export interface AssessmentItem {
   grade: string | null;
   feedback: string | null;
   link: string | null;
+  isArbeidskrav: boolean;
+  vurderingsform: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }
