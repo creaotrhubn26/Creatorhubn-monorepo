@@ -10,6 +10,8 @@ import SwiftUI
 /// ``@Environment`` without threading the service through manually.
 @main
 struct CaptureAppMain: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -74,6 +76,10 @@ struct RootView: View {
                 OnboardingView(onFinish: finishOnboarding)
             case .mainShell:
                 CreatorHubOneRootView()
+                    .task {
+                        // Innlogget → be om push-tillatelse + registrer APNs-token.
+                        PushNotificationService.shared.requestAuthorizationAndRegister()
+                    }
             case .demoAI:
                 DemoAIView()
             }

@@ -627,6 +627,16 @@ actor BackendClient {
         }
     }
 
+    /// Registrer denne enhetens APNs-token for push-varsler (kunde signerte,
+    /// likte bilder, redigerer ferdig m.m. — også når appen er lukket).
+    func registerCaptureDeviceToken(token: String) async throws {
+        struct Body: Encodable { let deviceToken: String; let platform: String }
+        struct Ack: Decodable { let ok: Bool? }
+        let _: Ack = try await postJSON(
+            path: "/api/capture/me/device-token",
+            body: Body(deviceToken: token, platform: "ios"))
+    }
+
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,
         body: RequestBody,

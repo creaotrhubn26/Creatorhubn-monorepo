@@ -96,6 +96,9 @@ targets:
         # capability aktiveres for App ID-en i Apple Developer-portalen før
         # TestFlight-signering lykkes (se aktiverings-sjekklisten).
         com.apple.developer.weatherkit: true
+        # Push: leverer kunde-/redigerer-hendelser når appen er lukket. Krever
+        # Push Notifications-capability på App ID-en (aktiveres i portalen).
+        aps-environment: development
         # Når vi først har en entitlements-fil MÅ keychain-gruppa deklareres
         # eksplisitt, ellers mister appen default-tilgangen (errSecMissing-
         # Entitlement -34018 på innlogging i simulator).

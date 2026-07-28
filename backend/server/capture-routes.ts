@@ -468,6 +468,8 @@ export function buildExifTags(exif: NormalizedExif): string[] {
   return Array.from(tags).slice(0, 50);
 }
 
+import { registerCaptureDeviceToken } from './capture-push';
+
 export function createCaptureRouter(
   pool: Pool,
   activeSessions?: Map<string, SessionData>,
@@ -486,6 +488,21 @@ export function createCaptureRouter(
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
     const rows = await listProjectsForPhotographer(db, userId, limit);
     res.json({ projects: rows });
+  });
+
+  // ── Push: registrer APNs-token (varsler når appen er lukket) ──
+  router.post('/me/device-token', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const token = String(req.body?.deviceToken ?? '').trim();
+    if (!token) {
+      res.status(400).json({ error: 'deviceToken required' });
+      return;
+    }
+    await registerCaptureDeviceToken(pool, userId, token, {
+      deviceName: typeof req.body?.deviceName === 'string' ? req.body.deviceName : undefined,
+      appVersion: typeof req.body?.appVersion === 'string' ? req.body.appVersion : undefined,
+    });
+    res.json({ ok: true });
   });
 
   router.get('/projects/:id', auth, async (req, res) => {
