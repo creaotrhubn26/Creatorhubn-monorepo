@@ -17,6 +17,12 @@ import type { Pool } from "pg";
 import { hasScope } from "./role-room-integrations-v1-routes.js";
 import { mcpCanAccessProject } from "./role-room-mcp-auth.js";
 import { newEntityId } from "./_shared-ids.js";
+// Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
+// buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
+// maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
+import {
+  fetchAgencyForUser, parseFilters, buildSearchSql, maskByScopes,
+} from "./role-room-agency-search-routes.js";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
@@ -706,6 +712,59 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
          VALUES ($1,$2,$3,$4,$5,$6,'draft')`,
         [id, ctx.userId, cohortId, title, brief, dueAt]);
       return { ok: true, id, status: "draft", note: "Upublisert oppgave-utkast — publiseres i utdannings-workspacet." };
+    },
+  },
+
+  // ── Talents (byrå-marketplace, samtykke-gated PII) ──────────────────────────
+  {
+    name: "rr_search_talents",
+    description:
+      "Søk i The Role Room Talents-registeret (byrå-representerte skuespillere/utøvere). KREVER at nøkkelens bruker tilhører et byrå. Returnerer KUN talenter som har gitt DITT byrå aktivt samtykke, og hvert felt er maskert etter hvilke scopes talentet har delt (samtykke-transparens, GDPR). Filtre: fritekst, sted, kjønn, spillalder, språk, ferdigheter, dialekter, tilgjengelighet, selftape, representasjon.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: false,
+    inputSchema: OBJ({
+      q: STR("Fritekstsøk (navn, bio, ferdigheter)"),
+      location: STR("Sted/by"),
+      gender: STR("Kjønn"),
+      ageMin: { type: "number", description: "Min spillalder" },
+      ageMax: { type: "number", description: "Maks spillalder" },
+      languages: { type: "array", items: { type: "string" }, description: "Språk (må matche alle oppgitte)" },
+      skills: { type: "array", items: { type: "string" }, description: "Ferdigheter" },
+      dialects: { type: "array", items: { type: "string" }, description: "Dialekter" },
+      availability: STR("Tilgjengelighetsstatus (f.eks. available)"),
+      hasSelftape: { type: "boolean", description: "Kun talenter med selftape/showreel" },
+      representation: STR("Representasjonsstatus"),
+      limit: { type: "number", description: "Maks antall (default 50, maks 200)" },
+    }),
+    handler: async (pool, ctx, args) => {
+      // Talent-søk er byrå-scopet, ikke prosjekt-scopet. Løs nøkkelens byrå;
+      // ingen byrå → tydelig feil (verktøyet er kun for representerende byråer).
+      const agency = await fetchAgencyForUser(pool, ctx.userId);
+      if (!agency) {
+        throw new McpToolError(-32004,
+          "Talent-søk krever en byrå-konto i The Role Room Talents — nøkkelens bruker tilhører ikke et byrå.");
+      }
+      // Reflekter MCP-argumentene til query-formatet parseFilters forventer,
+      // så vi arver ÉN kanonisk filter-parser (arrays, tall, defaults).
+      const filters = parseFilters({
+        q: args.q, location: args.location, gender: args.gender,
+        age_min: args.ageMin, age_max: args.ageMax,
+        languages: args.languages, skills: args.skills, dialects: args.dialects,
+        availability: args.availability,
+        has_selftape: args.hasSelftape === true ? "true" : undefined,
+        representation: args.representation, limit: args.limit,
+      });
+      // demo=false → ekte data. buildSearchSql = consent-gaten; maskByScopes =
+      // PII-maskeringen. Begge gjenbrukt 1:1 fra UI-søket (ikke reimplementert).
+      const { sql, params } = buildSearchSql(agency.type, agency.id, filters, false);
+      const result = await pool.query(sql, params);
+      const talents = result.rows.map(maskByScopes);
+      return {
+        agency: { name: agency.name, type: agency.type },
+        count: talents.length,
+        filters,
+        talents,
+        note: "Kun talenter med aktivt samtykke til ditt byrå; felt maskert etter delte scopes.",
+      };
     },
   },
 ];
