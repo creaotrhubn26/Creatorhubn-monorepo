@@ -32,7 +32,7 @@ export interface RoleRoomAgencySearchRoutesDeps {
 }
 
 /** Hent agency for innlogget user. Returnerer null hvis ikke koblet. */
-async function fetchAgencyForUser(pool: Pool, userId: string) {
+export async function fetchAgencyForUser(pool: Pool, userId: string) {
   const r = await pool.query(
     `SELECT a.id, a.type, a.name, a.slug, u.agency_role
        FROM users u JOIN agency_orgs a ON a.id = u.agency_org_id
@@ -124,7 +124,7 @@ type SearchFilters = {
   offset?: number;
 };
 
-function parseFilters(query: Record<string, unknown>): SearchFilters {
+export function parseFilters(query: Record<string, unknown>): SearchFilters {
   const arrFromCsv = (v: unknown): string[] | undefined => {
     if (Array.isArray(v)) return v.map(String).filter(Boolean);
     if (typeof v === "string" && v.trim().length > 0) {
@@ -155,7 +155,7 @@ function parseFilters(query: Record<string, unknown>): SearchFilters {
  * til denne agency-en for å være synlige. Felter maskeres etter scopes
  * agency-en har — basic_profile gir minimum, media_portfolio gir bilder etc.
  */
-function buildSearchSql(
+export function buildSearchSql(
   agencyType: string,
   agencyId: string,
   filters: SearchFilters,
@@ -284,7 +284,7 @@ function buildSearchSql(
   return { sql, params, countSql };
 }
 
-function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
+export function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
   const scopes = new Set<string>(Array.isArray(row.granted_scopes) ? row.granted_scopes as string[] : []);
   const has = (s: string) => scopes.has("full_profile") || scopes.has(s);
   const masked: Record<string, unknown> = {
