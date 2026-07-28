@@ -22,7 +22,7 @@ struct ShotListPanel: View {
     enum ShotFilter: String, CaseIterable { case all = "Alle", must = "Must-have", optional = "Valgfritt" }
 
     // Palett (matcher mockup — mørkt m/ grønn auto-huk + lilla «neste»).
-    private enum C {
+    private enum SLColor {
         static let bg = Color(hex: 0x0B0B0D)
         static let card = Color(hex: 0x161619)
         static let cardHi = Color(hex: 0x1C1C21)
@@ -55,7 +55,7 @@ struct ShotListPanel: View {
                     } else {
                         ProgressView("Laster shot-list …")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(C.bg)
+                            .background(SLColor.bg)
                     }
                 } else {
                     noProjectSelected
@@ -108,7 +108,7 @@ struct ShotListPanel: View {
             .frame(maxWidth: 900)
             .frame(maxWidth: .infinity)
         }
-        .background(C.bg)
+        .background(SLColor.bg)
     }
 
     // MARK: - Auto-huk-status + toggle
@@ -118,24 +118,24 @@ struct ShotListPanel: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("AUTO-HUK SHOTS", systemImage: "sparkles")
-                    .font(.caption.weight(.bold)).foregroundStyle(on ? C.green : C.textSec)
+                    .font(.caption.weight(.bold)).foregroundStyle(on ? SLColor.green : SLColor.textSec)
                 Spacer()
                 Toggle("", isOn: Binding(get: { on }, set: { setAutoCheck($0) }))
-                    .labelsHidden().tint(C.green).disabled(autoCheckBusy)
+                    .labelsHidden().tint(SLColor.green).disabled(autoCheckBusy)
             }
             Text(on ? "Auto-huk er på" : "Auto-huk er av")
-                .font(.title3.weight(.bold)).foregroundStyle(C.textPri)
+                .font(.title3.weight(.bold)).foregroundStyle(SLColor.textPri)
             Text(autoCheckError ?? (on
                  ? "Vision huker av shots automatisk når du tar bildet. Gjelder hele teamet."
                  : "Av — hak av manuelt. Slå på for å la Vision gjøre det for teamet."))
-                .font(.caption).foregroundStyle(autoCheckError == nil ? C.textSec : Color(hex: 0xE0606A))
+                .font(.caption).foregroundStyle(autoCheckError == nil ? SLColor.textSec : Color(hex: 0xE0606A))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous).fill(
                 on ? LinearGradient(colors: [Color(hex: 0x0E2A1C), Color(hex: 0x121913)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                   : LinearGradient(colors: [C.card, C.card], startPoint: .top, endPoint: .bottom)))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(on ? C.green.opacity(0.25) : C.stroke))
+                   : LinearGradient(colors: [SLColor.card, SLColor.card], startPoint: .top, endPoint: .bottom)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(on ? SLColor.green.opacity(0.25) : SLColor.stroke))
     }
 
     // MARK: - Fremdrift
@@ -150,27 +150,27 @@ struct ShotListPanel: View {
             ZStack {
                 Circle().stroke(Color.white.opacity(0.08), lineWidth: 9)
                 Circle().trim(from: 0, to: Double(done) / Double(total))
-                    .stroke(C.green, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                    .stroke(SLColor.green, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: -1) {
-                    Text("\(done)").font(.title3.weight(.bold)).foregroundStyle(C.textPri)
-                    Text("av \(total)").font(.caption2).foregroundStyle(C.textSec)
+                    Text("\(done)").font(.title3.weight(.bold)).foregroundStyle(SLColor.textPri)
+                    Text("av \(total)").font(.caption2).foregroundStyle(SLColor.textSec)
                 }
             }.frame(width: 78, height: 78)
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(pct)% fullført").font(.headline).foregroundStyle(C.textPri)
+                Text("\(pct)% fullført").font(.headline).foregroundStyle(SLColor.textPri)
                 if must > 0 {
                     Label("\(mustDone) av \(must) must-have gjort", systemImage: "checkmark.circle.fill")
-                        .font(.caption.weight(.medium)).foregroundStyle(C.green)
+                        .font(.caption.weight(.medium)).foregroundStyle(SLColor.green)
                 }
                 Text(pct >= 100 ? "Alle shots fullført 🎉" : "\(total - done) shots gjenstår.")
-                    .font(.caption).foregroundStyle(C.textSec)
+                    .font(.caption).foregroundStyle(SLColor.textSec)
             }
             Spacer(minLength: 0)
         }
         .padding(16)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(C.card))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(C.stroke))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(SLColor.card))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(SLColor.stroke))
     }
 
     // MARK: - Auto-huket denne økta (angre)
@@ -179,20 +179,20 @@ struct ShotListPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("AUTO-HUKET DENNE ØKTA (\(model.autoCheckLog.count))", systemImage: "sparkles")
-                    .font(.caption.weight(.bold)).foregroundStyle(C.textSec)
+                    .font(.caption.weight(.bold)).foregroundStyle(SLColor.textSec)
                 Spacer()
                 Button("Angre alle") {
                     let ids = model.autoCheckLog.map(\.shotId)
                     Task { for id in ids { await model.undoAutoCheck(shotId: id) } }
-                }.font(.caption.weight(.semibold)).foregroundStyle(C.purple)
+                }.font(.caption.weight(.semibold)).foregroundStyle(SLColor.purple)
             }
             ForEach(model.autoCheckLog) { entry in
                 HStack(spacing: 12) {
                     thumb(for: shot(byId: entry.shotId)).frame(width: 44, height: 40).clipShape(RoundedRectangle(cornerRadius: 9))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.scene).font(.subheadline.weight(.semibold)).foregroundStyle(C.textPri)
+                        Text(entry.scene).font(.subheadline.weight(.semibold)).foregroundStyle(SLColor.textPri)
                         Text("Auto-huket \(entry.at.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption2).foregroundStyle(C.textSec)
+                            .font(.caption2).foregroundStyle(SLColor.textSec)
                     }
                     Spacer(minLength: 8)
                     Button { Task { await model.undoAutoCheck(shotId: entry.shotId) } } label: {
@@ -201,39 +201,39 @@ struct ShotListPanel: View {
                             .overlay(Capsule().stroke(Color(hex: 0xE0A955).opacity(0.5)))
                     }.buttonStyle(.plain)
                 }
-                .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(C.cardHi))
+                .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(SLColor.cardHi))
             }
         }
         .padding(16)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(C.card))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(C.stroke))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(SLColor.card))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(SLColor.stroke))
     }
 
     // MARK: - Gjør dette neste
 
     private func nextShotCard(_ shot: BackendShotListItem) -> some View {
         HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 12).fill(C.purple.opacity(0.18)).frame(width: 48, height: 48)
-                .overlay(Image(systemName: "camera.viewfinder").foregroundStyle(C.purple))
+            RoundedRectangle(cornerRadius: 12).fill(SLColor.purple.opacity(0.18)).frame(width: 48, height: 48)
+                .overlay(Image(systemName: "camera.viewfinder").foregroundStyle(SLColor.purple))
             VStack(alignment: .leading, spacing: 2) {
                 Label("GJØR DETTE NESTE", systemImage: "sparkles")
-                    .font(.caption2.weight(.bold)).foregroundStyle(C.purple)
-                Text(shot.scene).font(.subheadline.weight(.bold)).foregroundStyle(C.textPri).lineLimit(1)
+                    .font(.caption2.weight(.bold)).foregroundStyle(SLColor.purple)
+                Text(shot.scene).font(.subheadline.weight(.bold)).foregroundStyle(SLColor.textPri).lineLimit(1)
                 if let d = shot.description, !d.isEmpty {
-                    Text(d).font(.caption).foregroundStyle(C.textSec).lineLimit(1)
+                    Text(d).font(.caption).foregroundStyle(SLColor.textSec).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
             Button { toggleCompletion(shot) } label: {
                 Text("Hak av").font(.subheadline.weight(.bold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(C.purple, in: Capsule())
+                    .background(SLColor.purple, in: Capsule())
             }.buttonStyle(.plain)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(LinearGradient(colors: [Color(hex: 0x1A1530), C.card], startPoint: .topLeading, endPoint: .bottomTrailing)))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(C.purple.opacity(0.28)))
+            .fill(LinearGradient(colors: [Color(hex: 0x1A1530), SLColor.card], startPoint: .topLeading, endPoint: .bottomTrailing)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(SLColor.purple.opacity(0.28)))
     }
 
     // MARK: - Shots
@@ -242,30 +242,30 @@ struct ShotListPanel: View {
         let filtered = filteredSorted(shots)
         return VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Text("SHOTS").font(.caption.weight(.bold)).foregroundStyle(C.textSec)
+                Text("SHOTS").font(.caption.weight(.bold)).foregroundStyle(SLColor.textSec)
                 ForEach(ShotFilter.allCases, id: \.self) { f in
                     Button { filter = f } label: {
                         Text(f.rawValue).font(.caption.weight(.semibold))
-                            .foregroundStyle(filter == f ? .black : C.textSec)
+                            .foregroundStyle(filter == f ? .black : SLColor.textSec)
                             .padding(.horizontal, 11).padding(.vertical, 5)
-                            .background(filter == f ? C.green : .clear, in: Capsule())
+                            .background(filter == f ? SLColor.green : .clear, in: Capsule())
                     }.buttonStyle(.plain)
                 }
                 Spacer()
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(C.textDim)
-                    TextField("Søk …", text: $query).font(.caption).foregroundStyle(C.textPri).frame(width: 110)
-                }.padding(.horizontal, 11).padding(.vertical, 7).background(C.cardHi, in: Capsule())
+                    Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(SLColor.textDim)
+                    TextField("Søk …", text: $query).font(.caption).foregroundStyle(SLColor.textPri).frame(width: 110)
+                }.padding(.horizontal, 11).padding(.vertical, 7).background(SLColor.cardHi, in: Capsule())
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
 
             ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, shot in
                 shotRow(index: idx + 1, shot: shot)
-                if idx < filtered.count - 1 { Divider().overlay(C.stroke).padding(.leading, 72) }
+                if idx < filtered.count - 1 { Divider().overlay(SLColor.stroke).padding(.leading, 72) }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(C.card))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(C.stroke))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(SLColor.card))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(SLColor.stroke))
     }
 
     private func shotRow(index: Int, shot: BackendShotListItem) -> some View {
@@ -273,30 +273,28 @@ struct ShotListPanel: View {
         return Button { toggleCompletion(shot) } label: {
             HStack(spacing: 13) {
                 ZStack {
-                    Circle().fill(done ? C.green : .clear)
-                        .overlay(Circle().stroke(done ? C.green : C.textDim, lineWidth: 1.5))
-                    if done { Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.black) }
-                    else { Text("\(index)").font(.caption.weight(.bold)).foregroundStyle(C.textSec) }
+                    Circle().fill(done ? SLColor.green : .clear)
+                        .overlay(Circle().stroke(done ? SLColor.green : SLColor.textDim, lineWidth: 1.5))
+                    if done { Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.black) } else { Text("\(index)").font(.caption.weight(.bold)).foregroundStyle(SLColor.textSec) }
                 }.frame(width: 26, height: 26)
                 thumb(for: shot).frame(width: 50, height: 42).clipShape(RoundedRectangle(cornerRadius: 9))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(shot.scene).font(.subheadline.weight(.semibold))
-                        .foregroundStyle(done ? C.textSec : C.textPri)
-                        .strikethrough(done, color: C.textDim).lineLimit(1)
+                        .foregroundStyle(done ? SLColor.textSec : SLColor.textPri)
+                        .strikethrough(done, color: SLColor.textDim).lineLimit(1)
                     if let d = shot.description, !d.isEmpty {
-                        Text(d).font(.caption2).foregroundStyle(C.textSec).lineLimit(1)
+                        Text(d).font(.caption2).foregroundStyle(SLColor.textSec).lineLimit(1)
                     }
                 }.frame(width: 190, alignment: .leading)
-                if done, let by = shot.completedBy, !by.isEmpty { pill("Ferdig · \(by)", C.green) }
-                else if done { pill("Ferdig", C.green) }
-                if let p = shot.priority, !p.isEmpty { pill(p.capitalized, C.prio(p)) }
+                if done, let by = shot.completedBy, !by.isEmpty { pill("Ferdig · \(by)", SLColor.green) } else if done { pill("Ferdig", SLColor.green) }
+                if let p = shot.priority, !p.isEmpty { pill(p.capitalized, SLColor.prio(p)) }
                 if let t = shot.shotType, !t.isEmpty { pill(t.capitalized, Color(hex: 0x4A90E2)) }
                 Spacer(minLength: 6)
                 if let loc = shot.locationName, !loc.isEmpty {
-                    Label(loc, systemImage: "mappin.and.ellipse").font(.caption2).foregroundStyle(C.textSec).lineLimit(1)
+                    Label(loc, systemImage: "mappin.and.ellipse").font(.caption2).foregroundStyle(SLColor.textSec).lineLimit(1)
                 }
                 if let dur = shot.estimatedDuration {
-                    Label("\(dur) min", systemImage: "clock").font(.caption2).foregroundStyle(C.textSec)
+                    Label("\(dur) min", systemImage: "clock").font(.caption2).foregroundStyle(SLColor.textSec)
                 }
             }
             .contentShape(Rectangle())
@@ -319,8 +317,8 @@ struct ShotListPanel: View {
         } else if let shot, let scene = ShotListPanel.demoThumbs[shot.id] {
             MockPhotoView(scene: scene)
         } else {
-            RoundedRectangle(cornerRadius: 9).fill(C.cardHi)
-                .overlay(Image(systemName: "photo").font(.caption2).foregroundStyle(C.textDim))
+            RoundedRectangle(cornerRadius: 9).fill(SLColor.cardHi)
+                .overlay(Image(systemName: "photo").font(.caption2).foregroundStyle(SLColor.textDim))
         }
     }
 
@@ -352,7 +350,7 @@ struct ShotListPanel: View {
     private var noProjectSelected: some View {
         ContentUnavailableView("Ingen prosjekt valgt", systemImage: "folder.badge.questionmark",
             description: Text("Velg et prosjekt fra topplinjen for å se de planlagte shotsene."))
-            .background(C.bg)
+            .background(SLColor.bg)
     }
 
     private func emptyShotList(projectTitle: String) -> some View {
@@ -362,9 +360,9 @@ struct ShotListPanel: View {
             Button { showBriefGenerator = true } label: {
                 Label("Generer fra brief", systemImage: "sparkles").font(.body.weight(.semibold))
                     .padding(.horizontal, 18).padding(.vertical, 11)
-            }.buttonStyle(.borderedProminent).tint(C.green)
+            }.buttonStyle(.borderedProminent).tint(SLColor.green)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity).background(C.bg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity).background(SLColor.bg)
     }
 
     // MARK: - Logikk
@@ -387,8 +385,7 @@ struct ShotListPanel: View {
         model.shotListAutoCheckEnabled = enabled
         autoCheckError = nil; autoCheckBusy = true
         Task {
-            do { try await model.setShotListAutoCheck(enabled) }
-            catch {
+            do { try await model.setShotListAutoCheck(enabled) } catch {
                 await MainActor.run {
                     model.shotListAutoCheckEnabled = previous
                     autoCheckError = (error as? ShotAutoCheckError) == .notOwner
@@ -408,8 +405,7 @@ struct ShotListPanel: View {
         let next = !previous
         localOverrides[shot.id] = next
         Task {
-            do { try await model.setShotCompletion(shotId: shot.id, isCompleted: next) }
-            catch { await MainActor.run { localOverrides[shot.id] = previous } }
+            do { try await model.setShotCompletion(shotId: shot.id, isCompleted: next) } catch { await MainActor.run { localOverrides[shot.id] = previous } }
         }
     }
 
