@@ -25,6 +25,15 @@ struct ShotListDemoView: View {
         let (summary, detail) = ShotListDemoView.build(ShotListDemoView.initialShots)
         m.selectedProject = summary
         m.selectedProjectDetail = detail
+        // «Auto-huket denne økta»-oversikt (s1/s2 er auto-hukede) → viser angre.
+        m.autoCheckLog = [
+            .init(shotId: "s2", scene: "Modell påfører serum", assetId: UUID(), at: Date()),
+            .init(shotId: "s1", scene: "Produkt på marmor — flatlay", assetId: UUID(), at: Date())
+        ]
+        ShotListPanel.demoThumbs = [
+            "s1": .lifestyle, "s2": .texture, "s3": .lifestyle,
+            "s4": .texture, "s5": .group, "s6": .packaging
+        ]
         _model = State(initialValue: m)
         _shots = State(initialValue: ShotListDemoView.initialShots)
     }
