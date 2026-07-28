@@ -523,9 +523,32 @@ export function ExportView() {
 
         {/* Eksport-knapp + progress */}
         <div style={{ marginTop: 28, borderTop: `1px solid ${C.line}`, paddingTop: 20 }}>
-          {!canExport && (
+          {recorded.length === 0 && (
             <div style={{ background: '#fdf3e7', border: `1px solid #f0d9b8`, borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#8a6515', marginBottom: 16 }}>
               Ingen scener har opptak ennå. Ta opp scener i <strong>Guided Recorder</strong> først — eksport monterer opptakene til én produktvideo.
+            </div>
+          )}
+          {/* Innholds-QA (D): forklar HVORFOR eksport er blokkert i stedet for en
+              stille deaktivert knapp — og vis ikke-blokkerende advarsler så en
+              gjennomtenkt demo kan rettes før den produseres. */}
+          {readiness.blocking.length > 0 && (
+            <div style={{ background: '#fdecec', border: '1px solid #f0b8b8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#9a2b2b', marginBottom: 6 }}>⛔ Kan ikke eksportere — {readiness.blocking.length} blokkerende {readiness.blocking.length === 1 ? 'sak' : 'saker'}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#7a3535', lineHeight: 1.6 }}>
+                {readiness.blocking.map((b, i) => (
+                  <li key={i}>{b.index >= 0 ? `Scene ${b.index + 1}${b.title ? ` (${b.title})` : ''}: ` : ''}{b.issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {readiness.warnings.length > 0 && (
+            <div style={{ background: '#fdf6e7', border: '1px solid #f0dca8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6515', marginBottom: 6 }}>⚠ {readiness.warnings.length} advarsel{readiness.warnings.length === 1 ? '' : 'er'} (eksport tillatt)</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#7a6015', lineHeight: 1.6 }}>
+                {readiness.warnings.map((w, i) => (
+                  <li key={i}>{w.index >= 0 ? `Scene ${w.index + 1}${w.title ? ` (${w.title})` : ''}: ` : ''}{w.issue}</li>
+                ))}
+              </ul>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -308,6 +308,10 @@ export interface DemoProject {
   /** Fase 1b: viewport-screenshots fra scan, per scroll-bånd. Brukes til presis
    *  preview-render (riktig del av siden + hotspot oppå, perfekt align). */
   scanShots?: Array<{ scrollPct: number; dataUrl: string }>;
+  /** Mobil-bredde-screenshots (ekte responsiv layout) fra samme scan. Brukes for
+   *  iPhone/iPad-preview og fallback, så portrett-enheter viser mobil-layouten
+   *  i stedet for en nedskalert desktop-side. */
+  scanShotsMobile?: Array<{ scrollPct: number; dataUrl: string }>;
   /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
    *  required action automatisk. Default 'manual'. */
   continueMode?: 'manual' | 'auto';
@@ -1225,6 +1229,19 @@ export function pickShot(
     if (d < bestD) { bestD = d; best = s; }
   }
   return best.dataUrl;
+}
+
+/** Som pickShot, men velger mobil-båndene for portrett-enheter (iPhone/iPad)
+ *  når de finnes — så preview/fallback viser sidens EKTE mobil-layout i stedet
+ *  for en nedskalert desktop-side. Faller tilbake til desktop-shots. */
+export function pickShotForDevice(
+  project: { scanShots?: Array<{ scrollPct: number; dataUrl: string }>; scanShotsMobile?: Array<{ scrollPct: number; dataUrl: string }> } | undefined,
+  device: DemoDevice,
+  scrollPct: number | undefined,
+): string | null {
+  const portrait = device === 'iphone' || device === 'ipad';
+  const shots = portrait && project?.scanShotsMobile?.length ? project.scanShotsMobile : project?.scanShots;
+  return pickShot(shots, scrollPct);
 }
 
 /** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */
