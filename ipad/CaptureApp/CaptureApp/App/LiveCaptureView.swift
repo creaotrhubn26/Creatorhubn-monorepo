@@ -2861,6 +2861,65 @@ private struct HUDOverlay: View {
             if let skin = analysis.skin {
                 SkinToneChip(reading: skin)
             }
+
+            if let sharpness = analysis.sharpness {
+                SharpnessIndicator(reading: sharpness)
+            }
+        }
+    }
+}
+
+private struct SharpnessIndicator: View {
+    let reading: ImageAnalysis.SharpnessReading
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fokus")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white)
+                // Liten skarphets-søyle.
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.15))
+                        Capsule().fill(color)
+                            .frame(width: max(3, geo.size.width * reading.value))
+                    }
+                }
+                .frame(width: 64, height: 4)
+            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(color.opacity(0.95))
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(0.5), lineWidth: 1))
+    }
+
+    private var label: String {
+        switch reading.status {
+        case .soft: return "Uskarp?"
+        case .ok: return "OK"
+        case .sharp: return "Skarp"
+        }
+    }
+    private var color: Color {
+        switch reading.status {
+        case .soft: return .orange
+        case .ok: return .yellow
+        case .sharp: return .green
+        }
+    }
+    private var icon: String {
+        switch reading.status {
+        case .soft: return "camera.metering.none"
+        case .ok: return "camera.metering.center.weighted"
+        case .sharp: return "checkmark.circle.fill"
         }
     }
 }
