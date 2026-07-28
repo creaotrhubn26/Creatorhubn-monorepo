@@ -341,6 +341,10 @@ struct LiveCaptureView: View {
             if case let .reconnecting(attempt) = model.connectionState {
                 ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
             }
+            if let scene = model.lastAutoCheckedShot {
+                ShotAutoCheckToast(scene: scene)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             StatusBar(
                 state: model.connectionState,
                 device: model.deviceSummary,
@@ -1232,6 +1236,24 @@ private struct ReconnectingBanner: View {
         .padding(.horizontal, 20).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(Color.orange.opacity(0.92))
+    }
+}
+
+/// Kort bekreftelse når et bilde auto-huket et shot i prosjektets shot-list.
+private struct ShotAutoCheckToast: View {
+    let scene: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Text("Auto-huket: \(scene)")
+                .font(.caption.weight(.medium)).foregroundStyle(.white)
+            Spacer(minLength: 8)
+            Text("synkes til workspace")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.green.opacity(0.25))
     }
 }
 
@@ -5033,6 +5055,12 @@ final class LiveCaptureModel {
     /// Asset ids we've already kicked auto-clean for, so re-emissions
     /// of the assets stream don't fire duplicate detect calls.
     private var autoCleanDispatched: Set<UUID> = []
+    // Shot-list auto-checkoff (Vision-match). Oppdaterer prosjektets shot-list
+    // → outbox-sync til /api/projects/:id/shot-list → synlig i workspace.
+    private var autoCheckedShotAssetIds: Set<UUID> = []
+    private var shotAutoCheckStore: ShotListStore?
+    /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
+    var lastAutoCheckedShot: String?
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     /// Phase 2C — per-session RAW renderer. Built at connect time so it
@@ -5429,6 +5457,7 @@ final class LiveCaptureModel {
                     await MainActor.run {
                         self?.assets = assets
                         self?.dispatchAutoCleanForNewlyReadyAssets()
+                        self?.dispatchShotAutoCheckForNewAssets()
                     }
                 }
             }
@@ -5794,6 +5823,57 @@ final class LiveCaptureModel {
     /// All checks are cheap so calling this on every assets emission
     /// is fine — it only enqueues work when something has actually
     /// transitioned to "preview ready and unseen".
+    /// Auto-huk shot-list-elementer for nye bilder via Vision-match. Kjøres
+    /// idempotent per asset (samme mønster som auto-clean). Oppdaterer
+    /// PROSJEKTETS shot-list (offline-first) → outbox køer POST /api/projects/
+    /// :id/shot-list → sync-arbeideren pusher → synlig i fotografens workspace
+    /// (web + andre enheter). `capturedAssetId` kobler shotet til bildet.
+    private func dispatchShotAutoCheckForNewAssets() {
+        guard let projectId = selectedProject?.id else { return }
+        let owner = actorUserId
+        for asset in assets {
+            guard let previewKey = asset.previewKey,
+                  FileManager.default.fileExists(atPath: previewKey),
+                  !autoCheckedShotAssetIds.contains(asset.id)
+            else { continue }
+            autoCheckedShotAssetIds.insert(asset.id)
+            let assetId = asset.id
+            Task { [weak self] in
+                await self?.autoCheckShot(assetId: assetId, previewKey: previewKey,
+                                          projectId: projectId, owner: owner)
+            }
+        }
+    }
+
+    private func shotStore() -> ShotListStore? {
+        if let s = shotAutoCheckStore { return s }
+        guard let url = try? AppDatabase.defaultDiskURL(),
+              let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
+        let s = ShotListStore(database: db, outbox: Outbox(database: db))
+        shotAutoCheckStore = s
+        return s
+    }
+
+    private func autoCheckShot(assetId: UUID, previewKey: String, projectId: String, owner: String) async {
+        guard let store = shotStore(),
+              let list = try? await store.load(projectId: projectId, ownerUserId: owner),
+              list.shots.contains(where: { !($0.isCompleted ?? false) })
+        else { return }
+        let signals: CaptureSignals? = await Task.detached(priority: .utility) {
+            guard let ui = UIImage(contentsOfFile: previewKey), let cg = ui.cgImage else { return nil }
+            return CaptureSignalExtractor.signals(from: cg)
+        }.value
+        guard let signals,
+              let match = ShotMatcher.bestMatch(signals: signals, shots: list.shots)
+        else { return }
+        try? await store.toggleCompletion(
+            shotId: match.id, in: list, capturedAssetId: assetId.uuidString.lowercased())
+        lastAutoCheckedShot = match.scene
+        // Auto-fjern bekreftelsen etter noen sekunder.
+        try? await Task.sleep(for: .seconds(3))
+        if lastAutoCheckedShot == match.scene { lastAutoCheckedShot = nil }
+    }
+
     private func dispatchAutoCleanForNewlyReadyAssets() {
         guard autoCleanMode != .off,
               let service = autoCleanService,
