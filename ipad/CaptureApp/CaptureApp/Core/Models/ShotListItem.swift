@@ -50,6 +50,11 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
     /// vise thumbnail når flagget completed.
     var capturedAssetId: String?
 
+    /// Hvem som tok shotet (fotografens visningsnavn) — for team-attribusjon
+    /// («Ole tok: Ring detail»). Settes ved auto-huk, nil når ikke fullført.
+    /// Optional + bakoverkompatibel.
+    var completedBy: String?
+
     /// Base64-encoded PencilKit-strokes. Brukt for håndtegnede skisser
     /// av kameravinkel/komposisjon. Hard 200 KB-grense før vi tvinger
     /// rasterisering — håndhevet i ``ShotListStore``, ikke her.
@@ -67,6 +72,7 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
         scouted: Bool? = nil,
         isCompleted: Bool? = nil,
         capturedAssetId: String? = nil,
+        completedBy: String? = nil,
         inkData: String? = nil,
     ) {
         self.id = id
@@ -80,6 +86,7 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
         self.scouted = scouted
         self.isCompleted = isCompleted
         self.capturedAssetId = capturedAssetId
+        self.completedBy = completedBy
         self.inkData = inkData
     }
 }

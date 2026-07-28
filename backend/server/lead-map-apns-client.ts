@@ -134,7 +134,7 @@ export async function sendAPNs(
   deviceToken: string,
   title: string,
   body: string,
-  options: { badge?: number; sound?: string; customData?: Record<string, unknown> } = {},
+  options: { badge?: number; sound?: string; customData?: Record<string, unknown>; topic?: string } = {},
 ): Promise<APNsResult> {
   if (process.env.APNS_MODE !== "live") {
     return { sent: false, reason: "apns_mode_not_live" };
@@ -143,7 +143,10 @@ export async function sendAPNs(
   if (!jwt) {
     return { sent: false, reason: "apns_not_configured" };
   }
-  const bundleId = process.env.APNS_BUNDLE_ID;
+  // Samme APNs-nøkkel signerer for alle bundle-ID-er på teamet; kun apns-topic
+  // skiller appene. CaptureApp sender med sin egen topic via options.topic;
+  // LeadMap faller tilbake til APNS_BUNDLE_ID (uendret oppførsel).
+  const bundleId = options.topic ?? process.env.APNS_BUNDLE_ID;
   if (!bundleId) {
     return { sent: false, reason: "apns_bundle_id_missing" };
   }

@@ -228,6 +228,9 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
     let scouted: Bool?
     let isCompleted: Bool?
     let capturedAssetId: String?
+    /// Hvem som tok shotet (team-attribusjon, «Ferdig · Ole»). Optional +
+    /// bakoverkompatibel — nil når backend ikke sender feltet.
+    let completedBy: String?
 }
 
 struct BackendProjectDetail: Decodable, Sendable, Identifiable {
@@ -411,6 +414,11 @@ struct BackendDeliverToShowcaseRequest: Encodable, Sendable {
     let clientName: String
     let clientEmail: String
     let projectTitle: String?
+    // Samme-dags levering: auto-send «bildene klare»-e-post. emailBody er
+    // valgfri FM-skrevet (on-device) kropp; backend har en standard mal.
+    var sendEmail: Bool = false
+    var emailBody: String?
+    var photographerName: String?
 }
 
 struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
@@ -419,6 +427,7 @@ struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
     let shareUrl: String
     let uploadedImageCount: Int
     let reusedExisting: Bool
+    var emailSent: Bool?
 }
 
 // MARK: - Client tokens (Deliver flow)

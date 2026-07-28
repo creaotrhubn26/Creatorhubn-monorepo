@@ -133,6 +133,9 @@ interface Gallery {
   clientName: string;
   clientEmail: string;
   projectTitle: string;
+  /** Bilder lagt til etter opprettelse, siste 7 dager — driver «N nye
+   *  bilder lagt til»-banneret. 0 ved førstegangs-levering. */
+  recentlyAddedCount?: number;
   /** Slice 9P — surfaced by GET /api/client/gallery/:token so the
    *  viewer renders the right copy ("foto-galleri" vs "video-galleri"
    *  vs "lyd-galleri"). Null when the photographer has no profession
@@ -1561,6 +1564,23 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
         {/* Gallery Content */}
         <Box sx={{ flex: 1, p: 3, bgcolor: '#0a0f1a' }}>
+          {/* «Nye bilder»-banner: fotografen har lastet opp mer siden galleriet
+              ble opprettet. Tidsbasert signal fra GET-metaen. */}
+          {!!gallery?.recentlyAddedCount && gallery.recentlyAddedCount > 0 && (
+            <Alert
+              severity="success"
+              sx={{
+                mb: 3,
+                bgcolor: 'rgba(16,185,129,0.12)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                color: '#fff', '& .MuiAlert-icon': { color: '#10B981' },
+              }}
+            >
+              {gallery.recentlyAddedCount === 1
+                ? '1 nytt bilde lagt til nylig — bla ned for å se det.'
+                : `${gallery.recentlyAddedCount} nye bilder lagt til nylig — bla ned for å se dem.`}
+            </Alert>
+          )}
           {/* Leveranse-progress + versjons-historikk.
               Begge mountes kun når galleriet er ferdig lastet og passordet
               er løst (samme gating som images-query bruker). */}

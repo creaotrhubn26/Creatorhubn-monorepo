@@ -6,6 +6,7 @@ import { createRequire } from "module";
 import * as schema from "../migrations/schema.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
 import { recordProjectChange } from "./project-change-log.js";
+import { updateAssetLabels } from "./capture-assets-service.js";
 import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
@@ -333,9 +334,28 @@ export function setupClientGalleryRoutes(
         console.warn('[client-gallery] profession/branding lookup failed', lookupErr);
       }
 
+      // «Nye bilder»-signal til viewer-banneret: bilder lagt til ETTER at
+      // galleriet ble opprettet (så første levering ikke maser) og innen siste
+      // 7 dager (så gamle re-leveringer ikke nager for alltid). Tidsbasert
+      // approksimasjon — ingen per-klient «sett»-sporing.
+      let recentlyAddedCount = 0;
+      try {
+        const rc = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM client_gallery_images
+             WHERE gallery_id = $1
+               AND created_at > $2::timestamptz + INTERVAL '2 minutes'
+               AND created_at > NOW() - INTERVAL '7 days'`,
+          [gallery.id, gallery.createdAt],
+        );
+        recentlyAddedCount = rc.rows[0]?.n ?? 0;
+      } catch (err) {
+        console.warn('[client-gallery] recentlyAddedCount failed', err);
+      }
+
       return res.json({
         id: gallery.id,
         clientName: gallery.clientName,
+        recentlyAddedCount,
         // Ikke lek klientens e-post til en passord-beskyttet lenke FØR passordet
         // er tastet — access-tokenet alene skal ikke avsløre klient-PII.
         clientEmail: requiresPassword ? null : gallery.clientEmail,
@@ -929,6 +949,23 @@ export function setupClientGalleryRoutes(
           });
         } catch (err) {
           console.warn("[client-gallery] broadcast asset.hearted failed", err);
+        }
+        // Klient-samarbeidende culling: et hjerte i galleriet auto-flagger det
+        // koblede capture-asset som keeper (flaggedForClient) — så fotografens
+        // pick-filter + samme-dags levering plukker det opp uten manuelt steg.
+        try {
+          const imgRow = await pool.query(
+            `SELECT image_metadata FROM client_gallery_images WHERE id = $1 LIMIT 1`,
+            [imageId],
+          );
+          const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
+          if (captureAssetId) {
+            await updateAssetLabels(db, gallery.photographerId, String(captureAssetId), {
+              flaggedForClient: hearted,
+            });
+          }
+        } catch (err) {
+          console.warn("[client-gallery] flaggedForClient sync failed", err);
         }
         if (gallery.projectId) {
           try {

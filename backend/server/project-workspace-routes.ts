@@ -442,6 +442,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ── Capture-innstillinger (team-flagg i projects.settings) ──
+  // shotListAutoCheck styrer om iPad-en auto-huker shots. Delt tilstand:
+  // web-toggle + iPad leser samme flagg. Default PÅ (opt-out).
+  app.get("/api/projects/:projectId/capture-settings", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(`SELECT settings FROM projects WHERE id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const s = (r.rows[0]?.settings ?? {}) as Record<string, unknown>;
+      res.json({ shotListAutoCheck: s.shotListAutoCheck !== false, updatedBy: (s as any).shotListAutoCheckBy ?? null });
+    } catch (e) { console.error("GET capture-settings", e); res.json({ shotListAutoCheck: true }); }
+  });
+  // PUT er eier-gated (kun prosjekteier/lead-fotograf kan endre for teamet).
+  app.put("/api/projects/:projectId/capture-settings", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const owns = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [req.params.projectId, uid]);
+      if (!owns.rows.length) return res.status(403).json({ error: "not_owner" });
+      const enabled = req.body?.shotListAutoCheck !== false;
+      const by = typeof req.body?.updatedBy === 'string' ? req.body.updatedBy : null;
+      await pool.query(
+        `UPDATE projects SET settings = COALESCE(settings, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+        [req.params.projectId, JSON.stringify({ shotListAutoCheck: enabled, shotListAutoCheckBy: by })],
+      );
+      res.json({ success: true, shotListAutoCheck: enabled });
+    } catch (e) { console.error("PUT capture-settings", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // Auto-uttrekk av fargepalett fra moodboard-referansebildene (node-vibrant).
   // Henter referansene fra B2 server-side (ingen CORS), kjører Vibrant pr bilde,
   // slår sammen + deduperer dominante farger på tvers, navngir til norsk, og

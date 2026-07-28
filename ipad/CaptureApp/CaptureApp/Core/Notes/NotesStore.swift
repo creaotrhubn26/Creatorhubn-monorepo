@@ -39,6 +39,11 @@ struct FieldNote: Codable, Identifiable, Hashable, Sendable {
     var contextLabel: String?
     /// Free-text capture context stamped at creation (e.g. "Oslo · 14:30").
     var captureContext: String?
+    /// EXIF + filnavn for et bilde notatet gjelder — registrert automatisk når
+    /// du lager notat på et bilde du jobber med / nettopp har tatt. Gir on-
+    /// device-AI-en fototeknisk kontekst (ISO/blender/lukker/objektiv).
+    /// Optional + bakoverkompatibel: eldre lagrede notater dekoder til nil.
+    var photo: PhotoMetadata?
     let createdAt: Date
     var updatedAt: Date
 
@@ -51,6 +56,7 @@ struct FieldNote: Codable, Identifiable, Hashable, Sendable {
         contextId: String? = nil,
         contextLabel: String? = nil,
         captureContext: String? = nil,
+        photo: PhotoMetadata? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
     ) {
@@ -62,6 +68,7 @@ struct FieldNote: Codable, Identifiable, Hashable, Sendable {
         self.contextId = contextId
         self.contextLabel = contextLabel
         self.captureContext = captureContext
+        self.photo = photo
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

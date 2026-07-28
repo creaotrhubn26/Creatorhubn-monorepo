@@ -26,6 +26,15 @@ struct ShotListPanel: View {
     /// considers completed.
     @State private var localOverrides: [String: Bool] = [:]
 
+    /// Auto-huk-toggelen: lokal busy/feil-tilstand. Selve på/av-verdien
+    /// bor på modellen (`shotListAutoCheckEnabled`) så den deles med
+    /// Vision-huke-logikken og web-toggelen via backend.
+    @State private var autoCheckBusy = false
+    @State private var autoCheckError: String?
+
+    /// #9 Presenterer «shot-list fra brief»-arket (FM-generert).
+    @State private var showBriefGenerator = false
+
     var body: some View {
         NavigationStack {
             Group {
@@ -47,6 +56,15 @@ struct ShotListPanel: View {
             .navigationTitle(model.selectedProject?.title ?? "Shot list")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if model.selectedProject != nil {
+                        Button {
+                            showBriefGenerator = true
+                        } label: {
+                            Label("Fra brief", systemImage: "sparkles")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -78,11 +96,30 @@ struct ShotListPanel: View {
     }
 
     private func emptyShotList(projectTitle: String) -> some View {
-        ContentUnavailableView(
-            "No planned shots",
-            systemImage: "checklist",
-            description: Text("\(projectTitle) doesn't have a shot list yet. Add one from the CreatorHub project planner."),
-        )
+        VStack(spacing: 20) {
+            ContentUnavailableView(
+                "Ingen planlagte shots",
+                systemImage: "checklist",
+                description: Text("\(projectTitle) har ingen shot-list ennå. Generer én fra klient-briefen, eller legg til i CreatorHub-planleggeren."),
+            )
+            Button {
+                showBriefGenerator = true
+            } label: {
+                Label("Generer fra brief", systemImage: "sparkles")
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 18).padding(.vertical, 11)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+        }
+        .sheet(isPresented: $showBriefGenerator) {
+            let hasShots = !(model.selectedProjectDetail?.shotList.isEmpty ?? true)
+            ShotListFromBriefView(
+                onSave: { scenes in try await model.saveShotListFromBrief(scenes, append: hasShots) },
+                fetchTimeline: { await model.fetchWeddingTimelineBrief() },
+                saveLabel: hasShots ? "Legg til i shot-listen" : "Lagre til prosjektet",
+                callSheetURL: { model.callSheetURL(scenes: $0) })
+        }
     }
 
     private func shotList(for detail: BackendProjectDetail) -> some View {
@@ -92,6 +129,7 @@ struct ShotListPanel: View {
             priorityRank(lhs.priority) < priorityRank(rhs.priority)
         }
         return List {
+            autoCheckSection
             if let summary = detail.shotListSummary {
                 Section {
                     ProgressView(value: Double(summary.completedShots),
@@ -124,6 +162,50 @@ struct ShotListPanel: View {
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    /// Team-styring av auto-huk. Vises øverst i lista. Bindingen skriver
+    /// optimistisk til modellen, kaller backend, og ruller tilbake ved feil
+    /// (403 → «kun eier kan endre»). Alle på settet ser samme flagg.
+    private var autoCheckSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { model.shotListAutoCheckEnabled },
+                set: { setAutoCheck($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Auto-huk shots", systemImage: "checklist.checked")
+                        .font(.subheadline.weight(.semibold))
+                    Text(autoCheckError ?? (model.shotListAutoCheckEnabled
+                         ? "Vision huker av shots automatisk når du tar bildet. Gjelder hele teamet."
+                         : "Av — hak av manuelt. Slå på for å la Vision gjøre det for teamet."))
+                        .font(.caption2)
+                        .foregroundStyle(autoCheckError == nil ? Color.secondary : Color.red)
+                }
+            }
+            .tint(.green)
+            .disabled(autoCheckBusy)
+        }
+    }
+
+    private func setAutoCheck(_ enabled: Bool) {
+        let previous = model.shotListAutoCheckEnabled
+        model.shotListAutoCheckEnabled = enabled   // optimistisk
+        autoCheckError = nil
+        autoCheckBusy = true
+        Task {
+            do {
+                try await model.setShotListAutoCheck(enabled)
+            } catch {
+                await MainActor.run {
+                    model.shotListAutoCheckEnabled = previous
+                    autoCheckError = (error as? ShotAutoCheckError) == .notOwner
+                        ? "Kun prosjekteier kan endre dette."
+                        : "Kunne ikke lagre — prøv igjen."
+                }
+            }
+            await MainActor.run { autoCheckBusy = false }
+        }
     }
 
     private func isCompleted(_ shot: BackendShotListItem) -> Bool {
@@ -182,6 +264,11 @@ private struct ShotRow: View {
                             .lineLimit(2)
                     }
                     HStack(spacing: 10) {
+                        if isCompleted, let by = shot.completedBy, !by.isEmpty {
+                            Label("Ferdig · \(by)", systemImage: "checkmark.seal.fill")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
                         if let priority = shot.priority, !priority.isEmpty {
                             tag(priority.capitalized, color: priorityColor)
                         }

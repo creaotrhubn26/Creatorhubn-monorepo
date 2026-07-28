@@ -86,6 +86,7 @@ struct ShotListStore: Sendable {
         shotId: String,
         in list: ShotList,
         capturedAssetId: String? = nil,
+        completedBy: String? = nil,
     ) async throws {
         try await mutate(list) { shots in
             for i in shots.indices where shots[i].id == shotId {
@@ -93,8 +94,10 @@ struct ShotListStore: Sendable {
                 shots[i].isCompleted = becomes
                 if becomes {
                     shots[i].capturedAssetId = capturedAssetId ?? shots[i].capturedAssetId
+                    shots[i].completedBy = completedBy ?? shots[i].completedBy
                 } else {
                     shots[i].capturedAssetId = nil
+                    shots[i].completedBy = nil
                 }
             }
         }

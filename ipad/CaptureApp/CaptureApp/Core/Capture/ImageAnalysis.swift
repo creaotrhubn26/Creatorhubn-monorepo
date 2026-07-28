@@ -23,6 +23,9 @@ struct ImageAnalysis: Sendable, Equatable {
     /// Skin reading, nil when no face was detected.
     var skin: SkinReading?
 
+    /// Fokus/skarphet — Laplacian-energi. Fanger uskarpt fokus i kamera.
+    var sharpness: SharpnessReading?
+
     struct SkinReading: Sendable, Equatable {
         var sampleColor: CGColor   // average skin RGB
         /// Classification of the dominant cast on the face. `.neutral`
@@ -34,7 +37,25 @@ struct ImageAnalysis: Sendable, Equatable {
         }
     }
 
-    static let empty = ImageAnalysis(red: [], green: [], blue: [], highlightClipping: 0, shadowClipping: 0, skin: nil)
+    struct SharpnessReading: Sendable, Equatable {
+        var value: Double   // 0…1 normalisert (for søylen)
+        var status: Status
+        enum Status: String, Sendable, CaseIterable { case soft, ok, sharp }
+    }
+
+    /// Klassifiser Laplacian-energi → skarphets-status. Ren + testbar.
+    /// Tersklene er empiriske (preview-JPEG-skala) og kan finjusteres på ekte
+    /// enhet; feiler mot `.ok`/`.sharp` (ingen falsk «soft»-advarsel).
+    static func classifySharpness(energy: Double) -> SharpnessReading {
+        let softBelow = 0.0009
+        let sharpAbove = 0.0030
+        let status: SharpnessReading.Status =
+            energy < softBelow ? .soft : (energy >= sharpAbove ? .sharp : .ok)
+        let value = min(1.0, max(0.0, energy / (sharpAbove * 1.4)))
+        return SharpnessReading(value: value, status: status)
+    }
+
+    static let empty = ImageAnalysis(red: [], green: [], blue: [], highlightClipping: 0, shadowClipping: 0, skin: nil, sharpness: nil)
 }
 
 /// Background worker that produces `ImageAnalysis` from preview files.
@@ -68,6 +89,8 @@ actor ImageAnalyser {
         let histogram = computeHistogram(ciImage: ciImage, extent: extent, ctx: ctx)
         let clipping = computeClipping(ciImage: ciImage, extent: extent, ctx: ctx)
         let skin = computeSkin(ciImage: ciImage, extent: extent, ctx: ctx)
+        let sharpness = computeSharpness(ciImage: ciImage, extent: extent, ctx: ctx)
+            .map { ImageAnalysis.classifySharpness(energy: $0) }
 
         return ImageAnalysis(
             red: histogram.r,
@@ -75,8 +98,44 @@ actor ImageAnalyser {
             blue: histogram.b,
             highlightClipping: clipping.highlight,
             shadowClipping: clipping.shadow,
-            skin: skin
+            skin: skin,
+            sharpness: sharpness
         )
+    }
+
+    // MARK: - Sharpness (fokus)
+
+    /// Laplacian-energi (variance-of-Laplacian-proxy): gråtone → Laplacian-
+    /// konvolusjon → kvadrer (energi) → gjennomsnitt. Høyere = skarpere.
+    /// Rendres i float for å bevare små magnituder.
+    nonisolated private static func computeSharpness(
+        ciImage: CIImage, extent: CGRect, ctx: CIContext
+    ) -> Double? {
+        guard let mono = CIFilter(name: "CIPhotoEffectMono") else { return nil }
+        mono.setValue(ciImage, forKey: kCIInputImageKey)
+        guard let gray = mono.outputImage else { return nil }
+
+        guard let conv = CIFilter(name: "CIConvolution3X3") else { return nil }
+        conv.setValue(gray, forKey: kCIInputImageKey)
+        conv.setValue(CIVector(values: [0, 1, 0, 1, -4, 1, 0, 1, 0], count: 9), forKey: "inputWeights")
+        conv.setValue(0.0, forKey: "inputBias")
+        guard let edges = conv.outputImage else { return nil }
+
+        // Kvadrer (edges * edges) → alltid positiv energi.
+        guard let mult = CIFilter(name: "CIMultiplyCompositing") else { return nil }
+        mult.setValue(edges, forKey: kCIInputImageKey)
+        mult.setValue(edges, forKey: kCIInputBackgroundImageKey)
+        guard let energyImg = mult.outputImage else { return nil }
+
+        guard let avg = CIFilter(name: "CIAreaAverage") else { return nil }
+        avg.setValue(energyImg, forKey: kCIInputImageKey)
+        avg.setValue(CIVector(cgRect: extent), forKey: "inputExtent")
+        guard let out = avg.outputImage else { return nil }
+
+        var buf = [Float](repeating: 0, count: 4)
+        ctx.render(out, toBitmap: &buf, rowBytes: 4 * MemoryLayout<Float>.size,
+                   bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+        return Double(buf[0])   // gjennomsnittlig luminans-energi
     }
 
     // MARK: - Histogram

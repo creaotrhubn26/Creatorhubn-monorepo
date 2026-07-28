@@ -338,6 +338,17 @@ struct LiveCaptureView: View {
 
     private var connectedLayout: some View {
         VStack(spacing: 0) {
+            if case let .reconnecting(attempt) = model.connectionState {
+                ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
+            }
+            if let scene = model.lastAutoCheckedShot {
+                ShotAutoCheckToast(scene: scene)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if model.clientHeartedCount > 0 {
+                ClientHeartBanner(count: model.clientHeartedCount)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             StatusBar(
                 state: model.connectionState,
                 device: model.deviceSummary,
@@ -464,6 +475,11 @@ struct LiveCaptureView: View {
                             guard let id = model.focusedAsset?.id else { return }
                             model.deleteVoiceMemo(assetId: id)
                         },
+                        onTranscribeVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            Task { await model.transcribeVoiceMemo(assetId: id) }
+                        },
+                        voiceMemoTranscript: model.focusedAsset.flatMap { model.voiceMemoTranscripts[$0.id] },
                         onDismissNotes: {
                             guard let id = model.focusedAsset?.id else { return }
                             model.dismissNotes(assetId: id)
@@ -1196,6 +1212,74 @@ private struct ConnectionBadge: View {
     }
 }
 
+/// Vedvarende banner når Canon-tilkoblingen droppet og appen prøver å koble
+/// til igjen (auto-reconnect-logikken bor i CCAPIAdapter). Gjør at et USB/WiFi-
+/// drop midt i en shoot er tydelig — økten går aldri tapt i det stille.
+private struct ReconnectingBanner: View {
+    let attempt: Int
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small).tint(.white)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Mistet kamera-tilkobling")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text("Kobler til igjen… (forsøk \(attempt)) — økten er trygg")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer(minLength: 8)
+            Button("Avbryt", action: onCancel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.2), in: Capsule())
+        }
+        .padding(.horizontal, 20).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.orange.opacity(0.92))
+    }
+}
+
+/// Kort bekreftelse når et bilde auto-huket et shot i prosjektets shot-list.
+private struct ShotAutoCheckToast: View {
+    let scene: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Text("Auto-huket: \(scene)")
+                .font(.caption.weight(.medium)).foregroundStyle(.white)
+            Spacer(minLength: 8)
+            Text("synkes til workspace")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.green.opacity(0.25))
+    }
+}
+
+/// Live-banner: klienten hjerter favoritter fra mobilen → auto-flagget som
+/// keepers. Oppdateres i sanntid via `asset.hearted`-eventen.
+private struct ClientHeartBanner: View {
+    let count: Int
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "heart.fill").foregroundStyle(.pink)
+            Text("Kunden har hjertet \(count) \(count == 1 ? "bilde" : "bilder")")
+                .font(.caption.weight(.semibold)).foregroundStyle(.white)
+            Spacer(minLength: 8)
+            Text("auto-flagget som keepers")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.pink.opacity(0.22))
+    }
+}
+
 // MARK: - Hero stage
 
 private struct HeroStage: View {
@@ -1219,6 +1303,8 @@ private struct HeroStage: View {
     let onStopVoiceMemo: () -> Void
     let onPlayVoiceMemo: () -> Void
     let onDeleteVoiceMemo: () -> Void
+    let onTranscribeVoiceMemo: () -> Void
+    let voiceMemoTranscript: String?
     let onDismissNotes: () -> Void
 
     var body: some View {
@@ -1304,8 +1390,19 @@ private struct HeroStage: View {
                             onStart: onStartVoiceMemo,
                             onStop: onStopVoiceMemo,
                             onPlay: onPlayVoiceMemo,
-                            onDelete: onDeleteVoiceMemo
+                            onDelete: onDeleteVoiceMemo,
+                            onTranscribe: onTranscribeVoiceMemo
                         )
+                    }
+
+                    if let voiceMemoTranscript {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "waveform.and.mic").foregroundStyle(.purple)
+                            Text(voiceMemoTranscript)
+                                .font(.caption).foregroundStyle(.white.opacity(0.85))
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 24)
                     }
 
                     HStack(spacing: 12) {
@@ -2717,6 +2814,7 @@ private struct VoiceMemoControls: View {
     let onStop: () -> Void
     let onPlay: () -> Void
     let onDelete: () -> Void
+    var onTranscribe: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 6) {
@@ -2751,6 +2849,11 @@ private struct VoiceMemoControls: View {
                 button(icon: "stop.fill", tint: .white, background: Color.blue.opacity(0.55), action: onPlay)
                     .accessibilityLabel("Stop voice memo playback")
                     .onLongPressGesture(minimumDuration: 0.6) { onDelete() }
+            }
+            if memoExists {
+                button(icon: "text.bubble", tint: .white.opacity(0.8),
+                       background: Color.purple.opacity(0.5), action: onTranscribe)
+                    .accessibilityLabel("Transcribe voice memo")
             }
         }
     }
@@ -2837,6 +2940,65 @@ private struct HUDOverlay: View {
             if let skin = analysis.skin {
                 SkinToneChip(reading: skin)
             }
+
+            if let sharpness = analysis.sharpness {
+                SharpnessIndicator(reading: sharpness)
+            }
+        }
+    }
+}
+
+private struct SharpnessIndicator: View {
+    let reading: ImageAnalysis.SharpnessReading
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fokus")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white)
+                // Liten skarphets-søyle.
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.15))
+                        Capsule().fill(color)
+                            .frame(width: max(3, geo.size.width * reading.value))
+                    }
+                }
+                .frame(width: 64, height: 4)
+            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(color.opacity(0.95))
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(0.5), lineWidth: 1))
+    }
+
+    private var label: String {
+        switch reading.status {
+        case .soft: return "Uskarp?"
+        case .ok: return "OK"
+        case .sharp: return "Skarp"
+        }
+    }
+    private var color: Color {
+        switch reading.status {
+        case .soft: return .orange
+        case .ok: return .yellow
+        case .sharp: return .green
+        }
+    }
+    private var icon: String {
+        switch reading.status {
+        case .soft: return "camera.metering.none"
+        case .ok: return "camera.metering.center.weighted"
+        case .sharp: return "checkmark.circle.fill"
         }
     }
 }
@@ -4916,6 +5078,29 @@ final class LiveCaptureModel {
     /// Asset ids we've already kicked auto-clean for, so re-emissions
     /// of the assets stream don't fire duplicate detect calls.
     private var autoCleanDispatched: Set<UUID> = []
+    // Shot-list auto-checkoff (Vision-match). Oppdaterer prosjektets shot-list
+    // → outbox-sync til /api/projects/:id/shot-list → synlig i workspace.
+    private var autoCheckedShotAssetIds: Set<UUID> = []
+    private var shotAutoCheckStore: ShotListStore?
+    /// Team-flagg (projects.settings.shotListAutoCheck) — eier/lead styrer det
+    /// fra web-workspacen. Default PÅ; hentes når prosjekt kobles til.
+    var shotListAutoCheckEnabled = true
+    /// Demo-rute (--demo-shotlist): toggelen virker lokalt uten backend.
+    var isDemoMode = false
+    /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
+    var lastAutoCheckedShot: String?
+    // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
+    private var pendingTeamShotScenes: [String] = []
+    private var teamShotPostTask: Task<Void, Never>?
+    // Ekte in-place-oppdatering: ETT kort pr opptaksøkt. Vi re-poster samme
+    // clientMessageId med voksende innhold + metadata → backend upserter →
+    // kortet vokser der det er, i stedet for én ny melding pr batch.
+    private var activeShotCardId: String?
+    private var activeShotCardScenes: [String] = []
+    private var activeShotCardAssetIds: [UUID] = []
+    private var lastShotCardActivity: Date?
+    /// Ny økt (nytt kort) etter så lang ro siden forrige auto-huk.
+    private let shotCardIdleReset: TimeInterval = 180
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     /// Phase 2C — per-session RAW renderer. Built at connect time so it
@@ -5223,6 +5408,9 @@ final class LiveCaptureModel {
             self.downloadDirectory = tempDir
             self.currentSessionId = dbSession.id
             self.sessionName = dbSession.name
+            if #available(iOS 16.1, *) {
+                ShootActivityManager.shared.start(sessionName: dbSession.name)
+            }
             self.backendClient = makeBackendClientFromDefaults()
             if let backend = self.backendClient {
                 self.autoCleanService = AutoCleanService(store: store, backend: backend)
@@ -5309,6 +5497,7 @@ final class LiveCaptureModel {
                     await MainActor.run {
                         self?.assets = assets
                         self?.dispatchAutoCleanForNewlyReadyAssets()
+                        self?.dispatchShotAutoCheckForNewAssets()
                     }
                 }
             }
@@ -5330,6 +5519,10 @@ final class LiveCaptureModel {
     }
 
     func disconnect() async {
+        if #available(iOS 16.1, *) {
+            await ShootActivityManager.shared.end()
+        }
+        resetActiveShotCard()   // ny opptaksøkt neste gang ⇒ ferskt kort
         await teardown()
     }
 
@@ -5425,6 +5618,18 @@ final class LiveCaptureModel {
         recentClientReviews.filter { $0.unread }.count
     }
 
+    /// Klient-samarbeidende culling: sett av galleri-bilde- id-er klienten har
+    /// hjertet (backend auto-flagger dem som keepers). Driver «Kunden har
+    /// hjertet X bilder»-live-banneret. Uavhengig av lokal asset-matching (id-
+    /// ene er galleri-bilde-id-er, ikke lokale asset-UUID-er). Nullstilles ved
+    /// ny opptaksøkt.
+    var clientHeartedAssetIds: Set<String> = []
+    var clientHeartedCount: Int { clientHeartedAssetIds.count }
+
+    private func updateClientHeartCount(assetId: String, hearted: Bool) {
+        if hearted { clientHeartedAssetIds.insert(assetId) } else { clientHeartedAssetIds.remove(assetId) }
+    }
+
     /// Set of asset IDs that have received at least one review in this
     /// session — used by FilmstripTile to draw a persistent comment-
     /// bubble badge so the photographer can see "this shot got
@@ -5465,6 +5670,12 @@ final class LiveCaptureModel {
     /// disabled via Settings — events still arrive but stay invisible
     /// (the photographer asked for quiet).
     func recordClientReview(_ event: UserEvent) {
+        // Klient-hjerte → oppdater live-telleren FØR alt annet (uavhengig av
+        // review-gate + lokal asset-matching, som ofte feiler siden id-en er
+        // en galleri-bilde-id).
+        if case .assetHearted(let p) = event {
+            updateClientHeartCount(assetId: p.assetId, hearted: p.hearted)
+        }
         // Phase 5.3 — presence + label-change events route here too.
         // We dispatch BEFORE the clientReviewsEnabled gate because
         // presence tracking is independent of review surface (turning
@@ -5671,6 +5882,172 @@ final class LiveCaptureModel {
     /// All checks are cheap so calling this on every assets emission
     /// is fine — it only enqueues work when something has actually
     /// transitioned to "preview ready and unseen".
+    /// Auto-huk shot-list-elementer for nye bilder via Vision-match. Kjøres
+    /// idempotent per asset (samme mønster som auto-clean). Oppdaterer
+    /// PROSJEKTETS shot-list (offline-first) → outbox køer POST /api/projects/
+    /// :id/shot-list → sync-arbeideren pusher → synlig i fotografens workspace
+    /// (web + andre enheter). `capturedAssetId` kobler shotet til bildet.
+    private func dispatchShotAutoCheckForNewAssets() {
+        guard shotListAutoCheckEnabled else { return }
+        guard let projectId = selectedProject?.id else { return }
+        let owner = actorUserId
+        for asset in assets {
+            guard let previewKey = asset.previewKey,
+                  FileManager.default.fileExists(atPath: previewKey),
+                  !autoCheckedShotAssetIds.contains(asset.id)
+            else { continue }
+            autoCheckedShotAssetIds.insert(asset.id)
+            let assetId = asset.id
+            Task { [weak self] in
+                await self?.autoCheckShot(assetId: assetId, previewKey: previewKey,
+                                          projectId: projectId, owner: owner)
+            }
+        }
+    }
+
+    private func shotStore() -> ShotListStore? {
+        if let s = shotAutoCheckStore { return s }
+        guard let url = try? AppDatabase.defaultDiskURL(),
+              let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
+        let s = ShotListStore(database: db, outbox: Outbox(database: db))
+        shotAutoCheckStore = s
+        return s
+    }
+
+    private func autoCheckShot(assetId: UUID, previewKey: String, projectId: String, owner: String) async {
+        guard let store = shotStore(),
+              let list = try? await store.load(projectId: projectId, ownerUserId: owner),
+              list.shots.contains(where: { !($0.isCompleted ?? false) })
+        else { return }
+        let signals: CaptureSignals? = await Task.detached(priority: .utility) {
+            guard let ui = UIImage(contentsOfFile: previewKey), let cg = ui.cgImage else { return nil }
+            return CaptureSignalExtractor.signals(from: cg)
+        }.value
+        guard let signals,
+              let match = ShotMatcher.bestMatch(signals: signals, shots: list.shots)
+        else { return }
+        let who = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email ?? "Fotograf"
+        try? await store.toggleCompletion(
+            shotId: match.id, in: list,
+            capturedAssetId: assetId.uuidString.lowercased(), completedBy: who)
+        lastAutoCheckedShot = match.scene
+        queueTeamShotUpdate(scene: match.scene, assetId: assetId, projectId: projectId)
+        // Auto-fjern bekreftelsen etter noen sekunder.
+        try? await Task.sleep(for: .seconds(3))
+        if lastAutoCheckedShot == match.scene { lastAutoCheckedShot = nil }
+    }
+
+    /// Live team-oppdatering: legg scenen på det AKTIVE kortet og re-post etter
+    /// kort ro (6s). Kortet vokser in-place (samme clientMessageId) helt til
+    /// opptaksøkta er stille lenge nok (`shotCardIdleReset`) → da starter et
+    /// nytt kort. Synkes til både iPad-Meldinger og web-workspacens chat.
+    private func queueTeamShotUpdate(scene: String, assetId: UUID, projectId: String) {
+        // Start nytt kort hvis ingen aktivt, eller det har vært stille lenge.
+        let now = Date()
+        if activeShotCardId == nil
+            || (lastShotCardActivity.map { now.timeIntervalSince($0) > shotCardIdleReset } ?? true) {
+            activeShotCardId = UUID().uuidString.lowercased()
+            activeShotCardScenes = []
+            activeShotCardAssetIds = []
+        }
+        activeShotCardScenes.append(scene)
+        activeShotCardAssetIds.append(assetId)
+        lastShotCardActivity = now
+
+        teamShotPostTask?.cancel()
+        teamShotPostTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            await self?.flushTeamShotUpdate(projectId: projectId)
+        }
+    }
+
+    private func flushTeamShotUpdate(projectId: String) async {
+        let scenes = activeShotCardScenes
+        guard let cardId = activeShotCardId, !scenes.isEmpty,
+              let backend = backendClient else { return }
+        let who = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email ?? "Fotograf"
+
+        // «Neste» = høyest prioriterte uhukede shots akkurat nå.
+        var nextArr: [String] = []
+        if let store = shotStore(),
+           let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId) {
+            nextArr = list.shots.filter { !($0.isCompleted ?? false) }
+                .sorted { prioRank($0.priority) < prioRank($1.priority) }
+                .prefix(2).map(\.scene)
+        }
+
+        // Ekte backup-signal: andel av kortets bilder som er lastet opp til
+        // skyen (B2/sync) — driver «Sikret»-statusen.
+        let ids = Set(activeShotCardAssetIds)
+        let relevant = assets.filter { ids.contains($0.id) }
+        let backedUp = relevant.filter { $0.state.isBackedUp }.count
+        let backup = relevant.isEmpty ? 0.0 : Double(backedUp) / Double(relevant.count)
+
+        // Ekte thumbnails: stabile preview-redirecter for de opplastede bildene
+        // i økta (tilgjengelig etter levering/opplasting → dukker opp når kortet
+        // re-postes). Tom før bildene er i skyen — kortet virker uansett.
+        var thumbs: [[String: String]] = []
+        if let sid = await deliveryService?.backendSessionId {
+            let urls = await backend.shotThumbURLs(sessionId: sid, limit: max(scenes.count, 4))
+            thumbs = urls.map { ["url": $0] }
+        }
+
+        let nextText = nextArr.isEmpty ? "" : " · Neste: \(nextArr.joined(separator: ", "))"
+        let msg = "📸 \(who) tok: \(scenes.joined(separator: ", "))\(nextText)"
+        let shotUpdate: [String: Any] = [
+            "who": who,
+            "scenes": scenes,
+            "next": nextArr,
+            "count": scenes.count,
+            "backup": backup,
+            "thumbs": thumbs
+        ]
+        try? await backend.postProjectShotCard(
+            projectId: projectId, clientMessageId: cardId, text: msg, shotUpdate: shotUpdate)
+
+        // Fortsatt bilder på vei opp? Re-post når backup er ferdig, så «Sikret»
+        // dukker opp uten at fotografen tar et nytt bilde.
+        if backup < 1.0 { scheduleBackupFollowup(projectId: projectId, cardId: cardId) }
+    }
+
+    /// Poll asset-statusene og re-post kortet når alle bildene er sikret (så
+    /// «Sikret»-merket lander selv om ingen nye bilder tas). Selv-kansellerende
+    /// via `activeShotCardId`-sjekk (nytt kort ⇒ gammel followup dør).
+    private func scheduleBackupFollowup(projectId: String, cardId: String) {
+        Task { [weak self] in
+            for _ in 0..<12 {   // opp til ~60s
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, self.activeShotCardId == cardId else { return }
+                let ids = Set(self.activeShotCardAssetIds)
+                let relevant = self.assets.filter { ids.contains($0.id) }
+                let done = !relevant.isEmpty && relevant.allSatisfy { $0.state.isBackedUp }
+                if done { await self.flushTeamShotUpdate(projectId: projectId); return }
+            }
+        }
+    }
+
+    /// Nullstill det aktive kortet (ny opptaksøkt). Kalles ved frakobling/
+    /// prosjektbytte så neste bilde starter et ferskt kort.
+    private func resetActiveShotCard() {
+        activeShotCardId = nil
+        activeShotCardScenes = []
+        activeShotCardAssetIds = []
+        lastShotCardActivity = nil
+        clientHeartedAssetIds = []
+    }
+
+    private func prioRank(_ priority: String?) -> Int {
+        switch (priority ?? "").lowercased() {
+        case "must": return 0
+        case "high": return 1
+        case "medium": return 2
+        default: return 3
+        }
+    }
+
     private func dispatchAutoCleanForNewlyReadyAssets() {
         guard autoCleanMode != .off,
               let service = autoCleanService,
@@ -5743,6 +6120,12 @@ final class LiveCaptureModel {
             // won't appear, but no toast (deliver-success was the
             // load-bearing UX).
             AppLog.liveCapture.error("[LiveCaptureModel] Enhancement kickoff failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        // Bildene er nå lastet opp til skyen → re-post det aktive shot-kortet
+        // så ekte thumbnails + «Sikret» lander, selv om ingen nye bilder tas.
+        if activeShotCardId != nil, let pid = selectedProject?.id {
+            await flushTeamShotUpdate(projectId: pid)
         }
     }
 
@@ -6056,6 +6439,25 @@ final class LiveCaptureModel {
         Task { try? await store.attachVoiceMemoKey(id: assetId, key: nil) }
     }
 
+    /// Transiente transkript per asset (vises under voice-kontrollene).
+    var voiceMemoTranscripts: [UUID: String] = [:]
+
+    /// Transkriber `assetId`'s voice-memo on-device (SFSpeechRecognizer, nb-NO).
+    /// Til nå var memoen bare lyd; nå blir dikterte retusj-/leverings-notater
+    /// søkbar tekst.
+    func transcribeVoiceMemo(assetId: UUID) async {
+        guard let voiceMemoService else { return }
+        let url = voiceMemoService.memoURL(for: assetId)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        voiceMemoTranscripts[assetId] = "Transkriberer…"
+        do {
+            let text = try await VoiceMemoTranscriber().transcribe(fileURL: url)
+            voiceMemoTranscripts[assetId] = text.isEmpty ? "Ingen tale funnet." : text
+        } catch {
+            voiceMemoTranscripts[assetId] = "Transkribering feilet."
+        }
+    }
+
     func renameSession(_ newName: String) async {
         guard let store, let sessionId = currentSessionId else { return }
         do {
@@ -6205,9 +6607,89 @@ final class LiveCaptureModel {
     /// (with shot list) in the background so the shot list panel can
     /// render shots[] right away.
     func selectProject(_ summary: BackendProjectSummary) {
+        if selectedProject?.id != summary.id { resetActiveShotCard() }
         selectedProject = summary
         sessionName = summary.title
         Task { await loadProjectDetail(projectId: summary.id) }
+        refreshShotListAutoCheckFlag(projectId: summary.id)
+    }
+
+    /// Hent team-flagget for auto-huk fra backend (eier/lead styrer det i web).
+    /// Feiler stille til PÅ — så en nettverksglipp aldri blokkerer huking.
+    private func refreshShotListAutoCheckFlag(projectId: String) {
+        let backend = backendClient ?? makeBackendClientFromDefaults()
+        guard let backend else { return }
+        Task { [weak self] in
+            let enabled = await backend.fetchShotListAutoCheck(projectId: projectId)
+            await MainActor.run { self?.shotListAutoCheckEnabled = enabled }
+        }
+    }
+
+    /// Skru auto-huk av/på for teamet (fra iPad). Skriver til samme flagg som
+    /// web-toggelen (projects.settings.shotListAutoCheck). Kaster ved feil så
+    /// ShotListPanel kan rulle tilbake + vise «kun eier kan endre» ved 403.
+    /// #9 Lagre en FM-generert shot-list (fra klient-brief) til prosjektet, og
+    /// last inn detaljene på nytt så panelet + auto-huk får den umiddelbart.
+    /// Lagre FM-genererte scener. `append`=true bevarer eksisterende shots
+    /// (fullført-status + koblet asset) og legger de nye bakerst; false
+    /// erstatter listen (opprett fra tom).
+    func saveShotListFromBrief(_ scenes: [String], append: Bool) async throws {
+        guard let projectId = selectedProject?.id,
+              let backend = backendClient ?? makeBackendClientFromDefaults() else {
+            throw ShotAutoCheckError.noBackend
+        }
+        var items: [BackendClient.ShotListPostItem] = []
+        if append, let existing = selectedProjectDetail?.shotList {
+            items = existing.map { e in
+                BackendClient.ShotListPostItem(
+                    id: e.id, scene: e.scene, description: e.description,
+                    priority: e.priority, shotType: e.shotType, locationName: e.locationName,
+                    notes: e.notes, scouted: e.scouted, isCompleted: e.isCompleted,
+                    capturedAssetId: e.capturedAssetId, completedBy: e.completedBy)
+            }
+        }
+        items += scenes.map { BackendClient.ShotListPostItem(id: UUID().uuidString.lowercased(), scene: $0) }
+        let listName = (append && !(selectedProjectDetail?.shotList.isEmpty ?? true)) ? "Shot-list" : "Fra brief"
+        try await backend.postProjectShotList(projectId: projectId, items: items, listName: listName)
+        await loadProjectDetail(projectId: projectId)
+    }
+
+    /// #9 Rendre shot-listen som en DESIGNET call-sheet via Post Agents
+    /// infographic-motor (tpl=timeline). Offentlig render-URL → vises i
+    /// AsyncImage + kan deles. Mapper «Scene — beskrivelse» til tittel + desc.
+    func callSheetURL(scenes: [String]) -> URL? {
+        guard let backend = backendClient ?? makeBackendClientFromDefaults() else { return nil }
+        let title = selectedProject.map { "\($0.title) — Call-sheet" } ?? "Call-sheet"
+        let steps: [[String: String]] = scenes.map { s in
+            if let r = s.range(of: " — ") {
+                return ["label": String(s[..<r.lowerBound]).trimmingCharacters(in: .whitespaces),
+                        "desc": String(s[r.upperBound...]).trimmingCharacters(in: .whitespaces)]
+            }
+            return ["label": s]
+        }
+        let data: [String: Any] = ["title": title, "accent": "#FF6B35", "steps": steps]
+        return backend.infographicRenderURL(
+            tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500,
+            data: data, accentHex: "FF6B35")
+    }
+
+    /// #9 Hent en brief fra prosjektets bryllups-timeline (dagsplan) → mater
+    /// shot-list-generatoren. nil hvis prosjektet ikke har en timeline.
+    func fetchWeddingTimelineBrief() async -> String? {
+        guard let projectId = selectedProject?.id,
+              let backend = backendClient ?? makeBackendClientFromDefaults() else { return nil }
+        return await backend.fetchWeddingTimelineBrief(projectId: projectId)
+    }
+
+    func setShotListAutoCheck(_ enabled: Bool) async throws {
+        if isDemoMode { shotListAutoCheckEnabled = enabled; return }
+        guard let projectId = selectedProject?.id else { throw ShotAutoCheckError.noBackend }
+        guard let backend = backendClient ?? makeBackendClientFromDefaults() else {
+            throw ShotAutoCheckError.noBackend
+        }
+        let who = SignInService.shared.session?.displayName ?? SignInService.shared.session?.email
+        try await backend.setShotListAutoCheck(projectId: projectId, enabled: enabled, updatedBy: who)
+        shotListAutoCheckEnabled = enabled
     }
 
     func clearSelectedProject() {
@@ -6293,6 +6775,7 @@ final class LiveCaptureModel {
         clientName: String,
         clientEmail: String,
         projectTitle: String?,
+        sendEmail: Bool = false,
     ) async throws -> DeliveryService.ShowcaseDeliveryResult {
         guard let backend = backendClient else {
             throw DeliveryService.DeliveryError.bridgeFailed("backend not configured — sign in to CreatorHub first")
@@ -6336,6 +6819,18 @@ final class LiveCaptureModel {
             throw DeliveryService.DeliveryError.noUploadablePicks
         }
 
+        // Samme-dags levering: la Foundation Models skrive e-post-kroppen
+        // on-device (norsk, varm tone). Best-effort — nil hvis utilgjengelig
+        // (< iOS 26 / Apple Intelligence av), da bruker backend standard-malen.
+        let photographerName = SignInService.shared.session?.displayName
+        var emailBody: String?
+        if sendEmail {
+            let notes = "Bildene fra \(projectTitle ?? sessionName) er klare i det private galleriet. "
+                + "Be dem se gjennom, hjerte favorittene sine og laste ned. Kort, vennlig, profesjonell."
+            emailBody = try? await TextGenerationIntelligenceFactory.make().generate(
+                .emailDraft(recipient: clientName, subject: "Bildene dine er klare", notes: notes))
+        }
+
         let result = try await service.deliverToShowcase(
             sessionName: sessionName,
             sessionStartedAt: assets.first?.captureTime ?? Date(),
@@ -6344,6 +6839,9 @@ final class LiveCaptureModel {
             clientEmail: clientEmail,
             projectTitle: projectTitle,
             filter: filter,
+            sendEmail: sendEmail,
+            emailBody: emailBody,
+            photographerName: photographerName,
         )
         await MainActor.run { self.lastShowcaseDelivery = result }
         return result
@@ -6812,6 +7310,7 @@ private struct DeliverSheet: View {
     @State private var clientName: String = ""
     @State private var clientEmail: String = ""
     @State private var projectTitle: String = ""
+    @State private var sendEmail: Bool = true
     @State private var didPrefill: Bool = false
     @State private var phase: Phase = .configure
     @State private var errorMessage: String?
@@ -6890,6 +7389,13 @@ private struct DeliverSheet: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                Toggle(isOn: $sendEmail) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Send «bildene dine er klare»-e-post")
+                        Text("Skrevet på enheten (Apple Intelligence), med galleri-lenke")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             }
             Section("Project (optional)") {
                 TextField("Project title — defaults to session name", text: $projectTitle)
@@ -7025,6 +7531,7 @@ private struct DeliverSheet: View {
                 projectTitle: projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil
                     : projectTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                sendEmail: sendEmail,
             )
             result = r
             phase = .done

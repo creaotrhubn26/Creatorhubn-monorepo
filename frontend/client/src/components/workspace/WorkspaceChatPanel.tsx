@@ -38,6 +38,9 @@ import EventOutlined from '@mui/icons-material/EventOutlined';
 import PhotoLibraryOutlined from '@mui/icons-material/PhotoLibraryOutlined';
 import WorkOutline from '@mui/icons-material/WorkOutline';
 import OpenInNew from '@mui/icons-material/OpenInNew';
+import PhotoCamera from '@mui/icons-material/PhotoCamera';
+import CloudDone from '@mui/icons-material/CloudDone';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select, Checkbox, FormControlLabel, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import Lock from '@mui/icons-material/Lock';
 import Public from '@mui/icons-material/Public';
@@ -223,6 +226,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [apprOpen, setApprOpen] = useState(false);
   const [apprLoading, setApprLoading] = useState(false);
   const [apprItems, setApprItems] = useState([]);
+  // Team-flagg for auto-huk av shot-listen (delt m/ Capture-appen via
+  // projects.settings.shotListAutoCheck). null = ukjent enda.
+  const [shotAutoCheck, setShotAutoCheck] = useState(null);
+  const [autoCheckBusy, setAutoCheckBusy] = useState(false);
+  const captureRelevant = ['foto', 'photo', 'photography', 'film', 'video', 'commercial'].includes(String(category));
 
   // Respekter prefers-reduced-motion (CSS dekker ikke JS-drevet smooth-scroll).
   const scrollDown = () => requestAnimationFrame(() => {
@@ -251,6 +259,14 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   // Prosjekt-hendelser (leveranser, oppgaver, møter, låter, oppdrag) flettes
   // inn i tidslinjen så chatten blir prosjektets puls.
   const loadActivity = React.useCallback(() => apiRequest(`/api/projects/${projectId}/activity`).then((d) => setActivity(Array.isArray(d?.activity) ? d.activity : [])).catch(() => setActivity([])), [projectId]);
+
+  // Hent team-flagget for shot-list auto-huk (kun for foto/film-prosjekter).
+  useEffect(() => {
+    if (!captureRelevant) return;
+    apiRequest(`/api/projects/${projectId}/capture-settings`)
+      .then((d) => setShotAutoCheck(d?.shotListAutoCheck !== false))
+      .catch(() => { /* degraderer stille — menyvalget skjules */ });
+  }, [projectId, captureRelevant]);
 
   useEffect(() => {
     load(true); loadActivity();
@@ -346,6 +362,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const resolveRequest = async (id) => {
     try { await apiRequest(`/api/communication/messages/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status: 'resolved' } }); await load(false); }
     catch { setToast(t('sendFailed')); }
+  };
+  // Eier/lead slår auto-huk av shot-listen på/av for teamet. Capture-appen
+  // leser samme flagg → iPad-en slutter/gjenopptar å hake av shots automatisk.
+  // PUT-en er eier-gated i backend (403 → vis melding). Poster et systemvarsel
+  // så teamet ser endringen i chatten.
+  const toggleShotAutoCheck = async () => {
+    const next = !shotAutoCheck;
+    setAutoCheckBusy(true);
+    try {
+      await apiRequest(`/api/projects/${projectId}/capture-settings`, { method: 'PUT', body: { shotListAutoCheck: next, updatedBy: myName } });
+      setShotAutoCheck(next);
+      await postAction(next ? `✅ ${myName} slo på auto-huk av shot-listen` : `⏸️ ${myName} slo av auto-huk av shot-listen`, { action: 'system', system: true });
+    } catch (e) {
+      const msg = String(e?.message || '');
+      setToast(/403|not_owner/.test(msg) ? 'Kun prosjekteier kan endre auto-huk' : (e?.message || t('sendFailed')));
+    } finally { setAutoCheckBusy(false); setMoreAnchor(null); }
   };
   const runAi = async (mode) => {
     setActionAnchor(null); setBusyAction(true);
@@ -548,6 +580,85 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     }
     return null;
   };
+  // ── Shot-oppdaterings-kort (auto-huk fra Capture-appen) ──
+  // Leser strukturert metadata.shotUpdate (fra iPad-en) med fallback til å
+  // parse «📸 Ole tok: A, B · Neste: X»-teksten. Kortet oppdateres in-place
+  // fordi iPad-en re-poster samme melding-id mens flere bilder tas.
+  const parseShotUpdate = (m) => {
+    const su = m?.metadata?.shotUpdate;
+    if (su && Array.isArray(su.scenes) && su.scenes.length) {
+      return {
+        who: su.who || m.senderName || 'Fotograf',
+        scenes: su.scenes,
+        next: Array.isArray(su.next) ? su.next : [],
+        count: su.count || su.scenes.length,
+        backup: typeof su.backup === 'number' ? su.backup : 1,
+        thumbs: Array.isArray(su.thumbs) ? su.thumbs : [],
+      };
+    }
+    const c = m?.content || '';
+    if (!c.startsWith('📸 ')) return null;
+    let body = c.slice(2).trim();
+    let next = [];
+    const ni = body.indexOf(' · Neste: ');
+    if (ni >= 0) { next = body.slice(ni + ' · Neste: '.length).split(',').map((s) => s.trim()).filter(Boolean); body = body.slice(0, ni); }
+    const ti = body.indexOf(' tok: ');
+    if (ti < 0) return null;
+    const who = body.slice(0, ti).trim();
+    const scenes = body.slice(ti + ' tok: '.length).split(',').map((s) => s.trim()).filter(Boolean);
+    if (!who || !scenes.length) return null;
+    return { who, scenes, next, count: scenes.length, backup: 1 };
+  };
+  const renderShotCard = (m) => {
+    const su = parseShotUpdate(m);
+    if (!su) return null;
+    // Ekte thumbnails: stabile /assets/:id/preview-URL-er fra metadata (fra
+    // Capture-appen), med fallback til bilde-vedlegg.
+    const imgs = (su.thumbs && su.thumbs.length)
+      ? su.thumbs.map((tb) => ({ downloadUrl: tb.url, filename: tb.caption || '' }))
+      : (m.attachments || []).filter((a) => String(a.mimeType || '').startsWith('image'));
+    const secured = su.backup >= 1;
+    const pct = Math.round((su.backup || 0) * 100);
+    return (
+      <Box sx={{ mt: 0.5, p: 1.25, borderRadius: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${ws.greenSoft}`, width: '100%', maxWidth: 340 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Box sx={{ width: 30, height: 30, borderRadius: '50%', bgcolor: ws.green, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <PhotoCamera sx={{ fontSize: 16, color: '#fff' }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 800, color: ws.text }}>{su.who} tok {su.count} {su.count === 1 ? 'bilde' : 'bilder'}</Typography>
+            <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>Auto-huket på shot-listen</Typography>
+          </Box>
+          {secured ? (
+            <Chip size="small" icon={<CloudDone sx={{ fontSize: 13, color: `${ws.green} !important` }} />} label="Sikret" sx={{ height: 22, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />
+          ) : (
+            <Chip size="small" label={`${pct}%`} sx={{ height: 22, fontSize: 10.5, fontWeight: 800, color: ws.accent, bgcolor: ws.accentSoft }} />
+          )}
+        </Stack>
+        {imgs.length > 0 && (
+          <Stack direction="row" spacing={0.75} sx={{ mt: 1 }}>
+            {imgs.slice(0, 4).map((a, i) => (
+              <Box key={i} component="img" src={a.downloadUrl} alt={a.filename || ''} sx={{ width: 60, height: 60, borderRadius: 1.5, objectFit: 'cover', border: `1px solid ${ws.border}` }} />
+            ))}
+          </Stack>
+        )}
+        <Stack spacing={0.4} sx={{ mt: 1 }}>
+          {su.scenes.map((s, i) => (
+            <Stack key={i} direction="row" spacing={0.75} alignItems="center">
+              <CheckCircleOutline sx={{ fontSize: 15, color: ws.green }} />
+              <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s}</Typography>
+            </Stack>
+          ))}
+        </Stack>
+        {su.next.length > 0 && (
+          <Box sx={{ mt: 1, px: 1, py: 0.6, borderRadius: 1.5, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <ArrowForwardIcon sx={{ fontSize: 14, color: ws.accent }} />
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Neste: {su.next.join(', ')}</Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  };
   // Forespørsel-status (tag=Spørsmål): åpen med «Marker som løst», eller «Løst».
   const renderRequest = (m) => {
     if (m.tag !== 'question') return null;
@@ -658,12 +769,13 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                 {tagMeta && (
                   <Chip size="small" icon={tagMeta.icon} label={t(tagMeta.dictKey)} sx={{ mt: 0.4, height: 18, fontSize: 10, color: tagMeta.color, bgcolor: tagMeta.soft, '& .MuiChip-icon': { color: tagMeta.color } }} />
                 )}
-                {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && (
+                {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && !parseShotUpdate(m) && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
                     <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
                   </Box>
                 )}
-                {renderAttachments(m.attachments)}
+                {renderShotCard(m)}
+                {!parseShotUpdate(m) && renderAttachments(m.attachments)}
                 {renderCard(m)}
                 {renderRequest(m)}
               </Box>
@@ -764,6 +876,12 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
         <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
         <MenuItem component="a" href="/guide/actions" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><AutoAwesome sx={{ fontSize: 18 }} /> {t('actionsGuide')}</MenuItem>
+        {captureRelevant && shotAutoCheck !== null && (
+          <MenuItem onClick={toggleShotAutoCheck} disabled={autoCheckBusy} sx={{ gap: 1, fontSize: 13 }}>
+            <PlaylistAddCheck sx={{ fontSize: 18, color: shotAutoCheck ? ws.accent : ws.textDim }} />
+            {shotAutoCheck ? 'Slå av auto-huk (shot-liste)' : 'Slå på auto-huk (shot-liste)'}
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Action-launcher */}
