@@ -4,7 +4,7 @@
  * Stats + kategori-pills + shot-tabell + Shot detaljer (høyre, opplastbart bilde
  * + samtale) + Referanser & inspirasjon (opplastbart) + Må huskes.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Stack, Typography, Button, Avatar, TextField } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
@@ -16,6 +16,7 @@ import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
 import { useProjectImages } from '../useProjectImages';
+import { useCaptureRealtime } from '../useCaptureRealtime';
 
 const CATS = [{ key: 'alle', label: 'Alle (68)' }, { key: 'forb', label: 'Forberedelser (10)' }, { key: 'vielse', label: 'Vielse (14)' }, { key: 'portrett', label: 'Portretter (10)' }, { key: 'fam', label: 'Familiebilder (8)' }, { key: 'golden', label: 'Golden hour (6)' }, { key: 'taler', label: 'Taler (7)' }, { key: 'fest', label: 'Fest (13)' }];
 const SHOTS = [
@@ -50,12 +51,23 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const refs = useProjectImages(projectId, 'references');
 
-  useEffect(() => {
+  // Hent shot-lista på nytt (mount + live-event + polling-fallback).
+  const loadShotList = useCallback(() => {
     if (!projectId || projectId === 'sample') return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/shot-list`)
       .then((r: any) => { const shots = Array.isArray(r?.shots) ? r.shots : []; if (shots.length) setReal({ shots, meta: r.shotList || {} }); })
       .catch(() => {});
   }, [projectId]);
+
+  // Live-oppdatering: iPad tar bilde → auto-huk → sync → capture-WebSocket fyrer
+  // → refetch INSTANT, så fotografen ser shots hukes av mens hen skyter. Polling
+  // hvert 10s som fallback når WS er nede.
+  const { live } = useCaptureRealtime(projectId, loadShotList);
+  useEffect(() => {
+    loadShotList();
+    const id = setInterval(loadShotList, 10000);
+    return () => clearInterval(id);
+  }, [loadShotList]);
 
   // Ekte shots → tabell-rader (fleksibel felt-mapping mot wizard-shapen).
   const realRows = real ? real.shots.slice(0, showAll ? 999 : 12).map((s: any) => {
@@ -86,7 +98,15 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   return (
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography sx={{ fontSize: 20, fontWeight: 800, mb: 2 }}>Shotlist</Typography>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Shotlist</Typography>
+          {live && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.25, borderRadius: 999, bgcolor: ws.greenSoft }}>
+              <Box sx={{ width: 7, height: 7, borderRadius: 999, bgcolor: '#22c55e' }} />
+              <Typography sx={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>Live</Typography>
+            </Box>
+          )}
+        </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
           <WsStat icon={<PhotoCameraBack sx={{ fontSize: 20 }} />} label="Totalt antall shots" value={total} sub="100% planlagt" />
