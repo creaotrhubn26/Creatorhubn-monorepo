@@ -338,6 +338,9 @@ struct LiveCaptureView: View {
 
     private var connectedLayout: some View {
         VStack(spacing: 0) {
+            if case let .reconnecting(attempt) = model.connectionState {
+                ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
+            }
             StatusBar(
                 state: model.connectionState,
                 device: model.deviceSummary,
@@ -1198,6 +1201,37 @@ private struct ConnectionBadge: View {
         case .reconnecting:             return .orange
         case .error:                    return .red
         }
+    }
+}
+
+/// Vedvarende banner når Canon-tilkoblingen droppet og appen prøver å koble
+/// til igjen (auto-reconnect-logikken bor i CCAPIAdapter). Gjør at et USB/WiFi-
+/// drop midt i en shoot er tydelig — økten går aldri tapt i det stille.
+private struct ReconnectingBanner: View {
+    let attempt: Int
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small).tint(.white)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Mistet kamera-tilkobling")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text("Kobler til igjen… (forsøk \(attempt)) — økten er trygg")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer(minLength: 8)
+            Button("Avbryt", action: onCancel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.2), in: Capsule())
+        }
+        .padding(.horizontal, 20).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.orange.opacity(0.92))
     }
 }
 
