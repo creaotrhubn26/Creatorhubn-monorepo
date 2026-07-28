@@ -74,6 +74,22 @@ export async function fetchAsset(
   return rows[0]?.asset ?? null;
 }
 
+/// Slår opp previewKey for et asset UTEN owner-gate — brukes av den stabile
+/// chat-thumbnail-redirecten (`GET /assets/:id/preview`). Team-medlemmer som
+/// ikke eier økta må kunne se thumbnailen; asset-id er en ugjettbar UUID og
+/// den underliggende R2-URL-en er fortsatt kortlevd signert.
+export async function fetchAssetPreviewKey(
+  db: Db,
+  assetId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ previewKey: captureAssets.previewKey })
+    .from(captureAssets)
+    .where(eq(captureAssets.id, assetId))
+    .limit(1);
+  return rows[0]?.previewKey ?? null;
+}
+
 export async function listAssets(
   db: Db,
   ownerUserId: string,

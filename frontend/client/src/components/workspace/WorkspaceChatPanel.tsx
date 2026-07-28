@@ -593,6 +593,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         next: Array.isArray(su.next) ? su.next : [],
         count: su.count || su.scenes.length,
         backup: typeof su.backup === 'number' ? su.backup : 1,
+        thumbs: Array.isArray(su.thumbs) ? su.thumbs : [],
       };
     }
     const c = m?.content || '';
@@ -611,7 +612,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const renderShotCard = (m) => {
     const su = parseShotUpdate(m);
     if (!su) return null;
-    const imgs = (m.attachments || []).filter((a) => String(a.mimeType || '').startsWith('image'));
+    // Ekte thumbnails: stabile /assets/:id/preview-URL-er fra metadata (fra
+    // Capture-appen), med fallback til bilde-vedlegg.
+    const imgs = (su.thumbs && su.thumbs.length)
+      ? su.thumbs.map((tb) => ({ downloadUrl: tb.url, filename: tb.caption || '' }))
+      : (m.attachments || []).filter((a) => String(a.mimeType || '').startsWith('image'));
     const secured = su.backup >= 1;
     const pct = Math.round((su.backup || 0) * 100);
     return (

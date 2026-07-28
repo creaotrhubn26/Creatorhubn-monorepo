@@ -124,8 +124,9 @@ struct ShotUpdateMeta: Decodable, Sendable, Hashable {
     var next: [String]
     var count: Int?
     var backup: Double?
+    var thumbs: [ShotThumbMeta]
 
-    private enum K: String, CodingKey { case who, scenes, next, count, backup }
+    private enum K: String, CodingKey { case who, scenes, next, count, backup, thumbs }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
         who = (try? c.decodeIfPresent(String.self, forKey: .who)) ?? nil
@@ -133,7 +134,14 @@ struct ShotUpdateMeta: Decodable, Sendable, Hashable {
         next = ((try? c.decodeIfPresent([String].self, forKey: .next)) ?? nil) ?? []
         count = (try? c.decodeIfPresent(Int.self, forKey: .count)) ?? nil
         backup = (try? c.decodeIfPresent(Double.self, forKey: .backup)) ?? nil
+        thumbs = ((try? c.decodeIfPresent([ShotThumbMeta].self, forKey: .thumbs)) ?? nil) ?? []
     }
+}
+
+/// Én thumbnail i `metadata.shotUpdate.thumbs` — stabil preview-URL + valgfri caption.
+struct ShotThumbMeta: Decodable, Sendable, Hashable {
+    var url: String
+    var caption: String?
 }
 
 extension ChatMessage: Decodable {

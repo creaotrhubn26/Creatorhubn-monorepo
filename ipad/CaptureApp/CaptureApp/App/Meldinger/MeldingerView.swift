@@ -456,10 +456,11 @@ private struct MessageBubble: View {
                 // «Se bildene», backup-status). Foretrekk strukturert metadata
                 // (ekte backup/antall); fall tilbake til tekst-parse. Ellers boble.
                 if let su = message.shotUpdate, !su.scenes.isEmpty {
+                    let metaThumbs = su.thumbs.map { ShotThumb(imageURL: $0.url, caption: $0.caption ?? "") }
                     ShotUpdateCard(
                         info: ShotUpdateInfo(who: su.who ?? message.senderName ?? "Fotograf",
                                              scenes: su.scenes, next: su.next),
-                        thumbs: imageThumbs, fromMe: message.fromMe,
+                        thumbs: metaThumbs.isEmpty ? imageThumbs : metaThumbs, fromMe: message.fromMe,
                         backupProgress: su.backup ?? 1.0)
                 } else if let text = message.text, let info = ShotUpdateInfo.parse(text) {
                     ShotUpdateCard(info: info, thumbs: imageThumbs, fromMe: message.fromMe)

@@ -15,6 +15,7 @@ import {
 import {
   registerAsset,
   fetchAsset,
+  fetchAssetPreviewKey,
   listAssets,
   updateAssetLabels,
   updateAssetSignals,
@@ -752,6 +753,23 @@ export function createCaptureRouter(
         return;
       }
       throw err;
+    }
+  });
+
+  // Stabil thumbnail-URL for shot-oppdaterings-kortet i team-chatten. 302 →
+  // fersk-signert R2-preview hver gang (aldri utløper), så en varig chat-
+  // melding kan peke hit. INGEN auth: må lastes av <img>/AsyncImage uten
+  // headere, og team-medlemmer (ikke bare økt-eier) må se den. Asset-id er en
+  // ugjettbar UUID; den underliggende R2-URL-en er fortsatt kortlevd signert.
+  router.get('/assets/:id/preview', async (req, res) => {
+    try {
+      const key = await fetchAssetPreviewKey(db, req.params.id);
+      if (!key) { res.status(404).json({ error: 'not_found' }); return; }
+      const url = await signAssetReadUrl(key);
+      res.setHeader('Cache-Control', 'private, max-age=120');
+      res.redirect(302, url);
+    } catch {
+      res.status(404).json({ error: 'not_found' });
     }
   });
 

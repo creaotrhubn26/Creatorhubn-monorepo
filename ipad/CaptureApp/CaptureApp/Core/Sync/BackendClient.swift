@@ -470,6 +470,19 @@ actor BackendClient {
         return response.assets
     }
 
+    /// Bygg STABILE thumbnail-URL-er for shot-oppdaterings-kortet: de siste
+    /// `limit` opplastede bildene i økta, som `…/assets/<id>/preview`-
+    /// redirecter (aldri utløper — backend re-signerer R2 pr kall). Kun
+    /// bilder som faktisk har en preview i skyen tas med.
+    func shotThumbURLs(sessionId: UUID, limit: Int) async -> [String] {
+        guard let assets = try? await listSessionAssets(sessionId: sessionId, limit: 500, offset: 0)
+        else { return [] }
+        return assets
+            .filter { $0.previewUrl != nil }
+            .suffix(limit)
+            .map { baseURL.appendingPathComponent("/api/capture/assets/\($0.id)/preview").absoluteString }
+    }
+
     /// Run the Claude-backed Live Set coverage check. Backend lives at
     /// ``POST /api/live-set/ai/coverage-check``; the rest of the
     /// LiveSet AI suite (replan-day, continuity-check, end-of-day)

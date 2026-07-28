@@ -5945,6 +5945,15 @@ final class LiveCaptureModel {
         let backedUp = relevant.filter { $0.state.isBackedUp }.count
         let backup = relevant.isEmpty ? 0.0 : Double(backedUp) / Double(relevant.count)
 
+        // Ekte thumbnails: stabile preview-redirecter for de opplastede bildene
+        // i økta (tilgjengelig etter levering/opplasting → dukker opp når kortet
+        // re-postes). Tom før bildene er i skyen — kortet virker uansett.
+        var thumbs: [[String: String]] = []
+        if let sid = await deliveryService?.backendSessionId {
+            let urls = await backend.shotThumbURLs(sessionId: sid, limit: max(scenes.count, 4))
+            thumbs = urls.map { ["url": $0] }
+        }
+
         let nextText = nextArr.isEmpty ? "" : " · Neste: \(nextArr.joined(separator: ", "))"
         let msg = "📸 \(who) tok: \(scenes.joined(separator: ", "))\(nextText)"
         let shotUpdate: [String: Any] = [
@@ -5953,6 +5962,7 @@ final class LiveCaptureModel {
             "next": nextArr,
             "count": scenes.count,
             "backup": backup,
+            "thumbs": thumbs,
         ]
         try? await backend.postProjectShotCard(
             projectId: projectId, clientMessageId: cardId, text: msg, shotUpdate: shotUpdate)
@@ -6068,6 +6078,12 @@ final class LiveCaptureModel {
             // won't appear, but no toast (deliver-success was the
             // load-bearing UX).
             AppLog.liveCapture.error("[LiveCaptureModel] Enhancement kickoff failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        // Bildene er nå lastet opp til skyen → re-post det aktive shot-kortet
+        // så ekte thumbnails + «Sikret» lander, selv om ingen nye bilder tas.
+        if activeShotCardId != nil, let pid = selectedProject?.id {
+            await flushTeamShotUpdate(projectId: pid)
         }
     }
 
