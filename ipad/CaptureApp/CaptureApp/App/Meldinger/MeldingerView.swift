@@ -436,6 +436,13 @@ struct ChatThreadView: View {
 private struct MessageBubble: View {
     let message: ChatMessage
 
+    /// Bilde-vedlegg → thumbnails for shot-oppdaterings-kortet.
+    private var imageThumbs: [ShotThumb] {
+        message.attachments
+            .filter { $0.mimeType.hasPrefix("image") }
+            .map { ShotThumb(imageURL: $0.downloadUrl, caption: $0.filename) }
+    }
+
     var body: some View {
         HStack {
             if message.fromMe { Spacer(minLength: 48) }
@@ -445,27 +452,33 @@ private struct MessageBubble: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(CHTheme.textMuted)
                 }
-                if let text = message.text, !text.isEmpty {
-                    Text(text)
-                        .font(.body)
-                        .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.textPrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(
-                            message.fromMe ? CHTheme.accent : CHTheme.surfaceElevated,
-                            in: RoundedRectangle(cornerRadius: 16),
-                        )
-                }
-                ForEach(message.attachments) { att in
-                    Link(destination: URL(string: att.downloadUrl) ?? URL(string: "https://creatorhubn.com")!) {
-                        HStack(spacing: 6) {
-                            Image(systemName: att.mimeType.hasPrefix("image") ? "photo" : "paperclip")
-                            Text(att.filename).lineLimit(1)
+                // Auto-huk-teamoppdatering → pent strukturert kort (thumbnails,
+                // «Se bildene», backup-status). Ellers vanlig boble.
+                if let text = message.text, let info = ShotUpdateInfo.parse(text) {
+                    ShotUpdateCard(info: info, thumbs: imageThumbs, fromMe: message.fromMe)
+                } else {
+                    if let text = message.text, !text.isEmpty {
+                        Text(text)
+                            .font(.body)
+                            .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(
+                                message.fromMe ? CHTheme.accent : CHTheme.surfaceElevated,
+                                in: RoundedRectangle(cornerRadius: 16),
+                            )
+                    }
+                    ForEach(message.attachments) { att in
+                        Link(destination: URL(string: att.downloadUrl) ?? URL(string: "https://creatorhubn.com")!) {
+                            HStack(spacing: 6) {
+                                Image(systemName: att.mimeType.hasPrefix("image") ? "photo" : "paperclip")
+                                Text(att.filename).lineLimit(1)
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(message.fromMe ? CHTheme.accent.opacity(0.85) : CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+                            .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.accentSoft)
                         }
-                        .font(.caption)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(message.fromMe ? CHTheme.accent.opacity(0.85) : CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                        .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.accentSoft)
                     }
                 }
                 let relative = DashboardDate.relative(message.timestamp)

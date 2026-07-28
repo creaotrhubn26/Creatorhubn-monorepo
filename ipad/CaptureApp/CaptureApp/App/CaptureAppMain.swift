@@ -82,6 +82,10 @@ struct RootView: View {
                     }
             case .demoAI:
                 DemoAIView()
+            case .demoShotList:
+                ShotListDemoView()
+            case .demoMessages:
+                MessagesDemoView()
             }
         }
         // Globalt overlegg som dukker opp uansett hvilken surface som
@@ -121,9 +125,17 @@ struct RootView: View {
         case onboarding
         case mainShell
         case demoAI
+        case demoShotList
+        case demoMessages
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-messages") {
+            return .demoMessages
+        }
+        if launchArguments.contains("--demo-shotlist") {
+            return .demoShotList
+        }
         if launchArguments.contains("--demo-ai") {
             return .demoAI
         }

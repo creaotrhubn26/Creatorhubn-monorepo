@@ -5062,6 +5062,8 @@ final class LiveCaptureModel {
     /// Team-flagg (projects.settings.shotListAutoCheck) — eier/lead styrer det
     /// fra web-workspacen. Default PÅ; hentes når prosjekt kobles til.
     var shotListAutoCheckEnabled = true
+    /// Demo-rute (--demo-shotlist): toggelen virker lokalt uten backend.
+    var isDemoMode = false
     /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
     var lastAutoCheckedShot: String?
     // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
@@ -6493,6 +6495,20 @@ final class LiveCaptureModel {
             let enabled = await backend.fetchShotListAutoCheck(projectId: projectId)
             await MainActor.run { self?.shotListAutoCheckEnabled = enabled }
         }
+    }
+
+    /// Skru auto-huk av/på for teamet (fra iPad). Skriver til samme flagg som
+    /// web-toggelen (projects.settings.shotListAutoCheck). Kaster ved feil så
+    /// ShotListPanel kan rulle tilbake + vise «kun eier kan endre» ved 403.
+    func setShotListAutoCheck(_ enabled: Bool) async throws {
+        if isDemoMode { shotListAutoCheckEnabled = enabled; return }
+        guard let projectId = selectedProject?.id else { throw ShotAutoCheckError.noBackend }
+        guard let backend = backendClient ?? makeBackendClientFromDefaults() else {
+            throw ShotAutoCheckError.noBackend
+        }
+        let who = SignInService.shared.session?.displayName ?? SignInService.shared.session?.email
+        try await backend.setShotListAutoCheck(projectId: projectId, enabled: enabled, updatedBy: who)
+        shotListAutoCheckEnabled = enabled
     }
 
     func clearSelectedProject() {

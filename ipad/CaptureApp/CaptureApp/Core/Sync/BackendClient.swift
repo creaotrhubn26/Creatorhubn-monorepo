@@ -664,6 +664,21 @@ actor BackendClient {
         return (try? JSONDecoder().decode(Resp.self, from: data))?.shotListAutoCheck ?? true
     }
 
+    /// Skru auto-huk av/på for teamet. Eier-gated i backend → 403 kastes som
+    /// `ShotAutoCheckError.notOwner` så UI kan vise «kun eier kan endre».
+    func setShotListAutoCheck(projectId: String, enabled: Bool, updatedBy: String?) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/projects/\(projectId)/capture-settings"))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        struct Body: Encodable { let shotListAutoCheck: Bool; let updatedBy: String? }
+        request.httpBody = try JSONEncoder().encode(Body(shotListAutoCheck: enabled, updatedBy: updatedBy))
+        let (_, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw ShotAutoCheckError.failed }
+        if http.statusCode == 403 { throw ShotAutoCheckError.notOwner }
+        guard (200..<300).contains(http.statusCode) else { throw ShotAutoCheckError.failed }
+    }
+
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,
         body: RequestBody,
@@ -707,6 +722,14 @@ actor BackendClient {
             throw BackendError.transport(String(describing: urlError.code))
         }
     }
+}
+
+/// Feil fra shot-list auto-huk-styringen. `.notOwner` = backend 403
+/// (kun prosjekteier kan endre for teamet).
+enum ShotAutoCheckError: Error, Equatable {
+    case notOwner
+    case noBackend
+    case failed
 }
 
 /// Phase 5.1 — multipart helpers for the voice-memo upload path.

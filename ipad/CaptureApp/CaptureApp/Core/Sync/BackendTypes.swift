@@ -228,6 +228,9 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
     let scouted: Bool?
     let isCompleted: Bool?
     let capturedAssetId: String?
+    /// Hvem som tok shotet (team-attribusjon, «Ferdig · Ole»). Optional +
+    /// bakoverkompatibel — nil når backend ikke sender feltet.
+    let completedBy: String?
 }
 
 struct BackendProjectDetail: Decodable, Sendable, Identifiable {
