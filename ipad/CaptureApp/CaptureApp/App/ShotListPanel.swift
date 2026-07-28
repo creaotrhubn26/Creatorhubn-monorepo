@@ -117,7 +117,8 @@ struct ShotListPanel: View {
             ShotListFromBriefView(
                 onSave: { scenes in try await model.saveShotListFromBrief(scenes, append: hasShots) },
                 fetchTimeline: { await model.fetchWeddingTimelineBrief() },
-                saveLabel: hasShots ? "Legg til i shot-listen" : "Lagre til prosjektet")
+                saveLabel: hasShots ? "Legg til i shot-listen" : "Lagre til prosjektet",
+                callSheetURL: { model.callSheetURL(scenes: $0) })
         }
     }
 

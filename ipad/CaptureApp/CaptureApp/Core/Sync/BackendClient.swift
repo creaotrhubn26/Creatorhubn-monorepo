@@ -723,6 +723,34 @@ actor BackendClient {
             body: Body(shots: items, listName: listName, eventType: eventType))
     }
 
+    /// Bygg en OFFENTLIG render-URL til Infographic-motoren (`GET /api/
+    /// infographics/render.png`) — laster i AsyncImage/`<img>` uten auth.
+    /// Gjenbruker Post Agents infographic-verktøy til å designe f.eks. en
+    /// call-sheet fra shot-listen (tpl=timeline). `data` blir `window.__CFG__`.
+    nonisolated func infographicRenderURL(
+        tpl: String, width: Int, height: Int,
+        data: [String: Any], accentHex: String?
+    ) -> URL? {
+        guard let json = try? JSONSerialization.data(withJSONObject: data) else { return nil }
+        // `d` må være base64url-kodet JSON (backend: Buffer.from(d,'base64url')).
+        let b64 = json.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        var c = URLComponents(
+            url: baseURL.appendingPathComponent("/api/infographics/render.png"),
+            resolvingAgainstBaseURL: false)
+        var items: [URLQueryItem] = [
+            .init(name: "tpl", value: tpl),
+            .init(name: "w", value: String(width)),
+            .init(name: "h", value: String(height)),
+            .init(name: "d", value: b64),
+        ]
+        if let accentHex { items.append(.init(name: "accent", value: accentHex)) }
+        c?.queryItems = items
+        return c?.url
+    }
+
     /// #9 Hent bryllups-timelinen for prosjektet og form den til en kompakt
     /// brief (dagsplan) FM kan lage shot-list fra. nil hvis ingen timeline.
     func fetchWeddingTimelineBrief(projectId: String) async -> String? {

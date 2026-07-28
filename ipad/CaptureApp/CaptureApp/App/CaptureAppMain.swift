@@ -100,6 +100,18 @@ struct RootView: View {
                             + "- 21:00 Kake + første dans\n"
                             + "- 22:00 Fest på dansegulvet"
                     },
+                    callSheetURL: { scenes in
+                        let steps: [[String: String]] = scenes.map { s in
+                            if let r = s.range(of: " — ") {
+                                return ["label": String(s[..<r.lowerBound]).trimmingCharacters(in: .whitespaces),
+                                        "desc": String(s[r.upperBound...]).trimmingCharacters(in: .whitespaces)]
+                            }
+                            return ["label": s]
+                        }
+                        let data: [String: Any] = ["title": "Nora & Jonas — Call-sheet", "accent": "#FF6B35", "steps": steps]
+                        return BackendClient(baseURL: URL(string: "https://creatorhub-backend-rtbl.onrender.com")!)
+                            .infographicRenderURL(tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500, data: data, accentHex: "FF6B35")
+                    },
                     initialBrief: "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
                         + "- 13:30 First look (hagen)\n- 14:30 Vielse (kapellet)\n"
                         + "- 16:00 Brudepar-portretter (gyllen time)\n- 21:00 Kake + første dans",

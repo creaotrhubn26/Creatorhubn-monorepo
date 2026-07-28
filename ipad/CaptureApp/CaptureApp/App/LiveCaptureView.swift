@@ -6655,6 +6655,25 @@ final class LiveCaptureModel {
         await loadProjectDetail(projectId: projectId)
     }
 
+    /// #9 Rendre shot-listen som en DESIGNET call-sheet via Post Agents
+    /// infographic-motor (tpl=timeline). Offentlig render-URL → vises i
+    /// AsyncImage + kan deles. Mapper «Scene — beskrivelse» til tittel + desc.
+    func callSheetURL(scenes: [String]) -> URL? {
+        guard let backend = backendClient ?? makeBackendClientFromDefaults() else { return nil }
+        let title = selectedProject.map { "\($0.title) — Call-sheet" } ?? "Call-sheet"
+        let steps: [[String: String]] = scenes.map { s in
+            if let r = s.range(of: " — ") {
+                return ["label": String(s[..<r.lowerBound]).trimmingCharacters(in: .whitespaces),
+                        "desc": String(s[r.upperBound...]).trimmingCharacters(in: .whitespaces)]
+            }
+            return ["label": s]
+        }
+        let data: [String: Any] = ["title": title, "accent": "#FF6B35", "steps": steps]
+        return backend.infographicRenderURL(
+            tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500,
+            data: data, accentHex: "FF6B35")
+    }
+
     /// #9 Hent en brief fra prosjektets bryllups-timeline (dagsplan) → mater
     /// shot-list-generatoren. nil hvis prosjektet ikke har en timeline.
     func fetchWeddingTimelineBrief() async -> String? {
