@@ -86,6 +86,8 @@ struct RootView: View {
                 ShotListDemoView()
             case .demoMessages:
                 MessagesDemoView()
+            case .demoOverview:
+                OverviewDemoView()
             case .demoBrief:
                 ShotListFromBriefView(
                     onSave: { _ in },
@@ -158,10 +160,14 @@ struct RootView: View {
         case demoAI
         case demoShotList
         case demoMessages
+        case demoOverview
         case demoBrief
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-overview") {
+            return .demoOverview
+        }
         if launchArguments.contains("--demo-brief") {
             return .demoBrief
         }
