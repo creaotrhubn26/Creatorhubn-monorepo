@@ -950,6 +950,14 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/yt-analytics.readonly',
   'https://www.googleapis.com/auth/yt-analytics-monetary.readonly',
 ] as const;
+// «Sign in with Google» skal KUN identifisere brukeren — ikke be om de tunge
+// Workspace/YouTube-scopene (Google avviser bl.a. yt-analytics-monetary sammen
+// med andre). De tunge scopene bes om separat ved mode='link' (koble Workspace).
+const ROLE_ROOM_GOOGLE_LOGIN_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+] as const;
 const ROLE_ROOM_LINKEDIN_SCOPES = [
   'openid',
   'profile',
@@ -9147,10 +9155,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
 
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
+      // Login = kun minimale identitets-scopes (unngår Googles «scopes cannot be
+      // requested together»-avvisning); link = full Workspace-scope-sett.
+      const isLoginMode = mode === 'login';
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
-        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
-        include_granted_scopes: true,
+        scope: isLoginMode ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES] : [...ROLE_ROOM_GOOGLE_SCOPES],
+        include_granted_scopes: !isLoginMode,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),
