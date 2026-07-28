@@ -144,3 +144,41 @@ export async function validateAccessToken(pool: Pool, rawToken: string): Promise
   if (!row || new Date(row.expires_at).getTime() < Date.now()) return null;
   return { userId: row.user_id, scope: row.scope, clientId: row.client_id };
 }
+
+/** Trekker tilbake (sletter) ett access-token. RFC 7009 — idempotent. */
+export async function revokeAccessToken(pool: Pool, rawToken: string): Promise<void> {
+  if (!rawToken || !rawToken.startsWith(OAUTH_TOKEN_PREFIX)) return;
+  await pool.query(`DELETE FROM role_room_mcp_oauth_tokens WHERE token_hash = $1`, [sha256hex(rawToken)]);
+}
+
+export interface UserConnection { clientId: string; clientName: string | null; scope: string[]; connectedAt: string; lastActivityAt: string; tokenCount: number }
+
+/** Tilkoblede apper for en bruker (aktive, ikke-utløpte tokens gruppert per klient). */
+export async function listUserConnections(pool: Pool, userId: string): Promise<UserConnection[]> {
+  const r = await pool.query(
+    `SELECT t.client_id,
+            c.client_name,
+            (SELECT array_agg(DISTINCT s) FROM role_room_mcp_oauth_tokens t2, unnest(t2.scope) s
+              WHERE t2.user_id = t.user_id AND t2.client_id = t.client_id AND t2.expires_at > now()) AS scopes,
+            min(t.created_at) AS connected_at,
+            max(t.created_at) AS last_activity_at,
+            count(*)::int AS token_count
+       FROM role_room_mcp_oauth_tokens t
+       LEFT JOIN role_room_mcp_oauth_clients c ON c.client_id = t.client_id
+      WHERE t.user_id = $1 AND t.expires_at > now()
+      GROUP BY t.client_id, c.client_name, t.user_id
+      ORDER BY max(t.created_at) DESC`,
+    [userId],
+  );
+  return r.rows.map((row) => ({
+    clientId: row.client_id, clientName: row.client_name,
+    scope: row.scopes ?? [], connectedAt: row.connected_at, lastActivityAt: row.last_activity_at,
+    tokenCount: row.token_count,
+  }));
+}
+
+/** Trekker tilbake ALLE tokens en bruker har for en gitt klient. Returnerer antall slettet. */
+export async function revokeUserClient(pool: Pool, userId: string, clientId: string): Promise<number> {
+  const r = await pool.query(`DELETE FROM role_room_mcp_oauth_tokens WHERE user_id = $1 AND client_id = $2`, [userId, clientId]);
+  return Number(r.rowCount ?? 0);
+}
