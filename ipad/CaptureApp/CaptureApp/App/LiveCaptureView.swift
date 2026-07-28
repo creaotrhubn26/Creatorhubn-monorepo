@@ -345,6 +345,10 @@ struct LiveCaptureView: View {
                 ShotAutoCheckToast(scene: scene)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+            if model.clientHeartedCount > 0 {
+                ClientHeartBanner(count: model.clientHeartedCount)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             StatusBar(
                 state: model.connectionState,
                 device: model.deviceSummary,
@@ -1254,6 +1258,25 @@ private struct ShotAutoCheckToast: View {
         .padding(.horizontal, 20).padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(Color.green.opacity(0.25))
+    }
+}
+
+/// Live-banner: klienten hjerter favoritter fra mobilen → auto-flagget som
+/// keepers. Oppdateres i sanntid via `asset.hearted`-eventen.
+private struct ClientHeartBanner: View {
+    let count: Int
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "heart.fill").foregroundStyle(.pink)
+            Text("Kunden har hjertet \(count) \(count == 1 ? "bilde" : "bilder")")
+                .font(.caption.weight(.semibold)).foregroundStyle(.white)
+            Spacer(minLength: 8)
+            Text("auto-flagget som keepers")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.pink.opacity(0.22))
     }
 }
 
@@ -5595,6 +5618,19 @@ final class LiveCaptureModel {
         recentClientReviews.filter { $0.unread }.count
     }
 
+    /// Klient-samarbeidende culling: sett av galleri-bilde- id-er klienten har
+    /// hjertet (backend auto-flagger dem som keepers). Driver «Kunden har
+    /// hjertet X bilder»-live-banneret. Uavhengig av lokal asset-matching (id-
+    /// ene er galleri-bilde-id-er, ikke lokale asset-UUID-er). Nullstilles ved
+    /// ny opptaksøkt.
+    var clientHeartedAssetIds: Set<String> = []
+    var clientHeartedCount: Int { clientHeartedAssetIds.count }
+
+    private func updateClientHeartCount(assetId: String, hearted: Bool) {
+        if hearted { clientHeartedAssetIds.insert(assetId) }
+        else { clientHeartedAssetIds.remove(assetId) }
+    }
+
     /// Set of asset IDs that have received at least one review in this
     /// session — used by FilmstripTile to draw a persistent comment-
     /// bubble badge so the photographer can see "this shot got
@@ -5635,6 +5671,12 @@ final class LiveCaptureModel {
     /// disabled via Settings — events still arrive but stay invisible
     /// (the photographer asked for quiet).
     func recordClientReview(_ event: UserEvent) {
+        // Klient-hjerte → oppdater live-telleren FØR alt annet (uavhengig av
+        // review-gate + lokal asset-matching, som ofte feiler siden id-en er
+        // en galleri-bilde-id).
+        if case .assetHearted(let p) = event {
+            updateClientHeartCount(assetId: p.assetId, hearted: p.hearted)
+        }
         // Phase 5.3 — presence + label-change events route here too.
         // We dispatch BEFORE the clientReviewsEnabled gate because
         // presence tracking is independent of review surface (turning
@@ -5995,6 +6037,7 @@ final class LiveCaptureModel {
         activeShotCardScenes = []
         activeShotCardAssetIds = []
         lastShotCardActivity = nil
+        clientHeartedAssetIds = []
     }
 
     private func prioRank(_ priority: String?) -> Int {

@@ -6,6 +6,7 @@ import { createRequire } from "module";
 import * as schema from "../migrations/schema.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
 import { recordProjectChange } from "./project-change-log.js";
+import { updateAssetLabels } from "./capture-assets-service.js";
 import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
@@ -929,6 +930,23 @@ export function setupClientGalleryRoutes(
           });
         } catch (err) {
           console.warn("[client-gallery] broadcast asset.hearted failed", err);
+        }
+        // Klient-samarbeidende culling: et hjerte i galleriet auto-flagger det
+        // koblede capture-asset som keeper (flaggedForClient) — så fotografens
+        // pick-filter + samme-dags levering plukker det opp uten manuelt steg.
+        try {
+          const imgRow = await pool.query(
+            `SELECT image_metadata FROM client_gallery_images WHERE id = $1 LIMIT 1`,
+            [imageId],
+          );
+          const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
+          if (captureAssetId) {
+            await updateAssetLabels(db, gallery.photographerId, String(captureAssetId), {
+              flaggedForClient: hearted,
+            });
+          }
+        } catch (err) {
+          console.warn("[client-gallery] flaggedForClient sync failed", err);
         }
         if (gallery.projectId) {
           try {
