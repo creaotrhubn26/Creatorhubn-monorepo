@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+    <key>teamID</key>
+    <string>9TAUZCPK95</string>
+    <!--
+        Manual signing — peker direkte på de manuelle App Store-profilene
+        (opprettet via ASC API 2026-07-28: "CreatorHub Capture AppStore" +
+        "CreatorHub Widgets AppStore", begge på "Apple Distribution:
+        Creatorhub AS"-cert-en).
+
+        Xcode 15+ sin "Cloud Signing" automatic-flyt feiler med "Cloud
+        signing permission error" fordi teamet ikke har en Apple Cloud-managed
+        distribution cert (vi bruker vanlig "Apple Distribution"-cert). Manual
+        signing løser det ved å fortelle xcodebuild eksakt hvilken profil som
+        skal brukes per bundle-ID. Samme mønster som LeadMapApp.
+    -->
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.creatorhubn.capture</key>
+        <string>CreatorHub Capture AppStore</string>
+        <key>com.creatorhubn.capture.widgets</key>
+        <string>CreatorHub Widgets AppStore</string>
+    </dict>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>compileBitcode</key>
+    <false/>
+    <key>destination</key>
+    <string>export</string>
+    <key>stripSwiftSymbols</key>
+    <true/>
+</dict>
+</plist>

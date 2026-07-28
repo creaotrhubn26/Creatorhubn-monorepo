@@ -110,6 +110,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "2"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        # Manuell signering for App Store (cloud signing feiler «Cloud signing
+        # permission error» uten Apple-managed cert — samme som LeadMap).
+        # Simulator-bygg signerer ikke, så dette påvirker kun archive/export.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "CreatorHub Capture AppStore"
 
   CaptureAppTests:
     type: bundle.unit-test
@@ -143,3 +149,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture.widgets
         TARGETED_DEVICE_FAMILY: "2"
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "CreatorHub Widgets AppStore"
