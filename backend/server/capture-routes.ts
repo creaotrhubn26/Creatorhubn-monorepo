@@ -34,6 +34,7 @@ import {
   type UploadError,
 } from './capture-upload-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
+import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
   createClientToken,
   fetchSessionForClient,
@@ -141,6 +142,12 @@ const deliverToShowcaseBody = z.object({
   clientName: z.string().min(1).max(255),
   clientEmail: z.string().email().max(255),
   projectTitle: z.string().min(1).max(255).optional(),
+  // Samme-dags levering: send «bildene dine er klare»-e-post automatisk.
+  sendEmail: z.boolean().default(false),
+  // Valgfri FM-skrevet e-post-kropp (on-device, iPad). Faller tilbake til en
+  // standard norsk mal hvis utelatt.
+  emailBody: z.string().max(4000).optional(),
+  photographerName: z.string().max(255).optional(),
 });
 
 // 12 MB cap on the base64 payload — comfortably above any preview JPEG
@@ -1395,12 +1402,47 @@ export function createCaptureRouter(
       });
       return;
     }
+    // Samme-dags levering: auto-send «bildene dine er klare»-e-post med
+    // galleri-lenken. FM-kroppen (fra iPad) brukes hvis oppgitt, ellers en
+    // standard norsk mal. Best-effort — en e-post-feil blokkerer ikke svaret.
+    let emailSent = false;
+    if (parsed.data.sendEmail) {
+      const esc = (s: string) =>
+        s.replace(/[&<>"]/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string));
+      const photographer = parsed.data.photographerName?.trim() || 'Fotografen din';
+      const project = parsed.data.projectTitle?.trim() || 'shooten';
+      const intro = parsed.data.emailBody?.trim()
+        || `Hei ${parsed.data.clientName}!\n\nBildene fra ${project} er klare. Åpne galleriet under for å se dem, hjerte favorittene dine og laste ned.`;
+      const url = result.shareUrl;
+      const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">`
+        + `<p style="white-space:pre-wrap;font-size:15px;line-height:1.55">${esc(intro)}</p>`
+        + `<p style="margin:28px 0"><a href="${esc(url)}" style="background:#FF6B35;color:#fff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:700;display:inline-block">Se galleriet ditt →</a></p>`
+        + `<p style="font-size:12px;color:#888">Eller åpne lenken: <a href="${esc(url)}" style="color:#FF6B35">${esc(url)}</a></p>`
+        + `<p style="font-size:13px;color:#555;margin-top:24px">Hilsen ${esc(photographer)}</p></div>`;
+      const text = `${intro}\n\nSe galleriet: ${url}\n\nHilsen ${photographer}`;
+      try {
+        const sendResult = await sendTransactionalEmail({
+          to: parsed.data.clientEmail,
+          subject: 'Bildene dine er klare ✨',
+          html,
+          text,
+          fromLabel: photographer,
+          kind: 'capture_delivery_notification',
+          pool,
+        });
+        emailSent = sendResult.sent;
+      } catch (err) {
+        console.warn('[capture] delivery email failed', err);
+      }
+    }
+
     res.status(result.reusedExisting ? 200 : 201).json({
       galleryId: result.galleryId,
       accessToken: result.accessToken,
       shareUrl: result.shareUrl,
       uploadedImageCount: result.uploadedImageCount,
       reusedExisting: result.reusedExisting,
+      emailSent,
     });
   });
 

@@ -6723,6 +6723,7 @@ final class LiveCaptureModel {
         clientName: String,
         clientEmail: String,
         projectTitle: String?,
+        sendEmail: Bool = false,
     ) async throws -> DeliveryService.ShowcaseDeliveryResult {
         guard let backend = backendClient else {
             throw DeliveryService.DeliveryError.bridgeFailed("backend not configured — sign in to CreatorHub first")
@@ -6766,6 +6767,18 @@ final class LiveCaptureModel {
             throw DeliveryService.DeliveryError.noUploadablePicks
         }
 
+        // Samme-dags levering: la Foundation Models skrive e-post-kroppen
+        // on-device (norsk, varm tone). Best-effort — nil hvis utilgjengelig
+        // (< iOS 26 / Apple Intelligence av), da bruker backend standard-malen.
+        let photographerName = SignInService.shared.session?.displayName
+        var emailBody: String? = nil
+        if sendEmail {
+            let notes = "Bildene fra \(projectTitle ?? sessionName) er klare i det private galleriet. "
+                + "Be dem se gjennom, hjerte favorittene sine og laste ned. Kort, vennlig, profesjonell."
+            emailBody = try? await TextGenerationIntelligenceFactory.make().generate(
+                .emailDraft(recipient: clientName, subject: "Bildene dine er klare", notes: notes))
+        }
+
         let result = try await service.deliverToShowcase(
             sessionName: sessionName,
             sessionStartedAt: assets.first?.captureTime ?? Date(),
@@ -6774,6 +6787,9 @@ final class LiveCaptureModel {
             clientEmail: clientEmail,
             projectTitle: projectTitle,
             filter: filter,
+            sendEmail: sendEmail,
+            emailBody: emailBody,
+            photographerName: photographerName,
         )
         await MainActor.run { self.lastShowcaseDelivery = result }
         return result
@@ -7242,6 +7258,7 @@ private struct DeliverSheet: View {
     @State private var clientName: String = ""
     @State private var clientEmail: String = ""
     @State private var projectTitle: String = ""
+    @State private var sendEmail: Bool = true
     @State private var didPrefill: Bool = false
     @State private var phase: Phase = .configure
     @State private var errorMessage: String?
@@ -7320,6 +7337,13 @@ private struct DeliverSheet: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                Toggle(isOn: $sendEmail) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Send «bildene dine er klare»-e-post")
+                        Text("Skrevet på enheten (Apple Intelligence), med galleri-lenke")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             }
             Section("Project (optional)") {
                 TextField("Project title — defaults to session name", text: $projectTitle)
@@ -7455,6 +7479,7 @@ private struct DeliverSheet: View {
                 projectTitle: projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil
                     : projectTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                sendEmail: sendEmail,
             )
             result = r
             phase = .done

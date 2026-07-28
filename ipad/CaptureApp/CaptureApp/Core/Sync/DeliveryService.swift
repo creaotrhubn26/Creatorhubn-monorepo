@@ -123,6 +123,9 @@ actor DeliveryService {
         clientEmail: String,
         projectTitle: String?,
         filter: BackendDeliverFilter,
+        sendEmail: Bool = false,
+        emailBody: String? = nil,
+        photographerName: String? = nil,
     ) async throws -> ShowcaseDeliveryResult {
         // Reuse the existing mirror+upload pipeline so the backend has
         // a real session + assets to bridge from.
@@ -144,6 +147,9 @@ actor DeliveryService {
                     clientName: clientName,
                     clientEmail: clientEmail,
                     projectTitle: projectTitle,
+                    sendEmail: sendEmail,
+                    emailBody: emailBody,
+                    photographerName: photographerName,
                 ),
             )
             return ShowcaseDeliveryResult(

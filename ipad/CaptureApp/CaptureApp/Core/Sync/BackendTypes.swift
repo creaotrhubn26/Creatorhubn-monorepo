@@ -414,6 +414,11 @@ struct BackendDeliverToShowcaseRequest: Encodable, Sendable {
     let clientName: String
     let clientEmail: String
     let projectTitle: String?
+    // Samme-dags levering: auto-send «bildene klare»-e-post. emailBody er
+    // valgfri FM-skrevet (on-device) kropp; backend har en standard mal.
+    var sendEmail: Bool = false
+    var emailBody: String? = nil
+    var photographerName: String? = nil
 }
 
 struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
@@ -422,6 +427,7 @@ struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
     let shareUrl: String
     let uploadedImageCount: Int
     let reusedExisting: Bool
+    var emailSent: Bool? = nil
 }
 
 // MARK: - Client tokens (Deliver flow)
