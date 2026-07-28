@@ -5,10 +5,72 @@ import { describe, expect, it } from "vitest";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken,
   extractAgs, buildLineItem, buildScore, AGS_SCOPES,
-  extractNrps, parseRosterMembers,
+  extractNrps, parseRosterMembers, signDeepLinkingResponse,
+  extractMemberSections, groupStudentsBySection, isStudentRole,
 } from "./role-room-lti-service.js";
 
 const NRPS_CLAIM = "https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice";
+const DL = "https://purl.imsglobal.org/spec/lti-dl/claim";
+const LTI = "https://purl.imsglobal.org/spec/lti/claim";
+
+describe("signDeepLinkingResponse (Deep Linking-røyktest — plattformen validerer denne)", () => {
+  // Reproduserer NØYAKTIG det ruten (/lti/launches/:id/deep-link-response) sender:
+  // en ltiResourceLink som launcher produksjonen med custom.production_id.
+  const key = generateToolKeypair();
+  const clientId = "saltire.lti.app";
+  const issuer = "https://saltire.lti.app/platform";
+  const deploymentId = "cLWwj9cbmkSrCNsckEFBmA";
+  const returnData = "opaque-return-data-from-canvas";
+  const contentItems = [{
+    type: "ltiResourceLink",
+    title: "Kortfilm — vår 2026",
+    url: "https://www.theroleroom.com/api/role-room/lti/launch",
+    custom: { production_id: "proj-abc-123" },
+  }];
+
+  const token = signDeepLinkingResponse({
+    clientId, issuer, deploymentId, privatePem: key.privatePem, kid: key.kid,
+    data: returnData, contentItems,
+  });
+
+  it("signeres med tool-nøkkelen og verifiseres med vår public JWK (aud=plattformens issuer)", () => {
+    const pem = crypto.createPublicKey({ key: key.publicJwk as crypto.JsonWebKey, format: "jwk" })
+      .export({ type: "spki", format: "pem" }).toString();
+    const claims = jwt.verify(token, pem, { algorithms: ["RS256"], audience: issuer, issuer: clientId }) as Record<string, unknown>;
+    expect(claims.iss).toBe(clientId);
+    expect(claims.aud).toBe(issuer);
+    // kid i header matcher vår JWKS → plattformen finner riktig nøkkel.
+    const header = (jwt.decode(token, { complete: true }) as { header: { kid?: string; alg?: string } }).header;
+    expect(header.kid).toBe(key.kid);
+    expect(header.alg).toBe("RS256");
+  });
+
+  it("bærer alle påkrevde LTI DL-claims (message_type/version/content_items/deployment/data)", () => {
+    const c = jwt.decode(token) as Record<string, unknown>;
+    expect(c[`${LTI}/message_type`]).toBe("LtiDeepLinkingResponse");
+    expect(c[`${LTI}/version`]).toBe("1.3.0");
+    expect(c[`${LTI}/deployment_id`]).toBe(deploymentId);
+    expect(c[`${DL}/data`]).toBe(returnData); // ekkoet fra deep_linking_settings
+    expect(typeof c.nonce).toBe("string");
+    expect((c.exp as number) > (c.iat as number)).toBe(true);
+  });
+
+  it("content_item er en ltiResourceLink som re-launcher produksjonen (custom.production_id)", () => {
+    const c = jwt.decode(token) as Record<string, unknown>;
+    const items = c[`${DL}/content_items`] as Record<string, unknown>[];
+    expect(Array.isArray(items)).toBe(true);
+    expect(items[0].type).toBe("ltiResourceLink");
+    expect(items[0].url).toContain("/lti/launch");
+    expect((items[0].custom as Record<string, unknown>).production_id).toBe("proj-abc-123");
+  });
+
+  it("uten data (ikke-deep-link) utelates data-claimet", () => {
+    const t2 = signDeepLinkingResponse({ clientId, issuer, privatePem: key.privatePem, kid: key.kid, contentItems });
+    const c2 = jwt.decode(t2) as Record<string, unknown>;
+    expect(c2[`${DL}/data`]).toBeUndefined();
+    expect(c2[`${LTI}/deployment_id`]).toBeUndefined();
+  });
+});
 
 describe("extractNrps (NRPS-claim → memberships-endepunkt)", () => {
   it("henter context_memberships_url + service_versions", () => {
@@ -37,6 +99,65 @@ describe("parseRosterMembers (NRPS membership container → medlemmer)", () => {
     expect(parseRosterMembers({ members: [{ name: "Ingen ID" }] })).toEqual([]);
     expect(parseRosterMembers({})).toEqual([]);
     expect(parseRosterMembers(null)).toEqual([]);
+  });
+  it("uten seksjonsdata → sections = []", () => {
+    const m = parseRosterMembers({ members: [{ user_id: "u1", roles: ["...#Learner"] }] });
+    expect(m[0].sections).toEqual([]);
+  });
+});
+
+const LIS = "https://purl.imsglobal.org/spec/lti/claim/lis";
+const CUSTOM = "https://purl.imsglobal.org/spec/lti/claim/custom";
+
+describe("extractMemberSections (Canvas-seksjon per medlem via NRPS message/lis)", () => {
+  it("leser lis.course_section_sourcedid fra member.message[] (rlid-scopet NRPS)", () => {
+    const sections = extractMemberSections({
+      user_id: "u1",
+      message: [{ [LIS]: { course_section_sourcedid: "BA-Film-3D" } }],
+    });
+    expect(sections).toEqual(["BA-Film-3D"]);
+  });
+  it("leser custom.section_sourcedids (komma-separert) + dedup mot lis", () => {
+    const sections = extractMemberSections({
+      [LIS]: { course_section_sourcedid: "KULL-2024" },
+      message: [{ [CUSTOM]: { section_sourcedids: "KULL-2024, KULL-2024B" } }],
+    });
+    expect(sections.sort()).toEqual(["KULL-2024", "KULL-2024B"]);
+  });
+  it("tåler array-form og manglende seksjonsdata", () => {
+    expect(extractMemberSections({ message: [{ [LIS]: { course_section_sourcedid: ["A", "B"] } }] }).sort()).toEqual(["A", "B"]);
+    expect(extractMemberSections({ user_id: "u1" })).toEqual([]);
+  });
+  it("filtrerer bort uløste LMS-variabler ($Canvas.…) — Canvas sender dem ordrett når substitusjon mangler", () => {
+    // Ekte Canvas-observasjon: section_ids resolves, men section_sourcedids kom ordrett.
+    const sections = extractMemberSections({
+      message: [{ [CUSTOM]: { section_ids: "1", section_sourcedids: "$Canvas.course.sectionSourcedIds" } }],
+    });
+    expect(sections).toEqual(["1"]);
+  });
+});
+
+describe("groupStudentsBySection (kull ← Canvas-seksjon; kun studenter)", () => {
+  const roster = parseRosterMembers({
+    members: [
+      { user_id: "s1", name: "Kari", email: "kari@s.no", roles: ["...#Learner"], message: [{ [LIS]: { course_section_sourcedid: "3D" } }] },
+      { user_id: "s2", name: "Ola", email: "ola@s.no", roles: ["...#Learner"], message: [{ [LIS]: { course_section_sourcedid: "3D" } }] },
+      { user_id: "s3", name: "Nils", email: "nils@s.no", roles: ["...#Learner"], message: [{ [LIS]: { course_section_sourcedid: "3F" } }] },
+      { user_id: "s4", name: "Uten seksjon", email: "u@s.no", roles: ["...#Learner"] },
+      { user_id: "t1", name: "Faglærer", email: "f@s.no", roles: ["...#Instructor"], message: [{ [LIS]: { course_section_sourcedid: "3D" } }] },
+    ],
+  });
+  it("grupperer studenter per seksjon, sorterer, og ekskluderer faglærer", () => {
+    const { sections, unsectioned } = groupStudentsBySection(roster);
+    expect(sections.map((s) => s.section)).toEqual(["3D", "3F"]);
+    expect(sections[0].members.map((m) => m.sub)).toEqual(["s1", "s2"]); // ikke t1 (Instructor)
+    expect(sections[1].members.map((m) => m.sub)).toEqual(["s3"]);
+    expect(unsectioned.map((m) => m.sub)).toEqual(["s4"]);
+  });
+  it("isStudentRole: Learner/tom → true, Instructor → false", () => {
+    expect(isStudentRole(["...#Learner"])).toBe(true);
+    expect(isStudentRole([])).toBe(true);
+    expect(isStudentRole(["...#Instructor"])).toBe(false);
   });
 });
 

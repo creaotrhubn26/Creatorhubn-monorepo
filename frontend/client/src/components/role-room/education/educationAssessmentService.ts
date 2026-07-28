@@ -17,11 +17,15 @@ export interface AssessmentItem {
   cohortName: string | null;
   studentId: string;
   studentName: string;
+  studentEmail: string | null;
   productionProjectId: string | null;
   status: 'submitted' | 'reviewed';
   grade: string | null;
   feedback: string | null;
   link: string | null;
+  isArbeidskrav: boolean;
+  isExam: boolean;
+  vurderingsform: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }

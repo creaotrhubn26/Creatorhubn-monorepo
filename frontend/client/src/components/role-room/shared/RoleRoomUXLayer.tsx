@@ -126,7 +126,13 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
       )}
 
       {tourSteps && tourSteps.length > 0 && (
-        <FirstTimeTour tourId={workspaceId} steps={tourSteps} />
+        <FirstTimeTour
+          tourId={workspaceId}
+          steps={tourSteps}
+          // Utdanningsmodus bruker den lilla persona-fargen; øvrige beholder
+          // default-gull. (FirstTimeTour er delt på tvers av alle vertikaler.)
+          {...(mode === 'education' ? { accentColor: '#8B5CF6', accentHover: '#7c3aed' } : {})}
+        />
       )}
     </>
   );

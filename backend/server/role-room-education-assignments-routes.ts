@@ -47,6 +47,11 @@ export interface AssignmentView {
   learningGoals: string | null;
   dueAt: string | null;
   status: string;
+  artifactKind: string | null;
+  isArbeidskrav: boolean;
+  isExam: boolean;
+  vurderingsform: string | null;
+  courseId: string | null;
   submittedCount: number;
   reviewedCount: number;
   createdAt: string;
@@ -66,6 +71,7 @@ export interface SubmissionView {
 
 const SUBMISSION_STATUSES = new Set(["not_started", "submitted", "reviewed"]);
 const ASSIGNMENT_STATUSES = new Set(["draft", "published", "archived"]);
+const VURDERINGSFORMER = new Set(["bestatt", "bokstav", "mappe"]);
 
 function isoOrNull(v: unknown): string | null {
   return v ? new Date(v as string).toISOString() : null;
@@ -83,6 +89,11 @@ function assignmentRowToView(r: Record<string, unknown>): AssignmentView {
     learningGoals: (r.learning_goals as string) ?? null,
     dueAt: isoOrNull(r.due_at),
     status: (r.status as string) ?? "draft",
+    artifactKind: (r.artifact_kind as string) ?? null,
+    isArbeidskrav: Boolean(r.is_arbeidskrav),
+    isExam: Boolean(r.is_exam),
+    vurderingsform: (r.vurderingsform as string) ?? null,
+    courseId: r.course_id ? String(r.course_id) : null,
     submittedCount: Number(r.submitted_count ?? 0),
     reviewedCount: Number(r.reviewed_count ?? 0),
     createdAt: isoOrNull(r.created_at) ?? "",
@@ -172,24 +183,27 @@ export function createEducationAssignmentsRouter(
   router.post("/education/assignments", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as {
       title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
-      learningGoals?: string; dueAt?: string | null; status?: string;
+      learningGoals?: string; dueAt?: string | null; status?: string; artifactKind?: string | null;
+      isArbeidskrav?: boolean; vurderingsform?: string | null; courseId?: string | null; isExam?: boolean;
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) { res.status(400).json({ error: "title_required" }); return; }
     const status = body.status && ASSIGNMENT_STATUSES.has(body.status) ? body.status : "draft";
+    const vurderingsform = body.vurderingsform && VURDERINGSFORMER.has(body.vurderingsform) ? body.vurderingsform : null;
     try {
       const id = newEntityId("edassign");
       const r = await pool.query(
         `INSERT INTO role_room_education_assignments
-           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status, artifact_kind, is_arbeidskrav, vurderingsform, course_id, is_exam)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING *, 0 AS submitted_count, 0 AS reviewed_count,
            (SELECT title FROM role_room_education_productions WHERE id = $4) AS production_title,
            (SELECT project_id FROM role_room_education_productions WHERE id = $4) AS production_project_id`,
         [
           id, uid(req), body.cohortId || null, body.productionId || null, title,
           body.brief?.trim() || null, body.learningGoals?.trim() || null,
-          body.dueAt || null, status,
+          body.dueAt || null, status, (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null,
+          body.isArbeidskrav === true, vurderingsform, body.courseId || null, body.isExam === true,
         ],
       );
       res.status(201).json({ assignment: assignmentRowToView(r.rows[0]) });
@@ -202,9 +216,11 @@ export function createEducationAssignmentsRouter(
   router.patch("/education/assignments/:id", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as {
       title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
-      learningGoals?: string; dueAt?: string | null; status?: string;
+      learningGoals?: string; dueAt?: string | null; status?: string; artifactKind?: string | null;
+      isArbeidskrav?: boolean; vurderingsform?: string | null; courseId?: string | null; isExam?: boolean;
     };
     const status = typeof body.status === "string" && ASSIGNMENT_STATUSES.has(body.status) ? body.status : null;
+    const vurderingsform = typeof body.vurderingsform === "string" && VURDERINGSFORMER.has(body.vurderingsform) ? body.vurderingsform : null;
     try {
       const r = await pool.query(
         `UPDATE role_room_education_assignments
@@ -215,6 +231,11 @@ export function createEducationAssignmentsRouter(
                 due_at = COALESCE($7, due_at),
                 status = COALESCE($8, status),
                 production_id = COALESCE($9, production_id),
+                artifact_kind = COALESCE($10, artifact_kind),
+                is_arbeidskrav = COALESCE($11, is_arbeidskrav),
+                vurderingsform = COALESCE($12, vurderingsform),
+                course_id = COALESCE($13, course_id),
+                is_exam = COALESCE($14, is_exam),
                 updated_at = now()
           WHERE id = $1 AND owner_user_id = $2
           RETURNING *,
@@ -231,6 +252,11 @@ export function createEducationAssignmentsRouter(
           body.dueAt ?? null,
           status,
           body.productionId ?? null,
+          typeof body.artifactKind === "string" ? (body.artifactKind.trim() || null) : null,
+          typeof body.isArbeidskrav === "boolean" ? body.isArbeidskrav : null,
+          vurderingsform,
+          body.courseId ?? null,
+          typeof body.isExam === "boolean" ? body.isExam : null,
         ],
       );
       if (r.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }

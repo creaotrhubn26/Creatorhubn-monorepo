@@ -18,6 +18,7 @@ import { newEntityId } from "./_shared-ids.js";
 import {
   generateToolKeypair, toolJwks, signClientAssertion, verifyIdToken, extractAgs,
   buildLineItem, buildScore, AGS_SCOPES, extractNrps, parseRosterMembers, NRPS_SCOPE,
+  signDeepLinkingResponse, groupStudentsBySection, isStudentRole,
   type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
 
@@ -59,7 +60,14 @@ async function ensureToolKey(pool: Pool): Promise<{ privatePem: string; publicJw
 let nrpsColumnEnsured = false;
 async function ensureNrpsColumn(pool: Pool): Promise<void> {
   if (nrpsColumnEnsured) return;
+  // NRPS + Canvas-metadata fra launchen (emne/emnekode/semester/institusjon).
   await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS nrps_url TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS context_title TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS context_label TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS platform_name TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS term TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS deep_link_return_url TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_launches ADD COLUMN IF NOT EXISTS deep_link_data TEXT`);
   nrpsColumnEnsured = true;
 }
 
@@ -202,21 +210,34 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
               },
               {
                 placement: "assignment_selection",
-                message_type: "LtiResourceLinkRequest",
+                message_type: "LtiDeepLinkingRequest",
+                target_link_uri: targetLinkUri,
+                text: "The Role Room — velg produksjon",
+              },
+              {
+                placement: "link_selection",
+                message_type: "LtiDeepLinkingRequest",
                 target_link_uri: targetLinkUri,
                 text: "The Role Room",
               },
               {
-                placement: "link_selection",
-                message_type: "LtiResourceLinkRequest",
+                placement: "editor_button",
+                message_type: "LtiDeepLinkingRequest",
                 target_link_uri: targetLinkUri,
                 text: "The Role Room",
+                icon_url: `${TOOL_BASE}/favicon.ico`,
               },
             ],
           },
         },
       ],
-      custom_fields: {},
+      // Canvas-substitusjoner → sendes som custom-claim ved launch (semester m.m.).
+      // section_* resolves per-medlem i NRPS-`message` (rlid-scopet) → kull→seksjon-mapping.
+      custom_fields: {
+        term_name: "$Canvas.term.name",
+        section_ids: "$Canvas.course.sectionIds",
+        section_sourcedids: "$Canvas.course.sectionSourcedIds",
+      },
     });
   });
 
@@ -276,15 +297,23 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
 
       const ags = extractAgs(claims);
       const nrps = extractNrps(claims);
-      const context = claims["https://purl.imsglobal.org/spec/lti/claim/context"] as { id?: string } | undefined;
+      const context = claims["https://purl.imsglobal.org/spec/lti/claim/context"] as { id?: string; title?: string; label?: string } | undefined;
       const resourceLink = claims["https://purl.imsglobal.org/spec/lti/claim/resource_link"] as { id?: string } | undefined;
+      const toolPlatform = claims["https://purl.imsglobal.org/spec/lti/claim/tool_platform"] as { name?: string; guid?: string } | undefined;
+      const custom = claims["https://purl.imsglobal.org/spec/lti/claim/custom"] as Record<string, unknown> | undefined;
+      const termVal = custom ? (String(custom.term_name ?? custom.term ?? "").trim() || null) : null;
+      // Deep Linking: message_type + deep_linking_settings (retur-URL + data).
+      const messageType = String(claims["https://purl.imsglobal.org/spec/lti/claim/message_type"] ?? "LtiResourceLinkRequest");
+      const dlSettings = claims["https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings"] as { deep_link_return_url?: string; data?: string } | undefined;
       const launchId = newEntityId("ltilaunch");
       await ensureNrpsColumn(pool);
       await pool.query(
-        `INSERT INTO role_room_lti_launches (id, platform_id, lti_user_sub, context_id, resource_link_id, ags_lineitems, ags_lineitem, ags_scopes, nrps_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO role_room_lti_launches (id, platform_id, lti_user_sub, context_id, resource_link_id, ags_lineitems, ags_lineitem, ags_scopes, nrps_url, context_title, context_label, platform_name, term, deep_link_return_url, deep_link_data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [launchId, platform.id, String(claims.sub ?? ""), context?.id ?? null, resourceLink?.id ?? null,
-         ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? []), nrps?.url ?? null],
+         ags?.lineitems ?? null, ags?.lineitem ?? null, JSON.stringify(ags?.scope ?? []), nrps?.url ?? null,
+         context?.title ?? null, context?.label ?? null, toolPlatform?.name ?? null, termVal,
+         dlSettings?.deep_link_return_url ?? null, dlSettings?.data ?? null],
       );
       // Auto-provisjon fra LTI-claims: LMS-en har alt autentisert brukeren, så
       // vi minter en utdannings-sesjon og sender den via ?rr_session= (samme
@@ -301,6 +330,22 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         } catch (e) {
           console.warn("[lti] sesjon-mint feilet (fortsetter uautentisert):", (e as Error).message);
         }
+      }
+      // Deep-linket ressurs: launchen bærer custom.production_id → åpne produksjonen.
+      const customProject = custom ? String(custom.production_id ?? "").trim() : "";
+      if (messageType !== "LtiDeepLinkingRequest" && customProject) {
+        const pParams = new URLSearchParams({ mode: "production", project: customProject });
+        if (sessionToken) pParams.set("rr_session", sessionToken);
+        res.redirect(`${APP_URL}?${pParams.toString()}`);
+        return;
+      }
+      // Deep Linking: læreren skal VELGE/OPPRETTE innhold (produksjonsoppgave) →
+      // send til deep-link-plukkeren i stedet for vanlig workspace-landing.
+      if (messageType === "LtiDeepLinkingRequest") {
+        const dlParams = new URLSearchParams({ mode: "education", lti_launch: launchId, deeplink: "1" });
+        if (sessionToken) dlParams.set("rr_session", sessionToken);
+        res.redirect(`${APP_URL}?${dlParams.toString()}`);
+        return;
       }
       // Landing: inn i utdannings-workspacet (launch-kontekst lagret for grade-push).
       const redirectParams = new URLSearchParams({ mode: "education", lti_launch: launchId });
@@ -371,15 +416,284 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
   });
 
+  // ── Canvas-kontekst fra launchen (emne/emnekode/semester/institusjon) ─────
+  router.get("/lti/launches/:id/context", requireSession, async (req, res) => {
+    try {
+      const r = await pool.query(
+        `SELECT context_id, context_title, context_label, platform_name, term, deep_link_return_url
+           FROM role_room_lti_launches WHERE id = $1`,
+        [req.params.id],
+      );
+      const row = r.rows[0];
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({
+        courseId: (row.context_id as string) ?? null,
+        courseTitle: (row.context_title as string) ?? null,
+        courseCode: (row.context_label as string) ?? null,
+        institution: (row.platform_name as string) ?? null,
+        term: (row.term as string) ?? null,
+        isDeepLink: !!row.deep_link_return_url,
+      });
+    } catch (err) {
+      // Kolonner mangler (launch ikke self-healet ennå) → tom kontekst.
+      if ((err as { code?: string })?.code === "42703") { res.json({ courseId: null, courseTitle: null, courseCode: null, institution: null, term: null, isDeepLink: false }); return; }
+      console.warn("[lti] context failed:", (err as Error).message);
+      res.status(500).json({ error: "context_failed" });
+    }
+  });
+
+  // ── Deep Linking-respons: lærer valgte/opprettet produksjon → signert JWT ─
+  // tilbake til Canvas (ltiResourceLink som launcher produksjonen). Frontend
+  // auto-poster {jwt} til deep_link_return_url.
+  router.post("/lti/launches/:id/deep-link-response", requireSession, async (req, res) => {
+    const body = (req.body ?? {}) as { projectId?: string; title?: string };
+    try {
+      const lr = await pool.query(
+        `SELECT l.deep_link_return_url, l.deep_link_data, p.client_id, p.issuer, p.deployment_id
+           FROM role_room_lti_launches l JOIN role_room_lti_platforms p ON p.id = l.platform_id
+          WHERE l.id = $1`,
+        [req.params.id],
+      );
+      const launch = lr.rows[0];
+      if (!launch) { res.status(404).json({ error: "not_found" }); return; }
+      if (!launch.deep_link_return_url) { res.status(400).json({ error: "not_a_deep_link_launch" }); return; }
+      const key = await ensureToolKey(pool);
+      const title = (typeof body.title === "string" && body.title.trim()) ? body.title.trim() : "The Role Room-produksjon";
+      const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+      // ltiResourceLink → neste launch bærer custom.production_id og åpner produksjonen.
+      const contentItems: Record<string, unknown>[] = [{
+        type: "ltiResourceLink",
+        title,
+        url: `${TOOL_BASE}/lti/launch`,
+        custom: { production_id: projectId },
+      }];
+      const jwtStr = signDeepLinkingResponse({
+        clientId: String(launch.client_id), issuer: String(launch.issuer), deploymentId: launch.deployment_id ?? null,
+        privatePem: key.privatePem, kid: key.kid, data: (launch.deep_link_data as string) ?? null, contentItems,
+      });
+      res.json({ returnUrl: String(launch.deep_link_return_url), jwt: jwtStr });
+    } catch (err) {
+      console.error("[lti] deep-link-response failed:", (err as Error).message);
+      res.status(500).json({ error: "deep_link_failed" });
+    }
+  });
+
+  // ── Eksamensklar (Canvas-synkronisert): arbeidskrav godkjent FRA Canvas ───
+  // Kjernen i «alt styres fra Canvas»: leser hvert arbeidskravs status via AGS
+  // Results (Canvas = fasit), matcher mot NRPS-rosteret, og beregner om hver
+  // student har fått ALLE arbeidskrav godkjent → eksamensklar. Ingen parallell
+  // Role Room-sannhet: godkjennelsen bor i Canvas-karakterboka.
+  router.get("/lti/launches/:id/exam-readiness", requireSession, async (req, res) => {
+    const cohortId = typeof req.query.cohortId === "string" ? req.query.cohortId : null;
+    const uid = (req as Request & { userId: string }).userId;
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 502).json({ error: roster.error }); return; }
+      // Arbeidskravene (våre) for kullet — eid av faglæreren.
+      let arbeidskrav: { id: string; title: string }[] = [];
+      try {
+        const params: unknown[] = [uid];
+        let cohortFilter = "";
+        if (cohortId) { params.push(cohortId); cohortFilter = ` AND cohort_id = $${params.length}`; }
+        const ar = await pool.query(
+          `SELECT id, title FROM role_room_education_assignments
+            WHERE owner_user_id = $1 AND is_arbeidskrav = true AND status = 'published'${cohortFilter}`,
+          params,
+        );
+        arbeidskrav = ar.rows.map((r) => ({ id: String(r.id), title: String(r.title) }));
+      } catch { arbeidskrav = []; }
+
+      // Les hvert arbeidskravs Canvas-resultater (godkjent = full score).
+      const perTag = new Map<string, Map<string, boolean>>();
+      for (const ak of arbeidskrav) {
+        // eslint-disable-next-line no-await-in-loop -- få arbeidskrav; sekvensielt er greit
+        const rr = await fetchResults(pool, req.params.id, ak.id);
+        const passed = new Map<string, boolean>();
+        if (rr.ok) {
+          for (const [sub, v] of rr.results) passed.set(sub, v.max > 0 && v.score >= v.max);
+        }
+        perTag.set(ak.id, passed);
+      }
+
+      const total = arbeidskrav.length;
+      const students = roster.members
+        .filter((m) => m.roles.some((r) => /learner|student/i.test(r)) || m.roles.length === 0)
+        .map((m) => {
+          const godkjent = arbeidskrav.filter((ak) => perTag.get(ak.id)?.get(m.sub)).length;
+          return { sub: m.sub, name: m.name, email: m.email, godkjent, total, examReady: total > 0 && godkjent === total };
+        });
+      res.json({ totalArbeidskrav: total, arbeidskrav, students });
+    } catch (err) {
+      console.error("[lti] exam-readiness failed:", (err as Error).message);
+      res.status(500).json({ error: "readiness_failed" });
+    }
+  });
+
   // ── Faglærer: send karakter til LMS-karakterboka (AGS grade-passback) ─────
   // Tar en fri-tekst-karakter (mappes til tallscore) ELLER eksplisitt
   // scoreGiven/scoreMaximum. Målbruker: `ltiUserSub` (fra roster) ELLER
   // `studentEmail` (slås opp mot roster) — ellers launch-brukeren (student-
   // launchet oppgave). Poster til launchens AGS line item.
+
+  // ── Faglærer: importer LMS-klasse-roster (NRPS) → utdannings-kull ─────────
+  // Henter rosteret via NRPS og upserter studentene (roller = Learner/Student)
+  // inn i et utdannings-kull. `cohortId` importerer inn i et eksisterende kull
+  // (eier-sjekket); uten den opprettes et nytt kull (`cohortName`). Duplikater
+  // hoppes over på e-post (case-insensitivt). Trygg å kjøre på nytt = «synk».
+  router.post("/lti/launches/:id/import-students", requireSession, async (req, res) => {
+    const body = (req.body ?? {}) as { cohortId?: string; cohortName?: string };
+    const userId = (req as Request & { userId: string }).userId;
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 500).json({ error: roster.error }); return; }
+      const students = roster.members.filter((m) =>
+        m.roles.some((r) => /learner|student/i.test(r)) || m.roles.length === 0);
+
+      // Mål-kull: eksisterende (eier-sjekk) eller nytt.
+      let cohortId = typeof body.cohortId === "string" ? body.cohortId.trim() : "";
+      if (cohortId) {
+        const owns = await pool.query(
+          `SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`,
+          [cohortId, userId],
+        );
+        if (owns.rows.length === 0) { res.status(404).json({ error: "cohort_not_found" }); return; }
+      } else {
+        cohortId = newEntityId("cohort");
+        await pool.query(
+          `INSERT INTO role_room_education_cohorts (id, owner_user_id, name) VALUES ($1,$2,$3)`,
+          [cohortId, userId, (body.cohortName?.trim() || "Importert fra Canvas")],
+        );
+      }
+
+      const existing = await pool.query(
+        `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
+        [cohortId],
+      );
+      const seen = new Set<string>(existing.rows.map((r) => String(r.email)));
+      let added = 0;
+      let skipped = 0;
+      for (const m of students) {
+        const email = (m.email ?? "").trim();
+        const emailKey = email.toLowerCase();
+        const name = (m.name ?? "").trim() || (email ? email.split("@")[0] : "");
+        if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
+        if (emailKey) seen.add(emailKey);
+        // eslint-disable-next-line no-await-in-loop -- sekvensiell insert holder det enkelt
+        await pool.query(
+          `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [newEntityId("student"), cohortId, userId, name, email || null],
+        );
+        added++;
+      }
+      res.status(201).json({ cohortId, added, skipped, total: students.length });
+    } catch (err) {
+      console.error("[lti] import-students failed:", (err as Error).message);
+      res.status(500).json({ error: "import_failed" });
+    }
+  });
+
+  // ── Kull → Canvas-seksjon: forhåndsvis seksjonene i rosteret ──────────────
+  // FS lager én Canvas-seksjon per kull; NRPS (rlid-scopet) bærer per-student
+  // seksjon. Returnerer distinkte seksjoner m/ antall + hvor mange som mangler
+  // seksjonsdata (da degraderer vi til vanlig samle-import). Tom liste = plattformen
+  // leverer ikke seksjoner (saLTIre / Canvas uten seksjons-config).
+  router.get("/lti/launches/:id/sections", requireSession, async (req, res) => {
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 500).json({ error: roster.error }); return; }
+      const { sections, unsectioned } = groupStudentsBySection(roster.members);
+      res.json({
+        sections: sections.map((s) => ({ section: s.section, studentCount: s.members.length })),
+        unsectioned: unsectioned.length,
+        totalStudents: roster.members.filter((m) => isStudentRole(m.roles)).length,
+      });
+    } catch (err) {
+      console.error("[lti] sections failed:", (err as Error).message);
+      res.status(500).json({ error: "sections_failed" });
+    }
+  });
+
+  // ── Importer roster gruppert per Canvas-seksjon → ett kull PER seksjon ─────
+  // Idempotent «synk»: gjenbruker eksisterende kull m/ samme navn (eier), ellers
+  // oppretter det. Studenter uten seksjonsdata hoppes over (rapporteres) med
+  // mindre `includeUnsectioned` — da havner de i ett «Uten seksjon»-kull.
+  // `nameMap` lar klienten gi seksjonene lesbare kull-navn (ellers = seksjons-id).
+  router.post("/lti/launches/:id/import-students-by-section", requireSession, async (req, res) => {
+    const body = (req.body ?? {}) as { nameMap?: Record<string, string>; includeUnsectioned?: boolean; namePrefix?: string };
+    const userId = (req as Request & { userId: string }).userId;
+    try {
+      const roster = await fetchRoster(pool, req.params.id);
+      if (!roster.ok) { res.status(roster.status ?? 500).json({ error: roster.error }); return; }
+      const { sections, unsectioned } = groupStudentsBySection(roster.members);
+      if (sections.length === 0 && !(body.includeUnsectioned && unsectioned.length)) {
+        res.status(422).json({ error: "no_sections", message: "Rosteret har ingen seksjonsdata fra Canvas — bruk vanlig import." });
+        return;
+      }
+
+      const prefix = (body.namePrefix ?? "").trim();
+      const cohortName = (section: string): string => {
+        const mapped = body.nameMap?.[section]?.trim();
+        if (mapped) return mapped;
+        return prefix ? `${prefix} · ${section}` : section;
+      };
+
+      const groups = [
+        ...sections.map((s) => ({ key: s.section, name: cohortName(s.section), members: s.members })),
+        ...(body.includeUnsectioned && unsectioned.length ? [{ key: "__unsectioned__", name: prefix ? `${prefix} · Uten seksjon` : "Uten seksjon", members: unsectioned }] : []),
+      ];
+
+      const results: { cohortId: string; section: string; name: string; added: number; skipped: number; total: number }[] = [];
+      for (const g of groups) {
+        // Find-or-create kull på (eier, navn) → re-import = synk, ikke duplikat.
+        // eslint-disable-next-line no-await-in-loop -- sekvensielt per seksjon holder det enkelt
+        const found = await pool.query(
+          `SELECT id FROM role_room_education_cohorts WHERE owner_user_id = $1 AND name = $2 LIMIT 1`,
+          [userId, g.name],
+        );
+        let cohortId = found.rows[0]?.id as string | undefined;
+        if (!cohortId) {
+          cohortId = newEntityId("cohort");
+          // eslint-disable-next-line no-await-in-loop
+          await pool.query(
+            `INSERT INTO role_room_education_cohorts (id, owner_user_id, name) VALUES ($1,$2,$3)`,
+            [cohortId, userId, g.name],
+          );
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const existing = await pool.query(
+          `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
+          [cohortId],
+        );
+        const seen = new Set<string>(existing.rows.map((r) => String(r.email)));
+        let added = 0, skipped = 0;
+        for (const m of g.members) {
+          const email = (m.email ?? "").trim();
+          const emailKey = email.toLowerCase();
+          const name = (m.name ?? "").trim() || (email ? email.split("@")[0] : "");
+          if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
+          if (emailKey) seen.add(emailKey);
+          // eslint-disable-next-line no-await-in-loop
+          await pool.query(
+            `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [newEntityId("student"), cohortId, userId, name, email || null],
+          );
+          added++;
+        }
+        results.push({ cohortId, section: g.key, name: g.name, added, skipped, total: g.members.length });
+      }
+      res.status(201).json({ cohorts: results, unsectioned: body.includeUnsectioned ? 0 : unsectioned.length });
+    } catch (err) {
+      console.error("[lti] import-by-section failed:", (err as Error).message);
+      res.status(500).json({ error: "import_failed" });
+    }
+  });
+
   router.post("/lti/launches/:id/grade", requireSession, async (req, res) => {
     const b = (req.body ?? {}) as {
       grade?: string; scoreGiven?: number; scoreMaximum?: number; comment?: string; label?: string;
-      ltiUserSub?: string; studentEmail?: string;
+      ltiUserSub?: string; studentEmail?: string; resourceTag?: string;
     };
     let scoreGiven = b.scoreGiven;
     let scoreMaximum = b.scoreMaximum;
@@ -410,7 +724,43 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         if (!member) { res.status(404).json({ error: "student_not_in_roster" }); return; }
         targetUserSub = member.sub;
       }
-      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label, targetUserSub });
+      const resourceTag = typeof b.resourceTag === "string" && b.resourceTag.trim() ? b.resourceTag.trim() : undefined;
+
+      // ── HARD EKSAMENS-GATE (Canvas = fasit) ──────────────────────────────
+      // Er oppgaven en eksamen/sluttvurdering? Da MÅ alle kullets arbeidskrav
+      // være godkjent i Canvas for studenten før karakteren kan settes.
+      if (resourceTag && targetUserSub) {
+        const ax = await pool.query(
+          `SELECT is_exam, cohort_id, owner_user_id FROM role_room_education_assignments WHERE id = $1`,
+          [resourceTag],
+        );
+        const exam = ax.rows[0];
+        if (exam?.is_exam && exam.cohort_id) {
+          const akRes = await pool.query(
+            `SELECT id, title FROM role_room_education_assignments
+              WHERE owner_user_id = $1 AND cohort_id = $2 AND is_arbeidskrav = true AND status = 'published'`,
+            [exam.owner_user_id, exam.cohort_id],
+          );
+          const missing: string[] = [];
+          for (const ak of akRes.rows) {
+            // eslint-disable-next-line no-await-in-loop -- få arbeidskrav; sekvensielt greit
+            const rr = await fetchResults(pool, req.params.id, String(ak.id));
+            const v = rr.ok ? rr.results.get(String(targetUserSub)) : undefined;
+            const passed = !!v && v.max > 0 && v.score >= v.max;
+            if (!passed) missing.push(String(ak.title));
+          }
+          if (missing.length > 0) {
+            res.status(409).json({
+              error: "arbeidskrav_not_complete",
+              message: `Kan ikke sette eksamenskarakter: ${missing.length} arbeidskrav er ikke godkjent i Canvas (${missing.slice(0, 3).join(", ")}${missing.length > 3 ? " …" : ""}).`,
+              missing,
+            });
+            return;
+          }
+        }
+      }
+
+      const result = await pushScore(pool, req.params.id, { scoreGiven, scoreMaximum, comment: b.comment, label: b.label, targetUserSub, resourceTag });
       if (!result.ok) { res.status(result.status ?? 500).json({ error: result.error }); return; }
       res.json({ success: true, scoreGiven, scoreMaximum });
     } catch (err) {
@@ -444,7 +794,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
  */
 export async function pushScore(
   pool: Pool, launchId: string,
-  input: { scoreGiven: number; scoreMaximum: number; comment?: string; label?: string; targetUserSub?: string },
+  input: { scoreGiven: number; scoreMaximum: number; comment?: string; label?: string; targetUserSub?: string; resourceTag?: string },
 ): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
   const lr = await pool.query(`SELECT * FROM role_room_lti_launches WHERE id = $1`, [launchId]);
   const launch = lr.rows[0];
@@ -472,16 +822,42 @@ export async function pushScore(
   const { access_token } = (await tokenRes.json()) as { access_token?: string };
   if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
 
-  // Line item: bruk eksisterende, ellers opprett ett.
-  let lineitem: string | null = launch.ags_lineitem ?? null;
-  if (!lineitem && launch.ags_lineitems) {
-    const liRes = await fetch(String(launch.ags_lineitems), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
-      body: JSON.stringify(buildLineItem({ label: input.label ?? "The Role Room", scoreMaximum: input.scoreMaximum, resourceLinkId: launch.resource_link_id ?? undefined })),
-    });
-    if (!liRes.ok) return { ok: false, error: "lineitem_failed", status: 502 };
-    lineitem = String(((await liRes.json()) as { id?: string }).id ?? "");
+  // Line item (Canvas gradebook-kolonne). Med resourceTag (oppgave-id) får HVER
+  // oppgave sin EGEN kolonne: finn line item m/ tag=oppgave-id, ellers opprett.
+  // Uten resourceTag: eksisterende oppførsel (launchens default line item).
+  let lineitem: string | null = null;
+  if (input.resourceTag && launch.ags_lineitems) {
+    const base = String(launch.ags_lineitems);
+    const sep = base.includes("?") ? "&" : "?";
+    try {
+      const findRes = await fetch(`${base}${sep}tag=${encodeURIComponent(input.resourceTag)}`, {
+        headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
+      });
+      if (findRes.ok) {
+        const arr = (await findRes.json()) as Array<{ id?: string }>;
+        if (Array.isArray(arr) && arr[0]?.id) lineitem = String(arr[0].id);
+      }
+    } catch { /* faller gjennom til opprettelse */ }
+    if (!lineitem) {
+      const liRes = await fetch(base, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
+        body: JSON.stringify(buildLineItem({ label: input.label ?? "Oppgave", scoreMaximum: input.scoreMaximum, tag: input.resourceTag, resourceLinkId: launch.resource_link_id ?? undefined })),
+      });
+      if (!liRes.ok) return { ok: false, error: "lineitem_failed", status: 502 };
+      lineitem = String(((await liRes.json()) as { id?: string }).id ?? "");
+    }
+  } else {
+    lineitem = launch.ags_lineitem ?? null;
+    if (!lineitem && launch.ags_lineitems) {
+      const liRes = await fetch(String(launch.ags_lineitems), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
+        body: JSON.stringify(buildLineItem({ label: input.label ?? "The Role Room", scoreMaximum: input.scoreMaximum, resourceLinkId: launch.resource_link_id ?? undefined })),
+      });
+      if (!liRes.ok) return { ok: false, error: "lineitem_failed", status: 502 };
+      lineitem = String(((await liRes.json()) as { id?: string }).id ?? "");
+    }
   }
   if (!lineitem) return { ok: false, error: "no_lineitem", status: 400 };
 
@@ -527,12 +903,86 @@ export async function fetchRoster(
   const { access_token } = (await tokenRes.json()) as { access_token?: string };
   if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
 
-  const memRes = await fetch(String(launch.nrps_url), {
-    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lti-nrps.v2.membershipcontainer+json" },
-  });
-  if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
-  const container = await memRes.json();
+  const nrpsHeaders = { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lti-nrps.v2.membershipcontainer+json" };
+
+  // rlid-scopet NRPS får Canvas til å inkludere per-medlem `message` med
+  // seksjonsdata (lis.course_section_sourcedid / custom.section_*). Vi prøver
+  // dét FØRST (for kull→seksjon-mapping); faller trygt tilbake til den ustopte
+  // varianten (E2E-verifisert mot saLTIre) om plattformen ikke svarer OK.
+  let container: unknown | null = null;
+  if (launch.resource_link_id) {
+    try {
+      const scopedUrl = new URL(String(launch.nrps_url));
+      scopedUrl.searchParams.set("rlid", String(launch.resource_link_id));
+      const scopedRes = await fetch(scopedUrl.toString(), { headers: nrpsHeaders });
+      if (scopedRes.ok) container = await scopedRes.json();
+    } catch { /* fall through til uscopet under */ }
+  }
+  if (container === null) {
+    const memRes = await fetch(String(launch.nrps_url), { headers: nrpsHeaders });
+    if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
+    container = await memRes.json();
+  }
   return { ok: true, members: parseRosterMembers(container) };
+}
+
+/**
+ * AGS Results: leser tilbake hva Canvas har registrert på en gradebook-kolonne
+ * (line item) identifisert ved tag (oppgave-id). Returnerer per LMS-sub:
+ * score/maks. Slik leser Role Room arbeidskrav-status FRA Canvas (Canvas = fasit),
+ * i stedet for kun egen DB — hele eksamens-gaten er dermed Canvas-synkronisert.
+ * Fail-safe: tom map ved manglende kolonne/feil (ingen registrerte resultater).
+ */
+export async function fetchResults(
+  pool: Pool, launchId: string, resourceTag: string,
+): Promise<{ ok: true; results: Map<string, { score: number; max: number }> } | { ok: false; error: string; status?: number }> {
+  const lr = await pool.query(`SELECT * FROM role_room_lti_launches WHERE id = $1`, [launchId]);
+  const launch = lr.rows[0];
+  if (!launch) return { ok: false, error: "launch_not_found", status: 404 };
+  if (!launch.ags_lineitems) return { ok: true, results: new Map() };
+  const pr = await pool.query(`SELECT * FROM role_room_lti_platforms WHERE id = $1`, [launch.platform_id]);
+  const platform = pr.rows[0];
+  if (!platform) return { ok: false, error: "platform_not_found", status: 404 };
+
+  const key = await ensureToolKey(pool);
+  const assertion = signClientAssertion({ clientId: String(platform.client_id), tokenUrl: String(platform.token_url), privatePem: key.privatePem, kid: key.kid });
+  const tokenRes = await fetch(String(platform.token_url), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: assertion,
+      scope: AGS_SCOPES.join(" "),
+    }).toString(),
+  });
+  if (!tokenRes.ok) return { ok: false, error: "token_failed", status: 502 };
+  const { access_token } = (await tokenRes.json()) as { access_token?: string };
+  if (!access_token) return { ok: false, error: "no_access_token", status: 502 };
+
+  const base = String(launch.ags_lineitems);
+  const sep = base.includes("?") ? "&" : "?";
+  const findRes = await fetch(`${base}${sep}tag=${encodeURIComponent(resourceTag)}`, {
+    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
+  });
+  if (!findRes.ok) return { ok: true, results: new Map() };
+  const arr = (await findRes.json()) as Array<{ id?: string }>;
+  const lineitem = Array.isArray(arr) && arr[0]?.id ? String(arr[0].id) : null;
+  if (!lineitem) return { ok: true, results: new Map() };
+
+  const resultsUrl = lineitem.includes("/results") ? lineitem : `${lineitem.replace(/\?.*$/, "")}/results`;
+  const resRes = await fetch(resultsUrl, {
+    headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.resultcontainer+json" },
+  });
+  if (!resRes.ok) return { ok: true, results: new Map() };
+  const rc = (await resRes.json()) as Array<{ userId?: string; resultScore?: number; resultMaximum?: number }>;
+  const map = new Map<string, { score: number; max: number }>();
+  if (Array.isArray(rc)) {
+    for (const r of rc) {
+      if (r.userId) map.set(String(r.userId), { score: Number(r.resultScore ?? 0), max: Number(r.resultMaximum ?? 0) });
+    }
+  }
+  return { ok: true, results: map };
 }
 
 /**

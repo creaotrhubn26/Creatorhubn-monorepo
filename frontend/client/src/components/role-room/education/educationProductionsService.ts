@@ -64,12 +64,13 @@ export const educationProductionsService = {
  * ?project=<id>). URL-param `mode` vinner over lagret education-modus, så
  * utdannings-fanen blir uberørt.
  */
-export function openProductionInRoleRoom(projectId: string): void {
+export function openProductionInRoleRoom(projectId: string, tab?: string): void {
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('mode', 'production');
     url.searchParams.set('project', projectId);
-    url.searchParams.delete('tab');
+    if (tab) url.searchParams.set('tab', tab);
+    else url.searchParams.delete('tab');
     window.open(url.toString(), '_blank', 'noopener');
   } catch {
     /* no-op */

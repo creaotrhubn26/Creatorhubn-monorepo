@@ -132,16 +132,29 @@ export function createEducationProductionsRouter(
   router.post("/education/productions", requireAuth, async (req, res) => {
     const body = (req.body ?? {}) as { title?: string; cohortId?: string | null; projectId?: string };
     const title = typeof body.title === "string" ? body.title.trim() : "";
-    const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
-    if (!title || !projectId) { res.status(400).json({ error: "title_and_project_required" }); return; }
+    const givenProjectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    if (!title) { res.status(400).json({ error: "title_required" }); return; }
     try {
-      // Prosjektet MÅ eies av innlogget bruker (created_by). Hindrer at man
-      // kobler et kull til et prosjekt man ikke eier.
-      const owns = await pool.query(
-        `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2`,
-        [projectId, uid(req)],
-      );
-      if (owns.rows.length === 0) { res.status(404).json({ error: "project_not_found" }); return; }
+      let projectId = givenProjectId;
+      if (projectId) {
+        // Eksisterende prosjekt MÅ eies av innlogget bruker (created_by).
+        const owns = await pool.query(
+          `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2`,
+          [projectId, uid(req)],
+        );
+        if (owns.rows.length === 0) { res.status(404).json({ error: "project_not_found" }); return; }
+      } else {
+        // Ingen projectId → opprett et EKTE casting_projects for faglæreren
+        // (studentproduksjon). Studenter oppretter aldri prosjekter; faglærer
+        // er eier (created_by) og får dermed leder-tilgang til alle verktøyene.
+        // Minimal insert (id, name, created_by, status) — resten fylles i verktøyene.
+        projectId = newEntityId("project");
+        await pool.query(
+          `INSERT INTO casting_projects (id, name, status, created_by, created_at, updated_at)
+           VALUES ($1, $2, 'active', $3, now(), now())`,
+          [projectId, title, uid(req)],
+        );
+      }
       const id = newEntityId("edprod");
       const r = await pool.query(
         `INSERT INTO role_room_education_productions (id, owner_user_id, cohort_id, project_id, title)

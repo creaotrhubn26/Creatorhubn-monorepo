@@ -41,11 +41,15 @@ export interface AssessmentItemView {
   cohortName: string | null;
   studentId: string;
   studentName: string;
+  studentEmail: string | null;
   productionProjectId: string | null;
   status: string;
   grade: string | null;
   feedback: string | null;
   link: string | null;
+  isArbeidskrav: boolean;
+  isExam: boolean;
+  vurderingsform: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }
@@ -64,11 +68,15 @@ function rowToItem(r: Record<string, unknown>): AssessmentItemView {
     cohortName: (r.cohort_name as string) ?? null,
     studentId: String(r.student_id),
     studentName: (r.student_name as string) ?? "",
+    studentEmail: (r.student_email as string) ?? null,
     productionProjectId: (r.production_project_id as string) ?? null,
     status: (r.status as string) ?? "submitted",
     grade: (r.grade as string) ?? null,
     feedback: (r.feedback as string) ?? null,
     link: (r.link as string) ?? null,
+    isArbeidskrav: Boolean(r.is_arbeidskrav),
+    isExam: Boolean(r.is_exam),
+    vurderingsform: (r.vurderingsform as string) ?? null,
     submittedAt: isoOrNull(r.submitted_at),
     reviewedAt: isoOrNull(r.reviewed_at),
   };
@@ -128,8 +136,9 @@ export function createEducationAssessmentRouter(
     const r = await pool.query(
       `SELECT s.id AS submission_id, s.assignment_id, s.student_id, s.status,
               s.grade, s.feedback, s.link, s.submitted_at, s.reviewed_at,
-              st.name AS student_name,
+              st.name AS student_name, st.email AS student_email,
               a.title AS assignment_title, a.learning_goals, a.cohort_id,
+              a.is_arbeidskrav, a.is_exam, a.vurderingsform,
               c.name AS cohort_name,
               prod.project_id AS production_project_id
          FROM role_room_education_submissions s

@@ -25,6 +25,8 @@ export interface Student {
   email: string | null;
   studentNumber: string | null;
   status: string;
+  groupId: string | null;
+  groupName: string | null;
   createdAt: string;
 }
 
@@ -71,5 +73,14 @@ export const educationCohortsService = {
   },
   async deleteStudent(id: string): Promise<void> {
     await req(`${BASE}/students/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  /** Bulk-innlegging (CSV-import): flere studenter i ett kall. */
+  async addStudentsBulk(cohortId: string, students: { name: string; email?: string; studentNumber?: string }[]): Promise<{ added: number; skipped: number }> {
+    const data = await req<{ added: number; skipped: number }>(`${BASE}/cohorts/${encodeURIComponent(cohortId)}/students/bulk`, { method: 'POST', body: JSON.stringify({ students }) });
+    return { added: data.added ?? 0, skipped: data.skipped ?? 0 };
+  },
+  /** Tildel (eller fjern med null) student → gruppe. */
+  async setStudentGroup(studentId: string, groupId: string | null): Promise<void> {
+    await req(`${BASE}/students/${encodeURIComponent(studentId)}/group`, { method: 'PUT', body: JSON.stringify({ groupId }) });
   },
 };
