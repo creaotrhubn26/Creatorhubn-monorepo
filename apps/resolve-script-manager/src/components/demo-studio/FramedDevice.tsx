@@ -21,12 +21,17 @@ export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
 };
 
-export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, editRect, onEditRect, focusZoom, screenshot }: {
+export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, editRect, onEditRect, focusZoom, screenshot, scrollPct }: {
   variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
   /** Fase 1b: vis et scan-screenshot i stedet for live-iframe (presis + funker
    *  på sider iframe ikke kan vise). Når satt brukes ikke url/iframe. */
   screenshot?: string;
+  /** Scenens start-scroll (0..1). En cross-origin iframe kan ikke scrolles
+   *  utenfra, så for scener lenger nede på siden viser vi det EKSAKTE scan-
+   *  båndet (screenshot) i stedet for live-iframe (som ellers står på toppen).
+   *  Topp-scener (≈0) får fortsatt den live, interaktive iframe-en. */
+  scrollPct?: number;
   /** Innhold rendret OVER skjermen (hotspot/cursor/touch-overlay). */
   overlay?: React.ReactNode;
   /** Klikk på skjermflaten → koordinater i viewport-prosent (0–1). Når satt,
@@ -73,9 +78,12 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
       .catch(() => { if (!cancelled) setEmbeddable(true); }); // fail-open → live
     return () => { cancelled = true; };
   }, [url]);
-  // Vis screenshot KUN når vi vet siden er blokkert (og vi faktisk har et bilde).
-  // Ellers alltid live-iframe. Har vi ingen url i det hele tatt, bruk bildet.
-  const useShot = !!screenshot && (!url || embeddable === false);
+  // Vis screenshot når (a) siden er blokkert, (b) vi mangler url, ELLER (c)
+  // scenen starter et stykke ned på siden — da kan ikke den cross-origin live-
+  // iframe-en scrolles utenfra, så det eksakte scan-båndet er mer korrekt enn
+  // en live-iframe låst til toppen. Topp-scener beholder den live iframe-en.
+  const isTopScene = !scrollPct || scrollPct < 0.02;
+  const useShot = !!screenshot && (!url || embeddable === false || !isTopScene);
   // Portrett-rammer (iPhone/iPad stående) + et desktop-bredt screenshot ville
   // blitt sidebeskåret av objectFit:cover → vis i stedet full bredde, toppforankret
   // (hele sidens topp, ubeskåret). Landskaps-rammer matcher desktop-bildet → cover.
