@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Prosjektets shot-list inne i capture-flyten — polert etter mockup, men
 /// dette ER shot-list-løsningen (ikke et eget dashbord). Innhold:
@@ -187,7 +188,7 @@ struct ShotListPanel: View {
             }
             ForEach(model.autoCheckLog) { entry in
                 HStack(spacing: 12) {
-                    thumb(for: entry.shotId).frame(width: 44, height: 40).clipShape(RoundedRectangle(cornerRadius: 9))
+                    thumb(for: shot(byId: entry.shotId)).frame(width: 44, height: 40).clipShape(RoundedRectangle(cornerRadius: 9))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(entry.scene).font(.subheadline.weight(.semibold)).foregroundStyle(C.textPri)
                         Text("Auto-huket \(entry.at.formatted(date: .omitted, time: .shortened))")
@@ -277,7 +278,7 @@ struct ShotListPanel: View {
                     if done { Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.black) }
                     else { Text("\(index)").font(.caption.weight(.bold)).foregroundStyle(C.textSec) }
                 }.frame(width: 26, height: 26)
-                thumb(for: shot.id).frame(width: 50, height: 42).clipShape(RoundedRectangle(cornerRadius: 9))
+                thumb(for: shot).frame(width: 50, height: 42).clipShape(RoundedRectangle(cornerRadius: 9))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(shot.scene).font(.subheadline.weight(.semibold))
                         .foregroundStyle(done ? C.textSec : C.textPri)
@@ -309,9 +310,13 @@ struct ShotListPanel: View {
             .background(color.opacity(0.15), in: Capsule())
     }
 
+    /// Thumbnail-prioritet: (1) EKTE bilde fra det tatte shotet (lokal preview-
+    /// fil via capturedAssetId), (2) demo mock-scene, (3) plassholder.
     @ViewBuilder
-    private func thumb(for shotId: String) -> some View {
-        if let scene = ShotListPanel.demoThumbs[shotId] {
+    private func thumb(for shot: BackendShotListItem?) -> some View {
+        if let shot, let image = capturedImage(for: shot) {
+            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+        } else if let shot, let scene = ShotListPanel.demoThumbs[shot.id] {
             MockPhotoView(scene: scene)
         } else {
             RoundedRectangle(cornerRadius: 9).fill(C.cardHi)
@@ -319,7 +324,27 @@ struct ShotListPanel: View {
         }
     }
 
-    /// Demo-thumbnails pr shot-id. Ekte bruk kobler asset-previews senere.
+    private func shot(byId id: String) -> BackendShotListItem? {
+        model.selectedProjectDetail?.shotList.first { $0.id == id }
+    }
+
+    /// Ekte thumbnail av det tatte bildet: matcher shotets `capturedAssetId`
+    /// (lokal asset-UUID) mot øktas assets, laster preview-fila (cachet). Kun
+    /// for shots tatt på DENNE enheten — ellers nil (plassholder).
+    private func capturedImage(for shot: BackendShotListItem) -> UIImage? {
+        guard let capId = shot.capturedAssetId?.lowercased(),
+              let asset = model.assets.first(where: { $0.id.uuidString.lowercased() == capId }),
+              let key = asset.displayPreviewKey ?? asset.previewKey else { return nil }
+        if let cached = ShotListPanel.thumbCache[key] { return cached }
+        guard FileManager.default.fileExists(atPath: key),
+              let image = UIImage(contentsOfFile: key) else { return nil }
+        ShotListPanel.thumbCache[key] = image
+        return image
+    }
+
+    private static var thumbCache: [String: UIImage] = [:]
+
+    /// Demo-thumbnails pr shot-id (mock-scener), for skjermbilder uten ekte foto.
     static var demoThumbs: [String: MockScene] = [:]
 
     // MARK: - Tom / ingen prosjekt
