@@ -342,8 +342,12 @@ struct LiveCaptureView: View {
                 ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
             }
             if let scene = model.lastAutoCheckedShot {
-                ShotAutoCheckToast(scene: scene)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                ShotAutoCheckToast(scene: scene, onUndo: {
+                    if let id = model.lastAutoCheckedShotId {
+                        Task { await model.undoAutoCheck(shotId: id) }
+                    }
+                })
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
             if model.clientHeartedCount > 0 {
                 ClientHeartBanner(count: model.clientHeartedCount)
@@ -1246,14 +1250,23 @@ private struct ReconnectingBanner: View {
 /// Kort bekreftelse når et bilde auto-huket et shot i prosjektets shot-list.
 private struct ShotAutoCheckToast: View {
     let scene: String
+    var onUndo: (() -> Void)?
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             Text("Auto-huket: \(scene)")
                 .font(.caption.weight(.medium)).foregroundStyle(.white)
             Spacer(minLength: 8)
-            Text("synkes til workspace")
-                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+            if let onUndo {
+                Button(action: onUndo) {
+                    Label("Angre", systemImage: "arrow.uturn.backward")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.18), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .frame(maxWidth: .infinity)
@@ -5089,6 +5102,17 @@ final class LiveCaptureModel {
     var isDemoMode = false
     /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
     var lastAutoCheckedShot: String?
+    /// Sist auto-hukede shot-id — for «Angre» på toasten.
+    var lastAutoCheckedShotId: String?
+    /// Logg over auto-hukede shots denne økta → «Auto-huket»-oversikt m/ angre.
+    struct AutoCheckEntry: Identifiable, Equatable {
+        let id = UUID()
+        let shotId: String
+        let scene: String
+        let assetId: UUID
+        let at: Date
+    }
+    var autoCheckLog: [AutoCheckEntry] = []
     // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
     private var pendingTeamShotScenes: [String] = []
     private var teamShotPostTask: Task<Void, Never>?
@@ -5932,10 +5956,47 @@ final class LiveCaptureModel {
             shotId: match.id, in: list,
             capturedAssetId: assetId.uuidString.lowercased(), completedBy: who)
         lastAutoCheckedShot = match.scene
+        lastAutoCheckedShotId = match.id
+        autoCheckLog.insert(
+            AutoCheckEntry(shotId: match.id, scene: match.scene, assetId: assetId, at: Date()), at: 0)
         queueTeamShotUpdate(scene: match.scene, assetId: assetId, projectId: projectId)
         // Auto-fjern bekreftelsen etter noen sekunder.
-        try? await Task.sleep(for: .seconds(3))
+        try? await Task.sleep(for: .seconds(4))
         if lastAutoCheckedShot == match.scene { lastAutoCheckedShot = nil }
+    }
+
+    /// Angre en auto-huking: sett shotet tilbake til uhuket (fjerner completedBy
+    /// + koblet asset via ShotListStore) og ta det ut av loggen. Bildet forblir
+    /// «behandlet» så vi ikke auto-huker det på nytt — fotografen huker manuelt.
+    func undoAutoCheck(shotId: String) async {
+        if isDemoMode {
+            if let detail = selectedProjectDetail {
+                let shots = detail.shotList.map { s -> BackendShotListItem in
+                    guard s.id == shotId else { return s }
+                    return BackendShotListItem(
+                        id: s.id, scene: s.scene, description: s.description,
+                        estimatedDuration: s.estimatedDuration, priority: s.priority,
+                        shotType: s.shotType, locationName: s.locationName, notes: s.notes,
+                        scouted: s.scouted, isCompleted: false, capturedAssetId: nil, completedBy: nil)
+                }
+                selectedProjectDetail = BackendProjectDetail(
+                    id: detail.id, title: detail.title, description: detail.description,
+                    clientName: detail.clientName, eventDate: detail.eventDate, location: detail.location,
+                    projectType: detail.projectType, status: detail.status,
+                    shotListSummary: detail.shotListSummary, updatedAt: detail.updatedAt, shotList: shots)
+            }
+            autoCheckLog.removeAll { $0.shotId == shotId }
+            return
+        }
+        guard let projectId = selectedProject?.id else { return }
+        if let store = shotStore(),
+           let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId),
+           let shot = list.shots.first(where: { $0.id == shotId }), shot.isCompleted ?? false {
+            try? await store.toggleCompletion(shotId: shotId, in: list)   // true → false
+            await loadProjectDetail(projectId: projectId)                 // oppdater panelet
+        }
+        autoCheckLog.removeAll { $0.shotId == shotId }
+        if lastAutoCheckedShotId == shotId { lastAutoCheckedShot = nil; lastAutoCheckedShotId = nil }
     }
 
     /// Live team-oppdatering: legg scenen på det AKTIVE kortet og re-post etter

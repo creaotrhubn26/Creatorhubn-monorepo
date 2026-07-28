@@ -130,6 +130,7 @@ struct ShotListPanel: View {
         }
         return List {
             autoCheckSection
+            autoCheckLogSection
             if let summary = detail.shotListSummary {
                 Section {
                     ProgressView(value: Double(summary.completedShots),
@@ -167,6 +168,44 @@ struct ShotListPanel: View {
     /// Team-styring av auto-huk. Vises øverst i lista. Bindingen skriver
     /// optimistisk til modellen, kaller backend, og ruller tilbake ved feil
     /// (403 → «kun eier kan endre»). Alle på settet ser samme flagg.
+    /// #«oversikt + angre»: alt auto-huk har gjort denne økta, med angre per
+    /// element (og «Angre alle») — så en Vision-bom er ett trykk unna.
+    @ViewBuilder
+    private var autoCheckLogSection: some View {
+        if !model.autoCheckLog.isEmpty {
+            Section {
+                ForEach(model.autoCheckLog) { entry in
+                    HStack(spacing: 10) {
+                        Image(systemName: "sparkles").foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(entry.scene).font(.subheadline)
+                            Text("Auto-huket \(entry.at.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Button("Angre") {
+                            Task { await model.undoAutoCheck(shotId: entry.shotId) }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
+                    }
+                }
+            } header: {
+                HStack {
+                    Label("Auto-huket denne økta (\(model.autoCheckLog.count))", systemImage: "sparkles")
+                    Spacer()
+                    Button("Angre alle") {
+                        let ids = model.autoCheckLog.map(\.shotId)
+                        Task { for id in ids { await model.undoAutoCheck(shotId: id) } }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .textCase(nil)
+                }
+            }
+        }
+    }
+
     private var autoCheckSection: some View {
         Section {
             Toggle(isOn: Binding(
