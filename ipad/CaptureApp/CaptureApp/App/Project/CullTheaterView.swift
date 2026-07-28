@@ -122,6 +122,9 @@ final class CullTheaterModel {
     private(set) var hasAutoCulled = false
     /// On-device (Vision) smart-cull-oppsummering, f.eks. «2 duplikat-grupper».
     private(set) var smartCullSummary: String?
+    /// #6 Scene-/oppsett-klynger (asset-UUID-er) i opptaksrekkefølge — lar UI-et
+    /// culle én scene av gangen. Fylt av `runSmartCull`.
+    private(set) var sceneGroups: [[UUID]] = []
 
     init(sessionId: UUID, jobId: String, pricePerImage: Double?, ownerUserId: String) {
         self.sessionId = sessionId
@@ -218,7 +221,13 @@ final class CullTheaterModel {
         keptIds = Set(assets.filter { keepSet.contains($0.id.uuidString) }.map(\.id))
         RedigeringEditStore.saveKept(sessionId, keptIds)
         hasAutoCulled = true
-        smartCullSummary = "På enheten: \(result.duplicates.count) duplikat-grupper funnet, beholder \(keptIds.count) av \(items.count)."
+
+        // #6 Map scene-klyngene (id-strenger) → asset-UUID-er, i rekkefølge.
+        let byUuid = Dictionary(uniqueKeysWithValues: assets.map { ($0.id.uuidString, $0.id) })
+        sceneGroups = result.scenes.map { $0.compactMap { byUuid[$0] } }.filter { !$0.isEmpty }
+
+        let sceneText = sceneGroups.count > 1 ? " fordelt på \(sceneGroups.count) scener" : ""
+        smartCullSummary = "På enheten: \(result.duplicates.count) duplikat-grupper funnet\(sceneText), beholder \(keptIds.count) av \(items.count)."
     }
 
     func toggle(_ asset: Asset) {

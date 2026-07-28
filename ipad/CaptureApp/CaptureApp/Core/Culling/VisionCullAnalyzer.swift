@@ -17,6 +17,10 @@ import CoreGraphics
 struct VisionCullAnalyzer: Sendable {
     /// Feature-print-distanse under denne = «nesten identisk». Heuristikk.
     var duplicateThreshold: Double = 0.3
+    /// #6 Distanse under denne = «samme scene/oppsett». Større enn dedupe-
+    /// terskelen: dedupe fanger nesten-like frames, scene-klynging fanger et
+    /// helt setup (antrekk/bakgrunn). Heuristikk — finjuster på ekte shoot.
+    var sceneThreshold: Double = 0.62
 
     /// Analyser en hel batch (id + bilde) → rangert + dedupet resultat.
     func analyze(_ items: [(id: String, image: CGImage)]) async -> CullingResult {
@@ -32,14 +36,18 @@ struct VisionCullAnalyzer: Sendable {
 
         let printMap = Dictionary(prints, uniquingKeysWith: { a, _ in a })
         let ids = items.map(\.id)
-        let groups = CullingEngine.groupDuplicates(ids: ids, threshold: duplicateThreshold) { a, b in
+        let dist: (String, String) -> Double = { a, b in
             guard let pa = printMap[a], let pb = printMap[b],
                   let distance = try? pa.distance(to: pb) else {
                 return .greatestFiniteMagnitude
             }
             return distance
         }
-        return CullingEngine.cull(scores: scores, duplicateGroups: groups)
+        let groups = CullingEngine.groupDuplicates(ids: ids, threshold: duplicateThreshold, distance: dist)
+        // #6 Scene-klynger i opptaksrekkefølge (items antas sortert på tid).
+        let scenes = CullingEngine.groupByScene(ids: ids, threshold: sceneThreshold, distance: dist)
+        let base = CullingEngine.cull(scores: scores, duplicateGroups: groups)
+        return CullingResult(ranked: base.ranked, keep: base.keep, duplicates: base.duplicates, scenes: scenes)
     }
 
     private func score(_ cg: CGImage, id: String) async -> PhotoScore {

@@ -59,4 +59,37 @@ final class CullingEngineTests: XCTestCase {
         let groups = CullingEngine.groupDuplicates(ids: ["a", "b", "c"], threshold: 0.3) { _, _ in 0.9 }
         XCTAssertTrue(groups.isEmpty)
     }
+
+    // MARK: - #6 scene-klynging
+
+    func testGroupByScenePartitionsInCaptureOrder() {
+        // To oppsett: [a,b,c] like anker a; så [d,e] bryter (langt fra a) og
+        // ligner hverandre. Sekvensiell klynging skal gi to sammenhengende scener.
+        let ids = ["a", "b", "c", "d", "e"]
+        let near: Set<Set<String>> = [["a", "b"], ["a", "c"], ["d", "e"]]
+        let dist: (String, String) -> Double = { x, y in
+            near.contains(Set([x, y])) ? 0.2 : 0.9
+        }
+        let scenes = CullingEngine.groupByScene(ids: ids, threshold: 0.62, distance: dist)
+        XCTAssertEqual(scenes, [["a", "b", "c"], ["d", "e"]])
+    }
+
+    func testGroupBySceneEmptyAndSingle() {
+        XCTAssertEqual(CullingEngine.groupByScene(ids: [], threshold: 0.6) { _, _ in 0 }, [])
+        XCTAssertEqual(CullingEngine.groupByScene(ids: ["a"], threshold: 0.6) { _, _ in 0 }, [["a"]])
+    }
+
+    func testGroupBySceneAnchorNotLastFrame() {
+        // Gradvis drift: b nær a, c nær b men LANGT fra anker a → ny scene ved c.
+        // (Bekrefter at vi måler mot scenens ANKER, ikke forrige frame.)
+        let ids = ["a", "b", "c"]
+        let dist: (String, String) -> Double = { x, y in
+            let p = Set([x, y])
+            if p == Set(["a", "b"]) { return 0.3 }
+            if p == Set(["b", "c"]) { return 0.3 }
+            return 0.9   // a↔c langt
+        }
+        let scenes = CullingEngine.groupByScene(ids: ids, threshold: 0.62, distance: dist)
+        XCTAssertEqual(scenes, [["a", "b"], ["c"]])
+    }
 }

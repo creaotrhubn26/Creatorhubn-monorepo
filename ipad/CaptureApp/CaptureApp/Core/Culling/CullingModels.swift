@@ -36,6 +36,17 @@ struct CullingResult: Sendable, Equatable {
     /// Grupper av nesten-identiske bilder (hver gruppe > 1). Andre enn beste
     /// i gruppen er kandidater for å skjules.
     let duplicates: [[String]]
+    /// #6 Scene-/oppsett-klynger i opptaksrekkefølge (alle bilder, inkl.
+    /// singletons). Lar fotografen culle én scene av gangen. Tom hvis ikke
+    /// beregnet.
+    let scenes: [[String]]
+
+    init(ranked: [PhotoScore], keep: [String], duplicates: [[String]], scenes: [[String]] = []) {
+        self.ranked = ranked
+        self.keep = keep
+        self.duplicates = duplicates
+        self.scenes = scenes
+    }
 }
 
 enum CullingEngine {
@@ -77,5 +88,39 @@ enum CullingEngine {
         }
         let keep = ranked.map(\.id).filter { !demoted.contains($0) }
         return CullingResult(ranked: ranked, keep: keep, duplicates: duplicateGroups)
+    }
+
+    /// #6 Auto-grupper etter scene/oppsett (setup) — så fotografen kan culle
+    /// ÉN scene av gangen. Sekvensiell klynging i OPPTAKSREKKEFØLGE: start en
+    /// ny scene når feature-print-distansen fra scenens ANKER (første frame)
+    /// overstiger `threshold`. Terskelen er STØRRE enn dedupe-terskelen —
+    /// dedupe fanger nesten-identiske frames, scene-klynging fanger et helt
+    /// oppsett (antrekk/bakgrunn/lokasjon).
+    ///
+    /// Sekvensiell (ikke union-find på tvers) fordi shoots flyter i tid: alle
+    /// bildene i oppsett A, så oppsett B. Det unngår å slå sammen to atskilte
+    /// scener som tilfeldigvis ligner (samme bakgrunn, nytt antrekk). `ids`
+    /// antas sortert på opptakstid. Returnerer sammenhengende grupper (alle
+    /// bilder, inkl. singletons), i rekkefølge.
+    static func groupByScene(
+        ids: [String],
+        threshold: Double,
+        distance: (String, String) -> Double
+    ) -> [[String]] {
+        guard let first = ids.first else { return [] }
+        var scenes: [[String]] = []
+        var current: [String] = [first]
+        var anchor = first
+        for id in ids.dropFirst() {
+            if distance(anchor, id) < threshold {
+                current.append(id)
+            } else {
+                scenes.append(current)
+                current = [id]
+                anchor = id
+            }
+        }
+        scenes.append(current)
+        return scenes
     }
 }
