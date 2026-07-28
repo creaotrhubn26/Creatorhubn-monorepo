@@ -73,11 +73,23 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const realRows = real ? real.shots.slice(0, showAll ? 999 : 12).map((s: any) => {
     const title = s.name || s.title || s.shot || s.description || 'Shot';
     const prio = (s.priority || s.prio || 'normal').toString();
-    const status = (s.status || 'planlagt').toString();
+    // Auto-huk fra iPad setter isCompleted + completedBy → vis «Ferdig · Ole».
+    const done = s.isCompleted === true || String(s.status || '').toLowerCase() === 'ferdig';
+    const statusBase = done ? 'ferdig' : (s.status || 'planlagt').toString();
+    const status = done && s.completedBy ? `Ferdig · ${s.completedBy}` : (done ? 'Ferdig' : statusBase);
     const kat = s.category || s.kategori || s.phase || '—';
     const loc = s.location || s.lokasjon || '—';
-    return [prio, PRIO_TONE[prio.toLowerCase()] || 'neutral', title, kat, loc, status, STATUS_TONE[status.toLowerCase()] || 'blue'];
+    return [prio, PRIO_TONE[prio.toLowerCase()] || 'neutral', title, kat, loc, status, STATUS_TONE[statusBase.toLowerCase()] || 'blue'];
   }) : null;
+
+  // «Neste opp» — øverste ufullførte shots (prioritert) så teamet ser hva som gjenstår.
+  const PR = { must: 0, kritisk: 0, critical: 0, høy: 1, high: 1, normal: 2, medium: 2, lav: 3, low: 3 } as Record<string, number>;
+  const nextUp = real ? real.shots
+    .filter((s: any) => s.isCompleted !== true && String(s.status || '').toLowerCase() !== 'ferdig')
+    .sort((a: any, b: any) => (PR[String(a.priority || 'normal').toLowerCase()] ?? 2) - (PR[String(b.priority || 'normal').toLowerCase()] ?? 2))
+    .slice(0, 5)
+    .map((s: any) => ({ title: s.name || s.title || s.shot || s.description || 'Shot', prio: (s.priority || 'normal').toString() }))
+    : [];
   // Ekte prosjekt → ekte shots (tomt = tom-tilstand). Mock kun på /workspace/sample.
   const isRealP = projectId && projectId !== 'sample';
   const rows = isRealP ? (realRows || []) : SHOTS;
@@ -114,6 +126,20 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsStat icon={<Star sx={{ fontSize: 20 }} />} label="Kritiske øyeblikk" value={critical} sub={`Av totalt ${total}`} tone={ws.amberSoft} />
           <WsStat icon={<ErrorOutline sx={{ fontSize: 20 }} />} label="Mangler" value={mangler} sub="Må dekkes" tone={ws.redSoft} />
         </Box>
+
+        {isRealP && nextUp.length > 0 && (
+          <WsCard sx={{ mb: 2 }}>
+            <WsSectionTitle>Neste opp</WsSectionTitle>
+            <Stack spacing={0.75} sx={{ mt: 1 }}>
+              {nextUp.map((n: any, i: number) => (
+                <Stack key={i} direction="row" alignItems="center" spacing={1}>
+                  <WsTag tone={PRIO_TONE[n.prio.toLowerCase()] || 'neutral'}>{n.prio}</WsTag>
+                  <Typography sx={{ fontSize: 13, color: ws.textDim }}>{n.title}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </WsCard>
+        )}
 
         <WsCard>
           <Box sx={{ mb: 1.5 }}><WsPills items={pills} value={cat} onChange={setCat} /></Box>

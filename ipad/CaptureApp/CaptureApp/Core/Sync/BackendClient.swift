@@ -637,6 +637,21 @@ actor BackendClient {
             body: Body(deviceToken: token, platform: "ios"))
     }
 
+    /// Post en melding i prosjektets team-chat (`project-<id>` i communication_
+    /// channels — SAMME kanal som web-workspacens WorkspaceChatPanel). Brukes
+    /// til team-varsler om shot-progresjon.
+    func postProjectChatMessage(projectId: String, text: String) async throws {
+        struct Body: Encodable {
+            let channelId: String; let conversationId: String
+            let content: String; let text: String
+        }
+        struct Ack: Decodable {}
+        let channel = "project-\(projectId)"
+        let _: Ack = try await postJSON(
+            path: "/api/communication/messages",
+            body: Body(channelId: channel, conversationId: channel, content: text, text: text))
+    }
+
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,
         body: RequestBody,

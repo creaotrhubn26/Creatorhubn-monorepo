@@ -5061,6 +5061,9 @@ final class LiveCaptureModel {
     private var shotAutoCheckStore: ShotListStore?
     /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
     var lastAutoCheckedShot: String?
+    // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
+    private var pendingTeamShotScenes: [String] = []
+    private var teamShotPostTask: Task<Void, Never>?
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     /// Phase 2C — per-session RAW renderer. Built at connect time so it
@@ -5866,12 +5869,56 @@ final class LiveCaptureModel {
         guard let signals,
               let match = ShotMatcher.bestMatch(signals: signals, shots: list.shots)
         else { return }
+        let who = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email ?? "Fotograf"
         try? await store.toggleCompletion(
-            shotId: match.id, in: list, capturedAssetId: assetId.uuidString.lowercased())
+            shotId: match.id, in: list,
+            capturedAssetId: assetId.uuidString.lowercased(), completedBy: who)
         lastAutoCheckedShot = match.scene
+        queueTeamShotUpdate(scene: match.scene, projectId: projectId)
         // Auto-fjern bekreftelsen etter noen sekunder.
         try? await Task.sleep(for: .seconds(3))
         if lastAutoCheckedShot == match.scene { lastAutoCheckedShot = nil }
+    }
+
+    /// Batch team-varsler: samle auto-hukede scener, post ÉN oppsummering til
+    /// prosjekt-chatten etter 15s ro (unngår én melding per bilde). Meldingen
+    /// synkes automatisk til både iPad-Meldinger og web-workspacens chat.
+    private func queueTeamShotUpdate(scene: String, projectId: String) {
+        pendingTeamShotScenes.append(scene)
+        teamShotPostTask?.cancel()
+        teamShotPostTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard !Task.isCancelled else { return }
+            await self?.flushTeamShotUpdate(projectId: projectId)
+        }
+    }
+
+    private func flushTeamShotUpdate(projectId: String) async {
+        let scenes = pendingTeamShotScenes
+        pendingTeamShotScenes = []
+        guard !scenes.isEmpty, let backend = backendClient else { return }
+        let who = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email ?? "Fotograf"
+        var nextText = ""
+        if let store = shotStore(),
+           let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId) {
+            let next = list.shots.filter { !($0.isCompleted ?? false) }
+                .sorted { prioRank($0.priority) < prioRank($1.priority) }
+                .prefix(2).map(\.scene)
+            if !next.isEmpty { nextText = " · Neste: \(next.joined(separator: ", "))" }
+        }
+        let msg = "📸 \(who) tok: \(scenes.joined(separator: ", "))\(nextText)"
+        try? await backend.postProjectChatMessage(projectId: projectId, text: msg)
+    }
+
+    private func prioRank(_ priority: String?) -> Int {
+        switch (priority ?? "").lowercased() {
+        case "must": return 0
+        case "high": return 1
+        case "medium": return 2
+        default: return 3
+        }
     }
 
     private func dispatchAutoCleanForNewlyReadyAssets() {
