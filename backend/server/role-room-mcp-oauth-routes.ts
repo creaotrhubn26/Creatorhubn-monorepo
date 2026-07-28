@@ -21,6 +21,9 @@ function publicBase(req: Request): string {
   return `${proto}://${host}`;
 }
 const OAUTH_BASE = "/api/role-room/mcp/oauth";
+// Frontend-samtykke-side (leser innlogget Role Room-sesjon fra localStorage og
+// poster til POST .../authorize). Overstyrbar via env.
+const CONSENT_URL = process.env.MCP_CONSENT_URL?.trim() || "https://www.theroleroom.com/mcp-connect.html";
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 
 export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
@@ -45,7 +48,7 @@ export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
     const base = publicBase(req);
     res.json({
       issuer: base,
-      authorization_endpoint: `${base}${OAUTH_BASE}/authorize`,
+      authorization_endpoint: CONSENT_URL,
       token_endpoint: `${base}${OAUTH_BASE}/token`,
       registration_endpoint: `${base}${OAUTH_BASE}/register`,
       scopes_supported: OAUTH_SUPPORTED_SCOPES,
