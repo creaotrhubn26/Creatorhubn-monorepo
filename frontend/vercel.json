@@ -1011,6 +1011,11 @@
       "destination": "https://creatorhub-backend-rtbl.onrender.com/.well-known/oauth-authorization-server"
     },
     {
+      "source": "/favicon.ico",
+      "has": [{ "type": "host", "value": "(www\\.)?theroleroom\\.com" }],
+      "destination": "/theroleroom-app-icon-1024.png"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://creatorhub-backend-rtbl.onrender.com/api/$1"
     },
