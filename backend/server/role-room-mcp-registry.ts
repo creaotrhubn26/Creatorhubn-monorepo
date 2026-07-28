@@ -144,6 +144,31 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
   {
+    name: "rr_whoami",
+    description: "Diagnostikk: hvilken bruker/konto tilkoblingen er autentisert som (userId), hvilke scopes, og en oversikt over hva økta har tilgang til (antall prosjekter man eier/er medlem av, utdannings-kull, egen talent-profil). Nyttig for å bekrefte at handshaken traff riktig konto.",
+    scope: "projects.read", modes: "*", projectScoped: false,
+    inputSchema: OBJ({}),
+    handler: async (pool, ctx) => {
+      const [proj, coh, tal] = await Promise.all([
+        pool.query(
+          `SELECT count(DISTINCT p.id)::int AS n FROM casting_projects p
+             LEFT JOIN casting_user_roles r ON r.project_id = p.id AND r.user_id = $1 AND r.deactivated_at IS NULL
+            WHERE p.created_by = $1 OR r.user_id IS NOT NULL`, [ctx.userId]),
+        pool.query(`SELECT count(*)::int AS n FROM role_room_education_cohorts WHERE owner_user_id = $1`, [ctx.userId]),
+        pool.query(`SELECT EXISTS(SELECT 1 FROM talents WHERE owner_user_id = $1) AS has`, [ctx.userId]),
+      ]);
+      return {
+        userId: ctx.userId,
+        scopes: ctx.scopes,
+        access: {
+          projects: proj.rows[0].n,
+          educationCohorts: coh.rows[0].n,
+          hasTalentProfile: tal.rows[0].has === true,
+        },
+      };
+    },
+  },
+  {
     name: "rr_get_my_talent_profile",
     description: "Hent den innloggede brukerens EGEN talent-/skuespillerprofil i Role Room Talents (ikke andres — det krever samtykke-gated agency-søk).",
     scope: "projects.read", modes: "*", projectScoped: false,
