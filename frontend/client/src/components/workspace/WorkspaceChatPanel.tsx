@@ -38,6 +38,9 @@ import EventOutlined from '@mui/icons-material/EventOutlined';
 import PhotoLibraryOutlined from '@mui/icons-material/PhotoLibraryOutlined';
 import WorkOutline from '@mui/icons-material/WorkOutline';
 import OpenInNew from '@mui/icons-material/OpenInNew';
+import PhotoCamera from '@mui/icons-material/PhotoCamera';
+import CloudDone from '@mui/icons-material/CloudDone';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select, Checkbox, FormControlLabel, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import Lock from '@mui/icons-material/Lock';
 import Public from '@mui/icons-material/Public';
@@ -577,6 +580,80 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     }
     return null;
   };
+  // ── Shot-oppdaterings-kort (auto-huk fra Capture-appen) ──
+  // Leser strukturert metadata.shotUpdate (fra iPad-en) med fallback til å
+  // parse «📸 Ole tok: A, B · Neste: X»-teksten. Kortet oppdateres in-place
+  // fordi iPad-en re-poster samme melding-id mens flere bilder tas.
+  const parseShotUpdate = (m) => {
+    const su = m?.metadata?.shotUpdate;
+    if (su && Array.isArray(su.scenes) && su.scenes.length) {
+      return {
+        who: su.who || m.senderName || 'Fotograf',
+        scenes: su.scenes,
+        next: Array.isArray(su.next) ? su.next : [],
+        count: su.count || su.scenes.length,
+        backup: typeof su.backup === 'number' ? su.backup : 1,
+      };
+    }
+    const c = m?.content || '';
+    if (!c.startsWith('📸 ')) return null;
+    let body = c.slice(2).trim();
+    let next = [];
+    const ni = body.indexOf(' · Neste: ');
+    if (ni >= 0) { next = body.slice(ni + ' · Neste: '.length).split(',').map((s) => s.trim()).filter(Boolean); body = body.slice(0, ni); }
+    const ti = body.indexOf(' tok: ');
+    if (ti < 0) return null;
+    const who = body.slice(0, ti).trim();
+    const scenes = body.slice(ti + ' tok: '.length).split(',').map((s) => s.trim()).filter(Boolean);
+    if (!who || !scenes.length) return null;
+    return { who, scenes, next, count: scenes.length, backup: 1 };
+  };
+  const renderShotCard = (m) => {
+    const su = parseShotUpdate(m);
+    if (!su) return null;
+    const imgs = (m.attachments || []).filter((a) => String(a.mimeType || '').startsWith('image'));
+    const secured = su.backup >= 1;
+    const pct = Math.round((su.backup || 0) * 100);
+    return (
+      <Box sx={{ mt: 0.5, p: 1.25, borderRadius: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${ws.greenSoft}`, width: '100%', maxWidth: 340 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Box sx={{ width: 30, height: 30, borderRadius: '50%', bgcolor: ws.green, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <PhotoCamera sx={{ fontSize: 16, color: '#fff' }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 800, color: ws.text }}>{su.who} tok {su.count} {su.count === 1 ? 'bilde' : 'bilder'}</Typography>
+            <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>Auto-huket på shot-listen</Typography>
+          </Box>
+          {secured ? (
+            <Chip size="small" icon={<CloudDone sx={{ fontSize: 13, color: `${ws.green} !important` }} />} label="Sikret" sx={{ height: 22, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />
+          ) : (
+            <Chip size="small" label={`${pct}%`} sx={{ height: 22, fontSize: 10.5, fontWeight: 800, color: ws.accent, bgcolor: ws.accentSoft }} />
+          )}
+        </Stack>
+        {imgs.length > 0 && (
+          <Stack direction="row" spacing={0.75} sx={{ mt: 1 }}>
+            {imgs.slice(0, 4).map((a, i) => (
+              <Box key={i} component="img" src={a.downloadUrl} alt={a.filename || ''} sx={{ width: 60, height: 60, borderRadius: 1.5, objectFit: 'cover', border: `1px solid ${ws.border}` }} />
+            ))}
+          </Stack>
+        )}
+        <Stack spacing={0.4} sx={{ mt: 1 }}>
+          {su.scenes.map((s, i) => (
+            <Stack key={i} direction="row" spacing={0.75} alignItems="center">
+              <CheckCircleOutline sx={{ fontSize: 15, color: ws.green }} />
+              <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s}</Typography>
+            </Stack>
+          ))}
+        </Stack>
+        {su.next.length > 0 && (
+          <Box sx={{ mt: 1, px: 1, py: 0.6, borderRadius: 1.5, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <ArrowForwardIcon sx={{ fontSize: 14, color: ws.accent }} />
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Neste: {su.next.join(', ')}</Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  };
   // Forespørsel-status (tag=Spørsmål): åpen med «Marker som løst», eller «Løst».
   const renderRequest = (m) => {
     if (m.tag !== 'question') return null;
@@ -687,12 +764,13 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                 {tagMeta && (
                   <Chip size="small" icon={tagMeta.icon} label={t(tagMeta.dictKey)} sx={{ mt: 0.4, height: 18, fontSize: 10, color: tagMeta.color, bgcolor: tagMeta.soft, '& .MuiChip-icon': { color: tagMeta.color } }} />
                 )}
-                {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && (
+                {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && !parseShotUpdate(m) && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
                     <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
                   </Box>
                 )}
-                {renderAttachments(m.attachments)}
+                {renderShotCard(m)}
+                {!parseShotUpdate(m) && renderAttachments(m.attachments)}
                 {renderCard(m)}
                 {renderRequest(m)}
               </Box>

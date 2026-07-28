@@ -5069,6 +5069,15 @@ final class LiveCaptureModel {
     // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
     private var pendingTeamShotScenes: [String] = []
     private var teamShotPostTask: Task<Void, Never>?
+    // Ekte in-place-oppdatering: ETT kort pr opptaksøkt. Vi re-poster samme
+    // clientMessageId med voksende innhold + metadata → backend upserter →
+    // kortet vokser der det er, i stedet for én ny melding pr batch.
+    private var activeShotCardId: String?
+    private var activeShotCardScenes: [String] = []
+    private var activeShotCardAssetIds: [UUID] = []
+    private var lastShotCardActivity: Date?
+    /// Ny økt (nytt kort) etter så lang ro siden forrige auto-huk.
+    private let shotCardIdleReset: TimeInterval = 180
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     /// Phase 2C — per-session RAW renderer. Built at connect time so it
@@ -5490,6 +5499,7 @@ final class LiveCaptureModel {
         if #available(iOS 16.1, *) {
             await ShootActivityManager.shared.end()
         }
+        resetActiveShotCard()   // ny opptaksøkt neste gang ⇒ ferskt kort
         await teardown()
     }
 
@@ -5881,41 +5891,100 @@ final class LiveCaptureModel {
             shotId: match.id, in: list,
             capturedAssetId: assetId.uuidString.lowercased(), completedBy: who)
         lastAutoCheckedShot = match.scene
-        queueTeamShotUpdate(scene: match.scene, projectId: projectId)
+        queueTeamShotUpdate(scene: match.scene, assetId: assetId, projectId: projectId)
         // Auto-fjern bekreftelsen etter noen sekunder.
         try? await Task.sleep(for: .seconds(3))
         if lastAutoCheckedShot == match.scene { lastAutoCheckedShot = nil }
     }
 
-    /// Batch team-varsler: samle auto-hukede scener, post ÉN oppsummering til
-    /// prosjekt-chatten etter 15s ro (unngår én melding per bilde). Meldingen
-    /// synkes automatisk til både iPad-Meldinger og web-workspacens chat.
-    private func queueTeamShotUpdate(scene: String, projectId: String) {
-        pendingTeamShotScenes.append(scene)
+    /// Live team-oppdatering: legg scenen på det AKTIVE kortet og re-post etter
+    /// kort ro (6s). Kortet vokser in-place (samme clientMessageId) helt til
+    /// opptaksøkta er stille lenge nok (`shotCardIdleReset`) → da starter et
+    /// nytt kort. Synkes til både iPad-Meldinger og web-workspacens chat.
+    private func queueTeamShotUpdate(scene: String, assetId: UUID, projectId: String) {
+        // Start nytt kort hvis ingen aktivt, eller det har vært stille lenge.
+        let now = Date()
+        if activeShotCardId == nil
+            || (lastShotCardActivity.map { now.timeIntervalSince($0) > shotCardIdleReset } ?? true) {
+            activeShotCardId = UUID().uuidString.lowercased()
+            activeShotCardScenes = []
+            activeShotCardAssetIds = []
+        }
+        activeShotCardScenes.append(scene)
+        activeShotCardAssetIds.append(assetId)
+        lastShotCardActivity = now
+
         teamShotPostTask?.cancel()
         teamShotPostTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(15))
+            try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled else { return }
             await self?.flushTeamShotUpdate(projectId: projectId)
         }
     }
 
     private func flushTeamShotUpdate(projectId: String) async {
-        let scenes = pendingTeamShotScenes
-        pendingTeamShotScenes = []
-        guard !scenes.isEmpty, let backend = backendClient else { return }
+        let scenes = activeShotCardScenes
+        guard let cardId = activeShotCardId, !scenes.isEmpty,
+              let backend = backendClient else { return }
         let who = SignInService.shared.session?.displayName
             ?? SignInService.shared.session?.email ?? "Fotograf"
-        var nextText = ""
+
+        // «Neste» = høyest prioriterte uhukede shots akkurat nå.
+        var nextArr: [String] = []
         if let store = shotStore(),
            let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId) {
-            let next = list.shots.filter { !($0.isCompleted ?? false) }
+            nextArr = list.shots.filter { !($0.isCompleted ?? false) }
                 .sorted { prioRank($0.priority) < prioRank($1.priority) }
                 .prefix(2).map(\.scene)
-            if !next.isEmpty { nextText = " · Neste: \(next.joined(separator: ", "))" }
         }
+
+        // Ekte backup-signal: andel av kortets bilder som er lastet opp til
+        // skyen (B2/sync) — driver «Sikret»-statusen.
+        let ids = Set(activeShotCardAssetIds)
+        let relevant = assets.filter { ids.contains($0.id) }
+        let backedUp = relevant.filter { $0.state.isBackedUp }.count
+        let backup = relevant.isEmpty ? 0.0 : Double(backedUp) / Double(relevant.count)
+
+        let nextText = nextArr.isEmpty ? "" : " · Neste: \(nextArr.joined(separator: ", "))"
         let msg = "📸 \(who) tok: \(scenes.joined(separator: ", "))\(nextText)"
-        try? await backend.postProjectChatMessage(projectId: projectId, text: msg)
+        let shotUpdate: [String: Any] = [
+            "who": who,
+            "scenes": scenes,
+            "next": nextArr,
+            "count": scenes.count,
+            "backup": backup,
+        ]
+        try? await backend.postProjectShotCard(
+            projectId: projectId, clientMessageId: cardId, text: msg, shotUpdate: shotUpdate)
+
+        // Fortsatt bilder på vei opp? Re-post når backup er ferdig, så «Sikret»
+        // dukker opp uten at fotografen tar et nytt bilde.
+        if backup < 1.0 { scheduleBackupFollowup(projectId: projectId, cardId: cardId) }
+    }
+
+    /// Poll asset-statusene og re-post kortet når alle bildene er sikret (så
+    /// «Sikret»-merket lander selv om ingen nye bilder tas). Selv-kansellerende
+    /// via `activeShotCardId`-sjekk (nytt kort ⇒ gammel followup dør).
+    private func scheduleBackupFollowup(projectId: String, cardId: String) {
+        Task { [weak self] in
+            for _ in 0..<12 {   // opp til ~60s
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, self.activeShotCardId == cardId else { return }
+                let ids = Set(self.activeShotCardAssetIds)
+                let relevant = self.assets.filter { ids.contains($0.id) }
+                let done = !relevant.isEmpty && relevant.allSatisfy { $0.state.isBackedUp }
+                if done { await self.flushTeamShotUpdate(projectId: projectId); return }
+            }
+        }
+    }
+
+    /// Nullstill det aktive kortet (ny opptaksøkt). Kalles ved frakobling/
+    /// prosjektbytte så neste bilde starter et ferskt kort.
+    private func resetActiveShotCard() {
+        activeShotCardId = nil
+        activeShotCardScenes = []
+        activeShotCardAssetIds = []
+        lastShotCardActivity = nil
     }
 
     private func prioRank(_ priority: String?) -> Int {
@@ -6480,6 +6549,7 @@ final class LiveCaptureModel {
     /// (with shot list) in the background so the shot list panel can
     /// render shots[] right away.
     func selectProject(_ summary: BackendProjectSummary) {
+        if selectedProject?.id != summary.id { resetActiveShotCard() }
         selectedProject = summary
         sessionName = summary.title
         Task { await loadProjectDetail(projectId: summary.id) }

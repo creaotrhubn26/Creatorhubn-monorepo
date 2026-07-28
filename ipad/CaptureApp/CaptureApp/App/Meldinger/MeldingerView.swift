@@ -453,8 +453,15 @@ private struct MessageBubble: View {
                         .foregroundStyle(CHTheme.textMuted)
                 }
                 // Auto-huk-teamoppdatering → pent strukturert kort (thumbnails,
-                // «Se bildene», backup-status). Ellers vanlig boble.
-                if let text = message.text, let info = ShotUpdateInfo.parse(text) {
+                // «Se bildene», backup-status). Foretrekk strukturert metadata
+                // (ekte backup/antall); fall tilbake til tekst-parse. Ellers boble.
+                if let su = message.shotUpdate, !su.scenes.isEmpty {
+                    ShotUpdateCard(
+                        info: ShotUpdateInfo(who: su.who ?? message.senderName ?? "Fotograf",
+                                             scenes: su.scenes, next: su.next),
+                        thumbs: imageThumbs, fromMe: message.fromMe,
+                        backupProgress: su.backup ?? 1.0)
+                } else if let text = message.text, let info = ShotUpdateInfo.parse(text) {
                     ShotUpdateCard(info: info, thumbs: imageThumbs, fromMe: message.fromMe)
                 } else {
                     if let text = message.text, !text.isEmpty {

@@ -652,6 +652,33 @@ actor BackendClient {
             body: Body(channelId: channel, conversationId: channel, content: text, text: text))
     }
 
+    /// Post/OPPDATER shot-oppdaterings-kortet i team-chatten. `clientMessageId`
+    /// er stabil pr opptaksøkt → backend upserter (persistMessage 23505→update)
+    /// slik at SAMME melding vokser in-place når flere bilder tas. `shotUpdate`
+    /// er strukturert metadata (who/scenes/next/count/backup) som web + iPad
+    /// rendrer som kort. `content` beholdes lesbar for varsler/fallback.
+    func postProjectShotCard(
+        projectId: String, clientMessageId: String, text: String,
+        shotUpdate: [String: Any]
+    ) async throws {
+        let channel = "project-\(projectId)"
+        let body: [String: Any] = [
+            "id": clientMessageId,
+            "channelId": channel,
+            "conversationId": channel,
+            "content": text,
+            "text": text,
+            "metadata": ["shotUpdate": shotUpdate],
+        ]
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/communication/messages"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await self.data(for: request)
+    }
+
     /// Les team-flagget for shot-list auto-huk (delt via projects.settings).
     /// Default PÅ hvis ukjent/feil.
     func fetchShotListAutoCheck(projectId: String) async -> Bool {
