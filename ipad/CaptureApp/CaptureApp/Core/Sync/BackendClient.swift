@@ -652,6 +652,18 @@ actor BackendClient {
             body: Body(channelId: channel, conversationId: channel, content: text, text: text))
     }
 
+    /// Les team-flagget for shot-list auto-huk (delt via projects.settings).
+    /// Default PÅ hvis ukjent/feil.
+    func fetchShotListAutoCheck(projectId: String) async -> Bool {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/projects/\(projectId)/capture-settings"))
+        request.httpMethod = "GET"
+        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        guard let (data, response) = try? await self.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return true }
+        struct Resp: Decodable { let shotListAutoCheck: Bool? }
+        return (try? JSONDecoder().decode(Resp.self, from: data))?.shotListAutoCheck ?? true
+    }
+
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,
         body: RequestBody,

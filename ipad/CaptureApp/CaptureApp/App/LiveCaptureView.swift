@@ -5059,6 +5059,9 @@ final class LiveCaptureModel {
     // → outbox-sync til /api/projects/:id/shot-list → synlig i workspace.
     private var autoCheckedShotAssetIds: Set<UUID> = []
     private var shotAutoCheckStore: ShotListStore?
+    /// Team-flagg (projects.settings.shotListAutoCheck) — eier/lead styrer det
+    /// fra web-workspacen. Default PÅ; hentes når prosjekt kobles til.
+    var shotListAutoCheckEnabled = true
     /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
     var lastAutoCheckedShot: String?
     // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
@@ -5832,6 +5835,7 @@ final class LiveCaptureModel {
     /// :id/shot-list → sync-arbeideren pusher → synlig i fotografens workspace
     /// (web + andre enheter). `capturedAssetId` kobler shotet til bildet.
     private func dispatchShotAutoCheckForNewAssets() {
+        guard shotListAutoCheckEnabled else { return }
         guard let projectId = selectedProject?.id else { return }
         let owner = actorUserId
         for asset in assets {
@@ -6477,6 +6481,18 @@ final class LiveCaptureModel {
         selectedProject = summary
         sessionName = summary.title
         Task { await loadProjectDetail(projectId: summary.id) }
+        refreshShotListAutoCheckFlag(projectId: summary.id)
+    }
+
+    /// Hent team-flagget for auto-huk fra backend (eier/lead styrer det i web).
+    /// Feiler stille til PÅ — så en nettverksglipp aldri blokkerer huking.
+    private func refreshShotListAutoCheckFlag(projectId: String) {
+        let backend = backendClient ?? makeBackendClientFromDefaults()
+        guard let backend else { return }
+        Task { [weak self] in
+            let enabled = await backend.fetchShotListAutoCheck(projectId: projectId)
+            await MainActor.run { self?.shotListAutoCheckEnabled = enabled }
+        }
     }
 
     func clearSelectedProject() {

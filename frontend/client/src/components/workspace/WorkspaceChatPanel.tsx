@@ -223,6 +223,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [apprOpen, setApprOpen] = useState(false);
   const [apprLoading, setApprLoading] = useState(false);
   const [apprItems, setApprItems] = useState([]);
+  // Team-flagg for auto-huk av shot-listen (delt m/ Capture-appen via
+  // projects.settings.shotListAutoCheck). null = ukjent enda.
+  const [shotAutoCheck, setShotAutoCheck] = useState(null);
+  const [autoCheckBusy, setAutoCheckBusy] = useState(false);
+  const captureRelevant = ['foto', 'photo', 'photography', 'film', 'video', 'commercial'].includes(String(category));
 
   // Respekter prefers-reduced-motion (CSS dekker ikke JS-drevet smooth-scroll).
   const scrollDown = () => requestAnimationFrame(() => {
@@ -251,6 +256,14 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   // Prosjekt-hendelser (leveranser, oppgaver, møter, låter, oppdrag) flettes
   // inn i tidslinjen så chatten blir prosjektets puls.
   const loadActivity = React.useCallback(() => apiRequest(`/api/projects/${projectId}/activity`).then((d) => setActivity(Array.isArray(d?.activity) ? d.activity : [])).catch(() => setActivity([])), [projectId]);
+
+  // Hent team-flagget for shot-list auto-huk (kun for foto/film-prosjekter).
+  useEffect(() => {
+    if (!captureRelevant) return;
+    apiRequest(`/api/projects/${projectId}/capture-settings`)
+      .then((d) => setShotAutoCheck(d?.shotListAutoCheck !== false))
+      .catch(() => { /* degraderer stille — menyvalget skjules */ });
+  }, [projectId, captureRelevant]);
 
   useEffect(() => {
     load(true); loadActivity();
@@ -346,6 +359,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const resolveRequest = async (id) => {
     try { await apiRequest(`/api/communication/messages/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status: 'resolved' } }); await load(false); }
     catch { setToast(t('sendFailed')); }
+  };
+  // Eier/lead slår auto-huk av shot-listen på/av for teamet. Capture-appen
+  // leser samme flagg → iPad-en slutter/gjenopptar å hake av shots automatisk.
+  // PUT-en er eier-gated i backend (403 → vis melding). Poster et systemvarsel
+  // så teamet ser endringen i chatten.
+  const toggleShotAutoCheck = async () => {
+    const next = !shotAutoCheck;
+    setAutoCheckBusy(true);
+    try {
+      await apiRequest(`/api/projects/${projectId}/capture-settings`, { method: 'PUT', body: { shotListAutoCheck: next, updatedBy: myName } });
+      setShotAutoCheck(next);
+      await postAction(next ? `✅ ${myName} slo på auto-huk av shot-listen` : `⏸️ ${myName} slo av auto-huk av shot-listen`, { action: 'system', system: true });
+    } catch (e) {
+      const msg = String(e?.message || '');
+      setToast(/403|not_owner/.test(msg) ? 'Kun prosjekteier kan endre auto-huk' : (e?.message || t('sendFailed')));
+    } finally { setAutoCheckBusy(false); setMoreAnchor(null); }
   };
   const runAi = async (mode) => {
     setActionAnchor(null); setBusyAction(true);
@@ -764,6 +793,12 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
         <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
         <MenuItem component="a" href="/guide/actions" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><AutoAwesome sx={{ fontSize: 18 }} /> {t('actionsGuide')}</MenuItem>
+        {captureRelevant && shotAutoCheck !== null && (
+          <MenuItem onClick={toggleShotAutoCheck} disabled={autoCheckBusy} sx={{ gap: 1, fontSize: 13 }}>
+            <PlaylistAddCheck sx={{ fontSize: 18, color: shotAutoCheck ? ws.accent : ws.textDim }} />
+            {shotAutoCheck ? 'Slå av auto-huk (shot-liste)' : 'Slå på auto-huk (shot-liste)'}
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Action-launcher */}
