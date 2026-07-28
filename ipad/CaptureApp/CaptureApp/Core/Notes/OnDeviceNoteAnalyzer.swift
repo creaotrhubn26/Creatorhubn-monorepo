@@ -86,7 +86,11 @@ struct FoundationModelsTextGenerator: TextGenerating {
     func generate(_ prompt: TextGenPrompt) async throws -> String {
         let (instructions, userPrompt) = Self.build(prompt)
         let session = LanguageModelSession(instructions: instructions)
-        return try await session.respond(to: userPrompt).content
+        // Kapp output-lengden — modellen genererte ellers til den sprengte
+        // 4096-token-kontekstvinduet (exceededContextWindowSize). Godt innenfor
+        // for e-post/beskrivelse/shot-list (~300–500 tokens).
+        let options = GenerationOptions(maximumResponseTokens: 700)
+        return try await session.respond(to: userPrompt, options: options).content
     }
 
     static func build(_ prompt: TextGenPrompt) -> (instructions: String, prompt: String) {
@@ -100,6 +104,18 @@ struct FoundationModelsTextGenerator: TextGenerating {
             return (
                 "Du er en fotograf som skriver korte, innbydende galleri-beskrivelser på norsk.",
                 "Skriv en kort beskrivelse for galleriet «\(project)». Stikkord: \(notes)"
+            )
+        case .shotListFromBrief(let brief):
+            return (
+                "Du er en erfaren fotograf som lager konsise shot-lister på norsk fra en "
+                + "klient-brief eller dagsplan. Regler: (1) ÉN linje pr shot — kort, konkret "
+                + "scene (f.eks. «Brudeportrett — motlys i hagen»). (2) Kun DISTINKTE shots — "
+                + "ALDRI gjenta samme shot, og lag ALDRI ett shot pr klokkeslett/tidsluke. "
+                + "(3) IKKE skriv klokkeslett foran linjene. (4) Dekk de faktiske momentene i "
+                + "briefen (forberedelser, seremoni, portretter, familie, detaljer, fest). "
+                + "(5) Ingen nummerering, kulepunkter, overskrifter eller forklaringer. "
+                + "Maks 18 linjer.",
+                "Lag en konsis, distinkt shot-list fra denne briefen/dagsplanen:\n\(brief)"
             )
         }
     }

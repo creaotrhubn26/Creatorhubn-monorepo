@@ -43,4 +43,33 @@ final class TextGenerationIntelligenceTests: XCTestCase {
             XCTAssertEqual(failure, .unavailable(.osUnsupported))
         } catch { XCTFail("feil feiltype: \(error)") }
     }
+
+    // MARK: - #9 ShotListBriefParser (dedup + tid-strip)
+
+    func testBriefParserStripsBulletsAndNumbering() {
+        let raw = "- Brudeportrett i hagen\n1. Detaljer: ringer\n* Første dans"
+        XCTAssertEqual(ShotListBriefParser.scenes(from: raw),
+                       ["Brudeportrett i hagen", "Detaljer: ringer", "Første dans"])
+    }
+
+    func testBriefParserStripsLeadingTimeAndDedupes() {
+        let raw = """
+        16:00 Brudepar-portretter i hagen
+        16:10 Brudepar-portretter i hagen
+        16:20 Brudepar-portretter i hagen
+        14:30 Vielse i kapellet
+        """
+        XCTAssertEqual(ShotListBriefParser.scenes(from: raw),
+                       ["Brudepar-portretter i hagen", "Vielse i kapellet"])
+    }
+
+    func testBriefParserCapsAt24() {
+        let raw = (1...40).map { "Unik scene nummer \($0)" }.joined(separator: "\n")
+        XCTAssertEqual(ShotListBriefParser.scenes(from: raw).count, 24)
+    }
+
+    func testBriefParserKeepsNonLeadingColon() {
+        XCTAssertEqual(ShotListBriefParser.scenes(from: "Detaljer: ringer og bukett"),
+                       ["Detaljer: ringer og bukett"])
+    }
 }

@@ -692,6 +692,61 @@ actor BackendClient {
         _ = try await self.data(for: request)
     }
 
+    /// Ett shot i POST-en til `/api/projects/:id/shot-list`. Fullt felt-sett så
+    /// APPEND kan bevare eksisterende shots (fullført-status, koblet asset osv.)
+    /// i stedet for å nulle dem.
+    struct ShotListPostItem: Encodable, Sendable {
+        let id: String
+        let scene: String
+        var description: String? = nil
+        var priority: String? = nil
+        var shotType: String? = nil
+        var locationName: String? = nil
+        var notes: String? = nil
+        var scouted: Bool? = nil
+        var isCompleted: Bool? = nil
+        var capturedAssetId: String? = nil
+        var completedBy: String? = nil
+    }
+
+    /// #9 Lagre en shot-list til prosjektet (samme array-baserte endepunkt som
+    /// auto-huk + web ShotlistTab leser). Endepunktet er array-erstattende, så
+    /// APPEND gjøres ved å sende eksisterende items (fullt) + de nye.
+    func postProjectShotList(
+        projectId: String, items: [ShotListPostItem],
+        listName: String = "Fra brief", eventType: String = "photo_session"
+    ) async throws {
+        struct Body: Encodable { let shots: [ShotListPostItem]; let listName: String; let eventType: String }
+        struct Ack: Decodable {}
+        let _: Ack = try await postJSON(
+            path: "/api/projects/\(projectId)/shot-list",
+            body: Body(shots: items, listName: listName, eventType: eventType))
+    }
+
+    /// #9 Hent bryllups-timelinen for prosjektet og form den til en kompakt
+    /// brief (dagsplan) FM kan lage shot-list fra. nil hvis ingen timeline.
+    func fetchWeddingTimelineBrief(projectId: String) async -> String? {
+        struct Event: Decodable {
+            let title: String?; let time: String?; let description: String?; let location: String?
+        }
+        struct Timeline: Decodable { let title: String?; let coupleName: String?; let events: [Event]? }
+        guard let tl: Timeline = try? await getJSON(path: "/api/wedding/timeline/project/\(projectId)"),
+              let events = tl.events, !events.isEmpty else { return nil }
+        let lines: [String] = events.compactMap { e in
+            let title = (e.title ?? "").trimmingCharacters(in: .whitespaces)
+            guard !title.isEmpty else { return nil }
+            var s = ""
+            if let t = e.time, !t.isEmpty { s += "\(t) " }
+            s += title
+            if let loc = e.location, !loc.isEmpty { s += " (\(loc))" }
+            if let d = e.description, !d.isEmpty { s += " — \(d)" }
+            return "- " + s
+        }
+        guard !lines.isEmpty else { return nil }
+        let header = (tl.coupleName ?? tl.title).map { "Bryllup: \($0)." } ?? "Bryllup."
+        return "\(header)\nDagsplan (fra bryllups-timeline):\n" + lines.joined(separator: "\n")
+    }
+
     /// Les team-flagget for shot-list auto-huk (delt via projects.settings).
     /// Default PÅ hvis ukjent/feil.
     func fetchShotListAutoCheck(projectId: String) async -> Bool {

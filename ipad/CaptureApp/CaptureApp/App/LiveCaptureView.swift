@@ -6629,6 +6629,40 @@ final class LiveCaptureModel {
     /// Skru auto-huk av/på for teamet (fra iPad). Skriver til samme flagg som
     /// web-toggelen (projects.settings.shotListAutoCheck). Kaster ved feil så
     /// ShotListPanel kan rulle tilbake + vise «kun eier kan endre» ved 403.
+    /// #9 Lagre en FM-generert shot-list (fra klient-brief) til prosjektet, og
+    /// last inn detaljene på nytt så panelet + auto-huk får den umiddelbart.
+    /// Lagre FM-genererte scener. `append`=true bevarer eksisterende shots
+    /// (fullført-status + koblet asset) og legger de nye bakerst; false
+    /// erstatter listen (opprett fra tom).
+    func saveShotListFromBrief(_ scenes: [String], append: Bool) async throws {
+        guard let projectId = selectedProject?.id,
+              let backend = backendClient ?? makeBackendClientFromDefaults() else {
+            throw ShotAutoCheckError.noBackend
+        }
+        var items: [BackendClient.ShotListPostItem] = []
+        if append, let existing = selectedProjectDetail?.shotList {
+            items = existing.map { e in
+                BackendClient.ShotListPostItem(
+                    id: e.id, scene: e.scene, description: e.description,
+                    priority: e.priority, shotType: e.shotType, locationName: e.locationName,
+                    notes: e.notes, scouted: e.scouted, isCompleted: e.isCompleted,
+                    capturedAssetId: e.capturedAssetId, completedBy: e.completedBy)
+            }
+        }
+        items += scenes.map { BackendClient.ShotListPostItem(id: UUID().uuidString.lowercased(), scene: $0) }
+        let listName = (append && !(selectedProjectDetail?.shotList.isEmpty ?? true)) ? "Shot-list" : "Fra brief"
+        try await backend.postProjectShotList(projectId: projectId, items: items, listName: listName)
+        await loadProjectDetail(projectId: projectId)
+    }
+
+    /// #9 Hent en brief fra prosjektets bryllups-timeline (dagsplan) → mater
+    /// shot-list-generatoren. nil hvis prosjektet ikke har en timeline.
+    func fetchWeddingTimelineBrief() async -> String? {
+        guard let projectId = selectedProject?.id,
+              let backend = backendClient ?? makeBackendClientFromDefaults() else { return nil }
+        return await backend.fetchWeddingTimelineBrief(projectId: projectId)
+    }
+
     func setShotListAutoCheck(_ enabled: Bool) async throws {
         if isDemoMode { shotListAutoCheckEnabled = enabled; return }
         guard let projectId = selectedProject?.id else { throw ShotAutoCheckError.noBackend }

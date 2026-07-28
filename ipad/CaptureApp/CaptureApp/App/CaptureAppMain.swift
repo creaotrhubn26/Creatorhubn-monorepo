@@ -86,6 +86,25 @@ struct RootView: View {
                 ShotListDemoView()
             case .demoMessages:
                 MessagesDemoView()
+            case .demoBrief:
+                ShotListFromBriefView(
+                    onSave: { _ in },
+                    fetchTimeline: {
+                        "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
+                            + "- 12:30 Forberedelser (brudesuiten) — sminke, detaljer: ringer, bukett, sko\n"
+                            + "- 13:30 First look (hagen)\n"
+                            + "- 14:30 Vielse (kapellet)\n"
+                            + "- 15:15 Gratulasjoner + familiebilder (utenfor kapellet)\n"
+                            + "- 16:00 Brudepar-portretter (gyllen time ved vannet)\n"
+                            + "- 18:00 Middag + taler (festsalen)\n"
+                            + "- 21:00 Kake + første dans\n"
+                            + "- 22:00 Fest på dansegulvet"
+                    },
+                    initialBrief: "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
+                        + "- 13:30 First look (hagen)\n- 14:30 Vielse (kapellet)\n"
+                        + "- 16:00 Brudepar-portretter (gyllen time)\n- 21:00 Kake + første dans",
+                    autoGenerate: true)
+                    .preferredColorScheme(.dark)
             }
         }
         // Globalt overlegg som dukker opp uansett hvilken surface som
@@ -127,9 +146,13 @@ struct RootView: View {
         case demoAI
         case demoShotList
         case demoMessages
+        case demoBrief
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-brief") {
+            return .demoBrief
+        }
         if launchArguments.contains("--demo-messages") {
             return .demoMessages
         }

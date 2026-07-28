@@ -32,6 +32,9 @@ struct ShotListPanel: View {
     @State private var autoCheckBusy = false
     @State private var autoCheckError: String?
 
+    /// #9 Presenterer «shot-list fra brief»-arket (FM-generert).
+    @State private var showBriefGenerator = false
+
     var body: some View {
         NavigationStack {
             Group {
@@ -53,6 +56,15 @@ struct ShotListPanel: View {
             .navigationTitle(model.selectedProject?.title ?? "Shot list")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if model.selectedProject != nil {
+                        Button {
+                            showBriefGenerator = true
+                        } label: {
+                            Label("Fra brief", systemImage: "sparkles")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -84,11 +96,29 @@ struct ShotListPanel: View {
     }
 
     private func emptyShotList(projectTitle: String) -> some View {
-        ContentUnavailableView(
-            "No planned shots",
-            systemImage: "checklist",
-            description: Text("\(projectTitle) doesn't have a shot list yet. Add one from the CreatorHub project planner."),
-        )
+        VStack(spacing: 20) {
+            ContentUnavailableView(
+                "Ingen planlagte shots",
+                systemImage: "checklist",
+                description: Text("\(projectTitle) har ingen shot-list ennå. Generer én fra klient-briefen, eller legg til i CreatorHub-planleggeren."),
+            )
+            Button {
+                showBriefGenerator = true
+            } label: {
+                Label("Generer fra brief", systemImage: "sparkles")
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 18).padding(.vertical, 11)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+        }
+        .sheet(isPresented: $showBriefGenerator) {
+            let hasShots = !(model.selectedProjectDetail?.shotList.isEmpty ?? true)
+            ShotListFromBriefView(
+                onSave: { scenes in try await model.saveShotListFromBrief(scenes, append: hasShots) },
+                fetchTimeline: { await model.fetchWeddingTimelineBrief() },
+                saveLabel: hasShots ? "Legg til i shot-listen" : "Lagre til prosjektet")
+        }
     }
 
     private func shotList(for detail: BackendProjectDetail) -> some View {
