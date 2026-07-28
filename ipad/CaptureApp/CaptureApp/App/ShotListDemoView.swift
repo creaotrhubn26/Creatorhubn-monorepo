@@ -130,6 +130,6 @@ struct ShotListDemoView: View {
         BackendShotListItem(id: "s6", scene: "Emballasje — hero",
             description: nil, estimatedDuration: 10, priority: "low",
             shotType: "detail", locationName: "Studio A", notes: nil,
-            scouted: nil, isCompleted: false, capturedAssetId: nil, completedBy: nil),
+            scouted: nil, isCompleted: false, capturedAssetId: nil, completedBy: nil)
     ]
 }

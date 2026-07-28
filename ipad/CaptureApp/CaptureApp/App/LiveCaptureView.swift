@@ -5627,8 +5627,7 @@ final class LiveCaptureModel {
     var clientHeartedCount: Int { clientHeartedAssetIds.count }
 
     private func updateClientHeartCount(assetId: String, hearted: Bool) {
-        if hearted { clientHeartedAssetIds.insert(assetId) }
-        else { clientHeartedAssetIds.remove(assetId) }
+        if hearted { clientHeartedAssetIds.insert(assetId) } else { clientHeartedAssetIds.remove(assetId) }
     }
 
     /// Set of asset IDs that have received at least one review in this
@@ -6004,7 +6003,7 @@ final class LiveCaptureModel {
             "next": nextArr,
             "count": scenes.count,
             "backup": backup,
-            "thumbs": thumbs,
+            "thumbs": thumbs
         ]
         try? await backend.postProjectShotCard(
             projectId: projectId, clientMessageId: cardId, text: msg, shotUpdate: shotUpdate)
@@ -6824,7 +6823,7 @@ final class LiveCaptureModel {
         // on-device (norsk, varm tone). Best-effort — nil hvis utilgjengelig
         // (< iOS 26 / Apple Intelligence av), da bruker backend standard-malen.
         let photographerName = SignInService.shared.session?.displayName
-        var emailBody: String? = nil
+        var emailBody: String?
         if sendEmail {
             let notes = "Bildene fra \(projectTitle ?? sessionName) er klare i det private galleriet. "
                 + "Be dem se gjennom, hjerte favorittene sine og laste ned. Kort, vennlig, profesjonell."

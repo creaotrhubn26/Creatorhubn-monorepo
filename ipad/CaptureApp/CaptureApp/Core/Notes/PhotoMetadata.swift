@@ -11,19 +11,19 @@ import Foundation
 import ImageIO
 
 struct PhotoMetadata: Codable, Sendable, Equatable, Hashable {
-    var fileName: String? = nil
-    var cameraMake: String? = nil
-    var cameraModel: String? = nil
-    var lens: String? = nil
-    var focalLengthMM: Double? = nil
-    var aperture: Double? = nil          // f-tall
-    var shutter: String? = nil           // f.eks. "1/250"
-    var iso: Int? = nil
-    var dateTaken: String? = nil
-    var pixelWidth: Int? = nil
-    var pixelHeight: Int? = nil
-    var latitude: Double? = nil
-    var longitude: Double? = nil
+    var fileName: String?
+    var cameraMake: String?
+    var cameraModel: String?
+    var lens: String?
+    var focalLengthMM: Double?
+    var aperture: Double?          // f-tall
+    var shutter: String?           // f.eks. "1/250"
+    var iso: Int?
+    var dateTaken: String?
+    var pixelWidth: Int?
+    var pixelHeight: Int?
+    var latitude: Double?
+    var longitude: Double?
 
     var isEmpty: Bool {
         fileName == nil && cameraModel == nil && lens == nil && iso == nil

@@ -14,12 +14,12 @@ struct ShotListFromBriefView: View {
     let onSave: ([String]) async throws -> Void
     /// Hent en brief fra prosjektets bryllups-timeline (dagsplan). nil hvis
     /// ingen timeline. Utelates → knappen vises ikke.
-    var fetchTimeline: (() async -> String?)? = nil
+    var fetchTimeline: (() async -> String?)?
     /// Etikett på lagre-knappen — «Legg til i shot-listen» ved append.
     var saveLabel: String = "Lagre til prosjektet"
     /// Bygg en DESIGNET call-sheet-URL (Infographic-motor) fra de gitte
     /// scenene. Utelates → «Se call-sheet»-knappen vises ikke.
-    var callSheetURL: (([String]) -> URL?)? = nil
+    var callSheetURL: (([String]) -> URL?)?
     /// Demo-hekter (--demo-brief): forhåndsutfyll briefen + auto-generer.
     var initialBrief: String = ""
     var autoGenerate: Bool = false
@@ -96,8 +96,7 @@ struct ShotListFromBriefView: View {
         Button {
             Task {
                 loadingTimeline = true; errorMessage = nil
-                if let b = await fetch(), !b.isEmpty { brief = b }
-                else { errorMessage = "Fant ingen bryllups-timeline for dette prosjektet." }
+                if let b = await fetch(), !b.isEmpty { brief = b } else { errorMessage = "Fant ingen bryllups-timeline for dette prosjektet." }
                 loadingTimeline = false
             }
         } label: {

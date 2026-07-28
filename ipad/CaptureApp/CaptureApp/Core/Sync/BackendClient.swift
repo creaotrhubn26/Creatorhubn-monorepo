@@ -681,7 +681,7 @@ actor BackendClient {
             "conversationId": channel,
             "content": text,
             "text": text,
-            "metadata": ["shotUpdate": shotUpdate],
+            "metadata": ["shotUpdate": shotUpdate]
         ]
         var request = URLRequest(url: baseURL.appendingPathComponent("/api/communication/messages"))
         request.httpMethod = "POST"
@@ -698,15 +698,15 @@ actor BackendClient {
     struct ShotListPostItem: Encodable, Sendable {
         let id: String
         let scene: String
-        var description: String? = nil
-        var priority: String? = nil
-        var shotType: String? = nil
-        var locationName: String? = nil
-        var notes: String? = nil
-        var scouted: Bool? = nil
-        var isCompleted: Bool? = nil
-        var capturedAssetId: String? = nil
-        var completedBy: String? = nil
+        var description: String?
+        var priority: String?
+        var shotType: String?
+        var locationName: String?
+        var notes: String?
+        var scouted: Bool?
+        var isCompleted: Bool?
+        var capturedAssetId: String?
+        var completedBy: String?
     }
 
     /// #9 Lagre en shot-list til prosjektet (samme array-baserte endepunkt som
@@ -744,7 +744,7 @@ actor BackendClient {
             .init(name: "tpl", value: tpl),
             .init(name: "w", value: String(width)),
             .init(name: "h", value: String(height)),
-            .init(name: "d", value: b64),
+            .init(name: "d", value: b64)
         ]
         if let accentHex { items.append(.init(name: "accent", value: accentHex)) }
         c?.queryItems = items

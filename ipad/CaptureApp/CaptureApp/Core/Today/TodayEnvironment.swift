@@ -220,7 +220,7 @@ extension OpenMeteoProvider {
             .init(name: "longitude", value: String(lon)),
             .init(name: "hourly", value: "precipitation_probability,precipitation"),
             .init(name: "forecast_days", value: "2"),
-            .init(name: "timezone", value: "auto"),
+            .init(name: "timezone", value: "auto")
         ]
         struct Resp: Decodable {
             struct Hourly: Decodable {

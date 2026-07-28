@@ -29,10 +29,10 @@ struct MessagesDemoView: View {
     @State private var thumbs: [ShotThumb] = [
         ShotThumb(imageURL: u("1598440947619-2c35fc9aa908"), scene: .lifestyle, caption: "Oppstilling"),
         ShotThumb(imageURL: u("1616750819456-5cdee9b85d22"), scene: .texture, caption: "Tekstur"),
-        ShotThumb(imageURL: u("1629380108599-ea06489d66f5"), scene: .packaging, caption: "Kurv"),
+        ShotThumb(imageURL: u("1629380108599-ea06489d66f5"), scene: .packaging, caption: "Kurv")
     ]
     @State private var scenes: [String] = [
-        "Flatlay — full oppstilling", "Teksturbilde — krem", "Flatlay — kurv & ingredienser",
+        "Flatlay — full oppstilling", "Teksturbilde — krem", "Flatlay — kurv & ingredienser"
     ]
     @State private var next: [String] = ["Emballasje — hero"]
 

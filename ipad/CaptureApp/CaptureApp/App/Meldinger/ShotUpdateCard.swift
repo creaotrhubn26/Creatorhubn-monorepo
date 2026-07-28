@@ -47,10 +47,10 @@ struct ShotUpdateInfo: Equatable {
 /// demoen bruker `gradient` for pene plassholdere uten nettverk.
 struct ShotThumb: Identifiable, Equatable {
     let id = UUID()
-    var imageURL: String? = nil
+    var imageURL: String?
     /// Komponert placeholder-scene mens et ekte `imageURL` laster (eller når
     /// ingen URL finnes). Se [MockPhotoView].
-    var scene: MockScene? = nil
+    var scene: MockScene?
     var gradient: [Color] = []
     var caption: String = ""
 }

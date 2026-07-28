@@ -126,9 +126,9 @@ struct ShotUpdateMeta: Decodable, Sendable, Hashable {
     var backup: Double?
     var thumbs: [ShotThumbMeta]
 
-    private enum K: String, CodingKey { case who, scenes, next, count, backup, thumbs }
+    private enum CodingKeys: String, CodingKey { case who, scenes, next, count, backup, thumbs }
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: K.self)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
         who = (try? c.decodeIfPresent(String.self, forKey: .who)) ?? nil
         scenes = ((try? c.decodeIfPresent([String].self, forKey: .scenes)) ?? nil) ?? []
         next = ((try? c.decodeIfPresent([String].self, forKey: .next)) ?? nil) ?? []
