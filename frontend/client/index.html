@@ -323,7 +323,11 @@
         var isAcademyRoute = /^\/academy(?:$|[/-])/.test(pathname);
         // NextRole-rutene viser NextRole-mark; ellers academy- eller CreatorHub-favicon.
         var isNextRoleRoute = /^\/(nextrole|resume-builder|cv)\b/.test(pathname);
-        var faviconHref = isNextRoleRoute
+        // The Role Room = eget vertsnavn (theroleroom.com) → Role Room-ikon.
+        var isRoleRoomHost = /(^|\.)theroleroom\.com$/i.test(window.location.hostname || '');
+        var faviconHref = isRoleRoomHost
+          ? '/theroleroom-app-icon-1024.png'
+          : isNextRoleRoute
           ? '/NextRole_Iconapp.png'
           : isAcademyRoute
           ? '/academy-favicon.svg'
