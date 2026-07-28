@@ -334,9 +334,28 @@ export function setupClientGalleryRoutes(
         console.warn('[client-gallery] profession/branding lookup failed', lookupErr);
       }
 
+      // «Nye bilder»-signal til viewer-banneret: bilder lagt til ETTER at
+      // galleriet ble opprettet (så første levering ikke maser) og innen siste
+      // 7 dager (så gamle re-leveringer ikke nager for alltid). Tidsbasert
+      // approksimasjon — ingen per-klient «sett»-sporing.
+      let recentlyAddedCount = 0;
+      try {
+        const rc = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM client_gallery_images
+             WHERE gallery_id = $1
+               AND created_at > $2::timestamptz + INTERVAL '2 minutes'
+               AND created_at > NOW() - INTERVAL '7 days'`,
+          [gallery.id, gallery.createdAt],
+        );
+        recentlyAddedCount = rc.rows[0]?.n ?? 0;
+      } catch (err) {
+        console.warn('[client-gallery] recentlyAddedCount failed', err);
+      }
+
       return res.json({
         id: gallery.id,
         clientName: gallery.clientName,
+        recentlyAddedCount,
         // Ikke lek klientens e-post til en passord-beskyttet lenke FØR passordet
         // er tastet — access-tokenet alene skal ikke avsløre klient-PII.
         clientEmail: requiresPassword ? null : gallery.clientEmail,

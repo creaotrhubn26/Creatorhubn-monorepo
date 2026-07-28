@@ -1402,32 +1402,43 @@ export function createCaptureRouter(
       });
       return;
     }
-    // Samme-dags levering: auto-send «bildene dine er klare»-e-post med
-    // galleri-lenken. FM-kroppen (fra iPad) brukes hvis oppgitt, ellers en
-    // standard norsk mal. Best-effort — en e-post-feil blokkerer ikke svaret.
+    // Samme-dags levering + oppfølging: auto-send e-post med galleri-lenken.
+    // Variant-bevisst: «bildene klare» ved første levering, «N nye bilder lagt
+    // til» ved re-levering med nye bilder. Hopper over hvis re-levering ikke
+    // ga noe nytt (ingenting å varsle om). FM-kroppen brukes for førstegangs-
+    // leveringen; standard norsk mal ellers. Best-effort — feil blokkerer ikke.
+    const newCount = result.uploadedImageCount;
+    const isNewPhotos = result.reusedExisting && newCount > 0;
+    const nothingNew = result.reusedExisting && newCount === 0;
     let emailSent = false;
-    if (parsed.data.sendEmail) {
+    if (parsed.data.sendEmail && !nothingNew) {
       const esc = (s: string) =>
         s.replace(/[&<>"]/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string));
       const photographer = parsed.data.photographerName?.trim() || 'Fotografen din';
       const project = parsed.data.projectTitle?.trim() || 'shooten';
-      const intro = parsed.data.emailBody?.trim()
-        || `Hei ${parsed.data.clientName}!\n\nBildene fra ${project} er klare. Åpne galleriet under for å se dem, hjerte favorittene dine og laste ned.`;
       const url = result.shareUrl;
+      const subject = isNewPhotos
+        ? `${newCount} ${newCount === 1 ? 'nytt bilde' : 'nye bilder'} i galleriet ditt ✨`
+        : 'Bildene dine er klare ✨';
+      const intro = isNewPhotos
+        ? `Hei ${parsed.data.clientName}!\n\nFotografen har lagt til ${newCount} ${newCount === 1 ? 'nytt bilde' : 'nye bilder'} i galleriet ditt. Åpne for å se dem, hjerte favorittene dine og laste ned.`
+        : (parsed.data.emailBody?.trim()
+           || `Hei ${parsed.data.clientName}!\n\nBildene fra ${project} er klare. Åpne galleriet under for å se dem, hjerte favorittene dine og laste ned.`);
+      const cta = isNewPhotos ? 'Se de nye bildene →' : 'Se galleriet ditt →';
       const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">`
         + `<p style="white-space:pre-wrap;font-size:15px;line-height:1.55">${esc(intro)}</p>`
-        + `<p style="margin:28px 0"><a href="${esc(url)}" style="background:#FF6B35;color:#fff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:700;display:inline-block">Se galleriet ditt →</a></p>`
+        + `<p style="margin:28px 0"><a href="${esc(url)}" style="background:#FF6B35;color:#fff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:700;display:inline-block">${esc(cta)}</a></p>`
         + `<p style="font-size:12px;color:#888">Eller åpne lenken: <a href="${esc(url)}" style="color:#FF6B35">${esc(url)}</a></p>`
         + `<p style="font-size:13px;color:#555;margin-top:24px">Hilsen ${esc(photographer)}</p></div>`;
       const text = `${intro}\n\nSe galleriet: ${url}\n\nHilsen ${photographer}`;
       try {
         const sendResult = await sendTransactionalEmail({
           to: parsed.data.clientEmail,
-          subject: 'Bildene dine er klare ✨',
+          subject,
           html,
           text,
           fromLabel: photographer,
-          kind: 'capture_delivery_notification',
+          kind: isNewPhotos ? 'capture_new_photos_notification' : 'capture_delivery_notification',
           pool,
         });
         emailSent = sendResult.sent;
