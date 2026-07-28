@@ -16,6 +16,7 @@
 import type { Pool } from "pg";
 import { hasScope } from "./role-room-integrations-v1-routes.js";
 import { mcpCanAccessProject } from "./role-room-mcp-auth.js";
+import { newEntityId } from "./_shared-ids.js";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
@@ -611,6 +612,100 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
          VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,'draft',$6,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
         [projectId, entryType, title, externalUrl, phase, ctx.userId]);
       return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — bekreftes i Role Room-UI." };
+    },
+  },
+
+  // ── Syntese / agent-vennlig ──────────────────────────────────────────────
+  {
+    name: "rr_project_summary",
+    description: "Aggregert status for ett prosjekt i ett kall: roller (totalt/tildelt), antall kandidater og crew, neste opptaksdag, budsjett (sum estimat/godkjent/faktisk), og antall åpne klient-godkjenninger. Ideelt for «gi meg statusen på X».",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const [proj, roles, cands, crew, nextDay, budget, reviews] = await Promise.all([
+        pool.query(`SELECT name, status, project_type FROM casting_projects WHERE id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS total, count(assigned_candidate_id)::int AS assigned FROM casting_roles WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS n FROM casting_candidates WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS n FROM casting_user_roles WHERE project_id = $1 AND deactivated_at IS NULL`, [projectId]),
+        pool.query(`SELECT min(date) AS d FROM casting_production_days WHERE project_id = $1 AND date >= CURRENT_DATE`, [projectId]),
+        pool.query(`SELECT coalesce(sum(estimate),0) AS estimate, coalesce(sum(approved),0) AS approved, coalesce(sum(actual),0) AS actual FROM role_room_budget_items WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS n FROM role_room_client_reviews WHERE project_id = $1 AND status = 'pending'`, [projectId]),
+      ]);
+      const p = proj.rows[0] ?? {};
+      const r = roles.rows[0] ?? { total: 0, assigned: 0 };
+      const b = budget.rows[0] ?? {};
+      return {
+        project: { id: projectId, name: p.name, status: p.status, type: p.project_type },
+        roles: { total: r.total, assigned: r.assigned, unassigned: r.total - r.assigned },
+        candidates: cands.rows[0].n,
+        crew: crew.rows[0].n,
+        nextProductionDay: nextDay.rows[0].d ?? null,
+        budget: { estimate: Number(b.estimate ?? 0), approved: Number(b.approved ?? 0), actual: Number(b.actual ?? 0) },
+        openClientReviews: reviews.rows[0].n,
+      };
+    },
+  },
+
+  // ── Dypere lese-detalj ───────────────────────────────────────────────────
+  {
+    name: "rr_get_candidate",
+    description: "Hent detaljer om én kandidat/medvirkende på et prosjekt (navn, kontakt, byrå, status, rating, notater, tildelte roller, samtykke-status).",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), candidateId: STR("Kandidatens id") }, ["projectId", "candidateId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const candidateId = typeof args.candidateId === "string" ? args.candidateId.trim() : "";
+      if (!candidateId) throw new McpToolError(-32602, "candidateId er påkrevd.");
+      const r = await pool.query(
+        `SELECT id, name, email, phone, agency, status, rating, notes, assigned_roles, consent_status, updated_at
+           FROM casting_candidates WHERE id = $1 AND project_id = $2 LIMIT 1`, [candidateId, projectId]);
+      if (Number(r.rowCount ?? 0) === 0) throw new McpToolError(-32004, "Kandidaten finnes ikke i dette prosjektet.");
+      return { candidate: r.rows[0] };
+    },
+  },
+  {
+    name: "rr_list_equipment_bookings",
+    description: "List utstyrsreservasjoner på et prosjekt (utstyr, fra/til-dato, status, antall). Dekker Utstyr-bookinger.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT b.id, b.equipment_id, e.name AS equipment_name, b.start_date, b.end_date, b.status, b.quantity
+           FROM equipment_bookings b LEFT JOIN casting_equipment e ON e.id = b.equipment_id
+          WHERE b.project_id = $1 ORDER BY b.start_date NULLS LAST LIMIT 300`, [projectId]);
+      return { bookings: r.rows };
+    },
+  },
+
+  // ── Utkast (utdanning) ───────────────────────────────────────────────────
+  {
+    name: "rr_draft_assignment",
+    description: "Opprett en UTKASTS-oppgave i utdannings-workspacet (status=draft — faglærer publiserer i UI). Valgfritt knyttet til et eid kull. Krever projects.write.",
+    scope: "projects.write", modes: ["education"], projectScoped: false, mutates: true,
+    inputSchema: OBJ({
+      title: STR("Oppgavens tittel"),
+      brief: STR("Valgfri oppgavetekst/brief"),
+      cohortId: STR("Valgfritt: knytt til et eid kull"),
+      dueAt: STR("Valgfri frist (ISO-dato)"),
+    }, ["title"]),
+    handler: async (pool, ctx, args) => {
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const cohortId = typeof args.cohortId === "string" && args.cohortId.trim() ? args.cohortId.trim() : null;
+      if (cohortId) {
+        const owns = await pool.query(`SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`, [cohortId, ctx.userId]);
+        if (Number(owns.rowCount ?? 0) === 0) throw new McpToolError(-32004, "Ingen tilgang til dette kullet.");
+      }
+      const brief = typeof args.brief === "string" ? args.brief.trim() : null;
+      const dueAt = typeof args.dueAt === "string" && args.dueAt.trim() ? args.dueAt.trim() : null;
+      const id = newEntityId("assignment");
+      await pool.query(
+        `INSERT INTO role_room_education_assignments (id, owner_user_id, cohort_id, title, brief, due_at, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'draft')`,
+        [id, ctx.userId, cohortId, title, brief, dueAt]);
+      return { ok: true, id, status: "draft", note: "Upublisert oppgave-utkast — publiseres i utdannings-workspacet." };
     },
   },
 ];
