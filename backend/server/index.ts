@@ -265,6 +265,7 @@ import { createDesktopAuthRouter } from "./desktop-auth-routes.js";
 import { setupStorageProvidersRoutes } from "./storage-providers-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createRoleRoomMcpRouter } from "./role-room-mcp-routes.js";
+import { createRoleRoomMcpOAuthRouter } from "./role-room-mcp-oauth-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
 import { createLightroomRouter } from "./lightroom-routes.js";
@@ -2653,6 +2654,8 @@ app.use(
 );
 // The Role Room MCP-server (JSON-RPC 2.0) — eksterne AI-klienter mot rri_-nokler.
 app.use("/api/role-room", createRoleRoomMcpRouter(pool));
+// OAuth 2.1 «Sign in with The Role Room» for MCP (rot-montert for .well-known).
+app.use("/", createRoleRoomMcpOAuthRouter(pool));
 app.use(
   "/api/consent",
   createConsentPortalRouter(pool, { activeSessions }),
