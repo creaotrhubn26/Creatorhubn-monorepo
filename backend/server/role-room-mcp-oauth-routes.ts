@@ -13,6 +13,7 @@ import { loadPersistedAuthSession } from "./auth-session-store.js";
 import {
   ensureOAuthTables, registerOAuthClient, getOAuthClient, createAuthCode,
   consumeAuthCode, issueAccessToken, oauthScopesToV1, OAUTH_SUPPORTED_SCOPES,
+  revokeAccessToken, listUserConnections, revokeUserClient,
 } from "./role-room-mcp-oauth.js";
 
 function publicBase(req: Request): string {
@@ -51,6 +52,7 @@ export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
       authorization_endpoint: CONSENT_URL,
       token_endpoint: `${base}${OAUTH_BASE}/token`,
       registration_endpoint: `${base}${OAUTH_BASE}/register`,
+      revocation_endpoint: `${base}${OAUTH_BASE}/revoke`,
       scopes_supported: OAUTH_SUPPORTED_SCOPES,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code"],
@@ -140,6 +142,39 @@ export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
     if (!ex.ok) { res.status(400).json({ error: ex.error }); return; }
     const tok = await issueAccessToken(pool, { clientId: b.client_id, userId: ex.userId, scope: ex.scope });
     res.json({ access_token: tok.accessToken, token_type: "Bearer", expires_in: tok.expiresIn, scope: tok.scope.join(" ") });
+  });
+
+  // ── Token Revocation (RFC 7009) ──────────────────────────────────────────
+  // Offentlige klienter: ingen klient-auth. Alltid 200 (lekker ikke gyldighet).
+  router.post(`${OAUTH_BASE}/revoke`, async (req, res) => {
+    await ensureOAuthTables(pool);
+    const token = (req.body as Record<string, string> | undefined)?.token;
+    if (typeof token === "string") await revokeAccessToken(pool, token);
+    res.status(200).end();
+  });
+
+  // ── «Connected apps»-styring (Role Room-sesjon-autentisert) ──────────────
+  // For en fremtidig kontoinnstillinger-flate: se + trekk tilbake tilkoblede apper.
+  const requireSession = async (req: Request): Promise<string | null> => {
+    const authz = req.headers.authorization;
+    const token = typeof authz === "string" ? authz.replace(/^Bearer\s+/i, "").trim() : "";
+    const session = await loadPersistedAuthSession<{ userId?: string }>(pool, token);
+    return session?.userId ?? null;
+  };
+
+  router.get(`${OAUTH_BASE}/connections`, async (req, res) => {
+    await ensureOAuthTables(pool);
+    const userId = await requireSession(req);
+    if (!userId) { res.status(401).json({ error: "unauthorized" }); return; }
+    res.json({ connections: await listUserConnections(pool, userId) });
+  });
+
+  router.delete(`${OAUTH_BASE}/connections/:clientId`, async (req, res) => {
+    await ensureOAuthTables(pool);
+    const userId = await requireSession(req);
+    if (!userId) { res.status(401).json({ error: "unauthorized" }); return; }
+    const revoked = await revokeUserClient(pool, userId, String(req.params.clientId));
+    res.json({ ok: true, revoked });
   });
 
   return router;
