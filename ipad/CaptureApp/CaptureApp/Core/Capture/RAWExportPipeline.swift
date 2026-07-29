@@ -355,6 +355,8 @@ enum RAWExportPipeline {
         // Hud-tone-guard SIST — forankrer a* mot ~11 etter unify/tone (fikser
         // grønn/gjørmete + oransje uten å røre L*/b*).
         current = SkinToneGuardFilter.apply(recipe: recipe, to: current)
+        // Film-korn som aller siste finish (over ferdig tone/farge).
+        current = FilmGrainFilter.apply(recipe: recipe, to: current)
 
         return current
     }

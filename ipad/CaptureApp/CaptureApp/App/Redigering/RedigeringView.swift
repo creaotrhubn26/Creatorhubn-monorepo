@@ -49,6 +49,9 @@ final class RedigeringModel {
 
     static let presets: [(String, MagicRecipe)] = [
         ("Bryllup", .wedding),
+        ("Portra Clean", .portraClean),
+        ("Reception Warm", .receptionWarm),
+        ("Bright & Airy", .brightAiry),
         ("Portrett", .portrait),
         ("Produkt Clean", .product),
         ("Mat", .food),

@@ -370,6 +370,8 @@ final class MagicPipeline {
         current = SkinToneUnifyFilter.apply(recipe: effectiveRecipe, to: current)
         // Hud-tone-guard — forankrer a* mot ~11 (grønn/oransje-guard).
         current = SkinToneGuardFilter.apply(recipe: effectiveRecipe, to: current)
+        // Film-korn-finish.
+        current = FilmGrainFilter.apply(recipe: effectiveRecipe, to: current)
 
         guard !Task.isCancelled,
               let cgImage = ColorManagement.renderCGImage(

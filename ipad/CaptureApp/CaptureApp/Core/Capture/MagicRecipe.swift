@@ -144,6 +144,10 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Se ``SkinToneGuardFilter``. Default 0 (av).
     var skinGuard: Double = 0
 
+    /// Film-korn-styrke (0…1). Dempet organisk korn som soft-light-finish — en
+    /// av de mest taktile «film»-tellene. Se ``FilmGrainFilter``. Default 0.
+    var filmGrain: Double = 0
+
     /// **Phase 7C** — Manual horizon angle, in radians. Range
     /// effectively ±0.2618 (±15°) — beyond that the straighten tool
     /// stops; use the regular crop+rotate UI for dutch tilts. Used as
@@ -250,6 +254,42 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         highlightRecovery: 0.42, vibrance: 0.18, texture: 0.05, dehaze: 0,
         eyeSharpen: 0.22, eyeCatchlight: 0.15, autoEnhance: false, skinGuard: 0.7,
         teethWhiten: 0.15, skinUnify: 0.22
+    )
+
+    /// **Portra Clean** — den rene standard-bryllups/portrett-looken, kalibrert
+    /// mot Kodak Portra 400 (bransje-referanse): svakt varm (+~200K), myk
+    /// høylys-skulder, skygge-løft til varm grå, DEMPET metning m/ vibrance som
+    /// beskytter hud (film-standard: vibrance > saturation), fint korn. Hud-guard
+    /// på så «kremaktige» høylys ikke tipper til oransje.
+    static let portraClean = MagicRecipe(
+        warmth: 0.15, skinHighFreq: 0.10, skinLowFreq: 0.15, shadowLift: 0.28,
+        contrast: 0.08, saturation: -0.08,
+        highlightRecovery: 0.35, vibrance: 0.12, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.22, eyeCatchlight: 0.15, skinGuard: 0.6, filmGrain: 0.12,
+        teethWhiten: 0.15, skinUnify: 0.20
+    )
+
+    /// **Reception Warm** — tungsten/innendørs fest: KORRIGER hvitbalanse mot
+    /// nøytral først (håndteres av grunn-render + hud-guard), behold en dus varm
+    /// stemning, men beskytt høylys (levende lys/practicals) og TEM oransje hud
+    /// hardt. Auto-enhance av (ferdige/leverte bilder). Litt mer korn (dim fest).
+    static let receptionWarm = MagicRecipe(
+        warmth: -0.05, skinHighFreq: 0.10, skinLowFreq: 0.18, shadowLift: 0.22,
+        contrast: 0.12, saturation: -0.10,
+        highlightRecovery: 0.55, vibrance: 0.10, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.20, eyeCatchlight: 0.15, autoEnhance: false, skinGuard: 0.8, filmGrain: 0.16,
+        teethWhiten: 0.15, skinUnify: 0.25
+    )
+
+    /// **Bright & Airy (Fuji 400H)** — lys/luftig fine-art: sterkt skygge-løft
+    /// (pastell), flat/lav kontrast, dempede pasteller (høyere metnings-demping),
+    /// kjølig-nøytral. Kalibrert mot Fuji Pro 400H (lys-og-luftig-linjen).
+    static let brightAiry = MagicRecipe(
+        warmth: -0.10, skinHighFreq: 0.08, skinLowFreq: 0.12, shadowLift: 0.38,
+        contrast: -0.05, saturation: -0.14,
+        highlightRecovery: 0.40, vibrance: 0.05, texture: 0.03, dehaze: 0,
+        eyeSharpen: 0.18, eyeCatchlight: 0.12, skinGuard: 0.5, filmGrain: 0.18,
+        teethWhiten: 0.12, skinUnify: 0.20
     )
 
     /// Aviation: dehaze is the canonical primary tool for aviation
@@ -481,6 +521,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         autoStraighten = try c.decodeIfPresent(Bool.self, forKey: .autoStraighten) ?? false
         autoEnhance = try c.decodeIfPresent(Bool.self, forKey: .autoEnhance) ?? true
         skinGuard = try c.decodeIfPresent(Double.self, forKey: .skinGuard) ?? 0
+        filmGrain = try c.decodeIfPresent(Double.self, forKey: .filmGrain) ?? 0
         straightenAngle = try c.decodeIfPresent(Double.self, forKey: .straightenAngle) ?? 0
         teethWhiten = try c.decodeIfPresent(Double.self, forKey: .teethWhiten) ?? 0
         subjectType = try c.decodeIfPresent(SubjectType.self, forKey: .subjectType) ?? .none
@@ -507,6 +548,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         autoStraighten: Bool = false,
         autoEnhance: Bool = true,
         skinGuard: Double = 0,
+        filmGrain: Double = 0,
         straightenAngle: Double = 0,
         teethWhiten: Double = 0,
         subjectType: SubjectType = .none,
@@ -528,6 +570,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.autoStraighten = autoStraighten
         self.autoEnhance = autoEnhance
         self.skinGuard = skinGuard
+        self.filmGrain = filmGrain
         self.straightenAngle = straightenAngle
         self.teethWhiten = teethWhiten
         self.subjectType = subjectType
@@ -538,7 +581,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
         case eyeSharpen, eyeCatchlight
-        case autoStraighten, autoEnhance, skinGuard, straightenAngle
+        case autoStraighten, autoEnhance, skinGuard, filmGrain, straightenAngle
         case teethWhiten, subjectType, skinUnify
     }
 }
