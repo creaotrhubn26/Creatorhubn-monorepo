@@ -470,7 +470,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [leftNavOpen, setLeftNavOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1100 : true));
   // AI Director har eget venstre-panel (ikke lenger nederst i navet). Auto-kollaps
   // til en ✦-rail på smalere vinduer så det ikke stjeler senter-plass.
-  const [aiPanelOpen, setAiPanelOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1600 : true));
+  // AI Director er en modal som hentes frem fra status-stripen — ikke en kolonne.
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
@@ -1016,14 +1017,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         </div>
         )}
 
-        {/* ── AI Director — eget venstre-panel (kollapsbart), ikke lenger i navet ── */}
-        {!aiPanelOpen ? (
-          <div onClick={() => setAiPanelOpen(true)} title="Vis AI Director"
-            style={{ width: 32, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 14, cursor: 'pointer', color: C.accent, fontSize: 16 }}>✦</div>
-        ) : (
-        <div style={{ width: 300, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, overflowY: 'auto', padding: '16px 14px 20px', position: 'relative' }}>
-          <div onClick={() => setAiPanelOpen(false)} title="Skjul AI Director"
-            style={{ position: 'absolute', top: 8, right: 10, cursor: 'pointer', color: C.inkFaint, fontSize: 14, zIndex: 2 }}>‹</div>
+        {/* ── AI Director — modal som hentes frem fra status-stripen ── */}
+        {aiModalOpen && (
+        <div onClick={() => setAiModalOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(31,27,23,0.32)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '56px 16px' }}>
+        <div onClick={(e) => e.stopPropagation()}
+          style={{ width: 470, maxWidth: '94vw', maxHeight: '84vh', background: C.panel, borderRadius: 16, boxShadow: '0 30px 70px rgba(31,27,23,0.32)', overflowY: 'auto', padding: '18px 18px 22px', position: 'relative' }}>
+          <div onClick={() => setAiModalOpen(false)} title="Lukk"
+            style={{ position: 'absolute', top: 12, right: 15, cursor: 'pointer', color: C.inkFaint, fontSize: 15, zIndex: 2 }}>✕</div>
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
             <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
               <span style={{ color: C.accent }}>✦</span> AI Director
@@ -1348,6 +1349,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             </div>
             )}
           </div>
+        </div>
         </div>
         )}
 
@@ -1794,6 +1796,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       {/* ── Bottom: stat cards ── */}
       {!storyMode && nav !== 'export' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 1, background: C.line, borderTop: `1px solid ${C.line}`, flexShrink: 0 }}>
+          <div onClick={() => setAiModalOpen(true)} title="Åpne AI Director"
+            style={{ background: C.cream, padding: '11px 15px', cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: C.accent }}><span>✦</span> AI Director</div>
+            <div style={{ fontSize: 11, color: C.inkFaint }}>{aiReady ? 'Beskriv · generér · forfin' : 'Ikke koblet'}</div>
+          </div>
           <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" onLink={() => setNav('script')} />
           <Stat h="▦ Scener" v={`${scenes.length} scener`} s={`${doneCount} ferdig`} />
           <Stat h="⏱ Varighet" v={`${fmt(totalDuration(scenes))} total`} s="Anbefalt 60–90 s" />
