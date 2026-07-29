@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreImage
 
 // MARK: - Model
 
@@ -21,6 +22,12 @@ final class RedigeringModel {
     var dustRemoval = true
     var backgroundClean = true
     var reflectionRemoval = false
+
+    /// «Min stil (lært)» — påfør fotografens arkiv-lærte profil (per-kanal-LUT +
+    /// a/b, scene-matchet on-device) oppå den valgte recipen. Kun tilgjengelig
+    /// når en profil er bundlet/lastet (``LearnedStyleStore``).
+    var useLearnedStyle = false
+    var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
 
     /// Rendered "Etter" preview for the selected asset + current recipe.
     private(set) var afterImage: UIImage?
@@ -300,8 +307,16 @@ final class RedigeringModel {
         let r = effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
-        let img = await Task.detached(priority: .userInitiated) {
-            RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+        let learned = useLearnedStyle ? LearnedStyleStore.shared.profile : nil
+        let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let base = RedigeringPipeline.renderPreview(
+                rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop) else { return nil }
+            guard let profile = learned, let ci = CIImage(image: base) else { return base }
+            // Påfør den lærte stilen oppå recipe-rendringen.
+            let styled = LearnedStyle.apply(profile: profile, to: ci)
+            let ctx = CIContext(options: [.useSoftwareRenderer: false])
+            guard let cg = ctx.createCGImage(styled, from: styled.extent) else { return base }
+            return UIImage(cgImage: cg)
         }.value
         afterImage = img
         rendering = false
@@ -632,6 +647,10 @@ struct SmartEditPanel: View {
             toggleRow("Bakgrunnsrydd", systemImage: "scissors", isOn: $model.backgroundClean)
             toggleRow("Fjern refleks", systemImage: "circle.dashed", isOn: $model.reflectionRemoval)
                 .onChange(of: model.reflectionRemoval) { _, _ in model.recipeChanged() }
+            if model.hasLearnedStyle {
+                toggleRow("Min stil (lært)", systemImage: "brain.head.profile", isOn: $model.useLearnedStyle)
+                    .onChange(of: model.useLearnedStyle) { _, _ in model.recipeChanged() }
+            }
 
             Button { Task { await model.runAIRetouch() } } label: {
                 HStack {
