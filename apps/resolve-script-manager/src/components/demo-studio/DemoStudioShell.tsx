@@ -466,6 +466,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [toolsOpen, setToolsOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1200 : true));
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [leftNavOpen, setLeftNavOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1100 : true));
+  // AI Director har eget venstre-panel (ikke lenger nederst i navet). Auto-kollaps
+  // til en ✦-rail på smalere vinduer så det ikke stjeler senter-plass.
+  const [aiPanelOpen, setAiPanelOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1280 : true));
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
@@ -1005,6 +1008,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             <span style={{ width: 18, opacity: 0.85 }}>◇</span> Sjekk oppsett
           </div>
           <div style={{ flex: 1 }} />
+        </div>
+        )}
+
+        {/* ── AI Director — eget venstre-panel (kollapsbart), ikke lenger i navet ── */}
+        {!aiPanelOpen ? (
+          <div onClick={() => setAiPanelOpen(true)} title="Vis AI Director"
+            style={{ width: 32, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 14, cursor: 'pointer', color: C.accent, fontSize: 16 }}>✦</div>
+        ) : (
+        <div style={{ width: 300, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, overflowY: 'auto', padding: '12px 12px 16px', position: 'relative' }}>
+          <div onClick={() => setAiPanelOpen(false)} title="Skjul AI Director"
+            style={{ position: 'absolute', top: 8, right: 10, cursor: 'pointer', color: C.inkFaint, fontSize: 14, zIndex: 2 }}>‹</div>
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
             <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
               <span style={{ color: C.accent }}>✦</span> AI Director
