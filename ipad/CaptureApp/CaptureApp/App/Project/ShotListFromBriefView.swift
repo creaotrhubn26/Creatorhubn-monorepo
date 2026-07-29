@@ -29,6 +29,9 @@ struct ShotListFromBriefView: View {
     @State private var brief = ""
     @State private var scenes: [String] = []
     @State private var generating = false
+    /// True mens modellen strømmer — skiller «shots dukker opp live» fra en
+    /// ferdig, redigerbar liste (låser lagre/redigering underveis).
+    @State private var streaming = false
     @State private var loadingTimeline = false
     @State private var saving = false
     @State private var errorMessage: String?
@@ -183,15 +186,21 @@ struct ShotListFromBriefView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(scenes.count) shots")
                             .font(.title3.weight(.bold)).foregroundStyle(CHTheme.textPrimary)
-                        Text("Rediger, slett eller legg til før du lagrer")
-                            .font(.caption).foregroundStyle(CHTheme.textMuted)
+                        Text(streaming ? "Apple Intelligence skriver …" : "Rediger, slett eller legg til før du lagrer")
+                            .font(.caption).foregroundStyle(streaming ? CHTheme.success : CHTheme.textMuted)
                     }
                     Spacer()
-                    Button("Start på nytt") { withAnimation { scenes = [] } }
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(CHTheme.accent)
+                    if streaming {
+                        ProgressView().tint(CHTheme.success)
+                    } else {
+                        Button("Start på nytt") { withAnimation { scenes = [] } }
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(CHTheme.accent)
+                    }
                 }
-                if callSheetURL != nil { callSheetButton }
+                if callSheetURL != nil && !streaming { callSheetButton }
                 shotsCard
+                    .disabled(streaming)
+                    .opacity(streaming ? 0.7 : 1)
                 if let errorMessage { note(errorMessage, color: CHTheme.danger, icon: "exclamationmark.triangle.fill") }
             }
             .padding(20)
@@ -332,7 +341,7 @@ struct ShotListFromBriefView: View {
     }
 
     private var canSave: Bool {
-        !saving && scenes.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        !saving && !streaming && scenes.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
     private func note(_ text: String, color: Color, icon: String) -> some View {
@@ -350,7 +359,7 @@ struct ShotListFromBriefView: View {
 
     @MainActor
     private func generate() async {
-        generating = true; defer { generating = false }
+        generating = true; defer { generating = false; streaming = false }
         errorMessage = nil; unavailableMessage = nil
         let gen = TextGenerationIntelligenceFactory.make()
         guard gen.isAvailable else {
@@ -358,16 +367,26 @@ struct ShotListFromBriefView: View {
                 + "Du kan fortsatt legge til shots manuelt i shot-list-panelet."
             return
         }
+        // Strøm snapshots (kumulativt) → parse hver gang → shots dukker opp live.
+        streaming = true
+        var lastParsed: [String] = []
         do {
-            let raw = try await gen.generate(.shotListFromBrief(brief: brief))
-            let parsed = ShotListBriefParser.scenes(from: raw)
-            if parsed.isEmpty {
+            for try await snapshot in gen.stream(.shotListFromBrief(brief: brief)) {
+                let parsed = ShotListBriefParser.scenes(from: snapshot)
+                guard parsed != lastParsed else { continue }
+                lastParsed = parsed
+                withAnimation(.easeOut(duration: 0.18)) { scenes = parsed }
+            }
+            streaming = false
+            if lastParsed.isEmpty {
                 errorMessage = "Fikk ingen shots ut av briefen — prøv en mer detaljert beskrivelse."
-            } else {
-                withAnimation { scenes = parsed }
             }
         } catch {
-            errorMessage = "Kunne ikke generere shot-listen. Prøv igjen."
+            streaming = false
+            // Behold det som allerede strømmet inn; kun feil hvis vi ikke fikk noe.
+            if lastParsed.isEmpty {
+                errorMessage = "Kunne ikke generere shot-listen. Prøv igjen."
+            }
         }
     }
 

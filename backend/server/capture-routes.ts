@@ -39,6 +39,7 @@ import {
   createClientToken,
   fetchSessionForClient,
   listClientTokens,
+  recordClientGalleryView,
   revokeClientToken,
   validateClientToken,
   type ValidatedClientAuth,
@@ -1506,6 +1507,8 @@ export function createCaptureRouter(
 
   router.get('/client/assets', clientAuth, async (req, res) => {
     const { clientAuth: auth } = req as ClientAuthedRequest;
+    // Les-kvittering: klienten åpnet galleriet. Fire-and-forget (best-effort).
+    void recordClientGalleryView(db, auth.tokenId);
     const limit = Math.min(Number(req.query.limit ?? 500), 2000);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
     const rows = await db

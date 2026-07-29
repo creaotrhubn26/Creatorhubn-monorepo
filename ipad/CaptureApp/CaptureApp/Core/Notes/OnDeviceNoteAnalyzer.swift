@@ -93,6 +93,27 @@ struct FoundationModelsTextGenerator: TextGenerating {
         return try await session.respond(to: userPrompt, options: options).content
     }
 
+    /// On-device token-strøm: hvert element er alt generert så langt (kumulativt).
+    /// Lar shot-list-UI vise shots dukke opp mens modellen skriver.
+    func stream(_ prompt: TextGenPrompt) -> AsyncThrowingStream<String, Error> {
+        let (instructions, userPrompt) = Self.build(prompt)
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let session = LanguageModelSession(instructions: instructions)
+                    let options = GenerationOptions(maximumResponseTokens: 700)
+                    for try await partial in session.streamResponse(to: userPrompt, options: options) {
+                        continuation.yield(partial.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     static func build(_ prompt: TextGenPrompt) -> (instructions: String, prompt: String) {
         switch prompt {
         case .emailDraft(let recipient, let subject, let notes):
