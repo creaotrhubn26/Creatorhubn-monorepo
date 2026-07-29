@@ -17,6 +17,8 @@
 
 import type { Pool } from "pg";
 import { createGoogleCustomerMatchAudience } from "./client-google-customer-match.js";
+import { createMetaCustomAudience } from "./client-meta-suite.js";
+import { createLinkedinMatchedAudience } from "./client-linkedin-suite.js";
 
 export type MarketingSegmentSource = "industry_targets" | "leadgrid_leads";
 
@@ -229,18 +231,30 @@ export interface MaterializeResult {
   note?: string;
 }
 
+export type MaterializePlatform =
+  | "google_customer_match"
+  | "meta_custom_audience"
+  | "linkedin_matched_audience";
+
+/** Normalisert resultat fra en plattform-push (skjuler ulike felt-navn:
+ *  userListResource / audienceId / segmentUrn). */
+type PushResult =
+  | { ok: true; externalId: string; uploadCount: number }
+  | { ok: false; error: string };
+
 /**
- * Materialiserer et segment til en Google Customer Match-audience og lagrer
- * grafkanten. Laster opp hashede e-poster via createGoogleCustomerMatchAudience
- * (som håndterer hashing/OAuth). Idempotent per (segment, plattform).
+ * Delt materialiserings-kjerne: resolver medlemmer → pusher til plattformen →
+ * lagrer grafkanten (marketing_segment_audiences). Idempotent per (segment,
+ * plattform). Plattform-spesifikk push injiseres, så hashing/OAuth ligger i de
+ * eksisterende client-*-suite-funksjonene.
  */
-export async function materializeToGoogleCustomerMatch(
+async function runMaterialize(
   pool: Pool,
-  args: { segment: MarketingSegment; customerId: string; producerUserId: string },
+  segment: MarketingSegment,
+  platform: MaterializePlatform,
+  push: (identifiers: Array<{ email: string }>) => Promise<PushResult>,
 ): Promise<MaterializeResult> {
   await ensureTables(pool);
-  const platform = "google_customer_match";
-  const { segment, customerId, producerUserId } = args;
 
   const record = async (
     status: string,
@@ -269,24 +283,75 @@ export async function materializeToGoogleCustomerMatch(
     return { ok: false, platform, memberCount: 0, error: "no_members", note };
   }
 
-  const result = await createGoogleCustomerMatchAudience(pool, {
-    producerUserId,
-    customerId,
-    name: `Segment: ${segment.name}`,
-    sourceDescription: `Målrettet markedsføring — segment «${segment.name}»`,
-    identifiers: emails.map((e) => ({ email: e })),
-  });
-
+  const result = await push(emails.map((e) => ({ email: e })));
   if (!result.ok) {
     await record("failed", emails.length, null, result.error);
     return { ok: false, platform, memberCount: emails.length, error: result.error };
   }
 
-  await record("synced", result.uploadCount, result.userListResource, null);
-  return {
-    ok: true,
-    platform,
-    memberCount: result.uploadCount,
-    externalAudienceId: result.userListResource,
-  };
+  await record("synced", result.uploadCount, result.externalId, null);
+  return { ok: true, platform, memberCount: result.uploadCount, externalAudienceId: result.externalId };
+}
+
+const desc = (segment: MarketingSegment): string =>
+  `Målrettet markedsføring — segment «${segment.name}»`;
+
+/** Materialiser til Google Customer Match. */
+export async function materializeToGoogleCustomerMatch(
+  pool: Pool,
+  args: { segment: MarketingSegment; customerId: string; producerUserId: string },
+): Promise<MaterializeResult> {
+  const { segment, customerId, producerUserId } = args;
+  return runMaterialize(pool, segment, "google_customer_match", async (identifiers) => {
+    const r = await createGoogleCustomerMatchAudience(pool, {
+      producerUserId,
+      customerId,
+      name: `Segment: ${segment.name}`,
+      sourceDescription: desc(segment),
+      identifiers,
+    });
+    return r.ok
+      ? { ok: true, externalId: r.userListResource, uploadCount: r.uploadCount }
+      : { ok: false, error: r.error };
+  });
+}
+
+/** Materialiser til Meta Custom Audience (adAccountId = act_XXXXXXXXX). */
+export async function materializeToMetaCustomAudience(
+  pool: Pool,
+  args: { segment: MarketingSegment; adAccountId: string; producerUserId: string },
+): Promise<MaterializeResult> {
+  const { segment, adAccountId, producerUserId } = args;
+  return runMaterialize(pool, segment, "meta_custom_audience", async (identifiers) => {
+    const r = await createMetaCustomAudience(pool, {
+      producerUserId,
+      adAccountId,
+      name: `Segment: ${segment.name}`,
+      sourceDescription: desc(segment),
+      identifiers,
+    });
+    return r.ok
+      ? { ok: true, externalId: r.audienceId, uploadCount: r.uploadCount }
+      : { ok: false, error: r.error };
+  });
+}
+
+/** Materialiser til LinkedIn Matched Audience (adAccountUrn = urn:li:sponsoredAccount:X). */
+export async function materializeToLinkedinMatchedAudience(
+  pool: Pool,
+  args: { segment: MarketingSegment; adAccountUrn: string; producerUserId: string },
+): Promise<MaterializeResult> {
+  const { segment, adAccountUrn, producerUserId } = args;
+  return runMaterialize(pool, segment, "linkedin_matched_audience", async (identifiers) => {
+    const r = await createLinkedinMatchedAudience(pool, {
+      producerUserId,
+      adAccountUrn,
+      name: `Segment: ${segment.name}`,
+      sourceDescription: desc(segment),
+      identifiers,
+    });
+    return r.ok
+      ? { ok: true, externalId: r.segmentUrn, uploadCount: r.uploadCount }
+      : { ok: false, error: r.error };
+  });
 }
