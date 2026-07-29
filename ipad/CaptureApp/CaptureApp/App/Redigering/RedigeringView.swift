@@ -48,8 +48,9 @@ final class RedigeringModel {
     var appliedCount: Int { applied.count }
 
     static let presets: [(String, MagicRecipe)] = [
-        ("Produkt Clean", .product),
+        ("Bryllup", .wedding),
         ("Portrett", .portrait),
+        ("Produkt Clean", .product),
         ("Mat", .food),
         ("Landskap", .landscape),
         ("Nøytral", .neutral)
@@ -100,11 +101,19 @@ final class RedigeringModel {
             recipe = saved.recipe; exposureEV = saved.exposureEV
             crops[id] = saved.crop
             applied[id] = saved.recipe
+            syncPresetName(to: saved.recipe)
         } else if let r = applied[id] {
             recipe = r
+            syncPresetName(to: r)
         } else {
             exposureEV = 0
         }
+    }
+
+    /// Hold preset-etiketten i takt med recipen som lastes (persistert edit) så
+    /// UI-en viser «Bryllup» i stedet for standard-navnet når recipen matcher.
+    private func syncPresetName(to r: MagicRecipe) {
+        if let match = Self.presets.first(where: { $0.1 == r }) { presetName = match.0 }
     }
 
     /// Persist the selected asset's current edit state to disk.

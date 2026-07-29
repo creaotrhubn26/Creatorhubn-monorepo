@@ -216,9 +216,13 @@ final class MagicPipeline {
         //    red-eye. These analyse the scene, so they give us a clean
         //    colour-neutral baseline before we apply subject-specific
         //    recipe adjustments on top.
+        // Auto-enhance gates på recipe: for RÅ/kamera-JPEG-fangst gir det en ren
+        // baseline, men på ferdig-gradede/leverte bilder dobbelt-prosesserer det
+        // (over-metter + flytter farge). Rødøye-korreksjon beholdes uansett —
+        // den er korrigerende, ikke stilistisk.
         var current = straightened
         let autoFilters = straightened.autoAdjustmentFilters(options: [
-            .enhance: true,
+            .enhance: effectiveRecipe.autoEnhance,
             .redEye: true
         ])
         for filter in autoFilters {

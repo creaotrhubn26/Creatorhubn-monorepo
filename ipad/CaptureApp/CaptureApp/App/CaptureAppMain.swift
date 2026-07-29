@@ -82,6 +82,8 @@ struct RootView: View {
                     }
             case .demoAI:
                 DemoAIView()
+            case .demoRedigering:
+                RedigeringDemoView()
             case .demoShotList:
                 ShotListDemoView()
             case .demoMessages:
@@ -156,12 +158,16 @@ struct RootView: View {
         case onboarding
         case mainShell
         case demoAI
+        case demoRedigering
         case demoShotList
         case demoMessages
         case demoBrief
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-redigering") {
+            return .demoRedigering
+        }
         if launchArguments.contains("--demo-brief") {
             return .demoBrief
         }
