@@ -48,7 +48,7 @@ import {
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
-  sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
+  sceneActionMatch, expectedActionText, validateScene, detectFormatMismatch, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
   clearLearnedTargets, detectLearnedDrift, pickShot, pickShotForDevice, listStoredProjects, deleteStoredProject, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
@@ -1388,6 +1388,28 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 </div>
               )}
 
+              {/* Opptaks-grunnlag: vær ærlig om hva preview/opptak faktisk bygger på
+                  — særlig om mobil-layouten er fanget (ellers vises desktop nedskalert).
+                  Gjør per-enhet-fangsten synlig + gir eldre prosjekter en vei til den. */}
+              {isCaptureAvailable() && (project.scanShots?.length ?? 0) > 0 && (() => {
+                const portrait = previewDevice === 'iphone' || previewDevice === 'ipad';
+                const mobileOk = !!project.scanShotsMobile?.length;
+                const chip = (bg: string, color: string, text: string) => (
+                  <span style={{ fontSize: 11, background: bg, color, borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>{text}</span>
+                );
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 18px 2px', flexWrap: 'wrap' }}>
+                    {chip('#eef2f4', C.inkSoft, `📸 ${project.scanShots!.length} skjermbånd`)}
+                    {portrait && (mobileOk
+                      ? chip('#e4ede2', '#4a7a4a', '📱 mobil-layout fanget')
+                      : chip('#fdf6e7', '#8a6515', '📱 viser desktop nedskalert'))}
+                    <div style={{ flex: 1 }} />
+                    <button style={{ ...btn, padding: '3px 9px', fontSize: 11, opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
+                      onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Skanner…' : (portrait && !mobileOk) ? 'Hent mobil-layout' : 'Skann på nytt'}</button>
+                  </div>
+                );
+              })()}
+
               {/* Scene: enheten på et "bord" — varm spotlight + overflate + kontaktskygge,
                   så det føles som å sitte ved et bord med enheten foran seg. */}
               <div style={{
@@ -1439,6 +1461,24 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 ) : (
                   <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>Dra for å endre rekkefølge · ⌘-klikk for å velge flere · ⌘Z angrer.</div>
                 )}
+                {/* Orientering vs. format: fang «filmer bredt, eksporterer smalt» HER
+                    (der du bygger) med ett-klikks retting — ikke først i Export. */}
+                {(() => {
+                  const mm = detectFormatMismatch(scenes, project.format);
+                  if (!mm) return null;
+                  const conflictOrient = mm.formatOrientation === 'landscape' ? 'stående' : 'liggende';
+                  const fmtOrient = mm.formatOrientation === 'landscape' ? 'liggende' : 'stående';
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: '#fdf6e7', border: '1px solid #f0dca8', borderRadius: 8, padding: '8px 12px' }}>
+                      <span>⚠</span>
+                      <span style={{ flex: 1, fontSize: 12.5, color: '#8a6515' }}>
+                        {mm.conflicting} av {mm.total} scene{mm.total === 1 ? '' : 'r'} er {conflictOrient}, men eksport-format er {project.format} ({fmtOrient}) — innholdet beskjæres.
+                      </span>
+                      <button style={{ ...btn, padding: '4px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                        onClick={() => setProjectField('format', mm.suggestFormat)}>Bytt til {mm.suggestFormat}</button>
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
                   {scenes.map((s) => {
                     const multiSel = selectedSceneIds.includes(s.id);
@@ -1466,6 +1506,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                           title="Flytt tidligere" style={{ cursor: s.index > 0 ? 'pointer' : 'default', color: s.index > 0 ? C.inkSoft : C.line, fontSize: 12, padding: '0 2px' }}>‹</span>
                         <span onClick={(e) => { e.stopPropagation(); if (s.index < scenes.length - 1) reorderScenes(s.index, s.index + 1); }}
                           title="Flytt senere" style={{ cursor: s.index < scenes.length - 1 ? 'pointer' : 'default', color: s.index < scenes.length - 1 ? C.inkSoft : C.line, fontSize: 12, padding: '0 2px' }}>›</span>
+                        {(() => { const v = validateScene(s); return v.ready ? null : (
+                          <span title={`Mangler: ${v.issues.join(' · ')}`} style={{ fontSize: 11, color: '#b5651d', cursor: 'help' }}>⚠</span>
+                        ); })()}
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
                       </div>
                       <SceneThumb scene={s} url={project.url} height={64} />
