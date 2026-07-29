@@ -706,6 +706,7 @@ actor BackendClient {
         var scouted: Bool?
         var isCompleted: Bool?
         var capturedAssetId: String?
+        var capturedAssetBackendId: String?
         var completedBy: String?
     }
 
@@ -749,6 +750,12 @@ actor BackendClient {
         if let accentHex { items.append(.init(name: "accent", value: accentHex)) }
         c?.queryItems = items
         return c?.url
+    }
+
+    /// Stabil preview-URL for et backend-asset (thumbnail overalt). Offentlig
+    /// redirect → laster i AsyncImage/`<img>` uten auth.
+    nonisolated func assetPreviewURL(backendAssetId: String) -> URL? {
+        baseURL.appendingPathComponent("/api/capture/assets/\(backendAssetId)/preview")
     }
 
     /// #9 Hent bryllups-timelinen for prosjektet og form den til en kompakt
