@@ -1015,7 +1015,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <div onClick={() => setAiPanelOpen(true)} title="Vis AI Director"
             style={{ width: 32, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 14, cursor: 'pointer', color: C.accent, fontSize: 16 }}>✦</div>
         ) : (
-        <div style={{ width: 300, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, overflowY: 'auto', padding: '12px 12px 16px', position: 'relative' }}>
+        <div style={{ width: 300, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, overflowY: 'auto', padding: '16px 14px 20px', position: 'relative' }}>
           <div onClick={() => setAiPanelOpen(false)} title="Skjul AI Director"
             style={{ position: 'absolute', top: 8, right: 10, cursor: 'pointer', color: C.inkFaint, fontSize: 14, zIndex: 2 }}>‹</div>
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
@@ -1384,7 +1384,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               <div onClick={() => setToolsOpen(true)} title="Vis verktøy-panel"
                 style={{ width: 30, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>›</div>
             ) : (
-            <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: 16, flexShrink: 0 }}>
+            <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: '18px 16px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span onClick={() => setToolsOpen(false)} title="Skjul panel" style={{ color: C.inkFaint, cursor: 'pointer' }}>‹</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => (
@@ -1405,8 +1405,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 ))}
               </div>
 
+              <div style={{ height: 1, background: C.line, margin: '18px -16px 0' }} />
               {/* ── Visning (render-toggles) ── */}
-              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 20, marginBottom: 4 }}>Visning</div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 18, marginBottom: 4 }}>Visning</div>
               {(Object.keys(RENDER_OPTION_LABELS) as (keyof DemoRenderOptions)[]).map((k) => (
                 <Toggle key={k} label={RENDER_OPTION_LABELS[k]} on={(project.render ?? defaultRenderOptions())[k]}
                   onChange={(v) => setRenderOption(k, v)} />
@@ -1612,7 +1613,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               <div onClick={() => setSettingsOpen(true)} title="Vis scene-innstillinger"
                 style={{ width: 30, background: C.panel, borderLeft: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>‹</div>
             ) : (
-            <div style={{ width: 320, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: 16, flexShrink: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
+            <div style={{ width: 320, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: '18px 16px 26px', flexShrink: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
               <div onClick={() => setSettingsOpen(false)} title="Skjul panel" style={{ position: 'absolute', top: 10, right: 12, cursor: 'pointer', color: C.inkFaint, fontSize: 14, zIndex: 2 }}>›</div>
               {recording && recorderScene ? (
                 /* Guided recorder teleprompter */
@@ -1698,6 +1699,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     placeholder="Hva som skal sies i denne scenen…" onChange={(e) => updateScene(selected.id, { narration: e.target.value })} />
                   {tab !== 'Notes' && <WebSpeechBar scene={selected} language={project.language} />}
 
+                  <div style={{ height: 1, background: C.line, margin: '20px -16px 10px' }} />
                   <div style={row2}>
                     <div><div style={fldLabel}>Enhet</div>
                       <select style={field} value={selected.device} onChange={(e) => setSceneDevice(selected.id, e.target.value as DemoDevice)}>
@@ -1736,6 +1738,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
                   )}
 
+                  <div style={{ height: 1, background: C.line, margin: '20px -16px 10px' }} />
                   <div style={fldLabel}>Kamera & overgang (autonom video)</div>
                   <div style={row2}>
                     <select style={field} value={selected.cameraMove ?? 'auto'} onChange={(e) => updateScene(selected.id, { cameraMove: e.target.value as CameraMove })}>
@@ -2389,7 +2392,7 @@ const iconBtn: React.CSSProperties = { width: 30, height: 30, display: 'grid', p
 const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, background: '#fff', borderRadius: 9, padding: '8px 13px', fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 };
 const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 13, fontWeight: 600, padding: '10px 18px', borderRadius: 8, cursor: 'pointer' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '9px 14px', borderRadius: 8, cursor: 'pointer' };
-const fldLabel: React.CSSProperties = { fontSize: 11, color: C.inkSoft, margin: '14px 0 6px', fontWeight: 600 };
+const fldLabel: React.CSSProperties = { fontSize: 11, color: C.inkSoft, margin: '16px 0 7px', fontWeight: 700, letterSpacing: '.01em' };
 const field: React.CSSProperties = { width: '100%', minWidth: 0, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 const titleField: React.CSSProperties = { background: 'transparent', border: 0, color: C.ink, fontSize: 15, fontWeight: 700, padding: 0, outline: 'none', minWidth: 140 };
 const sel: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
