@@ -434,10 +434,14 @@ export function validateScene(s: DemoScene): { ready: boolean; issues: string[] 
  */
 export interface ExportIssue { index: number; title: string; issue: string }
 export interface ExportReadiness { ready: boolean; blocking: ExportIssue[]; warnings: ExportIssue[] }
-export function exportReadiness(scenes: DemoScene[]): ExportReadiness {
+export function exportReadiness(scenes: DemoScene[], format?: DemoProject['format']): ExportReadiness {
   const blocking: ExportIssue[] = [];
   const warnings: ExportIssue[] = [];
   if (!scenes.length) { blocking.push({ index: -1, title: '', issue: 'Ingen scener i demoen' }); return { ready: false, blocking, warnings }; }
+  // Format-orientering én gang (for per-scene beskjærings-varsel), og om noen
+  // scener i det hele tatt er tatt opp (for å flagge de som utelates av montasjen).
+  const fo = format ? formatOrientation(format) : null;
+  const anyRecorded = scenes.some((s) => s.recordingPath);
   scenes.forEach((s, i) => {
     const title = s.title || `Scene ${i + 1}`;
     if (!s.duration || s.duration <= 0) blocking.push({ index: i, title, issue: 'Ugyldig varighet' });
@@ -446,6 +450,19 @@ export function exportReadiness(scenes: DemoScene[]): ExportReadiness {
     if (s.actionType && s.actionType !== 'wait' && !hasTarget) warnings.push({ index: i, title, issue: 'Handling uten target/hotspot' });
     if (s.actionType && s.actionType !== 'wait' && s.detectedSelector && s.targetSelector && s.detectedSelector !== s.targetSelector) {
       warnings.push({ index: i, title, issue: 'Uverifisert handling (detected ≠ expected)' });
+    }
+    // Orientering vs. eksport-format: en liggende scene i 9:16 (eller stående i
+    // 16:9) beskjæres. 1:1 (square) passer alt → hoppes over.
+    if (fo && fo !== 'square') {
+      const so = sceneOrientation(s);
+      if (so !== 'square' && so !== fo) {
+        warnings.push({ index: i, title, issue: `${so === 'portrait' ? 'Stående' : 'Liggende'} scene i ${format}-format — innholdet beskjæres` });
+      }
+    }
+    // Montasje-eksport bruker kun scener med opptak; en uoppttatt scene faller
+    // stille ut av videoen. Flagg det når NOEN scener er tatt opp (blandet).
+    if (anyRecorded && !s.recordingPath) {
+      warnings.push({ index: i, title, issue: 'Ingen opptak — utelates fra videoen' });
     }
   });
   return { ready: blocking.length === 0, blocking, warnings };
