@@ -28,6 +28,10 @@ lært av 226 par 2026-07-29).
 Avhengigheter: rawpy, opencv-python, numpy + YuNet-modellen i
 ~/.config/postagent/models/yunet.onnx.
 
+Kolorist-finish (fra proff-research): hudtone-linje-korreksjon (vectorscope
+~35°, C* 20-34) forankret i målte ansikter, og rød-vern som hindrer at
+lehengaer driver mot oransje.
+
 Ærlige rammer: lærer tone og farge (globale transformasjoner per scene) —
 IKKE retusj, ikke lokale penselstrøk. Best der arkivet har lignende scener.
 """
@@ -171,6 +175,51 @@ def gentle_face_dodge(img, target=105.0):
     return out, f"dodge {fl:.0f}→γ{gamma:.2f}"
 
 
+def skin_line_correct(img, faces, target_hue_deg=35.0, chroma_range=(20.0, 34.0)):
+    """Kolorist-grep: roter fargebalansen dempet så hud faller på hudtone-linjen
+    (vectorscope ~10:30 ≈ 35° i LAB), og hold hud-chroma i naturlig område."""
+    if not faces:
+        return img
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+    h, w = lab.shape[:2]
+    a_v, b_v = [], []
+    for (x, y, fw, fh) in faces:
+        x0, y0 = max(0, int(x)), max(0, int(y))
+        roi = lab[y0:min(h, int(y+fh)), x0:min(w, int(x+fw)), :]
+        if roi[:, :, 0].size > 100:
+            a_v.append(float(np.median(roi[:, :, 1])) - 128.0)
+            b_v.append(float(np.median(roi[:, :, 2])) - 128.0)
+    if not a_v:
+        return img
+    a0, b0 = float(np.median(a_v)), float(np.median(b_v))
+    chroma = (a0 * a0 + b0 * b0) ** 0.5
+    if chroma < 3.0:
+        return img
+    hue = np.degrees(np.arctan2(b0, a0))
+    dtheta = np.radians(np.clip(target_hue_deg - hue, -8.0, 8.0)) * 0.7
+    target_c = np.clip(chroma, *chroma_range)
+    scale = np.clip(target_c / chroma, 0.88, 1.12) ** 0.5
+    ca, sa = np.cos(dtheta), np.sin(dtheta)
+    A = (lab[:, :, 1] - 128.0)
+    B = (lab[:, :, 2] - 128.0)
+    lab[:, :, 1] = np.clip((A * ca - B * sa) * scale + 128.0, 0, 255)
+    lab[:, :, 2] = np.clip((A * sa + B * ca) * scale + 128.0, 0, 255)
+    return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+
+def protect_reds(img, hue_shift=-5, sat_gain=1.04):
+    """Lehenga-vernet: rødt som driver mot oransje skyves tilbake mot dyp rød.
+    Kun mettede rød/rød-oransje-piksler røres (H<14 eller H>172, S>90)."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+    Hc, S = hsv[:, :, 0], hsv[:, :, 1]
+    m = (((Hc < 14) | (Hc > 172)) & (S > 90))
+    if not m.any():
+        return img
+    hsv[:, :, 0][m] = (Hc[m] + hue_shift) % 180
+    hsv[:, :, 1][m] = np.clip(S[m].astype(np.float32) * sat_gain, 0, 255).astype(np.int16)
+    return cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+
 def apply_model(raw_path, model, out_dir, k=5):
     base = os.path.splitext(os.path.basename(raw_path))[0]
     img = develop(raw_path, half=False)
@@ -189,6 +238,9 @@ def apply_model(raw_path, model, out_dir, k=5):
     lab_img[:, :, 1] = np.clip(lab_img[:, :, 1] + 0.5 * ab[0], 0, 255)
     lab_img[:, :, 2] = np.clip(lab_img[:, :, 2] + 0.5 * ab[1], 0, 255)
     out = cv2.cvtColor(lab_img.astype(np.uint8), cv2.COLOR_LAB2BGR)
+    faces = face_boxes(out)
+    out = skin_line_correct(out, faces)
+    out = protect_reds(out)
     out, dlog = gentle_face_dodge(out)
     # stille finish («film is quiet»): lett skarphet + fin korning
     blur = cv2.GaussianBlur(out, (0, 0), 1.0)
