@@ -95,6 +95,21 @@ enum SkinToneMath {
         return 500.0 * (f(x) - f(y))
     }
 
+    /// CIE L* og b* fra sRGB (0…1) — komplement til ``aStar`` (delt XYZ-mate).
+    static func lbStar(r: CGFloat, g: CGFloat, b: CGFloat) -> (l: Double, b: Double) {
+        func lin(_ c: CGFloat) -> Double {
+            let x = Double(c)
+            return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
+        }
+        let rl = lin(r), gl = lin(g), bl = lin(b)
+        let yv = rl * 0.2126 + gl * 0.7152 + bl * 0.0722
+        let zv = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883
+        func f(_ t: Double) -> Double { t > 0.008856 ? pow(t, 1.0 / 3.0) : (7.787 * t + 16.0 / 116.0) }
+        let l = 116.0 * f(yv) - 16.0
+        let bStar = 200.0 * (f(yv) - f(zv))
+        return (l, bStar)
+    }
+
     /// Rød↔grønn-bias (RGB 0…1) for å forankre a* mot ~11. Positiv = hev a*
     /// (fiks grønn/gjørmete); negativ = senk a* (fiks oransje). Klemt + skalert.
     static func redGreenBias(aStar: Double, intensity: Double, targetA: Double = targetA) -> Double {
