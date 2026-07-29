@@ -30,6 +30,7 @@ const S = {  // veiviser-state (speiler appens wizard-state, forenklet)
     logGamma: null, qcWarnings: [],
     bins: "Dag 1,Dag 2", cat: null, recs: null, excluded: [],
     chosen: {}, busy: false,
+    stil: { modeller: null, res: null },
     doneSteps: new Set(),
 };
 
@@ -48,6 +49,7 @@ const STEPS = [
     { id: "dialog",   n: 10, label: "🗣 Dialog" },
     { id: "assist",   n: 11, label: "✂ Assistenter" },
     { id: "tqc",      n: 12, label: "🔍 Teknisk QC" },
+    { id: "fotostil", n: 13, label: "📷 Foto-stil" },
 ];
 
 // ── infrastruktur ──
@@ -101,6 +103,7 @@ function mutationLevel(scriptId, params, dryRun) {
     switch (scriptId) {
         case "dialogue_tools": return mode === "assembly" ? 1 : 0;
         case "insert_unused_clips": return 1;   // nytt spor, aldri oppå eksisterende
+        case "arkiv_stil": return 1;            // skriver NYE jpg/modell-filer på disk
         case "recommend_unused_insertions": return 0;
         case "edit_assistants": case "unused_clips_placement": return 0;
         case "technical_qc":
@@ -441,6 +444,30 @@ const RENDER = {
             <button id="chat-send" class="primary" ${S.chatBusy ? "disabled" : ""}>Send</button>
             ${S.chat.length ? `<button id="chat-clear" class="small">Tøm</button>` : ""}
         </div></div>`;
+    },
+    fotostil() {
+        const st = S.stil;
+        return `<h2>📷 Foto-stil — arkiv-lært redigering</h2>
+        <div class="sub">Lær fotografens stil fra egne RAW↔ferdig-par (Imagen-prinsippet, lokalt) og appliser på nye råfiler. Modeller: ~/.config/postagent/stilmodeller/</div>
+        <div class="card"><div class="row"><strong>Modeller</strong>
+            <button id="stil-list" class="primary" ${S.busy ? "disabled" : ""}>Oppdater liste</button></div>
+            ${(st.modeller || []).map((m) => `<div class="muted">${esc(m.name)} — ${m.scenes ?? "?"} scener</div>`).join("") || `<div class="muted">Trykk «Oppdater liste»</div>`}
+        </div>
+        <div class="card"><strong>1 · Lær ny stilmodell</strong>
+            <div class="row"><input type="text" id="stil-raa" placeholder="Rå-mapper (kommaseparert), f.eks. /Volumes/…/Photography" style="min-width:340px"></div>
+            <div class="row"><input type="text" id="stil-lev" placeholder="Leverings-mapper med ferdige JPG (kommaseparert)" style="min-width:340px"></div>
+            <div class="row"><input type="text" id="stil-modell-ny" placeholder="Modellnavn, f.eks. mittbryllup-2026" style="min-width:220px">
+            <button id="stil-laer" ${S.busy ? "disabled" : ""}>Lær (10–20 min)</button></div>
+        </div>
+        <div class="card"><strong>2 · Rediger råfiler med modell</strong>
+            <div class="row"><input type="text" id="stil-modell" placeholder="Modellsti (.npz) — se listen over" style="min-width:340px"></div>
+            <div class="row"><input type="text" id="stil-inn" placeholder="Mappe med råfiler (CR3/ARW/NEF/RAF)" style="min-width:340px"></div>
+            <div class="row"><input type="text" id="stil-ut" placeholder="Ut-mappe for redigerte JPG" style="min-width:280px">
+            <button id="stil-rediger" class="primary" ${S.busy ? "disabled" : ""}>Rediger</button></div>
+        </div>
+        ${st.res ? `<div class="card"><div class="ok-text">✓ ${st.res.edited ?? st.res.scenes ?? 0} ${st.res.mode === "laer" ? "scener lært → " + esc(st.res.modellPath || "") : "bilder redigert → " + esc(st.res.outDir || "")}</div>
+            ${(st.res.results || []).slice(0, 20).map((r) => `<div class="muted">${esc(r.file)} — ${esc(r.note)}</div>`).join("")}
+        </div>` : ""}`;
     },
     assist() {
         const t = S.tempo, j = S.jumpcuts, tk = S.takes, an = S.angles;
@@ -1026,6 +1053,31 @@ const ACTIONS = {
     "op-dialog": () => { S.step = "dialog"; render(); },
     "op-assist": () => { S.step = "assist"; render(); },
     "op-tqc": () => { S.step = "tqc"; render(); },
+    "op-fotostil": () => { S.step = "fotostil"; render(); },
+    "stil-list": async () => {
+        const v = await run("arkiv_stil", { mode: "modeller" }, false, "Leser stilmodeller …");
+        S.stil.modeller = v.models || []; render();
+    },
+    "stil-laer": async () => {
+        const navn = ($("stil-modell-ny").value || "").trim();
+        if (!navn) { status("Gi modellen et navn først.", "err"); return; }
+        const v = await run("arkiv_stil", {
+            mode: "laer",
+            raaDirs: $("stil-raa").value,
+            leveringDirs: $("stil-lev").value,
+            modellPath: "~/.config/postagent/stilmodeller/" + navn.replace(/\.npz$/, "") + ".npz",
+        }, false, "Lærer stil fra arkivet (10–20 min) …");
+        S.stil.res = v; log(`Stilmodell lært: ${v.scenes} scener → ${v.modellPath}`); render();
+    },
+    "stil-rediger": async () => {
+        const v = await run("arkiv_stil", {
+            mode: "rediger",
+            modellPath: $("stil-modell").value,
+            innDir: $("stil-inn").value,
+            utDir: $("stil-ut").value,
+        }, false, "Redigerer råfiler med arkiv-lært stil …");
+        S.stil.res = v; log(`Arkiv-lært redigering: ${v.edited} bilder → ${v.outDir}`); render();
+    },
     "op-index": async () => {
         const v = await run("build_project_index", { mode: "build" }, false, "Indekserer prosjektet (uid + fingerprints) …");
         status(`✓ Indeks: ${v.clipsIndexed} klipp (${v.fingerprints} fingerprints), ${v.timelines} timelines, ${v.counts.analyses} analyser cachet — Resolve ${v.meta.resolve_version}`, "ok-text");

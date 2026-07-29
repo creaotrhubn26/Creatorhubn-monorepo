@@ -50,6 +50,11 @@
       "id": "cull",
       "name": "Cull",
       "icon": "Inventory"
+    },
+    {
+      "id": "photo",
+      "name": "Photo",
+      "icon": "PhotoCamera"
     }
   ],
   "scripts": [
@@ -3698,6 +3703,19 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "arkiv_stil",
+      "name": "Arkiv-lært foto-stil (lær + rediger)",
+      "category": "photo",
+      "scriptPath": "scripts/photo/arkiv_stil.py",
+      "description": "Lærer fotografens redigeringsstil fra egne RAW↔ferdig-par (CDF-tonekurver + LAB-skift per scene, Imagen-prinsippet lokalt) og appliserer den på nye råfiler med ansiktsmålt dodge og stille film-finish. Modeller lagres i ~/.config/postagent/stilmodeller/. Trenger ikke Resolve.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresResolve": false
     }
   ]
 }
