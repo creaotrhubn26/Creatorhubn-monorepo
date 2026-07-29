@@ -133,6 +133,8 @@ struct ShotListFromBriefView: View {
                 .scrollContentBackground(.hidden)
                 .font(.body)
                 .foregroundStyle(CHTheme.textPrimary)
+                .accessibilityLabel("Klient-brief")
+                .accessibilityIdentifier("brief.editor")
                 .padding(12)
                 .frame(minHeight: 190)
                 .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -168,6 +170,8 @@ struct ShotListFromBriefView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canGenerate)
+            .accessibilityLabel(generating ? "Genererer shot-list" : "Generer shot-list")
+            .accessibilityIdentifier("brief.generate")
         }
         .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 12)
         .background(.ultraThinMaterial)
@@ -336,6 +340,8 @@ struct ShotListFromBriefView: View {
         }
         .buttonStyle(.plain)
         .disabled(!canSave)
+        .accessibilityLabel(saveLabel)
+        .accessibilityIdentifier("brief.save")
         .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 12)
         .background(.ultraThinMaterial)
     }
