@@ -956,14 +956,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           </div>
         </div>
         <div style={{ flex: 1, maxWidth: 420, display: 'flex', alignItems: 'center', gap: 8, background: C.cream, border: `1px solid ${C.line}`, borderRadius: 9, padding: '7px 12px' }}>
-          <span style={{ color: C.inkFaint }}>🌐</span>
           <input style={{ flex: 1, border: 0, background: 'transparent', outline: 'none', fontSize: 13, color: C.ink }}
             value={project.url} onChange={(e) => setProjectField('url', e.target.value)}
             onBlur={(e) => { const nu = normalizeUrl(e.target.value); setProjectField('url', nu); handleUrlCommitted(nu); }} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
         {saveStatus === 'error' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">⚠ Ikke lagret</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">Ikke lagret</div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}</div>
         )}
@@ -1058,7 +1057,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               const directorLine = (directorMsg || ctxWarning) ? (
                 <>
                   {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
-                  {ctxWarning && <div style={{ fontSize: 11, color: '#8a6516', background: '#fff8ec', border: '1px solid #f0d9a8', borderRadius: 7, padding: '6px 9px', marginTop: 6 }}>⚠ {ctxWarning}</div>}
+                  {ctxWarning && <div style={{ fontSize: 11, color: '#8a6516', background: '#fff8ec', border: '1px solid #f0d9a8', borderRadius: 7, padding: '6px 9px', marginTop: 6 }}>{ctxWarning}</div>}
                 </>
               ) : null;
               // Delt progress/resultat for autonom ferdig demo (brukt i Beskriv + Forfin).
@@ -1144,7 +1143,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     <>
                       {/* Product Brain (steg 0): gi AI-en produktets one-pager (PDF) */}
                       <div style={{ background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: 11, marginBottom: 14 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>🧠 Product Brain</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>Product Brain</div>
                         {project.productDoc ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ flex: 1, fontSize: 11.5, color: C.green, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={project.productDocName}>✓ Lest: {project.productDocName} ({Math.round((project.productDoc.length) / 1000)}k tegn)</span>
@@ -1154,7 +1153,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         ) : (
                           <>
                             <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff' }} disabled={docBusy} onClick={() => void pickProductDoc()}>
-                              {docBusy ? 'Leser PDF…' : '📄 Legg til one-pager (PDF)'}
+                              {docBusy ? 'Leser PDF…' : 'Legg til one-pager (PDF)'}
                             </button>
                             <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 6, lineHeight: 1.4 }}>Last opp produktets one-pager/datablad — AI-en leser den og forstår produktet dypere enn nettsiden alene.</div>
                           </>
@@ -1181,7 +1180,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', borderColor: C.accent, color: C.accent, fontWeight: 600, opacity: demoVidBusy || directorBusy ? 0.6 : 1 }}
                           disabled={demoVidBusy || directorBusy} onClick={() => void runOneClickDemo()}
                           title="Forstå → generér scener → kjør nettsiden + narrér → ferdig video, alt i ett">
-                          {demoVidBusy ? 'Lager ferdig demo…' : '✨ Lag ferdig demo fra URL'}
+                          {demoVidBusy ? 'Lager ferdig demo…' : 'Lag ferdig demo fra URL'}
                         </button>
                         <div style={{ fontSize: 10, color: C.inkFaint, marginTop: 5, lineHeight: 1.4 }}>Helautonomt: AI forstår, skriver manus, kjører nettsiden, narrerer og leverer en ferdig video — uten at du tar opp noe.</div>
                         {demoVidBlock}
@@ -1271,7 +1270,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       <button style={{ ...btn, width: '100%', justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, padding: '10px 13px', boxShadow: '0 1px 3px rgba(239,138,93,0.35)', opacity: demoVidBusy || directorBusy ? 0.6 : 1 }}
                         disabled={demoVidBusy || directorBusy} onClick={() => void runAutoDemo()}
                         title="AI kjører nettsiden, narrerer med voiceover og leverer en ferdig video — uten at du tar opp noe">
-                        {demoVidBusy ? 'Lager ferdig demo…' : '✨ Generér ferdig demo (autonom)'}
+                        {demoVidBusy ? 'Lager ferdig demo…' : 'Generér ferdig demo (autonom)'}
                       </button>
                       {demoVidBlock}
                       <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: directorBusy ? 0.6 : 1 }}
@@ -1464,7 +1463,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   rammen under er blank, med utvei — i stedet for stille feil. */}
               {embedBlocked && !(project.scanShots && project.scanShots.length) && (
                 <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: '#fff8ec', border: '1px solid #f0d9a8', fontSize: 12.5, color: '#8a6516', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span>⚠</span>
+                  <span style={{ color: '#b5651d' }}>△</span>
                   <span style={{ flex: 1 }}>Denne siden blokkerer innebygd forhåndsvisning ({embedBlocked}) — rammen under er derfor blank. Hent ekte skjermbilder i stedet.</span>
                   <button style={{ ...btn, whiteSpace: 'nowrap', opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
                     onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Henter…' : 'Hent forhåndsvisning'}</button>
@@ -1482,10 +1481,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 );
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 18px 2px', flexWrap: 'wrap' }}>
-                    {chip('#eef2f4', C.inkSoft, `📸 ${project.scanShots!.length} skjermbånd`)}
+                    {chip('#eef2f4', C.inkSoft, `${project.scanShots!.length} skjermbånd`)}
                     {portrait && (mobileOk
-                      ? chip('#e4ede2', '#4a7a4a', '📱 mobil-layout fanget')
-                      : chip('#fdf6e7', '#8a6515', '📱 viser desktop nedskalert'))}
+                      ? chip('#e4ede2', '#4a7a4a', 'Mobil-layout fanget')
+                      : chip('#fdf6e7', '#8a6515', 'Viser desktop nedskalert'))}
                     <div style={{ flex: 1 }} />
                     <button style={{ ...btn, padding: '3px 9px', fontSize: 11, opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
                       onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Skanner…' : (portrait && !mobileOk) ? 'Hent mobil-layout' : 'Skann på nytt'}</button>
@@ -1553,7 +1552,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   const fmtOrient = mm.formatOrientation === 'landscape' ? 'liggende' : 'stående';
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: '#fdf6e7', border: '1px solid #f0dca8', borderRadius: 8, padding: '8px 12px' }}>
-                      <span>⚠</span>
+                      <span style={{ color: '#b5651d' }}>△</span>
                       <span style={{ flex: 1, fontSize: 12.5, color: '#8a6515' }}>
                         {mm.conflicting} av {mm.total} scene{mm.total === 1 ? '' : 'r'} er {conflictOrient}, men eksport-format er {project.format} ({fmtOrient}) — innholdet beskjæres.
                       </span>
@@ -1592,7 +1591,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         <span onClick={(e) => { e.stopPropagation(); if (s.index < scenes.length - 1) reorderScenes(s.index, s.index + 1); }}
                           title="Flytt senere" style={{ cursor: s.index < scenes.length - 1 ? 'pointer' : 'default', color: s.index < scenes.length - 1 ? C.inkSoft : C.line, fontSize: 12, padding: '0 2px' }}>›</span>
                         {(() => { const v = validateScene(s); return v.ready ? null : (
-                          <span title={`Mangler: ${v.issues.join(' · ')}`} style={{ fontSize: 11, color: '#b5651d', cursor: 'help' }}>⚠</span>
+                          <span title={`Mangler: ${v.issues.join(' · ')}`} style={{ fontSize: 11, color: '#b5651d', cursor: 'help' }}>△</span>
                         ); })()}
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
                       </div>
@@ -1673,7 +1672,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: autoBusy ? 0.6 : 1 }} disabled={autoBusy}
                     onClick={() => void autoRunAll()}
                     title="Kjør alle gjenstående scener sekvensielt i ÉN vedvarende økt — navigasjon og innlogging består mellom stegene">
-                    ⏩ {autoBusy ? 'Kjører…' : 'Kjør alle automatisk'}
+                    {autoBusy ? 'Kjører…' : 'Kjør alle automatisk'}
                   </button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: verifyBusy ? 0.6 : 1 }} disabled={verifyBusy}
                     onClick={() => void verifyCurrentAction()}
@@ -2100,7 +2099,7 @@ function ValidationModal({ scenes, onClose, onGoto, onSetStatus }: {
               <span style={{ color: C.inkFaint }}>Expected</span><span>{expectedActionText(s)}</span>
               <span style={{ color: C.inkFaint }}>Detected</span><span style={{ color: s.detectedSelector ? C.ink : C.inkFaint }}>{s.detectedSelector ? `${ACTION_META[s.actionType ?? 'click'].verb} ${s.targetLabel || s.detectedSelector}` : '(ikke verifisert — kjør capture eller marker manuelt)'}</span>
             </div>
-            {!val.ready && <div style={{ fontSize: 11.5, color: '#b5651d', marginTop: 7 }}>⚠ {val.issues.join(' · ')}</div>}
+            {!val.ready && <div style={{ fontSize: 11.5, color: '#b5651d', marginTop: 7 }}>△ {val.issues.join(' · ')}</div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
               <button style={{ ...outlineBtn, fontSize: 12, padding: '6px 11px' }} onClick={() => onGoto(s.id)}>Gå til scene</button>
               <div style={{ flex: 1 }} />
@@ -2158,7 +2157,7 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
   const [, bumpList] = useState(0);
   const stored = listStoredProjects().filter((m) => m.id !== project?.id);
   // G16: sky-prosjekter — prosjekter fra andre maskiner (eller slettet lokalt)
-  // kan hentes ned. Lokale poster viser ☁ når de også finnes i skyen.
+  // kan hentes ned. Lokale poster merkes «sky» når de også finnes i skyen.
   const [cloud, setCloud] = useState<CloudProjectMeta[]>([]);
   const [cloudBusy, setCloudBusy] = useState<string | null>(null);
   useEffect(() => { void listCloudProjects().then(setCloud).catch(() => {}); }, []);
@@ -2198,7 +2197,7 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.name}{cloudIds.has(m.id) && <span title="Synket til skyen" style={{ marginLeft: 6, fontSize: 11, color: C.inkFaint }}>☁</span>}
+                    {m.name}{cloudIds.has(m.id) && <span title="Synket til skyen" style={{ marginLeft: 6, fontSize: 11, color: C.inkFaint }}>sky</span>}
                   </div>
                   <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
@@ -2213,7 +2212,7 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.name}<span title="Finnes kun i skyen — hentes ned ved åpning" style={{ marginLeft: 6, fontSize: 11, color: C.accent }}>☁ sky</span>
+                    {m.name}<span title="Finnes kun i skyen — hentes ned ved åpning" style={{ marginLeft: 6, fontSize: 11, color: C.accent }}>sky</span>
                   </div>
                   <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
