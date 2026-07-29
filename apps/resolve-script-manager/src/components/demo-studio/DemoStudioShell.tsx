@@ -1613,7 +1613,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               <div onClick={() => setSettingsOpen(true)} title="Vis scene-innstillinger"
                 style={{ width: 30, background: C.panel, borderLeft: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>‹</div>
             ) : (
-            <div style={{ width: 320, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: 16, flexShrink: 0, overflowY: 'auto', position: 'relative' }}>
+            <div style={{ width: 320, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: 16, flexShrink: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
               <div onClick={() => setSettingsOpen(false)} title="Skjul panel" style={{ position: 'absolute', top: 10, right: 12, cursor: 'pointer', color: C.inkFaint, fontSize: 14, zIndex: 2 }}>›</div>
               {recording && recorderScene ? (
                 /* Guided recorder teleprompter */
@@ -2391,10 +2391,13 @@ const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, backgrou
 const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 13, fontWeight: 600, padding: '10px 18px', borderRadius: 8, cursor: 'pointer' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '9px 14px', borderRadius: 8, cursor: 'pointer' };
 const fldLabel: React.CSSProperties = { fontSize: 11, color: C.inkSoft, margin: '14px 0 6px', fontWeight: 600 };
-const field: React.CSSProperties = { width: '100%', border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
+const field: React.CSSProperties = { width: '100%', minWidth: 0, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 const titleField: React.CSSProperties = { background: 'transparent', border: 0, color: C.ink, fontSize: 15, fontWeight: 700, padding: 0, outline: 'none', minWidth: 140 };
 const sel: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
-const row2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 };
+// minmax(0, 1fr) (ikke 1fr) så kolonnene KAN krympe under innholdets egenbredde —
+// ellers flyter select/input ut over 320px-panelet og gjør hele appen bredere enn
+// vinduet (klipping i høyre kant, inkl. status-linjen).
+const row2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 };
 const chip: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 10, display: 'inline-block' };
 
 /**
