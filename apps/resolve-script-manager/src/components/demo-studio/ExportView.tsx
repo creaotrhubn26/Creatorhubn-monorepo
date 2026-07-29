@@ -312,7 +312,7 @@ export function ExportView() {
     if (toggles.voiceover && recorded.some((s) => s.narration?.trim())) {
       const vo = await synthesizeVoiceover(recorded);
       if (vo.paths.some(Boolean)) voiceover = vo.paths;
-      if (vo.failed > 0) setFileMsg(`⚠ ${vo.failed} voiceover-spor kunne ikke lages — eksporterer ${vo.paths.some(Boolean) ? 'med de som lyktes' : 'uten voiceover'}.`);
+      if (vo.failed > 0) setFileMsg(`${vo.failed} voiceover-spor kunne ikke lages — eksporterer ${vo.paths.some(Boolean) ? 'med de som lyktes' : 'uten voiceover'}.`);
     }
     // Lytt på fremdrift fra pipelinen. percent er 0–100; result-eventet legger
     // outputPath TOP-LEVEL (ikke i .value).
@@ -387,7 +387,7 @@ export function ExportView() {
               <div key={`b${i}`} style={{ fontSize: 12, color: '#9a2b2b', marginBottom: 2 }}>✕ {b.index >= 0 ? `Scene ${b.index + 1} (${b.title}): ` : ''}{b.issue}</div>
             ))}
             {readiness.warnings.map((w, i) => (
-              <div key={`w${i}`} style={{ fontSize: 12, color: '#8a6516', marginBottom: 2 }}>⚠ {w.index >= 0 ? `Scene ${w.index + 1} (${w.title}): ` : ''}{w.issue}</div>
+              <div key={`w${i}`} style={{ fontSize: 12, color: '#8a6516', marginBottom: 2 }}>△ {w.index >= 0 ? `Scene ${w.index + 1} (${w.title}): ` : ''}{w.issue}</div>
             ))}
             {!readiness.ready && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 6 }}>Video-eksport er deaktivert til de blokkerende punktene er løst. Tekst/bilde-leveranser kan fortsatt lages.</div>}
           </div>
@@ -451,7 +451,7 @@ export function ExportView() {
           </div>
           {new Set(recorded.map((s) => s.device)).size > 1 && (
             <div style={{ marginTop: 8, fontSize: 11.5, color: '#8a6516' }}>
-              ⚠ Scenene har ulike enheter — hele videoen rammes som første scenes enhet ({recorded[0]?.device}). Del opp i flere eksporter for enhets-riktige rammer.
+              △ Scenene har ulike enheter — hele videoen rammes som første scenes enhet ({recorded[0]?.device}). Del opp i flere eksporter for enhets-riktige rammer.
             </div>
           )}
         </Section>
@@ -533,7 +533,7 @@ export function ExportView() {
               gjennomtenkt demo kan rettes før den produseres. */}
           {readiness.blocking.length > 0 && (
             <div style={{ background: '#fdecec', border: '1px solid #f0b8b8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#9a2b2b', marginBottom: 6 }}>⛔ Kan ikke eksportere — {readiness.blocking.length} blokkerende {readiness.blocking.length === 1 ? 'sak' : 'saker'}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#9a2b2b', marginBottom: 6 }}>Kan ikke eksportere — {readiness.blocking.length} blokkerende {readiness.blocking.length === 1 ? 'sak' : 'saker'}</div>
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#7a3535', lineHeight: 1.6 }}>
                 {readiness.blocking.map((b, i) => (
                   <li key={i}>{b.index >= 0 ? `Scene ${b.index + 1}${b.title ? ` (${b.title})` : ''}: ` : ''}{b.issue}</li>
@@ -543,7 +543,7 @@ export function ExportView() {
           )}
           {readiness.warnings.length > 0 && (
             <div style={{ background: '#fdf6e7', border: '1px solid #f0dca8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6515', marginBottom: 6 }}>⚠ {readiness.warnings.length} advarsel{readiness.warnings.length === 1 ? '' : 'er'} (eksport tillatt)</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6515', marginBottom: 6 }}>△ {readiness.warnings.length} advarsel{readiness.warnings.length === 1 ? '' : 'er'} (eksport tillatt)</div>
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#7a6015', lineHeight: 1.6 }}>
                 {readiness.warnings.map((w, i) => (
                   <li key={i}>{w.index >= 0 ? `Scene ${w.index + 1}${w.title ? ` (${w.title})` : ''}: ` : ''}{w.issue}</li>
