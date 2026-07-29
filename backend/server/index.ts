@@ -483,6 +483,7 @@ import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupWhatsNewRoutes } from "./whats-new-routes";
 import { setupMarketingPosterRoutes } from "./marketing-poster-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
+import { setupAdminMarketingSegmentsRoutes } from "./admin-room-marketing-segments-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
 import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
@@ -17081,6 +17082,15 @@ setupMarketingPosterRoutes({
 
 // ── Industry targets (Tier-1 CRM) — driver content-marketing-engagement-system
 setupAdminIndustryTargetsRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── Målrettet markedsføring: segment → ad-audience-bro (fase 1)
+setupAdminMarketingSegmentsRoutes({
   app,
   pool,
   getActiveSessionFromRequest,
