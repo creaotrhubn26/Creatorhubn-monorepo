@@ -460,6 +460,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setCritiqueBusy(false);
     }
   };
+  // Sammenleggbare side-paneler så senterområdet får plass på iPad/smale vinduer
+  // (256+230+320 px fast chrome ellers). Verktøy-panelet auto-kollapser på smale
+  // vinduer; begge kan slås av/på manuelt (rail med chevron for å åpne igjen).
+  const [toolsOpen, setToolsOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1200 : true));
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
@@ -1352,9 +1357,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><LibraryPanel /></div>
         ) : (
           <>
-            {/* ── Blocks panel (demo-typer) ── */}
+            {/* ── Blocks panel (demo-typer) ── kan kollapses til en smal rail ── */}
+            {!toolsOpen ? (
+              <div onClick={() => setToolsOpen(true)} title="Vis verktøy-panel"
+                style={{ width: 30, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>›</div>
+            ) : (
             <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: 16, flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span style={{ color: C.inkFaint }}>‹</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span onClick={() => setToolsOpen(false)} title="Skjul panel" style={{ color: C.inkFaint, cursor: 'pointer' }}>‹</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => (
                   <div key={t} onClick={() => {
@@ -1395,6 +1404,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               </button>
               <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 6, lineHeight: 1.4 }}>Expected ↔ Detected — Match / Warning per scene.</div>
             </div>
+            )}
 
             {/* ── Center: LIVE device preview ── */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg, overflow: 'auto', padding: '16px 22px' }}>
@@ -1573,8 +1583,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               </div>
             </div>
 
-            {/* ── Right: scene settings (editerbar) ── */}
-            <div style={{ width: 320, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: 16, flexShrink: 0, overflowY: 'auto' }}>
+            {/* ── Right: scene settings (editerbar) ── kan kollapses til en rail ── */}
+            {!settingsOpen ? (
+              <div onClick={() => setSettingsOpen(true)} title="Vis scene-innstillinger"
+                style={{ width: 30, background: C.panel, borderLeft: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>‹</div>
+            ) : (
+            <div style={{ width: 320, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: 16, flexShrink: 0, overflowY: 'auto', position: 'relative' }}>
+              <div onClick={() => setSettingsOpen(false)} title="Skjul panel" style={{ position: 'absolute', top: 10, right: 12, cursor: 'pointer', color: C.inkFaint, fontSize: 14, zIndex: 2 }}>›</div>
               {recording && recorderScene ? (
                 /* Guided recorder teleprompter */
                 <>
@@ -1735,13 +1750,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 </>
               ) : null}
             </div>
+            )}
           </>
         )}
       </div>
 
       {/* ── Bottom: stat cards ── */}
       {!storyMode && nav !== 'export' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: C.line, borderTop: `1px solid ${C.line}`, flexShrink: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 1, background: C.line, borderTop: `1px solid ${C.line}`, flexShrink: 0 }}>
           <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" onLink={() => setNav('script')} />
           <Stat h="▦ Scener" v={`${scenes.length} scener`} s={`${doneCount} ferdig`} />
           <Stat h="⏱ Varighet" v={`${fmt(totalDuration(scenes))} total`} s="Anbefalt 60–90 s" />
