@@ -352,6 +352,9 @@ enum RAWExportPipeline {
         // benefits from the post-tone state. No-op when no face
         // detected or delta is tiny.
         current = SkinToneUnifyFilter.apply(recipe: recipe, to: current)
+        // Hud-tone-guard SIST — forankrer a* mot ~11 etter unify/tone (fikser
+        // grønn/gjørmete + oransje uten å røre L*/b*).
+        current = SkinToneGuardFilter.apply(recipe: recipe, to: current)
 
         return current
     }
