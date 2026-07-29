@@ -83,6 +83,14 @@ def cdf_lut(src_chan, dst_chan):
     return np.clip(np.convolve(np.pad(lut, 4, mode="edge"), k, mode="valid"), 0, 255)
 
 
+def _std_ratio(dst_chan, src_chan, lo=0.6, hi=1.7):
+    """Reinhard-spredningsforhold dst/src for én kanal, klemt mot outliere."""
+    s = float(src_chan.std())
+    if s < 1e-3:
+        return 1.0
+    return float(np.clip(dst_chan.std() / s, lo, hi))
+
+
 def features(img):
     small = cv2.resize(img, (128, 128))
     lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -111,7 +119,7 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
     step = max(1, len(pairs) // max_pairs)
     pairs = pairs[::step]
     print(f"{len(pairs)} RAW↔JPG-par til læring", flush=True)
-    feats, luts, ab_shifts, names = [], [], [], []
+    feats, luts, ab_shifts, lab_std, names = [], [], [], [], []
     for i, (rp, jp) in enumerate(pairs):
         try:
             neutral = develop(rp)
@@ -124,6 +132,10 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
             e_lab = cv2.cvtColor(eh, cv2.COLOR_BGR2LAB).astype(np.float32)
             ab_shifts.append([float(e_lab[:, :, 1].mean() - n_lab[:, :, 1].mean()),
                               float(e_lab[:, :, 2].mean() - n_lab[:, :, 2].mean())])
+            # Reinhard-spredning: hvor mye fotografen endrer STD (spredning) per
+            # LAB-kanal (L=kontrast, a/b=metning). Middel-skiftet over fanget bare
+            # halve Reinhard-fargeoverføringen; dette er den andre halvparten.
+            lab_std.append([_std_ratio(e_lab[:, :, c], n_lab[:, :, c]) for c in range(3)])
             feats.append(features(neutral))
             names.append(os.path.basename(jp))
         except Exception as e:
@@ -132,7 +144,8 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
             print(f"  lært {len(feats)} av {i+1}", flush=True)
     os.makedirs(os.path.dirname(os.path.expanduser(model_path)), exist_ok=True)
     np.savez_compressed(os.path.expanduser(model_path), feats=np.array(feats),
-                        luts=np.array(luts), ab=np.array(ab_shifts), names=np.array(names))
+                        luts=np.array(luts), ab=np.array(ab_shifts),
+                        lab_std=np.array(lab_std), names=np.array(names))
     print(f"MODELL LAGRET: {len(feats)} scener → {model_path}", flush=True)
 
 
@@ -224,7 +237,13 @@ def apply_model(raw_path, model, out_dir, k=5):
     base = os.path.splitext(os.path.basename(raw_path))[0]
     img = develop(raw_path, half=False)
     f = features(img)
-    d = np.linalg.norm(model["feats"] - f[None, :], axis=1)
+    # Farge-vektet kNN: a/b-fargesnittet (feature-indeks 10–11) vektes tyngre så
+    # scene-matchingen styres av LYS-/FARGE-betingelsen (tungsten/dagslys/motlys)
+    # — det er der stil er betinget, jf. research (Imagen/Aftershoot-mønsteret).
+    diff = model["feats"] - f[None, :]
+    if diff.shape[1] >= 12:
+        diff[:, 10:12] *= 1.6
+    d = np.linalg.norm(diff, axis=1)
     idx = np.argsort(d)[:k]
     wts = 1.0 / (d[idx] + 1e-4)
     wts /= wts.sum()
@@ -237,6 +256,15 @@ def apply_model(raw_path, model, out_dir, k=5):
     lab_img = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
     lab_img[:, :, 1] = np.clip(lab_img[:, :, 1] + 0.5 * ab[0], 0, 255)
     lab_img[:, :, 2] = np.clip(lab_img[:, :, 2] + 0.5 * ab[1], 0, 255)
+    # Reinhard-spredning (andre halvpart): skaler hver LAB-kanals STD mot den
+    # lærte looken (L=kontrast, a/b=metning) rundt bildets egne kanal-snitt.
+    # Bakoverkompatibelt — hoppes over for gamle modeller uten `lab_std`.
+    if "lab_std" in model:
+        std_r = np.tensordot(wts, model["lab_std"][idx], axes=1)
+        for c in range(3):
+            ch = lab_img[:, :, c]
+            m = float(ch.mean())
+            lab_img[:, :, c] = np.clip(m + (ch - m) * float(std_r[c]), 0, 255)
     out = cv2.cvtColor(lab_img.astype(np.uint8), cv2.COLOR_LAB2BGR)
     faces = face_boxes(out)
     out = skin_line_correct(out, faces)
@@ -253,6 +281,46 @@ def apply_model(raw_path, model, out_dir, k=5):
     return base, f"{dlog} | lært av: {refs}"
 
 
+def export_profile(model_path, out_json, clusters=32):
+    """Destillér en .npz-stilmodell til en kompakt, bærbar JSON-profil for
+    on-device-bruk (iOS CaptureApp). Klynger scenene til ~`clusters` sentroider
+    (cv2.kmeans på scene-features) og lagrer per klynge: feature-sentroide +
+    gjennomsnittlig per-kanal-LUT (uint8) + a/b-skift + Reinhard-std. Liten nok
+    til å buntes (~50–120 KB); k-NN + LUT kjøres trivielt on-device."""
+    m = dict(np.load(os.path.expanduser(model_path), allow_pickle=True))
+    feats = m["feats"].astype(np.float32)
+    luts = m["luts"].astype(np.float32)
+    ab = m["ab"].astype(np.float32)
+    lab_std = m["lab_std"].astype(np.float32) if "lab_std" in m else np.ones((len(feats), 3), np.float32)
+    n = len(feats)
+    if n > clusters:
+        crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5)
+        _c, labels, _cen = cv2.kmeans(feats, clusters, None, crit, 4, cv2.KMEANS_PP_CENTERS)
+        labels = labels.ravel()
+        groups = range(clusters)
+    else:
+        labels = np.arange(n)
+        groups = range(n)
+    scenes = []
+    for g in groups:
+        sel = np.where(labels == g)[0]
+        if len(sel) == 0:
+            continue
+        scenes.append({
+            "feat": [round(float(v), 5) for v in feats[sel].mean(0)],
+            "lut": [[int(round(v)) for v in luts[sel, c].mean(0)] for c in range(3)],
+            "ab": [round(float(v), 4) for v in ab[sel].mean(0)],
+            "labStd": [round(float(v), 4) for v in lab_std[sel].mean(0)],
+            "weight": int(len(sel)),
+        })
+    import json
+    prof = {"version": 1, "source": os.path.basename(model_path), "scenes": scenes}
+    with open(os.path.expanduser(out_json), "w") as fh:
+        json.dump(prof, fh, separators=(",", ":"))
+    size = os.path.getsize(os.path.expanduser(out_json))
+    print(f"PROFIL LAGRET: {len(scenes)} sentroider (fra {n} scener) → {out_json} ({size//1024} KB)", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -266,9 +334,16 @@ def main():
     ap_r.add_argument("--inn", required=True)
     ap_r.add_argument("--ut", required=True)
     ap_r.add_argument("--k", type=int, default=5)
+    ap_e = sub.add_parser("eksporter")
+    ap_e.add_argument("--modell", required=True)
+    ap_e.add_argument("--ut", required=True, help="JSON-profil-sti")
+    ap_e.add_argument("--klynger", type=int, default=32)
     args = ap.parse_args()
     if args.mode == "laer":
         learn(args.raa, args.levering, args.modell, args.maks_par)
+        return
+    if args.mode == "eksporter":
+        export_profile(args.modell, args.ut, args.klynger)
         return
     model = dict(np.load(os.path.expanduser(args.modell), allow_pickle=True))
     os.makedirs(args.ut, exist_ok=True)
