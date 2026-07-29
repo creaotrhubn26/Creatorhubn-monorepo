@@ -940,7 +940,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
+    // flex:1 + width:100%: rot-diven er et flex-barn av App-wrapperen (display:flex).
+    // Uten flex:1 ble den bare like bred som innholdet — så når side-panelene
+    // kollapset til rails, krympet hele appen og lot en død stripe stå igjen til
+    // høyre. Nå fyller den alltid vindus-bredden uansett kollaps-tilstand.
+    <div style={{ flex: 1, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
       {/* ── Topbar (URL-input erstatter Search) ── */}
       <div style={topbarStyle}>
         <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
