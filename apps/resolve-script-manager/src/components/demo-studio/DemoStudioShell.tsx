@@ -231,13 +231,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     if (!project || demoVidBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
     setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
+    const job = jobIdentity();
     try {
       const voice = project.language === 'en' ? undefined : 'Nora'; // norsk on-device-stemme
       const out = await runAutonomousDemo(project, {
         voice,
         onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); },
         onScene: (index, total) => setDemoVidScene({ index, total }),
-        onShots: (shots) => setProjectField('scanShots', shots),
+        onShots: (shots) => { if (!jobChanged(job)) setProjectField('scanShots', shots); },
         finalize: buildFinalize(),
         elevenKey: elevenKey.trim() || undefined,
       });
@@ -258,6 +259,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     if (!project || demoVidBusy || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
     setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
+    const job = jobIdentity();
     try {
       // 1) Generér scener hvis vi mangler dem ELLER manuset er for en annen URL
       //    (unngå at forrige videos manus brukes på en ny side).
@@ -275,7 +277,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         voice,
         onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); },
         onScene: (index, total) => setDemoVidScene({ index, total }),
-        onShots: (shots) => setProjectField('scanShots', shots),
+        onShots: (shots) => { if (!jobChanged(job)) setProjectField('scanShots', shots); },
         finalize: buildFinalize(),
         elevenKey: elevenKey.trim() || undefined,
       });
@@ -341,10 +343,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runCommand = async (instruction: string, answeredWith?: string) => {
     if (!project || !instruction.trim() || cmdBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
+    const job = jobIdentity();
     setCmdBusy(true); setCmdReply(null); setCmdClarify(null);
     try {
       const hasNarration = project.scenes.some((s) => !!s.narration?.trim());
       const r = await interpretCommand({ instruction, demoType: project.demoType, sceneCount: project.scenes.length, hasNarration, answeredWith });
+      if (jobChanged(job)) return; // brukeren byttet prosjekt/url mens AI tolket kommandoen
       if (r.clarify && r.clarify.options.length) { pendingInstruction.current = instruction; setCmdClarify(r.clarify); return; }
       setCmdReply(r.reply || 'OK');
       await executeCommandAction(r);
@@ -386,16 +390,26 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     } catch (e) { setCmdReply('Feil ved voiceover: ' + String(e)); }
   };
 
+  // ── Samtidighets-vakt for asynkrone jobber (skann/opptak/render) ──
+  // Fang prosjekt-identitet (id + url) når jobben STARTER; resultatet skrives KUN
+  // hvis brukeren fortsatt står i samme prosjekt på samme url når jobben er ferdig.
+  // Uten dette kan en skann startet i prosjekt A (eller på en gammel url) lande i
+  // prosjekt B som ble åpnet mens jobben kjørte.
+  const jobIdentity = (): string => { const p = useDemoStudio.getState().project; return p ? `${p.id} ${p.url}` : ''; };
+  const jobChanged = (token: string): boolean => token === '' || jobIdentity() !== token;
+
   // Auto-merkevare: bruk farger/logo/navn hentet fra siden (overskriver ikke
   // manuelt satt branding).
   // #2: oppgrader preview-screenshots til skarpe Playwright-bilder (ekte
   // Chrome/Chromium) når tilgjengelig — bedre enn html2canvas. Fire-and-forget.
   const upgradeShotsWithPlaywright = (url: string) => {
+    const job = jobIdentity();
     void (async () => {
       try {
         const st = await playwrightStatus();
         if (!st.playwrightInstalled) return;
         const r = await playwrightCaptureShots(url);
+        if (jobChanged(job)) return; // prosjekt/url byttet mens skann kjørte
         if (r?.shots?.length) setProjectField('scanShots', r.shots);
         if (r?.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile);
       } catch { /* best-effort */ }
@@ -403,6 +417,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const applyScannedBranding = (scan: DomScanResult | null) => {
+    // Dropp hvis brukeren har byttet prosjekt/url siden skannen startet.
+    if (scan?.url && useDemoStudio.getState().project?.url !== scan.url) return;
     // Lagre scan-screenshots (Fase 1b) for presis preview-render.
     if (scan?.shots && scan.shots.length) setProjectField('scanShots', scan.shots);
     if (scan?.url) upgradeShotsWithPlaywright(scan.url);
@@ -453,11 +469,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   }, [embedCheckUrl]);
   const fetchShotsNow = async () => {
     if (!project || shotFetchBusy) return;
+    const job = jobIdentity();
     setShotFetchBusy(true);
     try {
       const r = await playwrightCaptureShots(project.url).catch(() => null);
+      if (jobChanged(job)) return; // prosjekt/url byttet mens skann kjørte
       if (r?.shots?.length) { setProjectField('scanShots', r.shots); if (r.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile); return; }
       const scan = await scanDom(project.url).catch(() => null);
+      if (jobChanged(job)) return;
       if (scan?.shots?.length) setProjectField('scanShots', scan.shots);
       else window.alert('Klarte ikke å hente skjermbilder — sett opp Playwright (Export → Sett opp Playwright) eller kjør «Analyser side».');
     } finally {
@@ -470,6 +489,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const captureBuf = useRef<CapturedStep[]>([]);
+  // Prosjekt-identiteten opptaket ble startet i (id+url) — så et ferdig opptak
+  // ikke skriver scener til et prosjekt brukeren byttet til underveis.
+  const captureSession = useRef<{ id: string; url: string } | null>(null);
 
   const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -548,8 +570,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         const steps = captureBuf.current;
         captureBuf.current = [];
         setCaptureCount(0);
+        const sess = captureSession.current;
+        captureSession.current = null;
         if (cancelled || steps.length === 0) return;
         const st = useDemoStudio.getState();
+        // Dropp hvis brukeren byttet prosjekt/url mens opptaket pågikk — ellers ville
+        // klikkene fra ett prosjekt erstatte scenene i et annet.
+        if (!sess || st.project?.id !== sess.id || st.project?.url !== sess.url) return;
         const device = st.project?.scenes[0]?.device ?? 'macbook';
         st.replaceScenes(captureStepsToScenes(steps, device));
         // «Vis meg én gang» (B): hvert klikk brukeren gjorde blir en lært target,
@@ -580,6 +607,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     captureBuf.current = [];
     setCaptureCount(0);
     setCapturing(true);
+    captureSession.current = { id: project.id, url: project.url };
     try {
       await startDemoCapture(project.url);
     } catch (e) {
@@ -710,8 +738,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
   /** Kjerne: analyser siden + adopter målgruppe/mål/vinkel. Ingen busy-guard
    *  (kalles fra både understandSite og generateDemo). Returnerer forståelsen. */
-  const analyzeAndAdopt = async (elements: any[], siteContext: string, brandName?: string) => {
+  const analyzeAndAdopt = async (elements: any[], siteContext: string, brandName: string | undefined, job: string) => {
     const u = await analyzeSiteContext({ url: project!.url, pageText: siteContext, brandName, elements }).catch(() => null);
+    // Ikke skriv forståelse/felt til et annet prosjekt hvis brukeren byttet under AI-kallet.
+    if (jobChanged(job)) return u;
     if (u) {
       setUnderstanding(u);
       // Adopter målgruppe/mål/vinkel fra forståelsen hvis brukeren ikke har satt dem.
@@ -728,10 +758,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const understandSite = async () => {
     if (!project || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
+    const job = jobIdentity();
     setDirectorBusy(true); setDirectorMsg('Forstår siden…');
     try {
       const { elements, siteContext, brandName } = await scanAndContext();
-      const u = await analyzeAndAdopt(elements, siteContext, brandName);
+      const u = await analyzeAndAdopt(elements, siteContext, brandName, job);
+      if (jobChanged(job)) return; // brukeren byttet prosjekt/url under forståelsen
       setDirectorMsg(u
         ? 'Forstått. Juster målgruppe/vinkel under hvis du vil, og trykk «Generér demoen».'
         : 'Kunne ikke forstå siden automatisk — du kan generere likevel.');
@@ -747,12 +779,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const generateDemo = async (override?: { demoType?: DemoType; audience?: string }) => {
     if (!project || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
+    const job = jobIdentity();
     setDirectorBusy(true);
     try {
       const { elements, siteContext, brandName } = await scanAndContext();
       // Bruk returverdien (ikke React-state, som er stale i denne closuren).
       let u = understanding;
-      if (!u) { setDirectorMsg('Forstår siden…'); u = await analyzeAndAdopt(elements, siteContext, brandName); }
+      if (!u) { setDirectorMsg('Forstår siden…'); u = await analyzeAndAdopt(elements, siteContext, brandName, job); }
       const meta0 = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       // Effektive verdier: override (fra kommando) vinner, så brukerens valg, så forståelsen.
       const audience = override?.audience || (meta0.audience && meta0.audience !== 'General' ? meta0.audience : (u?.audience || meta0.audience));
@@ -762,6 +795,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       const scenes = await generateDemoFlow({
         url: project.url, demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal || u?.suggestedGoal, task: project.task,
       });
+      if (jobChanged(job)) return; // prosjekt/url byttet under generering — ikke skriv scener til feil prosjekt
       replaceScenes(scenes);
       setProjectField('scenesUrl', project.url); // stemple hvilken URL manuset gjelder
       setGenerated(true);
@@ -780,6 +814,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const completeDemo = async () => {
     if (!project || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
+    const job = jobIdentity();
     setDirectorBusy(true); setDirectorMsg('Analyserer + fyller hull…');
     try {
       const scan = await scanDom(project.url).catch(() => null);
@@ -789,6 +824,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       applyScannedBranding(scan);
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const patches = await completeDemoFlow({ url: project.url, demoType: project.demoType, meta, scenes: project.scenes, elements, siteContext });
+      if (jobChanged(job)) return; // prosjekt/url byttet under utfylling — ikke skriv til feil prosjekt
       const validActions = Object.keys(ACTION_META) as DemoActionType[];
       let filled = 0;
       for (const p of patches) {

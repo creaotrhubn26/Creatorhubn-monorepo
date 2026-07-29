@@ -104,7 +104,11 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     if (!url || shotsTried.current === url) return;
     if (project?.scanShots && project.scanShots.length) return;
     shotsTried.current = url;
+    const jobId = project?.id;
     void playwrightCaptureShots(url).then((r) => {
+      // Dropp hvis brukeren byttet prosjekt/url mens skann kjørte.
+      const cur = useDemoStudio.getState().project;
+      if (!cur || cur.id !== jobId || cur.url !== url) return;
       if (r?.shots?.length) setProjectField('scanShots', r.shots);
       if (r?.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile);
     }).catch(() => { /* Playwright ikke satt opp — miniatyrer forblir tomme */ });
