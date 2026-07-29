@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 /// Prosjektets shot-list inne i capture-flyten — polert etter mockup, men
 /// dette ER shot-list-løsningen (ikke et eget dashbord). Innhold:
@@ -189,8 +190,15 @@ struct ShotListPanel: View {
             ForEach(model.autoCheckLog) { entry in
                 HStack(spacing: 12) {
                     thumb(for: shot(byId: entry.shotId)).frame(width: 44, height: 40).clipShape(RoundedRectangle(cornerRadius: 9))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.scene).font(.subheadline.weight(.semibold)).foregroundStyle(SLColor.textPri)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(entry.scene).font(.subheadline.weight(.semibold)).foregroundStyle(SLColor.textPri)
+                            if entry.uncertain {
+                                Text("usikker").font(.caption2.weight(.bold)).foregroundStyle(Color(hex: 0xE0A955))
+                                    .padding(.horizontal, 6).padding(.vertical, 1)
+                                    .background(Color(hex: 0xE0A955).opacity(0.15), in: Capsule())
+                            }
+                        }
                         Text("Auto-huket \(entry.at.formatted(date: .omitted, time: .shortened))")
                             .font(.caption2).foregroundStyle(SLColor.textSec)
                     }
@@ -337,20 +345,39 @@ struct ShotListPanel: View {
     }
 
     /// Ekte thumbnail av det tatte bildet: matcher shotets `capturedAssetId`
-    /// (lokal asset-UUID) mot øktas assets, laster preview-fila (cachet). Kun
-    /// for shots tatt på DENNE enheten — ellers nil (plassholder).
+    /// (lokal asset-UUID) mot øktas assets, laster + NEDSKALERER preview-fila
+    /// (cachet, bundet). Kun for shots tatt på DENNE enheten — ellers nil.
     private func capturedImage(for shot: BackendShotListItem) -> UIImage? {
         guard let capId = shot.capturedAssetId?.lowercased(),
               let asset = model.assets.first(where: { $0.id.uuidString.lowercased() == capId }),
               let key = asset.displayPreviewKey ?? asset.previewKey else { return nil }
         if let cached = ShotListPanel.thumbCache[key] { return cached }
         guard FileManager.default.fileExists(atPath: key),
-              let image = UIImage(contentsOfFile: key) else { return nil }
+              let image = ShotListPanel.downsampled(path: key, maxPixel: 160) else { return nil }
+        // Bind cachen — evict eldste når full (unngår ubegrenset vekst).
+        if ShotListPanel.thumbCache.count >= ShotListPanel.thumbCacheMax {
+            ShotListPanel.thumbCache.removeValue(forKey: ShotListPanel.thumbCacheOrder.removeFirst())
+        }
         ShotListPanel.thumbCache[key] = image
+        ShotListPanel.thumbCacheOrder.append(key)
         return image
     }
 
+    /// Nedskaler til en thumbnail via ImageIO (leser aldri full-res inn i minne).
+    private static func downsampled(path: String, maxPixel: Int) -> UIImage? {
+        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
     private static var thumbCache: [String: UIImage] = [:]
+    private static var thumbCacheOrder: [String] = []
+    private static let thumbCacheMax = 80
 
     /// Demo-thumbnails pr shot-id (mock-scener), for skjermbilder uten ekte foto.
     static var demoThumbs: [String: MockScene] = [:]

@@ -53,4 +53,28 @@ final class ShotMatcherTests: XCTestCase {
             signals: CaptureSignals(faceCount: 0, aspectRatio: 1.0), shots: [plain, must])
         XCTAssertEqual(m?.id, "must")
     }
+
+    // #4 konfidens-bånd
+
+    func testConfidentMatch() {
+        let shot = ShotListItem(id: "1", scene: "a", priority: "must", shotType: "detail")
+        let m = ShotMatcher.bestMatchScored(
+            signals: CaptureSignals(faceCount: 0, aspectRatio: 1.0), shots: [shot])
+        XCTAssertEqual(m?.shot.id, "1")
+        XCTAssertEqual(m?.confidence, .confident)   // 0.8 + 0.15 = 0.95
+    }
+
+    func testUncertainMatch() {
+        let shot = ShotListItem(id: "1", scene: "a", shotType: "candid")
+        let m = ShotMatcher.bestMatchScored(
+            signals: CaptureSignals(faceCount: 1, aspectRatio: 1.0), shots: [shot])
+        XCTAssertEqual(m?.confidence, .uncertain)   // 0.7 (mellom 0.68 og 0.82)
+    }
+
+    func testBelowSuggestReturnsNil() {
+        let shot = ShotListItem(id: "1", scene: "a", shotType: "unknown")
+        let m = ShotMatcher.bestMatchScored(
+            signals: CaptureSignals(faceCount: 0, aspectRatio: 1.0), shots: [shot])
+        XCTAssertNil(m)   // 0.5 < 0.68
+    }
 }

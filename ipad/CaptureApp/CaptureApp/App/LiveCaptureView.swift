@@ -342,7 +342,7 @@ struct LiveCaptureView: View {
                 ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
             }
             if let scene = model.lastAutoCheckedShot {
-                ShotAutoCheckToast(scene: scene, onUndo: {
+                ShotAutoCheckToast(scene: scene, uncertain: model.lastAutoCheckedUncertain, onUndo: {
                     if let id = model.lastAutoCheckedShotId {
                         Task { await model.undoAutoCheck(shotId: id) }
                     }
@@ -1250,12 +1250,19 @@ private struct ReconnectingBanner: View {
 /// Kort bekreftelse når et bilde auto-huket et shot i prosjektets shot-list.
 private struct ShotAutoCheckToast: View {
     let scene: String
+    var uncertain: Bool = false
     var onUndo: (() -> Void)?
+    private var accent: Color { uncertain ? Color(red: 0.88, green: 0.66, blue: 0.33) : .green }
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            Text("Auto-huket: \(scene)")
+            Image(systemName: uncertain ? "questionmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(accent)
+            Text(uncertain ? "Auto-huket (usikker): \(scene)" : "Auto-huket: \(scene)")
                 .font(.caption.weight(.medium)).foregroundStyle(.white)
+            if uncertain {
+                Text("sjekk gjerne")
+                    .font(.caption2).foregroundStyle(.white.opacity(0.7))
+            }
             Spacer(minLength: 8)
             if let onUndo {
                 Button(action: onUndo) {
@@ -1270,7 +1277,7 @@ private struct ShotAutoCheckToast: View {
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(Color.green.opacity(0.25))
+        .background(accent.opacity(0.25))
     }
 }
 
@@ -5111,8 +5118,12 @@ final class LiveCaptureModel {
         let scene: String
         let assetId: UUID
         let at: Date
+        /// Lav-konfidens-match — flagges så fotografen dobbeltsjekker/angrer.
+        var uncertain: Bool = false
     }
     var autoCheckLog: [AutoCheckEntry] = []
+    /// Om siste auto-huking var usikker — driver toast-varianten.
+    var lastAutoCheckedUncertain = false
     // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
     private var pendingTeamShotScenes: [String] = []
     private var teamShotPostTask: Task<Void, Never>?
@@ -5948,21 +5959,25 @@ final class LiveCaptureModel {
             return CaptureSignalExtractor.signals(from: cg)
         }.value
         guard let signals,
-              let match = ShotMatcher.bestMatch(signals: signals, shots: list.shots)
+              let match = ShotMatcher.bestMatchScored(signals: signals, shots: list.shots)
         else { return }
+        let shot = match.shot
+        let uncertain = match.confidence == .uncertain
         let who = SignInService.shared.session?.displayName
             ?? SignInService.shared.session?.email ?? "Fotograf"
         try? await store.toggleCompletion(
-            shotId: match.id, in: list,
+            shotId: shot.id, in: list,
             capturedAssetId: assetId.uuidString.lowercased(), completedBy: who)
-        lastAutoCheckedShot = match.scene
-        lastAutoCheckedShotId = match.id
+        lastAutoCheckedShot = shot.scene
+        lastAutoCheckedShotId = shot.id
+        lastAutoCheckedUncertain = uncertain
         autoCheckLog.insert(
-            AutoCheckEntry(shotId: match.id, scene: match.scene, assetId: assetId, at: Date()), at: 0)
-        queueTeamShotUpdate(scene: match.scene, assetId: assetId, projectId: projectId)
-        // Auto-fjern bekreftelsen etter noen sekunder.
-        try? await Task.sleep(for: .seconds(4))
-        if lastAutoCheckedShot == match.scene { lastAutoCheckedShot = nil }
+            AutoCheckEntry(shotId: shot.id, scene: shot.scene, assetId: assetId, at: Date(),
+                           uncertain: uncertain), at: 0)
+        queueTeamShotUpdate(scene: shot.scene, assetId: assetId, projectId: projectId)
+        // Auto-fjern bekreftelsen etter noen sekunder (usikre holdes lenger).
+        try? await Task.sleep(for: .seconds(uncertain ? 7 : 4))
+        if lastAutoCheckedShot == shot.scene { lastAutoCheckedShot = nil }
     }
 
     /// Angre en auto-huking: sett shotet tilbake til uhuket (fjerner completedBy

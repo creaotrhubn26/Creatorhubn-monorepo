@@ -60,13 +60,26 @@ enum ShotMatcher {
     static func bestMatch(
         signals: CaptureSignals, shots: [ShotListItem], threshold: Double = 0.75
     ) -> ShotListItem? {
+        bestMatchScored(signals: signals, shots: shots, suggestThreshold: threshold)?.shot
+    }
+
+    /// Hvor sikker matchen er — driver om auto-huking flagges «usikker».
+    enum MatchConfidence: Sendable, Equatable { case confident, uncertain }
+
+    /// Beste match MED score + konfidens-bånd. `confident` (>= autoThreshold) =
+    /// stille auto-huk; `uncertain` (>= suggestThreshold) = auto-huk MEN flagget
+    /// så fotografen lett kan angre; under suggestThreshold → nil (hopp over).
+    static func bestMatchScored(
+        signals: CaptureSignals, shots: [ShotListItem],
+        autoThreshold: Double = 0.82, suggestThreshold: Double = 0.68
+    ) -> (shot: ShotListItem, score: Double, confidence: MatchConfidence)? {
         let scored = shots
             .filter { !($0.isCompleted ?? false) }
             .map { (shot: $0, score: min(1.0, typeScore(signals: signals, shotType: $0.shotType) + priorityBoost($0.priority))) }
-        guard let best = scored.max(by: { $0.score < $1.score }), best.score >= threshold else {
+        guard let best = scored.max(by: { $0.score < $1.score }), best.score >= suggestThreshold else {
             return nil
         }
-        return best.shot
+        return (best.shot, best.score, best.score >= autoThreshold ? .confident : .uncertain)
     }
 
     /// Ufullførte must-have-shots — for «mangler fortsatt»-påminnelsen.
