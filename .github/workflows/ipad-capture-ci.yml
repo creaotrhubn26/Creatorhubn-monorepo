@@ -21,10 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest Xcode
-        # Prosjektet bruker SWIFT_VERSION 6.0 (krever Xcode 16+). Bruker
-        # /Applications/Xcode.app som peker til runner-ens nyeste Xcode.
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Select Xcode (latest-stable)
+        # Bruker samme Xcode-valg som capture-testflight.yml — `latest-stable`
+        # har iOS 26-SDK (FoundationModels) + nyere Swift-concurrency. Runner-
+        # defaulten (/Applications/Xcode.app) kan være eldre og feilet på
+        # `canImport(FoundationModels)` + actor-isolasjon → falsk-rød build.
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Install tooling
         run: |

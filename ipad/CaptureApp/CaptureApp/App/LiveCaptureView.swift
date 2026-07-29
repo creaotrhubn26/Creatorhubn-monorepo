@@ -6188,6 +6188,21 @@ final class LiveCaptureModel {
         if activeShotCardId != nil, let pid = selectedProject?.id {
             await flushTeamShotUpdate(projectId: pid)
         }
+
+        // #«thumbnails overalt»: koble shots' lokale capturedAssetId → backend-
+        // asset-id (fra delivery.idMap) og lagre på shot-listen, så web/call-
+        // sheet/andre enheter kan hente thumbnailen via preview-redirecten.
+        var shotAssetMap: [String: String] = [:]
+        for asset in assets {
+            if let backendId = await delivery.backendAssetId(forLocal: asset.id) {
+                shotAssetMap[asset.id.uuidString.lowercased()] = backendId.uuidString.lowercased()
+            }
+        }
+        if !shotAssetMap.isEmpty, let pid = selectedProject?.id, let store = shotStore(),
+           let list = try? await store.load(projectId: pid, ownerUserId: actorUserId) {
+            try? await store.linkBackendAssetIds(shotAssetMap, in: list)
+            await loadProjectDetail(projectId: pid)
+        }
     }
 
     private func startEnhancementPolling(sessionId: UUID) {
@@ -6706,7 +6721,8 @@ final class LiveCaptureModel {
                     id: e.id, scene: e.scene, description: e.description,
                     priority: e.priority, shotType: e.shotType, locationName: e.locationName,
                     notes: e.notes, scouted: e.scouted, isCompleted: e.isCompleted,
-                    capturedAssetId: e.capturedAssetId, completedBy: e.completedBy)
+                    capturedAssetId: e.capturedAssetId,
+                    capturedAssetBackendId: e.capturedAssetBackendId, completedBy: e.completedBy)
             }
         }
         items += scenes.map { BackendClient.ShotListPostItem(id: UUID().uuidString.lowercased(), scene: $0) }
@@ -6732,6 +6748,12 @@ final class LiveCaptureModel {
         return backend.infographicRenderURL(
             tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500,
             data: data, accentHex: "FF6B35")
+    }
+
+    /// Stabil preview-URL for et backend-asset (thumbnail i shot-radene på
+    /// tvers av enheter / etter restart). nil hvis ingen backend konfigurert.
+    func assetPreviewURL(backendAssetId: String) -> URL? {
+        (backendClient ?? makeBackendClientFromDefaults())?.assetPreviewURL(backendAssetId: backendAssetId)
     }
 
     /// #9 Hent en brief fra prosjektets bryllups-timeline (dagsplan) → mater

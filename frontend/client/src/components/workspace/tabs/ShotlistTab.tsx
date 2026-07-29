@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Stack, Typography, Button, Avatar, TextField } from '@mui/material';
 import { useLocation } from 'wouter';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, buildApiUrl } from '@/lib/queryClient';
 import PhotoCameraBack from '@mui/icons-material/PhotoCameraBack';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import Star from '@mui/icons-material/Star';
@@ -79,7 +79,12 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     const status = done && s.completedBy ? `Ferdig · ${s.completedBy}` : (done ? 'Ferdig' : statusBase);
     const kat = s.category || s.kategori || s.phase || '—';
     const loc = s.location || s.lokasjon || '—';
-    return [prio, PRIO_TONE[prio.toLowerCase()] || 'neutral', title, kat, loc, status, STATUS_TONE[statusBase.toLowerCase()] || 'blue'];
+    // Ekte foto-thumbnail: iPad setter capturedAssetBackendId post-levering →
+    // stabil preview-redirect (offentlig, laster i <img>).
+    const thumb = s.capturedAssetBackendId
+      ? buildApiUrl(`/api/capture/assets/${encodeURIComponent(s.capturedAssetBackendId)}/preview`)
+      : null;
+    return [prio, PRIO_TONE[prio.toLowerCase()] || 'neutral', title, kat, loc, status, STATUS_TONE[statusBase.toLowerCase()] || 'blue', thumb];
   }) : null;
 
   // «Neste opp» — øverste ufullførte shots (prioritert) så teamet ser hva som gjenstår.
@@ -149,7 +154,10 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             onRowClick={(i) => setSelShot(rows[i])}
             rows={rows.map((s) => [
               <WsTag label={s[0]} tone={s[1]} />,
-              <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{s[2]}</Typography>,
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {s[7] && <Box component="img" src={s[7]} alt="" loading="lazy" sx={{ width: 34, height: 28, objectFit: 'cover', borderRadius: 1, flex: 'none', border: `1px solid ${ws.border}` }} />}
+                <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{s[2]}</Typography>
+              </Box>,
               <Typography sx={{ fontSize: 12, color: ws.textDim }}>{s[3]}</Typography>,
               <WsTag label="Foto" tone="accent" />,
               <WsTag label="Video" tone="blue" />,

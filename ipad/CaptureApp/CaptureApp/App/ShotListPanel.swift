@@ -308,18 +308,28 @@ struct ShotListPanel: View {
             .background(color.opacity(0.15), in: Capsule())
     }
 
-    /// Thumbnail-prioritet: (1) EKTE bilde fra det tatte shotet (lokal preview-
-    /// fil via capturedAssetId), (2) demo mock-scene, (3) plassholder.
+    /// Thumbnail-prioritet: (1) EKTE bilde fra lokal preview-fil (capturedAssetId),
+    /// (2) EKTE bilde via backend-preview (capturedAssetBackendId — cross-device/
+    /// etter restart), (3) demo mock-scene, (4) plassholder.
     @ViewBuilder
     private func thumb(for shot: BackendShotListItem?) -> some View {
         if let shot, let image = capturedImage(for: shot) {
             Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+        } else if let shot, let backendId = shot.capturedAssetBackendId,
+                  let url = model.assetPreviewURL(backendAssetId: backendId) {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { thumbPlaceholder }
+            }
         } else if let shot, let scene = ShotListPanel.demoThumbs[shot.id] {
             MockPhotoView(scene: scene)
         } else {
-            RoundedRectangle(cornerRadius: 9).fill(SLColor.cardHi)
-                .overlay(Image(systemName: "photo").font(.caption2).foregroundStyle(SLColor.textDim))
+            thumbPlaceholder
         }
+    }
+
+    private var thumbPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 9).fill(SLColor.cardHi)
+            .overlay(Image(systemName: "photo").font(.caption2).foregroundStyle(SLColor.textDim))
     }
 
     private func shot(byId id: String) -> BackendShotListItem? {
