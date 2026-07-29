@@ -8,7 +8,10 @@
  *   GET    /api/admin-room/marketing-segments               → { items }  (m/ audiences)
  *   POST   /api/admin-room/marketing-segments               body { name, source?, filters? }
  *   GET    /api/admin-room/marketing-segments/:id/preview   → { total, sample, note? }
- *   POST   /api/admin-room/marketing-segments/:id/materialize  body { customerId }
+ *   POST   /api/admin-room/marketing-segments/:id/materialize
+ *          body { platform?, ... }  platform ∈ google_customer_match (customerId) |
+ *          meta_custom_audience (adAccountId act_XXX) | linkedin_matched_audience
+ *          (adAccountUrn urn:li:sponsoredAccount:X). Default google (bakoverkomp.).
  *   DELETE /api/admin-room/marketing-segments/:id
  */
 
@@ -20,7 +23,10 @@ import {
   listSegmentAudiences,
   listSegments,
   materializeToGoogleCustomerMatch,
+  materializeToLinkedinMatchedAudience,
+  materializeToMetaCustomAudience,
   resolveSegmentMembers,
+  type MaterializeResult,
 } from "./marketing-segments-service.js";
 
 /** Maskerer e-post for preview — vis at data finnes uten å lekke full PII. */
@@ -92,20 +98,45 @@ export function setupAdminMarketingSegmentsRoutes(deps: AdminRoomRoutesDeps): vo
   app.post("/api/admin-room/marketing-segments/:id/materialize", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
-    const customerId = String(req.body?.customerId ?? "").replace(/-/g, "").trim();
-    if (!/^\d{10}$/.test(customerId)) {
-      return res
-        .status(400)
-        .json({ error: "customerId_required", detail: "Google Ads customer-ID (10 sifre)" });
-    }
+
+    // Plattform-valg (default Google for bakoverkompatibilitet).
+    const platform = String(req.body?.platform ?? "google_customer_match");
+    const producerUserId = session.userId;
+
     try {
       const segment = await getSegment(pool, session.userId, req.params.id);
       if (!segment) return res.status(404).json({ error: "not_found" });
-      const result = await materializeToGoogleCustomerMatch(pool, {
-        segment,
-        customerId,
-        producerUserId: session.userId,
-      });
+
+      let result: MaterializeResult;
+      if (platform === "google_customer_match") {
+        const customerId = String(req.body?.customerId ?? "").replace(/-/g, "").trim();
+        if (!/^\d{10}$/.test(customerId)) {
+          return res
+            .status(400)
+            .json({ error: "customerId_required", detail: "Google Ads customer-ID (10 sifre)" });
+        }
+        result = await materializeToGoogleCustomerMatch(pool, { segment, customerId, producerUserId });
+      } else if (platform === "meta_custom_audience") {
+        const adAccountId = String(req.body?.adAccountId ?? "").trim();
+        if (!/^act_\d+$/.test(adAccountId)) {
+          return res
+            .status(400)
+            .json({ error: "adAccountId_required", detail: "Meta ad account-ID (act_XXXXXXXXX)" });
+        }
+        result = await materializeToMetaCustomAudience(pool, { segment, adAccountId, producerUserId });
+      } else if (platform === "linkedin_matched_audience") {
+        const adAccountUrn = String(req.body?.adAccountUrn ?? "").trim();
+        if (!/^urn:li:sponsoredAccount:\d+$/.test(adAccountUrn)) {
+          return res.status(400).json({
+            error: "adAccountUrn_required",
+            detail: "LinkedIn ad account-URN (urn:li:sponsoredAccount:XXXX)",
+          });
+        }
+        result = await materializeToLinkedinMatchedAudience(pool, { segment, adAccountUrn, producerUserId });
+      } else {
+        return res.status(400).json({ error: "unknown_platform", detail: platform });
+      }
+
       await logAdminActivity({
         userId: session.userId,
         entityType: "marketing_segment",
