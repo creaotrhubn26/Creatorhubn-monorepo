@@ -463,12 +463,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // Sammenleggbare side-paneler så senterområdet får plass på iPad/smale vinduer
   // (256+230+320 px fast chrome ellers). Verktøy-panelet auto-kollapser på smale
   // vinduer; begge kan slås av/på manuelt (rail med chevron for å åpne igjen).
-  const [toolsOpen, setToolsOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1200 : true));
+  // Demo-typer/Visning er oppsett du henter frem — ikke en permanent kolonne.
+  // Default skjult så arbeidsområdet (preview + timeline) får plassen.
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [leftNavOpen, setLeftNavOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1100 : true));
   // AI Director har eget venstre-panel (ikke lenger nederst i navet). Auto-kollaps
   // til en ✦-rail på smalere vinduer så det ikke stjeler senter-plass.
-  const [aiPanelOpen, setAiPanelOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1280 : true));
+  const [aiPanelOpen, setAiPanelOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1600 : true));
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
@@ -1384,11 +1386,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── kan kollapses til en smal rail ── */}
-            {!toolsOpen ? (
-              <div onClick={() => setToolsOpen(true)} title="Vis verktøy-panel"
-                style={{ width: 30, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>›</div>
-            ) : (
-            <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: '18px 16px', flexShrink: 0 }}>
+            {toolsOpen && (
+            <div style={{ width: 250, background: C.panel, borderRight: `1px solid ${C.line}`, padding: '18px 16px', flexShrink: 0, overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span onClick={() => setToolsOpen(false)} title="Skjul panel" style={{ color: C.inkFaint, cursor: 'pointer' }}>‹</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => (
@@ -1435,6 +1434,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
             {/* ── Center: LIVE device preview ── */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg, overflow: 'auto', padding: '16px 22px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <button onClick={() => setToolsOpen((v) => !v)} title="Demo-type, visning og verktøy"
+                  style={{ ...btn, fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 7, background: toolsOpen ? C.creamActive : '#fff', color: toolsOpen ? C.accent : C.ink, borderColor: toolsOpen ? C.accent : C.lineStrong }}>
+                  ◫ Demo-type &amp; visning
+                </button>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, alignSelf: 'center', marginBottom: 14 }}>
                 <div style={{ display: 'flex', gap: 4, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3 }}>
                   {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
