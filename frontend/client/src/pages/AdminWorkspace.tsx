@@ -83,6 +83,7 @@ import {
   ActivityLogTab,
 } from './AdminRoom';
 import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
+import { MarketingSegmentsTab } from '../components/admin/content-marketing/MarketingSegmentsTab';
 import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
 import { OperatingSystemTab } from '../components/admin/content-marketing/OperatingSystemTab';
 import { AiCitationTab } from '../components/admin/content-marketing/AiCitationTab';
@@ -167,6 +168,7 @@ type WorkspaceItemId =
   | 'investors'
   | 'partners'
   | 'industry-crm'
+  | 'marketing-segments'
   | 'content-marketing'
   | 'marketing-cockpit'
   | 'operating-system'
@@ -1438,6 +1440,12 @@ function OverviewView({
       icon: <LeaderboardOutlinedIcon />,
     },
     {
+      id: 'marketing-segments',
+      label: 'Målgrupper',
+      description: 'Segmenter → synkroniserte Google/Meta/LinkedIn-audiences.',
+      icon: <GroupsOutlinedIcon />,
+    },
+    {
       id: 'marketing-cockpit',
       label: 'Marketing Cockpit',
       description: 'B2B-funnel, content-kalender, Claude lead-scoring.',
@@ -1738,6 +1746,12 @@ function resolveContent(
         breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Tier-1 CRM'],
         render: () => <IndustryTargetsTab />,
       };
+    case 'marketing-segments':
+      return {
+        title: 'Målgrupper',
+        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Målgrupper'],
+        render: () => <MarketingSegmentsTab />,
+      };
     case 'content-marketing':
       return {
         title: 'Content marketing',
@@ -1849,6 +1863,7 @@ function resolveContent(
               { id: 'newsletter-studio', label: 'Newsletter Studio' },
               { id: 'ai-citation', label: 'GEO-effekt' },
               { id: 'industry-crm', label: 'Tier-1 outreach' },
+              { id: 'marketing-segments', label: 'Målgrupper' },
             ]}
             onJumpTo={onJumpTo}
           />

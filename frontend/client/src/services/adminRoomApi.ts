@@ -2128,3 +2128,69 @@ export const workspaceAggregatorApi = {
     return jsonFetch<{ items: DeadlineItem[]; windowDays: number }>(`/workspace/upcoming-deadlines?days=${days}`);
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Målrettet markedsføring — segment → ad-audience-bro
+// ─────────────────────────────────────────────────────────
+
+export type MarketingSegmentSource = 'industry_targets' | 'leadgrid_leads';
+export type MarketingAudiencePlatform =
+  | 'google_customer_match'
+  | 'meta_custom_audience'
+  | 'linkedin_matched_audience';
+
+export interface MarketingSegmentAudience {
+  platform: string;
+  externalAudienceId: string | null;
+  memberCount: number;
+  status: string;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface MarketingSegment {
+  id: string;
+  userId: string;
+  name: string;
+  source: MarketingSegmentSource;
+  filters: { tiers?: string[]; segments?: string[]; statuses?: string[] };
+  createdAt: string;
+  updatedAt: string;
+  audiences?: MarketingSegmentAudience[];
+}
+
+export interface MaterializeResult {
+  ok: boolean;
+  platform: string;
+  memberCount: number;
+  externalAudienceId?: string;
+  error?: string;
+  note?: string;
+}
+
+export const marketingSegmentsApi = {
+  list: async (): Promise<MarketingSegment[]> => {
+    const data = await jsonFetch<{ items: MarketingSegment[] }>('/marketing-segments');
+    return data.items;
+  },
+  create: async (input: {
+    name: string;
+    source: MarketingSegmentSource;
+    filters: { tiers?: string[]; segments?: string[]; statuses?: string[] };
+  }): Promise<MarketingSegment> => {
+    const data = await jsonFetch<{ segment: MarketingSegment }>('/marketing-segments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.segment;
+  },
+  preview: (id: string): Promise<{ total: number; sample: string[]; note?: string }> =>
+    jsonFetch(`/marketing-segments/${id}/preview`),
+  materialize: (
+    id: string,
+    body: { platform: MarketingAudiencePlatform; customerId?: string; adAccountId?: string; adAccountUrn?: string },
+  ): Promise<MaterializeResult> =>
+    jsonFetch(`/marketing-segments/${id}/materialize`, { method: 'POST', body: JSON.stringify(body) }),
+  remove: (id: string): Promise<{ deleted: boolean }> =>
+    jsonFetch(`/marketing-segments/${id}`, { method: 'DELETE' }),
+};
