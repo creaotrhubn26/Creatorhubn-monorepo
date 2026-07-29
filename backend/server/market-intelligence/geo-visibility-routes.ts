@@ -250,4 +250,23 @@ export function registerGeoVisibilityRoutes({
       return res.status(500).json({ error: "cron_failed" });
     }
   });
+
+  // ── POST cron/email-digest (x-cron-token) ────────────────────────────
+  //    Egen ukentlig workflow ~2t etter run-approved: sender e-post-digest
+  //    med andel + per-motor-treff (bare-modell vs søk) for alle approved sett.
+  app.post("/api/geo-visibility/cron/email-digest", async (req: Request, res: Response) => {
+    const token = req.headers["x-cron-token"];
+    const expected = process.env.GEO_VISIBILITY_CRON_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const { sendGeoVisibilityDigest } = await import("./geo-visibility-digest.js");
+      const result = await sendGeoVisibilityDigest(pool);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[geo-visibility] email-digest failed", err);
+      return res.status(500).json({ error: "digest_failed" });
+    }
+  });
 }
