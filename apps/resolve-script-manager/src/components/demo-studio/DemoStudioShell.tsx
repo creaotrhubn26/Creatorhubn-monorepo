@@ -1019,10 +1019,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
         {/* ── AI Director — modal som hentes frem fra status-stripen ── */}
         {aiModalOpen && (
-        <div onClick={() => setAiModalOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(31,27,23,0.32)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '56px 16px' }}>
         <div onClick={(e) => e.stopPropagation()}
-          style={{ width: 470, maxWidth: '94vw', maxHeight: '84vh', background: C.panel, borderRadius: 16, boxShadow: '0 30px 70px rgba(31,27,23,0.32)', overflowY: 'auto', padding: '18px 18px 22px', position: 'relative' }}>
+          style={{ position: 'fixed', left: 16, bottom: 62, width: 372, maxWidth: '92vw', maxHeight: '72vh', background: C.panel, borderRadius: 16, boxShadow: '0 20px 50px rgba(31,27,23,0.26), 0 0 0 1px rgba(31,27,23,0.07)', overflowY: 'auto', padding: '16px 16px 20px', zIndex: 60 }}>
           <div onClick={() => setAiModalOpen(false)} title="Lukk"
             style={{ position: 'absolute', top: 12, right: 15, cursor: 'pointer', color: C.inkFaint, fontSize: 15, zIndex: 2 }}>✕</div>
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
@@ -1349,7 +1347,6 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             </div>
             )}
           </div>
-        </div>
         </div>
         )}
 
