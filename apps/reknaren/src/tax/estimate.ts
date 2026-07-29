@@ -11,6 +11,7 @@ import type { RuleRegister } from '../rules/register.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { money, multiplyRational } from '../shared/money.js';
 import { buildVatReport } from '../vat/engine.js';
+import { computeTaxAdjustments, type TaxAdjustment } from './adjustments.js';
 
 /** Formaterer en rasjonal sats (n/100 eller n/1000) for visning — alltid fra registeret. */
 function displayRatePct(numerator: bigint, denominator: bigint): string {
@@ -36,8 +37,10 @@ export interface TaxEstimate {
   periodTo: string;
   /** Regnskapsmessig resultat fra hovedboken. */
   accountingResultMinor: bigint;
-  /** Skattemessige justeringer (MVP: ingen automatiske justeringer). */
+  /** Skattemessige justeringer (permanente forskjeller lagt tilbake). */
   taxAdjustmentsMinor: bigint;
+  /** Linjene bak justeringen — hver med konto og begrunnelse (til kontroll). */
+  taxAdjustments: TaxAdjustment[];
   estimatedTaxableResultMinor: bigint;
   /** Komponenter, hver med regelreferanse og versjon. */
   components: {
@@ -79,16 +82,24 @@ export async function buildTaxEstimate(
   });
   const vat = await buildVatReport(db, params.organizationId, params.fromDate, params.toDate);
 
+  // Bro fra regnskapsmessig til skattemessig resultat: legg tilbake permanente
+  // forskjeller (kostnader uten skattefradrag). Kun eksplisitt merkede kontoer.
+  const adjustments = await computeTaxAdjustments(db, {
+    organizationId: params.organizationId,
+    fromDate: params.fromDate,
+    toDate: params.toDate,
+  });
   const accountingResult = pnl.resultMinor;
-  const taxable = accountingResult > 0n ? accountingResult : 0n;
+  const taxableResult = accountingResult + adjustments.totalMinor;
+  const taxable = taxableResult > 0n ? taxableResult : 0n;
   const asOf = params.toDate;
 
   const components: TaxEstimate['components'] = [];
-  const uncertainty: string[] = [];
+  const uncertainty: string[] = [...adjustments.notes];
   const notIncluded: string[] = [
     'Periodiseringer som ikke er bokført',
     'Ikke-bokførte transaksjoner og manglende bilag',
-    'Skattemessige justeringer (representasjon uten fradrag, avskrivningsdifferanser m.m.)',
+    'Avskrivningsdifferanser (regnskap vs. skattemessig saldoavskrivning)',
     'Fremførbart underskudd fra tidligere år',
   ];
 
@@ -170,7 +181,8 @@ export async function buildTaxEstimate(
     periodFrom: params.fromDate,
     periodTo: params.toDate,
     accountingResultMinor: accountingResult,
-    taxAdjustmentsMinor: 0n,
+    taxAdjustmentsMinor: adjustments.totalMinor,
+    taxAdjustments: adjustments.lines,
     estimatedTaxableResultMinor: taxable,
     components,
     estimatedTaxMinor: estimatedTax,

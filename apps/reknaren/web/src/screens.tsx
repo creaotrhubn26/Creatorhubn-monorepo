@@ -2405,6 +2405,9 @@ export function TaxScreen({ orgId }: { orgId: string }) {
   const [to, setTo] = useState(defaults.to);
   interface Estimate {
     accountingResultMinor: string;
+    taxAdjustmentsMinor: string;
+    estimatedTaxableResultMinor: string;
+    taxAdjustments: { accountNumber: string; accountName: string; addBackMinor: string; reason: string }[];
     estimatedTaxMinor: string;
     recommendedReserveMinor: string;
     calculatedAt: string;
@@ -2460,6 +2463,40 @@ export function TaxScreen({ orgId }: { orgId: string }) {
                 <div className="value">{kr(e.recommendedReserveMinor)}</div>
               </div>
             </div>
+
+            <h2>Fra regnskap til skattbar inntekt</h2>
+            <div className="panel">
+              <dl className="kv">
+                <dt>Regnskapsmessig resultat</dt>
+                <dd>{kr(e.accountingResultMinor)}</dd>
+                {e.taxAdjustments.length > 0 ? (
+                  <>
+                    {e.taxAdjustments.map((a) => (
+                      <div key={a.accountNumber} style={{ display: 'contents' }}>
+                        <dt style={{ fontWeight: 400 }}>+ {a.accountNumber} {a.accountName}</dt>
+                        <dd className="pos">+ {kr(a.addBackMinor)}</dd>
+                      </div>
+                    ))}
+                    <dt><b>Skattbar inntekt</b></dt>
+                    <dd><b>{kr(e.estimatedTaxableResultMinor)}</b></dd>
+                  </>
+                ) : (
+                  <>
+                    <dt>Skattemessige justeringer</dt>
+                    <dd>0 — ingen kostnader uten skattefradrag funnet</dd>
+                    <dt><b>Skattbar inntekt</b></dt>
+                    <dd><b>{kr(e.estimatedTaxableResultMinor)}</b></dd>
+                  </>
+                )}
+              </dl>
+              {e.taxAdjustments.length > 0 && (
+                <p className="hint">
+                  Kostnader uten skattefradrag (permanente forskjeller) er lagt tilbake — skatten beregnes av den
+                  <b> skattbare</b> inntekten, ikke regnskapsresultatet. Kontroller at postene over stemmer.
+                </p>
+              )}
+            </div>
+
             <h2>Slik er estimatet satt sammen</h2>
             <div className="table-wrap">
               <table>
@@ -2556,6 +2593,12 @@ interface Naeringsspesifikasjon {
     ordinaertResultatForSkattMinor: string;
     skattekostnadMinor: string;
     aarsresultatMinor: string;
+  };
+  skattemessig: {
+    regnskapsmessigResultatMinor: string;
+    justeringer: { accountNumber: string; accountName: string; addBackMinor: string; reason: string }[];
+    justeringerSumMinor: string;
+    skattemessigResultatMinor: string;
   };
   balanse: {
     anleggsmidler: SpecSection;
@@ -2819,6 +2862,32 @@ function NaeringsspecPanel({ spec, year, orgId }: { spec: Naeringsspesifikasjon;
           <strong>{kr(r.aarsresultatMinor)}</strong>
         </dd>
       </dl>
+
+      <h3>Skattemessig resultat</h3>
+      <dl className="kv">
+        <dt>Regnskapsmessig resultat</dt>
+        <dd>{kr(spec.skattemessig.regnskapsmessigResultatMinor)}</dd>
+        {spec.skattemessig.justeringer.length > 0 ? (
+          spec.skattemessig.justeringer.map((j) => (
+            <div key={j.accountNumber} style={{ display: 'contents' }}>
+              <dt style={{ fontWeight: 400 }}>+ {j.accountNumber} {j.accountName} <span className="hint">(uten skattefradrag)</span></dt>
+              <dd className="pos">+ {kr(j.addBackMinor)}</dd>
+            </div>
+          ))
+        ) : (
+          <>
+            <dt>Justeringer (kostnader uten skattefradrag)</dt>
+            <dd>0</dd>
+          </>
+        )}
+      </dl>
+      <dl className="kv total">
+        <dt><strong>Skattemessig resultat (skattegrunnlag)</strong></dt>
+        <dd><strong>{kr(spec.skattemessig.skattemessigResultatMinor)}</strong></dd>
+      </dl>
+      {spec.skattemessig.justeringer.length > 0 && (
+        <p className="hint">Kostnader uten skattefradrag er lagt tilbake — skatten beregnes av det skattemessige resultatet. Kontroller postene.</p>
+      )}
 
       <h3>Balanse per 31.12.{year}</h3>
       <SpecRow section={b.anleggsmidler} />

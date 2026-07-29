@@ -9,6 +9,7 @@
  */
 import type { Db } from '../db/pool.js';
 import { balanceSheet, incomeStatement, type TrialBalanceRow } from '../ledger/reports.js';
+import { computeTaxAdjustments, type TaxAdjustment } from './adjustments.js';
 
 export interface SpecPost {
   accountNumber: string;
@@ -35,6 +36,13 @@ export interface Naeringsspesifikasjon {
     ordinaertResultatForSkattMinor: bigint;
     skattekostnadMinor: bigint;
     aarsresultatMinor: bigint;
+  };
+  /** Broen fra regnskapsmessig til skattemessig resultat (permanente forskjeller). */
+  skattemessig: {
+    regnskapsmessigResultatMinor: bigint;
+    justeringer: TaxAdjustment[];
+    justeringerSumMinor: bigint;
+    skattemessigResultatMinor: bigint;
   };
   balanse: {
     anleggsmidler: SpecSection;
@@ -115,6 +123,16 @@ export async function buildNaeringsspesifikasjon(
     driftsresultatMinor + finansinntekter.sumMinor - finanskostnader.sumMinor;
   const aarsresultatMinor = ordinaertResultatForSkattMinor - skattekostnadMinor;
 
+  // Skattemessig resultat: regnskapsresultat + permanente forskjeller (kostnader
+  // uten skattefradrag lagt tilbake). Grunnlaget for skatten i skattemeldingen.
+  const adj = await computeTaxAdjustments(db, { organizationId: org, fromDate: from, toDate: to });
+  const skattemessig = {
+    regnskapsmessigResultatMinor: ordinaertResultatForSkattMinor,
+    justeringer: adj.lines,
+    justeringerSumMinor: adj.totalMinor,
+    skattemessigResultatMinor: ordinaertResultatForSkattMinor + adj.totalMinor,
+  };
+
   // Balanse: kumulativt fram til 31.12.
   const bs = await balanceSheet(db, { organizationId: org, toDate: to });
   const assets = bs.balances.filter((r) => r.accountType === 'asset');
@@ -161,6 +179,7 @@ export async function buildNaeringsspesifikasjon(
       skattekostnadMinor,
       aarsresultatMinor,
     },
+    skattemessig,
     balanse: {
       anleggsmidler,
       omlopsmidler,
