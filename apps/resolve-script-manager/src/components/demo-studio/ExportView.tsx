@@ -273,7 +273,7 @@ export function ExportView() {
   const scenes = project.scenes;
   const recorded = scenes.filter((s) => s.recordingPath);
   // Integritets-gate (D): blokkér video-eksport ved alvorlige mangler.
-  const readiness = exportReadiness(scenes);
+  const readiness = exportReadiness(scenes, project.format);
   const canExport = recorded.length > 0 && readiness.ready;
 
   /**
