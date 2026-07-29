@@ -119,6 +119,16 @@ final class SignInService {
         session = nil
     }
 
+    #if DEBUG
+    /// Sett en ren in-memory demo-sesjon UTEN keychain (demo-ruter i simulator
+    /// der keychain kan feile). Ingen persistering — kun for `--demo-*`-flater.
+    func setInMemoryDemoSession(userId: String, backendBaseURL: URL, displayName: String = "Demo") {
+        session = StoredSession(
+            backendBaseURL: backendBaseURL, bearer: "demo",
+            userId: userId, email: "demo@creatorhubn.com", displayName: displayName)
+    }
+    #endif
+
     /// Authorization header dict for the BackendClient. Returns empty when
     /// signed out so the BackendClient can still be constructed; calls
     /// will then fail with 401 which the UI surfaces.

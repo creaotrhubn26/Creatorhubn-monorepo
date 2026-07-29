@@ -130,6 +130,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// frames; landscape/aviation/vehicle presets enable it.
     var autoStraighten: Bool = false
 
+    /// Apple scene auto-enhance (`CIImage.autoAdjustmentFilters` med `.enhance`).
+    /// Gir en ren, farge-nøytral baseline for RÅ/kamera-JPEG-fangst før recipe-
+    /// justeringene legges på. Men på ALLEREDE ferdig-gradede/leverte bilder
+    /// dobbelt-prosesserer den (over-metter, re-kontrasterer, flytter farge) og
+    /// bør slås AV. Default true (bevarer fangst-oppførsel); korrigerende
+    /// finishing-presets (f.eks. ``wedding``) setter false.
+    var autoEnhance: Bool = true
+
     /// **Phase 7C** — Manual horizon angle, in radians. Range
     /// effectively ±0.2618 (±15°) — beyond that the straighten tool
     /// stops; use the regular crop+rotate UI for dutch tilts. Used as
@@ -212,6 +220,30 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0,
         eyeSharpen: 0.30, eyeCatchlight: 0.20,
         teethWhiten: 0.20, skinUnify: 0.30
+    )
+
+    /// **Bryllup / varmt lys** — KORRIGERENDE reportasje-grade for tungsten- og
+    /// mikset venue-lys, kalibrert mot bransjestandard for bryllupsredigering
+    /// (Lightroom-workflow fra profesjonelle bryllupsfotografer):
+    ///   • temp mot blå (`warmth -0.35`) — nøytraliser oransjestikket i stedet
+    ///     for å ADDERE varme (den vanligste nybegynnerfeilen på tungsten-lys)
+    ///   • høylys-gjenoppretting `0.42` (LR «Highlights −10…−40») — hent tilbake
+    ///     utbrente detaljer i kjoler/vindus-/spotlys
+    ///   • skyggeløft `0.22` (LR «Shadows +10…+35») for den store dynamikken
+    ///   • kontrast `0.12` (LR «Contrast 0…+15») — mild, ikke knivskarp
+    ///   • `vibrance 0.18` (LR «+10…+25») som BESKYTTER hud, kombinert med
+    ///     `saturation -0.08` (LR «−5…+5») som demper den oransje hud-over-
+    ///     metningen — bransjekonsensus: vibrance > saturation for hud
+    ///   • lett hud-frekvensseparasjon (høyfrekvent detalj bevart, lavfrekvent
+    ///     tone ≤0.5 = «natural retouch», aldri plast)
+    /// **Auto-enhance AV** — bildet skal graderes bevisst, ikke re-prosesseres
+    /// av Apples scene-auto-enhance (det doble-prosesserer ferdige/leverte JPEG-er).
+    static let wedding = MagicRecipe(
+        warmth: -0.35, skinHighFreq: 0.12, skinLowFreq: 0.18, shadowLift: 0.22,
+        contrast: 0.12, saturation: -0.08,
+        highlightRecovery: 0.42, vibrance: 0.18, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.22, eyeCatchlight: 0.15, autoEnhance: false,
+        teethWhiten: 0.15, skinUnify: 0.22
     )
 
     /// Aviation: dehaze is the canonical primary tool for aviation
@@ -441,6 +473,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         eyeSharpen = try c.decodeIfPresent(Double.self, forKey: .eyeSharpen) ?? 0
         eyeCatchlight = try c.decodeIfPresent(Double.self, forKey: .eyeCatchlight) ?? 0
         autoStraighten = try c.decodeIfPresent(Bool.self, forKey: .autoStraighten) ?? false
+        autoEnhance = try c.decodeIfPresent(Bool.self, forKey: .autoEnhance) ?? true
         straightenAngle = try c.decodeIfPresent(Double.self, forKey: .straightenAngle) ?? 0
         teethWhiten = try c.decodeIfPresent(Double.self, forKey: .teethWhiten) ?? 0
         subjectType = try c.decodeIfPresent(SubjectType.self, forKey: .subjectType) ?? .none
@@ -465,6 +498,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         eyeSharpen: Double = 0,
         eyeCatchlight: Double = 0,
         autoStraighten: Bool = false,
+        autoEnhance: Bool = true,
         straightenAngle: Double = 0,
         teethWhiten: Double = 0,
         subjectType: SubjectType = .none,
@@ -484,6 +518,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.eyeSharpen = eyeSharpen
         self.eyeCatchlight = eyeCatchlight
         self.autoStraighten = autoStraighten
+        self.autoEnhance = autoEnhance
         self.straightenAngle = straightenAngle
         self.teethWhiten = teethWhiten
         self.subjectType = subjectType
@@ -494,7 +529,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
         case eyeSharpen, eyeCatchlight
-        case autoStraighten, straightenAngle
+        case autoStraighten, autoEnhance, straightenAngle
         case teethWhiten, subjectType, skinUnify
     }
 }
