@@ -123,6 +123,10 @@ struct ShotListPanel: View {
                 Spacer()
                 Toggle("", isOn: Binding(get: { on }, set: { setAutoCheck($0) }))
                     .labelsHidden().tint(SLColor.green).disabled(autoCheckBusy)
+                    .accessibilityLabel("Auto-huk shots")
+                    .accessibilityValue(on ? "På" : "Av")
+                    .accessibilityHint("Lar Vision hake av shots automatisk for hele teamet")
+                    .accessibilityIdentifier("shotlist.autohuk.toggle")
             }
             Text(on ? "Auto-huk er på" : "Auto-huk er av")
                 .font(.title3.weight(.bold)).foregroundStyle(SLColor.textPri)
@@ -186,6 +190,7 @@ struct ShotListPanel: View {
                     let ids = model.autoCheckLog.map(\.shotId)
                     Task { for id in ids { await model.undoAutoCheck(shotId: id) } }
                 }.font(.caption.weight(.semibold)).foregroundStyle(SLColor.purple)
+                    .accessibilityIdentifier("shotlist.autohuk.undoAll")
             }
             ForEach(model.autoCheckLog) { entry in
                 HStack(spacing: 12) {
@@ -208,6 +213,8 @@ struct ShotListPanel: View {
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .overlay(Capsule().stroke(Color(hex: 0xE0A955).opacity(0.5)))
                     }.buttonStyle(.plain)
+                        .accessibilityLabel("Angre auto-huk: \(entry.scene)")
+                        .accessibilityIdentifier("shotlist.autohuk.undo.\(entry.shotId)")
                 }
                 .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(SLColor.cardHi))
             }
@@ -237,6 +244,8 @@ struct ShotListPanel: View {
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(SLColor.purple, in: Capsule())
             }.buttonStyle(.plain)
+                .accessibilityLabel("Hak av: \(shot.scene)")
+                .accessibilityIdentifier("shotlist.next.check")
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -258,6 +267,9 @@ struct ShotListPanel: View {
                             .padding(.horizontal, 11).padding(.vertical, 5)
                             .background(filter == f ? SLColor.green : .clear, in: Capsule())
                     }.buttonStyle(.plain)
+                        .accessibilityLabel("Filter: \(f.rawValue)")
+                        .accessibilityAddTraits(filter == f ? [.isSelected, .isButton] : .isButton)
+                        .accessibilityIdentifier("shotlist.filter.\(f.rawValue)")
                 }
                 Spacer()
                 HStack(spacing: 6) {
@@ -278,6 +290,8 @@ struct ShotListPanel: View {
 
     private func shotRow(index: Int, shot: BackendShotListItem) -> some View {
         let done = isCompleted(shot)
+        let doneBy = (shot.completedBy?.isEmpty == false) ? " av \(shot.completedBy!)" : ""
+        let a11yValue = done ? "Ferdig\(doneBy)" : "Ikke tatt"
         return Button { toggleCompletion(shot) } label: {
             HStack(spacing: 13) {
                 ZStack {
@@ -308,6 +322,12 @@ struct ShotListPanel: View {
             .contentShape(Rectangle())
             .padding(.horizontal, 16).padding(.vertical, 11)
         }.buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(shot.scene)
+            .accessibilityValue(a11yValue)
+            .accessibilityHint(done ? "Dobbelttrykk for å fjerne haken" : "Dobbelttrykk for å hake av")
+            .accessibilityAddTraits(done ? [.isButton, .isSelected] : .isButton)
+            .accessibilityIdentifier("shotlist.row.\(shot.id)")
     }
 
     private func pill(_ text: String, _ color: Color) -> some View {
