@@ -51,7 +51,7 @@ function fmt(sec: number) {
 export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } = {}) {
   const {
     project, recorderStepIndex, selectScene, goToStep,
-    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField, addScene,
+    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField, setSceneStatus, addScene,
   } = useDemoStudio();
   const rec = useSceneRecorder();
   const macFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -286,7 +286,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       // MediaRecorder-tilstanden og er no-op hvis ingenting tas opp.
       const path = await rec.stopAndSave(proj.id, scene.id);
       if (path) updateScene(scene.id, { recordingPath: path });
-      markCurrentDone();
+      // Marker «done» KUN hvis scenen faktisk har et opptak (nytt eller fra før).
+      // Feilet lagringen → needs_review, så demo-score ikke viser ferdig uten klipp.
+      const hasRec = !!path || !!useDemoStudio.getState().project?.scenes.find((s) => s.id === scene.id)?.recordingPath;
+      if (hasRec) markCurrentDone(); else setSceneStatus(scene.id, 'needs_review');
       if (i < sceneList.length - 1) { nextStep(); await startForCurrent(); }
     }
     setAutoRunning(false);
@@ -296,7 +299,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     const sc = freshCurrent() ?? cur;
     if (isNativeCapture) {
       // Native: opptak skjer per scene via recordNativeScene (allerede lagret).
-      markCurrentDone();
+      // Marker done kun hvis scenen faktisk fikk et opptak; ellers needs_review.
+      const hasRec = !!useDemoStudio.getState().project?.scenes.find((s) => s.id === sc.id)?.recordingPath;
+      if (hasRec) markCurrentDone(); else setSceneStatus(sc.id, 'needs_review');
       nextStep();
       const next = freshCurrent();
       if (next && next.id !== sc.id) {
@@ -309,7 +314,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     // og render-verdien rec.state kan være stale (se runAuto).
     const path = await rec.stopAndSave(project.id, sc.id);
     if (path) updateScene(sc.id, { recordingPath: path });
-    markCurrentDone();
+    // Marker done kun hvis scenen faktisk har et opptak; ellers needs_review, så
+    // videre progresjon ikke skjuler at klippet mangler.
+    const hasRec = !!path || !!useDemoStudio.getState().project?.scenes.find((s) => s.id === sc.id)?.recordingPath;
+    if (hasRec) markCurrentDone(); else setSceneStatus(sc.id, 'needs_review');
     if (recorderStepIndex < scenes.length - 1) { nextStep(); await startForCurrent(); }
   };
 

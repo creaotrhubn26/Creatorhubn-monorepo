@@ -230,6 +230,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runAutoDemo = async () => {
     if (!project || demoVidBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
+    // Manuset kan være laget for en ANNEN url (scenesUrl ≠ url). Kjør ikke et
+    // gammelt manus mot en ny nettside uten at brukeren bekrefter det eksplisitt.
+    if (project.scenes.some((s) => !!s.narration?.trim()) && project.scenesUrl && project.scenesUrl !== project.url) {
+      if (!window.confirm(`Manuset ble laget for en annen URL:\n${project.scenesUrl}\n\nKjøre det mot ${project.url} likevel?\nVelg Avbryt for å generere et nytt manus først (Kom i gang → Generér).`)) return;
+    }
     setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
     const job = jobIdentity();
     try {
@@ -265,7 +270,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       //    (unngå at forrige videos manus brukes på en ny side).
       let proj = useDemoStudio.getState().project!;
       const hasScenes = proj.scenes.some((s) => !!s.narration?.trim());
-      const stale = !!proj.scenesUrl && proj.scenesUrl !== proj.url;
+      // Stale også når scenesUrl MANGLER (eldre prosjekt) — ikke bare når den
+      // avviker. Ellers ville et manus av ukjent opphav kjøre mot gjeldende url.
+      const stale = hasScenes && proj.scenesUrl !== proj.url;
       if (!hasScenes || stale) {
         if (stale) setDemoVidMsg('Manuset var for en annen side — lager nytt…');
         await generateDemo();
@@ -281,7 +288,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         finalize: buildFinalize(),
         elevenKey: elevenKey.trim() || undefined,
       });
-      setDemoVidResult(out.path); setDemoVidQa(out.qa);
+      setDemoVidResult(out.path); setDemoVidQa(out.qa); setDemoVidScriptQa(out.scriptQa);
       { const bad = out.qa.filter((g) => g && !g.ok).length; setDemoVidMsg(bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)'); }
       void systemOpen(out.path).catch(() => {});
     } catch (e) {
@@ -312,6 +319,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setUnderstanding(null);
     setGenerated(false);
     setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidScene(null); setDemoVidMsg(null);
+    // Backfill: eldre prosjekter kan ha scener uten scenesUrl-stempel. Stemple
+    // det til gjeldende url ved innlasting (scenene ble laget for denne url-en),
+    // slik at et senere URL-bytte FAKTISK oppdages som stale (ellers ville et
+    // gammelt manus kunne kjøre stille mot en ny nettside).
+    if (project && !project.scenesUrl && project.scenes.some((s) => !!s.narration?.trim())) {
+      setProjectField('scenesUrl', project.url);
+    }
   }, [project?.id]);
   // G18: bytter man nettsted i URL-feltet skal forrige nettsteds scanShots/
   // forståelse ikke bli hengende igjen (preview viste feil side til neste skann).
