@@ -25,6 +25,7 @@ import {
   materializeToGoogleCustomerMatch,
   materializeToLinkedinMatchedAudience,
   materializeToMetaCustomAudience,
+  refreshSyncedAudiences,
   resolveSegmentMembers,
   type MaterializeResult,
 } from "./marketing-segments-service.js";
@@ -160,6 +161,27 @@ export function setupAdminMarketingSegmentsRoutes(deps: AdminRoomRoutesDeps): vo
     } catch (err) {
       console.error("[marketing-segments] delete error", err);
       res.status(500).json({ error: "delete_failed" });
+    }
+  });
+
+  // ── POST cron/refresh (x-cron-token) ─────────────────────────────────
+  //    Re-uploader medlemmer til alle synkroniserte audiences (holder dem
+  //    ferske når segmentet endrer seg). Ukentlig GitHub Actions-cron.
+  //    Token: MARKETING_SEGMENTS_CRON_TOKEN, faller tilbake på det delte
+  //    GEO_VISIBILITY_CRON_TOKEN (ingen nytt secret påkrevd).
+  app.post("/api/admin-room/marketing-segments/cron/refresh", async (req, res) => {
+    const token = req.headers["x-cron-token"];
+    const expected =
+      process.env.MARKETING_SEGMENTS_CRON_TOKEN || process.env.GEO_VISIBILITY_CRON_TOKEN;
+    if (!expected || token !== expected) {
+      return res.status(403).json({ error: "invalid_cron_token" });
+    }
+    try {
+      const result = await refreshSyncedAudiences(pool);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[marketing-segments] refresh error", err);
+      res.status(500).json({ error: "refresh_failed" });
     }
   });
 }

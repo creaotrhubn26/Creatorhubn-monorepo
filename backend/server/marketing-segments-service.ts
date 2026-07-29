@@ -16,9 +16,15 @@
  */
 
 import type { Pool } from "pg";
-import { createGoogleCustomerMatchAudience } from "./client-google-customer-match.js";
-import { createMetaCustomAudience } from "./client-meta-suite.js";
-import { createLinkedinMatchedAudience } from "./client-linkedin-suite.js";
+import {
+  createGoogleCustomerMatchAudience,
+  syncGoogleCustomerMatchMembers,
+} from "./client-google-customer-match.js";
+import { createMetaCustomAudience, syncMetaCustomAudienceMembers } from "./client-meta-suite.js";
+import {
+  createLinkedinMatchedAudience,
+  syncLinkedinMatchedAudienceMembers,
+} from "./client-linkedin-suite.js";
 
 export type MarketingSegmentSource = "industry_targets" | "leadgrid_leads";
 
@@ -78,6 +84,10 @@ export async function ensureTables(pool: Pool): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_marketing_segment_audiences_segment
       ON marketing_segment_audiences (segment_id);
+    -- Refresh (fase 3): lagre HVOR (konto) + HVEM (OAuth-bruker) audiencen ble
+    -- laget med, så cronen kan re-uploade medlemmer til den EKSISTERENDE audiencen.
+    ALTER TABLE marketing_segment_audiences ADD COLUMN IF NOT EXISTS account_ref TEXT;
+    ALTER TABLE marketing_segment_audiences ADD COLUMN IF NOT EXISTS producer_user_id UUID;
   `);
   tablesReady = true;
 }
@@ -252,6 +262,8 @@ async function runMaterialize(
   pool: Pool,
   segment: MarketingSegment,
   platform: MaterializePlatform,
+  accountRef: string,
+  producerUserId: string,
   push: (identifiers: Array<{ email: string }>) => Promise<PushResult>,
 ): Promise<MaterializeResult> {
   await ensureTables(pool);
@@ -264,16 +276,18 @@ async function runMaterialize(
   ): Promise<void> => {
     await pool.query(
       `INSERT INTO marketing_segment_audiences
-         (segment_id, platform, external_audience_id, member_count, status, last_error, last_synced_at)
-       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $5 = 'synced' THEN NOW() ELSE NULL END)
+         (segment_id, platform, external_audience_id, member_count, status, last_error, last_synced_at, account_ref, producer_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $5 = 'synced' THEN NOW() ELSE NULL END, $7, $8::uuid)
        ON CONFLICT (segment_id, platform) DO UPDATE SET
          external_audience_id = COALESCE(EXCLUDED.external_audience_id, marketing_segment_audiences.external_audience_id),
          member_count = EXCLUDED.member_count,
          status = EXCLUDED.status,
          last_error = EXCLUDED.last_error,
          last_synced_at = CASE WHEN EXCLUDED.status = 'synced' THEN NOW()
-                               ELSE marketing_segment_audiences.last_synced_at END`,
-      [segment.id, platform, externalId, memberCount, status, error],
+                               ELSE marketing_segment_audiences.last_synced_at END,
+         account_ref = COALESCE(EXCLUDED.account_ref, marketing_segment_audiences.account_ref),
+         producer_user_id = COALESCE(EXCLUDED.producer_user_id, marketing_segment_audiences.producer_user_id)`,
+      [segment.id, platform, externalId, memberCount, status, error, accountRef, producerUserId],
     );
   };
 
@@ -302,7 +316,7 @@ export async function materializeToGoogleCustomerMatch(
   args: { segment: MarketingSegment; customerId: string; producerUserId: string },
 ): Promise<MaterializeResult> {
   const { segment, customerId, producerUserId } = args;
-  return runMaterialize(pool, segment, "google_customer_match", async (identifiers) => {
+  return runMaterialize(pool, segment, "google_customer_match", customerId, producerUserId, async (identifiers) => {
     const r = await createGoogleCustomerMatchAudience(pool, {
       producerUserId,
       customerId,
@@ -322,7 +336,7 @@ export async function materializeToMetaCustomAudience(
   args: { segment: MarketingSegment; adAccountId: string; producerUserId: string },
 ): Promise<MaterializeResult> {
   const { segment, adAccountId, producerUserId } = args;
-  return runMaterialize(pool, segment, "meta_custom_audience", async (identifiers) => {
+  return runMaterialize(pool, segment, "meta_custom_audience", adAccountId, producerUserId, async (identifiers) => {
     const r = await createMetaCustomAudience(pool, {
       producerUserId,
       adAccountId,
@@ -342,7 +356,7 @@ export async function materializeToLinkedinMatchedAudience(
   args: { segment: MarketingSegment; adAccountUrn: string; producerUserId: string },
 ): Promise<MaterializeResult> {
   const { segment, adAccountUrn, producerUserId } = args;
-  return runMaterialize(pool, segment, "linkedin_matched_audience", async (identifiers) => {
+  return runMaterialize(pool, segment, "linkedin_matched_audience", adAccountUrn, producerUserId, async (identifiers) => {
     const r = await createLinkedinMatchedAudience(pool, {
       producerUserId,
       adAccountUrn,
@@ -354,4 +368,109 @@ export async function materializeToLinkedinMatchedAudience(
       ? { ok: true, externalId: r.segmentUrn, uploadCount: r.uploadCount }
       : { ok: false, error: r.error };
   });
+}
+
+async function markRefresh(
+  pool: Pool,
+  segmentId: string,
+  platform: string,
+  ok: boolean,
+  memberCount: number,
+  error: string | null,
+): Promise<void> {
+  await pool.query(
+    `UPDATE marketing_segment_audiences
+        SET member_count = $3, status = $4, last_error = $5,
+            last_synced_at = CASE WHEN $4 = 'synced' THEN NOW() ELSE last_synced_at END
+      WHERE segment_id = $1 AND platform = $2`,
+    [segmentId, platform, memberCount, ok ? "synced" : "failed", error],
+  );
+}
+
+/**
+ * Fase 3 — refresh: re-uploader medlemmer til hver EKSISTERENDE synkroniserte
+ * audience (via sync*-funksjonene, som treffer external_audience_id — ingen nye
+ * audiences opprettes). Krever at account_ref + producer_user_id ble lagret ved
+ * materialisering. Kalt av den ukentlige cronen.
+ */
+export async function refreshSyncedAudiences(
+  pool: Pool,
+): Promise<{ processed: number; ok: number; failed: number }> {
+  await ensureTables(pool);
+  const rows = await pool.query<{
+    segment_id: string;
+    platform: string;
+    external_audience_id: string;
+    account_ref: string;
+    producer_user_id: string;
+    user_id: string;
+    name: string;
+    source: string;
+    filters: MarketingSegmentFilters | null;
+  }>(
+    `SELECT a.segment_id, a.platform, a.external_audience_id, a.account_ref, a.producer_user_id,
+            s.user_id, s.name, s.source, s.filters
+       FROM marketing_segment_audiences a
+       JOIN marketing_segments s ON s.id = a.segment_id
+      WHERE a.status = 'synced'
+        AND a.external_audience_id IS NOT NULL
+        AND a.account_ref IS NOT NULL
+        AND a.producer_user_id IS NOT NULL`,
+  );
+
+  let okCount = 0;
+  let failedCount = 0;
+  for (const r of rows.rows) {
+    const segment: MarketingSegment = {
+      id: r.segment_id,
+      userId: r.user_id,
+      name: r.name,
+      source: r.source === "leadgrid_leads" ? "leadgrid_leads" : "industry_targets",
+      filters: r.filters ?? {},
+      createdAt: "",
+      updatedAt: "",
+    };
+    const { emails } = await resolveSegmentMembers(pool, segment);
+    if (emails.length === 0) {
+      failedCount++;
+      await markRefresh(pool, r.segment_id, r.platform, false, 0, "no_members");
+      continue;
+    }
+    const identifiers = emails.map((e) => ({ email: e }));
+
+    let result: { ok: true; uploadCount: number } | { ok: false; error: string };
+    if (r.platform === "google_customer_match") {
+      result = await syncGoogleCustomerMatchMembers(pool, {
+        producerUserId: r.producer_user_id,
+        customerId: r.account_ref,
+        userListResource: r.external_audience_id,
+        identifiers,
+      });
+    } else if (r.platform === "meta_custom_audience") {
+      result = await syncMetaCustomAudienceMembers(pool, {
+        producerUserId: r.producer_user_id,
+        audienceId: r.external_audience_id,
+        identifiers,
+      });
+    } else if (r.platform === "linkedin_matched_audience") {
+      result = await syncLinkedinMatchedAudienceMembers(pool, {
+        producerUserId: r.producer_user_id,
+        segmentUrn: r.external_audience_id,
+        identifiers,
+      });
+    } else {
+      failedCount++;
+      continue;
+    }
+
+    if (result.ok) {
+      okCount++;
+      await markRefresh(pool, r.segment_id, r.platform, true, result.uploadCount, null);
+    } else {
+      failedCount++;
+      await markRefresh(pool, r.segment_id, r.platform, false, emails.length, result.error);
+    }
+  }
+
+  return { processed: rows.rows.length, ok: okCount, failed: failedCount };
 }

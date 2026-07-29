@@ -459,6 +459,41 @@ export async function createLinkedinMatchedAudience(
   return { ok: true, segmentUrn, uploadCount: users.length };
 }
 
+/**
+ * Refresh: last opp medlemmer til et EKSISTERENDE dmpSegment (POST
+ * /dmpSegments/{urn}/users, action ADD) — samme upload-steg som create, uten
+ * å opprette et nytt segment. Brukt av segment-refresh-cronen.
+ */
+export async function syncLinkedinMatchedAudienceMembers(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    segmentUrn: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+  },
+): Promise<{ ok: true; uploadCount: number } | { ok: false; error: string }> {
+  const access = await token(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const users: Array<{ email?: string; phone?: string; action: string }> = [];
+  for (const id of opts.identifiers) {
+    const entry: { email?: string; phone?: string; action: string } = { action: "ADD" };
+    if (id.email) entry.email = liHash(id.email);
+    if (id.phone) entry.phone = liHash(id.phone);
+    if (entry.email || entry.phone) users.push(entry);
+  }
+  if (users.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
+
+  for (let i = 0; i < users.length; i += 5000) {
+    await fetch(`${LINKEDIN_REST_BASE}/dmpSegments/${encodeURIComponent(opts.segmentUrn)}/users`, {
+      method: "POST",
+      headers: liHeaders(access),
+      body: JSON.stringify({ elements: users.slice(i, i + 5000) }),
+    }).catch(() => null);
+  }
+  return { ok: true, uploadCount: users.length };
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // LinkedIn Conversions API per klient — server-side conversion events
 //   https://learn.microsoft.com/en-us/linkedin/marketing/conversions-api
