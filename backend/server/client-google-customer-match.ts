@@ -158,6 +158,67 @@ export async function createGoogleCustomerMatchAudience(
   return { ok: true, userListResource, uploadCount: operations.length };
 }
 
+/**
+ * Refresh: last opp medlemmer til en EKSISTERENDE Customer Match-userList
+ * (offlineUserDataJob mot userListResource) — samme steg 2–4 som create, uten
+ * å opprette en ny liste. Brukt av segment-refresh-cronen.
+ */
+export async function syncGoogleCustomerMatchMembers(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    customerId: string;
+    userListResource: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+  },
+): Promise<{ ok: true; uploadCount: number } | { ok: false; error: string }> {
+  const access = await getAdsAccess(pool, opts.producerUserId);
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
+  if (!access || !developerToken) return { ok: false, error: "not_connected" };
+  const cleanId = opts.customerId.replace(/-/g, "");
+
+  const jobR = await externalFetch(
+    `${GOOGLE_ADS_API_BASE}/customers/${cleanId}/offlineUserDataJobs:create`,
+    {
+      method: "POST",
+      headers: adsHeaders(access),
+      body: JSON.stringify({
+        job: {
+          type: "CUSTOMER_MATCH_USER_LIST",
+          customerMatchUserListMetadata: { userList: opts.userListResource },
+        },
+      }),
+    },
+  );
+  if (!jobR.ok) return { ok: false, error: `offlineUserDataJobs/create HTTP ${jobR.status}` };
+  const jobResource = ((await jobR.json()) as { resourceName?: string }).resourceName;
+  if (!jobResource) return { ok: false, error: "Manglende job resourceName" };
+
+  const operations: any[] = [];
+  for (const id of opts.identifiers) {
+    const userIdentifiers: any[] = [];
+    if (id.email) userIdentifiers.push({ hashedEmail: googleHash(id.email) });
+    if (id.phone) userIdentifiers.push({ hashedPhoneNumber: googleHash(id.phone) });
+    if (userIdentifiers.length > 0) operations.push({ create: { userIdentifiers } });
+  }
+  if (operations.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
+
+  for (let i = 0; i < operations.length; i += 10000) {
+    await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:addOperations`, {
+      method: "POST",
+      headers: adsHeaders(access),
+      body: JSON.stringify({ operations: operations.slice(i, i + 10000), enablePartialFailure: true }),
+    }).catch(() => null);
+  }
+  await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:run`, {
+    method: "POST",
+    headers: adsHeaders(access),
+    body: "{}",
+  }).catch(() => null);
+
+  return { ok: true, uploadCount: operations.length };
+}
+
 export async function listGoogleCustomerMatchAudiences(
   pool: Pool,
   opts: { producerUserId: string; customerId: string },

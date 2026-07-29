@@ -438,6 +438,44 @@ export async function createMetaCustomAudience(
   return { ok: true, audienceId: created.id, uploadCount: data.length };
 }
 
+/**
+ * Refresh: last opp medlemmer til en EKSISTERENDE Custom Audience (POST
+ * /{audienceId}/users) — samme upload-steg som create, uten å opprette en ny
+ * audience. Brukt av segment-refresh-cronen.
+ */
+export async function syncMetaCustomAudienceMembers(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    audienceId: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+  },
+): Promise<{ ok: true; uploadCount: number } | { ok: false; error: string }> {
+  const access = await metaToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const schema = ["EMAIL", "PHONE"];
+  const data: string[][] = [];
+  for (const id of opts.identifiers) {
+    const e = id.email ? hashIdentifier(id.email) : "";
+    const p = id.phone ? hashIdentifier(id.phone) : "";
+    if (e || p) data.push([e, p]);
+  }
+  if (data.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
+
+  const uploadUrl = `${META_GRAPH_BASE}/${opts.audienceId}/users?access_token=${encodeURIComponent(access)}`;
+  const uploadR = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload: { schema, data } }),
+  });
+  if (!uploadR.ok) {
+    const t = await uploadR.text();
+    return { ok: false, error: `users/upload HTTP ${uploadR.status} — ${t.slice(0, 200)}` };
+  }
+  return { ok: true, uploadCount: data.length };
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Meta CAPI per klient — server-side conversion events
 //   https://developers.facebook.com/docs/marketing-api/conversions-api
