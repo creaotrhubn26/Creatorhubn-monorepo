@@ -465,6 +465,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // vinduer; begge kan slås av/på manuelt (rail med chevron for å åpne igjen).
   const [toolsOpen, setToolsOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1200 : true));
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [leftNavOpen, setLeftNavOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1100 : true));
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
@@ -977,8 +978,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* ── Left nav ── */}
+        {/* ── Left nav ── kan kollapses til en smal rail (auto på smale vinduer) ── */}
+        {!leftNavOpen ? (
+          <div onClick={() => setLeftNavOpen(true)} title="Vis meny"
+            style={{ width: 30, background: C.panel, borderRight: `1px solid ${C.line}`, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 14, cursor: 'pointer', color: C.inkFaint, fontSize: 14 }}>›</div>
+        ) : (
         <div style={{ width: 256, background: C.panel, borderRight: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', padding: '12px 11px', flexShrink: 0, overflowY: 'auto', minHeight: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+            <span onClick={() => setLeftNavOpen(false)} title="Skjul meny" style={{ cursor: 'pointer', color: C.inkFaint, fontSize: 14, padding: '2px 6px' }}>‹</span>
+          </div>
           {NAV_ITEMS.map((it) => (
             <div key={it.id} onClick={() => { setNav(it.id); setStoryMode(false); }}
               style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2,
@@ -1322,6 +1330,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             )}
           </div>
         </div>
+        )}
 
         {/* ── STORY-modus: gjenbruk StoryView ── */}
         {storyMode ? (
@@ -1539,7 +1548,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     </div>
                   );
                 })()}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+                {/* Horisontal tidslinje (NLE-stil): én rad med faste kort som
+                    scroller vannrett — sparer vertikal plass på iPad/smale vinduer. */}
+                <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
                   {scenes.map((s) => {
                     const multiSel = selectedSceneIds.includes(s.id);
                     const isPrimary = s.id === selectedSceneId;
@@ -1556,7 +1567,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         if (e.metaKey || e.ctrlKey || e.shiftKey) { toggleSceneSelected(s.id, true); return; }
                         clearSceneSelection(); selectScene(s.id); if (recording) goToStep(s.index);
                       }}
-                      style={{ border: `2px solid ${multiSel ? C.dark : isPrimary ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'grab', background: multiSel ? C.creamActive : '#fff', opacity: dragIndex === s.index ? 0.4 : 1, boxShadow: dropBefore ? `-3px 0 0 ${C.accent}` : 'none' }}>
+                      style={{ width: 156, flexShrink: 0, border: `2px solid ${multiSel ? C.dark : isPrimary ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'grab', background: multiSel ? C.creamActive : '#fff', opacity: dragIndex === s.index ? 0.4 : 1, boxShadow: dropBefore ? `-3px 0 0 ${C.accent}` : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
                         <span style={{ color: C.inkFaint, fontSize: 12, cursor: 'grab' }} title="Dra for å flytte">⠿</span>
                         <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
@@ -1577,8 +1588,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     </div>
                     );
                   })}
-                  <div onClick={() => addScene(scenes.length - 1)}
-                    style={{ border: `1px dashed ${C.lineStrong}`, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft, fontSize: 22, minHeight: 110 }}>+</div>
+                  <div onClick={() => addScene(scenes.length - 1)} title="Legg til scene"
+                    style={{ width: 56, flexShrink: 0, border: `1px dashed ${C.lineStrong}`, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft, fontSize: 22, minHeight: 110 }}>+</div>
                 </div>
               </div>
             </div>
