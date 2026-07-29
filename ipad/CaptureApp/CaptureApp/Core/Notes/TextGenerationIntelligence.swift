@@ -61,6 +61,26 @@ enum ShotListBriefParser {
 
 protocol TextGenerating: Sendable {
     func generate(_ prompt: TextGenPrompt) async throws -> String
+    /// Strøm av KUMULATIVE snapshots (hver verdi = alt generert så langt) → lar
+    /// UI vise shots dukke opp live mens modellen skriver. Standard-impl faller
+    /// tilbake til ett enkelt (ferdig) snapshot for ikke-strømmende motorer.
+    func stream(_ prompt: TextGenPrompt) -> AsyncThrowingStream<String, Error>
+}
+
+extension TextGenerating {
+    func stream(_ prompt: TextGenPrompt) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    continuation.yield(try await generate(prompt))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 }
 
 struct TextGenerationIntelligence: Sendable {
@@ -86,6 +106,16 @@ struct TextGenerationIntelligence: Sendable {
             throw Failure.unavailable(unavailableReason ?? .osUnsupported)
         }
         return try await generator.generate(prompt)
+    }
+
+    /// Kumulativ snapshot-strøm (se ``TextGenerating/stream``). Kaster
+    /// umiddelbart via strømmen når motoren er utilgjengelig.
+    func stream(_ prompt: TextGenPrompt) -> AsyncThrowingStream<String, Error> {
+        guard let generator, availability.availability == .available else {
+            let reason = unavailableReason ?? .osUnsupported
+            return AsyncThrowingStream { $0.finish(throwing: Failure.unavailable(reason)) }
+        }
+        return generator.stream(prompt)
     }
 }
 
