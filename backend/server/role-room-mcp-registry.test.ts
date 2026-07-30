@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ROLE_ROOM_CAPABILITIES, listCapabilitiesFor, findCapability, McpToolError,
+  readPageArgs, buildPageInfo, paginateArray, isDraftEntityType,
   type McpCallContext,
 } from "./role-room-mcp-registry.js";
 import { extractApiKey } from "./role-room-mcp-routes.js";
@@ -160,5 +161,164 @@ describe("rr_search_talents (byrå-scopet, samtykke-gated PII)", () => {
     expect(out.talents[0].display_name).toBe("Kari");
     expect(out.talents[0].has_showreel).toBeUndefined();
     expect(out.talents[0].availability_visible).toBe(false);
+  });
+});
+
+// ── Del A punkt 140: total + paginering ──────────────────────────────────────
+
+describe("readPageArgs", () => {
+  it("bruker defaults når ingenting er oppgitt", () => {
+    expect(readPageArgs({}, 50, 200)).toEqual({ limit: 50, offset: 0 });
+  });
+  it("klipper limit mot maks", () => {
+    expect(readPageArgs({ limit: 9999 }, 50, 200).limit).toBe(200);
+  });
+  it("faller tilbake til default ved ugyldig limit framfor å feile", () => {
+    expect(readPageArgs({ limit: 0 }, 50, 200).limit).toBe(50);
+    expect(readPageArgs({ limit: -5 }, 50, 200).limit).toBe(50);
+    expect(readPageArgs({ limit: "mange" }, 50, 200).limit).toBe(50);
+  });
+  it("avrunder desimaler ned", () => {
+    expect(readPageArgs({ limit: 10.9, offset: 5.7 }, 50, 200)).toEqual({ limit: 10, offset: 5 });
+  });
+  it("negativ offset behandles som 0", () => {
+    expect(readPageArgs({ offset: -3 }, 50, 200).offset).toBe(0);
+  });
+});
+
+describe("buildPageInfo", () => {
+  it("hasMore er true når det gjenstår rader", () => {
+    expect(buildPageInfo(54, { limit: 50, offset: 0 })).toEqual({
+      total: 54, limit: 50, offset: 0, hasMore: true,
+    });
+  });
+  it("hasMore er false på siste side", () => {
+    expect(buildPageInfo(54, { limit: 50, offset: 50 }).hasMore).toBe(false);
+  });
+  it("hasMore er false når totalen får plass på én side", () => {
+    expect(buildPageInfo(50, { limit: 50, offset: 0 }).hasMore).toBe(false);
+  });
+});
+
+describe("paginateArray (JSONB-blob-listene)", () => {
+  const items = Array.from({ length: 12 }, (_, i) => ({ i }));
+  it("skjærer riktig vindu og oppgir total", () => {
+    const out = paginateArray("offers", items, { limit: 5, offset: 5 }) as {
+      offers: unknown[]; pagination: { total: number; hasMore: boolean };
+    };
+    expect(out.offers).toHaveLength(5);
+    expect(out.offers[0]).toEqual({ i: 5 });
+    expect(out.pagination.total).toBe(12);
+    expect(out.pagination.hasMore).toBe(true);
+  });
+  it("tom liste gir total 0 og hasMore false", () => {
+    const out = paginateArray("offers", [], {}) as { pagination: { total: number; hasMore: boolean } };
+    expect(out.pagination).toMatchObject({ total: 0, hasMore: false });
+  });
+});
+
+describe("list-verktøy returnerer pagination", () => {
+  it("rr_list_projects oppgir total fra COUNT, ikke antall rader på siden", async () => {
+    const pool = makePool([
+      { match: /COUNT\(DISTINCT p\.id\)/, rows: [{ total: 54 }] },
+      { match: /FROM casting_projects p/, rows: [{ id: "p1" }, { id: "p2" }] },
+    ]);
+    const out = await findCapability("rr_list_projects")!.handler(pool, CTX, { limit: 50 }) as {
+      projects: unknown[]; pagination: { total: number; hasMore: boolean };
+    };
+    expect(out.projects).toHaveLength(2);
+    // Nettopp diskrepansen punkt 140 handler om: siden viser 2, totalen er 54.
+    expect(out.pagination.total).toBe(54);
+    expect(out.pagination.hasMore).toBe(true);
+  });
+
+  it("alle list-verktøy tar limit/offset i skjemaet", () => {
+    const listTools = ROLE_ROOM_CAPABILITIES.filter(
+      (c) => c.name.startsWith("rr_list_") && c.name !== "rr_list_drafts",
+    );
+    expect(listTools.length).toBeGreaterThan(15);
+    for (const t of listTools) {
+      const props = (t.inputSchema as { properties: Record<string, unknown> }).properties;
+      expect(props, `${t.name} mangler limit`).toHaveProperty("limit");
+      expect(props, `${t.name} mangler offset`).toHaveProperty("offset");
+    }
+  });
+});
+
+// ── Del A punkt 141: list / hent / slett utkast ──────────────────────────────
+
+describe("utkast-forvaltning", () => {
+  const WRITE_CTX: McpCallContext = { userId: "u1", scopes: ["projects.write"], apiKeyId: "k1" };
+  const ACCESS = { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] };
+
+  it("verktøyene finnes og rr_delete_draft er merket mutates", () => {
+    expect(findCapability("rr_list_drafts")).toBeDefined();
+    expect(findCapability("rr_get_draft")).toBeDefined();
+    expect(findCapability("rr_delete_draft")!.mutates).toBe(true);
+    // Lesing skal ikke være merket som skriving.
+    expect(findCapability("rr_list_drafts")!.mutates).toBeFalsy();
+  });
+
+  it("isDraftEntityType godtar kjente typer og avviser ukjente", () => {
+    expect(isDraftEntityType("task")).toBe(true);
+    expect(isDraftEntityType("budget_item")).toBe(true);
+    expect(isDraftEntityType("casting_candidates")).toBe(false);
+    expect(isDraftEntityType("")).toBe(false);
+  });
+
+  it("ukjent entityType → -32602", async () => {
+    const pool = makePool([ACCESS]);
+    await expect(
+      findCapability("rr_delete_draft")!.handler(pool, WRITE_CTX, {
+        projectId: "p1", entityType: "casting_candidates", draftId: "x",
+      }),
+    ).rejects.toMatchObject({ code: -32602 });
+  });
+
+  it("sletting krever agent-markør, utkast-status og upublisert", async () => {
+    const pool = makePool([ACCESS, { match: /DELETE FROM/, rows: [{ id: "d1" }] }]);
+    await findCapability("rr_delete_draft")!.handler(pool, WRITE_CTX, {
+      projectId: "p1", entityType: "task", draftId: "d1",
+    });
+    const sql = (pool.query as unknown as { mock: { calls: string[][] } }).mock.calls
+      .map((c) => c[0]).find((s) => s.includes("DELETE FROM"))!;
+    expect(sql).toContain("metadata->>'source' = 'mcp'");
+    expect(sql).toContain("status IN ('draft')");
+    expect(sql).toContain("published_at IS NULL");
+    expect(sql).toContain("project_id = $2");
+  });
+
+  it("sletting av noe som ikke er et agent-utkast → -32004", async () => {
+    const pool = makePool([ACCESS, { match: /DELETE FROM/, rows: [] }]);
+    await expect(
+      findCapability("rr_delete_draft")!.handler(pool, WRITE_CTX, {
+        projectId: "p1", entityType: "task", draftId: "publisert-rad",
+      }),
+    ).rejects.toMatchObject({ code: -32004 });
+  });
+
+  it("review-utkast vokter på status pending, ikke draft", async () => {
+    const pool = makePool([ACCESS, { match: /DELETE FROM/, rows: [{ id: "r1" }] }]);
+    await findCapability("rr_delete_draft")!.handler(pool, WRITE_CTX, {
+      projectId: "p1", entityType: "review", draftId: "r1",
+    });
+    const sql = (pool.query as unknown as { mock: { calls: string[][] } }).mock.calls
+      .map((c) => c[0]).find((s) => s.includes("DELETE FROM"))!;
+    expect(sql).toContain("status IN ('pending')");
+  });
+
+  it("rr_list_drafts spør bare etter MCP-merkede rader", async () => {
+    const pool = makePool([
+      ACCESS,
+      { match: /COUNT\(\*\)/, rows: [{ total: 3 }] },
+      { match: /UNION ALL/, rows: [{ entity_type: "task", id: "d1" }] },
+    ]);
+    const out = await findCapability("rr_list_drafts")!.handler(pool, CTX, { projectId: "p1" }) as {
+      drafts: unknown[]; pagination: { total: number };
+    };
+    expect(out.pagination.total).toBe(3);
+    const sql = (pool.query as unknown as { mock: { calls: string[][] } }).mock.calls
+      .map((c) => c[0]).find((s) => s.includes("UNION ALL"))!;
+    expect(sql).toContain("metadata->>'source' = 'mcp'");
   });
 });

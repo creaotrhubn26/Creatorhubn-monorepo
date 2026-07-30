@@ -64,6 +64,202 @@ const OBJ = (props: Record<string, unknown>, required: string[] = []): Record<st
 });
 const STR = (description: string) => ({ type: "string", description });
 
+// ── Paginering ──────────────────────────────────────────────────────────────
+// List-verktøyene returnerte tidligere en bar array med hardkodet LIMIT. En
+// agent kunne dermed ikke se om den hadde fått alt: 50 rader av 54 ser
+// identisk ut med 50 av 50. Alle list-verktøy tar nå limit/offset og
+// returnerer et `pagination`-objekt ved siden av rad-arrayen.
+//
+// Selve rad-nøkkelen beholdes uendret, slik at eksisterende klienter ikke
+// brekker — `pagination` er additivt.
+
+/** Felles argumenter for paginering. Spres inn i list-verktøyenes skjema. */
+const PAGE_ARGS = {
+  limit: { type: "number", description: "Maks antall rader i denne siden" },
+  offset: { type: "number", description: "Hopp over så mange rader (default 0)" },
+};
+
+export interface PageArgs {
+  limit: number;
+  offset: number;
+}
+
+export interface PageInfo {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+/**
+ * Leser limit/offset fra verktøyargumentene. Ugyldige verdier faller
+ * tilbake til defaults framfor å feile — en agent som sender limit=0 eller
+ * limit="mange" skal få et fornuftig svar, ikke en feilmelding.
+ */
+export function readPageArgs(
+  args: Record<string, unknown>,
+  defaultLimit: number,
+  maxLimit: number,
+): PageArgs {
+  const rawLimit = Number(args.limit);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(Math.floor(rawLimit), maxLimit)
+      : defaultLimit;
+
+  const rawOffset = Number(args.offset);
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+
+  return { limit, offset };
+}
+
+export function buildPageInfo(total: number, page: PageArgs): PageInfo {
+  return {
+    total,
+    limit: page.limit,
+    offset: page.offset,
+    hasMore: page.offset + page.limit < total,
+  };
+}
+
+interface ListSpec {
+  /** Nøkkelen rad-arrayen legges på, f.eks. "roles". */
+  key: string;
+  columns: string;
+  from: string;
+  /** WHERE-uttrykk uten «WHERE». Tom streng = ingen filtrering. */
+  where: string;
+  params: unknown[];
+  orderBy: string;
+  defaultLimit: number;
+  maxLimit?: number;
+  /**
+   * Uttrykk å telle. Default `*`. Må settes til `DISTINCT <kolonne>` når
+   * FROM-en har en JOIN som kan duplisere rader — ellers teller totalen
+   * join-treff i stedet for entiteter.
+   */
+  countExpr?: string;
+}
+
+/**
+ * Kjører en liste-spørring med paginering + totaltelling. Telle-spørringen
+ * bruker samme FROM/WHERE som rad-spørringen, slik at totalen alltid svarer
+ * til det klienten faktisk kan bla gjennom.
+ */
+async function paginatedList(
+  pool: Pool,
+  spec: ListSpec,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const page = readPageArgs(args, spec.defaultLimit, spec.maxLimit ?? spec.defaultLimit * 4);
+  const whereSql = spec.where.trim() ? `WHERE ${spec.where}` : "";
+
+  const rowsPromise = pool.query(
+    `SELECT ${spec.columns} FROM ${spec.from} ${whereSql} ORDER BY ${spec.orderBy}
+      LIMIT $${spec.params.length + 1} OFFSET $${spec.params.length + 2}`,
+    [...spec.params, page.limit, page.offset],
+  );
+  const countPromise = pool.query(
+    `SELECT COUNT(${spec.countExpr ?? "*"})::int AS total FROM ${spec.from} ${whereSql}`,
+    spec.params,
+  );
+
+  const [rows, count] = await Promise.all([rowsPromise, countPromise]);
+  return {
+    [spec.key]: rows.rows,
+    pagination: buildPageInfo(Number(count.rows[0]?.total ?? 0), page),
+  };
+}
+
+/**
+ * Paginering for listene som ligger som JSONB-blober i legacy_compat_store —
+ * de kan ikke telles i SQL, så vi skjærer i minnet. Blobene er små (tilbud,
+ * kontrakter, shot-lists per prosjekt).
+ */
+export function paginateArray(
+  key: string,
+  items: unknown[],
+  args: Record<string, unknown>,
+  defaultLimit = 100,
+): Record<string, unknown> {
+  const page = readPageArgs(args, defaultLimit, 500);
+  return {
+    [key]: items.slice(page.offset, page.offset + page.limit),
+    pagination: buildPageInfo(items.length, page),
+  };
+}
+
+// ── Utkast-register ─────────────────────────────────────────────────────────
+// Utkast-verktøyene merker radene sine med metadata->>'source' = 'mcp'.
+// Forvaltnings-verktøyene under bruker den markøren som eneste inngang, slik
+// at de aldri kan røre rader en produsent har laget selv.
+
+interface DraftEntity {
+  table: string;
+  idCol: string;
+  titleCol: string;
+  createdAtCol: string;
+  /** Statusene raden kan ha så lenge den er et uåpnet utkast. */
+  draftStatuses: string[];
+  /** True når tabellen har published_at (mig. 293) og vi kan kreve NULL. */
+  hasPublishedAt: boolean;
+}
+
+const DRAFT_ENTITIES = {
+  task: {
+    table: "role_room_phase_timeline_items",
+    idCol: "id", titleCol: "title", createdAtCol: "created_at",
+    draftStatuses: ["draft"], hasPublishedAt: true,
+  },
+  budget_item: {
+    table: "role_room_budget_items",
+    idCol: "id", titleCol: "item_name", createdAtCol: "created_at",
+    draftStatuses: ["draft"], hasPublishedAt: true,
+  },
+  review: {
+    table: "role_room_client_reviews",
+    idCol: "id", titleCol: "title", createdAtCol: "created_at",
+    // rr_request_review oppretter med status 'pending'.
+    draftStatuses: ["pending"], hasPublishedAt: true,
+  },
+  client_material: {
+    table: "role_room_client_materials",
+    idCol: "id", titleCol: "title", createdAtCol: "created_at",
+    draftStatuses: ["draft"], hasPublishedAt: false,
+  },
+} as const satisfies Record<string, DraftEntity>;
+
+export const DRAFT_ENTITY_TYPES = Object.keys(DRAFT_ENTITIES) as Array<keyof typeof DRAFT_ENTITIES>;
+export type DraftEntityType = (typeof DRAFT_ENTITY_TYPES)[number];
+
+export function isDraftEntityType(v: string): v is DraftEntityType {
+  return Object.prototype.hasOwnProperty.call(DRAFT_ENTITIES, v);
+}
+
+/**
+ * Vilkåret som avgjør om en rad er et slettbart agent-utkast. Alle tre
+ * leddene må holde: agent-markør, fortsatt utkast-status, og ikke publisert.
+ */
+function draftGuardSql(entity: DraftEntity): string {
+  const statuses = entity.draftStatuses.map((s) => `'${s}'`).join(", ");
+  const published = entity.hasPublishedAt ? " AND published_at IS NULL" : "";
+  return `metadata->>'source' = 'mcp' AND status IN (${statuses})${published}`;
+}
+
+function readDraftRef(args: Record<string, unknown>): {
+  entity: DraftEntity;
+  entityType: DraftEntityType;
+  draftId: string;
+} {
+  const entityType = typeof args.entityType === "string" ? args.entityType.trim() : "";
+  if (!isDraftEntityType(entityType)) {
+    throw new McpToolError(-32602, `Ukjent entityType. Gyldige: ${DRAFT_ENTITY_TYPES.join(", ")}.`);
+  }
+  const draftId = typeof args.draftId === "string" ? args.draftId.trim() : "";
+  if (!draftId) throw new McpToolError(-32602, "draftId er påkrevd.");
+  return { entity: DRAFT_ENTITIES[entityType], entityType, draftId };
+}
+
 async function requireProject(pool: Pool, ctx: McpCallContext, args: Record<string, unknown>): Promise<string> {
   const projectId = typeof args.projectId === "string" ? args.projectId.trim() : "";
   if (!projectId) throw new McpToolError(-32602, "projectId er påkrevd.");
@@ -79,19 +275,24 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_projects",
     description: "List Role Room-prosjekter (casting/produksjon) som nøkkelens bruker eier eller er medlem av. Returnerer id, navn, status, type og sist oppdatert.",
     scope: "projects.read", modes: "*", projectScoped: false,
-    inputSchema: OBJ({ status: STR("Valgfritt statusfilter"), limit: { type: "number", description: "Maks antall (default 50)" } }),
+    inputSchema: OBJ({ status: STR("Valgfritt statusfilter"), ...PAGE_ARGS }),
     handler: async (pool, ctx, args) => {
-      const limit = Math.min(Number(args.limit) || 50, 200);
       const status = typeof args.status === "string" ? args.status.trim() : "";
-      const r = await pool.query(
-        `SELECT DISTINCT p.id, p.name, p.status, p.project_type, p.updated_at
-           FROM casting_projects p
-           LEFT JOIN casting_user_roles r ON r.project_id = p.id AND r.user_id = $1 AND r.deactivated_at IS NULL
-          WHERE (p.created_by = $1 OR r.user_id IS NOT NULL) ${status ? "AND p.status = $3" : ""}
-          ORDER BY p.updated_at DESC NULLS LAST LIMIT $2`,
-        status ? [ctx.userId, limit, status] : [ctx.userId, limit],
-      );
-      return { projects: r.rows };
+      const params: unknown[] = [ctx.userId];
+      if (status) params.push(status);
+      return paginatedList(pool, {
+        key: "projects",
+        // DISTINCT fordi LEFT JOIN mot casting_user_roles kan gi duplikater.
+        columns: "DISTINCT p.id, p.name, p.status, p.project_type, p.updated_at",
+        from: `casting_projects p
+           LEFT JOIN casting_user_roles r ON r.project_id = p.id AND r.user_id = $1 AND r.deactivated_at IS NULL`,
+        where: `(p.created_by = $1 OR r.user_id IS NOT NULL)${status ? " AND p.status = $2" : ""}`,
+        params,
+        orderBy: "p.updated_at DESC NULLS LAST",
+        defaultLimit: 50,
+        maxLimit: 200,
+        countExpr: "DISTINCT p.id",
+      }, args);
     },
   },
   {
@@ -112,42 +313,59 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_project_members",
     description: "List team/crew-medlemmer (aktive) på et prosjekt med rolle. Dekker Team-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT user_id, email, role, added_by, created_at
-           FROM casting_user_roles WHERE project_id = $1 AND deactivated_at IS NULL ORDER BY created_at`, [projectId]);
-      return { members: r.rows };
+      return paginatedList(pool, {
+        key: "members",
+        columns: "user_id, email, role, added_by, created_at",
+        from: "casting_user_roles",
+        where: "project_id = $1 AND deactivated_at IS NULL",
+        params: [projectId],
+        orderBy: "created_at",
+        defaultLimit: 200,
+      }, args);
     },
   },
   {
     name: "rr_list_candidates",
     description: "List medvirkende/kandidater på et prosjekt (prosjektets egne casting-data — kun for prosjektmedlemmer). Dekker Kandidater-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id"), status: STR("Valgfritt statusfilter") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), status: STR("Valgfritt statusfilter"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const status = typeof args.status === "string" ? args.status.trim() : "";
-      const r = await pool.query(
-        `SELECT id, name, email, agency, status, rating, assigned_roles, consent_status, updated_at
-           FROM casting_candidates WHERE project_id = $1 ${status ? "AND status = $2" : ""}
-          ORDER BY updated_at DESC NULLS LAST LIMIT 500`,
-        status ? [projectId, status] : [projectId]);
-      return { candidates: r.rows };
+      const params: unknown[] = [projectId];
+      if (status) params.push(status);
+      return paginatedList(pool, {
+        key: "candidates",
+        columns: "id, name, email, agency, status, rating, assigned_roles, consent_status, updated_at",
+        from: "casting_candidates",
+        where: `project_id = $1${status ? " AND status = $2" : ""}`,
+        params,
+        orderBy: "updated_at DESC NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
   {
     name: "rr_list_auditions",
     description: "List auditions/prøvespill på et prosjekt (tittel, rolle, dato, status). Dekker Auditions-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, title, role_name, location_name, date, start_time, end_time, status
-           FROM auditions WHERE project_id = $1 ORDER BY date DESC NULLS LAST LIMIT 200`, [projectId]);
-      return { auditions: r.rows };
+      return paginatedList(pool, {
+        key: "auditions",
+        columns: "id, title, role_name, location_name, date, start_time, end_time, status",
+        from: "auditions",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "date DESC NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
@@ -192,28 +410,40 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_cohorts",
     description: "List utdannings-kull som nøkkelens bruker eier (utdannings-modus). Dekker Kull-fanen.",
     scope: "projects.read", modes: ["education"], projectScoped: false,
-    inputSchema: OBJ({ includeArchived: { type: "boolean", description: "Ta med arkiverte kull" } }),
+    inputSchema: OBJ({ includeArchived: { type: "boolean", description: "Ta med arkiverte kull" }, ...PAGE_ARGS }),
     handler: async (pool, ctx, args) => {
-      const r = await pool.query(
-        `SELECT id, name, program, term, archived, updated_at FROM role_room_education_cohorts
-          WHERE owner_user_id = $1 ${args.includeArchived ? "" : "AND archived IS NOT TRUE"} ORDER BY updated_at DESC`,
-        [ctx.userId]);
-      return { cohorts: r.rows };
+      return paginatedList(pool, {
+        key: "cohorts",
+        columns: "id, name, program, term, archived, updated_at",
+        from: "role_room_education_cohorts",
+        where: `owner_user_id = $1${args.includeArchived ? "" : " AND archived IS NOT TRUE"}`,
+        params: [ctx.userId],
+        orderBy: "updated_at DESC",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_students",
     description: "List studenter i et eid utdannings-kull (utdannings-modus). Dekker Studenter-fanen.",
     scope: "projects.read", modes: ["education"], projectScoped: false,
-    inputSchema: OBJ({ cohortId: STR("Kullets id") }, ["cohortId"]),
+    inputSchema: OBJ({ cohortId: STR("Kullets id"), ...PAGE_ARGS }, ["cohortId"]),
     handler: async (pool, ctx, args) => {
       const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
       if (!cohortId) throw new McpToolError(-32602, "cohortId er påkrevd.");
       const owns = await pool.query(`SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`, [cohortId, ctx.userId]);
       if (Number(owns.rowCount ?? 0) === 0) throw new McpToolError(-32004, "Ingen tilgang til dette kullet.");
-      const r = await pool.query(
-        `SELECT id, name, email, student_number, status FROM role_room_education_students WHERE cohort_id = $1 ORDER BY name`, [cohortId]);
-      return { students: r.rows };
+      return paginatedList(pool, {
+        key: "students",
+        columns: "id, name, email, student_number, status",
+        from: "role_room_education_students",
+        where: "cohort_id = $1",
+        params: [cohortId],
+        orderBy: "name",
+        defaultLimit: 200,
+        maxLimit: 1000,
+      }, args);
     },
   },
 
@@ -222,89 +452,136 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_roles",
     description: "List roller som skal castes på et prosjekt (navn, alder/kjønn, status, tildelt kandidat). Dekker Roller-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, name, description, age_range, gender, role_type, status, assigned_candidate_id
-           FROM casting_roles WHERE project_id = $1 ORDER BY created_at LIMIT 500`, [projectId]);
-      return { roles: r.rows };
+      return paginatedList(pool, {
+        key: "roles",
+        columns: "id, name, description, age_range, gender, role_type, status, assigned_candidate_id",
+        from: "casting_roles",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "created_at",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
   {
     name: "rr_list_locations",
     description: "List lokasjoner på et prosjekt (navn, adresse, type). Dekker Lokasjoner-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, name, address, type, access_notes FROM casting_locations WHERE project_id = $1 ORDER BY name LIMIT 300`, [projectId]);
-      return { locations: r.rows };
+      return paginatedList(pool, {
+        key: "locations",
+        columns: "id, name, address, type, access_notes",
+        from: "casting_locations",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "name",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_props",
     description: "List rekvisitter på et prosjekt (navn, kategori, antall, tilgjengelighet). Dekker Rekvisitter-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, name, category, quantity, availability FROM casting_props WHERE project_id = $1 ORDER BY name LIMIT 500`, [projectId]);
-      return { props: r.rows };
+      return paginatedList(pool, {
+        key: "props",
+        columns: "id, name, category, quantity, availability",
+        from: "casting_props",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "name",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
   {
     name: "rr_list_production_days",
     description: "List produksjonsdager/opptaksdager på et prosjekt (dato, status, notat). Dekker Produksjonsplan-fanen.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, date, status, notes, location_id FROM casting_production_days WHERE project_id = $1 ORDER BY date LIMIT 300`, [projectId]);
-      return { productionDays: r.rows };
+      return paginatedList(pool, {
+        key: "productionDays",
+        columns: "id, date, status, notes, location_id",
+        from: "casting_production_days",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "date",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_manuscripts",
     description: "List manus på et prosjekt (kun metadata: tittel, format, versjon, status — ikke selve teksten). Dekker Story Arc/manus.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, title, format, version, status, updated_at FROM casting_manuscripts WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 100`, [projectId]);
-      return { manuscripts: r.rows };
+      return paginatedList(pool, {
+        key: "manuscripts",
+        columns: "id, title, format, version, status, updated_at",
+        from: "casting_manuscripts",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "updated_at DESC",
+        defaultLimit: 50,
+        maxLimit: 200,
+      }, args);
     },
   },
   {
     name: "rr_list_scenes",
     description: "List scener på et prosjekt (scenenr, tittel, INT/EXT, tid, karakterer). Valgfritt filtrer på manuskript.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id"), manuscriptId: STR("Valgfritt: filtrer på ett manus") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), manuscriptId: STR("Valgfritt: filtrer på ett manus"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const manuscriptId = typeof args.manuscriptId === "string" ? args.manuscriptId.trim() : "";
-      const r = await pool.query(
-        `SELECT id, scene_number, title, int_ext, time_of_day, setting, characters
-           FROM casting_scenes WHERE project_id = $1 ${manuscriptId ? "AND manuscript_id = $2" : ""} ORDER BY scene_number LIMIT 1000`,
-        manuscriptId ? [projectId, manuscriptId] : [projectId]);
-      return { scenes: r.rows };
+      const params: unknown[] = [projectId];
+      if (manuscriptId) params.push(manuscriptId);
+      return paginatedList(pool, {
+        key: "scenes",
+        columns: "id, scene_number, title, int_ext, time_of_day, setting, characters",
+        from: "casting_scenes",
+        where: `project_id = $1${manuscriptId ? " AND manuscript_id = $2" : ""}`,
+        params,
+        orderBy: "scene_number",
+        defaultLimit: 200,
+        maxLimit: 1000,
+      }, args);
     },
   },
   {
     name: "rr_list_equipment",
     description: "List utstyr tilgjengelig for et prosjekt (prosjektets eget + globalt katalog-utstyr). Dekker Utstyr.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, name, brand, model, category, status, quantity, is_global FROM casting_equipment
-          WHERE project_id = $1 OR is_global = TRUE ORDER BY name LIMIT 500`, [projectId]);
-      return { equipment: r.rows };
+      return paginatedList(pool, {
+        key: "equipment",
+        columns: "id, name, brand, model, category, status, quantity, is_global",
+        from: "casting_equipment",
+        where: "project_id = $1 OR is_global = TRUE",
+        params: [projectId],
+        orderBy: "name",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
 
@@ -313,43 +590,63 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_timeline",
     description: "List planlegger/tidslinje-oppgaver på et prosjekt (fase, tittel, eier, frist, status). Dekker Producer-tidslinje.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id"), phase: STR("Valgfritt fase-filter (pre/prod/post)") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), phase: STR("Valgfritt fase-filter (pre/prod/post)"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const phase = typeof args.phase === "string" ? args.phase.trim() : "";
-      const r = await pool.query(
-        `SELECT id, phase, title, description, due_at, status FROM role_room_phase_timeline_items
-          WHERE project_id = $1 ${phase ? "AND phase = $2" : ""} ORDER BY sort_order, due_at NULLS LAST LIMIT 500`,
-        phase ? [projectId, phase] : [projectId]);
-      return { timeline: r.rows };
+      const params: unknown[] = [projectId];
+      if (phase) params.push(phase);
+      return paginatedList(pool, {
+        key: "timeline",
+        columns: "id, phase, title, description, due_at, status",
+        from: "role_room_phase_timeline_items",
+        where: `project_id = $1${phase ? " AND phase = $2" : ""}`,
+        params,
+        orderBy: "sort_order, due_at NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
   {
     name: "rr_list_budget_items",
     description: "List budsjettlinjer på et prosjekt (fase, kategori, estimat/godkjent/faktisk, status). Dekker Producer-økonomi.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, phase, category, item_name, estimate, approved, actual, currency, status FROM role_room_budget_items
-          WHERE project_id = $1 ORDER BY sort_order LIMIT 500`, [projectId]);
-      return { budgetItems: r.rows };
+      return paginatedList(pool, {
+        key: "budgetItems",
+        columns: "id, phase, category, item_name, estimate, approved, actual, currency, status",
+        from: "role_room_budget_items",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "sort_order",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
   {
     name: "rr_list_client_reviews",
     description: "List klient-godkjenninger på et prosjekt (type, mål, status, forfall). Dekker Producer-godkjenning.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id"), status: STR("Valgfritt statusfilter") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), status: STR("Valgfritt statusfilter"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const status = typeof args.status === "string" ? args.status.trim() : "";
-      const r = await pool.query(
-        `SELECT id, review_type, title, target_entity_type, status, due_at, decision_at FROM role_room_client_reviews
-          WHERE project_id = $1 ${status ? "AND status = $2" : ""} ORDER BY requested_at DESC LIMIT 300`,
-        status ? [projectId, status] : [projectId]);
-      return { reviews: r.rows };
+      const params: unknown[] = [projectId];
+      if (status) params.push(status);
+      return paginatedList(pool, {
+        key: "reviews",
+        columns: "id, review_type, title, target_entity_type, status, due_at, decision_at",
+        from: "role_room_client_reviews",
+        where: `project_id = $1${status ? " AND status = $2" : ""}`,
+        params,
+        orderBy: "requested_at DESC",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
@@ -369,13 +666,19 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_client_materials",
     description: "List referansemateriell/lenker klienten har delt på et prosjekt (tittel, type, URL, fase). Dekker Client materials.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT id, entry_type, title, external_url, phase, status FROM role_room_client_materials
-          WHERE project_id = $1 ORDER BY created_at DESC LIMIT 300`, [projectId]);
-      return { materials: r.rows };
+      return paginatedList(pool, {
+        key: "materials",
+        columns: "id, entry_type, title, external_url, phase, status",
+        from: "role_room_client_materials",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "created_at DESC",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
 
@@ -384,56 +687,83 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_assignments",
     description: "List oppgaver/arbeidskrav i utdannings-workspacet (tittel, frist, status, vurderingsform, eksamen). Valgfritt filtrer på kull.",
     scope: "projects.read", modes: ["education"], projectScoped: false,
-    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull") }),
+    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull"), ...PAGE_ARGS }),
     handler: async (pool, ctx, args) => {
       const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
-      const r = await pool.query(
-        `SELECT id, cohort_id, title, due_at, status, vurderingsform, is_arbeidskrav, is_exam, course_id
-           FROM role_room_education_assignments WHERE owner_user_id = $1 ${cohortId ? "AND cohort_id = $2" : ""}
-          ORDER BY due_at NULLS LAST LIMIT 500`,
-        cohortId ? [ctx.userId, cohortId] : [ctx.userId]);
-      return { assignments: r.rows };
+      const params: unknown[] = [ctx.userId];
+      if (cohortId) params.push(cohortId);
+      return paginatedList(pool, {
+        key: "assignments",
+        columns: "id, cohort_id, title, due_at, status, vurderingsform, is_arbeidskrav, is_exam, course_id",
+        from: "role_room_education_assignments",
+        where: `owner_user_id = $1${cohortId ? " AND cohort_id = $2" : ""}`,
+        params,
+        orderBy: "due_at NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
     },
   },
   {
     name: "rr_list_courses",
     description: "List emner i utdannings-workspacet (kode, tittel, studiepoeng, semester, vurderingsform). Dekker Emner-fanen.",
     scope: "projects.read", modes: ["education"], projectScoped: false,
-    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull") }),
+    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull"), ...PAGE_ARGS }),
     handler: async (pool, ctx, args) => {
       const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
-      const r = await pool.query(
-        `SELECT id, cohort_id, code, title, credits, term, vurderingsform FROM role_room_education_courses
-          WHERE owner_user_id = $1 ${cohortId ? "AND cohort_id = $2" : ""} ORDER BY code LIMIT 300`,
-        cohortId ? [ctx.userId, cohortId] : [ctx.userId]);
-      return { courses: r.rows };
+      const params: unknown[] = [ctx.userId];
+      if (cohortId) params.push(cohortId);
+      return paginatedList(pool, {
+        key: "courses",
+        columns: "id, cohort_id, code, title, credits, term, vurderingsform",
+        from: "role_room_education_courses",
+        where: `owner_user_id = $1${cohortId ? " AND cohort_id = $2" : ""}`,
+        params,
+        orderBy: "code",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_education_productions",
     description: "List studentproduksjoner (koblet til ekte casting_projects) i utdannings-workspacet. Dekker Studentproduksjoner-fanen.",
     scope: "projects.read", modes: ["education"], projectScoped: false,
-    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull") }),
+    inputSchema: OBJ({ cohortId: STR("Valgfritt: filtrer på ett kull"), ...PAGE_ARGS }),
     handler: async (pool, ctx, args) => {
       const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
-      const r = await pool.query(
-        `SELECT id, cohort_id, project_id, title, updated_at FROM role_room_education_productions
-          WHERE owner_user_id = $1 ${cohortId ? "AND cohort_id = $2" : ""} ORDER BY updated_at DESC LIMIT 300`,
-        cohortId ? [ctx.userId, cohortId] : [ctx.userId]);
-      return { productions: r.rows };
+      const params: unknown[] = [ctx.userId];
+      if (cohortId) params.push(cohortId);
+      return paginatedList(pool, {
+        key: "productions",
+        columns: "id, cohort_id, project_id, title, updated_at",
+        from: "role_room_education_productions",
+        where: `owner_user_id = $1${cohortId ? " AND cohort_id = $2" : ""}`,
+        params,
+        orderBy: "updated_at DESC",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_groups",
     description: "List grupper i et eid utdannings-kull. Dekker Grupper.",
     scope: "projects.read", modes: ["education"], projectScoped: false,
-    inputSchema: OBJ({ cohortId: STR("Kullets id") }, ["cohortId"]),
+    inputSchema: OBJ({ cohortId: STR("Kullets id"), ...PAGE_ARGS }, ["cohortId"]),
     handler: async (pool, ctx, args) => {
       const cohortId = typeof args.cohortId === "string" ? args.cohortId.trim() : "";
       if (!cohortId) throw new McpToolError(-32602, "cohortId er påkrevd.");
-      const r = await pool.query(
-        `SELECT id, name FROM role_room_education_groups WHERE owner_user_id = $1 AND cohort_id = $2 ORDER BY name`, [ctx.userId, cohortId]);
-      return { groups: r.rows };
+      return paginatedList(pool, {
+        key: "groups",
+        columns: "id, name",
+        from: "role_room_education_groups",
+        where: "owner_user_id = $1 AND cohort_id = $2",
+        params: [ctx.userId, cohortId],
+        orderBy: "name",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
 
@@ -442,33 +772,33 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_offers",
     description: "List tilbud sendt til kandidater på et prosjekt. Dekker Avtaler/tilbud.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const r = await pool.query(`SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`, [`casting:offers:${projectId}`]);
-      return { offers: (r.rows[0]?.store_value as unknown[]) ?? [] };
+      return paginateArray("offers", (r.rows[0]?.store_value as unknown[]) ?? [], args);
     },
   },
   {
     name: "rr_list_contracts",
     description: "List kontrakter på et prosjekt (status/type). Dekker Avtaler/kontrakter.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const r = await pool.query(`SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`, [`casting:contracts:${projectId}`]);
-      return { contracts: (r.rows[0]?.store_value as unknown[]) ?? [] };
+      return paginateArray("contracts", (r.rows[0]?.store_value as unknown[]) ?? [], args);
     },
   },
   {
     name: "rr_list_shot_lists",
     description: "List shot-lists (bilde-/opptaksplaner) på et prosjekt. Dekker Storyboard/shot-list.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const r = await pool.query(`SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`, [`casting:shot-lists:${projectId}`]);
-      return { shotLists: (r.rows[0]?.store_value as unknown[]) ?? [] };
+      return paginateArray("shotLists", (r.rows[0]?.store_value as unknown[]) ?? [], args);
     },
   },
 
@@ -477,48 +807,72 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_dance_pieces",
     description: "List koreografier/danseverk (tittel, koreograf, musikk, varighet). Dekker Verk-fanen (dans).",
     scope: "projects.read", modes: DANCE_MODES, projectScoped: false,
-    inputSchema: OBJ({}),
-    handler: async (pool, ctx) => {
-      const r = await pool.query(
-        `SELECT id, title, choreographer, music_title, total_duration_sec, updated_at FROM dance_choreography
-          WHERE owner_user_id = $1 ORDER BY updated_at DESC LIMIT 300`, [ctx.userId]);
-      return { pieces: r.rows };
+    inputSchema: OBJ({ ...PAGE_ARGS }),
+    handler: async (pool, ctx, args) => {
+      return paginatedList(pool, {
+        key: "pieces",
+        columns: "id, title, choreographer, music_title, total_duration_sec, updated_at",
+        from: "dance_choreography",
+        where: "owner_user_id = $1",
+        params: [ctx.userId],
+        orderBy: "updated_at DESC",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_dance_performances",
     description: "List forestillinger (tittel, dato, sted, status, billetter). Dekker Forestillinger-fanen (dans).",
     scope: "projects.read", modes: DANCE_MODES, projectScoped: false,
-    inputSchema: OBJ({}),
-    handler: async (pool, ctx) => {
-      const r = await pool.query(
-        `SELECT id, title, performance_date, venue, status, capacity, tickets_sold FROM dance_performance
-          WHERE owner_user_id = $1 ORDER BY performance_date DESC NULLS LAST LIMIT 300`, [ctx.userId]);
-      return { performances: r.rows };
+    inputSchema: OBJ({ ...PAGE_ARGS }),
+    handler: async (pool, ctx, args) => {
+      return paginatedList(pool, {
+        key: "performances",
+        columns: "id, title, performance_date, venue, status, capacity, tickets_sold",
+        from: "dance_performance",
+        where: "owner_user_id = $1",
+        params: [ctx.userId],
+        orderBy: "performance_date DESC NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_dance_classes",
     description: "List klasser/timeplan (tittel, type, tidspunkt, instruktør, rom). Dekker Klasser-fanen (dansestudio).",
     scope: "projects.read", modes: ["dance_studio"], projectScoped: false,
-    inputSchema: OBJ({}),
-    handler: async (pool, ctx) => {
-      const r = await pool.query(
-        `SELECT id, title, kind, schedule_pattern, starts_at, ends_at, instructor_id, room_id, max_students FROM dance_class
-          WHERE owner_user_id = $1 ORDER BY starts_at NULLS LAST LIMIT 300`, [ctx.userId]);
-      return { classes: r.rows };
+    inputSchema: OBJ({ ...PAGE_ARGS }),
+    handler: async (pool, ctx, args) => {
+      return paginatedList(pool, {
+        key: "classes",
+        columns: "id, title, kind, schedule_pattern, starts_at, ends_at, instructor_id, room_id, max_students",
+        from: "dance_class",
+        where: "owner_user_id = $1",
+        params: [ctx.userId],
+        orderBy: "starts_at NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
   {
     name: "rr_list_dance_instructors",
     description: "List instruktører (navn, stiler, kontrakt, timer). Dekker Instruktører-fanen (dansestudio).",
     scope: "projects.read", modes: ["dance_studio"], projectScoped: false,
-    inputSchema: OBJ({}),
-    handler: async (pool, ctx) => {
-      const r = await pool.query(
-        `SELECT id, display_name, styles, contract_kind, hours_logged FROM dance_instructor
-          WHERE owner_user_id = $1 ORDER BY display_name LIMIT 300`, [ctx.userId]);
-      return { instructors: r.rows };
+    inputSchema: OBJ({ ...PAGE_ARGS }),
+    handler: async (pool, ctx, args) => {
+      return paginatedList(pool, {
+        key: "instructors",
+        columns: "id, display_name, styles, contract_kind, hours_logged",
+        from: "dance_instructor",
+        where: "owner_user_id = $1",
+        params: [ctx.userId],
+        orderBy: "display_name",
+        defaultLimit: 100,
+        maxLimit: 300,
+      }, args);
     },
   },
 
@@ -621,6 +975,104 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  // ── Utkast-forvaltning: list / hent / slett ──────────────────────────────
+  // Uten disse kunne en agent opprette utkast, men aldri se eller rydde dem
+  // igjen — testutkast ble liggende i produsentens planlegger. Verktøyene
+  // her ser KUN rader som bærer markøren metadata->>'source' = 'mcp' og som
+  // fortsatt er upubliserte. Ekte produsentdata kan altså ikke slettes.
+  {
+    name: "rr_list_drafts",
+    description: "List utkast opprettet via MCP på et prosjekt (planlegger-oppgaver, budsjettlinjer, godkjennings-forespørsler, referansemateriell). Viser kun upubliserte agent-utkast — ikke produsentens egne rader. Bruk denne for å finne igjen og rydde bort testutkast.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      entityType: STR(`Valgfritt filter: ${DRAFT_ENTITY_TYPES.join(" | ")}`),
+      ...PAGE_ARGS,
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const filter = typeof args.entityType === "string" ? args.entityType.trim() : "";
+      if (filter && !isDraftEntityType(filter)) {
+        throw new McpToolError(-32602, `Ukjent entityType. Gyldige: ${DRAFT_ENTITY_TYPES.join(", ")}.`);
+      }
+      const types = filter ? [filter as DraftEntityType] : [...DRAFT_ENTITY_TYPES];
+      const page = readPageArgs(args, 100, 500);
+
+      // UNION ALL over utkast-tabellene, normalisert til én form.
+      const union = types
+        .map((t) => {
+          const e = DRAFT_ENTITIES[t];
+          return `SELECT '${t}'::text AS entity_type, ${e.idCol}::text AS id, ${e.titleCol} AS title,
+                         status::text AS status, ${e.createdAtCol} AS created_at
+                    FROM ${e.table}
+                   WHERE project_id = $1 AND ${draftGuardSql(e)}`;
+        })
+        .join(" UNION ALL ");
+
+      const [rows, count] = await Promise.all([
+        pool.query(
+          `SELECT * FROM (${union}) d ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+          [projectId, page.limit, page.offset],
+        ),
+        pool.query(`SELECT COUNT(*)::int AS total FROM (${union}) d`, [projectId]),
+      ]);
+
+      return {
+        drafts: rows.rows,
+        pagination: buildPageInfo(Number(count.rows[0]?.total ?? 0), page),
+      };
+    },
+  },
+  {
+    name: "rr_get_draft",
+    description: "Hent ett MCP-opprettet utkast med detaljer. Krever entityType + draftId. Returnerer feil hvis raden ikke er et upublisert agent-utkast.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      entityType: STR(`En av: ${DRAFT_ENTITY_TYPES.join(" | ")}`),
+      draftId: STR("Utkastets id"),
+    }, ["projectId", "entityType", "draftId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const { entity, draftId } = readDraftRef(args);
+      const r = await pool.query(
+        `SELECT * FROM ${entity.table}
+          WHERE ${entity.idCol}::text = $1 AND project_id = $2 AND ${draftGuardSql(entity)} LIMIT 1`,
+        [draftId, projectId],
+      );
+      if (Number(r.rowCount ?? 0) === 0) {
+        throw new McpToolError(-32004, "Fant ikke et upublisert MCP-utkast med denne id-en.");
+      }
+      return { draft: r.rows[0] };
+    },
+  },
+  {
+    name: "rr_delete_draft",
+    description: "Slett et MCP-opprettet utkast. Sletter KUN rader som bærer agent-markøren og fortsatt er upubliserte — publiserte rader og produsentens egne data røres ikke. Krever projects.write.",
+    scope: "projects.write", modes: PROD_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      entityType: STR(`En av: ${DRAFT_ENTITY_TYPES.join(" | ")}`),
+      draftId: STR("Utkastets id"),
+    }, ["projectId", "entityType", "draftId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const { entity, draftId, entityType } = readDraftRef(args);
+      const r = await pool.query(
+        `DELETE FROM ${entity.table}
+          WHERE ${entity.idCol}::text = $1 AND project_id = $2 AND ${draftGuardSql(entity)}
+          RETURNING ${entity.idCol}::text AS id`,
+        [draftId, projectId],
+      );
+      if (Number(r.rowCount ?? 0) === 0) {
+        // Bevisst samme feil som «finnes ikke»: en agent skal ikke kunne
+        // kartlegge publiserte rader ved å prøve å slette dem.
+        throw new McpToolError(-32004, "Fant ikke et upublisert MCP-utkast med denne id-en.");
+      }
+      return { ok: true, deleted: { entityType, id: r.rows[0].id } };
+    },
+  },
+
   // ── Syntese / agent-vennlig ──────────────────────────────────────────────
   {
     name: "rr_project_summary",
@@ -674,14 +1126,21 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_equipment_bookings",
     description: "List utstyrsreservasjoner på et prosjekt (utstyr, fra/til-dato, status, antall). Dekker Utstyr-bookinger.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const r = await pool.query(
-        `SELECT b.id, b.equipment_id, e.name AS equipment_name, b.start_date, b.end_date, b.status, b.quantity
-           FROM equipment_bookings b LEFT JOIN casting_equipment e ON e.id = b.equipment_id
-          WHERE b.project_id = $1 ORDER BY b.start_date NULLS LAST LIMIT 300`, [projectId]);
-      return { bookings: r.rows };
+      return paginatedList(pool, {
+        key: "bookings",
+        columns: "b.id, b.equipment_id, e.name AS equipment_name, b.start_date, b.end_date, b.status, b.quantity",
+        from: "equipment_bookings b LEFT JOIN casting_equipment e ON e.id = b.equipment_id",
+        where: "b.project_id = $1",
+        params: [projectId],
+        orderBy: "b.start_date NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 300,
+        // LEFT JOIN på utstyr kan ikke duplisere (e.id er PK), så COUNT(*)
+        // teller reservasjoner korrekt.
+      }, args);
     },
   },
 
@@ -708,8 +1167,8 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       const dueAt = typeof args.dueAt === "string" && args.dueAt.trim() ? args.dueAt.trim() : null;
       const id = newEntityId("assignment");
       await pool.query(
-        `INSERT INTO role_room_education_assignments (id, owner_user_id, cohort_id, title, brief, due_at, status)
-         VALUES ($1,$2,$3,$4,$5,$6,'draft')`,
+        `INSERT INTO role_room_education_assignments (id, owner_user_id, cohort_id, title, brief, due_at, status, metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,'draft','{"source":"mcp","draft":true}'::jsonb)`,
         [id, ctx.userId, cohortId, title, brief, dueAt]);
       return { ok: true, id, status: "draft", note: "Upublisert oppgave-utkast — publiseres i utdannings-workspacet." };
     },
