@@ -260,6 +260,32 @@ enum LearnedStyle {
         out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
         out = SkinSmoothFilter.apply(amount: 0.4, to: out)
         out = FaceDodgeFilter.apply(to: out)
+
+        // LOKAL per-region: nøytraliser BAKGRUNNEN uavhengig av motivet (Vision
+        // person-maske). Bakgrunnen får dempet metning + mildt kjøligere for å
+        // fjerne fargestikk — mens motivet (hud) beholder sin varme behandling.
+        // Løser «redigerer alt som ett område».
+        if let outCg = ctx.createCGImage(out, from: out.extent),
+           let personMask = SubjectSegmentation.personMask(for: outCg, extent: image.extent) {
+            let bg = CIFilter.colorControls()
+            bg.inputImage = out
+            bg.saturation = 0.86          // dempet fargestikk i bakgrunn
+            bg.contrast = 1.0
+            bg.brightness = 0
+            if let neutralBg = bg.outputImage {
+                // Mildt kjøligere/nøytral bakgrunn (fjern varmt stikk, ikke gjør blå).
+                let m = CIFilter.colorMatrix()
+                m.inputImage = neutralBg
+                m.biasVector = CIVector(x: -0.012, y: 0, z: 0.006, w: 0)   // ↓rød ↑blå litt
+                let bgFinal = m.outputImage ?? neutralBg
+                // person=hvit → behold motiv (out); bakgrunn=svart → bgFinal.
+                let blend = CIFilter.blendWithMask()
+                blend.inputImage = out
+                blend.backgroundImage = bgFinal
+                blend.maskImage = personMask
+                out = blend.outputImage?.cropped(to: image.extent) ?? out
+            }
+        }
         return out.cropped(to: image.extent)
     }
 }
