@@ -9,6 +9,7 @@ final class LearnedStyleStore: @unchecked Sendable {
     /// Demo-hekte (`--demo-redigering --learned-on[=N]`): la Redigering-demoen
     /// åpne med stil N alt valgt, så før/etter kan fanges i sim-skjermbilder.
     nonisolated(unsafe) static var demoForceStyleIndex: Int?
+    nonisolated(unsafe) static var demoForceAuto = false
 
     let profile: LearnedStyleProfile?
     /// De navngitte stilene (v1 → én «Min stil»; v2 → flere distinkte looker).

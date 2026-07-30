@@ -85,6 +85,25 @@ final class LearnedStyleTests: XCTestCase {
         XCTAssertGreaterThan(blended!.lut[0][0], 245)
     }
 
+    func testBlendReturnsLabStd() {
+        let s = scene(feat: [Double](repeating: 0.1, count: 12), lut: identityLut())
+        let b = LearnedStyle.blend(features: [Double](repeating: 0.1, count: 12), scenes: [s], k: 1)
+        XCTAssertEqual(b?.labStd.count, 3)
+    }
+
+    // MARK: - Auto-velg
+
+    func testAutoSelectPicksClosestStyleByLight() {
+        // To stiler: én matcher lyst bilde (feat[8]=0.8), én mørkt (0.2).
+        let brightStyle = LearnedStyleProfile.Style(name: "Lys", scenes: [
+            scene(feat: [Double](repeating: 0, count: 8) + [0.8, 0.2, 0.1, 0.1], lut: identityLut())])
+        let darkStyle = LearnedStyleProfile.Style(name: "Mørk", scenes: [
+            scene(feat: [Double](repeating: 0, count: 8) + [0.2, 0.2, 0.1, 0.1], lut: identityLut())])
+        let fBright = [Double](repeating: 0, count: 8) + [0.78, 0.2, 0.1, 0.1]
+        let idx = LearnedStyle.autoSelectStyleIndex(features: fBright, styles: [brightStyle, darkStyle])
+        XCTAssertEqual(idx, 0, "auto skal velge den lyse stilen for et lyst bilde")
+    }
+
     // MARK: - Apply
 
     func testApplyLutChangesPixels() throws {

@@ -28,6 +28,8 @@ final class RedigeringModel {
     /// når en profil er bundlet/lastet (``LearnedStyleStore``).
     /// Valgt lært stil (indeks i ``LearnedStyleStore.styles``); nil = av.
     var learnedStyleIndex: Int? = LearnedStyleStore.demoForceStyleIndex
+    /// Auto: motoren velger looken som passer bildets lys (per bilde).
+    var learnedStyleAuto: Bool = LearnedStyleStore.demoForceAuto
     var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
     var learnedStyleNames: [String] { LearnedStyleStore.shared.styleNames }
 
@@ -306,22 +308,30 @@ final class RedigeringModel {
         let cleaned = asset.autoCleanedKey
         let raw = (serverEnhanced == nil && cleaned == nil) ? asset.rawKey : nil
         let jpeg = serverEnhanced ?? cleaned ?? asset.displayPreviewKey
-        let styleScenes: [LearnedStyleProfile.Scene]? = {
-            guard let i = learnedStyleIndex,
-                  LearnedStyleStore.shared.styles.indices.contains(i) else { return nil }
-            return LearnedStyleStore.shared.styles[i].scenes
+        let styles = LearnedStyleStore.shared.styles
+        let manualScenes: [LearnedStyleProfile.Scene]? = {
+            guard let i = learnedStyleIndex, styles.indices.contains(i) else { return nil }
+            return styles[i].scenes
         }()
+        let auto = learnedStyleAuto && !styles.isEmpty
         // Lært stil er en KOMPLETT look (nøytral→levert). Stables den oppå en
         // annen recipe dobbelt-prosesserer den → bruk en NØYTRAL base når en stil
-        // er valgt, så den lærte tonekurven+fargen er det primære laget.
-        let r = styleScenes != nil ? MagicRecipe.neutral : effectiveRecipe()
+        // (eller auto) er aktiv, så den lærte tonekurven+fargen er primærlaget.
+        let r = (manualScenes != nil || auto) ? MagicRecipe.neutral : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let base = RedigeringPipeline.renderPreview(
                 rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop) else { return nil }
-            guard let scenes = styleScenes, let ci = CIImage(image: base) else { return base }
-            // Påfør fotografens valgte lærte look på den nøytrale basen.
+            guard let ci = CIImage(image: base) else { return base }
+            // Auto → la motoren velge stilen som passer bildets lys.
+            var scenes = manualScenes
+            if scenes == nil, auto, let cg = CIContext().createCGImage(ci, from: ci.extent) {
+                let idx = LearnedStyle.autoSelectStyleIndex(features: LearnedStyle.features(of: cg), styles: styles)
+                scenes = idx.flatMap { styles.indices.contains($0) ? styles[$0].scenes : nil }
+            }
+            guard let scenes else { return base }
+            // Påfør fotografens (valgte/auto) lærte look på den nøytrale basen.
             let styled = LearnedStyle.apply(scenes: scenes, to: ci)
             let ctx = CIContext(options: [.useSoftwareRenderer: false])
             guard let cg = ctx.createCGImage(styled, from: styled.extent) else { return base }
@@ -752,22 +762,26 @@ struct SmartEditPanel: View {
     /// (fler-stil-profil), eller «Av». Påføres on-device oppå nøytral base.
     private var learnedStylePicker: some View {
         let names = model.learnedStyleNames
-        let current = model.learnedStyleIndex.flatMap { names.indices.contains($0) ? names[$0] : nil } ?? "Av"
+        let current: String = model.learnedStyleAuto
+            ? "Auto"
+            : (model.learnedStyleIndex.flatMap { names.indices.contains($0) ? names[$0] : nil } ?? "Av")
+        let isOn = model.learnedStyleAuto || model.learnedStyleIndex != nil
         return HStack {
             Label("Min stil (lært)", systemImage: "brain.head.profile")
                 .font(.subheadline).foregroundStyle(CHTheme.textPrimary)
             Spacer()
             Menu {
-                Button("Av") { model.learnedStyleIndex = nil; model.recipeChanged() }
+                Button("Av") { model.learnedStyleIndex = nil; model.learnedStyleAuto = false; model.recipeChanged() }
+                Button("Auto (per bilde)") { model.learnedStyleAuto = true; model.learnedStyleIndex = nil; model.recipeChanged() }
                 ForEach(Array(names.enumerated()), id: \.offset) { i, name in
-                    Button(name) { model.learnedStyleIndex = i; model.recipeChanged() }
+                    Button(name) { model.learnedStyleIndex = i; model.learnedStyleAuto = false; model.recipeChanged() }
                 }
             } label: {
                 HStack(spacing: 4) {
                     Text(current).font(.subheadline.weight(.semibold))
                     Image(systemName: "chevron.up.chevron.down").font(.caption2)
                 }
-                .foregroundStyle(model.learnedStyleIndex == nil ? CHTheme.textMuted : CHTheme.accent)
+                .foregroundStyle(isOn ? CHTheme.accent : CHTheme.textMuted)
             }
         }
     }
