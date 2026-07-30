@@ -71,6 +71,26 @@ enum LearnedStyle {
         return hist + [meanL / 255.0, stdL / 128.0, (sumA / n - 128) / 20.0, (sumB / n - 128) / 20.0]
     }
 
+    /// Snitt-luma (0…1) + andel utblåste høylys-piksler (luma ≥ ~252) fra et
+    /// 64×64-utsnitt — driver den absolutte høylys-/eksponerings-vakten.
+    static func lumaStats(_ cg: CGImage) -> (mean: Double, clipHi: Double) {
+        let w = 64, h = 64
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return (0.5, 0) }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var sum = 0.0, clip = 0.0
+        let n = Double(w * h)
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let l = 0.299 * Double(px[i]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i + 2])
+            sum += l
+            if l >= 252 { clip += 1 }
+        }
+        return (sum / n / 255.0, clip / n)
+    }
+
     /// sRGB(0…1) → OpenCV 8-bit Lab (L,a,b i 0…255, 128=nøytral for a/b).
     private static func labCV(r: CGFloat, g: CGFloat, b: CGFloat) -> (Double, Double, Double) {
         let a = SkinToneMath.aStar(r: r, g: g, b: b)          // CIE a*
@@ -205,13 +225,28 @@ enum LearnedStyle {
             out = cc.outputImage?.cropped(to: image.extent) ?? out
         }
 
-        // (3) MILD global eksponerings-vakt — kun backstop mot base-mismatch-lift
-        // (app-nøytral lysere enn Python-nøytral). Dempet (40 %) + høyere terskel
-        // så den ikke mørkner hår/mellomtoner unødig; høylys-skulderen tar resten.
+        // (3) ABSOLUTT høylys-/eksponerings-vakt — måler det FAKTISKE resultatet
+        // (ikke bare relativt til basen): hvor mye høylys er utblåst + hvor lyst
+        // er snittet. High-key scener (lyst vinduslys) kan fortsatt være over-
+        // eksponert selv om LUT-en ikke løftet mye. Sterkere høylys-skulder ved
+        // klipping + eksponerings-nedtrekk når snittet er for lyst.
         if let outCg = ctx.createCGImage(out, from: out.extent) {
-            let baseL = f[8], styledL = features(of: outCg)[8]   // OpenCV-L/255
-            if baseL > 0.02, styledL > baseL + 0.06 {
-                let ev = max(-0.7, min(0.0, 0.4 * log2(baseL / styledL)))
+            let (meanL, clipHi) = lumaStats(outCg)   // 0…1
+            if clipHi > 0.02 {
+                // Dra ned hvitpunktet proporsjonalt med klippingen (opp til ~0.82).
+                let white = CGFloat(max(0.82, 0.95 - min(0.13, clipHi * 0.6)))
+                let hs = CIFilter.toneCurve()
+                hs.inputImage = out
+                hs.point0 = CGPoint(x: 0, y: 0)
+                hs.point1 = CGPoint(x: 0.35, y: 0.35)
+                hs.point2 = CGPoint(x: 0.65, y: 0.64)
+                hs.point3 = CGPoint(x: 0.85, y: 0.80)
+                hs.point4 = CGPoint(x: 1.0, y: white)
+                out = hs.outputImage?.cropped(to: image.extent) ?? out
+            }
+            if meanL > 0.62 {
+                // For lyst totalt → moderat eksponerings-nedtrekk mot ~0.58.
+                let ev = max(-0.9, min(0.0, 0.8 * log2(0.58 / meanL)))
                 let e = CIFilter.exposureAdjust()
                 e.inputImage = out
                 e.ev = Float(ev)

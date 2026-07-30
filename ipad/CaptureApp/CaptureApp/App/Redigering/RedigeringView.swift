@@ -315,9 +315,12 @@ final class RedigeringModel {
         }()
         let auto = learnedStyleAuto && !styles.isEmpty
         // Lært stil er en KOMPLETT look (nøytral→levert). Stables den oppå en
-        // annen recipe dobbelt-prosesserer den → bruk en NØYTRAL base når en stil
-        // (eller auto) er aktiv, så den lærte tonekurven+fargen er primærlaget.
-        let r = (manualScenes != nil || auto) ? MagicRecipe.neutral : effectiveRecipe()
+        // annen recipe dobbelt-prosesserer den → bruk en FLAT base når en stil
+        // (eller auto) er aktiv: INGEN auto-enhance/skygge-løft (som .neutral har
+        // og som blåser opp lyse scener), kun høylys-vern. Da opererer LUT-en på
+        // et sant nøytralt utgangspunkt i stedet for et alt-oppløftet.
+        let learnedBase = MagicRecipe(highlightRecovery: 0.30, autoEnhance: false)
+        let r = (manualScenes != nil || auto) ? learnedBase : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
