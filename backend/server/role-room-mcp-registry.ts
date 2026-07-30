@@ -17,6 +17,7 @@ import type { Pool } from "pg";
 import { hasScope } from "./role-room-integrations-v1-routes.js";
 import { mcpCanAccessProject } from "./role-room-mcp-auth.js";
 import { newEntityId } from "./_shared-ids.js";
+import { listExpiringRights } from "./role-room-buyout-service.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -457,7 +458,11 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       const projectId = await requireProject(pool, ctx, args);
       return paginatedList(pool, {
         key: "roles",
-        columns: "id, name, description, age_range, gender, role_type, status, assigned_candidate_id",
+        // playing_age_min/max + gender_options er de strukturerte feltene;
+        // age_range/gender beholdes som fritekst-visning.
+        columns:
+          "id, name, description, age_range, playing_age_min, playing_age_max, " +
+          "gender, gender_options, role_type, status, assigned_candidate_id",
         from: "casting_roles",
         where: "project_id = $1",
         params: [projectId],
@@ -972,6 +977,52 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
          VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,'draft',$6,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
         [projectId, entryType, title, externalUrl, phase, ctx.userId]);
       return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — bekreftes i Role Room-UI." };
+    },
+  },
+
+  // ── Buyout / rettigheter ─────────────────────────────────────────────────
+  {
+    name: "rr_list_buyout_terms",
+    description: "List strukturerte buyout-vilkår på et prosjekt: territorier, medieflater, rettighetsperiode, eksklusivitet, opsjon og vederlag. For reklame er dette selve kontrakten.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return paginatedList(pool, {
+        key: "buyoutTerms",
+        columns:
+          "id, contract_id, candidate_id, role_id, territories, territories_note, " +
+          "media_channels, starts_at, ends_at, unlimited, exclusivity, exclusivity_category, " +
+          "renewal_option, renewal_fee, renewal_notice_days, fee, currency",
+        from: "role_room_buyout_terms",
+        where: "project_id = $1",
+        params: [projectId],
+        orderBy: "ends_at NULLS LAST",
+        defaultLimit: 100,
+        maxLimit: 500,
+      }, args);
+    },
+  },
+  {
+    name: "rr_list_expiring_rights",
+    description: "List rettigheter som utløper snart på et prosjekt, sortert med de mest akutte først. Allerede utløpte har negativ daysRemaining. Evigvarende kjøp utelates. renewalDeadlinePassed=true betyr at fristen for å utøve forlengelsesopsjonen er gått ut.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      withinDays: { type: "number", description: "Hvor mange dager fram i tid (default 90)" },
+      limit: { type: "number", description: "Maks antall rader (default 200)" },
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const rights = await listExpiringRights(pool, {
+        projectId,
+        withinDays: typeof args.withinDays === "number" ? args.withinDays : undefined,
+        limit: typeof args.limit === "number" ? args.limit : undefined,
+      });
+      return {
+        rights,
+        expired: rights.filter((r) => Number(r.days_remaining) < 0).length,
+      };
     },
   },
 

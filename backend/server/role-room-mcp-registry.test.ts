@@ -233,8 +233,11 @@ describe("list-verktøy returnerer pagination", () => {
   });
 
   it("alle list-verktøy tar limit/offset i skjemaet", () => {
+    // rr_list_expiring_rights er en varsel-spørring avgrenset av withinDays,
+    // ikke en vanlig liste — offset over en «hva haster nå»-liste gir ikke
+    // mening. Den er bundet av limit i stedet.
     const listTools = ROLE_ROOM_CAPABILITIES.filter(
-      (c) => c.name.startsWith("rr_list_") && c.name !== "rr_list_drafts",
+      (c) => c.name.startsWith("rr_list_") && c.name !== "rr_list_expiring_rights",
     );
     expect(listTools.length).toBeGreaterThan(15);
     for (const t of listTools) {
