@@ -23,6 +23,7 @@ import { getProjectPipeline } from "./role-room-role-status-service.js";
 import { getBudgetOnboardingState } from "./role-room-budget-onboarding.js";
 import { listChecklistTemplates } from "./role-room-checklist-templates.js";
 import { resolveSceneCast, getCastChangeImpact } from "./role-room-scene-cast-service.js";
+import { getEquipmentByCode } from "./role-room-equipment-checkout-service.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -985,6 +986,24 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_equipment_by_code",
+    description: "Slå opp utstyr på QR-koden fra klistremerket: hvor mange enheter finnes, hvor mange er ute, hvor mange står på hylla, og hvem som har dem. Koden tåler mellomrom og små bokstaver, siden den ofte tastes inn for hånd.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), qrCode: STR("Koden på klistremerket") }, ["projectId", "qrCode"]),
+    handler: async (pool, ctx, args) => {
+      await requireProject(pool, ctx, args);
+      const qrCode = typeof args.qrCode === "string" ? args.qrCode : "";
+      try {
+        return await getEquipmentByCode(pool, qrCode);
+      } catch (err) {
+        if ((err as { code?: string }).code === "unknown_code") {
+          throw new McpToolError(-32004, "Fant ikke utstyr med denne koden.");
+        }
+        throw err;
+      }
+    },
+  },
   {
     name: "rr_scene_cast",
     description: "Hvem spiller hvem i hver scene: karakter → rolle → tildelt kandidat. Karakterer som ikke lot seg koble til en rolle flagges eksplisitt framfor å utelates — det er som regel en skrivefeil i manus eller en rolle som mangler.",
