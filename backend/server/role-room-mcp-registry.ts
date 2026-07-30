@@ -21,6 +21,7 @@ import { listExpiringRights } from "./role-room-buyout-service.js";
 import { checkEquipmentAvailability } from "./role-room-equipment-availability.js";
 import { getProjectPipeline } from "./role-room-role-status-service.js";
 import { getBudgetOnboardingState } from "./role-room-budget-onboarding.js";
+import { listChecklistTemplates } from "./role-room-checklist-templates.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -983,6 +984,18 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_list_checklist_templates",
+    description: "List sjekkliste-maler for produksjonsfaser, med de som passer prosjekttypen først. Malene gir en tom tidslinje innhold — punktene er handlinger med frist regnet fra opptaksstart.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const p = await pool.query<{ project_type: string | null }>(
+        `SELECT project_type FROM casting_projects WHERE id = $1 LIMIT 1`, [projectId]);
+      return { templates: await listChecklistTemplates(pool, p.rows[0]?.project_type ?? null) };
+    },
+  },
   {
     name: "rr_budget_onboarding",
     description: "Sjekker om prosjektet trenger hjelp i gang med budsjettet: antall linjer, sum, om en nudge er relevant, og hvilke maler som passer prosjekttypen. Maser ikke på nye prosjekter uten aktivitet.",
