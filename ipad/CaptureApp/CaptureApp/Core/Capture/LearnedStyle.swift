@@ -81,7 +81,7 @@ enum LearnedStyle {
     /// Farge-vektet k-NN: a/b-feature (indeks 10–11) vektes 1.6× — matcher
     /// Python-motorens apply. Returnerer vektet snitt av LUT + a/b.
     static func blend(features f: [Double], scenes: [LearnedStyleProfile.Scene], k: Int = 5)
-        -> (lut: [[Double]], ab: [Double])? {
+        -> (lut: [[Double]], ab: [Double], labStd: [Double])? {
         guard !scenes.isEmpty, f.count == 12 else { return nil }
         let scored: [(d: Double, s: LearnedStyleProfile.Scene)] = scenes.map { sc in
             var sum = 0.0
@@ -98,6 +98,7 @@ enum LearnedStyle {
         let wsum = wts.reduce(0, +)
         var lut = [[Double]](repeating: [Double](repeating: 0, count: 256), count: 3)
         var ab = [0.0, 0.0]
+        var labStd = [0.0, 0.0, 0.0]
         for (j, item) in top.enumerated() {
             let wt = wts[j] / wsum
             for c in 0..<3 {
@@ -106,8 +107,33 @@ enum LearnedStyle {
             }
             ab[0] += item.s.ab[0] * wt
             ab[1] += item.s.ab[1] * wt
+            let std = item.s.labStd.count == 3 ? item.s.labStd : [1, 1, 1]
+            for c in 0..<3 { labStd[c] += std[c] * wt }
         }
-        return (lut, ab)
+        return (lut, ab, labStd)
+    }
+
+    /// AUTO-velg: hvilken stil passer bildets lys best? Velger stilen med minst
+    /// nærmeste-scene-avstand (farge-vektet) til bildets features. Lar motoren
+    /// velge tungsten-/dagslys-/motlys-looken selv, per bilde.
+    static func autoSelectStyleIndex(features f: [Double], styles: [LearnedStyleProfile.Style]) -> Int? {
+        guard !styles.isEmpty, f.count == 12 else { return nil }
+        var best = 0
+        var bestD = Double.greatestFiniteMagnitude
+        for (i, style) in styles.enumerated() {
+            var minD = Double.greatestFiniteMagnitude
+            for sc in style.scenes {
+                var sum = 0.0
+                for j in 0..<12 {
+                    let wgt = (j >= 10) ? 1.6 : 1.0
+                    let d = (sc.feat[j] - f[j]) * wgt
+                    sum += d * d
+                }
+                minD = min(minD, sum)
+            }
+            if minD < bestD { bestD = minD; best = i }
+        }
+        return best
     }
 
     /// Påfør en gitt (navngitt) stils scener på et CIImage: per-kanal-LUT
@@ -150,6 +176,24 @@ enum LearnedStyle {
             m.biasVector = CIVector(x: da + db, y: -da + db, z: -db, w: 0)
             out = m.outputImage ?? out
         }
+
+        // Reinhard-STD on-device (andre halvpart av fargeoverføringen): L-std →
+        // kontrast, a/b-std → metning. CIColorControls approksimerer LAB-spred-
+        // skaleringen. Klemt dempet så én scene ikke sprenger looken.
+        let contrast = min(1.35, max(0.75, blended.labStd[0]))
+        let sat = min(1.35, max(0.75, (blended.labStd[1] + blended.labStd[2]) / 2))
+        if abs(contrast - 1) > 0.01 || abs(sat - 1) > 0.01 {
+            let cc = CIFilter.colorControls()
+            cc.inputImage = out
+            cc.contrast = Float(contrast)
+            cc.saturation = Float(sat)
+            cc.brightness = 0
+            out = cc.outputImage?.cropped(to: image.extent) ?? out
+        }
+
+        // Ansikts-dodge — gjenbruker motorens «løft ansikter kun når de måler for
+        // mørkt» on-device (samme prinsipp som Python `gentle_face_dodge`).
+        out = FaceDodgeFilter.apply(to: out)
         return out.cropped(to: image.extent)
     }
 }
