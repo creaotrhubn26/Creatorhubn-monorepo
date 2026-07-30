@@ -1,21 +1,20 @@
 /**
- * MVA-melding-innsending mot Skatteetaten — lukker `vat.submit`-gapet i kode
- * (MVA-rapporten er i dag alltid `status: 'draft'`).
+ * MVA-melding mot Skatteetaten.
  *
- * Flyt (verifisert mot skatteetaten.github.io/mva-meldingen 2026-07-20):
- *  1. Maskinporten access-token (scope skatteetaten:mvameldinginnsending) —
- *     se `MaskinportenPort`.
- *  2. Validering: POST `<base>/api/mva/grensesnittstoette/mva-melding/valider`
- *     med mva-melding-XML (namespace no:skatteetaten:fastsetting:avgift:mva:…v1.0)
- *     → tilbakemelding (utfall + avvik).
- *  3. Innsending: Altinn 3-app `skd/mva-melding-innsending` (opprett instans,
- *     last opp melding + konvolutt, fullfør).
+ * 🔴 VIKTIG AUTENTISERINGS-FUNN (2026-07-30, verifisert mot ekte prod-endepunkt +
+ * skatteetaten.github.io/mva-meldingen/documentation/implementasjonsguide):
+ * Skatteetatens validerings- OG innsendings-API-er (idporten.api.skatteetaten.no)
+ * krever **ID-PORTEN-token** — en pålogget SLUTTBRUKER (BankID, OIDC authorization-
+ * code-flyt) — IKKE Maskinporten (maskin-til-maskin). Denne klassen ble bygd rundt
+ * Maskinporten og får derfor **401** mot valideringstjenesten selv med gyldig
+ * Maskinporten-token for scope skatteetaten:mvameldingvalidering. For å ta i bruk
+ * API-ene på ekte må det bygges en ID-porten-innlogging (egen ID-porten-klient i
+ * Samarbeidsportalen m/ redirect-URL + token-cache), og validate/submit må bruke
+ * ID-porten-aksesstokenet. Til da: last ned XSD-gyldig XML og last opp i Altinn.
  *
- * ÆRLIG STATUS: Ikke aktiv uten Maskinporten-legitimasjon (`MaskinportenPort.configured`).
- * `validate`/`submit` kaster `MaskinportenAuthError` FØR nettverkskall uten token.
- * XML-bygging er et MVP-SKJELETT som MÅ valideres mot Skatteetatens offisielle
- * XSD (referert i docs, ennå ikke vendored) før reell innsending — nettopp derfor
- * går alt gjennom `validate` først, som returnerer skjemaavvik fra kilden.
+ * XML-byggingen (`buildMvaMeldingXml`) er derimot korrekt og XSD-validert (se
+ * test/vat-submission.test.ts mot vendor/mva/…v1.0.xsd) og gjenbrukes uansett
+ * auth-vei. VAT_SUBMISSION_ENDPOINTS er nå bekreftede prod/test-hoster.
  *
  * Penger holdes som bigint øre helt til XML-formatering; ingen flyttall i kjeden.
  */
@@ -30,14 +29,15 @@ export const VAT_SUBMISSION_ENDPOINTS: Record<
   { validateBase: string; altinnPlatform: string; altinnApp: string }
 > = {
   test: {
-    validateBase: 'https://idporten-api-sbstest.sits.no',
+    // Bekreftet mot skatteetaten.github.io/api-dokumentasjon/api/mvameldingvalidering.
+    validateBase: 'https://idporten-api-test.sits.no',
     altinnPlatform: 'https://platform.tt02.altinn.no',
     // 🔑 app-ID (evt. -etmN-suffiks) bekreftes mot TT02 ved første testkjøring.
     altinnApp: 'https://skd.apps.tt02.altinn.no/skd/mva-melding-innsending-etm2',
   },
   prod: {
-    // NB: prod-host må bekreftes mot Skatteetaten før produksjonsbruk.
-    validateBase: 'https://idporten-api.sits.no',
+    // Bekreftet: valideringstjenesten ligger på idporten.api.skatteetaten.no.
+    validateBase: 'https://idporten.api.skatteetaten.no',
     altinnPlatform: 'https://platform.altinn.no',
     altinnApp: 'https://skd.apps.altinn.no/skd/mva-melding-innsending',
   },

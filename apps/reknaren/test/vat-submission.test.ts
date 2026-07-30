@@ -108,7 +108,7 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
   it('med token: POST-er XML med Bearer til grensesnittstøtte-valideringen', async () => {
     // Token leveres av stub; valideringskallet fanges av fake fetch.
     const validateFetch = fakeFetch((url) => {
-      expect(url).toBe('https://idporten-api-sbstest.sits.no/api/mva/grensesnittstoette/mva-melding/valider');
+      expect(url).toBe('https://idporten-api-test.sits.no/api/mva/grensesnittstoette/mva-melding/valider');
       return { status: 200, body: { messages: [] } };
     });
     const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), validateFetch.impl);
