@@ -4,7 +4,7 @@
  *
  * Responsibilities:
  *  - Fetch strips, shooting days and cast from the service layer
- *  - Fall back to demo data when the API returns nothing or throws
+ *  - Surface load failures as an error — never as demo data
  *  - JSON import (file reader)
  *  - JSON / CSV export
  *  - Print-window generation (PDF)
@@ -17,7 +17,6 @@ import {
   type ShootingDay,
   type CastMember,
 } from '../../services/productionWorkflowService';
-import { DEMO_STRIPS, DEMO_SHOOTING_DAYS } from './stripboard.mockData';
 import { STRIP_COLORS, STATUS_CONFIG, getStripColorFromHex } from './stripboard.constants';
 import type { StripsByDay, PrintOptions, StripboardStats } from './stripboard.types';
 
@@ -28,25 +27,40 @@ export function useStripboardData(projectId: string, projectTitle: string) {
   const [shootingDays, setShootingDays] = useState<ShootingDay[]>([]);
   const [cast, setCast] = useState<CastMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Henter stripboardet fra basen.
+   *
+   * Demo-fallbacken er borte med vilje. Den fylte et tomt eller feilende
+   * stripboard med scener fra «TROLL» — en annen produksjon — og det så ut
+   * som brukerens egen plan. Et tomt stripboard skal se tomt ut, og en feil
+   * skal se ut som en feil.
+   */
   const loadStripboardData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [stripData, dayData, castData] = await Promise.all([
+      // Cast kommer fra stripboardet selv, ikke fra et eget kall. Det gamle
+      // cast-endepunktet finnes ikke, og fallbacken var TROLL-skuespillere —
+      // som ville blitt satt opp mot brukerens egne scener i DOOD-matrisen.
+      const [stripData, dayData] = await Promise.all([
         productionWorkflowService.getStripboard(projectId),
         productionWorkflowService.getShootingDays(projectId),
-        productionWorkflowService.getCast(projectId),
       ]);
-      setStrips(stripData?.length  ? stripData  : DEMO_STRIPS);
-      setShootingDays(dayData?.length ? dayData  : DEMO_SHOOTING_DAYS);
-      setCast(castData || []);
-    } catch {
-      setStrips(DEMO_STRIPS);
-      setShootingDays(DEMO_SHOOTING_DAYS);
+      setStrips(stripData ?? []);
+      setShootingDays(dayData ?? []);
+      setCast(productionWorkflowService.getStripboardCast());
+    } catch (loadError) {
+      setStrips([]);
+      setShootingDays([]);
       setCast([]);
+      setError(
+        loadError instanceof Error ? loadError.message : 'Kunne ikke hente stripboardet.',
+      );
     } finally {
       setLoading(false);
     }
@@ -237,6 +251,7 @@ export function useStripboardData(projectId: string, projectTitle: string) {
     shootingDays, setShootingDays,
     cast, setCast,
     loading,
+    error,
     importInputRef,
     loadStripboardData,
     handleImportJSON,

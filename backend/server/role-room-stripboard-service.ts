@@ -33,7 +33,15 @@ export function formatEighths(eighths: number | null | undefined): string {
 }
 
 export interface StripboardScene {
-  entryId: string;
+  /**
+   * Null når scenen ennå ikke har en stripboard-rad.
+   *
+   * Et importert manus gir scener uten rader. De hører hjemme i «ikke
+   * planlagt»-bunken fra første stund — ellers står stripboardet tomt etter en
+   * import, uten noen vei til å få scenene inn i det. Raden opprettes når
+   * scenen faktisk legges på en dag.
+   */
+  entryId: string | null;
   sceneId: string;
   sceneNumber: number | null;
   title: string | null;
@@ -62,18 +70,35 @@ export interface StripboardDay {
   locationCount: number;
 }
 
+/**
+ * Én medvirkende, slik stripboardet trenger dem.
+ *
+ * Ligger her og ikke i et eget kall fordi stripboardet allerede vet hvilke
+ * karakterer som er i hvilke scener — og fordi et separat cast-kall er
+ * nettopp der den gamle flaten hentet demodata fra en annen produksjon.
+ */
+export interface StripboardCastMember {
+  /** Kandidatens id når rollen er besatt, ellers rollens. */
+  id: string;
+  name: string;
+  character: string;
+  /** Scener karakteren er i. */
+  scenes: string[];
+}
+
 export interface Stripboard {
   projectId: string;
   days: StripboardDay[];
   /** Scener som ikke er lagt på en dag ennå. */
   unscheduled: StripboardScene[];
+  cast: StripboardCastMember[];
   totalScenes: number;
   scheduledScenes: number;
 }
 
 function mapScene(row: Record<string, unknown>): StripboardScene {
   return {
-    entryId: String(row.entry_id),
+    entryId: row.entry_id === null || row.entry_id === undefined ? null : String(row.entry_id),
     sceneId: String(row.scene_id),
     sceneNumber: row.scene_number === null ? null : Number(row.scene_number),
     title: (row.title as string) ?? null,
@@ -115,16 +140,21 @@ function summariseDay(
 }
 
 export async function getStripboard(pool: Pool, projectId: string): Promise<Stripboard> {
+  // Utgangspunktet er scenene, ikke radene. En scene uten rad er ikke fraværende
+  // — den er uplanlagt, og det er nettopp bunken produsenten skal tømme.
   const rows = await pool.query(
-    `SELECT e.id AS entry_id, e.scene_id, e.production_day_id, e.sort_order, e.setup_minutes,
+    `SELECT e.id AS entry_id, s.id AS scene_id, e.production_day_id,
+            COALESCE(e.sort_order, 0) AS sort_order,
+            COALESCE(e.setup_minutes, 0) AS setup_minutes,
             s.scene_number, s.title, s.int_ext, s.time_of_day, s.setting, s.characters,
             s.page_eighths, s.shoot_status,
             d.date::text AS day_date, d.status AS day_status
-       FROM role_room_stripboard_entries e
-       JOIN casting_scenes s ON s.id = e.scene_id
+       FROM casting_scenes s
+       LEFT JOIN role_room_stripboard_entries e
+              ON e.scene_id = s.id AND e.project_id = s.project_id
        LEFT JOIN casting_production_days d ON d.id = e.production_day_id
-      WHERE e.project_id = $1
-      ORDER BY d.date NULLS LAST, e.sort_order, s.scene_number NULLS LAST`,
+      WHERE s.project_id = $1
+      ORDER BY d.date NULLS LAST, e.sort_order NULLS FIRST, s.scene_number NULLS LAST`,
     [projectId],
   );
 
@@ -154,9 +184,68 @@ export async function getStripboard(pool: Pool, projectId: string): Promise<Stri
     projectId,
     days,
     unscheduled,
+    cast: await resolveCast(pool, projectId, [...days.flatMap((d) => d.scenes), ...unscheduled]),
     totalScenes: rows.rowCount ?? 0,
     scheduledScenes: (rows.rowCount ?? 0) - unscheduled.length,
   };
+}
+
+/**
+ * Karakterene i stripboardet, koblet til kandidaten som spiller dem.
+ *
+ * Karakterer uten rolle tas med, med rollenavnet som navn. De er som regel en
+ * skrivefeil i manus eller en rolle som mangler — og å utelate dem ville
+ * skjult begge deler. Se også role-room-scene-cast-service.ts, som bruker
+ * samme navnenormalisering.
+ */
+async function resolveCast(
+  pool: Pool,
+  projectId: string,
+  scenes: StripboardScene[],
+): Promise<StripboardCastMember[]> {
+  const sceneIdsByCharacter = new Map<string, { display: string; scenes: string[] }>();
+  for (const scene of scenes) {
+    for (const character of scene.characters) {
+      const key = normaliseName(character);
+      if (!key) continue;
+      const entry = sceneIdsByCharacter.get(key) ?? { display: character.trim(), scenes: [] };
+      entry.scenes.push(scene.sceneId);
+      sceneIdsByCharacter.set(key, entry);
+    }
+  }
+  if (sceneIdsByCharacter.size === 0) return [];
+
+  const roles = await pool.query(
+    `SELECT r.id AS role_id, r.name AS role_name, r.assigned_candidate_id, c.name AS candidate_name
+       FROM casting_roles r
+       LEFT JOIN casting_candidates c ON c.id = r.assigned_candidate_id
+      WHERE r.project_id = $1`,
+    [projectId],
+  );
+
+  const byName = new Map<string, Record<string, unknown>>();
+  for (const row of roles.rows as Array<Record<string, unknown>>) {
+    byName.set(normaliseName(String(row.role_name ?? "")), row);
+  }
+
+  return [...sceneIdsByCharacter.entries()].map(([key, entry]) => {
+    const role = byName.get(key);
+    return {
+      id: String(role?.assigned_candidate_id ?? role?.role_id ?? key),
+      name: String(role?.candidate_name ?? entry.display),
+      character: entry.display,
+      scenes: entry.scenes,
+    };
+  });
+}
+
+/** «KARI (V.O.)» og «kari» er samme karakter. */
+function normaliseName(name: string): string {
+  return name
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
 }
 
 // ── Fremdrift (punkt 73) ────────────────────────────────────────────────────

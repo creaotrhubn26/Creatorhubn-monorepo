@@ -413,6 +413,43 @@ Flaten ligger i Kalender → Operativ produksjonsstyring, under opptaksdagene. I
 egen fane: arbeidstiden bestemmes når dagene planlegges, og et etterlevelsesvarsel man
 må lete etter blir lest for sent.
 
+## 72 + 84 + 87 — stripboardet
+
+Kartleggingen antok en konflikt mellom to implementasjoner. Det var det ikke.
+
+`StripboardPanel` hentet fra `/api/production/:projectId/stripboard`. **Den ruta fantes
+ikke noe sted i backend.** Hvert kall feilet, ble fanget av en `console.warn`, og panelet
+falt tilbake på `TROLL_STRIPBOARD` — scener fra en annen produksjon, vist som om det var
+brukerens egen plan. Skriving gikk til en cache i minnet og overlevde ikke en
+oppfriskning. Panelet har `@ts-nocheck`, så ingenting av dette ble fanget av
+kompilatoren.
+
+Migrering 0457 var motsatt: ekte tabeller, testet tjeneste, åttedeler, riggetid, strøkne
+scener og en «ikke planlagt»-bunke — men bare eksponert via MCP.
+
+Altså en rik UI uten backend ved siden av en solid backend uten UI. De er koblet sammen
+nå, ikke valgt mellom.
+
+**`getStripboard` tok utgangspunkt i radene, ikke scenene.** Et importert manus gir
+scener uten stripboard-rader, så boardet ville stått tomt etter en import — uten noen vei
+til å få scenene inn i det. Spørringen går nå fra `casting_scenes`, og scener uten rad
+havner i uplanlagt-bunken med `entryId: null`. Raden lages når scenen legges på en dag.
+
+**Mappingen ligger i `stripboardAdapter.ts`**, uten React- eller MUI-import, av to
+grunner: panelet fanger ingen typefeil, og en ren funksjon kan testes. To forskjeller
+måtte tas stilling til:
+
+- Backend måler sider i åttedeler, panelet i desimaltall. Konverteringen skjer ett sted.
+- Backend skiller `partial` og `omitted` fra `not_shot`. Panelet kjente bare fire
+  statuser, og `omitted` ville måttet bli «utsatt» — men en strøket scene kommer ikke
+  tilbake i køen. Statusene er lagt til framfor å presses inn i de gamle.
+
+**Demo-fallbacken er fjernet overalt i denne stien** — også for opptaksdager og cast, som
+gikk mot de samme ikke-eksisterende endepunktene. Cast følger nå med stripboard-svaret
+(karakter → rolle → tildelt kandidat, med samme navnenormalisering som punkt 83), slik at
+DOOD-matrisen settes opp mot de samme scenene som stripene. Et tomt stripboard vises som
+tomt, og en feil vises som en feil med «Prøv igjen».
+
 ## Metode og forbehold
 
 Kartlagt ved lesing av skjema (`backend/migrations/`), ruter (`backend/server/role-room-*`) og

@@ -64,7 +64,7 @@ describe("getStripboard", () => {
   ];
 
   it("grupperer scener per dag og summerer sider", async () => {
-    const { pool } = stubPool([{ match: /FROM role_room_stripboard_entries/, rows: entries }]);
+    const { pool } = stubPool([{ match: /FROM casting_scenes s/, rows: entries }]);
     const board = await getStripboard(pool, "p1");
     expect(board.days).toHaveLength(1);
     expect(board.days[0].totalEighths).toBe(19);
@@ -73,22 +73,22 @@ describe("getStripboard", () => {
 
   it("teller unike karakterer, ikke oppføringer", async () => {
     // KARI er i begge scener, men skal på settet én gang.
-    const { pool } = stubPool([{ match: /FROM role_room_stripboard_entries/, rows: entries }]);
+    const { pool } = stubPool([{ match: /FROM casting_scenes s/, rows: entries }]);
     expect((await getStripboard(pool, "p1")).days[0].castCount).toBe(2);
   });
 
   it("teller unike locations — hver ekstra er en flytting", async () => {
-    const { pool } = stubPool([{ match: /FROM role_room_stripboard_entries/, rows: entries }]);
+    const { pool } = stubPool([{ match: /FROM casting_scenes s/, rows: entries }]);
     expect((await getStripboard(pool, "p1")).days[0].locationCount).toBe(2);
   });
 
   it("summerer riggetid for dagen", async () => {
-    const { pool } = stubPool([{ match: /FROM role_room_stripboard_entries/, rows: entries }]);
+    const { pool } = stubPool([{ match: /FROM casting_scenes s/, rows: entries }]);
     expect((await getStripboard(pool, "p1")).days[0].totalSetupMinutes).toBe(75);
   });
 
   it("holder uplanlagte scener i egen bunke framfor å skjule dem", async () => {
-    const { pool } = stubPool([{ match: /FROM role_room_stripboard_entries/, rows: entries }]);
+    const { pool } = stubPool([{ match: /FROM casting_scenes s/, rows: entries }]);
     const board = await getStripboard(pool, "p1");
     expect(board.unscheduled).toHaveLength(1);
     expect(board.unscheduled[0].sceneNumber).toBe(3);

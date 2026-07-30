@@ -99,7 +99,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
 
   const data = useStripboardData(projectId, projectTitle);
   const {
-    strips, setStrips, shootingDays, cast, loading,
+    strips, setStrips, shootingDays, cast, loading, error,
     importInputRef, loadStripboardData,
     handleImportJSON, handleExportJSON, handleExportCSV, handleConfirmPrint,
   } = data;
@@ -397,6 +397,25 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
       <Box sx={{ p: responsive.contentPadding }}>
         <LinearProgress />
         <Typography sx={{ mt: 2, textAlign: 'center', fontSize: responsive.fontSize.body }}>Laster stripboard...</Typography>
+      </Box>
+    );
+  }
+
+  // En feil vises som en feil. Tidligere falt panelet tilbake på demodata fra
+  // «TROLL» her, og et mislykket kall så ut som en ferdig plan.
+  if (error) {
+    return (
+      <Box sx={{ p: responsive.contentPadding }}>
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={() => void loadStripboardData()}>
+              Prøv igjen
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       </Box>
     );
   }
