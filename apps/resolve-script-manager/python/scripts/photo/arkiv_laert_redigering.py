@@ -321,6 +321,92 @@ def export_profile(model_path, out_json, clusters=32):
     print(f"PROFIL LAGRET: {len(scenes)} sentroider (fra {n} scener) → {out_json} ({size//1024} KB)", flush=True)
 
 
+def _scene_dicts(feats, luts, ab, lab_std, sel, clusters):
+    """Bygg scene-sentroide-liste for et utvalg scene-indekser (`sel`), klynget
+    på scene-features til ~`clusters` sentroider. Delt av eksport-veiene."""
+    fs, ls, ab_s, std_s = feats[sel], luts[sel], ab[sel], lab_std[sel]
+    if len(sel) > clusters:
+        crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5)
+        _c, lab, _cen = cv2.kmeans(fs.astype(np.float32), clusters, None, crit, 4, cv2.KMEANS_PP_CENTERS)
+        lab = lab.ravel()
+        groups = range(clusters)
+    else:
+        lab = np.arange(len(sel))
+        groups = range(len(sel))
+    out = []
+    for g in groups:
+        idx = np.where(lab == g)[0]
+        if len(idx) == 0:
+            continue
+        out.append({
+            "feat": [round(float(v), 5) for v in fs[idx].mean(0)],
+            "lut": [[int(round(v)) for v in ls[idx, c].mean(0)] for c in range(3)],
+            "ab": [round(float(v), 4) for v in ab_s[idx].mean(0)],
+            "labStd": [round(float(v), 4) for v in std_s[idx].mean(0)],
+            "weight": int(len(idx)),
+        })
+    return out
+
+
+def _style_signature(luts, ab, lab_std):
+    """Per-scene REDIGERINGS-signatur (ikke scene-innhold): [lysløft, kontrast,
+    varme(a), tint(b), metning(a-std)] — hva fotografen GJØR, ikke hva bildet er."""
+    bright = luts.mean(axis=(1, 2)) / 255.0            # snitt-utgang = lysløft
+    contrast = luts.std(axis=(1, 2)) / 128.0           # kurve-spredning = kontrast
+    return np.stack([bright, contrast, ab[:, 0] / 20.0, ab[:, 1] / 20.0, lab_std[:, 1]], axis=1)
+
+
+def _style_name(warm, bright, contrast, used):
+    """Beskrivende norsk stil-navn fra klynge-karakteristikk (IKKE par-navn).
+    `warm/bright/contrast` er z-score-avvik fra snittet på tvers av stilene."""
+    color = "Varm" if warm > 0.4 else ("Kjølig" if warm < -0.4 else "Nøytral")
+    if contrast > 0.5:
+        tone = "stemningsfull"
+    elif contrast < -0.5:
+        tone = "luftig" if bright > 0 else "filmisk"
+    else:
+        tone = "lys" if bright > 0.5 else ("dempet" if bright < -0.5 else "ren")
+    name = f"{color} & {tone}"
+    i = 2
+    base = name
+    while name in used:                                 # unngå kollisjon
+        name = f"{base} {i}"; i += 1
+    used.add(name)
+    return name
+
+
+def export_styles(model_path, out_json, n_styles=4, per_style=24):
+    """Fler-stil-eksport (research «cluster, don't average»): klynger scenene på
+    REDIGERINGS-signatur til `n_styles` distinkte looker, auto-navngir hver
+    beskrivende, og skriver en multi-stil-JSON. Hver stil får egne scene-
+    sentroider for on-device k-NN innen den valgte looken."""
+    import json
+    m = dict(np.load(os.path.expanduser(model_path), allow_pickle=True))
+    feats, luts, ab = m["feats"].astype(np.float32), m["luts"].astype(np.float32), m["ab"].astype(np.float32)
+    lab_std = m["lab_std"].astype(np.float32) if "lab_std" in m else np.ones((len(feats), 3), np.float32)
+    sig = _style_signature(luts, ab, lab_std)
+    z = (sig - sig.mean(0)) / (sig.std(0) + 1e-6)       # normalisér akser
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.3)
+    _c, labels, cen = cv2.kmeans(z.astype(np.float32), n_styles, None, crit, 6, cv2.KMEANS_PP_CENTERS)
+    labels = labels.ravel()
+    used, styles = set(), []
+    order = sorted(range(n_styles), key=lambda g: -int((labels == g).sum()))
+    for g in order:
+        sel = np.where(labels == g)[0]
+        if len(sel) < 8:                                # dropp bittesmå klynger
+            continue
+        name = _style_name(float(cen[g, 2]), float(cen[g, 0]), float(cen[g, 1]), used)
+        styles.append({"name": name, "count": int(len(sel)),
+                       "scenes": _scene_dicts(feats, luts, ab, lab_std, sel, per_style)})
+    prof = {"version": 2, "source": os.path.basename(model_path), "styles": styles}
+    with open(os.path.expanduser(out_json), "w") as fh:
+        json.dump(prof, fh, separators=(",", ":"))
+    size = os.path.getsize(os.path.expanduser(out_json))
+    print(f"FLER-STIL LAGRET: {len(styles)} stiler → {out_json} ({size//1024} KB)", flush=True)
+    for s in styles:
+        print(f"  • «{s['name']}» ({s['count']} scener, {len(s['scenes'])} sentroider)", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -338,12 +424,19 @@ def main():
     ap_e.add_argument("--modell", required=True)
     ap_e.add_argument("--ut", required=True, help="JSON-profil-sti")
     ap_e.add_argument("--klynger", type=int, default=32)
+    ap_s = sub.add_parser("stiler")
+    ap_s.add_argument("--modell", required=True)
+    ap_s.add_argument("--ut", required=True, help="multi-stil-JSON-sti")
+    ap_s.add_argument("--antall", type=int, default=4, help="antall distinkte stiler")
     args = ap.parse_args()
     if args.mode == "laer":
         learn(args.raa, args.levering, args.modell, args.maks_par)
         return
     if args.mode == "eksporter":
         export_profile(args.modell, args.ut, args.klynger)
+        return
+    if args.mode == "stiler":
+        export_styles(args.modell, args.ut, args.antall)
         return
     model = dict(np.load(os.path.expanduser(args.modell), allow_pickle=True))
     os.makedirs(args.ut, exist_ok=True)
