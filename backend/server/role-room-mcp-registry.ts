@@ -24,6 +24,7 @@ import { getBudgetOnboardingState } from "./role-room-budget-onboarding.js";
 import { listChecklistTemplates } from "./role-room-checklist-templates.js";
 import { resolveSceneCast, getCastChangeImpact } from "./role-room-scene-cast-service.js";
 import { getEquipmentByCode } from "./role-room-equipment-checkout-service.js";
+import { evaluateProjectWorkTime } from "./role-room-work-time-service.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -986,6 +987,24 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_work_time_check",
+    description: "Sjekker prosjektets vakter mot norsk arbeidsmiljølov: daglig og ukentlig arbeidstid, hviletid, pause, nattarbeid og de strengere reglene for barn (AML kap. 11). Skiller brudd fra advarsler, og oppgir paragrafhenvisning på hvert funn. Beslutningsstøtte — tariffavtale kan utvide flere av grensene.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      reducedDailyRestAgreed: {
+        type: "boolean",
+        description: "Skriftlig avtale om redusert daglig hvile til 8 timer (AML § 10-8). Gjelder ikke barn.",
+      },
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return evaluateProjectWorkTime(pool, projectId, {
+        reducedDailyRestAgreed: args.reducedDailyRestAgreed === true,
+      });
+    },
+  },
   {
     name: "rr_equipment_by_code",
     description: "Slå opp utstyr på QR-koden fra klistremerket: hvor mange enheter finnes, hvor mange er ute, hvor mange står på hylla, og hvem som har dem. Koden tåler mellomrom og små bokstaver, siden den ofte tastes inn for hånd.",
