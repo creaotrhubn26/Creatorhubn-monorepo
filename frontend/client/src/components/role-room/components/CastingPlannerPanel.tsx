@@ -229,6 +229,7 @@ const LocationManagementPanel = lazyWithRetry(() => import('./LocationManagement
 const PropManagementPanel = lazyWithRetry(() => import('./PropManagementPanel').then(m => ({ default: m.PropManagementPanel })));
 const EquipmentManagementPanel = lazyWithRetry(() => import('./EquipmentManagementPanel').then(m => ({ default: m.EquipmentManagementPanel })));
 const ProductionDayView = lazyWithRetry(() => import('./ProductionDayView').then(m => ({ default: m.ProductionDayView })));
+const WorkTimeCompliancePanel = lazyWithRetry(() => import('./WorkTimeCompliancePanel'));
 const CastingShotListPanel = lazyWithRetry(() => import('./CastingShotListPanel').then(m => ({ default: m.CastingShotListPanel })));
 const ManuscriptPanel = lazyWithRetry(() => import('./ManuscriptPanel').then(m => ({ default: m.ManuscriptPanel })));
 const StoryboardTabView = lazyWithRetry(() => import('./StoryboardTabView').then(m => ({ default: m.StoryboardTabView })));
@@ -12147,7 +12148,7 @@ type RoleRoomProjectWorkspaceState = {
                   />
                 </>
               ) : calendarViewMode === 'productionDay' ? (
-                <Box sx={{ flex: 1, minHeight: 0 }}>
+                <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                   <Suspense fallback={
                     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
                       <CircularProgress sx={{ color: 'rgba(251,191,36,0.8)' }} />
@@ -12163,6 +12164,21 @@ type RoleRoomProjectWorkspaceState = {
                       profession={profession}
                     />
                   </Suspense>
+
+                  {/* AML-sjekken hører hjemme her og ikke i en egen fane:
+                      arbeidstiden bestemmes når opptaksdagene planlegges, og
+                      et etterlevelsesvarsel man må lete etter blir lest for
+                      sent. Panelet leser dagenes egne innkallings- og
+                      wrap-tider — se WorkTimeCompliancePanel. */}
+                  <Box sx={{ mt: 2.5 }}>
+                    <Suspense fallback={null}>
+                      <WorkTimeCompliancePanel
+                        key={`${currentProject.id}:work-time`}
+                        projectId={currentProject.id}
+                        readOnly={!canManageProductionWorkspace}
+                      />
+                    </Suspense>
+                  </Box>
                 </Box>
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0 }}>

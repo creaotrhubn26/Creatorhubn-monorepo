@@ -8,11 +8,22 @@ import {
   touchesClockWindow,
   type Shift,
 } from "./role-room-work-time-rules.js";
+import { osloInstantFrom } from "./role-room-oslo-time.js";
 
-/** Vakt på en gitt dato, lokal tid. */
+/**
+ * Vakt på en gitt dato, norsk tid.
+ *
+ * Klokkeslettene bygges eksplisitt i Europe/Oslo framfor å la
+ * `new Date("...T08:00:00")` tolke dem i serverens sone. Testene kjører i UTC,
+ * og loven snakker om norsk klokke — uten dette ville en test som mener 21:00
+ * blitt vurdert som 21:00 UTC, altså 23:00 norsk sommertid.
+ */
+const at = (date: string, time: string): string =>
+  osloInstantFrom(date, time.includes(":") ? time : `${time}:00`).toISOString();
+
 const shift = (date: string, from: string, to: string, extra: Partial<Shift> = {}): Shift => ({
-  callTime: `${date}T${from}:00`,
-  wrapTime: `${date}T${to}:00`,
+  callTime: at(date, from),
+  wrapTime: at(date, to),
   ...extra,
 });
 
@@ -286,5 +297,50 @@ describe("rapporten", () => {
     ]);
     expect(r.findings.length).toBeGreaterThan(0);
     for (const f of r.findings) expect(f.reference).toMatch(/AML/);
+  });
+});
+
+// ── Norsk klokke, ikke serverens ────────────────────────────────────────────
+//
+// Regresjonsvern for feilen som ble funnet under verifiseringen mot Postgres:
+// nattarbeidsvinduene ble lest i serverens tidssone. På en UTC-server (Render,
+// og containeren disse testene kjører i) forsvant brudd stille.
+
+describe("nattarbeid leses på norsk veggklokke", () => {
+  const child = { name: "Emma", ageAtShoot: 13, inCompulsorySchooling: true };
+
+  it("fanger en vakt som slutter 21:30 norsk sommertid", () => {
+    // 19:30 UTC = 21:30 norsk. Med serverklokke ville dette lest som 19:30 og
+    // falt utenfor 20–06-forbudet — bruddet ville aldri blitt meldt.
+    const r = evaluateWorkTime(child, [
+      { callTime: "2027-07-15T15:00:00Z", wrapTime: "2027-07-15T19:30:00Z" },
+    ]);
+    expect(codes(r)).toContain("minor_night_work");
+  });
+
+  it("melder ikke brudd på en vakt som slutter 19:30 norsk", () => {
+    // 17:30 UTC = 19:30 norsk — like innenfor.
+    const r = evaluateWorkTime(child, [
+      { callTime: "2027-07-15T13:00:00Z", wrapTime: "2027-07-15T17:30:00Z" },
+    ]);
+    expect(codes(r)).not.toContain("minor_night_work");
+  });
+
+  it("bruker vintertidens offset om vinteren", () => {
+    // 20:30 UTC = 21:30 norsk vintertid (+1). Fortsatt innenfor forbudet.
+    const r = evaluateWorkTime(child, [
+      { callTime: "2027-01-15T16:00:00Z", wrapTime: "2027-01-15T20:30:00Z" },
+    ]);
+    expect(codes(r)).toContain("minor_night_work");
+  });
+
+  it("gjelder også 23–06-vinduet for 15–18", () => {
+    const teen = { name: "Nora", ageAtShoot: 16, inCompulsorySchooling: false };
+    // 21:30 UTC = 23:30 norsk sommertid.
+    expect(
+      codes(evaluateWorkTime(teen, [
+        { callTime: "2027-07-15T18:00:00Z", wrapTime: "2027-07-15T21:30:00Z" },
+      ])),
+    ).toContain("minor_night_work");
   });
 });

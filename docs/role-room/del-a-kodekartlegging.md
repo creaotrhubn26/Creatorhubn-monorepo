@@ -304,7 +304,7 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
 | 83 | Scene ↔ karakter ↔ kandidat | Navnekobling som tåler «KARI (V.O.)», flagger ukoblede karakterer, og propagerer cast-endring til opptaksdager |
 | 98 | QR inn/ut-skanning | Migrering 0454: kode uten forvekslingstegn, utsjekk begrenset av fysisk beholdning |
 | 42 | BankID-signering | **Kun sømmen.** Leverandør-agnostisk datamodell + adapter-grensesnitt + stub. Se under |
-| 74 + 80 | AML-sjekk (arbeidstid + barn) | Migrering 0456 + regelmotor. Daglig/ukentlig arbeidstid, hviletid, pause, nattarbeid og kap. 11-grensene for barn. Alder regnes på opptaksdagen; grunnskoleplikt avgjør regelsett; tariff kan utvide grensene og motoren sier hvilken den brukte |
+| 74 + 80 | AML-sjekk (arbeidstid + barn) | Migrering 0456 + regelmotor. Daglig/ukentlig arbeidstid, hviletid, pause, nattarbeid og kap. 11-grensene for barn. Alder regnes på opptaksdagen; grunnskoleplikt avgjør regelsett; tariff kan utvide grensene og motoren sier hvilken den brukte. **Flate levert** — se under |
 | 72 + 84 + 87 + 73 | Stripboard, sidetall, skutt-status, fremdrift | Migrering 0457. Sider i åttedeler som bransjen måler. Dagsoppsummering teller unike karakterer og locations. Fremdrift måles i sider, med strøkne scener holdt utenfor |
 | 114 | Finansiør-eksport | Migrering 0458 + CSV-eksport. **NFI-kartleggingen er ukontrollert** (`verified = FALSE`) — se under |
 
@@ -376,6 +376,42 @@ Kontrollen fant to manglende koblinger, begge nå tettet:
 - **Finansieringsskjermen var ikke montert.** Den ligger nå som egen fane
   «Finansiering» mellom Budsjett og Godkjenning — den rekkefølgen arbeidet går i, og
   egen fane framfor under-fane fordi søknadsfrister har egen tidslinje.
+
+## 74 + 80 — AML-flaten
+
+Regelmotoren og vakttabellen fantes fra før, men verifiseringen viste at kjeden var
+brutt på to måter som begge gjorde funksjonen verre enn fraværende.
+
+**Ingenting skrev til `role_room_work_shifts`.** Tabellen ble opprettet i migrering
+0456 og bare lest. `rr_work_time_check` svarte derfor «0 brudd» på ethvert prosjekt —
+ikke fordi dagene var lovlige, men fordi det ikke fantes en eneste vakt å regne på. Et
+etterlevelsesverktøy som er grønt av mangel på data er farligere enn et som ikke
+finnes: det andre leter man opp, det første stoler man på.
+
+Løsningen er `role-room-work-shift-service.ts`, som lager vaktene fra opptaksdagen —
+crew fra bemanningen, cast via scene → karakter → rolle → tildelt kandidat. Tidene
+hentes fra dagens egne `callTime`/`wrapTime`, som produsenten allerede har fylt inn;
+å spørre om dem på nytt ville gjort sjekken til enda et skjema. Migrering 0462 gjør
+`data`-kolonnen de ligger i til en migrert kolonne framfor en som `ensureSchema`
+tilfeldigvis rakk å legge til.
+
+Rapporten skiller nå fire tilstander — `no_data`, `partial`, `violations`, `ok` — og
+«ingen data» slår ut **før** «ingen brudd». Dekningen står øverst i panelet, ikke
+funnene, og dager uten vakter får en knapp framfor en advarsel.
+
+**Nattarbeidsvinduene ble lest i serverens tidssone.** Funnet under verifiseringen mot
+Postgres: `touchesClockWindow` brukte `getHours()`. Loven sier «kl. 20.00» om den
+norske klokka, men Render og containere kjører UTC — en wrap kl. 21.30 norsk sommertid
+ble lest som 19.30 og falt utenfor forbudet i § 11-3. Bruddet forsvant stille, og
+ingen leter etter et funn som aldri kom.
+
+`role-room-oslo-time.ts` slår opp Europe/Oslo per tidspunkt via ICU, så sommertid
+håndteres uten hardkodet offset. Regelmotoren og vaktgenereringen bruker den begge, og
+regresjonsvernet ligger som tester på både 20–06- og 23–06-vinduet, sommer og vinter.
+
+Flaten ligger i Kalender → Operativ produksjonsstyring, under opptaksdagene. Ikke i en
+egen fane: arbeidstiden bestemmes når dagene planlegges, og et etterlevelsesvarsel man
+må lete etter blir lest for sent.
 
 ## Metode og forbehold
 

@@ -24,6 +24,8 @@
  * eller etterleve et varsel trenger å slå det opp selv.
  */
 
+import { osloHour } from "./role-room-oslo-time.js";
+
 // ── Typer ───────────────────────────────────────────────────────────────────
 
 export interface Shift {
@@ -103,23 +105,26 @@ export function restBetween(previous: Shift, next: Shift): number {
 /**
  * Om vakten berører et klokkeslettvindu (f.eks. nattarbeidsforbudet).
  * Vinduet kan krysse midnatt, som 23:00–06:00 gjør.
+ *
+ * Klokkeslettene leses på norsk veggklokke, ikke serverens. Loven sier «kl.
+ * 20.00», og på en UTC-server ville en wrap kl. 21.30 norsk sommertid blitt
+ * lest som 19.30 og sluppet utenom forbudet. Et brudd som forsvinner stille
+ * er verre enn et falskt varsel — ingen leter etter et funn som aldri kom.
  */
 export function touchesClockWindow(shift: Shift, fromHour: number, toHour: number): boolean {
   const start = new Date(shift.callTime);
   const end = new Date(shift.wrapTime);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
 
-  // Gå time for time gjennom vakten. Enkelt, og vakter er timer, ikke år.
+  const inWindow = (h: number) =>
+    fromHour <= toHour ? h >= fromHour && h < toHour : h >= fromHour || h < toHour;
+
+  // Gå kvarter for kvarter gjennom vakten. Enkelt, og vakter er timer, ikke år.
   for (let t = start.getTime(); t < end.getTime(); t += HOUR_MS / 4) {
-    const h = new Date(t).getHours();
-    const inWindow = fromHour <= toHour ? h >= fromHour && h < toHour : h >= fromHour || h < toHour;
-    if (inWindow) return true;
+    if (inWindow(osloHour(new Date(t)))) return true;
   }
   // Sluttidspunktet selv teller også, hvis vakten slutter inne i vinduet.
-  const endHour = end.getHours();
-  const endInWindow =
-    fromHour <= toHour ? endHour >= fromHour && endHour < toHour : endHour >= fromHour || endHour < toHour;
-  return endInWindow && end.getTime() > start.getTime();
+  return inWindow(osloHour(end)) && end.getTime() > start.getTime();
 }
 
 function determineRuleSet(person: PersonWorkContext): WorkTimeReport["ruleSet"] {
