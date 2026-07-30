@@ -191,6 +191,21 @@ enum LearnedStyle {
             out = cc.outputImage?.cropped(to: image.extent) ?? out
         }
 
+        // Eksponerings-vakt: LUT-en er trent på Python-nøytral (rawpy); app-
+        // nøytralen (CIRAWFilter) er lysere → LUT-en kan over-eksponere. Mål
+        // lysstyrken før/etter og match DELVIS (70 %) tilbake mot basen — looken
+        // (farge/tone-form) beholdes uten å blåse ut høylys.
+        if let outCg = ctx.createCGImage(out, from: out.extent) {
+            let baseL = f[8], styledL = features(of: outCg)[8]   // OpenCV-L/255
+            if baseL > 0.02, styledL > baseL + 0.02 {
+                let ev = max(-1.3, min(0.0, 0.7 * log2(baseL / styledL)))
+                let e = CIFilter.exposureAdjust()
+                e.inputImage = out
+                e.ev = Float(ev)
+                out = e.outputImage?.cropped(to: image.extent) ?? out
+            }
+        }
+
         // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
         // hud-tone (a*≈11 — fikser oransje/flekkete varme) + lett utjevning +
         // ansikts-dodge. Uten dette går lys hud i varmt vinduslys ujevn.
