@@ -191,8 +191,11 @@ enum LearnedStyle {
             out = cc.outputImage?.cropped(to: image.extent) ?? out
         }
 
-        // Ansikts-dodge — gjenbruker motorens «løft ansikter kun når de måler for
-        // mørkt» on-device (samme prinsipp som Python `gentle_face_dodge`).
+        // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
+        // hud-tone (a*≈11 — fikser oransje/flekkete varme) + lett utjevning +
+        // ansikts-dodge. Uten dette går lys hud i varmt vinduslys ujevn.
+        out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
+        out = SkinSmoothFilter.apply(amount: 0.4, to: out)
         out = FaceDodgeFilter.apply(to: out)
         return out.cropped(to: image.extent)
     }
