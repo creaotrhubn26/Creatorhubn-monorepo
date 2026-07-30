@@ -20,6 +20,7 @@ import { newEntityId } from "./_shared-ids.js";
 import { listExpiringRights } from "./role-room-buyout-service.js";
 import { checkEquipmentAvailability } from "./role-room-equipment-availability.js";
 import { getProjectPipeline } from "./role-room-role-status-service.js";
+import { getBudgetOnboardingState } from "./role-room-budget-onboarding.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -982,6 +983,16 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_budget_onboarding",
+    description: "Sjekker om prosjektet trenger hjelp i gang med budsjettet: antall linjer, sum, om en nudge er relevant, og hvilke maler som passer prosjekttypen. Maser ikke på nye prosjekter uten aktivitet.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return getBudgetOnboardingState(pool, projectId);
+    },
+  },
   {
     name: "rr_role_pipeline",
     description: "Fordelingen av roller per steg i casting-trakta (kladd → utlyst → prøvespill → kortliste → tilbud → signert, pluss på vent/avlyst). Tomme steg tas med, fordi et hull midt i trakta er nettopp det man vil se.",
