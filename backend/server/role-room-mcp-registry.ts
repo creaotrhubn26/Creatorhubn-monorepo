@@ -26,6 +26,7 @@ import { resolveSceneCast, getCastChangeImpact } from "./role-room-scene-cast-se
 import { getEquipmentByCode } from "./role-room-equipment-checkout-service.js";
 import { evaluateProjectWorkTime } from "./role-room-work-time-service.js";
 import { getStripboard, getShootProgress } from "./role-room-stripboard-service.js";
+import { buildFundingExport } from "./role-room-funding-export.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -988,6 +989,28 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_funding_export",
+    description: "Eksporterer prosjektets budsjett til en finansiørs postoppsett (f.eks. NFI). Advarer eksplisitt når oppsettet ikke er kontrollert mot finansiørens gjeldende mal, og lister kategorier som mangler kartlegging framfor å utelate dem stille.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      scheme: STR("Oppsettets nøkkel, f.eks. «nfi»"),
+    }, ["projectId", "scheme"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const scheme = typeof args.scheme === "string" ? args.scheme.trim() : "";
+      if (!scheme) throw new McpToolError(-32602, "scheme er påkrevd.");
+      try {
+        return await buildFundingExport(pool, projectId, scheme);
+      } catch (err) {
+        if (/Ukjent budsjettoppsett/.test((err as Error).message)) {
+          throw new McpToolError(-32004, `Ukjent budsjettoppsett «${scheme}».`);
+        }
+        throw err;
+      }
+    },
+  },
   {
     name: "rr_stripboard",
     description: "Stripboardet: scener fordelt på opptaksdager, med sidetall per dag (i åttedeler, som bransjen måler), antall i cast, antall locations og samlet riggetid. Scener som ikke er planlagt ennå ligger i en egen bunke framfor å utelates.",
