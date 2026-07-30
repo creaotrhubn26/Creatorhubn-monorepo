@@ -6,6 +6,10 @@ import Foundation
 final class LearnedStyleStore: @unchecked Sendable {
     static let shared = LearnedStyleStore()
 
+    /// Demo-hekte (`--demo-redigering --learned-on`): la Redigering-demoen åpne
+    /// med «Min stil» alt på, så før/etter kan fanges i simulator-skjermbilder.
+    nonisolated(unsafe) static var demoForceLearnedStyle = false
+
     let profile: LearnedStyleProfile?
     var isAvailable: Bool { profile != nil }
     var sceneCount: Int { profile?.scenes.count ?? 0 }

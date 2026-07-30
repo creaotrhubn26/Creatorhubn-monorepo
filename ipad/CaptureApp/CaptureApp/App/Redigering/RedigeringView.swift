@@ -26,7 +26,7 @@ final class RedigeringModel {
     /// «Min stil (lært)» — påfør fotografens arkiv-lærte profil (per-kanal-LUT +
     /// a/b, scene-matchet on-device) oppå den valgte recipen. Kun tilgjengelig
     /// når en profil er bundlet/lastet (``LearnedStyleStore``).
-    var useLearnedStyle = false
+    var useLearnedStyle = LearnedStyleStore.demoForceLearnedStyle
     var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
 
     /// Rendered "Etter" preview for the selected asset + current recipe.
@@ -304,15 +304,18 @@ final class RedigeringModel {
         let cleaned = asset.autoCleanedKey
         let raw = (serverEnhanced == nil && cleaned == nil) ? asset.rawKey : nil
         let jpeg = serverEnhanced ?? cleaned ?? asset.displayPreviewKey
-        let r = effectiveRecipe()
+        let learned = useLearnedStyle ? LearnedStyleStore.shared.profile : nil
+        // Lært stil er en KOMPLETT look (nøytral→levert). Stables den oppå en
+        // annen recipe dobbelt-prosesserer den → bruk en NØYTRAL base når «Min
+        // stil» er på, så den lærte tonekurven+fargen er det primære laget.
+        let r = learned != nil ? MagicRecipe.neutral : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
-        let learned = useLearnedStyle ? LearnedStyleStore.shared.profile : nil
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let base = RedigeringPipeline.renderPreview(
                 rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop) else { return nil }
             guard let profile = learned, let ci = CIImage(image: base) else { return base }
-            // Påfør den lærte stilen oppå recipe-rendringen.
+            // Påfør fotografens lærte look på den nøytrale basen.
             let styled = LearnedStyle.apply(profile: profile, to: ci)
             let ctx = CIContext(options: [.useSoftwareRenderer: false])
             guard let cg = ctx.createCGImage(styled, from: styled.extent) else { return base }
