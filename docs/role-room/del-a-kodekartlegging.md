@@ -3,6 +3,11 @@
 Kartlegging av de 150 punktene i «Del A prioritert» mot koden slik den faktisk står i
 monorepoet. Gjennomført 30. juli 2026.
 
+> **Oppdatert 30. juli 2026 etter implementasjon.** Fire punkter er levert siden
+> kartleggingen: 35 (GDPR-autosletting), 140 (total + paginering), 141 (utkast-opprydding)
+> og 150 (OpenAPI + integratorguide). Tabellene under viser statusen slik den var ved
+> kartleggingen; se «Levert» nederst for hva som er endret.
+
 **Statuskoder:** ✅ bygget · 🟡 delvis · ⬜ ikke funnet
 
 **Konfidensnivå:** *V* = verifisert (lest kode/skjema) · *I* = indikasjon (søketreff, ikke lest i dybden).
@@ -275,6 +280,25 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
    Høyest verdi per innsats i hele listen, fordi grunnarbeidet allerede er gjort.
 
 ---
+
+## Levert etter kartleggingen
+
+| # | Punkt | Hva som ble bygget |
+|---|-------|--------------------|
+| 35 | GDPR-autosletting | `role-room-retention-service.ts` + migrering 0443. Fire kategorier (utløpt samtykke, avviste kandidater, avsluttede prosjekter, utløpte delingslenker) med frister i `role_room_retention_policies`, juridisk hold, revisjonsspor og daglig cron. **Tørrkjøring inntil `RR_RETENTION_ENFORCE=true`** — fristene mangler fortsatt juridisk vurdering |
+| 140 | Total + paginering | Alle 20 MCP-list-verktøy tar `limit`/`offset` og returnerer `pagination` med `total` og `hasMore`. Rad-nøkkelen er uendret, så endringen er additiv |
+| 141 | List/get/delete drafts | `rr_list_drafts`, `rr_get_draft`, `rr_delete_draft`. Ser kun rader med agent-markør som fortsatt er upubliserte — produsentdata kan ikke slettes. Migrering 0444 gir utdannings-oppgaver samme markør |
+| 150 | API-dok + sandbox | OpenAPI 3.1 på `/api/integrations/v1/role-room/openapi.json` med drift-test mot ruteren, samt `integration-v1-guide.md`. **Isolert sandbox gjenstår** — guiden dokumenterer testkonto-mønsteret som finnes i dag |
+
+To rettelser til kartleggingen kom fram under arbeidet, begge i A12:
+
+- **146 (`updated_since`-filter)** er allerede bygget på `/v1` som `updatedAfter` på
+  prosjektlisten. Gjelder fortsatt for MCP-flaten.
+- **144 (rate limits + Retry-After)** er bygget på `/v1` med `x-rate-limit-limit`,
+  `x-rate-limit-remaining` og `retry-after`. Det er MCP-flaten som mangler headeren.
+
+Mønsteret fra hovedfunnet gjentar seg altså: `/v1`-REST-API-et er modent, og gapet
+ligger nesten alltid på MCP-flaten.
 
 ## Metode og forbehold
 
