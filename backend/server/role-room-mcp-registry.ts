@@ -22,6 +22,7 @@ import { checkEquipmentAvailability } from "./role-room-equipment-availability.j
 import { getProjectPipeline } from "./role-room-role-status-service.js";
 import { getBudgetOnboardingState } from "./role-room-budget-onboarding.js";
 import { listChecklistTemplates } from "./role-room-checklist-templates.js";
+import { resolveSceneCast, getCastChangeImpact } from "./role-room-scene-cast-service.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -984,6 +985,40 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_scene_cast",
+    description: "Hvem spiller hvem i hver scene: karakter → rolle → tildelt kandidat. Karakterer som ikke lot seg koble til en rolle flagges eksplisitt framfor å utelates — det er som regel en skrivefeil i manus eller en rolle som mangler.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      manuscriptId: STR("Valgfritt: filtrer på ett manus"),
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const manuscriptId = typeof args.manuscriptId === "string" && args.manuscriptId.trim()
+        ? args.manuscriptId.trim() : undefined;
+      return resolveSceneCast(pool, projectId, { manuscriptId });
+    },
+  },
+  {
+    name: "rr_cast_change_impact",
+    description: "Hva berøres hvis castingen på en rolle endres: hvilke scener rollen har replikk i, og hvilke opptaksdager de scenene er planlagt på. Svarer på «kan vi bytte skuespiller, og hva koster det i omplanlegging».",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), roleId: STR("Rollens id") }, ["projectId", "roleId"]),
+    handler: async (pool, ctx, args) => {
+      await requireProject(pool, ctx, args);
+      const roleId = typeof args.roleId === "string" ? args.roleId.trim() : "";
+      if (!roleId) throw new McpToolError(-32602, "roleId er påkrevd.");
+      try {
+        return await getCastChangeImpact(pool, roleId);
+      } catch (err) {
+        if (/Fant ikke rollen/.test((err as Error).message)) {
+          throw new McpToolError(-32004, "Fant ikke rollen.");
+        }
+        throw err;
+      }
+    },
+  },
   {
     name: "rr_list_checklist_templates",
     description: "List sjekkliste-maler for produksjonsfaser, med de som passer prosjekttypen først. Malene gir en tom tidslinje innhold — punktene er handlinger med frist regnet fra opptaksstart.",
