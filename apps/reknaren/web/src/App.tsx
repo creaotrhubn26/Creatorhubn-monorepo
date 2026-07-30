@@ -24,6 +24,7 @@ import {
   YearEndScreen,
 } from './screens';
 import { DimensionsScreen } from './screens-dimensions';
+import { FixedAssetsScreen } from './screens-assets';
 import { InvoicingScreen } from './screens-invoicing';
 import { OrgSettingsScreen } from './screens-org';
 import { AuditScreen, JournalScreen, LedgerScreen } from './screens-pro';
@@ -77,6 +78,7 @@ type Screen =
   | { name: 'vat' }
   | { name: 'tax' }
   | { name: 'year-end' }
+  | { name: 'assets' }
   | { name: 'ledger' }
   | { name: 'journal' }
   | { name: 'audit' }
@@ -122,6 +124,7 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
       { key: 'period-close', label: 'Månedsavslutning', icon: 'shield' },
       { key: 'vat', label: 'MVA', icon: 'percent' },
       { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
+      { key: 'assets', label: 'Anleggsmidler', icon: 'overview' },
       { key: 'year-end', label: 'Årsavslutning', icon: 'shield' },
     ],
   },
@@ -339,6 +342,7 @@ export default function App() {
           {screen.name === 'integrations' && <IntegrationsScreen orgId={orgId} />}
           {screen.name === 'tax' && <TaxScreen orgId={orgId} />}
           {screen.name === 'year-end' && <YearEndScreen orgId={orgId} />}
+          {screen.name === 'assets' && <FixedAssetsScreen orgId={orgId} />}
           {screen.name === 'ledger' && <LedgerScreen orgId={orgId} />}
           {screen.name === 'journal' && <JournalScreen orgId={orgId} />}
           {screen.name === 'audit' && <AuditScreen orgId={orgId} />}

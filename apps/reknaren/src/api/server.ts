@@ -15,6 +15,7 @@ import { SmartGmailFilter, type EmailClassifier, type EmailSignals } from '../in
 import { lockPeriod, reverseJournalEntry } from '../ledger/engine.js';
 import { computeYearEndPlan, executeYearEndClose } from '../ledger/year-end.js';
 import { buildNaeringsspesifikasjon } from '../tax/naeringsspesifikasjon.js';
+import { SALDO_GROUPS, bookDepreciation, computeDepreciation, createFixedAsset, disposeFixedAsset, listFixedAssets, type SaldoGroup } from '../ledger/depreciation.js';
 import {
   balanceSheet,
   generalLedger,
@@ -3357,6 +3358,55 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // ── Anleggsmiddelregister + saldoavskrivning ────────────────────────────
+  app.get('/api/organizations/:orgId/fixed-assets', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson({ groups: SALDO_GROUPS, assets: await listFixedAssets(deps.db, req.params.orgId!) }));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/fixed-assets', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({
+        name: z.string().min(1).max(200),
+        saldoGroup: z.enum(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']),
+        acquisitionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        costMinor: z.string().regex(/^\d+$/),
+        ledgerAccount: z.string().max(20).optional(),
+        notes: z.string().max(500).optional(),
+      }).parse(req.body);
+      const asset = await createFixedAsset(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        name: body.name,
+        saldoGroup: body.saldoGroup as SaldoGroup,
+        acquisitionDate: body.acquisitionDate,
+        costMinor: BigInt(body.costMinor),
+        ...(body.ledgerAccount ? { ledgerAccount: body.ledgerAccount } : {}),
+        ...(body.notes ? { notes: body.notes } : {}),
+      });
+      res.status(201).json(toJson(asset));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/fixed-assets/:assetId/dispose', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ disposalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), proceedsMinor: z.string().regex(/^\d+$/) }).parse(req.body);
+      await disposeFixedAsset(deps.db, { organizationId: req.params.orgId!, assetId: req.params.assetId!, disposalDate: body.disposalDate, proceedsMinor: BigInt(body.proceedsMinor) });
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  app.get('/api/organizations/:orgId/fixed-assets/depreciation', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const year = z.coerce.number().int().min(2000).max(2100).parse(req.query.year ?? new Date().getFullYear());
+      res.json(toJson(await computeDepreciation(deps.db, { organizationId: req.params.orgId!, year })));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/fixed-assets/depreciation/:year/book', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
+      res.status(201).json(toJson(await bookDepreciation(deps.db, { organizationId: req.params.orgId!, actor: { userId: req.auth!.userId, role: req.orgRole! }, year })));
+    } catch (err) { next(err); }
+  });
 
   // Årsavslutning — gjennomfør: bokfør skattekostnad (AS) + lås året. Idempotent.
   app.post(
