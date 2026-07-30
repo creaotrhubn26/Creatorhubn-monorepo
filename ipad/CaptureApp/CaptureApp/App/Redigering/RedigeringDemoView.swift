@@ -20,8 +20,12 @@ struct RedigeringDemoView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            LearnedStyleStore.demoForceLearnedStyle =
-                ProcessInfo.processInfo.arguments.contains("--learned-on")
+            let args = ProcessInfo.processInfo.arguments
+            if let a = args.first(where: { $0.hasPrefix("--learned-on") }) {
+                // «--learned-on» → stil 0; «--learned-on=N» → stil N.
+                let n = a.split(separator: "=").last.flatMap { Int($0) } ?? 0
+                LearnedStyleStore.demoForceStyleIndex = n
+            }
             if SignInService.shared.session == nil {
                 SignInService.shared.setInMemoryDemoSession(
                     userId: "demo-redigering",

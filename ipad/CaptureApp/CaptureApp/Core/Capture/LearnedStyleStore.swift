@@ -6,13 +6,15 @@ import Foundation
 final class LearnedStyleStore: @unchecked Sendable {
     static let shared = LearnedStyleStore()
 
-    /// Demo-hekte (`--demo-redigering --learned-on`): la Redigering-demoen åpne
-    /// med «Min stil» alt på, så før/etter kan fanges i simulator-skjermbilder.
-    nonisolated(unsafe) static var demoForceLearnedStyle = false
+    /// Demo-hekte (`--demo-redigering --learned-on[=N]`): la Redigering-demoen
+    /// åpne med stil N alt valgt, så før/etter kan fanges i sim-skjermbilder.
+    nonisolated(unsafe) static var demoForceStyleIndex: Int?
 
     let profile: LearnedStyleProfile?
-    var isAvailable: Bool { profile != nil }
-    var sceneCount: Int { profile?.scenes.count ?? 0 }
+    /// De navngitte stilene (v1 → én «Min stil»; v2 → flere distinkte looker).
+    var styles: [LearnedStyleProfile.Style] { profile?.allStyles ?? [] }
+    var styleNames: [String] { styles.map(\.name) }
+    var isAvailable: Bool { !styles.isEmpty }
 
     private init() {
         if let url = Bundle.main.url(forResource: "learned_style", withExtension: "json") {
