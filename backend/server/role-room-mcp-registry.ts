@@ -18,6 +18,7 @@ import { hasScope } from "./role-room-integrations-v1-routes.js";
 import { mcpCanAccessProject } from "./role-room-mcp-auth.js";
 import { newEntityId } from "./_shared-ids.js";
 import { listExpiringRights } from "./role-room-buyout-service.js";
+import { checkEquipmentAvailability } from "./role-room-equipment-availability.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -977,6 +978,41 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
          VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,'draft',$6,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
         [projectId, entryType, title, externalUrl, phase, ctx.userId]);
       return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — bekreftes i Role Room-UI." };
+    },
+  },
+
+  {
+    name: "rr_check_equipment_availability",
+    description: "Sjekk om utstyr er ledig i en periode FØR booking. Returnerer lagerantall, hvor mye som er booket i perioden, hvor mye som er ledig, og hvilke bookinger som eventuelt er i veien. Rygg-mot-rygg-utleie (én slutter når neste starter) regnes ikke som konflikt.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      equipmentId: STR("Utstyrets id"),
+      startDate: STR("Fra (ISO-tidspunkt)"),
+      endDate: STR("Til (ISO-tidspunkt)"),
+      quantity: { type: "number", description: "Antall enheter det spørres om (default 1)" },
+    }, ["projectId", "equipmentId", "startDate", "endDate"]),
+    handler: async (pool, ctx, args) => {
+      await requireProject(pool, ctx, args);
+      const equipmentId = typeof args.equipmentId === "string" ? args.equipmentId.trim() : "";
+      const startDate = typeof args.startDate === "string" ? args.startDate.trim() : "";
+      const endDate = typeof args.endDate === "string" ? args.endDate.trim() : "";
+      if (!equipmentId || !startDate || !endDate) {
+        throw new McpToolError(-32602, "equipmentId, startDate og endDate er påkrevd.");
+      }
+      try {
+        return await checkEquipmentAvailability(pool, {
+          equipmentId,
+          startDate,
+          endDate,
+          quantity: typeof args.quantity === "number" ? args.quantity : undefined,
+        });
+      } catch (err) {
+        if (/Ukjent utstyr/.test((err as Error).message)) {
+          throw new McpToolError(-32004, "Fant ikke utstyret.");
+        }
+        throw err;
+      }
     },
   },
 
