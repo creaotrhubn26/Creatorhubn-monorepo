@@ -23,7 +23,12 @@ import CoreImage.CIFilterBuiltins
 enum SkinToneGuardFilter {
 
     static func apply(recipe: MagicRecipe, to image: CIImage) -> CIImage {
-        guard recipe.skinGuard > 0 else { return image }
+        apply(strength: recipe.skinGuard, to: image)
+    }
+
+    /// Direkte styrke-inngang (for LearnedStyle-banen som ikke har en recipe).
+    static func apply(strength: Double, to image: CIImage) -> CIImage {
+        guard strength > 0 else { return image }
         let extent = image.extent
         guard let faceRect = detectFaceRect(in: image, extent: extent) else { return image }
         // Prøvetak KJERNEN av ansiktet (kinn/panne) — krymp rekt til 60 % så vi
@@ -32,7 +37,7 @@ enum SkinToneGuardFilter {
         guard let mean = areaAverage(of: image, in: inner.width > 2 ? inner : faceRect) else { return image }
 
         let aStar = SkinToneMath.aStar(r: mean.r, g: mean.g, b: mean.b)
-        let bias = SkinToneMath.redGreenBias(aStar: aStar, intensity: recipe.skinGuard)
+        let bias = SkinToneMath.redGreenBias(aStar: aStar, intensity: strength)
         guard abs(bias) > 0.001 else { return image }
 
         // Rød↔grønn-akse: +bias hever a* (rød opp, grønn ned) — motbalansert så

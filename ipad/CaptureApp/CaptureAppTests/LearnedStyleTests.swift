@@ -114,6 +114,19 @@ final class LearnedStyleTests: XCTestCase {
         XCTAssertLessThan(meanLuma(out), 0.5, "invert-LUT gjorde ikke lyst→mørkt")
     }
 
+    func testExposureGuardCapsOverBrightening() throws {
+        // LUT som mapper ALT til nesten hvitt (~0.92) → uten vakt ville et
+        // midtgrått bilde blitt utblåst. Eksponerings-vakten skal trekke tilbake.
+        let brightCurve = [Int](repeating: 235, count: 256)
+        let bright = [scene(feat: [Double](repeating: 0.1, count: 12),
+                            lut: [brightCurve, brightCurve, brightCurve])]
+        let base = CIImage(cgImage: makeCG(0.5, 64))
+        let out = LearnedStyle.apply(scenes: bright, to: base, k: 1)
+        // Uten vakt ~0.92; med vakt skal den holdes tydelig under utblåsning.
+        XCTAssertLessThan(meanLuma(out), 0.82, "eksponerings-vakten hindret ikke overløft")
+        XCTAssertGreaterThan(meanLuma(out), meanLuma(base) - 0.05, "vakten dro for mye ned")
+    }
+
     func testEmptyProfileIsNoOp() {
         let base = CIImage(cgImage: makeCG(0.5))
         let out = LearnedStyle.apply(scenes: [], to: base, k: 5)

@@ -177,11 +177,25 @@ enum LearnedStyle {
             out = m.outputImage ?? out
         }
 
-        // Reinhard-STD on-device (andre halvpart av fargeoverføringen): L-std →
-        // kontrast, a/b-std → metning. CIColorControls approksimerer LAB-spred-
-        // skaleringen. Klemt dempet så én scene ikke sprenger looken.
-        let contrast = min(1.35, max(0.75, blended.labStd[0]))
-        let sat = min(1.35, max(0.75, (blended.labStd[1] + blended.labStd[2]) / 2))
+        // (1) HØYLYS-RECOVERY FØRST (myk skulder) — henter tilbake utblåste hvite
+        // (bluse/ansikt/vindu) UTEN å mørkne skygger/mellomtoner/hår, i motsetning
+        // til en global eksponerings-reduksjon. Research: myk høylys-skulder er
+        // den viktigste tone-korreksjonen. Alltid en lett skulder + sterkere når
+        // toppen faktisk er utblåst.
+        let tc = CIFilter.toneCurve()
+        tc.inputImage = out
+        tc.point0 = CGPoint(x: 0, y: 0)
+        tc.point1 = CGPoint(x: 0.30, y: 0.30)
+        tc.point2 = CGPoint(x: 0.60, y: 0.60)
+        tc.point3 = CGPoint(x: 0.82, y: 0.79)     // begynn å komprimere
+        tc.point4 = CGPoint(x: 1.00, y: 0.90)     // dra hvitt ned → gjenopprett
+        out = tc.outputImage?.cropped(to: image.extent) ?? out
+
+        // (2) Reinhard-STD ETTER høylys-recovery: L-std → kontrast, a/b-std →
+        // metning. Metnings-GULV hevet til 0.9 så farger/hud beholder liv (ikke
+        // over-avmett), og kontrast klemt lavere så vi ikke hardner tonene.
+        let contrast = min(1.25, max(0.85, blended.labStd[0]))
+        let sat = min(1.30, max(0.9, (blended.labStd[1] + blended.labStd[2]) / 2))
         if abs(contrast - 1) > 0.01 || abs(sat - 1) > 0.01 {
             let cc = CIFilter.colorControls()
             cc.inputImage = out
@@ -191,8 +205,25 @@ enum LearnedStyle {
             out = cc.outputImage?.cropped(to: image.extent) ?? out
         }
 
-        // Ansikts-dodge — gjenbruker motorens «løft ansikter kun når de måler for
-        // mørkt» on-device (samme prinsipp som Python `gentle_face_dodge`).
+        // (3) MILD global eksponerings-vakt — kun backstop mot base-mismatch-lift
+        // (app-nøytral lysere enn Python-nøytral). Dempet (40 %) + høyere terskel
+        // så den ikke mørkner hår/mellomtoner unødig; høylys-skulderen tar resten.
+        if let outCg = ctx.createCGImage(out, from: out.extent) {
+            let baseL = f[8], styledL = features(of: outCg)[8]   // OpenCV-L/255
+            if baseL > 0.02, styledL > baseL + 0.06 {
+                let ev = max(-0.7, min(0.0, 0.4 * log2(baseL / styledL)))
+                let e = CIFilter.exposureAdjust()
+                e.inputImage = out
+                e.ev = Float(ev)
+                out = e.outputImage?.cropped(to: image.extent) ?? out
+            }
+        }
+
+        // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
+        // hud-tone (a*≈11 — fikser oransje/flekkete varme) + lett utjevning +
+        // ansikts-dodge. Uten dette går lys hud i varmt vinduslys ujevn.
+        out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
+        out = SkinSmoothFilter.apply(amount: 0.4, to: out)
         out = FaceDodgeFilter.apply(to: out)
         return out.cropped(to: image.extent)
     }
