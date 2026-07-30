@@ -1287,6 +1287,12 @@ function encryptRoleRoomGoogleToken(value: string): string {
   return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
 }
 
+// Budsjett-onboarding og maler (Del A punkt 105/106).
+import {
+  applyBudgetTemplate,
+  getBudgetOnboardingState,
+} from './role-room-budget-onboarding.js';
+
 // Slice 9X.80 — delegerer til shared dekryptor
 import { decryptGoogleToken as sharedDecryptGoogleToken } from './google-oauth-shared.js';
 function decryptRoleRoomGoogleToken(value: string | null | undefined): string | null {
@@ -14592,6 +14598,63 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Producer economy delete error:', error);
       res.status(500).json({ error: 'Kunne ikke slette økonomilinje' });
+    }
+  });
+
+  // ── Budsjett-onboarding og maler (Del A punkt 105/106) ──────────────────
+  // Tjenestelaget fantes, men bare via MCP. Uten disse to endepunktene må
+  // produsenten skrive inn alle linjene selv — og et tomt budsjett gjør
+  // tilskuddseksporten til en liste med nuller.
+  //
+  // Ligger her og ikke i en egen rutefil fordi skrivetilgangen
+  // (canWriteProducerData) er en closure i denne oppsettsfunksjonen, og
+  // maler skriver til de samme linjene som rutene rett over.
+
+  router.get('/projects/:projectId/producer/economy/onboarding', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!roleRecord) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      res.json(await getBudgetOnboardingState(pool, projectId));
+    } catch (error) {
+      console.error('Budget onboarding state error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente budsjettstatus' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/economy/apply-template', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    const templateKey = typeof req.body?.templateKey === 'string' ? req.body.templateKey.trim() : '';
+    if (!templateKey) {
+      res.status(400).json({ error: 'templateKey er påkrevd' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å opprette økonomilinjer' });
+        return;
+      }
+
+      const result = await applyBudgetTemplate(pool, {
+        projectId,
+        templateKey,
+        userId: getUserId(req) ?? null,
+      });
+      res.json(result);
+    } catch (error) {
+      // Ukjent mal er en klientfeil, ikke en serverfeil — den som ber om en
+      // mal som ikke finnes skal få vite det, ikke se «noe gikk galt».
+      if (error instanceof Error && error.message.startsWith('Ukjent budsjettmal')) {
+        res.status(404).json({ error: error.message });
+        return;
+      }
+      console.error('Budget template apply error:', error);
+      res.status(500).json({ error: 'Kunne ikke bruke budsjettmalen' });
     }
   });
 

@@ -298,7 +298,7 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
 
 | 60 | Envegs kalendersynk | Migrering 0449 + ICS-bygger. Token-basert abonnement som kan trekkes tilbake. Datoer leses fra lokale datodeler — `toISOString()` ville flyttet hver opptaksdag én dag tilbake i Europe/Oslo |
 | 14 | Rolle-statuspipeline | Migrering 0450: draft → open → auditioning → shortlisted → offered → signed, med begrensede overganger, historikk og gjennomløpstid |
-| 105 + 106 | Budsjett-onboarding + maler | Migrering 0451: tre systemmaler (reklame 24 linjer, kortfilm 19, dokumentar 12). Nudgen utløses kun ved reell aktivitet |
+| 105 + 106 | Budsjett-onboarding + maler | Migrering 0451: tre systemmaler (reklame 24 linjer, kortfilm 19, dokumentar 12). Nudgen utløses kun ved reell aktivitet. REST + `BudgetTemplateStarter` i Økonomi → Budsjett → Linjer |
 | 58 | Sjekkliste-maler | Migrering 0452: to maler à 18 punkter med frister regnet fra opptaksstart |
 | 46 | Utløpsvarsling | Migrering 0453 + cron. Varsler ved 90/30/7/0 dager, én gang per terskel |
 | 83 | Scene ↔ karakter ↔ kandidat | Navnekobling som tåler «KARI (V.O.)», flagger ukoblede karakterer, og propagerer cast-endring til opptaksdager |
@@ -342,6 +342,40 @@ To rettelser til kartleggingen kom fram under arbeidet, begge i A12:
 
 Mønsteret fra hovedfunnet gjentar seg altså: `/v1`-REST-API-et er modent, og gapet
 ligger nesten alltid på MCP-flaten.
+
+## Verifisering mot Økonomi-flaten i Story Arc Studio
+
+Før finansieringsskjermen ble montert, ble den kontrollert mot økonomien som allerede
+finnes. Veien dit: Story Arc Studio → Økonomi-kortet → fane 12 → `ProducerBudgetTabs`
+→ `ProjectEconomyHub` (Oversikt | Budsjett | Godkjenning, med under-faner Linjer,
+Avtaler & fordeling, Sync & ramme, Cashflow, Rapporter).
+
+Tre ting ble kontrollert:
+
+1. **Samme tabell.** Økonomi-fanen skriver til `role_room_budget_items`
+   (`role-room-routes.ts`), og både `buildFundingExport` og
+   `getApplicationReadiness` leser fra den samme tabellen. Tallene i søknaden er
+   altså de tallene produsenten allerede har ført — ingen parallell inntasting.
+
+2. **Samme kategorivokabular.** Kontrollert i Postgres 16 ved å kjøre migrering 135,
+   0451 og 0458 mot en tom base: 30 systemkategorier, 30 kartlegginger, null i begge
+   retninger uten motpart. Alle 55 mal-linjene i de tre budsjettmalene treffer en
+   kartlagt kategori. Uten dette ville hver linje havnet i `unmapped` og eksporten
+   blitt en liste med nuller.
+
+3. **Ingen overlapp.** `ProjectEconomyHub`, `EconomyCashflowPanel` og
+   `EconomyReportsPanel` nevner ikke finansiering, tilskudd eller søknad i det hele
+   tatt. Finansiering var et hull, ikke en dublett.
+
+Kontrollen fant to manglende koblinger, begge nå tettet:
+
+- **Budsjettmalene var usynlige.** `listBudgetTemplates` og `applyBudgetTemplate`
+  fantes bare via MCP — ingen REST-rute, ingen UI. En produsent måtte skrive inn alle
+  24 linjene selv. Det er direkte oppstrøms for tilskudd: tomt budsjett gir en søknad
+  med nuller.
+- **Finansieringsskjermen var ikke montert.** Den ligger nå som egen fane
+  «Finansiering» mellom Budsjett og Godkjenning — den rekkefølgen arbeidet går i, og
+  egen fane framfor under-fane fordi søknadsfrister har egen tidslinje.
 
 ## Metode og forbehold
 
