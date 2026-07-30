@@ -3,8 +3,9 @@
 Kartlegging av de 150 punktene i «Del A prioritert» mot koden slik den faktisk står i
 monorepoet. Gjennomført 30. juli 2026.
 
-> **Oppdatert 30. juli 2026 etter implementasjon.** Ti punkter er levert siden
-> kartleggingen: 35, 140, 141, 150, 17, 11, 47, 97, 68 og 82. Tabellene under viser
+> **Oppdatert 30. juli 2026 etter implementasjon.** Sytten punkter er levert siden
+> kartleggingen: 35, 140, 141, 150, 17, 11, 47, 97, 68, 82, 60, 14, 105, 106, 58, 46, 83
+> og 98 — samt sømmen for 42, som venter på et leverandørvalg. Tabellene under viser
 > statusen slik den var ved kartleggingen; se «Levert» nederst for hva som er endret.
 
 **Statuskoder:** ✅ bygget · 🟡 delvis · ⬜ ikke funnet
@@ -295,12 +296,22 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
 | 68 | Lest-kvittering | Migrering 0448: distribusjon + kvittering per mottaker med eget token. Bekreftelsesknapp, ikke sporingspiksel. Status-endepunktet svarer på «hvem må ringes» |
 | 82 | Manus → scener | `casting-screenplay-persistence.ts`: opt-in `?persist=true` på import. Scener gjenkjennes på nummer + heading slik at breakdown-arbeid overlever en manusrevisjon |
 
-Delvis levert som sidegevinst: **46** (kontraktsarkiv med utløpsvarsling) har nå
-datagrunnlaget sitt — `listExpiringRights()` svarer på hva som utløper, tar med
-allerede utløpte, og flagger tapt opsjonsfrist. Selve varslingen (cron + e-post)
-gjenstår. **98** (QR inn/ut) og **83** (scene↔karakter) har tilsvarende fått
-grunnlaget sitt gjennom henholdsvis tilgjengelighetssjekken og
-`characters`-uttrekket per scene.
+| 60 | Envegs kalendersynk | Migrering 0449 + ICS-bygger. Token-basert abonnement som kan trekkes tilbake. Datoer leses fra lokale datodeler — `toISOString()` ville flyttet hver opptaksdag én dag tilbake i Europe/Oslo |
+| 14 | Rolle-statuspipeline | Migrering 0450: draft → open → auditioning → shortlisted → offered → signed, med begrensede overganger, historikk og gjennomløpstid |
+| 105 + 106 | Budsjett-onboarding + maler | Migrering 0451: tre systemmaler (reklame 24 linjer, kortfilm 19, dokumentar 12). Nudgen utløses kun ved reell aktivitet |
+| 58 | Sjekkliste-maler | Migrering 0452: to maler à 18 punkter med frister regnet fra opptaksstart |
+| 46 | Utløpsvarsling | Migrering 0453 + cron. Varsler ved 90/30/7/0 dager, én gang per terskel |
+| 83 | Scene ↔ karakter ↔ kandidat | Navnekobling som tåler «KARI (V.O.)», flagger ukoblede karakterer, og propagerer cast-endring til opptaksdager |
+| 98 | QR inn/ut-skanning | Migrering 0454: kode uten forvekslingstegn, utsjekk begrenset av fysisk beholdning |
+| 42 | BankID-signering | **Kun sømmen.** Leverandør-agnostisk datamodell + adapter-grensesnitt + stub. Se under |
+
+**42 er bevisst ikke fullført.** Beslutningsnotatet § 8 sier at leverandør «velges først
+etter sammenligning», med RFQ til Idura, Signicat og Scrive, og produksjon først ved 10
+ekte brukere. Å hardkode en integrasjon nå ville foregripe den beslutningen og låse oss
+til nettopp det notatet advarer mot. Sømmen gjør leverandørvalget til en adapter framfor
+en ombygging, og stub-adapteren lar resten av flyten bygges ferdig i mellomtiden — som er
+notatets egen «Fase 0». Gjenstår: velg leverandør, implementer adapteren, sett
+`RR_SIGNING_PROVIDER`.
 
 To rettelser til kartleggingen kom fram under arbeidet, begge i A12:
 
