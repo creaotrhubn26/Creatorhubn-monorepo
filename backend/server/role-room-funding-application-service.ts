@@ -21,6 +21,12 @@
  */
 
 import type { Pool } from "pg";
+import {
+  resolveWindowStatus,
+  summarisePartners,
+  type PartnerCoverage,
+  type WindowStatus,
+} from "./role-room-funding-window.js";
 
 /** NFI krever at minst 80 % av finansieringen er bekreftet. */
 export const CONFIRMED_FINANCING_THRESHOLD = 0.8;
@@ -35,7 +41,10 @@ export interface FinancingSummary {
   meetsThreshold: boolean;
   /** Hvor mye som mangler for å nå terskelen. 0 når den er nådd. */
   shortfallToThreshold: number;
-  sources: Array<{ name: string; type: string; amount: number; confirmed: boolean }>;
+  sources: Array<{
+    name: string; type: string; amount: number; confirmed: boolean;
+    partnerRole?: string | null;
+  }>;
 }
 
 export type RequirementState = "met" | "unmet" | "manual_pending" | "not_applicable";
@@ -68,6 +77,10 @@ export interface ApplicationReadiness {
   /** Det som gjenstår, i den rekkefølgen det bør tas. */
   blockers: string[];
   financing: FinancingSummary;
+  /** Om ordningen tar imot søknader akkurat nå. */
+  window: WindowStatus;
+  /** Hvilke samarbeid som er på plass, og hvilke som mangler. */
+  partners: { coverage: PartnerCoverage[]; missingSuggested: string[] };
   warnings: string[];
 }
 
@@ -75,7 +88,7 @@ export interface ApplicationReadiness {
 
 export async function getFinancingSummary(pool: Pool, projectId: string): Promise<FinancingSummary> {
   const r = await pool.query(
-    `SELECT source_name, source_type, amount, confirmed
+    `SELECT source_name, source_type, amount, confirmed, partner_role
        FROM role_room_financing_sources
       WHERE project_id = $1
       ORDER BY confirmed DESC, amount DESC`,
@@ -87,6 +100,7 @@ export async function getFinancingSummary(pool: Pool, projectId: string): Promis
     type: String(row.source_type),
     amount: Number(row.amount ?? 0),
     confirmed: Boolean(row.confirmed),
+    partnerRole: (row.partner_role as string) ?? null,
   }));
 
   const total = sources.reduce((s, x) => s + x.amount, 0);
@@ -244,7 +258,8 @@ export async function getApplicationReadiness(
 ): Promise<ApplicationReadiness> {
   const appRes = await pool.query(
     `SELECT a.id, a.project_id, a.label, a.deadline_at::text AS deadline_at, a.status,
-            s.id AS scheme_id, s.scheme_key, s.name AS scheme_name, s.verified
+            s.id AS scheme_id, s.scheme_key, s.name AS scheme_name, s.verified,
+            s.processing_type
        FROM role_room_funding_applications a
        JOIN role_room_funding_schemes s ON s.id = a.scheme_id
       WHERE a.id = $1 LIMIT 1`,
@@ -255,7 +270,7 @@ export async function getApplicationReadiness(
   const projectId = String(app.project_id);
   const schemeKey = String(app.scheme_key);
 
-  const [reqRes, itemRes, financing] = await Promise.all([
+  const [reqRes, itemRes, financing, windowRes] = await Promise.all([
     pool.query(
       `SELECT requirement_key, label, description, auto_check, mandatory, sort_order
          FROM role_room_funding_requirements
@@ -268,7 +283,22 @@ export async function getApplicationReadiness(
       [applicationId],
     ),
     getFinancingSummary(pool, projectId),
+    pool.query(
+      `SELECT label, deadline_date::text AS deadline_date, opens_date::text AS opens_date
+         FROM role_room_funding_windows WHERE scheme_id = $1 ORDER BY deadline_date`,
+      [app.scheme_id],
+    ),
   ]);
+
+  const windowStatus = resolveWindowStatus(
+    String(app.processing_type ?? "deadline"),
+    (windowRes.rows as Array<Record<string, unknown>>).map((w) => ({
+      label: String(w.label),
+      deadlineDate: String(w.deadline_date),
+      opensDate: (w.opens_date as string) ?? null,
+    })),
+  );
+  const partners = summarisePartners(financing.sources);
 
   const manualByKey = new Map(
     (itemRes.rows as Array<Record<string, unknown>>).map((r) => [String(r.requirement_key), r]),
@@ -332,6 +362,18 @@ export async function getApplicationReadiness(
     );
   }
 
+  // En ferdig søknad som ikke kan sendes er like blokkert som en ufullstendig.
+  if (!windowStatus.canSubmitNow) {
+    warnings.push(windowStatus.message);
+  }
+  // Veiledning, ikke krav — derfor advarsel og ikke blokker.
+  if (partners.missingSuggested.length > 0 && !financing.meetsThreshold) {
+    warnings.push(
+      `Mangler typisk medfinansiering fra: ${partners.missingSuggested.join(", ")}. ` +
+        `Slike partnere er som regel det som løfter bekreftet finansiering opp mot 80 %.`,
+    );
+  }
+
   const deadlineAt = (app.deadline_at as string) ?? null;
   const daysToDeadline = deadlineAt
     ? Math.ceil((new Date(`${deadlineAt}T12:00:00Z`).getTime() - Date.now()) / 86_400_000)
@@ -358,6 +400,8 @@ export async function getApplicationReadiness(
     mandatoryMet: met.length,
     blockers,
     financing,
+    window: windowStatus,
+    partners,
     warnings,
   };
 }

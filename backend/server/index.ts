@@ -756,6 +756,7 @@ import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import { setupRoleRoomCallSheetRoutes } from "./role-room-call-sheet-routes";
 import { setupRoleRoomCalendarRoutes } from "./role-room-calendar-routes.js";
+import { setupRoleRoomFundingRoutes } from "./role-room-funding-routes.js";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
@@ -31807,6 +31808,8 @@ setupCastingManuscriptsRoutes({
 setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 // Envegs kalendersynk (Del A punkt 60) — ICS-abonnement for opptaksdager og frister.
 setupRoleRoomCalendarRoutes({ app, pool, requireUserSession });
+// Tilskuddssøknader (Del A punkt 114) — klarhetsvurdering, finansieringsplan og eksport.
+setupRoleRoomFundingRoutes({ app, pool, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
