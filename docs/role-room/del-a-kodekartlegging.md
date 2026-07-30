@@ -304,6 +304,15 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
 | 83 | Scene ↔ karakter ↔ kandidat | Navnekobling som tåler «KARI (V.O.)», flagger ukoblede karakterer, og propagerer cast-endring til opptaksdager |
 | 98 | QR inn/ut-skanning | Migrering 0454: kode uten forvekslingstegn, utsjekk begrenset av fysisk beholdning |
 | 42 | BankID-signering | **Kun sømmen.** Leverandør-agnostisk datamodell + adapter-grensesnitt + stub. Se under |
+| 74 + 80 | AML-sjekk (arbeidstid + barn) | Migrering 0456 + regelmotor. Daglig/ukentlig arbeidstid, hviletid, pause, nattarbeid og kap. 11-grensene for barn. Alder regnes på opptaksdagen; grunnskoleplikt avgjør regelsett; tariff kan utvide grensene og motoren sier hvilken den brukte |
+| 72 + 84 + 87 + 73 | Stripboard, sidetall, skutt-status, fremdrift | Migrering 0457. Sider i åttedeler som bransjen måler. Dagsoppsummering teller unike karakterer og locations. Fremdrift måles i sider, med strøkne scener holdt utenfor |
+| 114 | Finansiør-eksport | Migrering 0458 + CSV-eksport. **NFI-kartleggingen er ukontrollert** (`verified = FALSE`) — se under |
+
+**114 er levert med et forbehold.** Repoet inneholder ikke NFIs faktiske mal, og postkodene
+er derfor bygget på vanlig norsk budsjettinndeling framfor en bekreftet gjengivelse.
+Kartleggingen ligger som data slik at den kan rettes uten deploy, og eksporten advarer i
+klartekst — også i selve filen. Gjenstår: kontroller mot NFIs gjeldende mal og sett
+`verified = TRUE`.
 
 **42 er bevisst ikke fullført.** Beslutningsnotatet § 8 sier at leverandør «velges først
 etter sammenligning», med RFQ til Idura, Signicat og Scrive, og produksjon først ved 10
