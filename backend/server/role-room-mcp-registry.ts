@@ -988,12 +988,13 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     name: "rr_list_checklist_templates",
     description: "List sjekkliste-maler for produksjonsfaser, med de som passer prosjekttypen først. Malene gir en tom tidslinje innhold — punktene er handlinger med frist regnet fra opptaksstart.",
     scope: "projects.read", modes: PROD_MODES, projectScoped: true,
-    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), ...PAGE_ARGS }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
       const p = await pool.query<{ project_type: string | null }>(
         `SELECT project_type FROM casting_projects WHERE id = $1 LIMIT 1`, [projectId]);
-      return { templates: await listChecklistTemplates(pool, p.rows[0]?.project_type ?? null) };
+      const templates = await listChecklistTemplates(pool, p.rows[0]?.project_type ?? null);
+      return paginateArray("templates", templates, args);
     },
   },
   {
