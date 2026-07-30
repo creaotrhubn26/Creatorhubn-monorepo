@@ -3,10 +3,9 @@
 Kartlegging av de 150 punktene i «Del A prioritert» mot koden slik den faktisk står i
 monorepoet. Gjennomført 30. juli 2026.
 
-> **Oppdatert 30. juli 2026 etter implementasjon.** Fire punkter er levert siden
-> kartleggingen: 35 (GDPR-autosletting), 140 (total + paginering), 141 (utkast-opprydding)
-> og 150 (OpenAPI + integratorguide). Tabellene under viser statusen slik den var ved
-> kartleggingen; se «Levert» nederst for hva som er endret.
+> **Oppdatert 30. juli 2026 etter implementasjon.** Ti punkter er levert siden
+> kartleggingen: 35, 140, 141, 150, 17, 11, 47, 97, 68 og 82. Tabellene under viser
+> statusen slik den var ved kartleggingen; se «Levert» nederst for hva som er endret.
 
 **Statuskoder:** ✅ bygget · 🟡 delvis · ⬜ ikke funnet
 
@@ -289,6 +288,19 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
 | 140 | Total + paginering | Alle 20 MCP-list-verktøy tar `limit`/`offset` og returnerer `pagination` med `total` og `hasMore`. Rad-nøkkelen er uendret, så endringen er additiv |
 | 141 | List/get/delete drafts | `rr_list_drafts`, `rr_get_draft`, `rr_delete_draft`. Ser kun rader med agent-markør som fortsatt er upubliserte — produsentdata kan ikke slettes. Migrering 0444 gir utdannings-oppgaver samme markør |
 | 150 | API-dok + sandbox | OpenAPI 3.1 på `/api/integrations/v1/role-room/openapi.json` med drift-test mot ruteren, samt `integration-v1-guide.md`. **Isolert sandbox gjenstår** — guiden dokumenterer testkonto-mønsteret som finnes i dag |
+| 17 | Strukturert alder/kjønn | Migrering 0445: `playing_age_min/max` (speiler `talents`-navnene for matching) + `gender_options TEXT[]` med vokabular håndhevet av CHECK. Backfill parser entydige former; `voksen` og omvendte spenn står igjen som NULL framfor å gjettes |
+| 11 | Prosjekttype påkrevd | Migrering 0445: NULL backfilles til `video` og merkes `projectTypeBackfilled` for bekreftelse i UI. NOT NULL + trigger som normaliserer eksplisitt NULL — seks kallsteder sender feltet eksplisitt, og en eksplisitt NULL overstyrer DEFAULT |
+| 47 | Buyout-felter | Migrering 0446: `role_room_buyout_terms` med territorier, medieflater, periode, eksklusivitet, opsjon og vederlag. Ni CHECK-constraints, hver verifisert mot sin egen feilsituasjon |
+| 97 | Dobbeltbooking-sperre | Migrering 0447: trigger som summerer overlappende bookinger mot `quantity` — en EXCLUDE-constraint ville blokkert booking to av fem kameraer. Advisory lock mot samtidighet; halvåpne intervaller så rygg-mot-rygg-utleie går |
+| 68 | Lest-kvittering | Migrering 0448: distribusjon + kvittering per mottaker med eget token. Bekreftelsesknapp, ikke sporingspiksel. Status-endepunktet svarer på «hvem må ringes» |
+| 82 | Manus → scener | `casting-screenplay-persistence.ts`: opt-in `?persist=true` på import. Scener gjenkjennes på nummer + heading slik at breakdown-arbeid overlever en manusrevisjon |
+
+Delvis levert som sidegevinst: **46** (kontraktsarkiv med utløpsvarsling) har nå
+datagrunnlaget sitt — `listExpiringRights()` svarer på hva som utløper, tar med
+allerede utløpte, og flagger tapt opsjonsfrist. Selve varslingen (cron + e-post)
+gjenstår. **98** (QR inn/ut) og **83** (scene↔karakter) har tilsvarende fått
+grunnlaget sitt gjennom henholdsvis tilgjengelighetssjekken og
+`characters`-uttrekket per scene.
 
 To rettelser til kartleggingen kom fram under arbeidet, begge i A12:
 
