@@ -232,17 +232,10 @@ enum LearnedStyle {
         // klipping + eksponerings-nedtrekk når snittet er for lyst.
         if let outCg = ctx.createCGImage(out, from: out.extent) {
             let (meanL, clipHi) = lumaStats(outCg)   // 0…1
-            if clipHi > 0.02 {
-                // Dra ned hvitpunktet proporsjonalt med klippingen (opp til ~0.82).
-                let white = CGFloat(max(0.82, 0.95 - min(0.13, clipHi * 0.6)))
-                let hs = CIFilter.toneCurve()
-                hs.inputImage = out
-                hs.point0 = CGPoint(x: 0, y: 0)
-                hs.point1 = CGPoint(x: 0.35, y: 0.35)
-                hs.point2 = CGPoint(x: 0.65, y: 0.64)
-                hs.point3 = CGPoint(x: 0.85, y: 0.80)
-                hs.point4 = CGPoint(x: 1.0, y: white)
-                out = hs.outputImage?.cropped(to: image.extent) ?? out
+            if clipHi > 0.015 {
+                // LOKAL (luminans-maskert) recovery — komprimerer KUN de utblåste
+                // flatene (bluse/vindu), ikke riktig-eksponert hud/mellomtoner.
+                out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 8))
             }
             if meanL > 0.62 {
                 // For lyst totalt → moderat eksponerings-nedtrekk mot ~0.58.
