@@ -22,9 +22,6 @@ final class LearnedStyleTests: XCTestCase {
         return [curve, curve, curve]
     }
 
-    private func profile(_ scenes: [LearnedStyleProfile.Scene]) -> LearnedStyleProfile {
-        LearnedStyleProfile(version: 1, scenes: scenes)
-    }
     private func scene(feat: [Double], lut: [[Int]], ab: [Double] = [0, 0]) -> LearnedStyleProfile.Scene {
         .init(feat: feat, lut: lut, ab: ab, labStd: [1, 1, 1], weight: 1)
     }
@@ -38,9 +35,22 @@ final class LearnedStyleTests: XCTestCase {
         """
         let p = try JSONDecoder().decode(LearnedStyleProfile.self, from: Data(json.utf8))
         XCTAssertEqual(p.version, 1)
-        XCTAssertEqual(p.scenes.count, 1)
-        XCTAssertEqual(p.scenes[0].ab, [1.5, -0.5])
-        XCTAssertEqual(p.scenes[0].weight, 3)
+        XCTAssertEqual(p.allStyles.count, 1, "v1 → én «Min stil»")
+        XCTAssertEqual(p.allStyles[0].scenes.count, 1)
+        XCTAssertEqual(p.allStyles[0].scenes[0].ab, [1.5, -0.5])
+        XCTAssertEqual(p.allStyles[0].scenes[0].weight, 3)
+    }
+
+    func testMultiStyleV2Decodes() throws {
+        let json = """
+        {"version":2,"styles":[
+          {"name":"Varm & ren","scenes":[{"feat":[0,0,0,0,0,0,0,0,0.5,0.2,0.3,0.1],"lut":[[0,1],[0,1],[0,1]],"ab":[3,0],"labStd":[1,1,1],"weight":9}]},
+          {"name":"Kjølig & ren","scenes":[{"feat":[0,0,0,0,0,0,0,0,0.5,0.2,-0.3,0.1],"lut":[[0,1],[0,1],[0,1]],"ab":[-3,0],"labStd":[1,1,1],"weight":4}]}
+        ]}
+        """
+        let p = try JSONDecoder().decode(LearnedStyleProfile.self, from: Data(json.utf8))
+        XCTAssertEqual(p.version, 2)
+        XCTAssertEqual(p.allStyles.map(\.name), ["Varm & ren", "Kjølig & ren"])
     }
 
     // MARK: - Features
@@ -68,7 +78,7 @@ final class LearnedStyleTests: XCTestCase {
         let near = scene(feat: [Double](repeating: 0, count: 8) + [0.8, 0.2, 0.1, 0.1], lut: invertLut())
         let far = scene(feat: [Double](repeating: 0, count: 8) + [0.1, 0.2, 0.1, 0.1], lut: identityLut())
         let f = [Double](repeating: 0, count: 8) + [0.8, 0.2, 0.1, 0.1]  // = near
-        let blended = LearnedStyle.blend(features: f, profile: profile([near, far]), k: 1)
+        let blended = LearnedStyle.blend(features: f, scenes: [near, far], k: 1)
         XCTAssertNotNil(blended)
         // k=1 → nærmeste (invert-LUT): lut[0][255] skal være ~0 (invertert).
         XCTAssertLessThan(blended!.lut[0][255], 10)
@@ -78,16 +88,16 @@ final class LearnedStyleTests: XCTestCase {
     // MARK: - Apply
 
     func testApplyLutChangesPixels() throws {
-        let inv = profile([scene(feat: [Double](repeating: 0.1, count: 12), lut: invertLut())])
+        let inv = [scene(feat: [Double](repeating: 0.1, count: 12), lut: invertLut())]
         let base = CIImage(cgImage: makeCG(0.8, 64))   // lys
-        let out = LearnedStyle.apply(profile: inv, to: base, k: 1)
+        let out = LearnedStyle.apply(scenes: inv, to: base, k: 1)
         // Invert-LUT på et lyst bilde → resultatet skal bli MØRKT.
         XCTAssertLessThan(meanLuma(out), 0.5, "invert-LUT gjorde ikke lyst→mørkt")
     }
 
     func testEmptyProfileIsNoOp() {
         let base = CIImage(cgImage: makeCG(0.5))
-        let out = LearnedStyle.apply(profile: profile([]), to: base, k: 5)
+        let out = LearnedStyle.apply(scenes: [], to: base, k: 5)
         XCTAssertEqual(meanLuma(out), meanLuma(base), accuracy: 0.02)
     }
 

@@ -22,8 +22,21 @@ struct LearnedStyleProfile: Codable, Sendable {
         let labStd: [Double]      // [L,a,b] Reinhard-spredning (v1: ubrukt)
         let weight: Int
     }
+    /// v2 — én navngitt, distinkt look (fler-stil-klynging).
+    struct Style: Codable, Sendable {
+        let name: String
+        let scenes: [Scene]
+    }
     let version: Int
-    let scenes: [Scene]
+    let scenes: [Scene]?          // v1-format (én stil)
+    let styles: [Style]?          // v2-format (flere navngitte stiler)
+
+    /// Normalisert: alltid en liste av navngitte stiler (v1 → én «Min stil»).
+    var allStyles: [Style] {
+        if let styles, !styles.isEmpty { return styles }
+        if let scenes, !scenes.isEmpty { return [Style(name: "Min stil", scenes: scenes)] }
+        return []
+    }
 
     static func load(contentsOf url: URL) -> LearnedStyleProfile? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -67,10 +80,10 @@ enum LearnedStyle {
 
     /// Farge-vektet k-NN: a/b-feature (indeks 10–11) vektes 1.6× — matcher
     /// Python-motorens apply. Returnerer vektet snitt av LUT + a/b.
-    static func blend(features f: [Double], profile: LearnedStyleProfile, k: Int = 5)
+    static func blend(features f: [Double], scenes: [LearnedStyleProfile.Scene], k: Int = 5)
         -> (lut: [[Double]], ab: [Double])? {
-        guard !profile.scenes.isEmpty, f.count == 12 else { return nil }
-        let scored: [(d: Double, s: LearnedStyleProfile.Scene)] = profile.scenes.map { sc in
+        guard !scenes.isEmpty, f.count == 12 else { return nil }
+        let scored: [(d: Double, s: LearnedStyleProfile.Scene)] = scenes.map { sc in
             var sum = 0.0
             for i in 0..<12 {
                 let wgt = (i >= 10) ? 1.6 : 1.0
@@ -97,12 +110,14 @@ enum LearnedStyle {
         return (lut, ab)
     }
 
-    /// Påfør en lært stil på et CIImage: per-kanal-LUT (CIColorCurves) + a/b-skift.
-    static func apply(profile: LearnedStyleProfile, to image: CIImage, k: Int = 5) -> CIImage {
+    /// Påfør en gitt (navngitt) stils scener på et CIImage: per-kanal-LUT
+    /// (CIColorCurves) + a/b-skift, scene-matchet on-device.
+    static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5) -> CIImage {
+        guard !scenes.isEmpty else { return image }
         let ctx = CIContext(options: [.useSoftwareRenderer: false])
         guard let cg = ctx.createCGImage(image, from: image.extent) else { return image }
         let f = features(of: cg)
-        guard let blended = blend(features: f, profile: profile, k: k) else { return image }
+        guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
         var out = image
 
         // Per-kanal 1D-LUT via CIColorCurves. cv2-LUT er BGR → map til RGB.
