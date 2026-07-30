@@ -308,11 +308,22 @@ Av backloggens 18 P0-punkter er **3 i praksis ferdige**, **7 vesentlig mindre en
 | 72 + 84 + 87 + 73 | Stripboard, sidetall, skutt-status, fremdrift | Migrering 0457. Sider i åttedeler som bransjen måler. Dagsoppsummering teller unike karakterer og locations. Fremdrift måles i sider, med strøkne scener holdt utenfor |
 | 114 | Finansiør-eksport | Migrering 0458 + CSV-eksport. **NFI-kartleggingen er ukontrollert** (`verified = FALSE`) — se under |
 
-**114 er levert med et forbehold.** Repoet inneholder ikke NFIs faktiske mal, og postkodene
-er derfor bygget på vanlig norsk budsjettinndeling framfor en bekreftet gjengivelse.
-Kartleggingen ligger som data slik at den kan rettes uten deploy, og eksporten advarer i
-klartekst — også i selve filen. Gjenstår: kontroller mot NFIs gjeldende mal og sett
-`verified = TRUE`.
+**114 — hva researchen endret.** Den opprinnelige antakelsen var at oppgaven er å gjengi
+NFIs kodeliste riktig. Det er ikke kravet. NFIs veileder for prosjektregnskap sier at
+«regnskap skal føres i henhold til kontoplan i godkjent kalkyleskjema … i samsvar med
+kalkyle/budsjett og kontoplan som ble brukt da søknad ble sendt inn».
+
+Kravet er altså **intern konsistens over tid**, ikke samsvar med én fasit. Det flytter hvor
+risikoen ligger: den farligste feilen er ikke en gal postkode, men en kontoplan som endrer
+seg stille etter innsending — det oppdages først ved revisjon, og revisorbekreftet regnskap
+kreves over gitte beløpsgrenser. Derfor fryses eksporten ved innsending (migrering 0459),
+og `compareToSnapshot` skiller nøkternt mellom endrede beløp (normalt) og endret struktur
+(brudd på kravet).
+
+`verified = FALSE` står fortsatt. Egress-policyen i utviklingsmiljøet blokkerer `nfi.no` og
+`vikenfilmsenter.no`, så selve kalkyleskjemaet lot seg ikke hente. Postkodene må kontrolleres
+mot malen og `verified` settes til `TRUE` — men kravet de skal oppfylle er nå kjent, og
+arkitekturen svarer på det.
 
 **42 er bevisst ikke fullført.** Beslutningsnotatet § 8 sier at leverandør «velges først
 etter sammenligning», med RFQ til Idura, Signicat og Scrive, og produksjon først ved 10
