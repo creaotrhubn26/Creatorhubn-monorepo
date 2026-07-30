@@ -584,6 +584,7 @@ import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-rout
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerRoleRoomRetentionCron } from "./role-room-retention-cron.js";
+import { registerRoleRoomRightsExpiryCron } from "./role-room-rights-expiry-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
@@ -25308,6 +25309,9 @@ registerLeadgridRetentionCron({ app, pool });
 // Tørrkjøring inntil RR_RETENTION_ENFORCE=true — fristene i migrering 0443
 // er ikke juridisk vurdert ennå.
 registerRoleRoomRetentionCron({ app, pool });
+// Utløpsvarsling for buyout-rettigheter (Del A punkt 46). Varsler ved 90/30/7/0
+// dager, én gang per terskel — daglig masing ville fått varselet slått av.
+registerRoleRoomRightsExpiryCron({ app, pool });
 // Skalering nivå 2b — denormaliser crm_customers.organization_id (mig 320)
 // via backfill-cron (kjøres @ 03:15 UTC daily + manuell trigger). Eliminerer
 // owner_user_id IN organization_members-subqueries fra hot-path queries.
