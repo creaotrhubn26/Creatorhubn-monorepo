@@ -25,6 +25,7 @@ import { listChecklistTemplates } from "./role-room-checklist-templates.js";
 import { resolveSceneCast, getCastChangeImpact } from "./role-room-scene-cast-service.js";
 import { getEquipmentByCode } from "./role-room-equipment-checkout-service.js";
 import { evaluateProjectWorkTime } from "./role-room-work-time-service.js";
+import { getStripboard, getShootProgress } from "./role-room-stripboard-service.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -987,6 +988,26 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_stripboard",
+    description: "Stripboardet: scener fordelt på opptaksdager, med sidetall per dag (i åttedeler, som bransjen måler), antall i cast, antall locations og samlet riggetid. Scener som ikke er planlagt ennå ligger i en egen bunke framfor å utelates.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return getStripboard(pool, projectId);
+    },
+  },
+  {
+    name: "rr_shoot_progress",
+    description: "Fremdrift målt i sider, ikke i antall scener — femten korte dialogscener kan være en halv dag mens én actionscene er tre. Strøkne scener trekkes fra det gjenstående. Lister også hvilke dager som fortsatt har ugjort arbeid.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return getShootProgress(pool, projectId);
+    },
+  },
   {
     name: "rr_work_time_check",
     description: "Sjekker prosjektets vakter mot norsk arbeidsmiljølov: daglig og ukentlig arbeidstid, hviletid, pause, nattarbeid og de strengere reglene for barn (AML kap. 11). Skiller brudd fra advarsler, og oppgir paragrafhenvisning på hvert funn. Beslutningsstøtte — tariffavtale kan utvide flere av grensene.",
