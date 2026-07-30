@@ -27,6 +27,7 @@ import { getEquipmentByCode } from "./role-room-equipment-checkout-service.js";
 import { evaluateProjectWorkTime } from "./role-room-work-time-service.js";
 import { getStripboard, getShootProgress } from "./role-room-stripboard-service.js";
 import { buildFundingExport } from "./role-room-funding-export.js";
+import { getApplicationReadiness, getFinancingSummary } from "./role-room-funding-application-service.js";
 // Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
 // buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
 // maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
@@ -989,6 +990,38 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_funding_readiness",
+    description: "Er søknaden klar til å sendes? Går gjennom ordningens krav og avgjør hvert av dem — de fleste automatisk fra data som allerede ligger i prosjektet (budsjett, finansiering, framdriftsplan, opptaksplan). Sier hva som gjenstår og hvorfor, inkludert hvor mye som mangler i kroner for å nå kravet om 80 % bekreftet finansiering.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjektets id"),
+      applicationId: STR("Søknadens id"),
+    }, ["projectId", "applicationId"]),
+    handler: async (pool, ctx, args) => {
+      await requireProject(pool, ctx, args);
+      const applicationId = typeof args.applicationId === "string" ? args.applicationId.trim() : "";
+      if (!applicationId) throw new McpToolError(-32602, "applicationId er påkrevd.");
+      try {
+        return await getApplicationReadiness(pool, applicationId);
+      } catch (err) {
+        if (/Ukjent søknad/.test((err as Error).message)) {
+          throw new McpToolError(-32004, "Fant ikke søknaden.");
+        }
+        throw err;
+      }
+    },
+  },
+  {
+    name: "rr_financing_plan",
+    description: "Finansieringsplanen: kilder fordelt på offentlig og privat, hvor mye som er bekreftet, og hvor mye som mangler for å nå kravet om 80 % bekreftet finansiering. Egenkapital regnes som private midler.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return getFinancingSummary(pool, projectId);
+    },
+  },
   {
     name: "rr_funding_export",
     description: "Eksporterer prosjektets budsjett til en finansiørs postoppsett (f.eks. NFI). Advarer eksplisitt når oppsettet ikke er kontrollert mot finansiørens gjeldende mal, og lister kategorier som mangler kartlegging framfor å utelate dem stille.",
