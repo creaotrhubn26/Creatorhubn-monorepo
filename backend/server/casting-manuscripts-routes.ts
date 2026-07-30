@@ -77,6 +77,7 @@
  */
 
 import type express from "express";
+import type { Pool } from "pg";
 
 import {
   checkIfMatch,
@@ -93,6 +94,10 @@ import {
   parseFountain,
   type ParsedScreenplay,
 } from "./casting-screenplay-formats.js";
+import {
+  persistParsedScreenplay,
+  type PersistResult,
+} from "./casting-screenplay-persistence.js";
 import { newEntityId } from "./_shared-ids.js";
 import { userOwnsCastingProjectViaStore } from "./casting-project-ownership.js";
 
@@ -108,6 +113,11 @@ export interface CastingManuscriptsRoutesDeps {
    * manuscriptsService internt for å lese/skrive revisions-array.
    */
   revisionsService: CastingManuscriptRevisionsService;
+  /**
+   * Kun nødvendig for lagring av parsede scener (Del A punkt 82). Utelates
+   * den, svarer import-endepunktet som før — stateless — framfor å feile.
+   */
+  pool?: Pool;
 }
 
 /**
@@ -189,7 +199,7 @@ function listManuscriptPresence(
 export function setupCastingManuscriptsRoutes(
   deps: CastingManuscriptsRoutesDeps,
 ): void {
-  const { app, requireUserSession, compatStoreGet, manuscriptsService, revisionsService } = deps;
+  const { app, requireUserSession, compatStoreGet, manuscriptsService, revisionsService, pool } = deps;
 
   // Manuscript content (full screenplay text, dialogue, revisions) is
   // tenant-private. These read endpoints were unauthenticated — anyone who
@@ -830,6 +840,39 @@ export function setupCastingManuscriptsRoutes(
           parsed = parseFountain(rawBody);
         }
 
+        // Opt-in lagring (Del A punkt 82). Uten ?persist=true oppfører
+        // endepunktet seg som før — eksisterende klienter er uberørt.
+        const wantsPersist =
+          req.query.persist === "true" ||
+          (req.body && typeof req.body === "object" && (req.body as Record<string, unknown>).persist === true);
+
+        let persisted: PersistResult | undefined;
+        if (wantsPersist && !pool) {
+          res.status(503).json({ error: "Lagring er ikke tilgjengelig i denne konfigurasjonen." });
+          return;
+        }
+        if (wantsPersist && pool) {
+          // Lagring skriver inn i manuset. Lese-varianten over slipper unna med
+          // sesjonssjekk fordi den ikke rører noe; her må eierskapet verifiseres,
+          // ellers kunne hvem som helst med en manuscriptId skrive scener inn i
+          // et annet kundes manus.
+          if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
+
+          const manuscript = await pool.query<{ project_id: string }>(
+            `SELECT project_id FROM casting_manuscripts WHERE id = $1 LIMIT 1`,
+            [req.params.manuscriptId],
+          );
+          if (manuscript.rowCount === 0) {
+            res.status(404).json({ error: "Fant ikke manuset." });
+            return;
+          }
+          persisted = await persistParsedScreenplay(pool, {
+            projectId: manuscript.rows[0].project_id,
+            manuscriptId: req.params.manuscriptId,
+            parsed,
+          });
+        }
+
         res.json({
           manuscriptId: req.params.manuscriptId,
           format: contentType.includes("xml") ? "fdx" : "fountain",
@@ -839,8 +882,10 @@ export function setupCastingManuscriptsRoutes(
             (sum, scene) => sum + scene.dialogue.length,
             0,
           ),
-          notice:
-            "Endpoint er stateless — klient er ansvarlig for å lagre via /scenes og /dialogue ved behov.",
+          persisted,
+          notice: wantsPersist
+            ? "Scenene er lagret. Breakdown og akt-tilhørighet på gjenkjente scener er beholdt."
+            : "Stateless — send ?persist=true for å lagre scenene i manuset.",
         });
       } catch (error) {
         console.error("Error importing screenplay:", error);

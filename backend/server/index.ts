@@ -31795,6 +31795,9 @@ setupCastingManuscriptsRoutes({
   compatStoreGet,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
+  // Lar /manuscripts/:id/import?persist=true lagre parsede scener
+  // (Del A punkt 82) framfor bare å returnere dem.
+  pool,
 });
 setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 
