@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Pool } from "pg";
-import { buildFundingExport, csvField, toCsv, type FundingExport } from "./role-room-funding-export.js";
+import {
+  buildFundingExport, compareToSnapshot, csvField, toCsv, type FundingExport,
+} from "./role-room-funding-export.js";
 
 describe("csvField", () => {
   it("lar enkle verdier stå", () => {
@@ -166,5 +168,106 @@ describe("toCsv", () => {
 
   it("har med sumlinje", () => {
     expect(toCsv(base)).toContain(";SUM;300000");
+  });
+});
+
+// ── Innsending og avstemming ────────────────────────────────────────────────
+
+
+function stubCompare(opts: {
+  submitted: Partial<FundingExport>;
+  mappings: Array<Record<string, unknown>>;
+  items: Array<Record<string, unknown>>;
+}) {
+  const query = vi.fn(async (sql: string) => {
+    if (sql.includes("FROM role_room_funding_snapshots")) {
+      return {
+        rows: [{
+          id: "snap1", project_id: "p1", scheme_key: "nfi", label: "Søknad",
+          submitted_at: "2027-03-12T10:00:00Z",
+          export_payload: {
+            lines: [], totals: { estimate: 0, approved: 0, actual: 0 },
+            ...opts.submitted,
+          },
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("FROM role_room_funding_schemes")) {
+      return {
+        rows: [{ id: "s", scheme_key: "nfi", name: "NFI", organisation: null, verified: true, source_url: null }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("FROM role_room_funding_category_mappings")) {
+      return { rows: opts.mappings, rowCount: opts.mappings.length };
+    }
+    if (sql.includes("FROM role_room_budget_items")) {
+      return { rows: opts.items, rowCount: opts.items.length };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+  return { pool: { query } as unknown as Pool };
+}
+
+const line = (code: string, label: string, estimate: number) => ({
+  targetCode: code, targetLabel: label, targetGroup: "G",
+  sourceCategories: [], estimate, approved: 0, actual: 0,
+});
+
+describe("compareToSnapshot", () => {
+  it("melder ingen avvik når ingenting har endret seg", async () => {
+    const { pool } = stubCompare({
+      submitted: { lines: [line("C.1", "Foto", 300)], totals: { estimate: 300, approved: 0, actual: 0 } },
+      mappings: [mapping("Kamera", "C.1", "Foto")],
+      items: [item("Kamera", 300)],
+    });
+    const d = await compareToSnapshot(pool, "snap1");
+    expect(d.changedLines).toEqual([]);
+    expect(d.structureChanged).toEqual([]);
+    expect(d.warnings).toEqual([]);
+  });
+
+  it("rapporterer beløpsendring uten å rope — budsjetter beveger seg", async () => {
+    const { pool } = stubCompare({
+      submitted: { lines: [line("C.1", "Foto", 300)], totals: { estimate: 300, approved: 0, actual: 0 } },
+      mappings: [mapping("Kamera", "C.1", "Foto")],
+      items: [item("Kamera", 320)],
+    });
+    const d = await compareToSnapshot(pool, "snap1");
+    expect(d.changedLines).toHaveLength(1);
+    expect(d.changedLines[0]).toMatchObject({ submitted: 300, current: 320, difference: 20 });
+    // Under 10 % — ingen advarsel.
+    expect(d.warnings).toEqual([]);
+  });
+
+  it("advarer når kontoplanen er endret etter innsending", async () => {
+    // Det farlige tilfellet: regnskapet skal føres etter kontoplanen i det
+    // godkjente kalkyleskjemaet, så en endret struktur bryter selve kravet.
+    const { pool } = stubCompare({
+      submitted: { lines: [line("E.1", "Klipp", 100)], totals: { estimate: 100, approved: 0, actual: 0 } },
+      mappings: [mapping("Klipp", "E.9", "Klipp (ny kode)")],
+      items: [item("Klipp", 100)],
+    });
+    const d = await compareToSnapshot(pool, "snap1");
+    expect(d.structureChanged).toContain("ny post: E.9");
+    expect(d.structureChanged).toContain("borte: E.1");
+    expect(d.warnings.join(" ")).toMatch(/kalkyleskjema/);
+  });
+
+  it("advarer når totalen har flyttet seg mer enn 10 %", async () => {
+    const { pool } = stubCompare({
+      submitted: { lines: [line("C.1", "Foto", 100)], totals: { estimate: 100, approved: 0, actual: 0 } },
+      mappings: [mapping("Kamera", "C.1", "Foto")],
+      items: [item("Kamera", 200)],
+    });
+    expect((await compareToSnapshot(pool, "snap1")).warnings.join(" ")).toMatch(/mer enn 10 %/);
+  });
+
+  it("kaster på ukjent innsending", async () => {
+    const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+    await expect(
+      compareToSnapshot({ query } as unknown as Pool, "nope"),
+    ).rejects.toThrow(/Ukjent innsending/);
   });
 });

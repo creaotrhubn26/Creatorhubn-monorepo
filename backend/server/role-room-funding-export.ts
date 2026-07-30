@@ -207,3 +207,154 @@ export function toCsv(exported: FundingExport): string {
   // BOM så norsk Excel leser UTF-8 riktig.
   return "﻿" + rows.join("\r\n") + "\r\n";
 }
+
+// ── Innsending og avstemming ────────────────────────────────────────────────
+//
+// NFIs veileder for prosjektregnskap: «Regnskap skal føres i henhold til
+// kontoplan i godkjent kalkyleskjema. Med dette menes at regnskapet skal
+// settes opp i samsvar med kalkyle/budsjett og kontoplan som ble brukt da
+// søknad ble sendt inn.»
+//
+// Kravet er intern konsistens over tid, ikke samsvar med én fasit. Den
+// farligste feilen er derfor ikke en gal postkode, men en kartlegging som
+// endrer seg stille etter innsending — det oppdages først ved revisjon, når
+// regnskapet ikke lar seg avstemme mot søknaden.
+
+export interface FundingSnapshot {
+  id: string;
+  label: string;
+  schemeKey: string;
+  submittedAt: string;
+  totalEstimate: number;
+}
+
+/**
+ * Fryser eksporten slik den ble sendt inn. Snapshotet er fasiten senere
+ * regnskap måles mot, og skal ikke kunne redigeres i ettertid.
+ */
+export async function snapshotFundingExport(
+  pool: Pool,
+  input: { projectId: string; schemeKey: string; label: string; userId: string | null },
+): Promise<FundingSnapshot> {
+  const exported = await buildFundingExport(pool, input.projectId, input.schemeKey);
+  const r = await pool.query<{ id: string; submitted_at: string }>(
+    `INSERT INTO role_room_funding_snapshots
+       (project_id, scheme_key, label, submitted_by_user_id, export_payload, total_estimate, currency)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+     RETURNING id, submitted_at`,
+    [
+      input.projectId, input.schemeKey, input.label, input.userId,
+      JSON.stringify(exported), exported.totals.estimate, exported.currency,
+    ],
+  );
+  return {
+    id: r.rows[0].id,
+    label: input.label,
+    schemeKey: input.schemeKey,
+    submittedAt: r.rows[0].submitted_at,
+    totalEstimate: exported.totals.estimate,
+  };
+}
+
+export interface SnapshotDrift {
+  targetCode: string | null;
+  targetLabel: string;
+  submitted: number;
+  current: number;
+  difference: number;
+}
+
+export interface SnapshotComparison {
+  snapshotId: string;
+  label: string;
+  submittedAt: string;
+  submittedTotal: number;
+  currentTotal: number;
+  difference: number;
+  /** Poster der beløpet har endret seg siden innsending. */
+  changedLines: SnapshotDrift[];
+  /** Poster som er kommet til eller falt bort — alvorligst, fordi de bryter
+   *  selve kontoplanen regnskapet skal føres etter. */
+  structureChanged: string[];
+  warnings: string[];
+}
+
+/**
+ * Sammenligner dagens budsjett med det som ble sendt inn.
+ *
+ * Endrede beløp er normalt og forventet — et budsjett beveger seg. Endret
+ * STRUKTUR er noe annet: da føres ikke lenger regnskapet etter kontoplanen i
+ * det godkjente kalkyleskjemaet, og avviket må forklares overfor finansiøren.
+ */
+export async function compareToSnapshot(
+  pool: Pool,
+  snapshotId: string,
+): Promise<SnapshotComparison> {
+  const snapRes = await pool.query(
+    `SELECT id, project_id, scheme_key, label, submitted_at, export_payload
+       FROM role_room_funding_snapshots WHERE id = $1 LIMIT 1`,
+    [snapshotId],
+  );
+  if (snapRes.rowCount === 0) throw new Error(`Ukjent innsending: ${snapshotId}`);
+  const snap = snapRes.rows[0] as Record<string, unknown>;
+  const submitted = snap.export_payload as FundingExport;
+
+  const current = await buildFundingExport(
+    pool,
+    String(snap.project_id),
+    String(snap.scheme_key),
+  );
+
+  const keyOf = (l: FundingExportLine) => l.targetCode ?? l.targetLabel;
+  const submittedByKey = new Map(submitted.lines.map((l) => [keyOf(l), l]));
+  const currentByKey = new Map(current.lines.map((l) => [keyOf(l), l]));
+
+  const changedLines: SnapshotDrift[] = [];
+  for (const [key, cur] of currentByKey) {
+    const before = submittedByKey.get(key);
+    if (!before) continue;
+    if (before.estimate !== cur.estimate) {
+      changedLines.push({
+        targetCode: cur.targetCode,
+        targetLabel: cur.targetLabel,
+        submitted: before.estimate,
+        current: cur.estimate,
+        difference: cur.estimate - before.estimate,
+      });
+    }
+  }
+
+  const structureChanged = [
+    ...[...currentByKey.keys()].filter((k) => !submittedByKey.has(k)).map((k) => `ny post: ${k}`),
+    ...[...submittedByKey.keys()].filter((k) => !currentByKey.has(k)).map((k) => `borte: ${k}`),
+  ];
+
+  const warnings: string[] = [];
+  if (structureChanged.length > 0) {
+    warnings.push(
+      `Kontoplanen er endret siden innsending (${structureChanged.join(", ")}). ` +
+        `NFI krever at regnskapet føres etter kontoplanen i godkjent kalkyleskjema — ` +
+        `avviket må forklares overfor finansiøren.`,
+    );
+  }
+  const submittedTotal = submitted.totals.estimate;
+  const currentTotal = current.totals.estimate;
+  if (submittedTotal > 0 && Math.abs(currentTotal - submittedTotal) / submittedTotal > 0.1) {
+    warnings.push(
+      `Totalbudsjettet har endret seg mer enn 10 % siden innsending ` +
+        `(${submittedTotal.toLocaleString("nb-NO")} → ${currentTotal.toLocaleString("nb-NO")}).`,
+    );
+  }
+
+  return {
+    snapshotId: String(snap.id),
+    label: String(snap.label),
+    submittedAt: String(snap.submitted_at),
+    submittedTotal,
+    currentTotal,
+    difference: currentTotal - submittedTotal,
+    changedLines,
+    structureChanged,
+    warnings,
+  };
+}
