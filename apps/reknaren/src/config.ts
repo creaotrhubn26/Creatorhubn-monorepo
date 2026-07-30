@@ -72,6 +72,12 @@ export interface ProductConfig {
    * BEGGE finnes. Har forrang over GoCardless når konfigurert.
    */
   bankFeedEnable?: { applicationId: string; privateKeyPem: string } | undefined;
+  /**
+   * ID-porten OIDC for mva-melding (validering/innsending). Bygges når
+   * IDPORTEN_CLIENT_ID + nøkkel finnes (nøkkel/kid kan gjenbrukes fra Maskinporten).
+   * redirectUri utledes av appBaseUrl (/idporten/callback).
+   */
+  idporten?: { env: 'test' | 'prod'; clientId: string; keyId: string; privateKeyPem: string; scopes: string; redirectUri: string } | undefined;
 }
 
 const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
@@ -159,5 +165,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
             privateKeyPem: env.REKNAREN_ENABLEBANKING_PRIVATE_KEY,
           }
         : undefined,
+    idporten: loadIdPortenConfig(env),
+  };
+}
+
+/** ID-porten-konfig fra env. Nøkkel/kid kan gjenbrukes fra Maskinporten-oppsettet. */
+function loadIdPortenConfig(env: NodeJS.ProcessEnv): ProductConfig['idporten'] {
+  const clientId = env.IDPORTEN_CLIENT_ID;
+  const privateKeyPem = env.IDPORTEN_PRIVATE_KEY ?? env.MASKINPORTEN_PRIVATE_KEY;
+  const keyId = env.IDPORTEN_KEY_ID ?? env.MASKINPORTEN_KEY_ID;
+  if (!clientId || !privateKeyPem || !keyId) return undefined;
+  const base = (env.REKNAREN_APP_URL ?? 'https://ledgerly-coss.onrender.com').replace(/\/$/, '');
+  return {
+    env: env.IDPORTEN_ENV === 'test' ? 'test' : 'prod',
+    clientId,
+    keyId,
+    privateKeyPem,
+    scopes: env.IDPORTEN_SCOPES ?? 'openid skatteetaten:mvameldingvalidering',
+    redirectUri: env.IDPORTEN_REDIRECT_URI ?? `${base}/idporten/callback`,
   };
 }

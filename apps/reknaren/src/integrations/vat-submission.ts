@@ -363,6 +363,31 @@ export class StubVatSubmission implements VatSubmissionPort {
 // Re-eksporter for bekvem import i wiring/tester.
 export { MaskinportenError };
 
+/**
+ * Validerer en mva-melding mot Skatteetatens grensesnittstøtte med et FERDIG
+ * access-token (ID-porten). Bygger XML og POST-er den; tolker svaret likt som
+ * klienten. Dette er auth-vei-agnostisk: kalleren skaffer tokenet (ID-porten).
+ */
+export async function validateMvaMeldingWithToken(params: {
+  report: VatReport;
+  orgNumber: string;
+  accessToken: string;
+  env: MaskinportenEnv;
+  fetchImpl?: FetchLike;
+}): Promise<VatValidationResult> {
+  const ep = VAT_SUBMISSION_ENDPOINTS[params.env];
+  const xml = buildMvaMeldingXml(params.report, { orgNumber: params.orgNumber });
+  const doFetch = params.fetchImpl ?? (fetch as unknown as FetchLike);
+  const res = await doFetch(`${ep.validateBase}/api/mva/grensesnittstoette/mva-melding/valider`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${params.accessToken}`, 'content-type': 'application/xml', accept: 'application/json' },
+    body: xml,
+  });
+  const raw = await safeJson(res);
+  const messages = extractMessages(raw);
+  return { valid: res.ok && messages.length === 0, messages, raw };
+}
+
 async function safeJson(res: { json(): Promise<unknown>; text(): Promise<string> }): Promise<unknown> {
   try {
     return await res.json();

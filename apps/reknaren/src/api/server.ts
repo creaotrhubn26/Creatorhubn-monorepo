@@ -64,7 +64,7 @@ import { convertToNok, money } from '../shared/money.js';
 import { assessCompanyRisk } from '../ledger/company-risk.js';
 import { answerQuestion } from '../ledger/ask.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
-import { buildMvaMeldingXml, MaskinportenError, type VatSubmissionPort } from '../integrations/vat-submission.js';
+import { buildMvaMeldingXml, MaskinportenError, validateMvaMeldingWithToken, type VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
 import type { StripeReadPort } from '../integrations/stripe.js';
 import { syncStripeRevenue } from '../integrations/stripe-sync.js';
@@ -78,6 +78,8 @@ import { loadInvoiceView } from '../invoicing/view.js';
 import { renderInvoicePdf } from '../invoicing/pdf.js';
 import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoicing/ehf.js';
 import { lookupPeppolParticipant } from '../invoicing/peppol-lookup.js';
+import { IdPortenClient, generatePkce, randomToken } from '../integrations/idporten.js';
+import { getStatus as idportenStatus, getValidAccessToken, saveLoginState, saveSession, takeLoginState } from '../integrations/idporten-session.js';
 import {
   addOrUpdateMember,
   changeMemberRole,
@@ -207,6 +209,8 @@ export interface ApiDeps {
   bankFeed?: BankFeedProvider | undefined;
   /** PEPPOL-aksesspunkt for EHF-overføring. Uten avtale er sending ærlig inaktiv. */
   peppol?: PeppolAccessPoint | undefined;
+  /** ID-porten OIDC for mva-melding (validering/innsending). Inaktiv uten IDPORTEN_*. */
+  idporten?: IdPortenClient | undefined;
   /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
   cronSecret?: string | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
@@ -1760,38 +1764,70 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
-  // Valider MVA-meldingen mot Skatteetatens grensesnittstøtte (krever Maskinporten).
+  // Valider MVA-meldingen mot Skatteetatens grensesnittstøtte. Krever et ID-porten-
+  // token (pålogget bruker via BankID) — Skatteetatens API godtar ikke Maskinporten.
   app.post(
     '/api/organizations/:orgId/vat/mva-melding/validate',
     requireAuth,
     requireOrgPermission('vat.submit'),
     async (req: AuthedRequest, res, next) => {
       try {
-        if (!deps.vatSubmission || !deps.vatSubmission.active) {
-          res.status(503).json({
-            error: {
-              code: 'INTEGRATION_UNAVAILABLE',
-              message: 'MVA-melding-innsending er ikke aktivert (Maskinporten-tilgang mangler). Last ned XML og last opp i Altinn i mellomtiden.',
-            },
-          });
+        if (!deps.idporten || !deps.idporten.configured) {
+          res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'ID-porten er ikke konfigurert. Last ned XML og last opp i Altinn i mellomtiden.' } });
           return;
         }
-        const body = z
-          .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
-          .parse(req.body);
-        const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
+        const token = await getValidAccessToken(deps.db, deps.idporten, req.params.orgId!);
+        if (!token) {
+          res.status(401).json({ error: { code: 'IDPORTEN_LOGIN_REQUIRED', message: 'Logg inn hos Skatteetaten (BankID) først.' } });
+          return;
+        }
+        const body = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
         const orgNumber = (await deps.db.query(`SELECT org_number FROM organizations WHERE id = $1`, [req.params.orgId])).rows[0]?.org_number as string | undefined;
         if (!orgNumber || !/^\d{9}$/.test(orgNumber)) {
-          res.status(400).json({ error: { code: 'ORG_NUMBER_MISSING', message: 'Virksomheten mangler et gyldig organisasjonsnummer (9 sifre) — kreves i mva-meldingen.' } });
+          res.status(400).json({ error: { code: 'ORG_NUMBER_MISSING', message: 'Virksomheten mangler et gyldig organisasjonsnummer (9 sifre).' } });
           return;
         }
-        const result = await deps.vatSubmission.validate(report, { orgNumber });
+        const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
+        const result = await validateMvaMeldingWithToken({ report, orgNumber, accessToken: token, env: deps.idporten.env });
         res.json(toJson(result));
       } catch (err) {
         next(err);
       }
     },
   );
+
+  // ── ID-porten OIDC for mva-melding (BankID-innlogging) ────────────────────
+  app.post('/api/organizations/:orgId/idporten/login', requireAuth, requireOrgPermission('vat.submit'), async (req: AuthedRequest, res, next) => {
+    try {
+      if (!deps.idporten || !deps.idporten.configured) { res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'ID-porten er ikke konfigurert.' } }); return; }
+      const state = randomToken();
+      const nonce = randomToken();
+      const pkce = generatePkce();
+      await saveLoginState(deps.db, { state, organizationId: req.params.orgId!, codeVerifier: pkce.verifier, nonce, userId: req.auth!.userId });
+      res.json({ authorizeUrl: deps.idporten.buildAuthorizeUrl({ state, nonce, codeChallenge: pkce.challenge }) });
+    } catch (err) { next(err); }
+  });
+  app.get('/api/organizations/:orgId/idporten/status', requireAuth, requireOrgPermission('vat.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const status = await idportenStatus(deps.db, req.params.orgId!);
+      res.json(toJson({ configured: Boolean(deps.idporten?.configured), env: deps.idporten?.env ?? null, ...status }));
+    } catch (err) { next(err); }
+  });
+  // Redirect-mål etter BankID-innlogging (UAUTENTISERT browser-navigasjon).
+  app.get('/idporten/callback', async (req, res, next) => {
+    try {
+      const q = req.query as Record<string, unknown>;
+      const code = typeof q.code === 'string' ? q.code : '';
+      const state = typeof q.state === 'string' ? q.state : '';
+      const page = (title: string, body: string) => `<!doctype html><html lang="nb"><meta charset="utf-8"><title>${title}</title><body style="font-family:system-ui;max-width:520px;margin:64px auto;text-align:center"><h2>${title}</h2><p>${body}</p><p><a href="/">Tilbake til Reknaren</a></p></body></html>`;
+      if (!code || !state || !deps.idporten?.configured) { res.status(400).type('html').send(page('Innlogging feilet', 'Mangler kode/state, eller ID-porten er ikke konfigurert.')); return; }
+      const st = await takeLoginState(deps.db, state);
+      if (!st) { res.status(400).type('html').send(page('Innlogging utløpt', 'Prøv å logge inn på nytt fra Reknaren.')); return; }
+      const tokens = await deps.idporten.exchangeCode({ code, codeVerifier: st.codeVerifier });
+      await saveSession(deps.db, st.organizationId, tokens);
+      res.type('html').send(page('Logget inn hos Skatteetaten ✓', 'Du kan lukke dette vinduet og gå tilbake til Reknaren for å validere/sende mva-meldingen.'));
+    } catch (err) { next(err); }
+  });
 
   // Send inn MVA-meldingen til Skatteetaten (Altinn 3 via Maskinporten).
   app.post(

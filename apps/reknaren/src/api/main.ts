@@ -23,6 +23,7 @@ import {
   UnconfiguredBankFeedProvider,
 } from '../bank/feed.js';
 import { UnconfiguredPeppolAccessPoint } from '../invoicing/ehf.js';
+import { IdPortenClient } from '../integrations/idporten.js';
 import { ImapGmailAdapter } from '../ingestion/gmail/imap.js';
 import { ClaudeEmailClassifier } from '../ingestion/gmail/smart-filter.js';
 import { LocalObjectStorage } from '../storage/local.js';
@@ -82,6 +83,9 @@ const app = createApiServer({
   // EHF/PEPPOL: XML-generering + nedlasting virker alltid; overføring via
   // aksesspunkt er ikke aktiv uten avtale (ærlig no-op).
   peppol: new UnconfiguredPeppolAccessPoint(),
+  // ID-porten OIDC for mva-melding (validering/innsending krever pålogget bruker).
+  // Inaktiv uten IDPORTEN_CLIENT_ID + nøkkel.
+  idporten: new IdPortenClient(config.idporten),
   // Ekte Gmail-lesing via IMAP (samme app-passord som SMTP). Uten creds → sandbox.
   ...(config.smtpUser && config.smtpPassword
     ? {

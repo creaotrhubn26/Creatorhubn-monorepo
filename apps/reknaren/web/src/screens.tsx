@@ -1835,6 +1835,20 @@ export function VatScreen({ orgId }: { orgId: string }) {
   const [meldValidated, setMeldValidated] = useState(false);
   const [meldReceipt, setMeldReceipt] = useState<{ reference: string; status: string } | null>(null);
   const meldToast = useToast();
+  const idporten = useLoad(
+    () => api<{ configured: boolean; loggedIn: boolean; env: string | null; expiresAt: string | null }>('GET', `/api/organizations/${orgId}/idporten/status`),
+    [orgId],
+  );
+  const loginIdporten = async () => {
+    setMeldMsg(null);
+    try {
+      const r = await api<{ authorizeUrl: string }>('POST', `/api/organizations/${orgId}/idporten/login`, {});
+      window.open(r.authorizeUrl, '_blank', 'noopener');
+      meldToast('Fullfør BankID-innloggingen i det nye vinduet, og trykk «Sjekk innlogging» etterpå.', 'ok');
+    } catch (err) {
+      setMeldMsg(err instanceof ApiError ? err.message : 'Kunne ikke starte innlogging.');
+    }
+  };
 
   const downloadMvaMelding = async () => {
     setMeldMsg(null);
@@ -1958,39 +1972,42 @@ export function VatScreen({ orgId }: { orgId: string }) {
       <div className="panel">
         <div className="threshold-head">
           <h2>MVA-melding</h2>
-          <span className={`badge ${threshold.data?.altinnActive ? 'ok' : 'neutral plain'}`}>
-            {threshold.data?.altinnActive ? 'Innsending aktiv' : 'Innsending ikke aktivert'}
-          </span>
+          {(() => {
+            const d = idporten.data;
+            const cls = d?.loggedIn ? 'ok' : 'neutral plain';
+            const txt = !d?.configured ? 'Innsending ikke aktivert' : d.loggedIn ? 'Innlogget hos Skatteetaten' : 'Krever BankID-innlogging';
+            return <span className={`badge ${cls}`}>{txt}</span>;
+          })()}
         </div>
         <p className="subtitle">
-          Meldingen bygges automatisk fra tallene i valgt periode, i Skatteetatens format.
+          Meldingen bygges automatisk fra tallene i valgt periode, i Skatteetatens format. Validering krever
+          innlogging med BankID hos Skatteetaten (ID-porten).
         </p>
         {meldMsg && <div className="error">{meldMsg}</div>}
-        {meldReceipt && (
-          <div className="panel threshold-panel ok" style={{ marginTop: 8 }}>
-            <div className="threshold-head"><h2>Sendt inn ✓</h2><span className="badge ok">{meldReceipt.status}</span></div>
-            <p className="subtitle">Referanse fra Skatteetaten: <b>{meldReceipt.reference}</b>.</p>
-          </div>
+        {idporten.data?.loggedIn && (
+          <p className="hint">✓ Innlogget hos Skatteetaten{idporten.data.expiresAt ? ` (til ${new Date(idporten.data.expiresAt).toLocaleString('nb-NO')})` : ''}.</p>
         )}
         <div className="actions">
           <button onClick={downloadMvaMelding}>Last ned MVA-melding (XML)</button>
-          {threshold.data?.altinnActive && !meldReceipt ? (
+          {idporten.data?.configured && !idporten.data.loggedIn && (
             <>
-              <button className={meldValidated ? 'secondary' : 'primary'} disabled={meldBusy} onClick={validateMvaMelding}>
-                {meldBusy ? 'Validerer…' : meldValidated ? 'Valider på nytt' : 'Valider hos Skatteetaten'}
-              </button>
-              {meldValidated && (
-                <button className="primary" disabled={meldBusy} onClick={submitMvaMelding}>
-                  {meldBusy ? 'Sender…' : 'Send inn til Skatteetaten'}
-                </button>
-              )}
+              <button className="primary" onClick={loginIdporten}>Logg inn hos Skatteetaten (BankID)</button>
+              <button className="secondary" onClick={() => idporten.reload()}>Sjekk innlogging</button>
             </>
-          ) : null}
+          )}
+          {idporten.data?.loggedIn && (
+            <button className="primary" disabled={meldBusy} onClick={validateMvaMelding}>
+              {meldBusy ? 'Validerer…' : meldValidated ? 'Valider på nytt' : 'Valider hos Skatteetaten'}
+            </button>
+          )}
         </div>
-        {!threshold.data?.altinnActive && (
+        {meldValidated && (
+          <p className="hint">✓ Meldingen er gyldig hos Skatteetaten. Innsending aktiveres når innsendings-scopet (`skatteetaten:mvameldinginnsending`) er innvilget — i mellomtiden last ned XML-en og send i Altinn.</p>
+        )}
+        {idporten.data && !idporten.data.configured && (
           <p className="hint">
-            Automatisk innsending og validering aktiveres når Maskinporten-tilgangen fra Skatteetaten er
-            på plass. I mellomtiden kan du laste ned XML-en og laste den opp i Altinn.
+            Automatisk validering aktiveres når ID-porten-tilgangen er satt opp. I mellomtiden kan du laste ned
+            XML-en (på Skatteetatens format) og laste den opp i Altinn.
           </p>
         )}
       </div>
