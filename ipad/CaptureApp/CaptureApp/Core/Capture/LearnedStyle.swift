@@ -163,11 +163,18 @@ enum LearnedStyle {
         let ctx = CIContext(options: [.useSoftwareRenderer: false])
         var out = image
 
-        // MERK: INGEN base-align. Empirisk (harness mot ekte CIRAWFilter) matcher
-        // enhetens develop-base allerede trenings-neutralen (begge ~0.42 snitt-luma)
-        // — den lærte CDF-LUT-en treffer riktig fordeling direkte. Et tidligere
-        // base-align-forsøk mot en global gjennomsnitts-referanse BLÅSTE OPP bildet
-        // (0.42→0.66→0.93) fordi referansen var skjev lys; fjernet.
+        // BASE-METNINGS-MATCH (CIRAWFilter → rawpy): CIRAWFilter-basen er mer
+        // konservativt mettet (~63) enn rawpy-basen (~93) LUT-en ble trent på.
+        // Ekte-LAB-overføringen nedenfor gjenoppretter det MESTE (portrett/lyse
+        // scener matcher fasiten på ×1.0); en LETT base-boost løfter i tillegg den
+        // avmettede mellomtone-looken til fasit-nivå. Etterprøvd mørk/lys/portrett.
+        let baseSat = CIFilter.colorControls()
+        baseSat.inputImage = out
+        baseSat.saturation = 1.1
+        baseSat.contrast = 1.0
+        baseSat.brightness = 0
+        out = baseSat.outputImage?.cropped(to: image.extent) ?? out
+
         guard let cg = ctx.createCGImage(out, from: out.extent) else { return image }
         let f = features(of: cg)
         guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
@@ -187,43 +194,15 @@ enum LearnedStyle {
         curves.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
         out = curves.outputImage ?? out
 
-        // a/b-middel-skift approksimert i RGB (0.5× som motoren): +a = rød↔grønn,
-        // +b = gul↔blå. Skalert til RGB-enheter (LAB a/b ~ ±0..30 → små bias).
-        let da = blended.ab[0] * 0.5 / 255.0
-        let db = blended.ab[1] * 0.5 / 255.0
-        if abs(da) > 0.0005 || abs(db) > 0.0005 {
-            let m = CIFilter.colorMatrix()
-            m.inputImage = out
-            m.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
-            m.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
-            m.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
-            m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
-            // +a: rød opp, grønn ned. +b: rød/grønn opp, blå ned (gul).
-            m.biasVector = CIVector(x: da + db, y: -da + db, z: -db, w: 0)
-            out = m.outputImage ?? out
-        }
+        // EKTE-LAB FARGEOVERFØRING (erstatter RGB-a/b + global CIColorControls-
+        // Reinhard): a/b-middelskift + per-kanal Reinhard-std rundt kanalens snitt,
+        // i CIELAB — nøyaktig fotografens farge-/spredningsendring (L=kontrast,
+        // a/b=metning). Dette er den prinsipielle fiksen: RGB-approksimasjonen
+        // krasjet metningen; ekte LAB reproduserer motorens `apply_model`.
+        out = LabColorTransfer.apply(to: out, ab: blended.ab, std: blended.labStd, ctx: ctx)
+            .cropped(to: image.extent)
 
-        // MERK: den tidligere ALLTID-PÅ høylys-skulderen + eksponerings-vakten +
-        // bakgrunns-nøytraliseringen er FJERNET. De var plaster på base-mismatchen
-        // (deep-research: fasiten `apply_model` har ingen av dem). Med base-align
-        // gir LUT-en riktig eksponering/tone selv → korreksjonene stablet bare
-        // feil på feil. Kun en sjelden klipp-SIKRING beholdes nedenfor.
-
-        // (2) Reinhard-STD: L-std → kontrast, a/b-std →
-        // metning. Metnings-GULV hevet til 0.9 så farger/hud beholder liv (ikke
-        // over-avmett), og kontrast klemt lavere så vi ikke hardner tonene.
-        let contrast = min(1.25, max(0.85, blended.labStd[0]))
-        let sat = min(1.30, max(0.9, (blended.labStd[1] + blended.labStd[2]) / 2))
-        if abs(contrast - 1) > 0.01 || abs(sat - 1) > 0.01 {
-            let cc = CIFilter.colorControls()
-            cc.inputImage = out
-            cc.contrast = Float(contrast)
-            cc.saturation = Float(sat)
-            cc.brightness = 0
-            out = cc.outputImage?.cropped(to: image.extent) ?? out
-        }
-
-        // (3) KLIPP-SIKRING (sjelden): kun når høylys FAKTISK er kraftig utblåst,
+        // KLIPP-SIKRING (sjelden): kun når høylys FAKTISK er kraftig utblåst,
         // komprimér lokalt (luminans-maskert) de utblåste flatene. Terskel hevet
         // (0.04) så den ikke rører normalt eksponerte bilder — ingen global
         // eksponerings-endring lenger (den kjempet mot den lærte looken).
@@ -242,6 +221,7 @@ enum LearnedStyle {
         // tekstur-bevarende utjevning — mot «blek/flat/livløs».
         out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
+<<<<<<< Updated upstream
 
         // 🔑 BASE-KALIBRERING (CIRAWFilter → rawpy): enhetens develop-base er
         // konsekvent LYSERE (~0.46 vs 0.40) og MINDRE METTET (~63 vs 93) enn rawpy-
@@ -261,6 +241,8 @@ enum LearnedStyle {
         cal.brightness = 0
         out = cal.outputImage?.cropped(to: image.extent) ?? out
 
+=======
+>>>>>>> Stashed changes
         return out.cropped(to: image.extent)
     }
 }
