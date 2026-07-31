@@ -135,3 +135,66 @@ For å rulle tilbake: `UPLOAD_STORAGE_PRIMARY=r2` og
 `CAPTURE_STORAGE_PRIMARY=r2`. Filene som allerede er skrevet til B2 leses
 fortsatt fra B2 — per-fil-backenden og nøkkelprefikset står i dataene, ikke
 i konfigen.
+
+## Asset-versjonering
+
+Nøkkelen var deterministisk:
+
+```
+{prefiks}{eier}/{sesjon}/{asset}/{kind}/{filnavn}
+```
+
+Lastet noen opp samme asset og kind på nytt — en re-eksport, en
+omkonvertering, en fil som feilet halvveis og ble sendt igjen — traff den
+nøyaktig samme nøkkel og **overskrev objektet i bøtta**. Den gamle fila
+var borte uten spor, og `capture_assets.full_key` pekte på nye bytes
+under samme navn.
+
+Det er alvorlig i en filmproduksjon av tre grunner: en godkjenning
+gjelder en bestemt fil, en kommentar med timecode hører til ett bestemt
+klipp, og checksummen i asset-raden slutter å beskrive objektet.
+
+Nye nøkler har et versjonsledd:
+
+```
+{prefiks}{eier}/{sesjon}/{asset}/{kind}/v3/{filnavn}
+```
+
+Historikken ligger i `capture_asset_versions`. Lesestiene er urørt —
+`preview_key`/`full_key`/`raw_key` peker fortsatt på gjeldende versjon, så
+de rundt 40 stedene som signerer en URL fra en bar nøkkel trenger ikke
+vite at versjoner finnes. Gamle nøkler mangler versjonsleddet og
+fungerer videre, fordi de leses fra det som står i databasen og ikke fra
+en gjenoppbygget sti.
+
+### Flyten
+
+1. `upload/start` reserverer neste versjonsnummer og bygger nøkkelen med
+   det. Reservasjonen skjer først fordi nummeret må inn i nøkkelen, og
+   fordi unik-indeksen `(asset_id, kind, version_number)` er det som
+   hindrer at to samtidige opplastinger ender på samme objekt.
+2. `upload/complete` gjør versjonen gjeldende: den blir `ready`, de
+   tidligere blir avløst, og `capture_assets.{kind}_key` peker på den nye
+   nøkkelen — alt i én transaksjon.
+3. `upload/abort` frigir nummeret, så avbrutte opplastinger ikke etterlater
+   hull som ser ut som slettede filer.
+
+Klienten sender `versionId` tilbake ved complete. Uteblir den — en eldre
+iPad, eller en opplasting startet før versjonering fantes — faller
+complete tilbake til å skrive nøkkelen direkte, så en klient som ikke er
+oppdatert fortsatt kan fullføre.
+
+Nøkkelen klienten oppgir sjekkes mot den reserverte. Uten den sjekken
+kunne en klient laste opp til én nøkkel og be oss promotere en annen
+versjon: bytene ett sted, asset-raden et annet.
+
+### Avløste versjoner koster fortsatt penger
+
+En avløst versjon er ikke slettet. Den ligger i bøtta til noen frigjør
+den. `supersededVersions()` finner dem, og `capture-asset-release-service`
+sletter objektet og trekker ned begge regnskapene. Gjeldende versjon er
+aldri med i listen — å frigjøre den ville etterlatt hver signert URL med
+en 404.
+
+Hvor lenge en avløst versjon skal ligge er en oppbevaringsfrist, ikke en
+teknisk innstilling.

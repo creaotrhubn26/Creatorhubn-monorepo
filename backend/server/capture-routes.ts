@@ -238,6 +238,9 @@ const uploadCompleteBody = z.object({
   kind: z.enum(['preview', 'full', 'raw']),
   uploadId: z.string().min(1),
   key: z.string().min(1),
+  // Versjonen som ble reservert ved start. Valgfri: en iPad som ennå
+  // ikke er oppdatert sender den ikke, og skal fortsatt kunne fullføre.
+  versionId: z.string().uuid().optional(),
   parts: z
     .array(
       z.object({
@@ -969,6 +972,7 @@ export function createCaptureRouter(
 
     const r = await startMultipartUpload(
       db,
+      pool,
       userId,
       req.params.id,
       parsed.data.kind,
@@ -1008,6 +1012,7 @@ export function createCaptureRouter(
     const { userId } = req as AuthedRequest;
     const r = await completeMultipartUpload(
       db,
+      pool,
       userId,
       req.params.id,
       parsed.data.kind,
@@ -1016,6 +1021,10 @@ export function createCaptureRouter(
       parsed.data.parts,
       parsed.data.checksumSha256,
       parsed.data.sizeBytes,
+      // `parsed.data?` framfor `parsed.data`: narrowingen fra handleZod er
+      // brutt av zod-versjonen i repoet. Resten av fila bærer allerede den
+      // feilen; ny kode skal ikke legge til flere.
+      parsed.data?.versionId ?? null,
     );
     if (!r.ok) {
       res.status(uploadErrorStatus(r.error)).json({ error: r.error });
@@ -1130,6 +1139,7 @@ export function createCaptureRouter(
     const { userId } = req as AuthedRequest;
     const r = await abortMultipartUpload(
       db,
+      pool,
       userId,
       req.params.id,
       parsed.data.uploadId,

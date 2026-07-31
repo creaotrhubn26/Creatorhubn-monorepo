@@ -11,6 +11,14 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { Pool } from 'pg';
+import {
+  discardVersion,
+  promoteVersion,
+  reserveVersion,
+  versionForKey,
+  versionSegment,
+} from './capture-asset-version-service.js';
 import {
   captureAssets,
   captureSessions,
@@ -237,10 +245,17 @@ function buildObjectKey(params: {
   sessionId: string;
   assetId: string;
   kind: UploadKind;
+  /// Versjonsleddet ('v3/'). Det er dette som gjør nøkkelen unik per
+  /// versjon — uten det traff en ny opplasting samme nøkkel og overskrev
+  /// fila i bøtta.
+  versionSegment: string;
   filename: string;
 }): string {
   const name = sanitizeFilename(params.filename, 'file.bin');
-  return `${params.prefix}${params.ownerUserId}/${params.sessionId}/${params.assetId}/${params.kind}/${name}`;
+  return (
+    `${params.prefix}${params.ownerUserId}/${params.sessionId}/` +
+    `${params.assetId}/${params.kind}/${params.versionSegment}${name}`
+  );
 }
 
 function expectedKeyPrefix(
@@ -307,10 +322,16 @@ export interface StartUploadResult {
   partCount: number;
   signedUrlTtlSeconds: number;
   partUrlBatchMax: number;
+  /// Versjonsraden som ble reservert. Klienten sender den tilbake ved
+  /// complete, slik at riktig rad markeres ferdig selv om en parallell
+  /// opplasting av samme kind rakk å reservere et høyere nummer.
+  versionId: string;
+  versionNumber: number;
 }
 
 export async function startMultipartUpload(
   db: Db,
+  pool: Pool,
   ownerUserId: string,
   assetId: string,
   kind: UploadKind,
@@ -328,30 +349,56 @@ export async function startMultipartUpload(
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
 
-  const key = buildObjectKey({
-    prefix: cfg.prefix,
-    ownerUserId,
-    sessionId: asset.sessionId,
+  // Reserver versjonsnummeret FØR opplastingen starter. Nummeret må inn
+  // i nøkkelen, og reservasjonen er det som hindrer at to samtidige
+  // opplastinger av samme kind ender på samme objekt — som er nøyaktig
+  // overskrivingen versjonering skal fjerne.
+  const version = await reserveVersion(pool, {
     assetId,
     kind,
-    filename: asset.originalFilename,
-  });
-  const partSize = computePartSize(sizeBytes, preferredPartSize);
-  const partCount = Math.ceil(sizeBytes / partSize);
-  const created = await client.send(
-    new CreateMultipartUploadCommand({
-      Bucket: cfg.bucket,
-      Key: key,
-      ContentType: mime,
-      Metadata: {
+    bucket: cfg.bucket,
+    backend: cfg.backend,
+    contentType: mime,
+    uploadedBy: ownerUserId,
+    buildKey: (versionNumber) =>
+      buildObjectKey({
+        prefix: cfg.prefix,
         ownerUserId,
         sessionId: asset.sessionId,
         assetId,
         kind,
-      },
-    }),
-  );
+        versionSegment: versionSegment(versionNumber),
+        filename: asset.originalFilename,
+      }),
+  });
+  const key = version.objectKey;
+
+  const partSize = computePartSize(sizeBytes, preferredPartSize);
+  const partCount = Math.ceil(sizeBytes / partSize);
+  let created;
+  try {
+    created = await client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: cfg.bucket,
+        Key: key,
+        ContentType: mime,
+        Metadata: {
+          ownerUserId,
+          sessionId: asset.sessionId,
+          assetId,
+          kind,
+          versionNumber: String(version.versionNumber),
+        },
+      }),
+    );
+  } catch (err) {
+    // Reservasjonen ville ellers blitt stående og brent et versjonsnummer
+    // på en opplasting som aldri kom i gang.
+    await discardVersion(pool, version.id).catch(() => undefined);
+    throw err;
+  }
   if (!created.UploadId) {
+    await discardVersion(pool, version.id).catch(() => undefined);
     throw new Error('multipart start returned no uploadId');
   }
   return {
@@ -364,6 +411,8 @@ export async function startMultipartUpload(
       partCount,
       signedUrlTtlSeconds: SIGNED_URL_TTL_SECONDS,
       partUrlBatchMax: PART_URL_BATCH_MAX,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
     },
   };
 }
@@ -431,10 +480,16 @@ export interface CompletedUpload {
   /// Produksjonen bytene skal bokføres på. Null når sesjonen ikke er
   /// knyttet til et prosjekt — da eier brukeren dem alene.
   projectId: string | null;
+  /// Versjonen som ble gjort gjeldende. Null når klienten ikke sendte
+  /// noen versjonsid — en eldre iPad, eller en opplasting startet før
+  /// versjonering fantes.
+  versionId: string | null;
+  versionNumber: number | null;
 }
 
 export async function completeMultipartUpload(
   db: Db,
+  pool: Pool,
   ownerUserId: string,
   assetId: string,
   kind: UploadKind,
@@ -443,6 +498,7 @@ export async function completeMultipartUpload(
   parts: Array<{ partNumber: number; etag: string }>,
   checksumSha256: string,
   sizeBytes: number,
+  versionId?: string | null,
 ): Promise<Result<CompletedUpload>> {
   if (parts.length === 0 || checksumSha256.length !== 64 || sizeBytes <= 0) {
     return { ok: false, error: 'invalid' };
@@ -471,13 +527,38 @@ export async function completeMultipartUpload(
   const head = await client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }));
   const verifiedSize = Number(head.ContentLength ?? sizeBytes);
 
+  // Gjør versjonen gjeldende. promoteVersion avløser de foregående OG
+  // setter capture_assets.{kind}_key i samme transaksjon, slik at de
+  // rundt 40 lesestiene som signerer fra en bar nøkkel aldri ser en
+  // asset-rad som peker på en fil vi ikke vet er ferdig opplastet.
+  //
+  // versionId kommer fra klienten. Finner vi ikke raden — en eldre
+  // klient, eller en opplasting startet før versjonering fantes — faller
+  // vi tilbake til å skrive nøkkelen direkte. Uten det ville en iPad som
+  // ikke er oppdatert slutte å kunne fullføre opplastinger.
+  const promoted = versionId
+    ? await promoteVersion(pool, {
+        versionId,
+        sizeBytes: verifiedSize,
+        checksumSha256,
+        // Nøkkelen klienten faktisk lastet opp til må være den vi
+        // reserverte. Ellers ville bytene havnet ett sted og asset-raden
+        // pekt et annet.
+        expectedObjectKey: key,
+      })
+    : null;
+
   const patch: Partial<InsertCaptureAsset> = {
     checksumSha256,
     sizeBytes: verifiedSize,
     updatedAt: new Date(),
-    ...(kind === 'preview' ? { previewKey: key } : {}),
-    ...(kind === 'full' ? { fullKey: key } : {}),
-    ...(kind === 'raw' ? { rawKey: key } : {}),
+    ...(promoted
+      ? {}
+      : {
+          ...(kind === 'preview' ? { previewKey: key } : {}),
+          ...(kind === 'full' ? { fullKey: key } : {}),
+          ...(kind === 'raw' ? { rawKey: key } : {}),
+        }),
   };
   await db
     .update(captureAssets)
@@ -502,6 +583,8 @@ export async function completeMultipartUpload(
       originalFilename: asset.originalFilename,
       mime: asset.mime,
       projectId: asset.projectId,
+      versionId: promoted?.id ?? null,
+      versionNumber: promoted?.versionNumber ?? null,
     },
   };
 }
@@ -603,6 +686,7 @@ async function signAssetReadUrlWithTtl(
 
 export async function abortMultipartUpload(
   db: Db,
+  pool: Pool,
   ownerUserId: string,
   assetId: string,
   uploadId: string,
@@ -623,5 +707,14 @@ export async function abortMultipartUpload(
       UploadId: uploadId,
     }),
   );
+
+  // Frigi versjonsnummeret. Uten dette ville hver avbrutte opplasting
+  // brent et nummer, og versjonshistorikken fått hull som ser ut som
+  // filer noen har slettet.
+  const reserved = await versionForKey(pool, key);
+  if (reserved && reserved.status === 'uploading') {
+    await discardVersion(pool, reserved.id).catch(() => undefined);
+  }
+
   return { ok: true };
 }
