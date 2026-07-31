@@ -13,6 +13,7 @@ import { moneyFromDecimalString } from '../shared/money.js';
 import type { Db } from '../db/pool.js';
 import type { Actor } from '../audit/audit.js';
 import { postJournalEntry, type JournalLineInput } from '../ledger/engine.js';
+import { getVatCode } from '../coa/vat-codes.js';
 import { getAccountDef, type AccountType } from '../coa/accounts.js';
 import { newId } from '../shared/ids.js';
 import { ValidationError } from '../shared/errors.js';
@@ -270,6 +271,7 @@ export interface SaftTxnLine {
   supplierRef: string | null; // Fikens interne SupplierID
   customerRef: string | null; // Fikens interne CustomerID
   description: string | null;
+  taxCode: string | null; // SAF-T TaxInformation/TaxCode (mva-kode) om satt
 }
 export interface SaftTransaction {
   id: string; // SystemID (globalt unikt hos Fiken) → idempotensnøkkel
@@ -335,7 +337,7 @@ export function parseSaftTransactions(xml: string): SaftTransactionsPreview {
         const debitMinor = toMinor(l.DebitAmount?.Amount);
         const creditMinor = toMinor(l.CreditAmount?.Amount);
         if (debitMinor === 0n && creditMinor === 0n) continue;
-        lines.push({ accountNumber, debitMinor, creditMinor, supplierRef: str(l.SupplierID), customerRef: str(l.CustomerID), description: str(l.Description) });
+        lines.push({ accountNumber, debitMinor, creditMinor, supplierRef: str(l.SupplierID), customerRef: str(l.CustomerID), description: str(l.Description), taxCode: str(l.TaxInformation?.TaxCode) });
       }
       if (lines.length < 2) continue;
       const dr = lines.reduce((s, l) => s + l.debitMinor, 0n);
@@ -497,6 +499,14 @@ export async function replaySaftTransactions(
     const cusRefs = new Set(t.lines.map((l) => l.customerRef).filter((x): x is string => !!x));
     const txnSup = supRefs.size === 1 && cusRefs.size === 0 ? [...supRefs][0]! : null;
     const txnCus = cusRefs.size === 1 && supRefs.size === 0 ? [...cusRefs][0]! : null;
+    // Mva-kode: Fiken legger TaxCode kun på kostnads-/inntektslinja, ikke mva-
+    // kontolinja. Bær koden fra linja der den finnes, og propager en ENTYDIG
+    // transaksjons-kode til mva-kontolinjene (2700–2749) så grunnlag + mva grupperes.
+    // Kun koder Reknaren kjenner igjen (ellers avviser postJournalEntry bilaget).
+    const isVatAccount = (acc: string) => /^27[0-4]\d$/.test(acc);
+    const known = (c: string | null): c is string => !!c && c !== '0' && !!getVatCode(c);
+    const txnCodes = new Set(t.lines.map((l) => l.taxCode).filter(known));
+    const txnVatCode = txnCodes.size === 1 ? [...txnCodes][0]! : null;
     const lines: JournalLineInput[] = t.lines.map((l) => {
       const line: JournalLineInput = { accountNumber: l.accountNumber };
       if (l.debitMinor > 0n) line.debitMinor = l.debitMinor;
@@ -508,6 +518,8 @@ export async function replaySaftTransactions(
       const cid = cusRef ? cus.map.get(cusRef) : undefined;
       if (vid) line.vendorId = vid;
       if (cid) line.customerId = cid;
+      const vatCode = known(l.taxCode) ? l.taxCode : isVatAccount(l.accountNumber) ? txnVatCode : null;
+      if (vatCode) line.vatCode = vatCode;
       return line;
     });
     await postJournalEntry(db, {

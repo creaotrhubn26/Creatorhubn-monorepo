@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { parseSaftTransactions, replaySaftTransactions } from '../src/saft/import.js';
+import { buildVatReport } from '../src/vat/engine.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { setupTestDb, truncateAll } from './helpers.js';
 
@@ -40,8 +41,8 @@ const SAFT = `<?xml version="1.0"?>
         <Line><RecordID>3</RecordID><AccountID>2700</AccountID><CreditAmount><Amount>250.00</Amount></CreditAmount></Line>
       </Transaction>
       <Transaction><TransactionID>2</TransactionID><TransactionDate>2025-04-01</TransactionDate><Description>Kjoep fra Lev AS</Description><SystemID>SYS-2</SystemID>
-        <Line><RecordID>4</RecordID><AccountID>6800</AccountID><DebitAmount><Amount>800.00</Amount></DebitAmount></Line>
-        <Line><RecordID>5</RecordID><AccountID>2710</AccountID><DebitAmount><Amount>200.00</Amount></DebitAmount></Line>
+        <Line><RecordID>4</RecordID><AccountID>6800</AccountID><DebitAmount><Amount>800.00</Amount></DebitAmount><TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25</TaxPercentage><DebitTaxAmount><Amount>200.00</Amount></DebitTaxAmount></TaxInformation></Line>
+        <Line><RecordID>5</RecordID><AccountID>2711</AccountID><DebitAmount><Amount>200.00</Amount></DebitAmount></Line>
         <Line><RecordID>6</RecordID><AccountID>2400:20001</AccountID><SupplierID>S1</SupplierID><CreditAmount><Amount>1000.00</Amount></CreditAmount></Line>
       </Transaction>
     </Journal>
@@ -113,5 +114,29 @@ describe('SAF-T transaksjons-replay', () => {
     expect(again.transactionsPosted).toBe(2);
     const cnt2 = Number((await db.query(`SELECT COUNT(*)::int AS c FROM journal_entries WHERE organization_id=$1`, [org.id])).rows[0].c);
     expect(cnt2).toBe(3);
+  });
+
+  it('bærer mva-koden fra SAF-T så MVA-rapporten virker på replayet data', async () => {
+    const org = await createOrganization(db, { name: 'MVA-replay AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    // Parse: 6800-linja har TaxCode 1; mva-kontolinja (2711) har ingen.
+    const p = parseSaftTransactions(SAFT);
+    const t2 = p.transactions.find((t) => t.id === 'SYS-2')!;
+    expect(t2.lines.find((l) => l.accountNumber === '6800')!.taxCode).toBe('1');
+    expect(t2.lines.find((l) => l.accountNumber === '2711')!.taxCode).toBeNull();
+
+    await replaySaftTransactions(db, { organizationId: org.id, actor: actor(), xml: SAFT, includeOpening: false });
+    // vat_code satt på BÅDE kostnadslinja (6800) og mva-kontolinja (2711, propagert).
+    const codes = (await db.query(
+      `SELECT account_number, vat_code FROM journal_lines l JOIN journal_entries je ON je.id=l.entry_id
+       WHERE je.organization_id=$1 AND l.vat_code IS NOT NULL ORDER BY account_number`, [org.id])).rows;
+    expect(codes.find((c) => c.account_number === '6800')?.vat_code).toBe('1');
+    expect(codes.find((c) => c.account_number === '2711')?.vat_code).toBe('1');
+
+    // MVA-rapporten er ikke lenger tom: kode 1 med grunnlag 800 og mva 200.
+    const vat = await buildVatReport(db, org.id, '2025-01-01', '2025-12-31');
+    const line = vat.lines.find((l) => l.mvaMeldingCode === '1' || l.vatCode === '1');
+    expect(line).toBeDefined();
+    expect(line!.baseMinor).toBe(80000n);
+    expect(line!.vatMinor).toBe(20000n);
   });
 });

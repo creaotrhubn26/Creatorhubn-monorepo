@@ -142,13 +142,15 @@ export async function buildVatReport(
     [organizationId, fromDate, toDate],
   );
 
-  const VAT_ACCOUNTS = new Set(['2700', '2710', '2740']);
+  // Mva-kontoer: hele standard-mva-området 2700–2749 (utgående/inngående/oppgjør).
+  // Dekker også varianter som 2701/2711 (bl.a. fra Fiken-SAF-T), ikke bare 2700/2710/2740.
+  const isVatAccount = (acc: string) => /^27[0-4]\d$/.test(acc);
   const byCode = new Map<string, { baseMinor: bigint; vatMinor: bigint }>();
   for (const row of res.rows) {
     const codeStr: string = row.vat_code;
     const agg = byCode.get(codeStr) ?? { baseMinor: 0n, vatMinor: 0n };
     const netDebit = BigInt(row.net_debit);
-    if (VAT_ACCOUNTS.has(row.account_number)) {
+    if (isVatAccount(row.account_number)) {
       agg.vatMinor += netDebit; // debet 2710 (inngående) positiv; kredit 2700 (utgående) negativ
     } else {
       agg.baseMinor += netDebit;
