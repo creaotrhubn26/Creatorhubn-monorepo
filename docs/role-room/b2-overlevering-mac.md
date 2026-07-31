@@ -453,6 +453,11 @@ Bakgrunnen for designvalgene står i `docs/role-room/b2-primaerlagring.md` —
 hvorfor nøkkelen bærer klassen sin, hvorfor versjonsnummeret reserveres
 ved start, hvorfor begge regnskapene skrives.
 
+### Rekkefølgen
+
+`docs/role-room/samlet-plan.md` sekvenserer alt arbeidet i faser, med
+hva som blokkerer hva og hva som må avklares av deg.
+
 ### Resten av sesjonen
 
 Denne fila dekker bare lagringen. Det andre arbeidet ligger her:
@@ -463,6 +468,7 @@ Denne fila dekker bare lagringen. Det andre arbeidet ligger her:
 | `docs/role-room/live-set-ipad-native.md` | Live Set som egen native iPad-app: delt pakke, kontrakt mot server, tilstandsmaskin, Xcode-oppsett, rekkefølge |
 | `ipad/Packages/OutboxKit/README.md` | Utrekket av offline-køen til delt Swift-pakke |
 | `ipad/Packages/NetworkingKit/README.md` | Utrekket av transportlaget |
+| `docs/role-room/samlet-plan.md` | Rekkefølgen på alt som gjenstår |
 
 Det som gjenstår i disse: **REVIEW-skjermen** fra mockupene er ikke
 bygget (rutene og tilstandsmaskinen finnes), og **den native Live
