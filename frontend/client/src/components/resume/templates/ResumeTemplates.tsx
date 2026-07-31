@@ -64,6 +64,53 @@ export interface ResumeTemplateProps {
 }
 
 // ============================================================================
+// KONTRAST — hvorfor fargene under er som de er
+// ============================================================================
+//
+// En CV er ikke dekorasjon. Den leses av folk som skummer femti av dem, ofte
+// på skjerm og ofte skrevet ut i gråtoner. Lav kontrast koster søkeren jobben,
+// ikke oss.
+//
+// En måling med axe over alle 15 malene fant 82 kontrastbrudd i 11 av dem.
+// De verste var #9CA3AF på hvitt (2,53:1) og hvit tekst på #C09464 (2,74:1) —
+// under halvparten av WCAG AA-kravet på 4,5:1 for vanlig tekst.
+//
+// REGELEN som gjelder her:
+//
+//   En aksentfarge kan ikke være både bakgrunn og tekst. Kravet er det samme
+//   begge veier — 4,5:1 mot hvitt — så en farge som tåler hvit tekst oppå seg
+//   tåler også å VÆRE tekst på hvitt. Derfor er hver aksent nå mørk nok til
+//   begge deler, i stedet for at vi holder to varianter i hodet.
+//
+//   Farger som bare er dekor (tynne skillelinjer, prikker, striper) trenger
+//   ikke oppfylle noe: kontrastkravet gjelder tekst og grafikk som BÆRER
+//   informasjon.
+//
+// Alle forholdstall under er regnet med WCAG 2.1 sin formel mot hvitt.
+
+/** Sekundærtekst på hvitt: datoer, steder, undertitler. 4,83:1. */
+const MUTED = '#6B7280';
+
+/** Sekundærtekst på tonet bakgrunn (mint, krem). 6,7:1 der, 7,6:1 på hvitt. */
+const MUTED_ON_TINT = '#4B5563';
+
+/**
+ * Tekst på en aksentfarget flate — sidebaren i Nordic Dark, som skifter
+ * bakgrunn med valgt fargeskjema.
+ *
+ * Hvit, ikke en dempet grå. Det er ikke en forenkling, det er det eneste
+ * som holder: aksentene er valgt slik at de gir minst 4,5:1 MOT HVITT, så
+ * hvit tekst på dem er garantert innenfor. Enhver dimmet variant er det
+ * ikke — den avhenger av hvilket skjema brukeren valgte.
+ *
+ * Veien hit: først satte jeg #9CA3AF her, som er riktig på nesten-svart
+ * (5,84:1 på #1F2937). Måling mot de åtte skjemaene viste at den faller
+ * til 2,05:1 på tan og 1,90:1 på rødt. Hierarkiet må derfor komme fra
+ * vekt og størrelse, ikke fra en svakere farge.
+ */
+const ON_ACCENT = '#FFFFFF';
+
+// ============================================================================
 // COLOR SCHEMES — globalt sett brukere kan velge mellom.
 // ============================================================================
 //
@@ -83,7 +130,7 @@ export interface ColorScheme {
 export const RESUME_COLOR_SCHEMES: Record<string, ColorScheme> = {
   'creator-orange': {
     id: 'creator-orange', name: 'CreatorHub Orange',
-    accent: '#FF6B35', accentDark: '#E85A24', bgSoft: '#FFF0E8', textOnAccent: '#FFFFFF',
+    accent: '#B23A00', accentDark: '#8A2D00', bgSoft: '#FFF0E8', textOnAccent: '#FFFFFF',
   },
   'nordic-navy': {
     id: 'nordic-navy', name: 'Nordic Navy',
@@ -91,23 +138,23 @@ export const RESUME_COLOR_SCHEMES: Record<string, ColorScheme> = {
   },
   'tan-bronze': {
     id: 'tan-bronze', name: 'Modern Tan',
-    accent: '#C09464', accentDark: '#A37947', bgSoft: '#F3F1ED', textOnAccent: '#FFFFFF',
+    accent: '#8A6540', accentDark: '#6E502F', bgSoft: '#F3F1ED', textOnAccent: '#FFFFFF',
   },
   'forest-green': {
     id: 'forest-green', name: 'Forest Green',
-    accent: '#10B981', accentDark: '#059669', bgSoft: '#ECFDF5', textOnAccent: '#FFFFFF',
+    accent: '#047857', accentDark: '#065F46', bgSoft: '#ECFDF5', textOnAccent: '#FFFFFF',
   },
   'royal-purple': {
     id: 'royal-purple', name: 'Royal Purple',
-    accent: '#6366F1', accentDark: '#4F46E5', bgSoft: '#EEF2FF', textOnAccent: '#FFFFFF',
+    accent: '#4F46E5', accentDark: '#4338CA', bgSoft: '#EEF2FF', textOnAccent: '#FFFFFF',
   },
   'crimson-red': {
     id: 'crimson-red', name: 'Crimson Red',
-    accent: '#DC2626', accentDark: '#B91C1C', bgSoft: '#FEF2F2', textOnAccent: '#FFFFFF',
+    accent: '#B91C1C', accentDark: '#991B1B', bgSoft: '#FEF2F2', textOnAccent: '#FFFFFF',
   },
   'ocean-blue': {
     id: 'ocean-blue', name: 'Ocean Blue',
-    accent: '#0EA5E9', accentDark: '#0284C7', bgSoft: '#E0F2FE', textOnAccent: '#FFFFFF',
+    accent: '#0369A1', accentDark: '#075985', bgSoft: '#E0F2FE', textOnAccent: '#FFFFFF',
   },
   'monochrome-black': {
     id: 'monochrome-black', name: 'Monochrome',
@@ -321,7 +368,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
           {resume.personalInfo.fullName}
         </Typography>
         {resume.personalInfo.professionalTitle && (
-          <Typography variant="h6" sx={{ fontSize: '16px', color: '#7f8c8d', mt: 1 }}>
+          <Typography variant="h6" sx={{ fontSize: '16px', color: MUTED, mt: 1 }}>
             {resume.personalInfo.professionalTitle}
           </Typography>
         )}
@@ -346,7 +393,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
           <Box key={exp.id} sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{exp.jobTitle}</Typography>
-              <Typography sx={{ fontSize: '12px', color: '#7f8c8d' }}>
+              <Typography sx={{ fontSize: '12px', color: MUTED }}>
                 {new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' })} - {exp.isCurrent ? 'Nå' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' }) : '')}
               </Typography>
             </Box>
@@ -402,7 +449,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
             <Box key={edu.id} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{edu.degree}</Typography>
-                <Typography sx={{ fontSize: '12px', color: '#7f8c8d' }}>
+                <Typography sx={{ fontSize: '12px', color: MUTED }}>
                   {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Nå' : (edu.endDate ? new Date(edu.endDate).getFullYear() : '')}
                 </Typography>
               </Box>
@@ -430,7 +477,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
                 <Box component="span" sx={{ fontWeight: 600 }}>{c.name}</Box>
                 {' — '}{c.issuer}
                 {c.issueDate && (
-                  <Box component="span" sx={{ color: '#7f8c8d', ml: 1 }}>
+                  <Box component="span" sx={{ color: MUTED, ml: 1 }}>
                     ({new Date(c.issueDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' })})
                   </Box>
                 )}
@@ -521,7 +568,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
             const renderExp = (exp: any) => (
               <Box key={exp.id} sx={{ mb: 2 }}>
                 <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{exp.jobTitle}</Typography>
-                <Typography sx={{ fontSize: '12px', color: '#7f8c8d' }}>
+                <Typography sx={{ fontSize: '12px', color: MUTED }}>
                   {exp.company}{exp.location ? `, ${exp.location}` : ''} | {new Date(exp.startDate).getFullYear()} - {exp.isCurrent ? 'Nå' : (exp.endDate ? new Date(exp.endDate).getFullYear() : '')}
                 </Typography>
                 <Box sx={{ mt: 0.5 }}>
@@ -556,7 +603,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{edu.degree}</Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#7f8c8d' }}>
+                  <Typography sx={{ fontSize: '12px', color: MUTED }}>
                     {edu.institution} | {new Date(edu.startDate).getFullYear()}
                     {edu.endDate ? `-${new Date(edu.endDate).getFullYear()}` : ''}
                   </Typography>
@@ -609,14 +656,14 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
     <Box key={exp.id} sx={{ mb: 2.5 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="baseline">
         <Typography sx={{ fontWeight: 500, fontSize: 13 }}>
-          {exp.jobTitle} <Box component="span" sx={{ color: '#9CA3AF' }}>·</Box> {exp.company}
+          {exp.jobTitle} <Box component="span" sx={{ color: MUTED }}>·</Box> {exp.company}
         </Typography>
-        <Typography sx={{ fontSize: 11, color: '#9CA3AF', fontWeight: 300 }}>
+        <Typography sx={{ fontSize: 11, color: MUTED, fontWeight: 300 }}>
           {new Date(exp.startDate).getFullYear()}–{exp.isCurrent ? 'nå' : (exp.endDate ? new Date(exp.endDate).getFullYear() : '')}
         </Typography>
       </Stack>
       {exp.location && (
-        <Typography sx={{ fontSize: 11, color: '#9CA3AF', mb: 0.4 }}>{exp.location}</Typography>
+        <Typography sx={{ fontSize: 11, color: MUTED, mb: 0.4 }}>{exp.location}</Typography>
       )}
       {renderExperienceContent(exp, { bulletSize: 11.5, bullet: '–' })}
     </Box>
@@ -632,7 +679,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
             {resume.personalInfo.professionalTitle}
           </Typography>
         )}
-        <Typography variant="body2" sx={{ mt: 2, color: '#9CA3AF', fontSize: 12 }}>
+        <Typography variant="body2" sx={{ mt: 2, color: MUTED, fontSize: 12 }}>
           {[resume.personalInfo?.email, resume.personalInfo?.phone, resume.personalInfo?.location].filter(Boolean).join(' • ')}
         </Typography>
       </Box>
@@ -652,9 +699,9 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
             <Box key={e.id} sx={{ mb: 1.5 }}>
               <Stack direction="row" justifyContent="space-between">
                 <Typography sx={{ fontSize: 12.5, fontWeight: 500 }}>
-                  {e.degree} <Box component="span" sx={{ color: '#9CA3AF' }}>·</Box> {e.institution}
+                  {e.degree} <Box component="span" sx={{ color: MUTED }}>·</Box> {e.institution}
                 </Typography>
-                <Typography sx={{ fontSize: 11, color: '#9CA3AF', fontWeight: 300 }}>
+                <Typography sx={{ fontSize: 11, color: MUTED, fontWeight: 300 }}>
                   {new Date(e.startDate).getFullYear()}–{e.isCurrent ? 'nå' : (e.endDate ? new Date(e.endDate).getFullYear() : '')}
                 </Typography>
               </Stack>
@@ -686,7 +733,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
                 <Box component="span" sx={{ fontWeight: 500 }}>{c.name}</Box> · {c.issuer}
               </Typography>
               {c.issueDate && (
-                <Typography sx={{ fontSize: 11, color: '#9CA3AF', fontWeight: 300 }}>
+                <Typography sx={{ fontSize: 11, color: MUTED, fontWeight: 300 }}>
                   {new Date(c.issueDate).getFullYear()}
                 </Typography>
               )}
@@ -763,7 +810,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
               {resume.personalInfo.fullName}
             </Typography>
             {resume.personalInfo.professionalTitle && (
-              <Typography variant="h6" sx={{ fontSize: '16px', color: '#7f8c8d', mt: 0.5 }}>
+              <Typography variant="h6" sx={{ fontSize: '16px', color: MUTED, mt: 0.5 }}>
                 {resume.personalInfo.professionalTitle.toUpperCase()}
               </Typography>
             )}
@@ -788,7 +835,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
               <Typography sx={{ fontSize: '12px', color: `${_sc.accent}`, fontWeight: 600 }}>
                 {exp.company}{exp.location ? `, ${exp.location}` : ''}
               </Typography>
-              <Typography sx={{ fontSize: '11px', color: '#7f8c8d', mb: 1 }}>
+              <Typography sx={{ fontSize: '11px', color: MUTED, mb: 1 }}>
                 {new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' })}
                 {' – '}
                 {exp.isCurrent ? 'DAGS DATO' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' }) : '')}
@@ -826,7 +873,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
                 <Typography sx={{ fontSize: '12px', color: `${_sc.accent}` }}>
                   {edu.institution}
                 </Typography>
-                <Typography sx={{ fontSize: '11px', color: '#7f8c8d' }}>
+                <Typography sx={{ fontSize: '11px', color: MUTED }}>
                   {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Nå' : new Date(edu.endDate).getFullYear()}
                 </Typography>
               </Box>
@@ -914,7 +961,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
 // ============================================================================
 
 export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const _sc = resolveScheme(resume, { accent: '#e74c3c', accentDark: '#c0392b', bgSoft: '#fdf0ee' });
+  const _sc = resolveScheme(resume, { accent: '#C0392B', accentDark: '#96271B', bgSoft: '#fdf0ee' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with large photo area */}
@@ -978,7 +1025,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
                   <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 600}}>
                     {exp.company}
                   </Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#7f8c8d', mb: 1 }}>
+                  <Typography sx={{ fontSize: '12px', color: MUTED, mb: 1 }}>
                     {new Date(exp.startDate).getFullYear()} - {exp.isCurrent ? 'Nå' : new Date(exp.endDate).getFullYear()}
                   </Typography>
                   {exp.description && (
@@ -1047,7 +1094,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
 // ============================================================================
 
 export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const _sc = resolveScheme(resume, { accent: '#667eea', accentDark: '#764ba2', bgSoft: '#eef1fe' });
+  const _sc = resolveScheme(resume, { accent: '#4C51BF', accentDark: '#3C3F99', bgSoft: '#eef1fe' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with gradient */}
@@ -1103,11 +1150,11 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                       <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 600}}>
                         {exp.company}
                       </Typography>
-                      <Typography sx={{ fontSize: '12px', color: '#7f8c8d' }}>
+                      <Typography sx={{ fontSize: '12px', color: MUTED }}>
                         {exp.location}
                       </Typography>
                     </Box>
-                    <Typography sx={{ fontSize: '11px', color: '#7f8c8d', fontWeight: 600}}>
+                    <Typography sx={{ fontSize: '11px', color: MUTED, fontWeight: 600}}>
                       {new Date(exp.startDate).getFullYear()} - {exp.isCurrent ? 'Nå' : new Date(exp.endDate).getFullYear()}
                     </Typography>
                   </Box>
@@ -1134,7 +1181,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                       <Typography variant="body2" sx={{ fontSize: '12px' }}>
                         {skill.name}
                       </Typography>
-                      <Typography variant="body2" sx={{ fontSize: '11px', color: '#7f8c8d' }}>
+                      <Typography variant="body2" sx={{ fontSize: '11px', color: MUTED }}>
                         {skill.proficiencyLevel || 85}%
                       </Typography>
                     </Box>
@@ -1176,7 +1223,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                   <Typography sx={{ fontSize: '12px', color: `${_sc.accent}` }}>
                     {edu.institution}
                   </Typography>
-                  <Typography sx={{ fontSize: '11px', color: '#7f8c8d' }}>
+                  <Typography sx={{ fontSize: '11px', color: MUTED }}>
                     {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Nå' : new Date(edu.endDate).getFullYear()}
                   </Typography>
                 </Box>
@@ -1196,7 +1243,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 600}}>
                       {cert.name}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontSize: '11px', color: '#7f8c8d' }}>
+                    <Typography variant="body2" sx={{ fontSize: '11px', color: MUTED }}>
                       {cert.issuer}
                     </Typography>
                   </Box>
@@ -1215,7 +1262,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
 // ============================================================================
 
 export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const _sc = resolveScheme(resume, { accent: '#4caf50', accentDark: '#2e7d32', bgSoft: '#e8f5e8' });
+  const _sc = resolveScheme(resume, { accent: '#2E7D32', accentDark: '#1B5E20', bgSoft: '#e8f5e8' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with medical theme */}
@@ -1294,11 +1341,11 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
                       <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 600}}>
                         {exp.company}
                       </Typography>
-                      <Typography sx={{ fontSize: '12px', color: '#757575' }}>
+                      <Typography sx={{ fontSize: '12px', color: MUTED_ON_TINT }}>
                         {exp.location}
                       </Typography>
                     </Box>
-                    <Typography sx={{ fontSize: '11px', color: '#757575', fontWeight: 600}}>
+                    <Typography sx={{ fontSize: '11px', color: MUTED_ON_TINT, fontWeight: 600}}>
                       {new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' })} - {exp.isCurrent ? 'Nå' : new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' })}
                     </Typography>
                   </Box>
@@ -1324,7 +1371,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
                   <Typography sx={{ fontSize: '13px', color: `${_sc.accent}` }}>
                     {edu.institution}
                   </Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#757575' }}>
+                  <Typography sx={{ fontSize: '12px', color: MUTED_ON_TINT }}>
                     {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Nå' : new Date(edu.endDate).getFullYear()}
                   </Typography>
                 </Box>
@@ -1372,7 +1419,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 600}}>
                       {cert.name}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontSize: '11px', color: '#757575' }}>
+                    <Typography variant="body2" sx={{ fontSize: '11px', color: MUTED_ON_TINT }}>
                       {cert.issuer}
                     </Typography>
                   </Box>
@@ -1412,7 +1459,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
         <Typography variant="h5" sx={{ fontSize: '18px', color: '#424242', fontWeight: 300, mb: 2 }}>
           {resume.personalInfo.professionalTitle}
         </Typography>
-        <Stack direction="row" spacing={4} justifyContent="center" sx={{ fontSize: '13px', color: '#757575' }}>
+        <Stack direction="row" spacing={4} justifyContent="center" sx={{ fontSize: '13px', color: MUTED_ON_TINT }}>
           <Typography variant="body2"><ContactLine icon={<MailOutlineIcon />}>{resume.personalInfo.email}</ContactLine></Typography>
           <Typography variant="body2"><ContactLine icon={<PhoneIphoneIcon />}>{resume.personalInfo.phone}</ContactLine></Typography>
           <Typography variant="body2"><ContactLine icon={<LocationOnIcon />}>{resume.personalInfo.location}</ContactLine></Typography>
@@ -1451,12 +1498,12 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
                         {edu.institution}
                       </Typography>
                       {edu.gpa && (
-                        <Typography sx={{ fontSize: '12px', color: '#757575' }}>
+                        <Typography sx={{ fontSize: '12px', color: MUTED_ON_TINT }}>
                           GPA: {edu.gpa}
                         </Typography>
                       )}
                     </Box>
-                    <Typography sx={{ fontSize: '11px', color: '#757575', fontWeight: 600}}>
+                    <Typography sx={{ fontSize: '11px', color: MUTED_ON_TINT, fontWeight: 600}}>
                       {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Pågående' : new Date(edu.endDate).getFullYear()}
                     </Typography>
                   </Box>
@@ -1484,7 +1531,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
                   <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 500}}>
                     {exp.company}
                   </Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#757575', mb: 1 }}>
+                  <Typography sx={{ fontSize: '12px', color: MUTED_ON_TINT, mb: 1 }}>
                     {new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' })} - {exp.isCurrent ? 'Pågående' : new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' })}
                   </Typography>
                   <Box sx={{ mt: 1 }}>
@@ -1506,7 +1553,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
                   <Typography sx={{ fontWeight: 500}}>
                     {project.title}
                   </Typography>
-                  <Typography sx={{ color: '#757575', fontStyle: 'italic' }}>
+                  <Typography sx={{ color: MUTED_ON_TINT, fontStyle: 'italic' }}>
                     {project.description}
                   </Typography>
                 </Box>
@@ -1544,7 +1591,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 500}}>
                       {cert.name}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontSize: '11px', color: '#757575' }}>
+                    <Typography variant="body2" sx={{ fontSize: '11px', color: MUTED_ON_TINT }}>
                       {cert.issuer}
                     </Typography>
                   </Box>
@@ -1627,7 +1674,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
                       <Typography sx={{ fontSize: '14px', color: '#666', fontWeight: 600}}>
                         {exp.company}
                       </Typography>
-                      <Typography sx={{ fontSize: '13px', color: '#888' }}>
+                      <Typography sx={{ fontSize: '13px', color: MUTED }}>
                         {exp.location}
                       </Typography>
                     </Box>
@@ -1657,7 +1704,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
                   <Typography sx={{ fontSize: '13px', color: '#666' }}>
                     {edu.institution}
                   </Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#888' }}>
+                  <Typography sx={{ fontSize: '12px', color: MUTED }}>
                     {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Pågående' : new Date(edu.endDate).getFullYear()}
                   </Typography>
                 </Box>
@@ -1730,7 +1777,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 // ============================================================================
 
 export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const _sc = resolveScheme(resume, { accent: '#ff6b35', accentDark: '#e65100', bgSoft: '#fff8e1' });
+  const _sc = resolveScheme(resume, { accent: '#B23A00', accentDark: '#9A3412', bgSoft: '#fff8e1' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with sales theme */}
@@ -1785,11 +1832,11 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
                       <Typography sx={{ fontSize: '13px', color: `${_sc.accentDark}`, fontWeight: 600}}>
                         {exp.company}
                       </Typography>
-                      <Typography sx={{ fontSize: '12px', color: '#757575' }}>
+                      <Typography sx={{ fontSize: '12px', color: MUTED_ON_TINT }}>
                         {exp.location}
                       </Typography>
                     </Box>
-                    <Typography sx={{ fontSize: '11px', color: '#757575', fontWeight: 600}}>
+                    <Typography sx={{ fontSize: '11px', color: MUTED_ON_TINT, fontWeight: 600}}>
                       {new Date(exp.startDate).getFullYear()} - {exp.isCurrent ? 'Nå' : new Date(exp.endDate).getFullYear()}
                     </Typography>
                   </Box>
@@ -1815,7 +1862,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
                   <Typography sx={{ fontSize: '13px', color: `${_sc.accentDark}` }}>
                     {edu.institution}
                   </Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#757575' }}>
+                  <Typography sx={{ fontSize: '12px', color: MUTED_ON_TINT }}>
                     {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Nå' : new Date(edu.endDate).getFullYear()}
                   </Typography>
                 </Box>
@@ -1860,7 +1907,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 600}}>
                       {cert.name}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontSize: '11px', color: '#757575' }}>
+                    <Typography variant="body2" sx={{ fontSize: '11px', color: MUTED_ON_TINT }}>
                       {cert.issuer}
                     </Typography>
                   </Box>
@@ -1898,7 +1945,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
     </Typography>
   );
   const sidebarTitle = (label: string) => (
-    <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 12, mb: 1, color: '#9CA3AF', letterSpacing: 1.5 }}>
+    <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 12, mb: 1, color: ON_ACCENT, letterSpacing: 1.5 }}>
       {label.toUpperCase()}
     </Typography>
   );
@@ -2063,7 +2110,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
         {resume.personalInfo?.linkedin && (
           <>
             {sidebarTitle('Lenker')}
-            <Typography sx={{ fontSize: 12, color: '#93C5FD', textDecoration: 'underline', mb: 3 }}>
+            <Typography sx={{ fontSize: 12, color: ON_ACCENT, textDecoration: 'underline', mb: 3 }}>
               Linkedin-profil
             </Typography>
           </>
@@ -2116,7 +2163,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 // ============================================================================
 
 export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const tan = resolveAccent(resume, '#C09464');
+  const tan = resolveAccent(resume, '#8A6540');
   const tanLight = '#D9B79A';
   const sidebarBg = '#F3F1ED';
   const dark = '#1A1A1A';
@@ -2730,7 +2777,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
 // ============================================================================
 
 export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const orange = resolveAccent(resume, '#FF6B35');
+  const orange = resolveAccent(resume, '#B23A00');
   const dark = '#0F172A';
   const muted = '#64748B';
   const head = (label: string) => (
