@@ -32,7 +32,9 @@ import {
   startMultipartUpload,
   uploadCaptureObject,
   type UploadError,
+  signAssetReadUrlForMirror,
 } from './capture-upload-service.js';
+import { mirrorUploadToUserB2 } from './user-b2-mirror-worker.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
@@ -958,6 +960,44 @@ export function createCaptureRouter(
       res.status(uploadErrorStatus(r.error)).json({ error: r.error });
       return;
     }
+
+    // Speil originalen til fotografens egen B2 hvis de har satt opp creds.
+    //
+    // Dette manglet: fire andre opplastingsveier speiler, denne gjorde det
+    // ikke — så alt iPad-en lastet opp via multipart havnet i vår R2 og
+    // aldri i brukerens egen bøtte.
+    //
+    // ALDRI await. Primæropplastingen skal ikke blokkeres av B2-svartid
+    // eller -feil, og worker'en hopper stille over brukere uten creds.
+    //
+    // Bare originalene. `preview` er en avledet miniatyr vi kan lage på nytt
+    // når som helst; å speile den ville brent fotografens egen lagringsplass
+    // på noe de ikke har bruk for.
+    // `parsed.data?` framfor `parsed.data`: narrowingen fra handleZod er
+    // brutt av zod-versjonen i repoet, og resten av fila bærer allerede den
+    // feilen. Ny kode skal ikke legge til flere.
+    const mirrorKind = parsed.data?.kind;
+    if (mirrorKind === 'full' || mirrorKind === 'raw') {
+      void signAssetReadUrlForMirror(r.result.key)
+        .then((url) => {
+          if (!url) return;
+          mirrorUploadToUserB2(
+            { pool },
+            {
+              userId,
+              source: 'capture',
+              sourceId: `${req.params.id}:${mirrorKind}`,
+              fileName: r.result.originalFilename,
+              contentType: r.result.mime,
+              primaryUrl: url,
+            },
+          );
+        })
+        .catch((err) => {
+          console.error('[capture] B2-speiling kunne ikke signere URL:', err);
+        });
+    }
+
     res.json(r.result);
   });
 

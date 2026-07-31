@@ -133,11 +133,12 @@ async function fetchOwnedAsset(
   db: Db,
   ownerUserId: string,
   assetId: string,
-): Promise<{ sessionId: string; originalFilename: string } | null> {
+): Promise<{ sessionId: string; originalFilename: string; mime: string } | null> {
   const rows = await db
     .select({
       sessionId: captureAssets.sessionId,
       originalFilename: captureAssets.originalFilename,
+      mime: captureAssets.mime,
     })
     .from(captureAssets)
     .innerJoin(captureSessions, eq(captureAssets.sessionId, captureSessions.id))
@@ -266,6 +267,13 @@ export interface CompletedUpload {
   key: string;
   sizeBytes: number;
   etag: string | null;
+  /// Originalfilnavnet fra kameraet. Brukes som objektnavn ved B2-speiling,
+  /// slik at fotografen kjenner igjen filene i sin egen bøtte — nøkkelen vår
+  /// er en UUID-sti og sier dem ingenting.
+  originalFilename: string;
+  /// Innholdstypen fra asset-raden. Ligger ikke i complete-bodyen, og B2
+  /// trenger den for å lagre objektet med riktig Content-Type.
+  mime: string;
 }
 
 export async function completeMultipartUpload(
@@ -333,6 +341,8 @@ export async function completeMultipartUpload(
       key,
       sizeBytes: verifiedSize,
       etag: head.ETag ?? null,
+      originalFilename: asset.originalFilename,
+      mime: asset.mime,
     },
   };
 }
@@ -392,6 +402,21 @@ export async function signAssetReadUrl(
 
 /// Maximum-TTL signed URL for persisted contexts (e.g. gallery image rows
 /// that live longer than the 5-minute review-mode default).
+/**
+ * TTL for URL-en B2-speilingen henter originalen fra.
+ *
+ * Ikke `READ_URL_TTL_SECONDS` (5 min): speilkøen er en FIFO i minnet som
+ * behandles serielt, og et etterslep etter en stor overføring kan lett
+ * passere fem minutter. Da ville worker'en fått 403 og filen stille aldri
+ * havnet i brukerens B2 — som er nettopp feilen dette skal rette.
+ */
+const MIRROR_URL_TTL_SECONDS = 60 * 60;
+
+/** Signert GET-URL beregnet på B2-speilingen. */
+export async function signAssetReadUrlForMirror(key: string | null): Promise<string | null> {
+  return signAssetReadUrlWithTtl(key, MIRROR_URL_TTL_SECONDS);
+}
+
 export async function signAssetReadUrlForDelivery(
   key: string | null,
 ): Promise<string | null> {
