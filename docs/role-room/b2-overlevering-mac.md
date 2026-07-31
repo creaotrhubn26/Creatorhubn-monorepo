@@ -453,6 +453,21 @@ Bakgrunnen for designvalgene står i `docs/role-room/b2-primaerlagring.md` —
 hvorfor nøkkelen bærer klassen sin, hvorfor versjonsnummeret reserveres
 ved start, hvorfor begge regnskapene skrives.
 
+### Resten av sesjonen
+
+Denne fila dekker bare lagringen. Det andre arbeidet ligger her:
+
+| Dokument | Dekker |
+| --- | --- |
+| `docs/role-room/del-a-kodekartlegging.md` | Økonomi-verifisering, AML-flaten, stripboardet, `/api/production`-kallene, on-set-tilstanden, sammenslåingen av de to Live Set-skjermene, godkjenningsflyten på take |
+| `docs/role-room/live-set-ipad-native.md` | Live Set som egen native iPad-app: delt pakke, kontrakt mot server, tilstandsmaskin, Xcode-oppsett, rekkefølge |
+| `ipad/Packages/OutboxKit/README.md` | Utrekket av offline-køen til delt Swift-pakke |
+| `ipad/Packages/NetworkingKit/README.md` | Utrekket av transportlaget |
+
+Det som gjenstår i disse: **REVIEW-skjermen** fra mockupene er ikke
+bygget (rutene og tilstandsmaskinen finnes), og **den native Live
+Set-appen** er dokumentert, ikke påbegynt.
+
 ---
 
 ## 11. Ikke gjort, og hvorfor

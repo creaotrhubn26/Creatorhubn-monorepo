@@ -585,3 +585,81 @@ kamera, shot compare og versjonsvisning. Ingen av disse finnes i kodebasen i dag
 `multiview`, `audio mixer` og `shot compare` gir null treff — og de fleste krever
 integrasjon mot kamera- og strømmemaskinvare, ikke UI-arbeid. Sammenslåingen er ett
 steg mot det designet, ikke designet.
+
+
+## Godkjenningsflyt på take
+
+Bygget etter mockupene: Review → Approve / Needs Work / Reject → Lock.
+
+**Dette er en tredje akse, ikke en utvidelse av de to som finnes.** Å slå
+dem sammen ville vært den nærliggende feilen:
+
+| Akse | Spørsmål | Hvem eier den |
+| --- | --- | --- |
+| `circle` / `print` | Var dette den beste tagningen? | Script supervisor, på settet |
+| Favoritt | Vil *jeg* finne igjen denne? | Hver bruker, privat |
+| Godkjenning | Er denne god nok til å gå videre? | Review, etter settet |
+
+En take kan være circled uten å være godkjent, og godkjent uten å være
+circled. Favoritter er per bruker — primærnøkkelen inkluderer
+`user_id` — mens godkjenningen er én per take.
+
+### Tilstandsmaskinen
+
+`role-room-take-approval-service.ts` eier overgangene. To valg som ikke
+er åpenbare:
+
+**Underkjent går bare tilbake til `pending`.** Ikke rett til `approved`.
+Ellers ville historikken mistet at noen faktisk vurderte den på nytt —
+raden ville sett ut som om den aldri var underkjent.
+
+**Overgang til samme status avvises.** Dobbeltklikk eller misforståelse;
+begge er bedre å få vite om enn å skrive enda en rad i historikken for.
+
+Låsen slår ut over alt annet: en låst take tilbyr bare `unlock`, uansett
+hvor lovlig overgangen ellers ville vært. Og låsing tilbys ikke før det
+finnes en beslutning å fryse — `pending` kan ikke låses.
+
+`needs_work` og `reject` krever begrunnelse. En godkjenning trenger ingen
+forklaring; en underkjennelse uten begrunnelse er en beskjed om å gjette
+hva som er galt.
+
+### Rutene
+
+```
+GET   /api/role-room/projects/:projectId/takes/approvals
+GET   /api/role-room/projects/:projectId/takes/approvals/summary
+POST  /api/role-room/projects/:projectId/takes/:source/:ref/approval
+PUT   /api/role-room/projects/:projectId/takes/:source/:ref/favorite
+GET   /api/role-room/projects/:projectId/takes/favorites
+```
+
+Hver rad kommer med `availableActions`, slik at skjermen slipper å
+reimplementere tilstandsmaskinen for å tegne knappene. Feilkodene
+(`note_required`, `illegal_transition`, `locked`, `nothing_to_lock`,
+`not_locked`) oversettes til HTTP i rute-laget — **ingen av dem er 500**,
+fordi ingen av dem er en serverfeil.
+
+Favorittlisten leser alltid den innloggede brukeren, aldri en oppgitt id.
+
+`applyAction` kjører i transaksjon med `FOR UPDATE` på godkjenningsraden.
+To personer som trykker samtidig får ellers hver sin lesning av samme
+tilstand, og den siste skriver over den første uten å vite det.
+
+`getApprovalSummary` teller `unreviewed` fra `role_room_take_log`, ikke
+fra godkjenningstabellen: en take uten godkjenningsrad ER uvurdert, og en
+telling som bare så på tabellen ville rapportert null uvurderte på et
+prosjekt der ingen hadde begynt.
+
+### Migrasjon
+
+`0463_role_room_take_approval.sql` — tre tabeller:
+`role_room_take_approvals`, `role_room_take_approval_events` (historikk),
+`role_room_take_favorites`. `locked_at` og `locked_by` har
+`CHECK ((locked_at IS NULL) = (locked_by IS NULL))`: en lås uten eier, or
+en eier uten lås, er begge en halvskrevet tilstand.
+
+### Ikke gjort
+
+Frontend-flaten. Rutene og tilstandsmaskinen finnes og er testet, men
+REVIEW-skjermen fra mockupene er ikke bygget.
