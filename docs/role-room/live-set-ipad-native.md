@@ -94,7 +94,7 @@ ipad/
   Packages/
     OutboxKit/         ✅ trukket ut — Outbox, OutboxWorker, OutboxSender,
                           OutboxMutation, OutboxSchema, OutboxDatabase
-    NetworkingKit/     senere — BackendClient + retry/backoff
+    NetworkingKit/     ✅ trukket ut — HTTPTransport, RetryPolicy, HTTPError
     CameraControlKit/  senere — CCAPIClient/Error/Types/InsecureTrust,
                           CameraDiscovery, CameraSession
                           + protocol CameraControl  ← BMD/RED/Sony
@@ -122,6 +122,34 @@ kø-koden:
 
 Koblingen til appens database går gjennom `OutboxDatabase`-protokollen, så
 alle ni `Outbox(database: db)`-kallstedene står urørt.
+
+**`NetworkingKit` er gjort — men det var en annen jobb enn Outbox.**
+`BackendClient` er 891 linjer med *domenemetoder* (`deliverToShowcase`,
+`fetchWeddingTimelineBrief`), ikke en generisk klient. Å flytte den ville
+flyttet fotografens API-flate inn i en delt pakke.
+
+Det generiske lå inni to klienter, med hver sin halvdel av det riktige:
+
+| | `BackendClient` | `DashboardClient` |
+|---|---|---|
+| Feilmapping (401/403, 404) | ✅ | delvis |
+| Timeout | ❌ | ✅ 30 s |
+| Retry m/backoff og jitter | ❌ | ✅ |
+
+Pakken er begge halvdelene. `BackendClient` beholder sine 40 endepunkter og
+delegerer transporten; den arver dermed timeout og retry den ikke hadde.
+
+To ting måtte rettes underveis, og begge ville kompilert:
+
+- **Feilvokabularet.** Transporten kaster `HTTPError`, men `QuickTeaserService`
+  fanger `BackendError.unauthorized`. Uten en oversettelse på grensen ville de
+  `catch`-ene stille sluttet å matche. Feiltypen er en del av klientens API.
+- **Responsen.** Åtte kallsteder leser `statusCode` selv — typisk opplastinger
+  der 409 betyr «finnes allerede». De går derfor via `rawData`, som beholder
+  responsen, ikke `send`, som kaster på ikke-2xx.
+
+`DashboardClient` er **ikke** migrert ennå. Den har sin egen `DashboardError`
+og sin egen auth-modell; den bør følge etter, men er en egen gjennomgang.
 
 `CameraControlKit` kan vente til fase 5. Live Set trenger den ikke før
 kamerakontroll skal inn.
