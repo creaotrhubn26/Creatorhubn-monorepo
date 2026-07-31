@@ -377,14 +377,24 @@ final class RedigeringModel {
         // (eller auto) er aktiv: INGEN auto-enhance/skygge-løft (som .neutral har
         // og som blåser opp lyse scener), kun høylys-vern. Da opererer LUT-en på
         // et sant nøytralt utgangspunkt i stedet for et alt-oppløftet.
+        let learnedActive = manualScenes != nil || auto
         let learnedBase = MagicRecipe(highlightRecovery: 0.30, autoEnhance: false)
-        let r = (manualScenes != nil || auto) ? learnedBase : effectiveRecipe()
+        let r = learnedActive ? learnedBase : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
         let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-            guard let base = RedigeringPipeline.renderPreview(
-                rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop) else { return nil }
+            // «Min stil» krever en NØYTRAL rawpy-lignende base (den LUT-en ble lært
+            // på). renderPreview gir en Picture-Style-baket/fargestyrt base → LUT
+            // vasker den ut. Bruk bar CIRAWFilter-develop for den lærte banen.
+            let base: UIImage?
+            if learnedActive, let raw {
+                base = RedigeringPipeline.renderNeutralRAW(rawPath: raw, exposureEV: ev, crop: crop)
+                    ?? RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+            } else {
+                base = RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+            }
+            guard let base else { return nil }
             guard var ci = CIImage(image: base) else { return base }
             // Auto → la motoren velge stilen som passer bildets lys.
             var scenes = manualScenes
@@ -405,8 +415,12 @@ final class RedigeringModel {
                 }
                 ci = FaceLocalAdjustFilter.apply(to: ci, faces: faces)
             }
-            let ctx = CIContext(options: [.useSoftwareRenderer: false])
-            guard let cg = ctx.createCGImage(ci, from: ci.extent) else { return base }
+            // Bruk appens KANONISKE farge-pipeline (samme som «Før»-previewen) så
+            // resultatet fargestyres korrekt — en egenrullet CIContext tagger
+            // CGImage-en i lineært arbeidsrom.
+            let ctx = ColorManagement.makeContext(for: .appPreview)
+            guard let cg = ColorManagement.renderCGImage(from: ci, context: ctx, purpose: .appPreview)
+            else { return base }
             return UIImage(cgImage: cg)
         }.value
         afterImage = img
@@ -863,8 +877,10 @@ struct BeforeAfterCompare: View {
 
     var body: some View {
         GeometryReader { geo in
-            // Hold-for-original → vis kun «Før» (skjul Etter helt).
-            let effSplit = holdingOriginal ? 0 : split
+            // «Før» (original) = VENSTRE, «Etter» (resultat) = HØYRE — matcher
+            // etikettene. `after` avsløres til HØYRE for deleren. Hold-for-original
+            // → skjul Etter helt (deler helt til høyre → kun original synlig).
+            let effSplit = holdingOriginal ? 1 : split
             ZStack(alignment: .topLeading) {
                 CHTheme.surfaceElevated
                 if let beforePath, let before = UIImage(contentsOfFile: beforePath) {
@@ -874,8 +890,8 @@ struct BeforeAfterCompare: View {
                 if let after {
                     Image(uiImage: after).resizable().scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height).clipped()
-                        .mask(alignment: .leading) {
-                            Rectangle().frame(width: geo.size.width * effSplit)
+                        .mask(alignment: .trailing) {
+                            Rectangle().frame(width: geo.size.width * (1 - effSplit))
                         }
                 }
                 if let maskOverlay {

@@ -242,6 +242,25 @@ enum LearnedStyle {
         // tekstur-bevarende utjevning — mot «blek/flat/livløs».
         out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
+
+        // 🔑 BASE-KALIBRERING (CIRAWFilter → rawpy): enhetens develop-base er
+        // konsekvent LYSERE (~0.46 vs 0.40) og MINDRE METTET (~63 vs 93) enn rawpy-
+        // basen CDF-LUT-ene ble trent på → resultatet blir for lyst + avmettet
+        // («utvasket»). Målt mot fasiten (`apply_model`): et fast, lett nedtrekk +
+        // metnings-løft ved utgangen bringer looken tilbake til fotografens leverte
+        // stil (luma 0.80→~0.76, metning 34→~54 ≈ fasit 52). Kompenserer den
+        // systematiske motor-forskjellen — ikke en per-bilde-hack.
+        let ev = CIFilter.exposureAdjust()
+        ev.inputImage = out
+        ev.ev = -0.15
+        out = ev.outputImage?.cropped(to: image.extent) ?? out
+        let cal = CIFilter.colorControls()
+        cal.inputImage = out
+        cal.saturation = 1.45
+        cal.contrast = 1.0
+        cal.brightness = 0
+        out = cal.outputImage?.cropped(to: image.extent) ?? out
+
         return out.cropped(to: image.extent)
     }
 }

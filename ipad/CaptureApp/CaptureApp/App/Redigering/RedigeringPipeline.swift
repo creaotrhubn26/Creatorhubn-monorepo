@@ -63,6 +63,36 @@ enum RedigeringPipeline {
         return img.jpegData(compressionQuality: 0.92)
     }
 
+    /// PLAIN nøytral RAW-develop (bar CIRAWFilter, sRGB) — for «Min stil»-banen.
+    /// Den lærte CDF-LUT-en ble trent på en NØYTRAL rawpy-develop (~0.42 luma).
+    /// `renderPreview` gir derimot en Canon-Picture-Style-baket, tone-justert,
+    /// `.appPreview`-fargestyrt base — påfører man LUT-en på DEN, blir det utvasket.
+    /// Denne matcher trenings-neutralen (bekreftet: harness mot bar CIRAWFilter gir
+    /// riktig, rikt resultat). EV + crop påføres etterpå som i `renderPreview`.
+    static func renderNeutralRAW(
+        rawPath: String, exposureEV: Double = 0, crop: CGRect? = nil,
+        maxDimension: CGFloat? = 1600,
+    ) -> UIImage? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)),
+              let filter = CIFilter(imageData: data, options: nil),
+              var out = filter.outputImage else { return nil }
+        if let maxDimension {
+            let longEdge = max(out.extent.width, out.extent.height)
+            if longEdge > maxDimension {
+                let s = maxDimension / longEdge
+                out = out.transformed(by: CGAffineTransform(scaleX: s, y: s))
+            }
+        }
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cg = ctx.createCGImage(
+            out, from: out.extent, format: .RGBA8,
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else { return nil }
+        var img = UIImage(cgImage: cg)
+        if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
+        if let crop { img = cropped(img, to: crop) }
+        return img
+    }
+
     /// Crop to a normalised rect (origin top-left, 0…1).
     static func cropped(_ image: UIImage, to norm: CGRect) -> UIImage {
         guard let cg = image.cgImage else { return image }
