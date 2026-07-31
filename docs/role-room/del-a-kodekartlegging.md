@@ -463,12 +463,10 @@ tatt:
 | `generateCallSheet` | ingen | Slettet |
 | `seedTrollData` | ingen | Slettet |
 
-**Live-set-status er halvparten ekte.** `todayProgress` — planlagte og skutte sider —
-ligger i stripboardet og fremdriftsberegningen. `currentScene`, `isRolling` og
-`todayTakes` er øyeblikkstilstand på settet, og det finnes ingen tabell for det.
-Feltene står derfor tomme og settes bare i minnet for økten. Før falt hele objektet
-tilbake på `TROLL_LIVE_SET_STATUS`, så en produsent fikk se at det ble rullet på en
-scene fra en annen film.
+**Live-set-status var halvparten ekte i første omgang.** `todayProgress` — planlagte og
+skutte sider — ligger i stripboardet og fremdriftsberegningen. `currentScene`,
+`isRolling` og `todayTakes` sto tomme, med den begrunnelsen at det ikke fantes lagring
+for øyeblikkstilstand. **Det stemte ikke,** og er rettet i neste avsnitt.
 
 `generateCallSheet` var verdt å slette framfor å koble: den fylte inn navngitte personer
 og telefonnumre som konstanter i koden, og et sykehus. En call sheet som ser ekte ut og
@@ -477,6 +475,50 @@ gjør allerede dette mot ekte data.
 
 `API_BASE = '/api/production'` er nå borte fra filen. TROLL-konstantene står igjen som
 eksporterte fixtures, men ingen kodesti faller tilbake på dem lenger.
+
+## On-set-tilstand — lagringen fantes
+
+Påstanden over om at det ikke fantes lagring for øyeblikkstilstand var feil. Den ble
+skrevet uten å lete godt nok, og kartleggingen retter den her.
+
+**Det som faktisk finnes:** en hendelsesbasert, offline-først synk. `useLiveSet.ts`
+(1021 linjer) fører en logg av `roll`, `cut`, `capture_take`, `set_scene`,
+`set_take_status`, `setup_complete`, `advance_scene`, `set_camera` m.fl., med
+IndexedDB-kø, idempotente `eventId`-er, sesjoner og ack. Serveren tar imot på
+`POST /live-set/events/batch` og lagrer i `legacy_compat_store` (jsonb). Det er en
+gjennomtenkt arkitektur for arbeid på location, der nettet forsvinner.
+
+**Det som manglet var en leser.** Loggen ble skrevet, men aldri foldet til tilstand på
+serversiden — den fantes bare i den ene klientens egen reducer, av dens egen kø. En
+annen enhet, en ny fane, eller den andre live-set-skjermen kunne hente hendelsene uten
+å vite hva de betydde.
+
+For **det er to live-set-skjermer**: `components/LiveSetMode.tsx` (4089 linjer, montert
+fra Live Set-fanen, bruker hendelsesloggen) og `components/production/LiveSetMode.tsx`
+(2017 linjer, montert fra manusvisningen, brukte `productionWorkflowService` og skrev
+bare til minnet). Sistnevnte hadde til og med sin egen offline-outbox i localStorage —
+som flushet tilbake til minnet.
+
+**Det som ble bygget:** `role-room-live-set-projection.ts`, en ren fold fra hendelser til
+tilstand, eksponert på `GET /projects/:id/live-set/state`. Den speiler `liveSetReducer`
+i klienten, inkludert guardene — CUT uten ROLL og dobbel ROLL forkastes, fordi loggen
+inneholder hendelser reduceren avviste (de skrives før den har sagt ja). To ting utledes
+bedre på serversiden:
+
+- **Varigheten** regnes fra ROLL-hendelsens `capturedAt` til CUT-ens, framfor klientens
+  egen `Date.now()`. To enheter rapporterer da samme take like langt.
+- **Take-id-en** utledes av CUT-hendelsens `eventId`, ikke av en lokal tilfeldig id.
+  Skal to lesere være enige om hvilken take som er hvilken, må id-en komme fra noe
+  begge ser.
+
+`productionWorkflowService` sine mutatorer sender nå til samme logg med samme
+vokabular, og `getLiveSetStatus` leser projeksjonen. Den andre skjermens takes dukker
+opp på den første, og omvendt. Take-varigheten var tidligere
+`Math.floor(Math.random() * 30) + 20` — et tilfeldig tall i nettopp den loggen man leter
+etter målinger i.
+
+**To skjermer for samme ting står igjen som et åpent valg.** Det er ikke lenger en
+riktig og en gal — begge leser og skriver samme logg — men det er fortsatt to.
 
 ## Metode og forbehold
 

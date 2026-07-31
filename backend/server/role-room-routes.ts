@@ -1287,6 +1287,12 @@ function encryptRoleRoomGoogleToken(value: string): string {
   return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
 }
 
+// Live-set: utledning av nåtilstand fra hendelsesloggen.
+import {
+  projectLiveSet,
+  type LiveSetEvent as ProjectionEvent,
+} from './role-room-live-set-projection.js';
+
 // Budsjett-onboarding og maler (Del A punkt 105/106).
 import {
   applyBudgetTemplate,
@@ -20908,6 +20914,40 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       success: true,
       events: filtered.slice(-5000),
       conflicts: [],
+      serverCursor: nowISO(),
+    });
+  });
+
+  /**
+   * Nåtilstanden på settet, utledet av hendelsesloggen.
+   *
+   * Loggen ble skrevet, men aldri lest på serversiden — tilstanden fantes
+   * bare i den ene klientens egen reducer. En annen enhet, en ny fane eller
+   * en annen skjerm i produktet kunne hente hendelsene uten å vite hva de
+   * betydde. Utledningen ligger i role-room-live-set-projection.ts og speiler
+   * `liveSetReducer` i useLiveSet.ts.
+   */
+  router.get('/projects/:projectId/live-set/state', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const { projectId } = req.params;
+    if (!(await ensureProjectAccess(projectId))) {
+      res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      return;
+    }
+
+    const stateRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, stateRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
+      return;
+    }
+
+    const shootingDayId = typeof req.query.shootingDayId === 'string' && req.query.shootingDayId
+      ? req.query.shootingDayId
+      : undefined;
+
+    const events = await getLiveSetEventsV2(projectId);
+    res.json({
+      success: true,
+      state: projectLiveSet(events as unknown as ProjectionEvent[], { shootingDayId }),
       serverCursor: nowISO(),
     });
   });

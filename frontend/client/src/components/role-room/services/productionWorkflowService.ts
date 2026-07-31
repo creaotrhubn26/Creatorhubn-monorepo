@@ -1269,6 +1269,72 @@ export const TROLL_LIVE_SET_STATUS: LiveSetStatus = {
 // SERVICE CLASS
 // ============================================
 
+
+/** Speiler role-room-live-set-projection.ts på serversiden. */
+interface LiveSetProjectedTake {
+  id: string;
+  sceneId: string | null;
+  shotId: string | null;
+  setupLabel: string | null;
+  takeNumber: number;
+  duration: number | null;
+  status: string;
+  camera: string | null;
+  lens: string | null;
+  fps: number | null;
+  flags: string[];
+  notes: string | null;
+  loggedBy: string | null;
+  loggedAt: string;
+}
+
+interface LiveSetProjection {
+  liveState: 'idle' | 'rolling' | 'cut' | 'setup-complete';
+  currentSceneId: string | null;
+  currentShotId: string | null;
+  activeSetup: string | null;
+  activeCam: string | null;
+  rollingSince: string | null;
+  nextTakeNumber: number;
+  takes: LiveSetProjectedTake[];
+  lastAction: string | null;
+  lastActionAt: string | null;
+  lastActionBy: string | null;
+  eventCount: number;
+}
+
+/**
+ * Projeksjonens take → tjenestens Take.
+ *
+ * Projeksjonen bruker klientens kvalitetsvokabular («normal», «ng»), mens
+ * Take-typen her er den eldre firedelingen. `normal` blir `good`; ukjent
+ * verdi blir `ok` framfor å gjettes til noe bedre enn den er.
+ */
+function toTake(t: LiveSetProjectedTake): Take {
+  const status: Take['status'] =
+    t.status === 'circle' || t.status === 'print' ? t.status
+    : t.status === 'bad' || t.status === 'ng' ? 'bad'
+    : t.status === 'good' || t.status === 'normal' ? 'good'
+    : 'ok';
+  return {
+    id: t.id,
+    sceneId: t.sceneId ?? '',
+    shotId: t.shotId ?? '',
+    takeNumber: t.takeNumber,
+    status,
+    // Målt mellom ROLL og CUT på serversiden. 0 betyr «ikke målt», ikke
+    // «varte null sekunder» — tjenesten fant tidligere på et tall her.
+    duration: t.duration ?? 0,
+    notes: t.notes ?? undefined,
+    recordedAt: t.loggedAt,
+    loggedAt: t.loggedAt,
+    loggedBy: t.loggedBy ?? undefined,
+    camera: t.camera ?? undefined,
+    lens: t.lens ?? undefined,
+    fps: t.fps ?? undefined,
+  };
+}
+
 class ProductionWorkflowService {
   // In-memory cache for fallback
   // Stripboardet og opptaksdagene starter tomme, ikke med TROLL-demoen. Et
@@ -1697,44 +1763,130 @@ class ProductionWorkflowService {
   }
 
   // ============================================
-  // CALL SHEETS
+  // LIVE SET
   // ============================================
+  //
+  // On-set-tilstanden lagres allerede: `useLiveSet` skriver en hendelseslogg
+  // som synkroniseres offline-først via /live-set/events/batch. Denne
+  // tjenesten skrev derimot bare til minnet, så alt forsvant ved en
+  // oppfriskning. Mutatorene under sender nå til samme logg, med samme
+  // vokabular, slik at de to live-set-skjermene ser samme virkelighet.
 
-  async getLiveSetStatus(projectId: string): Promise<LiveSetStatus> {
-    this.currentProjectId = projectId;
-    const response = await apiRequest(
-      `/api/role-room/projects/${projectId}/stripboard/progress`,
-    );
-    if (!response.ok) {
-      throw new Error(`Kunne ikke hente fremdrift (HTTP ${response.status})`);
+  private liveSetSessionId: string | null = null;
+  private liveSetSeq = 1;
+  private currentShootingDayId: string | null = null;
+
+  /** Sesjonen opprettes ved første hendelse, ikke ved oppstart. */
+  private async ensureLiveSetSession(projectId: string): Promise<string | null> {
+    if (this.liveSetSessionId) return this.liveSetSessionId;
+    const response = await apiRequest(`/api/role-room/projects/${projectId}/live-set/sessions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        operatorId: 'production-workflow',
+        deviceId: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : 'ukjent',
+        shootingDayId: this.currentShootingDayId ?? undefined,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { session?: { sessionId?: string } };
+    this.liveSetSessionId = data.session?.sessionId ?? null;
+    return this.liveSetSessionId;
+  }
+
+  /**
+   * Sender én eller flere hendelser til loggen.
+   *
+   * `eventId` er idempotensnøkkelen på serversiden og må derfor være unik per
+   * hendelse, ikke per batch. Feil svelges bevisst: en take som ikke lot seg
+   * synkronisere skal ikke rive ned CUT-knappen midt i et opptak, og
+   * liveSetOutboxService prøver igjen.
+   */
+  private async emitLiveSetEvents(
+    projectId: string,
+    events: Array<{ type: string; payload?: Record<string, unknown> }>,
+  ): Promise<void> {
+    if (!projectId || events.length === 0) return;
+    try {
+      const sessionId = await this.ensureLiveSetSession(projectId);
+      if (!sessionId) return;
+      const capturedAt = new Date().toISOString();
+      await apiRequest(`/api/role-room/projects/${projectId}/live-set/events/batch`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId,
+          events: events.map((event, index) => ({
+            eventId: `pw-${sessionId}-${this.liveSetSeq + index}`,
+            sessionId,
+            seq: this.liveSetSeq + index,
+            type: event.type,
+            payload: event.payload ?? {},
+            capturedAt,
+            deviceId: 'production-workflow',
+            operatorId: 'production-workflow',
+            projectId,
+            shootingDayId: this.currentShootingDayId ?? undefined,
+          })),
+        }),
+      });
+      this.liveSetSeq += events.length;
+    } catch (error) {
+      console.warn('Live-set-hendelse ikke synkronisert:', error);
     }
-    const progress = (await response.json()) as {
-      scenesTotal: number;
-      scenesShot: number;
-      scenesPartial: number;
-      scenesOmitted: number;
-      eighthsTotal: number;
-      eighthsShot: number;
+  }
+
+  /**
+   * Live-set-status: fremdrift fra stripboardet, øyeblikkstilstand fra loggen.
+   *
+   * Begge deler er nå ekte. Fremdriften regnes ut av scenene og skutt-status
+   * (Del A punkt 73/84/87); øyeblikkstilstanden utledes av hendelsesloggen på
+   * serversiden, av samme regler som klientens reducer. Tidligere sto den
+   * halvdelen tom fordi ingen leste loggen — og før det falt hele objektet
+   * tilbake på TROLL-demodata.
+   */
+  async getLiveSetStatus(projectId: string, shootingDayId?: string): Promise<LiveSetStatus> {
+    this.currentProjectId = projectId;
+    if (shootingDayId) this.currentShootingDayId = shootingDayId;
+
+    const dayQuery = this.currentShootingDayId
+      ? `?shootingDayId=${encodeURIComponent(this.currentShootingDayId)}`
+      : '';
+    const [progressRes, stateRes] = await Promise.all([
+      apiRequest(`/api/role-room/projects/${projectId}/stripboard/progress`),
+      apiRequest(`/api/role-room/projects/${projectId}/live-set/state${dayQuery}`),
+    ]);
+    if (!progressRes.ok) {
+      throw new Error(`Kunne ikke hente fremdrift (HTTP ${progressRes.status})`);
+    }
+    const progress = (await progressRes.json()) as {
+      scenesTotal: number; scenesShot: number; scenesPartial: number;
+      scenesOmitted: number; eighthsTotal: number; eighthsShot: number;
     };
 
+    // Loggen kan være tom på en dag som ikke har begynt. Det er ikke en feil.
+    const projected = stateRes.ok
+      ? ((await stateRes.json()) as { state?: LiveSetProjection }).state
+      : undefined;
+
+    const plannedScenes = Math.max(progress.scenesTotal - progress.scenesOmitted, 0);
+    this.takes = (projected?.takes ?? []).map(toTake);
+
     this.liveSetStatus = {
-      // Øyeblikkstilstand: settes av startRolling/cut i løpet av økten, ikke
-      // hentet — det finnes ingenting å hente den fra.
-      currentScene: this.liveSetStatus.currentScene,
-      currentShot: this.liveSetStatus.currentShot,
-      currentTake: this.liveSetStatus.currentTake,
-      isRolling: this.liveSetStatus.isRolling,
-      lastAction: this.liveSetStatus.lastAction,
-      lastActionTime: this.liveSetStatus.lastActionTime,
-      todayTakes: this.liveSetStatus.todayTakes,
+      currentScene: projected?.currentSceneId ?? null,
+      currentShot: projected?.currentShotId ?? null,
+      currentTake: projected?.nextTakeNumber ?? 1,
+      isRolling: projected?.liveState === 'rolling',
+      lastAction: projected?.lastAction ?? '',
+      lastActionTime: projected?.lastActionAt ?? '',
+      todayTakes: this.takes,
       todayProgress: {
         // Strøkne scener er ikke planlagt arbeid.
-        plannedScenes: Math.max(progress.scenesTotal - progress.scenesOmitted, 0),
+        plannedScenes,
         completedScenes: progress.scenesShot,
         partialScenes: progress.scenesPartial,
-        // Oppsett per scene registreres ikke ennå — scener er nærmeste
-        // sannhet, og et oppdiktet oppsett-tall ville blitt lest som målt.
-        totalSetups: Math.max(progress.scenesTotal - progress.scenesOmitted, 0),
+        // Oppsett per scene registreres ikke som eget begrep ennå — scener er
+        // nærmeste sannhet, og et oppdiktet oppsett-tall ville blitt lest som
+        // målt.
+        totalSetups: plannedScenes,
         completedSetups: progress.scenesShot,
         pagesPlanned: progress.eighthsTotal / 8,
         pagesShot: progress.eighthsShot / 8,
@@ -1743,15 +1895,29 @@ class ProductionWorkflowService {
     return this.liveSetStatus;
   }
 
+  /**
+   * Kameraet ruller.
+   *
+   * Scenen sendes med som egen hendelse først: serverens utledning avviser
+   * ROLL uten aktiv scene, akkurat som klientens reducer gjør. Uten
+   * set_scene ville rullingen blitt stille forkastet.
+   */
   async startRolling(sceneId: string, shotId: string): Promise<LiveSetStatus> {
+    const now = new Date().toISOString();
     this.liveSetStatus = {
       ...this.liveSetStatus,
       currentScene: sceneId,
       currentShot: shotId,
       isRolling: true,
       lastAction: 'ROLLING',
-      lastActionTime: new Date().toISOString(),
+      lastActionTime: now,
     };
+    if (this.currentProjectId) {
+      await this.emitLiveSetEvents(this.currentProjectId, [
+        { type: 'set_scene', payload: { sceneId } },
+        { type: 'roll' },
+      ]);
+    }
     return this.liveSetStatus;
   }
 
@@ -1776,13 +1942,15 @@ class ProductionWorkflowService {
       shotId:     this.liveSetStatus.currentShot!,
       takeNumber: this.liveSetStatus.currentTake,
       status,
-      duration:   Math.floor(Math.random() * 30) + 20, // TODO: real duration from timer
+      // Varigheten måles på serversiden, mellom ROLL- og CUT-hendelsen. Her
+      // står 0 til neste henting — tidligere sto det et tilfeldig tall, som
+      // så ut som en måling i nettopp den loggen man leter etter målinger i.
+      duration:   0,
       notes,
       recordedAt: now,
       loggedAt:   now,
       loggedBy,
       slate: `${this.liveSetStatus.currentScene?.replace('scene-', '')}-${this.liveSetStatus.currentTake}`,
-      // Multi-camera metadata
       cameraId:           cameraMetadata?.cameraId  ?? 'A',
       camera:             cameraMetadata?.camera    ?? 'A-cam',
       lens:               cameraMetadata?.lens,
@@ -1801,13 +1969,16 @@ class ProductionWorkflowService {
       lastAction:  `CUT - ${status.toUpperCase()}${notes ? `: ${notes}` : ''}`,
       lastActionTime: now,
       todayTakes: [...this.liveSetStatus.todayTakes, take],
-      todayProgress: {
-        ...this.liveSetStatus.todayProgress,
-        completedSetups:
-          this.liveSetStatus.todayProgress.completedSetups +
-          (status === 'circle' || status === 'print' ? 1 : 0),
-      },
     };
+
+    if (this.currentProjectId) {
+      const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+      // Kameradata er egen hendelse i vokabularet — den gjelder oppsettet,
+      // ikke taken, og skal derfor gjelde videre til den endres.
+      if (cameraMetadata) events.push({ type: 'set_camera', payload: { ...cameraMetadata } });
+      events.push({ type: 'cut' });
+      await this.emitLiveSetEvents(this.currentProjectId, events);
+    }
 
     return take;
   }
@@ -1835,6 +2006,9 @@ class ProductionWorkflowService {
         completedSetups: this.liveSetStatus.todayProgress.completedSetups + 1,
       },
     };
+    if (this.currentProjectId) {
+      await this.emitLiveSetEvents(this.currentProjectId, [{ type: 'setup_complete' }]);
+    }
     return this.liveSetStatus;
   }
 
@@ -1844,6 +2018,7 @@ class ProductionWorkflowService {
    * TODO [Studio]: Wire to real stripboard order endpoint.
    */
   async nextSetup(shootingDayId: string): Promise<{ sceneId: string; shotId: string } | null> {
+    this.currentShootingDayId = shootingDayId;
     const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
     if (!day) return null;
     const idx = day.scenes.indexOf(this.liveSetStatus.currentScene ?? '');
@@ -1858,13 +2033,24 @@ class ProductionWorkflowService {
       lastAction:     'NEXT SETUP',
       lastActionTime: new Date().toISOString(),
     };
+    if (this.currentProjectId) {
+      // advance_scene nullstiller opptakstilstanden, set_scene peker på den
+      // nye. Rekkefølgen er viktig: motsatt vei ville nullstillingen slettet
+      // scenen som nettopp ble satt.
+      await this.emitLiveSetEvents(this.currentProjectId, [
+        { type: 'advance_scene' },
+        { type: 'set_scene', payload: { sceneId: nextScene } },
+      ]);
+    }
     return { sceneId: nextScene, shotId: nextShotId };
   }
 
+  /** Dagens takes fra loggen. Henter på nytt så en annen enhets takes er med. */
   async getTodayTakes(shootingDayId: string): Promise<Take[]> {
-    const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
-    if (!day) return [];
-    return this.takes.filter(take => day.scenes.includes(take.sceneId));
+    this.currentShootingDayId = shootingDayId;
+    if (!this.currentProjectId) return [];
+    await this.getLiveSetStatus(this.currentProjectId, shootingDayId);
+    return this.takes;
   }
 
   async circleTake(takeId: string, circledBy: string): Promise<Take | null> {
@@ -1872,6 +2058,13 @@ class ProductionWorkflowService {
     if (!take) return null;
     take.status = 'circle';
     take.circledBy = circledBy;
+    if (this.currentProjectId) {
+      // Id-en er projeksjonens («take:<eventId>»), som utledningen kjenner
+      // igjen — sirklingen blir derfor synlig også på den andre skjermen.
+      await this.emitLiveSetEvents(this.currentProjectId, [
+        { type: 'set_take_status', payload: { id: takeId, status: 'circle' } },
+      ]);
+    }
     return take;
   }
 

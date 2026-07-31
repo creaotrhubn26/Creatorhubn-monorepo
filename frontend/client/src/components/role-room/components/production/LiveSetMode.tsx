@@ -410,7 +410,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
     setError(null);
     try {
       const [status, day] = await Promise.all([
-        productionWorkflowService.getLiveSetStatus(projectId),
+        productionWorkflowService.getLiveSetStatus(projectId, shootingDayId),
         productionWorkflowService.getShootingDay(shootingDayId, projectId),
       ]);
       setLiveStatus(status);
