@@ -79,6 +79,7 @@ import { renderInvoicePdf } from '../invoicing/pdf.js';
 import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoicing/ehf.js';
 import { lookupPeppolParticipant } from '../invoicing/peppol-lookup.js';
 import { buildPaymentFile, listPayableInvoices, recordPaymentExports } from '../ledger/payments.js';
+import { computeDeadlines, type OrgForm } from '../ledger/deadlines.js';
 import { IdPortenClient, generatePkce, randomToken } from '../integrations/idporten.js';
 import { getStatus as idportenStatus, getValidAccessToken, saveLoginState, saveSession, takeLoginState } from '../integrations/idporten-session.js';
 import {
@@ -4020,6 +4021,16 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // ── Frister & forpliktelser (lovbestemte frister med nedtelling) ──────────
+  app.get('/api/organizations/:orgId/deadlines', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const org = (await deps.db.query(`SELECT org_form, vat_status FROM organizations WHERE id=$1`, [req.params.orgId])).rows[0];
+      if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
+      const asOf = new Date().toISOString().slice(0, 10);
+      res.json(toJson(computeDeadlines({ orgForm: org.org_form as OrgForm, vatRegistered: org.vat_status === 'registered', asOf })));
+    } catch (err) { next(err); }
+  });
 
   // ── Utbetalingsfil (pain.001) — betal leverandørfakturaer via nettbank ────
   app.get('/api/organizations/:orgId/payments/payable', requireAuth, requireOrgPermission('bank.reconcile'), async (req: AuthedRequest, res, next) => {
