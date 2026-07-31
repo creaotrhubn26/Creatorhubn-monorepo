@@ -21,14 +21,27 @@ type Db = NodePgDatabase<Record<string, never>>;
 
 export type UploadKind = 'preview' | 'full' | 'raw';
 
-export interface CaptureR2Config {
+/// Hvilket S3-kompatibelt lager et capture-objekt ligger i. B2 er primær
+/// for nye opplastinger; R2 leses videre fordi objektene som allerede
+/// ligger der ikke flyttes av en kodeendring.
+export type CaptureStoreBackend = 'b2' | 'r2';
+
+export interface CaptureStoreConfig {
+  backend: CaptureStoreBackend;
   enabled: boolean;
   endpoint?: string;
+  region: string;
+  /// B2 krever path-style-adressering; R2 bruker virtual-host.
+  forcePathStyle: boolean;
   bucket?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
   prefix: string;
 }
+
+/// Historisk navn. Beholdt fordi photo-delivery-service tar den som
+/// parameter-type; konfigen kan nå peke på B2 like gjerne som R2.
+export type CaptureR2Config = CaptureStoreConfig;
 
 const MIN_PART_SIZE = 5 * 1024 * 1024;
 const MAX_PART_SIZE = 5 * 1024 * 1024 * 1024;
@@ -43,7 +56,7 @@ function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
   return undefined;
 }
 
-export function buildCaptureR2Config(): CaptureR2Config {
+export function buildCaptureR2Config(): CaptureStoreConfig {
   const endpoint = firstNonEmpty(
     process.env.CAPTURE_R2_ENDPOINT,
     process.env.CLOUDFLARE_R2_ENDPOINT,
@@ -66,8 +79,11 @@ export function buildCaptureR2Config(): CaptureR2Config {
     process.env.R2_SECRET_ACCESS_KEY,
   );
   return {
+    backend: 'r2',
     enabled: Boolean(endpoint && bucket && accessKeyId && secretAccessKey),
     endpoint,
+    region: 'auto',
+    forcePathStyle: false,
     bucket,
     accessKeyId,
     secretAccessKey,
@@ -75,23 +91,91 @@ export function buildCaptureR2Config(): CaptureR2Config {
   };
 }
 
-let cachedClient: S3Client | null = null;
-let cachedClientKey = '';
+/// eu-central-003 er der the-role-room-prod ligger. Samme default som
+/// b2-archive-helper — feil region gir stille skrivefeil, ikke en exception.
+const B2_DEFAULT_REGION = 'eu-central-003';
 
-function getClient(cfg: CaptureR2Config): S3Client | null {
+/// Nøkkelrommet til B2 holdes atskilt fra R2-rommet. Det er dette som gjør
+/// at en bar nøkkel kan rutes til riktig lager uten at hver av de ~40
+/// signerings-kallstedene må vite hvilken backend objektet ligger i.
+const CAPTURE_B2_DEFAULT_PREFIX = 'capture-b2/';
+
+export function buildCaptureB2Config(): CaptureStoreConfig {
+  const region =
+    firstNonEmpty(process.env.CAPTURE_B2_REGION, process.env.B2_REGION) ??
+    B2_DEFAULT_REGION;
+  const endpoint =
+    firstNonEmpty(process.env.CAPTURE_B2_ENDPOINT, process.env.B2_ENDPOINT) ??
+    `https://s3.${region}.backblazeb2.com`;
+  const bucket = firstNonEmpty(
+    process.env.CAPTURE_B2_BUCKET,
+    process.env.B2_ROLE_ROOM_BUCKET_NAME,
+    process.env.B2_BUCKET_NAME,
+  );
+  const accessKeyId = firstNonEmpty(
+    process.env.CAPTURE_B2_APPLICATION_KEY_ID,
+    process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID,
+    process.env.B2_APPLICATION_KEY_ID,
+  );
+  const secretAccessKey = firstNonEmpty(
+    process.env.CAPTURE_B2_APPLICATION_KEY,
+    process.env.B2_ROLE_ROOM_APPLICATION_KEY,
+    process.env.B2_APPLICATION_KEY,
+  );
+  return {
+    backend: 'b2',
+    enabled: Boolean(endpoint && bucket && accessKeyId && secretAccessKey),
+    endpoint,
+    region,
+    forcePathStyle: true,
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    prefix: process.env.CAPTURE_B2_PREFIX ?? CAPTURE_B2_DEFAULT_PREFIX,
+  };
+}
+
+/**
+ * Lageret nye capture-objekter skrives til: B2 når det er konfigurert,
+ * ellers R2. CAPTURE_STORAGE_PRIMARY=r2 slår av B2 uten kodeendring.
+ */
+export function captureWriteStore(): CaptureStoreConfig {
+  if (process.env.CAPTURE_STORAGE_PRIMARY === 'r2') return buildCaptureR2Config();
+  const b2 = buildCaptureB2Config();
+  return b2.enabled ? b2 : buildCaptureR2Config();
+}
+
+/**
+ * Lageret en GITT nøkkel ligger i, avgjort av nøkkelprefikset alene.
+ *
+ * Dette er hele grunnen til at B2 og R2 har hvert sitt prefiks: nøkkelen
+ * er ofte alt vi har (den kommer rett ut av en SQL-rad), og et objekt som
+ * ble lastet opp til R2 i fjor må fortsatt hentes fra R2 i dag.
+ */
+export function captureStoreForKey(key: string): CaptureStoreConfig {
+  const b2 = buildCaptureB2Config();
+  if (b2.enabled && key.startsWith(b2.prefix)) return b2;
+  return buildCaptureR2Config();
+}
+
+const clientCache = new Map<string, S3Client>();
+
+function getClient(cfg: CaptureStoreConfig): S3Client | null {
   if (!cfg.enabled || !cfg.endpoint || !cfg.accessKeyId || !cfg.secretAccessKey) return null;
-  const key = `${cfg.endpoint}|${cfg.accessKeyId}`;
-  if (cachedClient && cachedClientKey === key) return cachedClient;
-  cachedClient = new S3Client({
-    region: 'auto',
+  const cacheKey = `${cfg.backend}|${cfg.endpoint}|${cfg.accessKeyId}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached) return cached;
+  const client = new S3Client({
+    region: cfg.region,
     endpoint: cfg.endpoint,
     credentials: {
       accessKeyId: cfg.accessKeyId,
       secretAccessKey: cfg.secretAccessKey,
     },
+    ...(cfg.forcePathStyle ? { forcePathStyle: true } : {}),
   });
-  cachedClientKey = key;
-  return cachedClient;
+  clientCache.set(cacheKey, client);
+  return client;
 }
 
 function computePartSize(totalSize: number, preferredPartSize?: number): number {
@@ -121,7 +205,7 @@ function buildObjectKey(params: {
 }
 
 function expectedKeyPrefix(
-  cfg: CaptureR2Config,
+  cfg: CaptureStoreConfig,
   ownerUserId: string,
   sessionId: string,
   assetId: string,
@@ -172,7 +256,7 @@ export async function startMultipartUpload(
   if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) {
     return { ok: false, error: 'invalid' };
   }
-  const cfg = buildCaptureR2Config();
+  const cfg = captureWriteStore();
   const client = getClient(cfg);
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
 
@@ -233,7 +317,9 @@ export async function signPartUrls(
   partNumbers: number[],
 ): Promise<Result<{ parts: SignedPart[]; expiresInSeconds: number }>> {
   if (partNumbers.length === 0) return { ok: false, error: 'invalid' };
-  const cfg = buildCaptureR2Config();
+  // Nøkkelen bestemmer lageret — en pågående opplasting mot R2 må kunne
+  // fullføres selv om B2 ble slått på mellom start og siste part.
+  const cfg = captureStoreForKey(key);
   const client = getClient(cfg);
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
@@ -290,7 +376,7 @@ export async function completeMultipartUpload(
   if (parts.length === 0 || checksumSha256.length !== 64 || sizeBytes <= 0) {
     return { ok: false, error: 'invalid' };
   }
-  const cfg = buildCaptureR2Config();
+  const cfg = captureStoreForKey(key);
   const client = getClient(cfg);
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
 
@@ -374,7 +460,11 @@ export async function uploadCaptureObject(params: {
   buffer: Buffer;
   contentType: string;
 }): Promise<string | null> {
-  const cfg = buildCaptureR2Config();
+  // Nøkkelen kommer fra kalleren (f.eks. reviews/<id>/audio.m4a). Ligger
+  // den allerede i et lagers nøkkelrom skriver vi dit; ellers til primær.
+  const cfg = params.key.startsWith(buildCaptureB2Config().prefix)
+    ? captureStoreForKey(params.key)
+    : captureWriteStore();
   const client = getClient(cfg);
   if (!cfg.enabled || !cfg.bucket || !client) {
     return null;
@@ -428,7 +518,7 @@ async function signAssetReadUrlWithTtl(
   ttlSeconds: number,
 ): Promise<string | null> {
   if (!key) return null;
-  const cfg = buildCaptureR2Config();
+  const cfg = captureStoreForKey(key);
   const client = getClient(cfg);
   if (!client || !cfg.bucket) return null;
   return getSignedUrl(
@@ -445,7 +535,7 @@ export async function abortMultipartUpload(
   uploadId: string,
   key: string,
 ): Promise<{ ok: true } | { ok: false; error: UploadError }> {
-  const cfg = buildCaptureR2Config();
+  const cfg = captureStoreForKey(key);
   const client = getClient(cfg);
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);

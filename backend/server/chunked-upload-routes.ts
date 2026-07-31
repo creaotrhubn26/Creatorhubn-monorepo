@@ -25,6 +25,8 @@ import { randomUUID } from "crypto";
 import {
   routeAssembledUpload,
   getStorageStatus,
+  getObjectStoreClientFor,
+  isObjectStoreBackend,
 } from "./upload-storage-router.js";
 import {
   canUserUpload,
@@ -482,8 +484,8 @@ export function setupChunkedUploadRoutes(
         const finalRelPath =
           storage.backend === "filesystem"
             ? path.relative(UPLOAD_ROOT, finalPath)
-            : storage.backend === "r2"
-              ? `r2://${storage.r2Bucket}/${storage.r2Key}`
+            : isObjectStoreBackend(storage.backend)
+              ? `${storage.backend}://${storage.objectBucket}/${storage.objectKey}`
               : `stream://${storage.streamUid}`;
 
         // Lagre storage-metadata i metadata-feltet (vi har ikke egen kolonne)
@@ -497,8 +499,15 @@ export function setupChunkedUploadRoutes(
           ...(storage.thumbnailUrl
             ? { thumbnailUrl: storage.thumbnailUrl }
             : {}),
-          ...(storage.r2Key
-            ? { r2Key: storage.r2Key, r2Bucket: storage.r2Bucket }
+          // objectKey/objectBucket er de riktige navnene; r2Key/r2Bucket
+          // skrives fortsatt fordi eldre lesere (og eldre rader) bruker dem.
+          ...(storage.objectKey
+            ? {
+                objectKey: storage.objectKey,
+                objectBucket: storage.objectBucket,
+                r2Key: storage.objectKey,
+                r2Bucket: storage.objectBucket,
+              }
             : {}),
           ...(storage.downloadUrl ? { downloadUrl: storage.downloadUrl } : {}),
           // Envelope-encryption-metadata (kun satt hvis fila ble kryptert)
@@ -554,15 +563,18 @@ export function setupChunkedUploadRoutes(
         // blokkeres av B2-svartid eller -feil. Worker'en skipper silent
         // hvis bruker ikke har creds.
         //
-        // Vi mirror'er BARE r2-backend med fetchable downloadUrl:
-        //   - encryptAtRest=true → R2 har ciphertext, ubrukelig for
+        // Vi mirror'er BARE objektlager-backends med fetchable downloadUrl:
+        //   - encryptAtRest=true → lageret har ciphertext, ubrukelig for
         //     bruker (de har ikke admin-KEK for dekrypt) → skip
         //   - Stream-backend → downloadUrl er HLS-manifest, ikke en
         //     enkelt-fil → skip (vi har ikke originalfilen lenger)
         //   - filesystem-backend → URL er relativ proxy-path, ikke
         //     fetchable fra worker'en uten host → skip
+        //
+        // Speilingen gjelder også når primærlageret er vår B2: brukerens
+        // egen B2 er en annen konto og bøtte, ikke samme sted.
         if (
-          storage.backend === "r2" &&
+          isObjectStoreBackend(storage.backend) &&
           !storage.encryptedAtRest &&
           storage.downloadUrl &&
           /^https?:\/\//i.test(storage.downloadUrl)
@@ -596,6 +608,8 @@ export function setupChunkedUploadRoutes(
             playbackUrl: storage.playbackUrl,
             thumbnailUrl: storage.thumbnailUrl,
             ready: storage.ready,
+            objectKey: storage.objectKey,
+            objectBucket: storage.objectBucket,
             r2Key: storage.r2Key,
             r2Bucket: storage.r2Bucket,
           },
@@ -715,10 +729,10 @@ export function setupChunkedUploadRoutes(
         }
         return res.redirect(302, signed);
       }
-      if (backend === "r2") {
-        // Encrypted-at-rest filer KAN IKKE redirectes til R2 direkte —
-        // klient ville fått dekrypterbar ciphertext. Pipe gjennom oss
-        // og decrypt på-the-fly i stedet.
+      if (isObjectStoreBackend(backend)) {
+        // Encrypted-at-rest filer KAN IKKE redirectes til objektlageret
+        // direkte — klient ville fått ciphertext den ikke kan dekryptere.
+        // Pipe gjennom oss og decrypt på-the-fly i stedet.
         if (metadata.encryptedAtRest === true && metadata.encryptedDek) {
           try {
             const {
@@ -731,7 +745,7 @@ export function setupChunkedUploadRoutes(
               void recordFileAccess(pool, {
                 userId,
                 fileId,
-                backend: "r2",
+                backend,
                 accessType: "download",
                 outcome: "sign_failed",
                 req,
@@ -744,46 +758,25 @@ export function setupChunkedUploadRoutes(
               });
             }
 
-            const r2Cfg = (
-              await import("./upload-storage-router.js")
-            ).getStorageStatus().r2;
-            if (!r2Cfg.enabled || !r2Cfg.bucket) {
+            // Klienten bygges for backend'en fila FAKTISK ligger på, ikke
+            // for dagens primærvalg — ellers ville gamle R2-filer bli lett
+            // etter i B2 etter at primæren ble flyttet.
+            const store = getObjectStoreClientFor(backend);
+            if (!store) {
               return res.status(503).json({
-                error: "r2_not_configured",
+                error: `${backend}_not_configured`,
               });
             }
 
-            // Hent ciphertext fra R2
-            const { S3Client, GetObjectCommand } = await import(
-              "@aws-sdk/client-s3"
-            );
-            const r2Client = new S3Client({
-              region: "auto",
-              endpoint:
-                process.env.GENERIC_UPLOADS_R2_ENDPOINT ||
-                process.env.CLOUDFLARE_R2_ENDPOINT ||
-                process.env.R2_ENDPOINT,
-              credentials: {
-                accessKeyId:
-                  process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID ||
-                  process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
-                  process.env.R2_ACCESS_KEY_ID ||
-                  "",
-                secretAccessKey:
-                  process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY ||
-                  process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
-                  process.env.R2_SECRET_ACCESS_KEY ||
-                  "",
-              },
-            });
-            const obj = await r2Client.send(
+            const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+            const obj = await store.client.send(
               new GetObjectCommand({
-                Bucket: r2Cfg.bucket,
-                Key: String(metadata.r2Key),
+                Bucket: store.bucket,
+                Key: String(metadata.objectKey ?? metadata.r2Key),
               }),
             );
             if (!obj.Body) {
-              return res.status(502).json({ error: "r2_empty_body" });
+              return res.status(502).json({ error: "object_store_empty_body" });
             }
 
             const userKek = deriveUserKek(userId);
@@ -807,7 +800,7 @@ export function setupChunkedUploadRoutes(
             void recordFileAccess(pool, {
               userId,
               fileId,
-              backend: "r2",
+              backend,
               accessType: "download",
               outcome: "success",
               req,
@@ -817,11 +810,14 @@ export function setupChunkedUploadRoutes(
             (obj.Body as NodeJS.ReadableStream).pipe(decryptStream).pipe(res);
             return;
           } catch (err: any) {
-            console.error("[chunked-upload] decrypt-from-R2 failed:", err);
+            console.error(
+              `[chunked-upload] decrypt-from-${backend} failed:`,
+              err,
+            );
             void recordFileAccess(pool, {
               userId,
               fileId,
-              backend: "r2",
+              backend,
               accessType: "download",
               outcome: "sign_failed",
               req,
@@ -831,12 +827,49 @@ export function setupChunkedUploadRoutes(
           }
         }
 
-        // Ikke-kryptert R2 — redirect til signed URL som før
+        // Ikke-kryptert — redirect til objektlageret. URL-en som ble lagret
+        // ved opplasting er signert med 1t TTL, så den er som regel utløpt
+        // når fila hentes igjen. Vi signerer på nytt her; den lagrede URL-en
+        // brukes bare hvis vi ikke får laget en fersk (f.eks. en permanent
+        // public-URL fra publicUrlBase).
+        const objectKey = metadata.objectKey ?? metadata.r2Key;
+        const store = objectKey ? getObjectStoreClientFor(backend) : null;
+        if (store && objectKey) {
+          try {
+            const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+            const { getSignedUrl } = await import(
+              "@aws-sdk/s3-request-presigner"
+            );
+            const fresh = await getSignedUrl(
+              store.client,
+              new GetObjectCommand({
+                Bucket: store.bucket,
+                Key: String(objectKey),
+              }),
+              { expiresIn: 60 * 60 },
+            );
+            void recordFileAccess(pool, {
+              userId,
+              fileId,
+              backend,
+              accessType: "download",
+              outcome: "success",
+              req,
+            }).catch(() => undefined);
+            return res.redirect(302, fresh);
+          } catch (err) {
+            console.warn(
+              `[chunked-upload] kunne ikke signere ${backend}-URL på nytt:`,
+              err,
+            );
+            // Faller tilbake til den lagrede URL-en under
+          }
+        }
         if (metadata.downloadUrl) {
           void recordFileAccess(pool, {
             userId,
             fileId,
-            backend: "r2",
+            backend,
             accessType: "download",
             outcome: "success",
             req,

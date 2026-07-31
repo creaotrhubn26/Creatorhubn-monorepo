@@ -391,16 +391,21 @@ export function setupStorageBillingAdminRoutes(
 
       try {
         // Aggreger fra chunked_uploads — eneste sanne kilde vi har lokalt
-        // for storage-consumption. R2 / Stream må reconciles separat hvis
-        // det er fil-lekkasje.
+        // for storage-consumption. Objektlager / Stream må reconciles
+        // separat hvis det er fil-lekkasje.
+        //
+        // 'b2' og 'r2' telles i samme post: begge er objektlager, og
+        // kolonnen heter r2_bytes av historiske grunner. Uten b2 her ville
+        // alt som lastes opp etter at B2 ble primær telle som null bytes —
+        // altså feil faktura.
         const agg = await pool.query<{
           fs: string;
-          r2: string;
+          object_store: string;
           stream: string;
         }>(
           `SELECT
              COALESCE(SUM(CASE WHEN (metadata->>'storageBackend') = 'filesystem' THEN file_size ELSE 0 END), 0) AS fs,
-             COALESCE(SUM(CASE WHEN (metadata->>'storageBackend') = 'r2' THEN file_size ELSE 0 END), 0) AS r2,
+             COALESCE(SUM(CASE WHEN (metadata->>'storageBackend') IN ('r2', 'b2') THEN file_size ELSE 0 END), 0) AS object_store,
              COALESCE(SUM(CASE WHEN (metadata->>'storageBackend') = 'cloudflare_stream' THEN file_size ELSE 0 END), 0) AS stream
            FROM chunked_uploads
           WHERE user_id = $1 AND status = 'completed'`,
@@ -408,7 +413,7 @@ export function setupStorageBillingAdminRoutes(
         );
         const row = agg.rows[0];
         const fs = Number(row.fs);
-        const r2 = Number(row.r2);
+        const r2 = Number(row.object_store);
         const stream = Number(row.stream);
         const total = fs + r2 + stream;
 

@@ -169,6 +169,8 @@ export function setupUploadsRoutes(deps: UploadsRoutesDeps): void {
             playbackUrl: storage.playbackUrl,
             thumbnailUrl: storage.thumbnailUrl,
             ready: storage.ready,
+            objectKey: storage.objectKey,
+            objectBucket: storage.objectBucket,
             r2Key: storage.r2Key,
             r2Bucket: storage.r2Bucket,
           },
