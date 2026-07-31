@@ -1797,9 +1797,11 @@ class ProductionWorkflowService {
    * Sender én eller flere hendelser til loggen.
    *
    * `eventId` er idempotensnøkkelen på serversiden og må derfor være unik per
-   * hendelse, ikke per batch. Feil svelges bevisst: en take som ikke lot seg
-   * synkronisere skal ikke rive ned CUT-knappen midt i et opptak, og
-   * liveSetOutboxService prøver igjen.
+   * hendelse, ikke per batch.
+   *
+   * Feil logges og svelges. Det er en svakere garanti enn `useLiveSet`, som
+   * køer i IndexedDB og prøver igjen — den skjermen er den som brukes på
+   * settet, og den eneste med kallere til mutatorene under i dag.
    */
   private async emitLiveSetEvents(
     projectId: string,

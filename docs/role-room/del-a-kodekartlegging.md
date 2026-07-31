@@ -536,3 +536,52 @@ Kartleggingen sier hva som finnes i koden, ikke om det virker i produksjon. Back
 QA-merkede punkter er observert atferd og er derfor beholdt som gyldige observasjoner selv der
 koden finnes — punkt 139 er det tydeligste eksempelet, hvor koden ser riktig ut, men den
 observerte feilen sannsynligvis kommer fra scope/modus-filtrering et annet sted.
+
+## Sammenslåing av live-set-skjermene
+
+De to skjermene var ikke overlappende — ingen var et supersett:
+
+| | A `components/LiveSetMode.tsx` | B `production/LiveSetMode.tsx` |
+|---|---|---|
+| Tilstandsmotor | `useLiveSet` — reducer m/guards, IndexedDB-kø | `productionWorkflowService` |
+| Kun her | DIT-panel, slate-overlay, sirkeltimer, setup-complete-panel, LIVE/EDIT/REVIEW | Rollerettigheter, realtime/tilstedeværelse, AI-handlinger, kontinuitetsnotater, flerkamera |
+| Typechecket | Nei — `@ts-nocheck` | Ja |
+
+A ble valgt som base fordi den eier tilstandsmotoren — `useLiveSet` med guards og
+IndexedDB-kø, som serverprojeksjonen er bygget mot. B sine særtrekk lå alle som
+selvstendige moduler, så de kunne wires inn framfor å skrives om.
+
+**Portert inn i A:**
+
+- **Rollerettigheter** (`buildCan`). Sjekken ligger i `handleRoll`/`handleCut`, ikke bare
+  på knappen — tastatursnarveiene R og T går utenom knappen. Uten oppgitt rolle er alt
+  tillatt, slik Live Set-fanen alltid har oppført seg; å defaulte til en snever rolle
+  ville låst knapper for alle som kommer inn den veien.
+- **Tilstedeværelse** (`useLiveSetRealtime`) som `CREW (n)` i toppbaren. Vises bare når
+  socketen faktisk er koblet — «CREW (0)» ville ellers lest som «ingen er her» når det
+  betyr «vi vet ikke».
+- **AI-handlinger** (`LiveSetAiActions`), med inndata utledet av take-loggen.
+
+**En feil oppdaget under portering:** `shootingDay` fra Live Set-fanen er en
+visningsstreng («mandag 15. mars 2027»), ikke en id. Første wiring brukte
+`shootingDayId ?? shootingDay` som nøkkel, som ville merket hendelsene med en
+lokalisert dato — og serverprojeksjonen filtrerer på nettopp det feltet. Nå brukes bare
+den ekte id-en; visningsstrengen brukes fortsatt til etiketten, som er det den er til for.
+
+**Slettet:** `production/LiveSetMode.tsx` (2017 linjer) og
+`services/liveSetOutboxService.ts` (222 linjer). Outboxen var B sin egen
+localStorage-kø som flushet tilbake til minnet; A har IndexedDB-kø med server-ack.
+Mutatorene i `productionWorkflowService` har nå ingen kallere — de står igjen fordi de
+skriver til samme logg, men skjermen bruker `useLiveSet`.
+
+**Ikke portert, og verdt å vite:** B sine kontinuitetsnotater bar `shotId`/`takeId` og
+`photoUrl`. A sine notater har fritt tag-felt (`NoteTag` er en åpen union, så
+kostyme/rekvisitt/sminke passer), men verken kobling til take eller bilde. Det er en
+reell funksjonsforskjell, ikke en forglemmelse.
+
+**Mockupene går lenger enn sammenslåingen.** Designet viser live multiview med fire
+kamerabilder, audio mixer med kanalfadere, tally, batteri- og lagringstelemetri per
+kamera, shot compare og versjonsvisning. Ingen av disse finnes i kodebasen i dag —
+`multiview`, `audio mixer` og `shot compare` gir null treff — og de fleste krever
+integrasjon mot kamera- og strømmemaskinvare, ikke UI-arbeid. Sammenslåingen er ett
+steg mot det designet, ikke designet.

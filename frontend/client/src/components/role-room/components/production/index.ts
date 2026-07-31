@@ -4,7 +4,6 @@
  */
 
 // Components
-export { default as LiveSetMode } from './LiveSetMode';
 export { default as StripboardPanel } from './StripboardPanel';
 export { default as ShootingDayPlanner } from './ShootingDayPlanner';
 export { default as CrewCalendarPanel, CrewCalendarPanel as CrewCalendar } from './CrewCalendarPanel';
