@@ -193,5 +193,6 @@ Fase 3 og 4 ville jeg utsatt til noe i drift gjør dem nødvendige.
 | `b2-overlevering-mac.md` | Hva som må kjøres lokalt, med kommandoer |
 | `b2-primaerlagring.md` | Hvorfor lagringen er som den er |
 | `del-a-kodekartlegging.md` | AML, stripboard, økonomi, Live Set-merge, godkjenningsflyt |
+| `del-b-kodekartlegging.md` | Talent-siden (punkt 151–250) mot faktisk kode |
 | `live-set-ipad-native.md` | Plan for den native appen |
 | `samlet-plan.md` | Denne — rekkefølgen |
