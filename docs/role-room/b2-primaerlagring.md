@@ -54,10 +54,11 @@ midt i, fordi både `signPartUrls`, `completeMultipartUpload` og
 
 `CAPTURE_STORAGE_PRIMARY=r2` slår av B2 for denne veien alene.
 
-De andre modulene som bygger egne klienter fra `buildCaptureR2Config()`
-(dansevideo, koreografimusikk, referansearkiv, foto-leveranse,
-marketing-preview) skriver i sine egne nøkkelrom og er urørt — de blir
-liggende på R2 til de eventuelt flyttes hver for seg.
+Dansevideo, koreografimusikk, referansearkiv, foto-leveranse og
+marketing-preview bygde tidligere hver sin egen S3-klient rett fra
+R2-konfigen. De deler nå samme prefiks-ruting: `captureStoreForWrite()`
+for skriving, `captureStoreHandleForKey()` for lesing. Nøkler skrevet før
+flyttingen mangler B2-prefikset og rutes derfor fortsatt til R2.
 
 ## Én bøtte, ikke én per produksjon
 
