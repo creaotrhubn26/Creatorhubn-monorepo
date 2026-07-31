@@ -351,6 +351,9 @@ export async function signPartUrls(
 export interface CompletedUpload {
   bucket: string;
   key: string;
+  /// Hvilket lager objektet faktisk havnet i. Trengs for at
+  /// lagringsregnskapet skal kunne bokføre bytene på riktig backend.
+  backend: CaptureStoreBackend;
   sizeBytes: number;
   etag: string | null;
   /// Originalfilnavnet fra kameraet. Brukes som objektnavn ved B2-speiling,
@@ -425,6 +428,7 @@ export async function completeMultipartUpload(
     result: {
       bucket: cfg.bucket,
       key,
+      backend: cfg.backend,
       sizeBytes: verifiedSize,
       etag: head.ETag ?? null,
       originalFilename: asset.originalFilename,

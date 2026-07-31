@@ -35,6 +35,11 @@ import {
   signAssetReadUrlForMirror,
 } from './capture-upload-service.js';
 import { mirrorUploadToUserB2 } from './user-b2-mirror-worker.js';
+import {
+  canUserUpload,
+  recordStorageUsage,
+  pushStorageUsageToStripe,
+} from './storage-quota-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
@@ -906,6 +911,31 @@ export function createCaptureRouter(
     const parsed = uploadStartBody.safeParse(req.body);
     if (!handleZod(res, parsed)) return;
     const { userId } = req as AuthedRequest;
+
+    // Kvotesjekk før vi åpner en multipart-opplasting. Denne veien bærer
+    // det største volumet i produktet — kameramedier, dailies, RAW — og
+    // var fram til nå den eneste opplastingsveien uten kvote i det hele
+    // tatt. En produksjon kunne dermed skyve inn terabyte uten at noe
+    // stoppet den eller talte den.
+    //
+    // Sjekken skjer her, ikke ved complete: da har bytene allerede
+    // passert nettet, og et avslag ville vært et løfte vi ikke kan holde.
+    const quota = await canUserUpload(pool, userId, parsed.data?.sizeBytes ?? 0);
+    if (!quota.ok) {
+      // 402 framfor 507: dette er en betalingsgrense, ikke en full disk.
+      // Klienten skal tilby oppgradering, ikke be brukeren prøve igjen.
+      res.status(402).json({
+        error: quota.reason ?? 'plan_limit_reached_no_overage',
+        message: quota.message,
+        quota: {
+          tier: quota.status.user.tier,
+          usedBytes: quota.status.usedBytes,
+          limitBytes: quota.status.user.storageLimitBytes,
+        },
+      });
+      return;
+    }
+
     const r = await startMultipartUpload(
       db,
       userId,
@@ -960,6 +990,32 @@ export function createCaptureRouter(
       res.status(uploadErrorStatus(r.error)).json({ error: r.error });
       return;
     }
+
+    // Bokfør bytene. Uten dette teller kameramediene — den desidert
+    // største posten i produktet — som null i lagringsregnskapet, og
+    // hverken kvote, faktura eller admin-oversikt ser dem.
+    //
+    // Vi bruker den verifiserte størrelsen fra HeadObject, ikke tallet
+    // klienten oppga, slik at regnskapet følger det som faktisk ligger
+    // i bøtta. Feiler bokføringen brytes ikke opplastingen — den er
+    // fullført, og en manglende ledger-rad rettes ved reconcile.
+    try {
+      await recordStorageUsage(
+        pool,
+        userId,
+        r.result.sizeBytes,
+        r.result.backend,
+        'capture_upload',
+        `${req.params.id}:${parsed.data?.kind ?? 'unknown'}`,
+        { sessionKey: r.result.key, fileName: r.result.originalFilename },
+      );
+    } catch (ledgerErr) {
+      console.error('[capture] lagringsregnskapet kunne ikke oppdateres:', ledgerErr);
+    }
+
+    void pushStorageUsageToStripe(pool, userId).catch((err) => {
+      console.error('[capture] Stripe usage push feilet:', err);
+    });
 
     // Speil originalen til fotografens egen B2 hvis de har satt opp creds.
     //
