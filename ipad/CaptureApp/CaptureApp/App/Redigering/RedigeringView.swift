@@ -850,6 +850,10 @@ struct SmartEditPanel: View {
             toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
                 .onChange(of: model.recipe.autoStraighten) { _, _ in model.recipeChanged() }
             Divider().overlay(CHTheme.border)
+
+            // Ærlig tilstand: bryterne er INNSTILLINGER for AI-retusjen (kjøres når
+            // du trykker «Kjør AI-retusj»), ikke noe som alt er utført.
+            aiRetouchHeader
             toggleRow("Støvfjerning", systemImage: "sparkle", isOn: $model.dustRemoval)
             toggleRow("Bakgrunnsrydd", systemImage: "scissors", isOn: $model.backgroundClean)
             toggleRow("Fjern refleks", systemImage: "circle.dashed", isOn: $model.reflectionRemoval)
@@ -858,36 +862,27 @@ struct SmartEditPanel: View {
                 learnedStylePicker
             }
 
-            Button { Task { await model.runAIRetouch() } } label: {
-                HStack {
-                    if model.working { ProgressView().controlSize(.small) }
-                    Label("Kjør AI-retusj", systemImage: "wand.and.stars.inverse")
-                }
-                .frame(maxWidth: .infinity)
+            aiAction("Kjør AI-retusj", subtitle: "Fjern støv, distraksjoner + rydd bakgrunn (valgene over)",
+                     systemImage: "wand.and.stars.inverse", prominent: false, busy: model.working) {
+                Task { await model.runAIRetouch() }
             }
-            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
-            .disabled(model.working)
-
             if let msg = model.statusMessage {
                 Text(msg).font(.caption2).foregroundStyle(CHTheme.textMuted)
             }
+            aiAction("AI-forbedring (sky)", subtitle: "Høyoppløst rekonstruksjon + støyreduksjon (server)",
+                     systemImage: "cloud.bolt", prominent: false, busy: false,
+                     disabled: model.selected == nil) { showSky = true }
+            aiAction("Bruk på serie", subtitle: "Synk disse justeringene til lignende bilder",
+                     systemImage: "sparkles", prominent: true, busy: false) { model.applyToSeries() }
+            aiAction("Lagre som preset", subtitle: nil,
+                     systemImage: "bookmark", prominent: false, busy: false) { showSavePreset = true }
 
-            Button { showSky = true } label: {
-                Label("AI-forbedring (sky)", systemImage: "cloud.bolt")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 5) {
+                Image(systemName: "lock.rotation").font(.caption2)
+                Text("Endringer lagres automatisk · originalfilen røres ikke")
+                    .font(.caption2)
             }
-            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
-            .disabled(model.selected == nil)
-
-            Button { model.applyToSeries() } label: {
-                Label("Bruk på serie", systemImage: "sparkles").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent).controlSize(.large).tint(CHTheme.accent)
-
-            Button { showSavePreset = true } label: {
-                Label("Lagre som preset", systemImage: "bookmark").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
+            .foregroundStyle(CHTheme.textMuted).padding(.top, 2)
         }
         .padding(14)
         .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -952,6 +947,57 @@ struct SmartEditPanel: View {
             Label(title, systemImage: systemImage).font(.subheadline).foregroundStyle(CHTheme.textPrimary)
         }
         .tint(CHTheme.accent)
+    }
+
+    /// Ærlig AI-retusj-tilstand: ikke kjørt / kjører / N fjernet.
+    private var aiRetouchStatus: (text: String, color: Color) {
+        if model.working { return ("kjører …", CHTheme.accent) }
+        if model.selected?.autoCleanedKey != nil {
+            let c = model.selected?.autoCleanedDetectionCount ?? 0
+            return (c > 0 ? "\(c) fjernet" : "ingen funn", Color(hex: 0x2FD27A))
+        }
+        return ("ikke kjørt", CHTheme.textMuted)
+    }
+
+    private var aiRetouchHeader: some View {
+        HStack {
+            Label("AI-RETUSJ", systemImage: "wand.and.stars.inverse")
+                .font(.caption2.weight(.bold)).foregroundStyle(CHTheme.textSecondary)
+            Spacer()
+            Text(aiRetouchStatus.text).font(.caption2.weight(.semibold))
+                .foregroundStyle(aiRetouchStatus.color)
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(aiRetouchStatus.color.opacity(0.15), in: Capsule())
+        }
+    }
+
+    /// AI-handling med forklarende undertekst (hva den faktisk gjør).
+    @ViewBuilder
+    private func aiAction(_ title: String, subtitle: String?, systemImage: String,
+                          prominent: Bool, busy: Bool, disabled: Bool = false,
+                          action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Group {
+                if prominent {
+                    Button(action: action) { aiActionLabel(title, systemImage, busy) }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button(action: action) { aiActionLabel(title, systemImage, busy) }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .controlSize(.large).tint(CHTheme.accent).disabled(busy || disabled)
+            if let subtitle {
+                Text(subtitle).font(.caption2).foregroundStyle(CHTheme.textMuted)
+                    .padding(.leading, 2)
+            }
+        }
+    }
+    private func aiActionLabel(_ title: String, _ systemImage: String, _ busy: Bool) -> some View {
+        HStack {
+            if busy { ProgressView().controlSize(.small) }
+            Label(title, systemImage: systemImage)
+        }.frame(maxWidth: .infinity)
     }
 
     /// «Min stil (lært)» — velg blant fotografens arkiv-lærte, navngitte looker
