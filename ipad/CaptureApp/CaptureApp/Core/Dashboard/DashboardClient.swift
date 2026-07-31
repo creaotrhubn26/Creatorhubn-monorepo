@@ -1,4 +1,5 @@
 import Foundation
+import NetworkingKit
 
 /// HTTP client for the native photographer dashboard surfaces. Talks to
 /// the same Express backend as ``BackendClient`` (`session.backendBaseURL`)
@@ -9,8 +10,10 @@ import Foundation
 /// injected per request, errors mapped to ``DashboardError`` so views can
 /// show a readable message + retry.
 actor DashboardClient {
+    /// Røret. Timeout og retry-på-idempotente-kall ligger der. Se NetworkingKit.
+    private let transport: HTTPTransport
     let baseURL: URL
-    private let session: URLSession
+    /// Beholdes for kallsteder som bygger absolutte URL-er selv.
     private var authHeaders: [String: String]
     /// Signed-in photographer id — several dashboard endpoints scope by
     /// `?userId=` even with a Bearer present.
@@ -23,9 +26,13 @@ actor DashboardClient {
         userId: String? = nil,
     ) {
         self.baseURL = baseURL
-        self.session = session
         self.authHeaders = authHeaders
         self.userId = userId
+        self.transport = HTTPTransport(
+            baseURL: baseURL,
+            session: session,
+            authHeaders: authHeaders,
+        )
     }
 
     /// Build from the signed-in session (nil when signed out).
@@ -79,64 +86,47 @@ actor DashboardClient {
         )
     }
 
-    func setAuthHeaders(_ headers: [String: String]) { self.authHeaders = headers }
+    func setAuthHeaders(_ headers: [String: String]) async {
+        authHeaders = headers
+        await transport.setAuthHeaders(headers)
+    }
 
     // MARK: - Internals
 
     func getJSON<Response: Decodable>(path: String) async throws -> Response {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw DashboardError.transport("invalid path \(path)")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = Self.defaultTimeout
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        applyAuth(&request)
-        let (data, response) = try await data(for: request)
-        try check(response, data)
-        do {
-            return try JSONDecoder().decode(Response.self, from: data)
-        } catch {
-            throw DashboardError.decode(String(describing: error))
-        }
+        do { return try await transport.get(path) }
+        catch let error as HTTPError { throw Self.asDashboardError(error) }
     }
 
-    /// POST/PATCH a JSON body; 2xx with body ignored. Used for mutations
-    /// where we re-fetch the list afterwards rather than parse the ack.
+    /// POST/PATCH med JSON-body; 2xx med body ignorert.
     func send<Body: Encodable>(path: String, method: String, body: Body) async throws {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw DashboardError.transport("invalid path \(path)")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.timeoutInterval = Self.defaultTimeout
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        applyAuth(&request)
-        request.httpBody = try JSONEncoder().encode(body)
-        let (data, response) = try await data(for: request)
-        try check(response, data)
+        do {
+            switch method.uppercased() {
+            case "PATCH": try await transport.patchIgnoringResponse(path, body: body)
+            default:      try await transport.postIgnoringResponse(path, body: body)
+            }
+        } catch let error as HTTPError { throw Self.asDashboardError(error) }
     }
 
-    /// POST a JSON body and decode the response — for mutations whose ack
-    /// carries data we need (e.g. a Google Meet join link).
     func postJSON<Body: Encodable, Response: Decodable>(path: String, body: Body) async throws -> Response {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw DashboardError.transport("invalid path \(path)")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = Self.defaultTimeout
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        applyAuth(&request)
-        request.httpBody = try JSONEncoder().encode(body)
-        let (data, response) = try await data(for: request)
-        try check(response, data)
-        do {
-            return try JSONDecoder().decode(Response.self, from: data)
-        } catch {
-            throw DashboardError.decode(String(describing: error))
+        do { return try await transport.post(path, body: body) }
+        catch let error as HTTPError { throw Self.asDashboardError(error) }
+    }
+
+    /// Oversetter transportens feil til dashboardets vokabular.
+    ///
+    /// `DashboardError` er `LocalizedError` med norske meldinger som vises
+    /// direkte i UI-et — den er en del av flatens API, ikke en
+    /// implementasjonsdetalj. `signedOut` finnes ikke i transporten og settes
+    /// bare av kallsteder som vet at økten mangler.
+    private static func asDashboardError(_ error: HTTPError) -> DashboardError {
+        switch error {
+        case .unauthorized:               return .unauthorized
+        case .notFound:                   return .notFound
+        case let .httpStatus(code, body): return .httpStatus(code, body: body)
+        case let .decode(message):        return .decode(message)
+        case let .transport(message):     return .transport(message)
+        case .notConfigured:              return .signedOut
         }
     }
 
@@ -157,53 +147,6 @@ actor DashboardClient {
         }
     }
 
-    /// Per-request timeout — URLSession's default (60s req / much longer
-    /// resource) is too forgiving for an interactive dashboard.
-    static let defaultTimeout: TimeInterval = 30
-
-    /// Runs the request with bounded retry + exponential backoff for transient
-    /// failures. Retries ONLY idempotent GETs (never POST/PATCH — avoids
-    /// double-submit) on network errors, 429, and 5xx.
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        let isIdempotent = (request.httpMethod ?? "GET").uppercased() == "GET"
-        let maxAttempts = isIdempotent ? 3 : 1
-        var attempt = 0
-        while true {
-            attempt += 1
-            do {
-                let (data, response) = try await session.data(for: request)
-                if isIdempotent, attempt < maxAttempts, let http = response as? HTTPURLResponse,
-                   http.statusCode == 429 || (500...599).contains(http.statusCode) {
-                    try? await Task.sleep(nanoseconds: Self.backoffNanos(attempt))
-                    continue
-                }
-                return (data, response)
-            } catch let urlError as URLError {
-                if isIdempotent, attempt < maxAttempts, Self.isRetryable(urlError) {
-                    try? await Task.sleep(nanoseconds: Self.backoffNanos(attempt))
-                    continue
-                }
-                throw DashboardError.transport(String(describing: urlError.code))
-            }
-        }
-    }
-
-    /// ~0.4s, ~0.9s … with jitter to avoid thundering-herd retries.
-    private static func backoffNanos(_ attempt: Int) -> UInt64 {
-        let base = 0.4 * pow(2.0, Double(attempt - 1))
-        let jitter = Double.random(in: 0...0.25)
-        return UInt64((base + jitter) * 1_000_000_000)
-    }
-
-    private static func isRetryable(_ error: URLError) -> Bool {
-        switch error.code {
-        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
-             .dnsLookupFailed, .cannotFindHost, .resourceUnavailable:
-            return true
-        default:
-            return false
-        }
-    }
 }
 
 enum DashboardError: Error, LocalizedError, Sendable {

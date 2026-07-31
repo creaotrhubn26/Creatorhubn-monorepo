@@ -148,8 +148,14 @@ To ting måtte rettes underveis, og begge ville kompilert:
   der 409 betyr «finnes allerede». De går derfor via `rawData`, som beholder
   responsen, ikke `send`, som kaster på ikke-2xx.
 
-`DashboardClient` er **ikke** migrert ennå. Den har sin egen `DashboardError`
-og sin egen auth-modell; den bør følge etter, men er en egen gjennomgang.
+`DashboardClient` er migrert på samme måte. Den beholder `DashboardError` —
+den er `LocalizedError` med norske meldinger som vises direkte i UI-et, altså
+en del av flatens API. `notConfigured` fra transporten oversettes til
+`signedOut`, som er det nærmeste dashboardet har.
+
+Begge klientene delegerer nå transporten. Duplikatet er borte: timeout,
+retry-stigen og feilmappingen finnes ett sted, og en tredje app arver hele
+oppførselen framfor halve.
 
 `CameraControlKit` kan vente til fase 5. Live Set trenger den ikke før
 kamerakontroll skal inn.
