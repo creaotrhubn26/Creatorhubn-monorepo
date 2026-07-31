@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Pool } from "pg";
-import { formatEighths, getShootProgress, getStripboard } from "./role-room-stripboard-service.js";
+import {
+  formatEighths,
+  getShootProgress,
+  getStripboard,
+  resolveCast,
+  type StripboardScene,
+} from "./role-room-stripboard-service.js";
 
 describe("formatEighths", () => {
   it("skriver sider slik bransjen gjør", () => {
@@ -147,5 +153,59 @@ describe("getShootProgress", () => {
       { match: /FROM role_room_stripboard_entries/, rows: [] },
     ]);
     expect((await getShootProgress(pool, "p1")).eighthsRemaining).toBe(0);
+  });
+});
+
+describe("resolveCast", () => {
+  const scene = (id: string, characters: string[]): StripboardScene => ({
+    entryId: null, sceneId: id, sceneNumber: 1, title: null, intExt: null,
+    timeOfDay: null, setting: null, characters, pageEighths: 8,
+    shootStatus: "not_shot", sortOrder: 0, setupMinutes: 0,
+  });
+
+  const roles = [
+    { role_id: "r1", role_name: "KARI", assigned_candidate_id: "c1", candidate_name: "Ingrid Berdal" },
+    { role_id: "r2", role_name: "OLA", assigned_candidate_id: null, candidate_name: null },
+  ];
+
+  it("kobler karakter til tildelt kandidat", async () => {
+    const { pool } = stubPool([{ match: /FROM casting_roles/, rows: roles }]);
+    const cast = await resolveCast(pool, "p1", [scene("s1", ["KARI"])]);
+    expect(cast).toEqual([
+      { id: "c1", name: "Ingrid Berdal", character: "KARI", scenes: ["s1"] },
+    ]);
+  });
+
+  it("regner «KARI (V.O.)» som samme karakter, og viser rollenavnet", async () => {
+    // (V.O.) er en regianvisning, ikke en del av navnet.
+    const { pool } = stubPool([{ match: /FROM casting_roles/, rows: roles }]);
+    const cast = await resolveCast(pool, "p1", [
+      scene("s1", ["KARI (V.O.)"]),
+      scene("s2", ["KARI"]),
+    ]);
+    expect(cast).toHaveLength(1);
+    expect(cast[0].character).toBe("KARI");
+    expect(cast[0].scenes).toEqual(["s1", "s2"]);
+  });
+
+  it("faller tilbake på rollen når ingen kandidat er tildelt", async () => {
+    const { pool } = stubPool([{ match: /FROM casting_roles/, rows: roles }]);
+    const cast = await resolveCast(pool, "p1", [scene("s1", ["OLA"])]);
+    expect(cast[0]).toMatchObject({ id: "r2", name: "OLA", character: "OLA" });
+  });
+
+  it("mister ikke karakterer som ikke finnes som rolle", async () => {
+    // Som regel en skrivefeil i manus eller en rolle som mangler. Å utelate
+    // dem ville skjult begge deler.
+    const { pool } = stubPool([{ match: /FROM casting_roles/, rows: roles }]);
+    const cast = await resolveCast(pool, "p1", [scene("s1", ["UKJENT FIGUR"])]);
+    expect(cast).toHaveLength(1);
+    expect(cast[0].character).toBe("UKJENT FIGUR");
+  });
+
+  it("spør ikke om roller når ingen scener har karakterer", async () => {
+    const { pool, query } = stubPool([{ match: /FROM casting_roles/, rows: roles }]);
+    expect(await resolveCast(pool, "p1", [scene("s1", [])])).toEqual([]);
+    expect(query).not.toHaveBeenCalled();
   });
 });

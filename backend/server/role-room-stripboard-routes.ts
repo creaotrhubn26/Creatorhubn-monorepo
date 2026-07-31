@@ -59,6 +59,25 @@ export function setupRoleRoomStripboardRoutes(deps: StripboardRoutesDeps): void 
     }
   });
 
+  /**
+   * Medvirkende utledet av scenene.
+   *
+   * Egen rute framfor å tvinge kallere til å hente hele stripboardet: dagplan-
+   * leggeren trenger bare navnene. Samme utledning som stripboard-svaret, så
+   * de to kan ikke komme i utakt.
+   */
+  app.get("/api/role-room/projects/:projectId/cast", async (req, res) => {
+    if (!(await guardProject(req, res))) return;
+    try {
+      const projectId = String(req.params.projectId);
+      const board = await getStripboard(pool, projectId);
+      res.json({ cast: board.cast });
+    } catch (err) {
+      console.error("[stripboard] cast feilet:", err);
+      res.status(500).json({ error: "Kunne ikke hente medvirkende." });
+    }
+  });
+
   app.get("/api/role-room/projects/:projectId/stripboard/progress", async (req, res) => {
     if (!(await guardProject(req, res))) return;
     try {

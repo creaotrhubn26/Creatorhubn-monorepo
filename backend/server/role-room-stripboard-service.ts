@@ -198,7 +198,7 @@ export async function getStripboard(pool: Pool, projectId: string): Promise<Stri
  * skjult begge deler. Se også role-room-scene-cast-service.ts, som bruker
  * samme navnenormalisering.
  */
-async function resolveCast(
+export async function resolveCast(
   pool: Pool,
   projectId: string,
   scenes: StripboardScene[],
@@ -230,10 +230,13 @@ async function resolveCast(
 
   return [...sceneIdsByCharacter.entries()].map(([key, entry]) => {
     const role = byName.get(key);
+    // Rollenavnet vinner over slik karakteren tilfeldigvis er skrevet i den
+    // første scenen: «KARI (V.O.)» er en regianvisning, ikke et navn.
+    const character = String(role?.role_name ?? entry.display);
     return {
       id: String(role?.assigned_candidate_id ?? role?.role_id ?? key),
-      name: String(role?.candidate_name ?? entry.display),
-      character: entry.display,
+      name: String(role?.candidate_name ?? character),
+      character,
       scenes: entry.scenes,
     };
   });

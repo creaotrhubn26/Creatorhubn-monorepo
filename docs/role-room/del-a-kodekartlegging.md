@@ -450,6 +450,34 @@ gikk mot de samme ikke-eksisterende endepunktene. Cast følger nå med stripboar
 DOOD-matrisen settes opp mot de samme scenene som stripene. Et tomt stripboard vises som
 tomt, og en feil vises som en feil med «Prøv igjen».
 
+### Resten av `/api/production`
+
+`productionWorkflowService` hadde fem kall igjen mot samme ikke-eksisterende API. Alle er
+tatt:
+
+| Metode | Kallere | Løsning |
+|---|---|---|
+| `getCast` | ShootingDayPlanner | Ny rute `GET /projects/:id/cast` — samme utledning som stripboard-svaret, så de ikke kommer i utakt |
+| `getCrew` | ShootingDayPlanner, useProductionCrew | Peker på `GET /projects/:id/crew`, som fantes fra før (`casting_crew`) |
+| `getLiveSetStatus` | LiveSetMode, useLiveSetSync | `todayProgress` fra fremdriftsruta; øyeblikkstilstand står tom — se under |
+| `generateCallSheet` | ingen | Slettet |
+| `seedTrollData` | ingen | Slettet |
+
+**Live-set-status er halvparten ekte.** `todayProgress` — planlagte og skutte sider —
+ligger i stripboardet og fremdriftsberegningen. `currentScene`, `isRolling` og
+`todayTakes` er øyeblikkstilstand på settet, og det finnes ingen tabell for det.
+Feltene står derfor tomme og settes bare i minnet for økten. Før falt hele objektet
+tilbake på `TROLL_LIVE_SET_STATUS`, så en produsent fikk se at det ble rullet på en
+scene fra en annen film.
+
+`generateCallSheet` var verdt å slette framfor å koble: den fylte inn navngitte personer
+og telefonnumre som konstanter i koden, og et sykehus. En call sheet som ser ekte ut og
+er oppdiktet er verre enn ingen — og call sheet-generatoren i `CallSheetGenerator.tsx`
+gjør allerede dette mot ekte data.
+
+`API_BASE = '/api/production'` er nå borte fra filen. TROLL-konstantene står igjen som
+eksporterte fixtures, men ingen kodesti faller tilbake på dem lenger.
+
 ## Metode og forbehold
 
 Kartlagt ved lesing av skjema (`backend/migrations/`), ruter (`backend/server/role-room-*`) og
