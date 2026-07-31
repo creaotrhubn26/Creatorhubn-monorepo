@@ -71,6 +71,26 @@ enum LearnedStyle {
         return hist + [meanL / 255.0, stdL / 128.0, (sumA / n - 128) / 20.0, (sumB / n - 128) / 20.0]
     }
 
+    /// Snitt-luma (0…1) + andel utblåste høylys-piksler (luma ≥ ~252) fra et
+    /// 64×64-utsnitt — driver den absolutte høylys-/eksponerings-vakten.
+    static func lumaStats(_ cg: CGImage) -> (mean: Double, clipHi: Double) {
+        let w = 64, h = 64
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return (0.5, 0) }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var sum = 0.0, clip = 0.0
+        let n = Double(w * h)
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let l = 0.299 * Double(px[i]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i + 2])
+            sum += l
+            if l >= 252 { clip += 1 }
+        }
+        return (sum / n / 255.0, clip / n)
+    }
+
     /// sRGB(0…1) → OpenCV 8-bit Lab (L,a,b i 0…255, 128=nøytral for a/b).
     private static func labCV(r: CGFloat, g: CGFloat, b: CGFloat) -> (Double, Double, Double) {
         let a = SkinToneMath.aStar(r: r, g: g, b: b)          // CIE a*
@@ -205,13 +225,21 @@ enum LearnedStyle {
             out = cc.outputImage?.cropped(to: image.extent) ?? out
         }
 
-        // (3) MILD global eksponerings-vakt — kun backstop mot base-mismatch-lift
-        // (app-nøytral lysere enn Python-nøytral). Dempet (40 %) + høyere terskel
-        // så den ikke mørkner hår/mellomtoner unødig; høylys-skulderen tar resten.
+        // (3) ABSOLUTT høylys-/eksponerings-vakt — måler det FAKTISKE resultatet
+        // (ikke bare relativt til basen): hvor mye høylys er utblåst + hvor lyst
+        // er snittet. High-key scener (lyst vinduslys) kan fortsatt være over-
+        // eksponert selv om LUT-en ikke løftet mye. Sterkere høylys-skulder ved
+        // klipping + eksponerings-nedtrekk når snittet er for lyst.
         if let outCg = ctx.createCGImage(out, from: out.extent) {
-            let baseL = f[8], styledL = features(of: outCg)[8]   // OpenCV-L/255
-            if baseL > 0.02, styledL > baseL + 0.06 {
-                let ev = max(-0.7, min(0.0, 0.4 * log2(baseL / styledL)))
+            let (meanL, clipHi) = lumaStats(outCg)   // 0…1
+            if clipHi > 0.015 {
+                // LOKAL (luminans-maskert) recovery — komprimerer KUN de utblåste
+                // flatene (bluse/vindu), ikke riktig-eksponert hud/mellomtoner.
+                out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 8))
+            }
+            if meanL > 0.62 {
+                // For lyst totalt → moderat eksponerings-nedtrekk mot ~0.58.
+                let ev = max(-0.9, min(0.0, 0.8 * log2(0.58 / meanL)))
                 let e = CIFilter.exposureAdjust()
                 e.inputImage = out
                 e.ev = Float(ev)
@@ -225,6 +253,32 @@ enum LearnedStyle {
         out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
         out = SkinSmoothFilter.apply(amount: 0.4, to: out)
         out = FaceDodgeFilter.apply(to: out)
+
+        // LOKAL per-region: nøytraliser BAKGRUNNEN uavhengig av motivet (Vision
+        // person-maske). Bakgrunnen får dempet metning + mildt kjøligere for å
+        // fjerne fargestikk — mens motivet (hud) beholder sin varme behandling.
+        // Løser «redigerer alt som ett område».
+        if let outCg = ctx.createCGImage(out, from: out.extent),
+           let personMask = SubjectSegmentation.personMask(for: outCg, extent: image.extent) {
+            let bg = CIFilter.colorControls()
+            bg.inputImage = out
+            bg.saturation = 0.86          // dempet fargestikk i bakgrunn
+            bg.contrast = 1.0
+            bg.brightness = 0
+            if let neutralBg = bg.outputImage {
+                // Mildt kjøligere/nøytral bakgrunn (fjern varmt stikk, ikke gjør blå).
+                let m = CIFilter.colorMatrix()
+                m.inputImage = neutralBg
+                m.biasVector = CIVector(x: -0.012, y: 0, z: 0.006, w: 0)   // ↓rød ↑blå litt
+                let bgFinal = m.outputImage ?? neutralBg
+                // person=hvit → behold motiv (out); bakgrunn=svart → bgFinal.
+                let blend = CIFilter.blendWithMask()
+                blend.inputImage = out
+                blend.backgroundImage = bgFinal
+                blend.maskImage = personMask
+                out = blend.outputImage?.cropped(to: image.extent) ?? out
+            }
+        }
         return out.cropped(to: image.extent)
     }
 }

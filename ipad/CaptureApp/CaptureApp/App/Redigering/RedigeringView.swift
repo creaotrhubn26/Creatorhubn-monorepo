@@ -315,9 +315,12 @@ final class RedigeringModel {
         }()
         let auto = learnedStyleAuto && !styles.isEmpty
         // Lært stil er en KOMPLETT look (nøytral→levert). Stables den oppå en
-        // annen recipe dobbelt-prosesserer den → bruk en NØYTRAL base når en stil
-        // (eller auto) er aktiv, så den lærte tonekurven+fargen er primærlaget.
-        let r = (manualScenes != nil || auto) ? MagicRecipe.neutral : effectiveRecipe()
+        // annen recipe dobbelt-prosesserer den → bruk en FLAT base når en stil
+        // (eller auto) er aktiv: INGEN auto-enhance/skygge-løft (som .neutral har
+        // og som blåser opp lyse scener), kun høylys-vern. Da opererer LUT-en på
+        // et sant nøytralt utgangspunkt i stedet for et alt-oppløftet.
+        let learnedBase = MagicRecipe(highlightRecovery: 0.30, autoEnhance: false)
+        let r = (manualScenes != nil || auto) ? learnedBase : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
@@ -371,6 +374,10 @@ struct RedigeringView: View {
     @State private var zoom: CGFloat = 1
     @State private var showCrop = false
     @State private var showMask = false
+    /// Bilde-først: skjul inspector-panelet så bildet fyller bredden.
+    @State private var inspectorOpen = true
+    /// Histogram + clipping-varsel-overlegg på sammenlignings-bildet.
+    @State private var showHistogram = false
 
     var body: some View {
         NavigationStack {
@@ -388,7 +395,27 @@ struct RedigeringView: View {
             .background(CHTheme.bg.ignoresSafeArea())
             .navigationTitle("Redigering")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { sessionMenu } }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 14) {
+                        Button {
+                            showHistogram.toggle()
+                        } label: {
+                            Image(systemName: "waveform.path.ecg.rectangle")
+                                .foregroundStyle(showHistogram ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Histogram + clipping")
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.22)) { inspectorOpen.toggle() }
+                        } label: {
+                            Image(systemName: inspectorOpen ? "sidebar.right" : "slider.horizontal.3")
+                                .foregroundStyle(inspectorOpen ? CHTheme.textSecondary : CHTheme.accent)
+                        }
+                        .help(inspectorOpen ? "Skjul panel (større bilde)" : "Vis verktøy-panel")
+                        sessionMenu
+                    }
+                }
+            }
         }
         .task { await model.loadSessions() }
         .sheet(isPresented: $showCrop) {
@@ -421,16 +448,28 @@ struct RedigeringView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        GeometryReader { geo in
+            // Bildet dominerer: ~70 % av høyden med inspector åpen, ~82 % lukket.
+            let imageH = geo.size.height * (inspectorOpen ? 0.70 : 0.82)
+            VStack(alignment: .leading, spacing: 12) {
                 subtitle
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 12) { compareCard; toolbarRow }
-                    SmartEditPanel(model: model).frame(width: 320)
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(spacing: 10) {
+                        compareCard(height: imageH)
+                        toolbarRow
+                    }
+                    .frame(maxWidth: .infinity)
+                    if inspectorOpen {
+                        ScrollView { SmartEditPanel(model: model) }
+                            .frame(width: 340)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
-                queueStrip
-                StepFlow()
-                bottomCards
+                // Sekundært (prosjekt/status) — komprimert nederst, ikke i veien.
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) { queueStrip; StepFlow(); bottomCards }
+                }
+                .frame(maxHeight: geo.size.height * 0.22)
             }
             .padding(16)
         }
@@ -444,14 +483,15 @@ struct RedigeringView: View {
         }
     }
 
-    private var compareCard: some View {
+    private func compareCard(height: CGFloat) -> some View {
         BeforeAfterCompare(
             beforePath: model.selected?.previewKey ?? model.selected?.displayPreviewKey,
             after: model.afterImage,
             rendering: model.rendering,
             zoom: $zoom,
+            showHistogram: showHistogram,
         )
-        .frame(height: 460)
+        .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -559,6 +599,71 @@ struct RedigeringView: View {
     }
 }
 
+// MARK: - Histogram + clipping
+
+/// Kompakt luma-histogram + clipping-varsel (utblåste høylys / knuste skygger)
+/// beregnet fra «Etter»-bildet — proft vurderingsverktøy fotografen etterlyste.
+private struct HistogramOverlay: View {
+    let image: UIImage
+    @State private var bins: [Double] = []
+    @State private var clipHi = 0.0
+    @State private var clipLo = 0.0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if clipHi > 0.005 || clipLo > 0.005 {
+                HStack(spacing: 8) {
+                    if clipHi > 0.005 {
+                        Label("Høylys klippet \(Int(clipHi * 100))%", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color(hex: 0xE0606A))
+                    }
+                    if clipLo > 0.005 {
+                        Label("Skygger klippet \(Int(clipLo * 100))%", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color(hex: 0x4A90E2))
+                    }
+                }
+                .font(.caption2.weight(.semibold))
+            }
+            GeometryReader { geo in
+                let maxV = max(bins.max() ?? 1, 0.0001)
+                HStack(alignment: .bottom, spacing: 1) {
+                    ForEach(bins.indices, id: \.self) { i in
+                        Rectangle().fill(.white.opacity(0.75))
+                            .frame(height: geo.size.height * CGFloat(bins[i] / maxV))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+            .frame(width: 220, height: 56)
+            .padding(6)
+            .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .task(id: image) { compute() }
+    }
+
+    private func compute() {
+        guard let cg = image.cgImage else { return }
+        let w = 96, h = 96
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var b = [Double](repeating: 0, count: 48)
+        var hi = 0.0, lo = 0.0
+        let n = Double(w * h)
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let l = 0.299 * Double(px[i]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i + 2])
+            b[min(47, Int(l / 256.0 * 48))] += 1
+            if l >= 252 { hi += 1 }
+            if l <= 3 { lo += 1 }
+        }
+        bins = b.map { $0 / n }
+        clipHi = hi / n
+        clipLo = lo / n
+    }
+}
+
 // MARK: - Before/After compare
 
 struct BeforeAfterCompare: View {
@@ -566,11 +671,15 @@ struct BeforeAfterCompare: View {
     let after: UIImage?
     let rendering: Bool
     @Binding var zoom: CGFloat
+    var showHistogram: Bool = false
     @State private var split: CGFloat = 0.5
+    @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
 
     var body: some View {
         GeometryReader { geo in
+            // Hold-for-original → vis kun «Før» (skjul Etter helt).
+            let effSplit = holdingOriginal ? 0 : split
             ZStack(alignment: .topLeading) {
                 CHTheme.surfaceElevated
                 if let beforePath, let before = UIImage(contentsOfFile: beforePath) {
@@ -581,11 +690,16 @@ struct BeforeAfterCompare: View {
                     Image(uiImage: after).resizable().scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height).clipped()
                         .mask(alignment: .leading) {
-                            Rectangle().frame(width: geo.size.width * split)
+                            Rectangle().frame(width: geo.size.width * effSplit)
                         }
                 }
                 labels
-                handle(in: geo)
+                if !holdingOriginal { handle(in: geo) }
+                if showHistogram, let after {
+                    HistogramOverlay(image: after)
+                        .frame(height: 84).padding(10)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                }
                 if rendering {
                     ProgressView().padding(8).background(.black.opacity(0.4), in: Circle())
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -607,10 +721,24 @@ struct BeforeAfterCompare: View {
     private var labels: some View {
         VStack {
             HStack {
-                tag("Før"); Spacer(); tag("Etter")
+                tag(holdingOriginal ? "Original" : "Før"); Spacer()
+                holdButton
+                Spacer()
+                tag("Etter")
             }.padding(10)
             Spacer()
         }
+    }
+
+    /// Trykk-og-hold for å se originalen (rå sammenligning).
+    private var holdButton: some View {
+        Text("Hold for original")
+            .font(.caption2.weight(.semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(.black.opacity(holdingOriginal ? 0.55 : 0.3), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.25)))
+            .onLongPressGesture(minimumDuration: 0, maximumDistance: 60,
+                                pressing: { holdingOriginal = $0 }, perform: {})
     }
     private func tag(_ t: String) -> some View {
         Text(t).font(.caption.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 5)
