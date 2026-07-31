@@ -4,16 +4,21 @@ Del B-dokumentet prioriterer 100 punkter uten å si hva som allerede
 finnes. Denne fila fyller det hullet.
 
 **Metoden:** hvert punkt slått opp mot faktiske tabeller, ruter og filer.
-Der jeg ikke har verifisert, står det. Jeg har to ganger i arbeidet med
-Del A antatt at noe ikke fantes og tatt feil — derfor er «ikke verifisert»
-en egen kategori her, ikke slått sammen med «finnes ikke».
+Jeg har to ganger i arbeidet med Del A antatt at noe ikke fantes og tatt
+feil — derfor var «ikke verifisert» en egen kategori her, ikke slått
+sammen med «finnes ikke».
+
+**Alle 100 punktene (151–250) er nå gjennomgått.** ❓ står tomt, og det
+gjorde det ikke i de to første versjonene av denne fila. Historikken står
+i «Forbehold» nederst, fordi hvilke antakelser som viste seg gale sier noe
+om hvor man skal være forsiktig neste gang.
 
 | Symbol | Betyr |
 | --- | --- |
 | ✅ | Bygget og i bruk |
 | 🟡 | Delvis — fundamentet finnes, flaten eller en del mangler |
 | ❌ | Verifisert fraværende |
-| ❓ | Ikke verifisert i denne runden |
+| ❓ | Ikke verifisert — ingen igjen |
 
 ---
 
@@ -37,10 +42,10 @@ prosjekter, takes, submissions og hendelser.
 har `skills` som flat liste uten nivå, og ingen synlighetskolonner i det
 hele tatt.
 
-**Etter verifiseringsrunden** (B4, B5, B7 gjennomgått punkt for punkt) er
-tallet høyere: **åtte punkter merket P0 eller P1 er allerede bygget** —
-215, 217, 232, 176, 188, 202, 214 og 218. Se «To talentflater» for hvorfor
-den første runden ikke fant de fire siste.
+**Etter to verifiseringsrunder** — alle 250 punkter er nå gjennomgått, ingen
+står som ❓ — er tallet høyere: **ni punkter merket P0 eller P1 er allerede
+bygget**: 176, 188, 202, 214, 215, 217, 218, 226 og 232. Se «To talentflater»
+for hvorfor den første runden ikke fant halvparten av dem.
 
 ---
 
@@ -92,7 +97,7 @@ tilgangslogg. **Ingen match-, søke- eller søknadsstatusruter.**
 | 172 | Anonymisert første runde | ❌ | — |
 | 173 | Lagrede søk | ❌ | `agency_saved_searches` finnes — men det er **byråer som lagrer talentsøk**, speilbildet av dette punktet |
 | 174 | Følg produksjonsselskaper | ❌ | — |
-| 175 | Åpen utlysningsside | ❓ | Ikke verifisert |
+| 175 | Åpen utlysningsside | 🟡 | **SEO-motoren doken etterlyser finnes allerede:** `theroleroom-sitemap-routes.ts` med statiske og dynamiske URL-er, prioritet, changefreq — og en test som håndhever synk mot `marketingPagesConfig.ts`. Men den dekker markedsføringssider og briefs. **Ingen roller, ingen offentlig rolle-rute** |
 | 176 | Søknadsstatus synlig | ✅ | **Rettet.** `buildRoleRoomTalentPortalCandidate()` returnerer `status` til talentet via `GET /talent/portal` |
 | 177 | Automatisk avslag | ❌ | — |
 | 178 | Karrierestatistikk | ❌ | — |
@@ -115,14 +120,14 @@ Den mest ferdigbygde kategorien. Tabeller: `talent_selftape_projects`,
 | 181 | Automatisk komprimering | ✅ | Cloudflare Stream transkoder ved opplasting |
 | 182 | Kvittering levert/sett | ✅ | `talent_selftape_submission_events` med `event_type`, `actor_label`, `ip_address` + `/history` |
 | 183 | Re-take-forespørsel | 🟡 | `takes` + `notes` finnes; ingen forespørselsflyt |
-| 184 | Selvbooking | ❓ | Ikke verifisert |
-| 185 | Reiseinfo i invitasjon | ❓ | Ikke verifisert |
+| 184 | Selvbooking og ombooking | ❌ | Treffene er dansestudio og CRM. Ingen talentvendt tidsbooking |
+| 185 | Reiseinfo i invitasjon | ❌ | `casting_schedules` har `location` og `notes` — ingen reisefelt |
 | 186 | Kalendersynk | 🟡 | `role_room_calendar_feeds`: ICS-abonnement med ugjettbart token, `scope` = shoot_days/deadlines, tilbaketrekking framfor sletting. Utstedt av produsent, ikke av talentet |
-| 187 | Sider m/NDA-sperre | ❓ | Ikke verifisert |
+| 187 | Sider m/NDA-sperre | ❌ | Ingen dokumentsperre. `role_room_access_vault_grants` er en *legitimasjons*-vault, men gir mønsteret: tildeling per bruker per prosjekt, med `expires_at` og `revoked_at` |
 | 188 | Påminnelser 48t/2t | ✅ | **Rettet.** `casting-reminder-runner.ts` er en full cron-sveip: WhatsApp → SMS → e-post som fallback, idempotent via `casting_schedules.reminders_sent`, med preferanser per kanal per frist. Fristene er **24t/1t**, ikke 48t/2t — en konfigurasjonsendring, ikke en byggejobb |
 | 189 | Strukturert tilbakemelding | 🟡 | `ai_feedback` finnes; menneskelig strukturert tilbakemelding ikke |
-| 190 | Ventelistestatus | ❓ | Ikke verifisert |
-| 191 | Egenerklæring stunt | ❓ | Ikke verifisert |
+| 190 | Ventelistestatus | ❌ | Eneste treff på «waitlist» er en kommentar om en CTA for en ukonfigurert integrasjon |
+| 191 | Egenerklæring stunt | ❌ | — |
 | 192 | Audition-historikk | 🟡 | `submission_events` er historikken; ingen talentvendt visning |
 
 **Konsekvens:** self-tape-«leveransen» (179+180+181+182) som doken setter
@@ -182,9 +187,25 @@ Sterkeste kategorien etter B3.
 | 218 | Autosletting søknadsmateriale | ✅ | `role-room-retention-service.ts` feier `casting_candidates` og `talent_selftape_submissions` |
 | 219 | Verge-konto | 🟡 | **Rettet.** `role_room_signature_signers.signs_on_behalf_of` finnes, og `subject_type` har `'guardian_consent'` i vokabularet — med kommentaren at dette er hovedgrunnen til at signering måtte på plass tidlig. Signaturlaget håndterer verge. **Ingen verge-*konto*** |
 | 220 | Arbeidstidsvern barn | 🟡 | AML-flaten fra Del A dekker arbeidstid; barnereglene (kap. 11) ikke koblet til talentsiden |
-| 221 | Rapportering | ❓ | Ikke verifisert |
+| 221 | Rapportering | ❌ | Ingen rapporterings- eller varslingsmodell i basen |
 | 222 | Caster-verifisering | 🟡 | `agency_orgs.verified` + `verified_at` finnes. Ingen prosess som setter dem |
-| 223–226 | | ❓ | Ikke verifisert |
+| 223 | Blokkeringsfunksjon | ❌ | — |
+| 224 | Intimitetskoordinator-flagg | ❌ | Se merknaden under |
+| 225 | Anonym varslingskanal | ❌ | — |
+| 226 | Personvern i klartekst + innsynslogg | ✅ | `GET /api/role-room/talents/me/access-audit` er innsynsloggen; `RoleRoomGdprNotice` dekker klarteksten |
+
+**⚠️ 224 er ikke bare fraværende — den er lovet.** Utsendingsteksten i
+`175_role_room_live_on_set.sql` sier ordrett til bransjen at
+«intimacy-koordinering må være innebygd, ikke et add-on», og at
+koordinator «bør være obligatorisk å nevne i casting-briefen for visse
+scene-typer, at samtykke per scene må dokumenteres med versjonering, og at
+skuespillere må kunne trekke samtykke uten konsekvens».
+
+Ingen av de tre tingene finnes i koden. Det er en e-post sendt til folk i
+en liten bransje, om et tema de er alene om å jobbe med. Avstanden mellom
+den teksten og kodebasen er den mest ubehagelige enkeltobservasjonen i hele
+kartleggingen — ikke fordi jobben er stor, men fordi løftet allerede er
+gitt.
 
 **GDPR-fundamentet som doken setter til fire P0-punkter er i praksis
 halvferdig:** 215, 217 og 218 finnes. Det som gjenstår er 216s
@@ -229,13 +250,42 @@ Dette må avklares når fristene settes.
 | --- | --- | --- | --- |
 | 239 | Fullverdig mobilapp | ❌ | **Ingen mobilapp i repoet.** `ipad/` har `CaptureApp` og `LeadMapApp` — begge iPad-native for fotograf/salg, ingen av dem talentvendt |
 | 240 | Offline callsheet | 🟡 | `OutboxKit` er offline-køen, allerede trukket ut som delt pakke — men den er i CaptureApp, ikke i en talentapp |
-| 242 | WCAG 2.1 AA | 🟡 | `frontend/e2e/dance-a11y-axe.spec.ts` finnes — axe-testing er etablert for **én** flate |
+| 241 | Mørk modus | 🟡 | **Omvendt av det doken antar:** `casting-main.tsx` hardkoder `palette: { mode: 'dark' }`. Role Room *er* mørk, permanent. Det finnes ingen lys modus og ingen bryter |
+| 242 | WCAG 2.1 AA | 🟡 | To spor finnes: `frontend/e2e/dance-a11y-axe.spec.ts` (én flate) og en Lighthouse-terskel `accessibility ≥ 0.9` som **error**. Men Lighthouse-oppsettet kjører ikke — se 249 |
 | 243 | Skjermleser-testet søknadsflyt | ❌ | Ingen søknadsflyt å teste |
-| 241, 244–250 | | ❓ | Ikke verifisert |
+| 244 | Enhåndsbruk / store trykkflater | 🟡 | `RoleRoomMobileBriefWizard.tsx` er en mobiloptimalisert flate. Ikke et krav håndhevet noe sted |
+| 245 | Nynorsk + engelsk | ❌ | Se merknaden under — verre enn fraværende |
+| 246 | Onboarding under 5 min | 🟡 | `RoleRoomOnboardingDialog.tsx` har sju steg og er admin-konfigurerbar (`stepsEnabled`), pluss `FirstTimeTour`. Men det er **medlemsprofil**-onboarding, ikke talentregistrering, og ingenting måler de fem minuttene |
+| 247 | Lagre halvferdige søknader | ❌ | `ProfileDraft`/`SelfTapeDraft` i talentportalen er skjematilstand i minnet, ikke lagrede utkast |
+| 248 | Hurtigsøknad statistroller | ❌ | — |
+| 249 | Ytelse < 2 sek på 4G | 🟡 | Se merknaden under |
+| 250 | Universell angrefunksjon | ❌ | Angrefunksjon finnes i bilderedigering og storyboard, ikke på talentflaten |
+
+**⚠️ 245: nynorsk er ikke glemt — den er aktivt slått sammen med bokmål.**
+`language-provider.tsx` har `AppLanguage = 'no' | 'en'`, og normaliserer
+`nn` → `'no'` eksplisitt, med `document.documentElement.lang = 'nb-NO'`.
+Å legge til nynorsk er derfor en typeendring og en normaliserer-endring,
+ikke bare en strengfil.
+
+Og engelsk gjelder uansett ikke her: `TalentPortalView.tsx` (2106 linjer)
+bruker hverken `useLanguage` eller oversettelser, og hardkoder
+`Intl.DateTimeFormat('nb-NO')`. Talentflaten er norsk-bare, uavhengig av
+språkvelgeren.
+
+**⚠️ 249: målestokken finnes, men måler feil ting og kjører ikke.**
+`frontend/lighthouserc.json` har reelle terskler — FCP 2500 ms, LCP
+4000 ms, CLS 0.1 som `error`. Tre problemer:
+
+1. `preset: "desktop"` — punktet handler om **4G på mobil**
+2. URL-ene er `/`, `/nextrole`, `/privacy-policy` — tre markedsføringssider, **ingen talentflate**
+3. Ingen workflow i `.github/workflows/` kaller den, så den kjører aldri
+
+Det er billigere å rette enn å bygge: bytt preset, legg til talentportalens
+URL, koble den til CI. Da får 242 og 249 en vaktpost samtidig.
 
 **239 er reell.** Det finnes ingen mobilapp, og doken har rett i at den
-er en paraply. Men `OutboxKit`, `NetworkingKit` og axe-oppsettet er
-byggeklosser som allerede finnes.
+er en paraply. Men `OutboxKit`, `NetworkingKit`, axe-oppsettet og
+Lighthouse-konfigurasjonen er byggeklosser som allerede finnes.
 
 ---
 
@@ -327,12 +377,15 @@ finnes, og skiller det som faktisk blokkerer fra det som bare er viktig:
 | **179–182** | Self-tape-flate | Server er ferdig. Klientjobb |
 | **212** | Varsel ved profilvisning | `talent_access_audit` har dataene. Mangler bare en leser |
 | **237** | PDF-CV | Eksportmaskineriet finnes. Én mal og én join |
+| **249+242** | Ytelse og WCAG | Lighthouse-konfigurasjonen finnes. Bytt preset til mobil, legg til talentportalens URL, koble den til CI. To punkter for én jobb |
+| **223** | Blokkering | Doken sier «lav innsats, høy trygghetsverdi». Verifisert fraværende, og jeg er enig i vurderingen |
 
 ### Krever beslutning før kode
 
 | # | Punkt | Beslutningen |
 | --- | --- | --- |
-| **221** | Rapportering | Bemanner dere den? En lovet saksbehandlingstid ingen holder skaper ansvar |
+| **221** | Rapportering | Verifisert fraværende. Bemanner dere den? En lovet saksbehandlingstid ingen holder skaper ansvar |
+| **224** | Intimitetskoordinator | Løftet er gitt i utsending. Enten bygg det, eller slutt å si det |
 | **222** | Caster-verifisering | Nedjustert til 🟡 — `verified` finnes. Spørsmålet er hvem som setter den, og om den er påkrevd |
 | **195** | BankID | Leverandørvalg. Rammeverket er klart |
 | **239** | Mobilapp | Hvor mye av B3/B5 kan leveres på web i mellomtiden? |
@@ -357,24 +410,39 @@ finnes, og skiller det som faktisk blokkerer fra det som bare er viktig:
 
 ## Forbehold
 
-**Rettelse til forrige versjon:** jeg skrev «femten punkter». Det var et
-tall på *rader* i tabellene, ikke på punkter — B4, B5 og B7 hadde til
-sammen **tretti** uverifiserte punkter bak fem sammenslåtte rader. Alle
-tretti er nå gjennomgått.
+**Alle 250 punkter i Del B er nå gjennomgått.** Ingen står igjen som ❓.
 
-**Det som fortsatt står ❓:** 175 (åpen utlysningsside), 184, 185, 187,
-190, 191 i B3, 221 og 223–226 i B6, og 241 + 244–250 i B8. Fjorten punkter.
-De er ikke verifisert, og skal ikke leses som fraværende.
+**To telefeil underveis, begge mine.** Først skrev jeg «femten
+uverifiserte punkter» — det var et tall på *rader* i tabellene, ikke på
+punkter; B4, B5 og B7 hadde tretti. Så skrev jeg «fjorten» om resten —
+den var også en radtelling; det var nitten. Samme feil to ganger, og verdt
+å nevne fordi den gjør et dokument som skal måle framdrift til noe som
+underrapporterer arbeidet.
 
-**Verifiseringen endret ni statuser.** Fire opp (176, 188, 202, 214 → ✅),
-fire nedjusterte fraværsmarkeringer til delvis (205, 219, 222, 186), og én
-ned (173 → ❌; treffet var byråenes lagrede søk, ikke talentenes). Det er
-en høy feilrate for én runde, og grunnen er den samme hver gang: jeg søkte
-i `migrations/` og i én rutefil, og halve talentflaten ligger utenfor
-begge.
+**Verifiseringen endret femten statuser totalt.**
+
+| Runde | Opp | Ned | Fra ❓ til noe |
+| --- | --- | --- | --- |
+| B4/B5/B7 (30 punkter) | 176, 188, 202, 214 → ✅ | 173 → ❌ | 205, 219, 222, 186 → 🟡 |
+| Resten (19 punkter) | 226 → ✅ | — | 175, 241, 244, 246, 249 → 🟡; ti → ❌ |
+
+Grunnen til at første runde bommet er den samme hver gang: jeg søkte i
+`migrations/` og i én rutefil, og halve talentflaten ligger utenfor begge.
+
+**Tre ting jeg vil at leseren ser, som ikke er statuser:**
+
+1. **224 er lovet i utsendingstekst uten kode bak.** Det er den eneste
+   observasjonen her som handler om noe annet enn planlegging.
+2. **245 er ikke et hull, men en aktiv sammenslåing.** Nynorsk normaliseres
+   til bokmål i typen. Det endrer hva jobben er.
+3. **249 og 242 deler en ubrukt vaktpost.** Lighthouse-konfigurasjonen
+   finnes, måler desktop på markedsføringssider, og kjøres ikke av noen.
 
 Kartleggingen er fortsatt **statisk** — tabeller, ruter og filnavn. At en
 rute finnes betyr ikke at flaten bruker den, og at en tabell finnes betyr
 ikke at den fylles. Et ✅ her betyr «koden finnes», ikke «funksjonen virker
-for en bruker». For 202 og 214 har jeg lest kallkjeden; for de øvrige ✅-ene
-har jeg lest definisjonen.
+for en bruker». For 202, 214 og 226 har jeg lest kallkjeden; for de øvrige
+✅-ene har jeg lest definisjonen. For B8 har jeg lest frontend-kildene, men
+**ingenting i frontend kan bygges eller typesjekkes i dette miljøet** —
+`node_modules` er tom og registeret er blokkert. B8-statusene er lesning,
+ikke kjøring.
