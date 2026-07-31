@@ -242,6 +242,18 @@ enum LearnedStyle {
         // tekstur-bevarende utjevning — mot «blek/flat/livløs».
         out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
+
+        // 🔑 METNINGS-KALIBRERING (CIRAWFilter → rawpy): enhetens develop-base er
+        // mindre mettet (~63 vs rawpy 93) enn basen CDF-LUT-ene ble trent på → per-
+        // kanal-LUT-en krasjer metningen (måling: 34 vs fasitens 52) = «utvasket».
+        // VIBRANCE (ikke flat metning) er ADAPTIV: løfter dempede farger mye,
+        // beskytter alt-mettede toner + hud → generaliserer på tvers av mellomtone-,
+        // lyse- og portrett-scener (der en fast metnings-×-boost over-metter).
+        let vib = CIFilter.vibrance()
+        vib.inputImage = out
+        vib.amount = 0.3
+        out = vib.outputImage?.cropped(to: image.extent) ?? out
+
         return out.cropped(to: image.extent)
     }
 }
