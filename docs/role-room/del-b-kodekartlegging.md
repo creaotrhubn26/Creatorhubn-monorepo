@@ -262,23 +262,32 @@ gjennom `migrations/` finner dem ikke. Det er verdt å rette uavhengig av
 denne kartleggingen: tabeller utenfor migrasjonsløpet blir usynlige for
 alle som leser skjemaet, inkludert neste person som skal kartlegge noe.
 
-### To ting som bør fikses
+### To ting som ble funnet — og fikset
 
-**1. Aktivitetsloggen filtrerer ikke på `visibility`.**
+**1. Aktivitetsloggen filtrerte ikke på `visibility`.** ✅ Fikset.
 `role_room_talent_activity` har kolonnen — den er der nettopp for å skille
-intern prat fra delt — men spørringen i talentportalen henter alle rader
+intern prat fra delt — men spørringen i talentportalen hentet alle rader
 for kandidaten. `role_room_messages` håndhever den samme kolonnen i
 backend, med kommentaren at klienten «ALDRI» skal se intern prat.
 
-Alle skrivere sender `'shared'` i dag, så dette er **latent, ikke en aktiv
-lekkasje**. Men kolonnen finnes for å bli brukt, og den første som skriver
-en intern rad får den rett ut til talentet.
+Alle skrivere sendte `'shared'`, så dette var **latent, ikke en aktiv
+lekkasje**. Spørringen filtrerer nå på `visibility = 'shared'`.
 
-**2. Portalen returnerer kandidatraden hel — inkludert `notes` og
-`rating`.** Det er castingteamets interne vurdering.
-`buildRoleRoomTalentPortalCandidate()` redigerer ingenting bort. Dette er
-ikke latent; det skjer nå. Om det er tilsiktet er en produktbeslutning, men
-det bør være en beslutning og ikke en bivirkning.
+**2. Portalen returnerte kandidatraden hel — inkludert `notes` og
+`rating`.** ✅ Fikset. Det er castingteamets interne vurdering, og
+`buildRoleRoomTalentPortalCandidate()` redigerte ingenting bort.
+
+Dette var ikke latent. Og verre enn det så ut: én av de fire rutene som
+bruker serializeren — `GET /talent/invites/:inviteToken` — er
+**uautentisert**. Vurderingen gikk ut til alle som hadde invitasjonstokenet.
+Begge feltene er nå utelatt; `status` beholdes, siden det er punkt 176.
+
+Begge er dekket av `role-room-talent-portal-redaction.test.ts`, en vakttest
+på kildenivå. Den er svakere enn en oppførselstest, og det står i fila
+hvorfor: serializeren ligger i en closure og bruker to closure-scopede
+hjelpere, så å teste den direkte krever at den trekkes ut av en fil som
+allerede bærer 59 kjente typefeil. Vakten fanger den feilen som faktisk
+skjedde — et felt lagt tilbake fordi raden ble sendt hel.
 
 ### Og: to parallelle self-tape-systemer
 
@@ -307,7 +316,6 @@ finnes, og skiller det som faktisk blokkerer fra det som bare er viktig:
 | **216** | Propagert sletting | Halvferdig samtykke er verre enn ingen: dere lover tilbaketrekking uten å gjennomføre den |
 | **158+164** | Mål private + synlighet | Verifisert fraværende. To kolonner og et filter |
 | **219** | Verge-konto | Nedjustert fra ❌ til 🟡: signaturlaget håndterer verge (`signs_on_behalf_of`). Kontoen mangler fortsatt, og det er fortsatt en **produktbeslutning** — blokkér mindreårige i registreringen, eller bygg den |
-| — | `visibility`-filteret | Ikke i doken. En kolonne som finnes for å beskytte, og ikke brukes, er en felle for neste utvikler |
 
 ### Billigst verdi, gjør neste
 

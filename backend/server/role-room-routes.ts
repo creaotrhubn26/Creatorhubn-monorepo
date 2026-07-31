@@ -8218,6 +8218,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       .filter((entry): entry is Record<string, unknown> => Boolean(entry));
   }
 
+  /**
+   * Kandidatraden slik talentet selv skal se den.
+   *
+   * `notes` og `rating` er castingteamets interne vurdering og utelates
+   * bevisst. De lå her tidligere fordi raden ble sendt hel — og én av
+   * rutene som bruker denne (`GET /talent/invites/:inviteToken`) er
+   * uautentisert, så vurderingen gikk ut til alle som hadde tokenet.
+   *
+   * Legger du til felt her: sjekk først om kolonnen er noe produsenten
+   * skrev om talentet, eller noe talentet skrev om seg selv. Bare det
+   * siste hører hjemme i denne funksjonen.
+   */
   function buildRoleRoomTalentPortalCandidate(row: RoleRoomTalentPortalCandidateRow) {
     const metadata = readJsonObject(row.metadata);
     const talentProfile = readJsonObject(metadata.talentProfile);
@@ -8228,9 +8240,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       email: normalizeEmailValue(row.email),
       phone: readStringValue(row.phone),
       agency: readStringValue(row.agency),
-      notes: readStringValue(row.notes),
       status: readStringValue(row.status) ?? 'pending',
-      rating: typeof row.rating === 'number' && Number.isFinite(row.rating) ? row.rating : null,
       assignedRoleIds: toStringArray(row.assigned_roles),
       consentStatus: readStringValue(row.consent_status),
       emergencyContact: readJsonObject(row.emergency_contact),
@@ -8908,9 +8918,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         : Promise.resolve({ rows: [] } as { rows: RoleRoomTalentInviteRow[] }),
       talentTablesReady
         ? pool.query<RoleRoomTalentActivityRow>(
+            // Bare delte innslag. Kolonnen finnes nettopp for å kunne
+            // holde interne notater utenfor talentets visning — samme
+            // skille som role_room_messages.visibility håndhever. Uten
+            // filteret her er kolonnen dekorasjon, og den første som
+            // skriver en intern rad sender den rett til talentet.
             `SELECT *
                FROM role_room_talent_activity
               WHERE candidate_id = ANY($1::text[])
+                AND visibility = 'shared'
               ORDER BY created_at DESC
               LIMIT 200`,
             [candidateIds],
