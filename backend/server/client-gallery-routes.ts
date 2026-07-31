@@ -557,7 +557,7 @@ export function setupClientGalleryRoutes(
         const objectKey = metadata.objectKey ?? metadata.r2Key;
         if (isObjectStoreBackend(backend) && objectKey) {
           const { GetObjectCommand } = await import("@aws-sdk/client-s3");
-          const store = getObjectStoreClientFor(backend);
+          const store = getObjectStoreClientFor(backend, String(objectKey));
           if (!store) {
             return res.status(503).json({ error: `${backend}_not_configured` });
           }

@@ -461,7 +461,9 @@ const MUSIC_READ_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d — R2 hard ceiling
 function getMusicStorage(key?: string): CaptureStoreHandle | null {
   // Uten nøkkel: hvor ny musikk skrives. Med nøkkel: hvor DET sporet
   // ligger — spor lastet opp før B2 ble primær ligger fortsatt i R2.
-  return key === undefined ? captureStoreForWrite() : captureStoreHandleForKey(key);
+  return key === undefined
+    ? captureStoreForWrite('working')
+    : captureStoreHandleForKey(key);
 }
 
 const AUDIO_EXT_BY_MIME: Record<string, string> = {

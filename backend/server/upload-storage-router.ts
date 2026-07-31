@@ -29,6 +29,7 @@ import {
   uploadToStream,
 } from "./cloudflare-stream-service.js";
 import { resolveB2Key, type B2KeyRole } from "./b2-key-registry.js";
+import { bucketForClass, bucketForKey, keyMarkerFor } from "./b2-bucket-registry.js";
 
 /** S3-kompatible objektlagre. Samme kode-path, ulik klient og bucket. */
 export const OBJECT_STORE_BACKENDS = ["b2", "r2"] as const;
@@ -255,13 +256,24 @@ const getObjectStoreClient = (
  */
 export function getObjectStoreClientFor(
   backend: string | null | undefined,
+  objectKey?: string | null,
 ): { client: S3Client; bucket: string } | null {
   if (!isObjectStoreBackend(backend)) return null;
   const cfg = buildObjectStoreConfig(backend);
   const client = getObjectStoreClient(cfg, "uploads-read");
-  if (!client || !cfg.bucket) return null;
-  return { client, bucket: cfg.bucket };
+  if (!client) return null;
+  // Klasseleddet i nøkkelen avgjør bøtta. Nøkler skrevet før splitten
+  // mangler leddet og havner i fellesbøtta — derfor må ingenting kopieres.
+  const bucket =
+    cfg.backend === "b2" && objectKey
+      ? bucketForKey(stripPrefix(cfg, objectKey))?.bucket ?? cfg.bucket
+      : cfg.bucket;
+  if (!bucket) return null;
+  return { client, bucket };
 }
+
+const stripPrefix = (cfg: ObjectStoreConfig, key: string): string =>
+  key.startsWith(cfg.prefix) ? key.slice(cfg.prefix.length) : key;
 
 // Signed-URL TTL: kort (1 time) som default. En lekket lenke har dermed
 // et mindre risikovindu enn med 7-dagers TTL.
@@ -416,17 +428,27 @@ export async function routeAssembledUpload(
   const stores = opts.preferFilesystem ? [] : objectStoreWriteOrder();
   for (const cfg of stores) {
     const client = getObjectStoreClient(cfg, "uploads-write");
-    if (!client || !cfg.bucket) continue;
+    // Generiske opplastinger har sin egen bøtte-klasse: de hører ikke til
+    // en produksjon, og skal ikke ryddes av produksjonens livssyklus.
+    const bucket =
+      cfg.backend === "b2"
+        ? bucketForClass("uploads")?.bucket ?? cfg.bucket
+        : cfg.bucket;
+    const keyPrefix =
+      cfg.backend === "b2"
+        ? `${cfg.prefix}${keyMarkerFor("uploads")}`
+        : cfg.prefix;
+    if (!client || !bucket) continue;
     try {
       const safeName = input.fileName
         .replace(/[\\/:*?"<>|\x00-\x1F]/g, "_")
         .slice(0, 200);
-      const key = `${cfg.prefix}${input.userId}/${input.fileId}/${safeName}`;
+      const key = `${keyPrefix}${input.userId}/${input.fileId}/${safeName}`;
       const stream = fsSync.createReadStream(activeSourcePath);
 
       await client.send(
         new PutObjectCommand({
-          Bucket: cfg.bucket,
+          Bucket: bucket,
           Key: key,
           Body: stream,
           // Hvis kryptert: ciphertext er opaque blob, ikke originalt MIME
@@ -456,7 +478,7 @@ export async function routeAssembledUpload(
       } else {
         url = await getSignedUrl(
           client,
-          new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
+          new GetObjectCommand({ Bucket: bucket, Key: key }),
           { expiresIn: R2_SIGNED_TTL_SECONDS },
         );
       }
@@ -474,9 +496,9 @@ export async function routeAssembledUpload(
         size: input.size,
         mimeType: mime,
         objectKey: key,
-        objectBucket: cfg.bucket,
+        objectBucket: bucket,
         r2Key: key,
-        r2Bucket: cfg.bucket,
+        r2Bucket: bucket,
         downloadUrl: url,
         ...(encryptionMeta && {
           encryptedAtRest: true,

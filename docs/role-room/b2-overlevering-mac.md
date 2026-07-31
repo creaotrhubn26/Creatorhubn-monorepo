@@ -136,7 +136,63 @@ sier hvilken versjon den lastet opp.
 
 ---
 
-## 3. Kjør migrasjonene
+## 3. Opprett bøttene
+
+**Hvorfor ikke gjort her:** krever Backblaze-innlogging.
+
+Koden ruter allerede etter datatype. Så lenge en klasse mangler egen
+bøtte, brukes fellesbøtta — det virker, men splitten er da ikke
+gjennomført, og backend logger én linje ved oppstart om hvilke klasser
+det gjelder.
+
+```bash
+for b in originals proxies working deliverables archive uploads; do
+  b2 bucket create "trr-prod-$b" allPrivate
+done
+```
+
+Sett env:
+
+```
+B2_BUCKET_ORIGINALS=trr-prod-originals
+B2_BUCKET_PROXIES=trr-prod-proxies
+B2_BUCKET_WORKING=trr-prod-working
+B2_BUCKET_DELIVERABLES=trr-prod-deliverables
+B2_BUCKET_ARCHIVE=trr-prod-archive
+B2_BUCKET_UPLOADS=trr-prod-uploads
+```
+
+**Ikke slett fellesbøtta.** Alt som ble lastet opp før splitten ligger
+der og har ingen klassemerking i nøkkelen. Koden ruter slike nøkler dit
+med vilje — det er dette som gjør at ingenting må kopieres.
+
+Nøklene fra punkt 1 er avgrenset til én bøtte (`--bucket "$BUCKET"`). Når
+bøttene finnes, må de opprettes på nytt uten bøtte-binding, eller én
+nøkkel per bøtte. Enklest: opprett nøklene på nytt uten `--bucket` og la
+prefiks-avgrensningen gjøre jobben, eller lag én nøkkel per (rolle,
+bøtte)-par hvis du vil ha hardere isolasjon.
+
+Nøkkelformen etter splitten:
+
+```
+capture-b2/_originals/{eier}/{sesjon}/{asset}/full/v1/A001.mov
+capture-b2/_proxies/{eier}/{sesjon}/{asset}/preview/v1/A001.jpg
+capture-b2/{eier}/…      ← før splitten, fellesbøtta
+capture/{eier}/…         ← R2, uendret
+```
+
+Understreken er ikke pynt: den skiller klasseleddet fra en bruker-id, så
+en bruker som heter «originals» ikke får filene sine rutet til
+master-bøtta.
+
+Livssyklusregler er verdt å sette per bøtte når de finnes — men husk at
+B2 bare kan «N dager fra opplasting». Alt som avhenger av apptilstand
+(«90 dager etter arkivering», «30 dager etter siste aktivitet») må ligge
+i vår egen retention-tjeneste.
+
+---
+
+## 4. Kjør migrasjonene
 
 Fire nye, i rekkefølge:
 
@@ -165,7 +221,7 @@ tabellen i den databasen.
 
 ---
 
-## 4. Kjør integrasjonstestene
+## 5. Kjør integrasjonstestene
 
 De hoppes over uten `RR_TEST_DATABASE_URL`, så de går ikke i vanlig
 `npm test`. Kjør dem én gang mot en lokal database:
@@ -185,7 +241,7 @@ summerer til totalen.
 
 ---
 
-## 5. Typecheck frontend
+## 6. Typecheck frontend
 
 **Hvorfor ikke gjort her:** `frontend/node_modules` er tom, og
 npm-registeret er blokkert i miljøet. Jeg har ikke rørt frontend i denne
@@ -200,13 +256,7 @@ en preeksisterende baseline, ikke noe jeg innførte.
 
 ---
 
-## 6. Ikke gjort, og hvorfor
-
-**Bucket-splitten.** Neste steg etter nøklene. Prefiks-rutingen som er på
-plass gjør den trygg: nye filer skrives til riktig bøtte, gamle blir
-liggende og leses fra der de faktisk er. Krever at bøttene opprettes
-først, og at hver rolle-nøkkel får riktig bøtte via
-`B2_KEY_<ROLLE>_BUCKET`.
+## 7. Ikke gjort, og hvorfor
 
 **Object Lock.** Bevisst utsatt. Å slå det på er irreversibelt per bøtte,
 og governance-lock på originals blokkerer GDPR-sletting i hele

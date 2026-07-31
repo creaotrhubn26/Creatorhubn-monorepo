@@ -228,7 +228,10 @@ export function setupGoogleDriveSyncRoutes(
             if (isObjectStoreBackend(backend)) {
               // Klient for backend'en fila ligger på — B2 for nye filer,
               // R2 for de som ble lastet opp før primæren ble flyttet.
-              const store = getObjectStoreClientFor(backend);
+              const store = getObjectStoreClientFor(
+                backend,
+                String(metadata.objectKey ?? metadata.r2Key ?? ""),
+              );
               if (!store) {
                 driveItems.push({
                   id: itemId,

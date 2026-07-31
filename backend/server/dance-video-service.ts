@@ -152,7 +152,9 @@ const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
  * etter dem på feil sted.
  */
 function getStorage(key?: string): CaptureStoreHandle | null {
-  return key === undefined ? captureStoreForWrite() : captureStoreHandleForKey(key);
+  return key === undefined
+    ? captureStoreForWrite('working')
+    : captureStoreHandleForKey(key);
 }
 
 const VIDEO_EXT_BY_MIME: Record<string, string> = {

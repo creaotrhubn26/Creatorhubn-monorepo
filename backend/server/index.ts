@@ -67155,6 +67155,9 @@ setupChunkedUploadRoutes({
 void import("./b2-key-registry.js")
   .then((m) => m.logKeyRoleStatus())
   .catch(() => undefined);
+void import("./b2-bucket-registry.js")
+  .then((m) => m.logBucketStatus())
+  .catch(() => undefined);
 setupUploadsRoutes({
   app,
   pool,

@@ -14,6 +14,13 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Pool } from 'pg';
 import { resolveB2Key, type B2KeyRole } from './b2-key-registry.js';
 import {
+  bucketForClass,
+  bucketForKey,
+  classForKeySegment,
+  keyMarkerFor,
+  type StorageClass,
+} from './b2-bucket-registry.js';
+import {
   discardVersion,
   promoteVersion,
   reserveVersion,
@@ -29,6 +36,17 @@ import {
 type Db = NodePgDatabase<Record<string, never>>;
 
 export type UploadKind = 'preview' | 'full' | 'raw';
+
+/**
+ * Hvilken bøtte-klasse en variant hører hjemme i.
+ *
+ * Previews kan gjenskapes fra originalen når som helst, og hører derfor i
+ * proxy-bøtta der livssyklusregler kan rydde aggressivt. `full` og `raw`
+ * er masterne — de skal ligge et sted som ikke ryddes automatisk.
+ */
+export function storageClassForKind(kind: UploadKind): StorageClass {
+  return kind === 'preview' ? 'proxies' : 'originals';
+}
 
 /// Hvilket S3-kompatibelt lager et capture-objekt ligger i. B2 er primær
 /// for nye opplastinger; R2 leses videre fordi objektene som allerede
@@ -167,6 +185,35 @@ export function captureStoreForKey(key: string): CaptureStoreConfig {
   return buildCaptureR2Config();
 }
 
+/**
+ * Bøtta et nytt objekt av en gitt klasse skal skrives til.
+ *
+ * Bare B2 er splittet opp; R2 har én bøtte og beholder den. Å late som
+ * noe annet ville gitt en klasse-inndeling som ikke finnes i lageret.
+ */
+function writeBucket(
+  cfg: CaptureStoreConfig,
+  storageClass: StorageClass,
+): string | undefined {
+  if (cfg.backend !== 'b2') return cfg.bucket;
+  return bucketForClass(storageClass)?.bucket ?? cfg.bucket;
+}
+
+/**
+ * Bøtta en GITT nøkkel ligger i.
+ *
+ * Klassen leses av det reserverte leddet i nøkkelen, etter lager-
+ * prefikset. Nøkler skrevet før splitten mangler leddet og havner i
+ * fellesbøtta — det er nettopp dette som gjør at ingenting må kopieres.
+ */
+function readBucket(cfg: CaptureStoreConfig, key: string): string | undefined {
+  if (cfg.backend !== 'b2') return cfg.bucket;
+  const withoutPrefix = key.startsWith(cfg.prefix)
+    ? key.slice(cfg.prefix.length)
+    : key;
+  return bucketForKey(withoutPrefix)?.bucket ?? cfg.bucket;
+}
+
 export interface CaptureStoreHandle {
   client: S3Client;
   bucket: string;
@@ -185,11 +232,18 @@ export interface CaptureStoreHandle {
  * hver sin S3-klient rett fra R2-konfigen. Fem kopier av samme oppsett
  * som alle måtte endres hver for seg når primærlageret flyttet seg.
  */
-export function captureStoreForWrite(): CaptureStoreHandle | null {
+export function captureStoreForWrite(
+  storageClass: StorageClass = 'working',
+): CaptureStoreHandle | null {
   const cfg = captureWriteStore();
   const client = getClient(cfg, 'capture-write');
-  if (!client || !cfg.bucket) return null;
-  return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
+  const bucket = writeBucket(cfg, storageClass);
+  if (!client || !bucket) return null;
+  // Prefikset inkluderer klasseleddet, slik at nøkkelen kalleren bygger
+  // kan rutes tilbake til samme bøtte ved lesing.
+  const prefix =
+    cfg.backend === 'b2' ? `${cfg.prefix}${keyMarkerFor(storageClass)}` : cfg.prefix;
+  return { client, bucket, backend: cfg.backend, prefix };
 }
 
 /**
@@ -202,8 +256,9 @@ export function captureStoreForWrite(): CaptureStoreHandle | null {
 export function captureStoreHandleForKey(key: string): CaptureStoreHandle | null {
   const cfg = captureStoreForKey(key);
   const client = getClient(cfg, 'capture-read');
-  if (!client || !cfg.bucket) return null;
-  return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
+  const bucket = readBucket(cfg, key);
+  if (!client || !bucket) return null;
+  return { client, bucket, backend: cfg.backend, prefix: cfg.prefix };
 }
 
 /**
@@ -217,8 +272,9 @@ export function captureStoreHandleForKey(key: string): CaptureStoreHandle | null
 export function captureDeleteHandleForKey(key: string): CaptureStoreHandle | null {
   const cfg = captureStoreForKey(key);
   const client = getClient(cfg, 'capture-delete');
-  if (!client || !cfg.bucket) return null;
-  return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
+  const bucket = readBucket(cfg, key);
+  if (!client || !bucket) return null;
+  return { client, bucket, backend: cfg.backend, prefix: cfg.prefix };
 }
 
 const clientCache = new Map<string, S3Client>();
@@ -301,13 +357,31 @@ function buildObjectKey(params: {
   );
 }
 
-function expectedKeyPrefix(
+/**
+ * Hører nøkkelen til dette assetet?
+ *
+ * Sjekken finnes for å hindre at en klient oppgir en vilkårlig nøkkel og
+ * får den signert. Den må tåle begge nøkkelformene:
+ *
+ *   capture-b2/_originals/{eier}/{sesjon}/{asset}/…   ← etter bøtte-splitten
+ *   capture-b2/{eier}/{sesjon}/{asset}/…              ← før
+ *
+ * En sjekk som bare kjente den siste ville avvist alt som lastes opp
+ * etter splitten — og en som bare kjente den første ville sluppet gjennom
+ * alt fra før den.
+ */
+function keyBelongsToAsset(
   cfg: CaptureStoreConfig,
+  key: string,
   ownerUserId: string,
   sessionId: string,
   assetId: string,
-): string {
-  return `${cfg.prefix}${ownerUserId}/${sessionId}/${assetId}/`;
+): boolean {
+  if (!key.startsWith(cfg.prefix)) return false;
+  let rest = key.slice(cfg.prefix.length);
+  const marker = classForKeySegment(rest);
+  if (marker) rest = rest.slice(keyMarkerFor(marker).length);
+  return rest.startsWith(`${ownerUserId}/${sessionId}/${assetId}/`);
 }
 
 async function fetchOwnedAsset(
@@ -387,7 +461,13 @@ export async function startMultipartUpload(
   }
   const cfg = captureWriteStore();
   const client = getClient(cfg, 'capture-write');
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
+  // Masterne (full/raw) og previews havner i hver sin bøtte: previews kan
+  // gjenskapes og tåler aggressiv opprydding, masterne kan ikke.
+  const storageClass = storageClassForKind(kind);
+  const bucket = writeBucket(cfg, storageClass);
+  const keyPrefix =
+    cfg.backend === 'b2' ? `${cfg.prefix}${keyMarkerFor(storageClass)}` : cfg.prefix;
+  if (!client || !bucket) return { ok: false, error: 'not_configured' };
 
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
@@ -399,13 +479,13 @@ export async function startMultipartUpload(
   const version = await reserveVersion(pool, {
     assetId,
     kind,
-    bucket: cfg.bucket,
+    bucket,
     backend: cfg.backend,
     contentType: mime,
     uploadedBy: ownerUserId,
     buildKey: (versionNumber) =>
       buildObjectKey({
-        prefix: cfg.prefix,
+        prefix: keyPrefix,
         ownerUserId,
         sessionId: asset.sessionId,
         assetId,
@@ -422,7 +502,7 @@ export async function startMultipartUpload(
   try {
     created = await client.send(
       new CreateMultipartUploadCommand({
-        Bucket: cfg.bucket,
+        Bucket: bucket,
         Key: key,
         ContentType: mime,
         Metadata: {
@@ -447,7 +527,7 @@ export async function startMultipartUpload(
   return {
     ok: true,
     result: {
-      bucket: cfg.bucket,
+      bucket,
       key,
       uploadId: created.UploadId,
       partSize,
@@ -478,10 +558,11 @@ export async function signPartUrls(
   // fullføres selv om B2 ble slått på mellom start og siste part.
   const cfg = captureStoreForKey(key);
   const client = getClient(cfg, 'capture-write');
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
+  const bucket = readBucket(cfg, key);
+  if (!client || !bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
-  if (!key.startsWith(expectedKeyPrefix(cfg, ownerUserId, asset.sessionId, assetId))) {
+  if (!keyBelongsToAsset(cfg, key, ownerUserId, asset.sessionId, assetId)) {
     return { ok: false, error: 'not_found' };
   }
   const parts: SignedPart[] = await Promise.all(
@@ -490,7 +571,7 @@ export async function signPartUrls(
       url: await getSignedUrl(
         client,
         new UploadPartCommand({
-          Bucket: cfg.bucket,
+          Bucket: bucket,
           Key: key,
           UploadId: uploadId,
           PartNumber: partNumber,
@@ -548,18 +629,19 @@ export async function completeMultipartUpload(
   }
   const cfg = captureStoreForKey(key);
   const client = getClient(cfg, 'capture-write');
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
+  const bucket = readBucket(cfg, key);
+  if (!client || !bucket) return { ok: false, error: 'not_configured' };
 
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
-  if (!key.startsWith(expectedKeyPrefix(cfg, ownerUserId, asset.sessionId, assetId))) {
+  if (!keyBelongsToAsset(cfg, key, ownerUserId, asset.sessionId, assetId)) {
     return { ok: false, error: 'not_found' };
   }
 
   const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber);
   await client.send(
     new CompleteMultipartUploadCommand({
-      Bucket: cfg.bucket,
+      Bucket: bucket,
       Key: key,
       UploadId: uploadId,
       MultipartUpload: {
@@ -567,7 +649,7 @@ export async function completeMultipartUpload(
       },
     }),
   );
-  const head = await client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }));
+  const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
   const verifiedSize = Number(head.ContentLength ?? sizeBytes);
 
   // Gjør versjonen gjeldende. promoteVersion avløser de foregående OG
@@ -618,7 +700,7 @@ export async function completeMultipartUpload(
   return {
     ok: true,
     result: {
-      bucket: cfg.bucket,
+      bucket,
       key,
       backend: cfg.backend,
       sizeBytes: verifiedSize,
@@ -665,13 +747,15 @@ export async function uploadCaptureObject(params: {
     ? captureStoreForKey(params.key)
     : captureWriteStore();
   const client = getClient(cfg, 'capture-write');
-  if (!cfg.enabled || !cfg.bucket || !client) {
+  // Nøkkelen kommer fra kalleren, så klassen leses av den — ikke gjettes.
+  const bucket = readBucket(cfg, params.key);
+  if (!cfg.enabled || !bucket || !client) {
     return null;
   }
   try {
     await client.send(
       new PutObjectCommand({
-        Bucket: cfg.bucket,
+        Bucket: bucket,
         Key: params.key,
         Body: params.buffer,
         ContentType: params.contentType,
@@ -719,10 +803,11 @@ async function signAssetReadUrlWithTtl(
   if (!key) return null;
   const cfg = captureStoreForKey(key);
   const client = getClient(cfg, 'capture-read');
-  if (!client || !cfg.bucket) return null;
+  const bucket = readBucket(cfg, key);
+  if (!client || !bucket) return null;
   return getSignedUrl(
     client,
-    new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
     { expiresIn: ttlSeconds },
   );
 }
@@ -740,15 +825,16 @@ export async function abortMultipartUpload(
   // Skrive-rollen holder — sletterollen er reservert for det som er
   // uopprettelig.
   const client = getClient(cfg, 'capture-write');
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
+  const bucket = readBucket(cfg, key);
+  if (!client || !bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
-  if (!key.startsWith(expectedKeyPrefix(cfg, ownerUserId, asset.sessionId, assetId))) {
+  if (!keyBelongsToAsset(cfg, key, ownerUserId, asset.sessionId, assetId)) {
     return { ok: false, error: 'not_found' };
   }
   await client.send(
     new AbortMultipartUploadCommand({
-      Bucket: cfg.bucket,
+      Bucket: bucket,
       Key: key,
       UploadId: uploadId,
     }),

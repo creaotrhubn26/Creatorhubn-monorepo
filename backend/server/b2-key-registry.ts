@@ -20,6 +20,10 @@
  * er fasiten på hva hver nøkkel skal ha, slik at den som provisjonerer
  * ikke må gjette.
  *
+ * HVILKEN BØTTE en operasjon treffer bestemmes IKKE her, men av
+ * b2-bucket-registry etter datatype. To steder som velger bøtte ville før
+ * eller siden vært uenige.
+ *
  * OM FALLBACK: en rolle uten egen nøkkel faller tilbake til
  * plattformnøkkelen, slik at ingenting slutter å virke før nøklene er
  * provisjonert. Det betyr også at sikkerhetsgevinsten uteblir i stillhet.
@@ -121,8 +125,6 @@ export interface ResolvedB2Key {
   role: B2KeyRole;
   keyId: string;
   applicationKey: string;
-  /** Satt når rollen har sin egen bøtte. Ellers bruker kalleren sin egen. */
-  bucket?: string;
   /**
    * True når rollen kjører på plattformens fellesnøkkel fordi den ikke har
    * fått sin egen. Sikkerhetsgevinsten uteblir da — se `describeKeyRoles`.
@@ -182,10 +184,8 @@ export function resolveB2Key(role: B2KeyRole): ResolvedB2Key | null {
   const applicationKey = firstNonEmpty(
     process.env[`B2_KEY_${spec.envSuffix}_SECRET`],
   );
-  const bucket = firstNonEmpty(process.env[`B2_KEY_${spec.envSuffix}_BUCKET`]);
-
   if (keyId && applicationKey) {
-    return { role, keyId, applicationKey, bucket, usingSharedFallback: false };
+    return { role, keyId, applicationKey, usingSharedFallback: false };
   }
 
   // Halv konfig er verre enn ingen: den ser ut som en avgrenset nøkkel og
@@ -207,7 +207,6 @@ export function resolveB2Key(role: B2KeyRole): ResolvedB2Key | null {
     role,
     keyId: shared.keyId,
     applicationKey: shared.applicationKey,
-    bucket,
     usingSharedFallback: true,
   };
 }
@@ -216,7 +215,7 @@ export interface B2RoleStatus {
   role: B2KeyRole;
   purpose: string;
   requiredCapabilities: B2Capability[];
-  envVars: { id: string; secret: string; bucket: string };
+  envVars: { id: string; secret: string };
   configured: boolean;
   usingSharedFallback: boolean;
   /** Siste fire tegn av nøkkel-id-en, til å kjenne igjen hvilken som brukes. */
@@ -248,7 +247,6 @@ export function describeKeyRoles(): B2RoleStatus[] {
       envVars: {
         id: `B2_KEY_${spec.envSuffix}_ID`,
         secret: `B2_KEY_${spec.envSuffix}_SECRET`,
-        bucket: `B2_KEY_${spec.envSuffix}_BUCKET`,
       },
       configured: resolved !== null,
       usingSharedFallback: resolved?.usingSharedFallback ?? false,

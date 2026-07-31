@@ -19,7 +19,6 @@ const ENV_KEYS = [
   ...ROLES.flatMap((r) => [
     `B2_KEY_${B2_ROLE_SPECS[r].envSuffix}_ID`,
     `B2_KEY_${B2_ROLE_SPECS[r].envSuffix}_SECRET`,
-    `B2_KEY_${B2_ROLE_SPECS[r].envSuffix}_BUCKET`,
   ]),
 ];
 
@@ -127,11 +126,11 @@ describe("resolveB2Key", () => {
     expect(warn).toHaveBeenCalled();
   });
 
-  it("plukker opp rollens egen bøtte når den er satt", () => {
+  it("velger ikke bøtte — det gjør b2-bucket-registry", () => {
+    // To steder som velger bøtte ville før eller siden vært uenige.
     setShared();
     setScoped("archive", "arkiv-id");
-    process.env.B2_KEY_ARCHIVE_BUCKET = "trr-prod-archive";
-    expect(resolveB2Key("archive")?.bucket).toBe("trr-prod-archive");
+    expect(resolveB2Key("archive")).not.toHaveProperty("bucket");
   });
 });
 

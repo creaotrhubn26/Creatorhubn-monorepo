@@ -270,7 +270,9 @@ const READ_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d — AWS/R2 hard ceiling
 function getStorageClient(key?: string): CaptureStoreHandle | null {
   // Uten nøkkel: hvor nye referansebilder skrives. Med nøkkel: hvor DET
   // bildet ligger — bilder fra før B2 ble primær ligger fortsatt i R2.
-  return key === undefined ? captureStoreForWrite() : captureStoreHandleForKey(key);
+  return key === undefined
+    ? captureStoreForWrite('working')
+    : captureStoreHandleForKey(key);
 }
 
 const EXT_BY_MIME: Record<string, string> = {

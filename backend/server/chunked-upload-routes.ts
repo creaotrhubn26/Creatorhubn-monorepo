@@ -762,7 +762,10 @@ export function setupChunkedUploadRoutes(
             // Klienten bygges for backend'en fila FAKTISK ligger på, ikke
             // for dagens primærvalg — ellers ville gamle R2-filer bli lett
             // etter i B2 etter at primæren ble flyttet.
-            const store = getObjectStoreClientFor(backend);
+            const store = getObjectStoreClientFor(
+              backend,
+              String(metadata.objectKey ?? metadata.r2Key ?? ""),
+            );
             if (!store) {
               return res.status(503).json({
                 error: `${backend}_not_configured`,
@@ -834,7 +837,9 @@ export function setupChunkedUploadRoutes(
         // brukes bare hvis vi ikke får laget en fersk (f.eks. en permanent
         // public-URL fra publicUrlBase).
         const objectKey = metadata.objectKey ?? metadata.r2Key;
-        const store = objectKey ? getObjectStoreClientFor(backend) : null;
+        const store = objectKey
+          ? getObjectStoreClientFor(backend, String(objectKey))
+          : null;
         if (store && objectKey) {
           try {
             const { GetObjectCommand } = await import("@aws-sdk/client-s3");

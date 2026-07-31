@@ -27,6 +27,7 @@ import {
   captureWriteStore,
   signAssetReadUrlForDelivery,
 } from "./capture-upload-service.js";
+import { bucketForClass, keyMarkerFor } from "./b2-bucket-registry.js";
 import {
   isStreamEnabled,
   uploadToStream,
@@ -241,7 +242,17 @@ export function registerRoleRoomMarketingPreviewVideoRoutes(
       }
 
       // ── Pipeline 2: objektlager-fallback ───────────────────────────
-      const cfg = captureWriteStore();
+      // Marketing-previews er en leveranse til kunde, ikke en arbeidsfil.
+      const baseCfg = captureWriteStore();
+      const deliverables =
+        baseCfg.backend === 'b2' ? bucketForClass('deliverables') : null;
+      const cfg = deliverables
+        ? {
+            ...baseCfg,
+            bucket: deliverables.bucket,
+            prefix: `${baseCfg.prefix}${keyMarkerFor('deliverables')}`,
+          }
+        : baseCfg;
       if (!cfg.enabled || !cfg.bucket) {
         res.status(503).json({ error: "ingen_storage_konfigurert" }); return;
       }
