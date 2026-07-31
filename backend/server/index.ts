@@ -951,6 +951,7 @@ import { setupUploadsRoutes } from "./uploads-routes";
 import { setupStorageStatusRoutes } from "./storage-status-routes";
 import { setupStorageBillingAdminRoutes } from "./storage-billing-admin-routes";
 import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
+import { setupAdminStorageStatusRoutes } from "./admin-storage-status-routes.js";
 import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
@@ -67172,6 +67173,11 @@ setupStorageBillingAdminRoutes({
   requireAdminSession,
 });
 setupAdminStorageCostRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminStorageStatusRoutes({
   app,
   pool,
   requireAdminSession,

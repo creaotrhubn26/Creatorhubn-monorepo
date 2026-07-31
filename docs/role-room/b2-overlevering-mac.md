@@ -258,7 +258,41 @@ summerer til totalen.
 
 ---
 
-## 6. Typecheck frontend
+## 6. Admin-flaten
+
+**Hvorfor ikke verifisert her:** `frontend/node_modules` er tom, så
+`.tsx`-fila er skrevet uten typesjekk.
+
+Flata ligger under **Admin → B2-arkiv**, over den eksisterende
+arkiv-fanen. Den viser utrullingsstatus (hvilke roller og bøtte-klasser
+som fortsatt deler), forbruk per backend, de største produksjonene med
+kost, og egress målt mot gratiskvoten.
+
+Tallbehandlingen ligger i `frontend/client/src/services/storageStatusAdapter.ts`
+og er testet her (31 tester). Panelet er bare tegning.
+
+To ting å se etter når du bygger:
+
+- `AdminDashboard.tsx` har **ikke** `@ts-nocheck`, så min JSX-endring der
+  blir typesjekket. `Box` og fragment-syntaksen brukes allerede i fila, så
+  den bør gå gjennom — men det er den endringen som eventuelt feiler.
+- Panelet selv har `@ts-nocheck`, som `AdminConfigStatusCard` ved siden av.
+
+Endepunktene bak:
+
+```
+GET /api/admin/storage-status/overview
+GET /api/admin/storage-status/productions?limit=25
+GET /api/admin/storage-status/egress?days=30&limit=25
+```
+
+Marginen i oversikten regnes mot inntekt 0 og er derfor negativ:
+Stripe-inntekten er ikke koblet inn. Det er med vilje — å gjette et tall
+ville vært verre enn å vise at det mangler.
+
+---
+
+## 7. Typecheck frontend
 
 **Hvorfor ikke gjort her:** `frontend/node_modules` er tom, og
 npm-registeret er blokkert i miljøet. Jeg har ikke rørt frontend i denne
@@ -273,7 +307,7 @@ en preeksisterende baseline, ikke noe jeg innførte.
 
 ---
 
-## 7. Ikke gjort, og hvorfor
+## 8. Ikke gjort, og hvorfor
 
 **Object Lock.** Bevisst utsatt. Å slå det på er irreversibelt per bøtte,
 og governance-lock på originals blokkerer GDPR-sletting i hele
