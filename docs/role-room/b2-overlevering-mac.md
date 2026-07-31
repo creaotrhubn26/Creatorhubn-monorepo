@@ -6,7 +6,7 @@ jeg ville brukt.
 
 Miljøet mangler tre ting: Swift-toolchain, nettverkstilgang til Backblaze,
 og `frontend/node_modules`. Alt annet er verifisert her — backend-suiten
-(2746 tester) og migrasjonene er kjørt mot en ekte Postgres 16.
+(2801 tester) og migrasjonene er kjørt mot en ekte Postgres 16.
 
 ---
 
@@ -211,30 +211,40 @@ i vår egen retention-tjeneste.
 
 ## 4. Kjør migrasjonene
 
-Fire nye, i rekkefølge:
+Seks nye fra denne sesjonen, i rekkefølge. De to første er ikke
+lagringsrelaterte, men de er like nye og må kjøres:
 
 ```
+backend/migrations/0462_role_room_production_day_data.sql
+backend/migrations/0463_role_room_take_approval.sql
 backend/migrations/0464_storage_ledger_b2_backend.sql
 backend/migrations/0465_production_storage_ledger.sql
 backend/migrations/0466_storage_egress_ledger.sql
 backend/migrations/0467_capture_asset_versions.sql
 ```
 
-Alle er kjørt mot en scratch-Postgres 16 her og verifisert med
-integrasjonstester. 0464 endrer en eksisterende funksjon
-(`apply_storage_consumption_delta`) med `CREATE OR REPLACE` — den er
-trygg å kjøre om igjen.
+Alle er kjørt mot en scratch-Postgres 16 her.
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f backend/migrations/0462_role_room_production_day_data.sql \
+  -f backend/migrations/0463_role_room_take_approval.sql \
   -f backend/migrations/0464_storage_ledger_b2_backend.sql \
   -f backend/migrations/0465_production_storage_ledger.sql \
   -f backend/migrations/0466_storage_egress_ledger.sql \
   -f backend/migrations/0467_capture_asset_versions.sql
 ```
 
-`0465` har fremmednøkkel mot `casting_projects(id)`. Feiler den, mangler
-tabellen i den databasen.
+Tre ting verdt å vite før du kjører:
+
+- **0462** flytter en kolonne (`casting_production_days.data`) fra å bli
+  lagt til ved oppstart i `ensureSchema` til å ligge i en migrering. Den er
+  idempotent, men kjør den før backend starter neste gang.
+- **0464** endrer en eksisterende funksjon
+  (`apply_storage_consumption_delta`) med `CREATE OR REPLACE` — trygg å
+  kjøre om igjen.
+- **0465** har fremmednøkkel mot `casting_projects(id)`. Feiler den,
+  mangler tabellen i den databasen.
 
 ---
 
@@ -292,7 +302,75 @@ ville vært verre enn å vise at det mangler.
 
 ---
 
-## 7. Typecheck frontend
+## 7. Sett kostgrunnlaget
+
+**Dette er det viktigste punktet ingen ber deg om.** Uten det regner
+admin-flaten margin på listepriser, og tallene der ser riktige ut mens de
+er feil.
+
+Defaultene er Backblaze og Cloudflares LISTEPRISER per juli 2026. Får du
+reseller- eller B2 Reserve-vilkår, ligger din faktiske kost under — og da
+er marginen i flata lavere enn den er i virkeligheten.
+
+```
+STORAGE_COST_B2_PER_GB_MONTH=0.006          # USD/GB/mnd — din avtalepris
+STORAGE_COST_B2_EGRESS_PER_GB=0.01          # USD/GB over gratiskvoten
+STORAGE_COST_B2_FREE_EGRESS_MULTIPLIER=3    # gratis egress = 3x lagret
+STORAGE_COST_R2_PER_GB_MONTH=0.015
+STORAGE_COST_STREAM_PER_GB_MONTH=0.1        # tilnærming — Stream prises per minutt
+STORAGE_COST_STREAM_EGRESS_PER_GB=0.05
+STORAGE_COST_NOK_PER_USD=10.5               # påvirker ALLE kronetall
+```
+
+En negativ eller ikke-numerisk verdi ignoreres og faller til defaulten —
+en feilskrevet pris gir altså ikke negativ margin, den gir listepris. Det
+er tryggere, men også stillere: sjekk verdiene i admin-flata etterpå.
+
+Stream-tallet er en tilnærming. Cloudflare priser per lagret og levert
+minutt, ikke per GB, og omregningen avhenger av bitrate. Det er godt nok
+til å se at Stream er mange ganger dyrere enn B2, men ikke til å fakturere
+på.
+
+---
+
+## 8. Env-referanse
+
+Alt som er nytt i denne runden, samlet. Kjedene tar første ikke-tomme
+verdi.
+
+**Rollback-brytere** — ruller tilbake uten kodeendring:
+
+```
+UPLOAD_STORAGE_PRIMARY=r2      # generiske opplastinger tilbake til R2
+CAPTURE_STORAGE_PRIMARY=r2     # capture tilbake til R2
+```
+
+Filer som allerede er skrevet til B2 leses fortsatt fra B2 — per-fil-
+backenden og nøkkelprefikset står i dataene, ikke i konfigen.
+
+**Per-vei B2-overstyring** (valgfritt — uten disse brukes
+`B2_ROLE_ROOM_*`/`B2_*`):
+
+```
+GENERIC_UPLOADS_B2_BUCKET / _APPLICATION_KEY_ID / _APPLICATION_KEY
+GENERIC_UPLOADS_B2_REGION / _ENDPOINT / _PREFIX / _PUBLIC_URL_BASE
+CAPTURE_B2_BUCKET / _APPLICATION_KEY_ID / _APPLICATION_KEY
+CAPTURE_B2_REGION / _ENDPOINT / _PREFIX
+```
+
+`*_PREFIX` bestemmer nøkkelrommet. Endrer du det etter at filer er
+skrevet, slutter de gamle å bli funnet — de leses etter prefiks.
+
+**Nøkler og bøtter:** se punkt 1 og 3.
+
+**Uendret fra før:** hele `R2_*`, `CLOUDFLARE_R2_*`, `CAPTURE_R2_*`-kjeden,
+`CHUNKED_UPLOAD_DIR`, `STORAGE_SIGNED_URL_TTL_SECONDS`,
+`STORAGE_COST_NOK_PER_GB_MONTH`, `STORAGE_MARGIN_MARKUP`. Ikke rør dem —
+R2 er fortsatt lesekilde for alt som ligger der.
+
+---
+
+## 9. Typecheck frontend
 
 **Hvorfor ikke gjort her:** `frontend/node_modules` er tom, og
 npm-registeret er blokkert i miljøet. Jeg har ikke rørt frontend i denne
@@ -307,7 +385,34 @@ en preeksisterende baseline, ikke noe jeg innførte.
 
 ---
 
-## 8. Ikke gjort, og hvorfor
+## 10. Filkart
+
+Hvor ting ligger, for den som skal videre på dette.
+
+| Fil | Ansvar |
+| --- | --- |
+| `backend/server/b2-key-registry.ts` | Ti roller, kapabiliteter, fallback |
+| `backend/server/b2-bucket-registry.ts` | Seks klasser, nøkkelledd, bøtte-oppslag |
+| `backend/server/b2-client-factory.ts` | Eneste sted en B2-klient bygges |
+| `backend/server/upload-storage-router.ts` | Generiske opplastinger: B2 → R2 → disk |
+| `backend/server/capture-upload-service.ts` | Multipart fra iPad, prefiks-ruting |
+| `backend/server/capture-asset-version-service.ts` | Versjonsreservasjon og promotering |
+| `backend/server/capture-asset-release-service.ts` | Sletting + nedtrekk av begge regnskap |
+| `backend/server/production-storage-service.ts` | Produksjonseid kvote og ledger |
+| `backend/server/storage-egress-service.ts` | Egress-estimat og gratiskvote |
+| `backend/server/storage-cost-model.ts` | Kost per backend, margin, prisforslag |
+| `backend/server/admin-storage-status-service.ts` | Regnestykkene bak admin-flata |
+| `backend/server/admin-storage-status-routes.ts` | De tre admin-endepunktene |
+| `frontend/client/src/services/storageStatusAdapter.ts` | Tallformatering, testet |
+| `frontend/client/src/components/admin/AdminStorageStatusPanel.tsx` | Selve panelet |
+
+Bakgrunnen for designvalgene står i `docs/role-room/b2-primaerlagring.md` —
+hvorfor nøkkelen bærer klassen sin, hvorfor versjonsnummeret reserveres
+ved start, hvorfor begge regnskapene skrives.
+
+---
+
+## 11. Ikke gjort, og hvorfor
 
 **Object Lock.** Bevisst utsatt. Å slå det på er irreversibelt per bøtte,
 og governance-lock på originals blokkerer GDPR-sletting i hele
@@ -317,8 +422,6 @@ retensjonsvinduet. Vent til oppbevaringsfristene er juridisk avklart.
 Mekanismen finnes (`capture-asset-release-service`,
 `supersededVersions()`), men fristene er en juridisk beslutning jeg ikke
 kan ta. Sett den ikke til `true` før noen har signert på tallene.
-
-**De atten modulene på fellesnøkkelen.** Se punkt 1.
 
 **Ingest/quarantine-bøttene.** Forutsetter et valideringssteg som ikke
 finnes ennå — opplastinger går rett til endelig plassering. Quarantine
