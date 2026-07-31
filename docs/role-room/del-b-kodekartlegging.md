@@ -37,6 +37,11 @@ prosjekter, takes, submissions og hendelser.
 har `skills` som flat liste uten nivå, og ingen synlighetskolonner i det
 hele tatt.
 
+**Etter verifiseringsrunden** (B4, B5, B7 gjennomgått punkt for punkt) er
+tallet høyere: **åtte punkter merket P0 eller P1 er allerede bygget** —
+215, 217, 232, 176, 188, 202, 214 og 218. Se «To talentflater» for hvorfor
+den første runden ikke fant de fire siste.
+
 ---
 
 ## B1. Profil og presentasjon (151–166)
@@ -85,16 +90,17 @@ tilgangslogg. **Ingen match-, søke- eller søknadsstatusruter.**
 | 170 | Tilgjengelighetskalender | 🟡 | `/me/availability/confirm` finnes — bekreftelse, ikke kalender |
 | 171 | «Åpen for»-flagg | ❌ | — |
 | 172 | Anonymisert første runde | ❌ | — |
-| 173 | Lagrede søk | ❓ | Ikke verifisert |
+| 173 | Lagrede søk | ❌ | `agency_saved_searches` finnes — men det er **byråer som lagrer talentsøk**, speilbildet av dette punktet |
 | 174 | Følg produksjonsselskaper | ❌ | — |
 | 175 | Åpen utlysningsside | ❓ | Ikke verifisert |
-| 176 | Søknadsstatus synlig | 🟡 | `casting_candidates.status` **finnes** — men eksponeres ikke mot talent |
+| 176 | Søknadsstatus synlig | ✅ | **Rettet.** `buildRoleRoomTalentPortalCandidate()` returnerer `status` til talentet via `GET /talent/portal` |
 | 177 | Automatisk avslag | ❌ | — |
 | 178 | Karrierestatistikk | ❌ | — |
 
-**Viktigste funn i B2:** 176 er billigere enn doken tror. Statusfeltet
-finnes allerede på kandidatraden; det som mangler er en rute som lar
-talentet se sin egen. Det er timer, ikke dager.
+**Rettelse:** åtte ruter under `/talents/me` var ikke hele bildet. Det
+finnes en **andre talentflate** — `/talent/portal`, bygget på
+`casting_candidates` i stedet for `talents`. Den eksponerer status,
+roller, timeplan, aktivitet og self-tapes. Se «To talentflater» nedenfor.
 
 ## B3. Auditions og self-tape (179–192)
 
@@ -111,9 +117,9 @@ Den mest ferdigbygde kategorien. Tabeller: `talent_selftape_projects`,
 | 183 | Re-take-forespørsel | 🟡 | `takes` + `notes` finnes; ingen forespørselsflyt |
 | 184 | Selvbooking | ❓ | Ikke verifisert |
 | 185 | Reiseinfo i invitasjon | ❓ | Ikke verifisert |
-| 186 | Kalendersynk | ❓ | Ikke verifisert |
+| 186 | Kalendersynk | 🟡 | `role_room_calendar_feeds`: ICS-abonnement med ugjettbart token, `scope` = shoot_days/deadlines, tilbaketrekking framfor sletting. Utstedt av produsent, ikke av talentet |
 | 187 | Sider m/NDA-sperre | ❓ | Ikke verifisert |
-| 188 | Påminnelser 48t/2t | 🟡 | `talent-selftape-notifications.ts` finnes, men eksporterer bare `notifySelftapeActivity` — ingen tidsstyrt påminnelse |
+| 188 | Påminnelser 48t/2t | ✅ | **Rettet.** `casting-reminder-runner.ts` er en full cron-sveip: WhatsApp → SMS → e-post som fallback, idempotent via `casting_schedules.reminders_sent`, med preferanser per kanal per frist. Fristene er **24t/1t**, ikke 48t/2t — en konfigurasjonsendring, ikke en byggejobb |
 | 189 | Strukturert tilbakemelding | 🟡 | `ai_feedback` finnes; menneskelig strukturert tilbakemelding ikke |
 | 190 | Ventelistestatus | ❓ | Ikke verifisert |
 | 191 | Egenerklæring stunt | ❓ | Ikke verifisert |
@@ -127,28 +133,42 @@ mobil. Det flytter innsatsen fra backend til klient.
 
 | # | Punkt | Status | Funn |
 | --- | --- | --- | --- |
-| 193 | Tilbud i appen | ❓ | Ikke verifisert mot talent-siden |
-| 194 | Kontrakt i klartekst | ❓ | Ikke verifisert |
-| 195 | BankID-signering | 🟡 | `role_room_signature_orders` har `provider` + `provider_order_id` — **rammeverket finnes, ingen BankID-leverandør koblet til** |
-| 196–204 | | ❓ | Ikke verifisert |
+| 193 | Tilbud i appen | 🟡 | `POST /api/role-room/offers` + `PUT /offers/:id/respond` finnes. Men `respond` gater på `viewerCanAccessProject` — prosjekt-eierskap eller medlemskap. **Et talent er ikke prosjektmedlem og kan ikke svare.** Produsentsiden er bygget, talentsiden ikke — nøyaktig som doken sier |
+| 194 | Kontrakt i klartekst | 🟡 | `role_room_buyout_terms` **er** de strukturerte feltene: `territories`, `media_channels`, `exclusivity`, `starts_at/ends_at/unlimited`, `renewal_*`, `fee`, `currency` — med vokabular håndhevet i CHECK-constraints. Forutsetningen doken nevner (pkt 47) er oppfylt. Det som mangler er å gjengi dem på norsk |
+| 195 | BankID-signering | 🟡 | `role_room_signature_orders` har `provider` + `provider_order_id` — rammeverket finnes, ingen BankID-leverandør koblet til |
+| 196 | Betalingsstatus | ❌ | Ingen betalingsmodell mot talent |
+| 197 | Honorar-historikk + årsoppgave | ❌ | Ingen honorartabell. `fee` finnes per buyout, men aggregeres ikke |
+| 198 | Fakturagenerator | ❌ | `wedding_invoices`, `org_invoices`, `editing_payments` finnes for andre produkter |
+| 199 | Tariff-sjekk | ❌ | Ingen satsdatabase. `role-room-work-time-rules.ts` nevner tariff bare som forbehold: «Tariffavtale kan utvide flere av grensene». **Del A pkt 116 mangler også** |
+| 200 | Reiseregning | ❌ | `leadgrid_mileage_claims` og `wedding_mileage_reports` finnes — mønster, ikke løsning |
+| 201 | Dobbeltbooking-varsel | ❌ | Kollisjonssjekk finnes for **utstyr** (`role-room-equipment-availability.ts`), ikke for personer. Gjenbrukbart mønster |
+| 202 | Agentkobling m/sporbarhet | ✅ | `agency_orgs` **er** byråregisteret doken setter som forutsetning (pkt 38). `agency_talent_proposals` har `requested_scopes`, token, `accept`/`decline`-ruter. Sporbarheten ligger i `talent_consent_registry` + `talent_access_audit` |
+| 203 | Delt visning talent/byrå | 🟡 | `requested_scopes` og consent-scopes finnes; `agency_production_partnerships` har pause per motpart. Ingen delt flate |
+| 204 | Automatisk kredittliste | ❌ | Samme hull som 157 |
 
-**Det viktige her:** signaturrammeverket er leverandøruavhengig og klart.
-BankID er et integrasjonsvalg, ikke en arkitekturjobb. Det står fortsatt
-igjen som en leverandørbeslutning (RFQ) — samme åpne punkt som i Del A.
+**Rettelse til doken:** 202 er ikke blokkert av pkt 38 — registeret finnes
+allerede, med `verified`/`verified_at`, eierskap og arkivering framfor
+sletting. Og 194 er billigere enn «M»: feltene er strukturert og
+vokabularet håndhevet i basen. Det er en tekstjobb, ikke en datamodelljobb.
 
 ## B5. Kommunikasjon og varsler (205–214)
 
-Det finnes åtte meldingstabeller i basen — `role_room_agent_threads`,
-`community_dm_messages`, `editing_job_messages`, `interview_messages`
-m.fl. **Ingen av dem er «én tråd per oppdrag» mot talent.**
+| # | Punkt | Status | Funn |
+| --- | --- | --- | --- |
+| 205 | Én tråd per oppdrag | 🟡 | `POST /talent/portal/messages` skriver til `role_room_talent_activity` per prosjekt **og** kandidat — altså per oppdrag. Men det er en aktivitetslogg, ikke en tråd: ingen `reply_to`, ingen lest-status, og teamet svarer ikke i samme kanal |
+| 206 | Prioriterte push-varsler | 🟡 | Infrastrukturen finnes: `notification_device_tokens` (apns/web_push/fcm) og `push_subscriptions` (VAPID). Men `resolveChannel()` i crew-varslene degraderer `push` → `in_app` med kommentaren «ikke implementert». Ingen prioritet |
+| 207 | Lest-kvittering | 🟡 | To kvitteringsmekanismer finnes: `role_room_call_sheet_receipts` (token-bekreftelse per mottaker) og `talent_selftape_submission_events` (hendelseslogg). Ingen av dem er kvittering på meldingsnivå |
+| 208 | Meldinger uten privat nummer | ❌ | `maskPhoneNumberId()` maskerer **vår egen** WhatsApp-`phone_number_id` i admin-visningen. Det er ikke nummervern for talent |
+| 209 | Automatisk oversettelse | ❌ | — |
+| 210 | Stille perioder 22–07 | 🟡 | `notification_preferences.quiet_hours_start/end` finnes og leses av `lead-assignment-notification-service.ts`. **Men tabellen er `organization_id NOT NULL` mot `organizations`, og `notification_events` har fremmednøkler til `crm_customers`/`crm_visits`** — det er LeadGrid-stakken, ikke Role Room. Mekanismen er bevist, datamodellen er en annen |
+| 211 | Gruppemeldinger m/svaralternativer | ❌ | — |
+| 212 | Varsel ved profilvisning | 🟡 | `talent_access_audit` har alt som trengs: `talent_id`, `partner_type`, `partner_ref`, `accessed_at`. Ingen varsling leser den |
+| 213 | Ukentlig sammendrag | ❌ | — |
+| 214 | Kontaktpreferanse håndhevet | ✅ | For auditions: `casting_candidates.reminder_prefs` har flagg per kanal **per frist** (`sms24h`, `whatsapp1h`, …), håndhevet i `casting-reminder-runner.ts`, og talentet redigerer dem selv via `PATCH /talent/portal/profile`. Gjelder ikke andre varseltyper |
 
-| # | Punkt | Status |
-| --- | --- | --- |
-| 205 | Én tråd per oppdrag | ❌ |
-| 206–214 | | ❓ Ikke verifisert |
-
-At det finnes åtte separate meldingstabeller er i seg selv verdt å merke
-seg: en niende for talent-tråder bør vurderes mot å konsolidere.
+**Rettelse til doken:** 206 og 210 er merket «krever 136-infrastruktur».
+Infrastrukturen finnes — den er bare bygget for et annet produkt. Jobben er
+å knytte Role Room til den, ikke å bygge den.
 
 ## B6. Samtykke, personvern og trygghet (215–226)
 
@@ -160,10 +180,10 @@ Sterkeste kategorien etter B3.
 | 216 | Tilbaketrekking | 🟡 | `revoked_at` + `DELETE /me/consents/:id`. **Propagert sletting ikke verifisert** — det er den vanskelige halvdelen |
 | 217 | Dataportabilitet | ✅ | `GET /me/export` |
 | 218 | Autosletting søknadsmateriale | ✅ | `role-room-retention-service.ts` feier `casting_candidates` og `talent_selftape_submissions` |
-| 219 | Verge-konto | ❌ | Ingen verge-/mindreårig-modell funnet |
+| 219 | Verge-konto | 🟡 | **Rettet.** `role_room_signature_signers.signs_on_behalf_of` finnes, og `subject_type` har `'guardian_consent'` i vokabularet — med kommentaren at dette er hovedgrunnen til at signering måtte på plass tidlig. Signaturlaget håndterer verge. **Ingen verge-*konto*** |
 | 220 | Arbeidstidsvern barn | 🟡 | AML-flaten fra Del A dekker arbeidstid; barnereglene (kap. 11) ikke koblet til talentsiden |
 | 221 | Rapportering | ❓ | Ikke verifisert |
-| 222 | Caster-verifisering | ❓ | Ikke verifisert |
+| 222 | Caster-verifisering | 🟡 | `agency_orgs.verified` + `verified_at` finnes. Ingen prosess som setter dem |
 | 223–226 | | ❓ | Ikke verifisert |
 
 **GDPR-fundamentet som doken setter til fire P0-punkter er i praksis
@@ -175,11 +195,27 @@ sier.
 
 | # | Punkt | Status | Funn |
 | --- | --- | --- | --- |
+| 227 | Karrierestatistikk over tid | ❌ | — |
+| 228 | Ferdighetsgap-innsikt | 🟡 | `nextrole_career_mentor_sessions` har `kind = 'skills_gap'` og `recommended_jobs`. CV-basert, i NextRole, ikke koblet til `talents` |
+| 229 | Kurskatalog-integrasjon | ❌ | `role_room_education_courses` og `leadgrid_academy_courses` finnes for andre flater — ingen talentvendt katalog |
+| 230 | Mentormatch | 🟡 | `community_mentor_sessions` er en komplett flyt: forespørsel → aksept → tidfesting → rating. Ligger i community-produktet, hengt på `users`. Gjenbrukbar |
 | 231 | Self-tape-bibliotek | ✅ | `talent_selftape_projects` + `_takes` **er** biblioteket |
 | 232 | Teknisk AI-tilbakemelding | ✅ | `talent_selftape_ai_feedback`, `/feedback`, `/feedback/regenerate` |
-| 227–230, 233–238 | | ❓ | Ikke verifisert |
+| 233 | Demoreel-klipphjelp | ❌ | — |
+| 234 | Bransjekalender | ❌ | `role_room_calendar_feeds` er ICS-abonnement per prosjekt — et annet problem |
+| 235 | Referanse fra caster | ❌ | `resume_experiences.is_endorsed`/`endorsement_count` finnes i NextRole. Ingenting mot casting |
+| 236 | Merittbadges | 🟡 | `prototype_tester_badges` har `badge_id`, `badge_name`, `badge_tier` (bronze→diamond), `unlocked_at`. Komplett modell, feil målgruppe |
+| 237 | PDF-CV i bransjeformat | 🟡 | `resume_exports` støtter pdf/docx/txt/json/html, med maler og versjonering. **Men malene er ATS-/jobbsøker-orientert** (`modern-ats`, `target_job_title`), og `resumes.user_id` er aldri koblet til `talents` |
+| 238 | Karriere-tidslinje | 🟡 | `resume_experiences` er dataene. Ingen tidslinjevisning, ingen kobling til talent |
 
-To P1-punkter allerede levert.
+**Mønsteret i hele B7:** nesten alt finnes én gang, i et annet produkt.
+Mentorflyt, badges, CV-eksport, ferdighetsgap — alle bygget, alle hengt på
+`users` eller `resumes`, ingen koblet til `talents`. Det gjør B7 til et
+integrasjonsproblem, ikke et byggeproblem — men koblingen er ikke gratis:
+`talents` og `resumes` deler bare `user_id`, og ingenting joiner dem i dag.
+
+**237 er den billigste av dem.** Eksportmaskineriet finnes; det som mangler
+er én mal i bransjeformat og en join.
 
 **⚠️ Kryssavhengighet doken ikke nevner:** 231 møter retention-arbeidet
 fra denne sesjonen. Et talents tape-bibliotek er nøyaktig de filene
@@ -203,6 +239,62 @@ byggeklosser som allerede finnes.
 
 ---
 
+## To talentflater — funnet under verifiseringen
+
+Den første kartleggingen bommet på B2 og B5 fordi den lette feil sted.
+Det finnes **to** talentflater:
+
+| | `/api/role-room/talents/me` | `/api/role-room/talent/portal` |
+| --- | --- | --- |
+| Bygget på | `talents` (registeret) | `casting_candidates` (per prosjekt) |
+| Fil | `role-room-talents-routes.ts` | `role-room-routes.ts` |
+| Dekker | profil, samtykke, GDPR, tilgangslogg | oppdrag, roller, timeplan, self-tapes, meldinger, aktivitet |
+| Innlogging | brukersesjon | e-post + invitasjonstoken |
+
+De to deler ingen data. Et talent kan ha en registerprofil uten
+kandidatrader, og en kandidatrad uten registerprofil.
+
+**Hvorfor jeg bommet:** tre av portalens tabeller —
+`role_room_talent_invites`, `role_room_talent_activity`,
+`role_room_talent_uploads` — opprettes med `CREATE TABLE IF NOT EXISTS`
+**inne i applikasjonskoden** ved oppstart, ikke i en migrasjonsfil. Et søk
+gjennom `migrations/` finner dem ikke. Det er verdt å rette uavhengig av
+denne kartleggingen: tabeller utenfor migrasjonsløpet blir usynlige for
+alle som leser skjemaet, inkludert neste person som skal kartlegge noe.
+
+### To ting som bør fikses
+
+**1. Aktivitetsloggen filtrerer ikke på `visibility`.**
+`role_room_talent_activity` har kolonnen — den er der nettopp for å skille
+intern prat fra delt — men spørringen i talentportalen henter alle rader
+for kandidaten. `role_room_messages` håndhever den samme kolonnen i
+backend, med kommentaren at klienten «ALDRI» skal se intern prat.
+
+Alle skrivere sender `'shared'` i dag, så dette er **latent, ikke en aktiv
+lekkasje**. Men kolonnen finnes for å bli brukt, og den første som skriver
+en intern rad får den rett ut til talentet.
+
+**2. Portalen returnerer kandidatraden hel — inkludert `notes` og
+`rating`.** Det er castingteamets interne vurdering.
+`buildRoleRoomTalentPortalCandidate()` redigerer ingenting bort. Dette er
+ikke latent; det skjer nå. Om det er tilsiktet er en produktbeslutning, men
+det bør være en beslutning og ikke en bivirkning.
+
+### Og: to parallelle self-tape-systemer
+
+| | `talent_selftape_*` | `casting_candidates.videos` |
+| --- | --- | --- |
+| Rute | `talent-selftapes-routes.ts` (20 ruter) | `POST /talent/portal/self-tapes` |
+| Lagring | Cloudflare Stream, målt | kun en URL — vi holder ingen bytes |
+| Kvote | telles | telles ikke |
+
+Den andre tar imot en `videoUrl` og legger den i en JSONB-liste. Det
+forklarer hvorfor self-tape kan se både ferdig og fraværende ut avhengig
+av hvor man ser. For lagringsarbeidet betyr det at én self-tape-vei aldri
+treffer regnskapet.
+
+---
+
 ## Revidert P0-liste
 
 Doken lister «16 leveranser» som er ~30 punkter. Trekker jeg fra det som
@@ -212,27 +304,32 @@ finnes, og skiller det som faktisk blokkerer fra det som bare er viktig:
 
 | # | Punkt | Hvorfor |
 | --- | --- | --- |
-| **219** | Verge-konto | Uten den: ingen mindreårige. Det er en **produktbeslutning**, ikke en oppgave — blokkér i registreringen eller bygg den |
 | **216** | Propagert sletting | Halvferdig samtykke er verre enn ingen: dere lover tilbaketrekking uten å gjennomføre den |
 | **158+164** | Mål private + synlighet | Verifisert fraværende. To kolonner og et filter |
+| **219** | Verge-konto | Nedjustert fra ❌ til 🟡: signaturlaget håndterer verge (`signs_on_behalf_of`). Kontoen mangler fortsatt, og det er fortsatt en **produktbeslutning** — blokkér mindreårige i registreringen, eller bygg den |
+| — | `visibility`-filteret | Ikke i doken. En kolonne som finnes for å beskytte, og ikke brukes, er en felle for neste utvikler |
 
 ### Billigst verdi, gjør neste
 
 | # | Punkt | Hvorfor |
 | --- | --- | --- |
-| **176** | Søknadsstatus | `casting_candidates.status` finnes — mangler bare en talentvendt rute |
-| **177** | Automatisk avslag | Bygg som par med 176, som doken sier |
-| **179–182** | Self-tape-flate | Server er ferdig. Dette er en klientjobb, ikke M |
-| **188** | Påminnelser | Varselmodulen finnes, mangler tidsstyring |
+| **193** | Tilbud, talentsiden | Produsentruten finnes. Det som mangler er en svarrute et talent faktisk kan kalle — `respond` krever prosjektmedlemskap i dag |
+| **194** | Kontrakt i klartekst | Feltene er strukturert og vokabularet håndhevet. En tekstjobb |
+| **177** | Automatisk avslag | 176 er ferdig, så paret er halvveis |
+| **179–182** | Self-tape-flate | Server er ferdig. Klientjobb |
+| **212** | Varsel ved profilvisning | `talent_access_audit` har dataene. Mangler bare en leser |
+| **237** | PDF-CV | Eksportmaskineriet finnes. Én mal og én join |
 
 ### Krever beslutning før kode
 
 | # | Punkt | Beslutningen |
 | --- | --- | --- |
 | **221** | Rapportering | Bemanner dere den? En lovet saksbehandlingstid ingen holder skaper ansvar |
-| **222** | Caster-verifisering | Påkrevd eller frivillig? Frivillig gjør de uverifiserte mistenkelige |
+| **222** | Caster-verifisering | Nedjustert til 🟡 — `verified` finnes. Spørsmålet er hvem som setter den, og om den er påkrevd |
 | **195** | BankID | Leverandørvalg. Rammeverket er klart |
 | **239** | Mobilapp | Hvor mye av B3/B5 kan leveres på web i mellomtiden? |
+| **206/210** | Push og stille perioder | Infrastrukturen finnes i LeadGrid-stakken. Koble Role Room til den, eller bygg en egen? |
+| — | To talentflater | `talents` og `casting_candidates` er to bilder av samme person. Konsolidere eller leve med begge? |
 
 ### Ta ut av P0
 
@@ -243,16 +340,33 @@ finnes, og skiller det som faktisk blokkerer fra det som bare er viktig:
 | 218 | Autosletting | Ferdig |
 | 181 | Komprimering | Ferdig via Stream |
 | 182 | Kvittering | Ferdig |
+| **176** | Søknadsstatus | **Ferdig** — portalen returnerer `status` |
+| **188** | Påminnelser | **Ferdig** — full cron-sveip. Bare fristene skal justeres (24t/1t → 48t/2t) |
+| **202** | Agentkobling | Ferdig, inkludert byråregisteret doken setter som forutsetning |
+| **214** | Kontaktpreferanse | Ferdig for auditions |
 
 ---
 
 ## Forbehold
 
-**Femten punkter er ikke verifisert** (❓). De ligger i B4, B5 og B7, der
-oppslagene ga for mye støy til å konkludere på. Å markere dem som
-fraværende ville vært å gjenta feilen dokumentet allerede gjør.
+**Rettelse til forrige versjon:** jeg skrev «femten punkter». Det var et
+tall på *rader* i tabellene, ikke på punkter — B4, B5 og B7 hadde til
+sammen **tretti** uverifiserte punkter bak fem sammenslåtte rader. Alle
+tretti er nå gjennomgått.
 
-Kartleggingen er **statisk** — tabeller, ruter og filnavn. At en rute
-finnes betyr ikke at flaten bruker den, og at en tabell finnes betyr ikke
-at den fylles. Et ✅ her betyr «koden finnes», ikke «funksjonen virker for
-en bruker».
+**Det som fortsatt står ❓:** 175 (åpen utlysningsside), 184, 185, 187,
+190, 191 i B3, 221 og 223–226 i B6, og 241 + 244–250 i B8. Fjorten punkter.
+De er ikke verifisert, og skal ikke leses som fraværende.
+
+**Verifiseringen endret ni statuser.** Fire opp (176, 188, 202, 214 → ✅),
+fire nedjusterte fraværsmarkeringer til delvis (205, 219, 222, 186), og én
+ned (173 → ❌; treffet var byråenes lagrede søk, ikke talentenes). Det er
+en høy feilrate for én runde, og grunnen er den samme hver gang: jeg søkte
+i `migrations/` og i én rutefil, og halve talentflaten ligger utenfor
+begge.
+
+Kartleggingen er fortsatt **statisk** — tabeller, ruter og filnavn. At en
+rute finnes betyr ikke at flaten bruker den, og at en tabell finnes betyr
+ikke at den fylles. Et ✅ her betyr «koden finnes», ikke «funksjonen virker
+for en bruker». For 202 og 214 har jeg lest kallkjeden; for de øvrige ✅-ene
+har jeg lest definisjonen.
