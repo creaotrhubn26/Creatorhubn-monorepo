@@ -33,6 +33,46 @@ final class RedigeringModel {
     var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
     var learnedStyleNames: [String] { LearnedStyleStore.shared.styleNames }
 
+    /// Trykk-på-ansikt (lokal justering): detekterte ansikter i NORMALISERTE
+    /// CI-koordinater (0–1, origo nede-venstre) + per-ansikt justering + valgt.
+    var faceRectsNorm: [CGRect] = []
+    var faceAdjust: [Int: FaceLocalAdjustFilter.Adjust] = [:]
+    var activeFace: Int?
+    var localFaceMode = ProcessInfo.processInfo.arguments.contains("--face-on")
+
+    /// (normalisert rekt, justering) for ansikter med en aktiv lokal justering.
+    var activeFaceAdjustments: [(norm: CGRect, adj: FaceLocalAdjustFilter.Adjust)] {
+        faceRectsNorm.indices.compactMap { i in
+            guard let a = faceAdjust[i], a.isActive else { return nil }
+            return (faceRectsNorm[i], a)
+        }
+    }
+
+    /// Detektér ansikter i «Etter»-bildet → normaliserte CI-rekter (for tapping
+    /// + maskert lokal justering). Kjøres når lokal ansikts-modus slås på.
+    func detectFacesForLocal() {
+        guard let after = afterImage, let cg = after.cgImage else { faceRectsNorm = []; return }
+        let ci = CIImage(cgImage: cg)
+        let ext = ci.extent
+        let det = CIDetector(ofType: CIDetectorTypeFace, context: nil,
+                             options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
+        faceRectsNorm = (det?.features(in: ci) ?? []).compactMap { ($0 as? CIFaceFeature)?.bounds }
+            .filter { $0.width > 4 && $0.height > 4 }
+            .map { r in CGRect(x: r.minX / ext.width, y: r.minY / ext.height, width: r.width / ext.width, height: r.height / ext.height) }
+        if activeFace == nil, !faceRectsNorm.isEmpty { activeFace = 0 }
+        // Demo-hekte: forhåndsvis en lokal justering på ansikt 0.
+        if ProcessInfo.processInfo.arguments.contains("--face-demo"),
+           faceAdjust.isEmpty, !faceRectsNorm.isEmpty {
+            faceAdjust[0] = .init(brightness: 0.55, warmth: 0.3)
+            Task { await render() }
+        }
+    }
+
+    func setFaceAdjust(_ adj: FaceLocalAdjustFilter.Adjust, for index: Int) {
+        faceAdjust[index] = adj
+        Task { await render() }
+    }
+
     /// Rendered "Etter" preview for the selected asset + current recipe.
     private(set) var afterImage: UIImage?
     private(set) var rendering = false
@@ -323,21 +363,32 @@ final class RedigeringModel {
         let r = (manualScenes != nil || auto) ? learnedBase : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
+        let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let base = RedigeringPipeline.renderPreview(
                 rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop) else { return nil }
-            guard let ci = CIImage(image: base) else { return base }
+            guard var ci = CIImage(image: base) else { return base }
             // Auto → la motoren velge stilen som passer bildets lys.
             var scenes = manualScenes
             if scenes == nil, auto, let cg = CIContext().createCGImage(ci, from: ci.extent) {
                 let idx = LearnedStyle.autoSelectStyleIndex(features: LearnedStyle.features(of: cg), styles: styles)
                 scenes = idx.flatMap { styles.indices.contains($0) ? styles[$0].scenes : nil }
             }
-            guard let scenes else { return base }
-            // Påfør fotografens (valgte/auto) lærte look på den nøytrale basen.
-            let styled = LearnedStyle.apply(scenes: scenes, to: ci)
+            if let scenes {
+                ci = LearnedStyle.apply(scenes: scenes, to: ci)   // lært look på flat base
+            }
+            // Lokal per-ansikt-justering (normalisert rekt → piksler av ci.extent).
+            if !faceAdj.isEmpty {
+                let e = ci.extent
+                let faces = faceAdj.map { item -> (rect: CGRect, adj: FaceLocalAdjustFilter.Adjust) in
+                    let n = item.norm
+                    return (CGRect(x: n.minX * e.width, y: n.minY * e.height,
+                                   width: n.width * e.width, height: n.height * e.height), item.adj)
+                }
+                ci = FaceLocalAdjustFilter.apply(to: ci, faces: faces)
+            }
             let ctx = CIContext(options: [.useSoftwareRenderer: false])
-            guard let cg = ctx.createCGImage(styled, from: styled.extent) else { return base }
+            guard let cg = ctx.createCGImage(ci, from: ci.extent) else { return base }
             return UIImage(cgImage: cg)
         }.value
         afterImage = img
@@ -404,6 +455,14 @@ struct RedigeringView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 14) {
+                        Button {
+                            model.localFaceMode.toggle()
+                            if model.localFaceMode { model.detectFacesForLocal() }
+                        } label: {
+                            Image(systemName: "person.crop.circle.badge.checkmark")
+                                .foregroundStyle(model.localFaceMode ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Trykk-på-ansikt (lokal justering)")
                         Button {
                             showMaskOverlay.toggle()
                             Task { await updateMaskOverlay() }
@@ -478,6 +537,7 @@ struct RedigeringView: View {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(spacing: 10) {
                         compareCard(height: imageH)
+                        if model.localFaceMode, let fi = model.activeFace { localFaceControl(fi) }
                         toolbarRow
                     }
                     .frame(maxWidth: .infinity)
@@ -514,11 +574,15 @@ struct RedigeringView: View {
             showHistogram: showHistogram,
             maskOverlay: showMaskOverlay ? maskOverlay : nil,
             diffOverlay: showDiff ? diffOverlay : nil,
+            faceDots: model.localFaceMode ? model.faceRectsNorm : [],
+            activeFace: model.activeFace,
+            onTapFace: { model.activeFace = $0 },
         )
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onChange(of: model.afterImage) { _, _ in
             Task { await updateMaskOverlay(); await updateDiffOverlay() }
+            if model.localFaceMode { model.detectFacesForLocal() }
         }
     }
 
@@ -530,6 +594,35 @@ struct RedigeringView: View {
         diffOverlay = await Task.detached(priority: .userInitiated) {
             DiffHeatmap.overlay(before: before, after: after)
         }.value
+    }
+
+    /// Lokal justerings-kontroll for det tappede ansiktet (lys + varme, maskert).
+    private func localFaceControl(_ i: Int) -> some View {
+        let adj = model.faceAdjust[i] ?? .init()
+        return HStack(spacing: 14) {
+            Text("Ansikt \(i + 1)").font(.caption.weight(.bold)).foregroundStyle(CHTheme.accent)
+            faceSlider("Lys", systemImage: "sun.max", value: adj.brightness) { v in
+                var a = adj; a.brightness = v; model.setFaceAdjust(a, for: i)
+            }
+            faceSlider("Varme", systemImage: "thermometer.medium", value: adj.warmth) { v in
+                var a = adj; a.warmth = v; model.setFaceAdjust(a, for: i)
+            }
+            Button {
+                model.setFaceAdjust(.init(), for: i)
+            } label: { Image(systemName: "arrow.counterclockwise").font(.caption) }
+                .buttonStyle(.plain).foregroundStyle(CHTheme.textMuted)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func faceSlider(_ title: String, systemImage: String, value: Double, onChange: @escaping (Double) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Label("\(title)  \(String(format: "%+.0f", value * 100))", systemImage: systemImage)
+                .font(.caption2).foregroundStyle(CHTheme.textSecondary)
+            Slider(value: Binding(get: { value }, set: onChange), in: -1...1)
+                .tint(CHTheme.accent).frame(width: 150)
+        }
     }
 
     /// Beregn motiv-maske-overlegget fra «Etter»-bildet (Vision, off-main).
@@ -722,6 +815,9 @@ struct BeforeAfterCompare: View {
     var showHistogram: Bool = false
     var maskOverlay: UIImage?
     var diffOverlay: UIImage?
+    var faceDots: [CGRect] = []          // normaliserte CI-rekter (origo nede-venstre)
+    var activeFace: Int?
+    var onTapFace: (Int) -> Void = { _ in }
     @State private var split: CGFloat = 0.5
     @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
@@ -752,6 +848,20 @@ struct BeforeAfterCompare: View {
                     Image(uiImage: diffOverlay).resizable().scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height).clipped()
                         .opacity(0.7).allowsHitTesting(false)
+                }
+                // Tappbare ansikts-prikker (lokal justering). CI-koord (nede-
+                // venstre) → SwiftUI (topp-venstre): flipp Y.
+                ForEach(faceDots.indices, id: \.self) { i in
+                    let r = faceDots[i]
+                    let cx = r.midX * geo.size.width
+                    let cy = (1 - r.midY) * geo.size.height
+                    Circle()
+                        .stroke(activeFace == i ? CHTheme.accent : .white, lineWidth: activeFace == i ? 3 : 2)
+                        .background(Circle().fill((activeFace == i ? CHTheme.accent : .black).opacity(0.35)))
+                        .frame(width: 30, height: 30)
+                        .overlay(Text("\(i + 1)").font(.caption.weight(.bold)).foregroundStyle(.white))
+                        .position(x: cx, y: cy)
+                        .onTapGesture { onTapFace(i) }
                 }
                 labels
                 if !holdingOriginal { handle(in: geo) }
