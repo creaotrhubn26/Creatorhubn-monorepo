@@ -381,6 +381,9 @@ struct RedigeringView: View {
     /// Vis motiv-maske-overlegg (hva AI segmenterer/behandler lokalt).
     @State private var showMaskOverlay = ProcessInfo.processInfo.arguments.contains("--mask-on")
     @State private var maskOverlay: UIImage?
+    /// Vis «AI-endringer»-heatmap (hvor + hvor mye redigeringen endret bildet).
+    @State private var showDiff = ProcessInfo.processInfo.arguments.contains("--diff-on")
+    @State private var diffOverlay: UIImage?
 
     var body: some View {
         NavigationStack {
@@ -409,6 +412,14 @@ struct RedigeringView: View {
                                 .foregroundStyle(showMaskOverlay ? CHTheme.accent : CHTheme.textSecondary)
                         }
                         .help("Vis motiv-maske (per-region)")
+                        Button {
+                            showDiff.toggle()
+                            Task { await updateDiffOverlay() }
+                        } label: {
+                            Image(systemName: "square.on.square.dashed")
+                                .foregroundStyle(showDiff ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis AI-endringer (heatmap)")
                         Button {
                             showHistogram.toggle()
                         } label: {
@@ -502,10 +513,23 @@ struct RedigeringView: View {
             zoom: $zoom,
             showHistogram: showHistogram,
             maskOverlay: showMaskOverlay ? maskOverlay : nil,
+            diffOverlay: showDiff ? diffOverlay : nil,
         )
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .onChange(of: model.afterImage) { _, _ in Task { await updateMaskOverlay() } }
+        .onChange(of: model.afterImage) { _, _ in
+            Task { await updateMaskOverlay(); await updateDiffOverlay() }
+        }
+    }
+
+    /// Beregn «AI-endringer»-heatmap fra Før (preview) vs Etter (off-main).
+    private func updateDiffOverlay() async {
+        guard showDiff, let after = model.afterImage,
+              let path = model.selected?.previewKey ?? model.selected?.displayPreviewKey,
+              let before = UIImage(contentsOfFile: path) else { diffOverlay = nil; return }
+        diffOverlay = await Task.detached(priority: .userInitiated) {
+            DiffHeatmap.overlay(before: before, after: after)
+        }.value
     }
 
     /// Beregn motiv-maske-overlegget fra «Etter»-bildet (Vision, off-main).
@@ -697,6 +721,7 @@ struct BeforeAfterCompare: View {
     @Binding var zoom: CGFloat
     var showHistogram: Bool = false
     var maskOverlay: UIImage?
+    var diffOverlay: UIImage?
     @State private var split: CGFloat = 0.5
     @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
@@ -722,6 +747,11 @@ struct BeforeAfterCompare: View {
                     Image(uiImage: maskOverlay).resizable().scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height).clipped()
                         .opacity(0.4).allowsHitTesting(false)
+                }
+                if let diffOverlay {
+                    Image(uiImage: diffOverlay).resizable().scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                        .opacity(0.7).allowsHitTesting(false)
                 }
                 labels
                 if !holdingOriginal { handle(in: geo) }
