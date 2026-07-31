@@ -951,12 +951,26 @@ struct SmartEditPanel: View {
                 .padding(10).background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, unit: .ev)
-            slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, unit: .signedPercent)
-            slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, unit: .percent)
-            slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, unit: .signedPercent)
-
-            warmthRow
+            let learnedActive = model.learnedStyleAuto || model.learnedStyleIndex != nil
+            if learnedActive {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain.head.profile").font(.caption2)
+                    Text("Grunnjustering styrt av Min stil (lært)").font(.caption2)
+                    Spacer()
+                }
+                .foregroundStyle(CHTheme.accent)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(CHTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            }
+            VStack(alignment: .leading, spacing: 14) {
+                slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, unit: .ev)
+                slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, unit: .signedPercent)
+                slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, unit: .percent)
+                slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, unit: .signedPercent)
+                warmthRow
+            }
+            .disabled(learnedActive)
+            .opacity(learnedActive ? 0.45 : 1)
             toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
                 .onChange(of: model.recipe.autoStraighten) { _, _ in model.recipeChanged() }
             Divider().overlay(CHTheme.border)

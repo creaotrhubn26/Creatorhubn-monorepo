@@ -251,7 +251,9 @@ enum LearnedStyle {
         // hud-tone (a*≈11 — fikser oransje/flekkete varme) + lett utjevning +
         // ansikts-dodge. Uten dette går lys hud i varmt vinduslys ujevn.
         out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
-        out = SkinSmoothFilter.apply(amount: 0.4, to: out)
+        // Ordentlig hud-finish: varme + vibrance (liv, ikke pale) + dimensjon +
+        // tekstur-bevarende utjevning — mot «blek/flat/livløs».
+        out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
 
         // LOKAL per-region: nøytraliser BAKGRUNNEN uavhengig av motivet (Vision
