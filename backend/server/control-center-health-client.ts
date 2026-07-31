@@ -27,6 +27,7 @@
  */
 
 import type { Pool } from "pg";
+import { resolveB2Key } from "./b2-key-registry.js";
 
 export type HealthService =
   | "api"
@@ -177,8 +178,13 @@ async function probeFrontend(): Promise<HealthCheck> {
  * eksplisitt health-URL. Ingen → not_configured.
  */
 async function probeStorage(): Promise<HealthCheck> {
-  const b2KeyId = readEnv("B2_APPLICATION_KEY_ID");
-  const b2AppKey = readEnv("B2_APPLICATION_KEY");
+  // Helsesjekken bruker admin-nøkkelen når den finnes, ellers plattformens
+  // fellesnøkkel. Den beviser at B2-auth virker i det hele tatt — å bruke
+  // en snever rolle her ville gjort at sjekken feilet av riktige grunner
+  // og dermed vært ubrukelig som helsesignal.
+  const adminKey = resolveB2Key("admin");
+  const b2KeyId = adminKey?.keyId ?? readEnv("B2_APPLICATION_KEY_ID");
+  const b2AppKey = adminKey?.applicationKey ?? readEnv("B2_APPLICATION_KEY");
   if (b2KeyId && b2AppKey) {
     const apiBase = readEnv("B2_API_BASE") ?? "https://api.backblazeb2.com";
     const auth = Buffer.from(`${b2KeyId}:${b2AppKey}`).toString("base64");

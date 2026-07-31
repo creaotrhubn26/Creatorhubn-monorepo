@@ -39,6 +39,9 @@ export type B2KeyRole =
   | "capture-delete"
   | "uploads-read"
   | "uploads-write"
+  | "documents"
+  | "media-worker"
+  | "user-storage"
   | "archive"
   | "admin";
 
@@ -97,6 +100,51 @@ export const B2_ROLE_SPECS: Record<B2KeyRole, B2RoleSpec> = {
     envSuffix: "UPLOADS_WRITE",
     requiredCapabilities: ["listFiles", "writeFiles", "shareFiles"],
     purpose: "Lagring av ferdig assemblede opplastinger.",
+  },
+  documents: {
+    role: "documents",
+    envSuffix: "DOCUMENTS",
+    // Sletting er med her, i motsetning til capture. Et pitch-deck eller
+    // et partnerdokument er noe brukeren selv oppretter og fjerner igjen;
+    // å dele det i to nøkler ville gitt to nøkler for én CRUD-flate uten
+    // at noe faktisk ble tryggere.
+    requiredCapabilities: [
+      "listFiles",
+      "readFiles",
+      "writeFiles",
+      "deleteFiles",
+      "shareFiles",
+    ],
+    purpose:
+      "Pitch-decks, partnerdokumenter, salgsmateriell, academy-innhold.",
+  },
+  "media-worker": {
+    role: "media-worker",
+    envSuffix: "MEDIA_WORKER",
+    requiredCapabilities: [
+      "listFiles",
+      "readFiles",
+      "writeFiles",
+      "deleteFiles",
+      "shareFiles",
+    ],
+    purpose:
+      "Bakgrunnsjobber som lager avledet media: redigeringsjobber, " +
+      "foto-forbedring, LUT-er. Rydder etter seg selv, derfor deleteFiles.",
+  },
+  "user-storage": {
+    role: "user-storage",
+    envSuffix: "USER_STORAGE",
+    requiredCapabilities: [
+      "listFiles",
+      "readFiles",
+      "writeFiles",
+      "deleteFiles",
+      "shareFiles",
+    ],
+    purpose:
+      "Brukerens egen filflate i Role Room (role_room_user_files) og " +
+      "purge-worker'en som rydder soft-slettede filer.",
   },
   archive: {
     role: "archive",

@@ -25,25 +25,14 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { b2StoreFor } from "./b2-client-factory.js";
 
 const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 const DEFAULT_FREE_QUOTA_BYTES = 1_073_741_824; // 1 GiB
 
 function getAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  return b2StoreFor("user-storage", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 export interface UserBucket {

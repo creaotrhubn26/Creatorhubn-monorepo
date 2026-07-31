@@ -65,6 +65,8 @@ import {
   normalizePhotoEnhancerExif,
   parsePhotoEnhancerXmpSidecar,
 } from "./photo-enhancer-profiles.js";
+import { b2ClientFor } from "./b2-client-factory.js";
+import { resolveB2Key } from "./b2-key-registry.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1602,10 +1604,12 @@ let photoEnhancerB2Client: S3Client | null = null;
 function buildPhotoEnhancerB2Config(): { enabled: boolean; endpoint: string; bucket: string; region: string } {
   const region = process.env.B2_REGION || "eu-central-003";
   const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME || "";
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "";
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY || "";
+  // Spør registret om nøkkelen finnes i stedet for å lese env direkte —
+  // ellers ville denne sagt «ikke konfigurert» for en rolle som har sin
+  // egen nøkkel men ingen fellesnøkkel.
+  const hasKey = resolveB2Key("media-worker") !== null;
   return {
-    enabled: Boolean(bucket && keyId && appKey),
+    enabled: Boolean(bucket && hasKey),
     endpoint: `https://s3.${region}.backblazeb2.com`,
     bucket,
     region,
@@ -1615,17 +1619,9 @@ function buildPhotoEnhancerB2Config(): { enabled: boolean; endpoint: string; buc
 function getPhotoEnhancerB2Client(): S3Client | null {
   const cfg = buildPhotoEnhancerB2Config();
   if (!cfg.enabled) return null;
-  if (photoEnhancerB2Client) return photoEnhancerB2Client;
-  photoEnhancerB2Client = new S3Client({
-    region: cfg.region,
-    endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "",
-      secretAccessKey: process.env.B2_ROLE_ROOM_APPLICATION_KEY || "",
-    },
-    forcePathStyle: true,
-  });
-  return photoEnhancerB2Client;
+  // Foto-forbedringen lager og rydder avledet media — media-worker.
+  // Fabrikken cacher selv, så den lokale cachen er ikke lenger nødvendig.
+  return b2ClientFor("media-worker");
 }
 
 function isAllowedPhotoEnhancerB2Object(bucket: string | null | undefined, key: string | null | undefined) {

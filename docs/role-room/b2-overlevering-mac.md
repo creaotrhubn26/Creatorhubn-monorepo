@@ -45,7 +45,19 @@ b2 key create --bucket "$BUCKET" trr-capture-delete listFiles,readFiles,deleteFi
 
 b2 key create --bucket "$BUCKET" trr-uploads-read  listFiles,readFiles,shareFiles
 b2 key create --bucket "$BUCKET" trr-uploads-write listFiles,writeFiles,shareFiles
+
+# Arkivet leser og skriver, men sletter ikke.
 b2 key create --bucket "$BUCKET" trr-archive       listFiles,readFiles,writeFiles,shareFiles
+
+# Dokumenter, avledet media og brukerens egen filflate. Alle tre har
+# deleteFiles: dette er innhold brukeren selv oppretter og fjerner igjen,
+# og å dele det i to nøkler ville gitt to nøkler for én CRUD-flate.
+b2 key create --bucket "$BUCKET" trr-documents \
+  listFiles,readFiles,writeFiles,deleteFiles,shareFiles
+b2 key create --bucket "$BUCKET" trr-media-worker \
+  listFiles,readFiles,writeFiles,deleteFiles,shareFiles
+b2 key create --bucket "$BUCKET" trr-user-storage \
+  listFiles,readFiles,writeFiles,deleteFiles,shareFiles
 
 # Admin er bred med vilje — men skal da bare brukes av admin-flatene.
 b2 key create --bucket "$BUCKET" trr-admin \
@@ -63,18 +75,21 @@ B2_KEY_CAPTURE_WRITE_ID=…       B2_KEY_CAPTURE_WRITE_SECRET=…
 B2_KEY_CAPTURE_DELETE_ID=…      B2_KEY_CAPTURE_DELETE_SECRET=…
 B2_KEY_UPLOADS_READ_ID=…        B2_KEY_UPLOADS_READ_SECRET=…
 B2_KEY_UPLOADS_WRITE_ID=…       B2_KEY_UPLOADS_WRITE_SECRET=…
+B2_KEY_DOCUMENTS_ID=…           B2_KEY_DOCUMENTS_SECRET=…
+B2_KEY_MEDIA_WORKER_ID=…        B2_KEY_MEDIA_WORKER_SECRET=…
+B2_KEY_USER_STORAGE_ID=…        B2_KEY_USER_STORAGE_SECRET=…
 B2_KEY_ARCHIVE_ID=…             B2_KEY_ARCHIVE_SECRET=…
 B2_KEY_ADMIN_ID=…               B2_KEY_ADMIN_SECRET=…
 ```
 
-Når alle sju er på plass:
+Når alle ti er på plass:
 
 ```
 B2_REQUIRE_SCOPED_KEYS=true
 ```
 
 Da blir fallback til fellesnøkkelen en feil i stedet for en stille
-nedgradering. Sett den **først** når alle sju er inne — ellers stopper
+nedgradering. Sett den **først** når alle ti er inne — ellers stopper
 opplastinger.
 
 Verifiser at avgrensningen faktisk virker. Dette skal **feile**:
@@ -94,12 +109,14 @@ B2_APPLICATION_KEY=<capture-write-secret> \
 Får du 200 på noen av dem, er nøkkelen opprettet med feil kapabiliteter.
 En nøkkel som «virker» på alt er nøyaktig problemet vi prøvde å fjerne.
 
-De atten modulene som fortsatt leser fellesnøkkelen direkte
-(`admin-academy-b2-routes`, `pitch-deck-asset-service`,
-`sales-leadership-routes`, `admin-system-backup-routes`,
-`b2-archive-helper`, m.fl.) er **ikke** flyttet over. De vil fortsette å
-bruke `B2_ROLE_ROOM_*`. Behold den nøkkelen til de er migrert hver for
-seg.
+Alle modulene går nå gjennom `b2-client-factory`. Behold likevel
+`B2_ROLE_ROOM_APPLICATION_KEY_ID`/`_KEY` til `B2_REQUIRE_SCOPED_KEYS=true`
+er satt — det er fortsatt fallbacken.
+
+Én ting å merke seg: academy-materiellet defaulter til **us-west-001**,
+ikke fellesregionen. Ligger den bøtta et annet sted, må `B2_REGION` settes
+deretter — B2 kaster ikke exception på feil region, den skriver bare feil
+sted.
 
 ---
 

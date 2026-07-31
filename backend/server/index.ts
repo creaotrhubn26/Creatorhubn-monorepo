@@ -47533,15 +47533,13 @@ app.get("/api/notifications/active", (req, res) => {
 let _showcaseB2Cache: { client: any; bucket: string } | null | undefined;
 async function getShowcaseB2(): Promise<{ client: any; bucket: string } | null> {
   if (_showcaseB2Cache !== undefined) return _showcaseB2Cache;
-  const keyId = process.env.B2_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_APPLICATION_KEY;
   const bucket = process.env.B2_BUCKET_NAME;
-  const region = process.env.B2_REGION;
-  if (!keyId || !appKey || !bucket || !region) { _showcaseB2Cache = null; return null; }
+  if (!bucket) { _showcaseB2Cache = null; return null; }
   try {
-    const { S3Client } = await import("@aws-sdk/client-s3");
-    const endpoint = process.env.B2_ENDPOINT || `https://s3.${region}.backblazeb2.com`;
-    _showcaseB2Cache = { client: new S3Client({ region, endpoint, credentials: { accessKeyId: keyId, secretAccessKey: appKey } }), bucket };
+    // Showcase-media er avledet innhold en bakgrunnsjobb lager og rydder.
+    const { b2ClientFor } = await import("./b2-client-factory.js");
+    const client = b2ClientFor("media-worker");
+    _showcaseB2Cache = client ? { client, bucket } : null;
   } catch { _showcaseB2Cache = null; }
   return _showcaseB2Cache;
 }

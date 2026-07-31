@@ -32,6 +32,7 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { b2ClientFor } from "./b2-client-factory.js";
 
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
@@ -58,23 +59,14 @@ interface B2Config {
 }
 
 function getB2Config(envPrefix: string): B2Config | null {
-  const keyId = process.env[`${envPrefix}APPLICATION_KEY_ID`];
-  const appKey = process.env[`${envPrefix}APPLICATION_KEY`];
   const bucketName = process.env[`${envPrefix}BUCKET_NAME`];
+  if (!bucketName) return null;
 
-  if (!keyId || !appKey || !bucketName) {
-    return null;
-  }
-
-  const client = new S3Client({
-    region: B2_REGION,
-    endpoint: B2_ENDPOINT,
-    credentials: {
-      accessKeyId: keyId,
-      secretAccessKey: appKey,
-    },
-    forcePathStyle: true,
-  });
+  // Admin-rollen, ikke arkivrollen: begge rutene her sletter objekter, og
+  // arkivnøkkelen har med vilje ikke deleteFiles. Hele flaten er gated på
+  // requireAdminSession, så admin-nøkkelen er den ærlige matchen.
+  const client = b2ClientFor("admin", B2_REGION);
+  if (!client) return null;
 
   return { bucketName, client };
 }
