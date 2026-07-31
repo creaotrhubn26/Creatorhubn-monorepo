@@ -251,7 +251,7 @@ Dette må avklares når fristene settes.
 | 239 | Fullverdig mobilapp | ❌ | **Ingen mobilapp i repoet.** `ipad/` har `CaptureApp` og `LeadMapApp` — begge iPad-native for fotograf/salg, ingen av dem talentvendt |
 | 240 | Offline callsheet | 🟡 | `OutboxKit` er offline-køen, allerede trukket ut som delt pakke — men den er i CaptureApp, ikke i en talentapp |
 | 241 | Mørk modus | 🟡 | **Omvendt av det doken antar:** `casting-main.tsx` hardkoder `palette: { mode: 'dark' }`. Role Room *er* mørk, permanent. Det finnes ingen lys modus og ingen bryter |
-| 242 | WCAG 2.1 AA | 🟡 | To spor finnes: `frontend/e2e/dance-a11y-axe.spec.ts` (én flate) og en Lighthouse-terskel `accessibility ≥ 0.9` som **error**. Men Lighthouse-oppsettet kjører ikke — se 249 |
+| 242 | WCAG 2.1 AA | 🟡 | To spor: `frontend/e2e/dance-a11y-axe.spec.ts` (én flate) og Lighthouse-terskelen `accessibility ≥ 0.9` som **error** — som nå faktisk kjører, se 249. Lighthouse dekker ikke hele WCAG AA, men gir en nattlig vaktpost der det før ikke var noen |
 | 243 | Skjermleser-testet søknadsflyt | ❌ | Ingen søknadsflyt å teste |
 | 244 | Enhåndsbruk / store trykkflater | 🟡 | `RoleRoomMobileBriefWizard.tsx` er en mobiloptimalisert flate. Ikke et krav håndhevet noe sted |
 | 245 | Nynorsk + engelsk | ❌ | Se merknaden under — verre enn fraværende |
@@ -272,16 +272,38 @@ bruker hverken `useLanguage` eller oversettelser, og hardkoder
 `Intl.DateTimeFormat('nb-NO')`. Talentflaten er norsk-bare, uavhengig av
 språkvelgeren.
 
-**⚠️ 249: målestokken finnes, men måler feil ting og kjører ikke.**
-`frontend/lighthouserc.json` har reelle terskler — FCP 2500 ms, LCP
-4000 ms, CLS 0.1 som `error`. Tre problemer:
+**249: målestokken fantes, men målte feil ting og kjørte ikke.** ✅ Rettet.
 
-1. `preset: "desktop"` — punktet handler om **4G på mobil**
-2. URL-ene er `/`, `/nextrole`, `/privacy-policy` — tre markedsføringssider, **ingen talentflate**
-3. Ingen workflow i `.github/workflows/` kaller den, så den kjører aldri
+`frontend/lighthouserc.json` hadde reelle terskler — men `preset: "desktop"`
+(punktet handler om **4G på mobil**), URL-er som bare dekket
+markedsføringssider, og ingen workflow som kalte den.
 
-Det er billigere å rette enn å bygge: bytt preset, legg til talentportalens
-URL, koble den til CI. Da får 242 og 249 en vaktpost samtidig.
+Alle tre er nå rettet:
+
+| Var | Er |
+| --- | --- |
+| `preset: "desktop"` | mobil 412×823, simulert treg 4G, 4× CPU |
+| 3 markedsførings-URL-er | 5, inkludert `theroleroom.com/talentportal` |
+| `numberOfRuns: 1` | 3 — mobiltall varierer for mye til å bære en terskel |
+| Ingen workflow | `.github/workflows/lighthouse-audit.yml`, nattlig |
+
+**Hostvalget er ikke tilfeldig:** `/talentportal` bootstrapper bare på
+`theroleroom.com`. På `creatorhubn.com` laster Role Room ikke i det hele
+tatt (`ROLE_ROOM_DEDICATED_HOSTS` i `utils/runtime.ts`), så URL-en måtte ha
+den hosten for å måle noe.
+
+Den måler den **uinnloggede** skjermen — portalen krever innlogging. Det er
+fortsatt riktig: det er samme bundle og samme first paint, og det er den
+delen 4G straffer.
+
+Verifisert ved å faktisk kjøre Lighthouse mot en lokal side (produksjon er
+ikke naabar herfra — proxyens TLS-interception gir interstitial). Rapporten
+bekrefter at innstillingene treffer, og en midlertidig stram terskel
+bekrefter at `error`-nivået avslutter med kode 1.
+
+Ytelsestersklene står som `warn` inntil det finnes en mobil-baseline; en
+rød gate uten baseline blir ignorert i stedet for fikset. `accessibility`
+og `cumulative-layout-shift` beholder `error` — ingenting er løsnet.
 
 **239 er reell.** Det finnes ingen mobilapp, og doken har rett i at den
 er en paraply. Men `OutboxKit`, `NetworkingKit`, axe-oppsettet og
@@ -377,7 +399,7 @@ finnes, og skiller det som faktisk blokkerer fra det som bare er viktig:
 | **179–182** | Self-tape-flate | Server er ferdig. Klientjobb |
 | **212** | Varsel ved profilvisning | `talent_access_audit` har dataene. Mangler bare en leser |
 | **237** | PDF-CV | Eksportmaskineriet finnes. Én mal og én join |
-| **249+242** | Ytelse og WCAG | Lighthouse-konfigurasjonen finnes. Bytt preset til mobil, legg til talentportalens URL, koble den til CI. To punkter for én jobb |
+| ~~249+242~~ | ~~Ytelse og WCAG~~ | **Gjort.** Mobil/4G-preset, talentportalens URL, nattlig workflow |
 | **223** | Blokkering | Doken sier «lav innsats, høy trygghetsverdi». Verifisert fraværende, og jeg er enig i vurderingen |
 
 ### Krever beslutning før kode
@@ -435,8 +457,9 @@ Grunnen til at første runde bommet er den samme hver gang: jeg søkte i
    observasjonen her som handler om noe annet enn planlegging.
 2. **245 er ikke et hull, men en aktiv sammenslåing.** Nynorsk normaliseres
    til bokmål i typen. Det endrer hva jobben er.
-3. **249 og 242 deler en ubrukt vaktpost.** Lighthouse-konfigurasjonen
-   finnes, måler desktop på markedsføringssider, og kjøres ikke av noen.
+3. ~~**249 og 242 deler en ubrukt vaktpost.**~~ Rettet: konfigurasjonen
+   måler nå mobil på treg 4G, inkluderer talentportalen, og kjøres nattlig
+   av `lighthouse-audit.yml`.
 
 Kartleggingen er fortsatt **statisk** — tabeller, ruter og filnavn. At en
 rute finnes betyr ikke at flaten bruker den, og at en tabell finnes betyr
