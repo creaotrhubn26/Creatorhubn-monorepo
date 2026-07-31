@@ -80,6 +80,7 @@ import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoici
 import { lookupPeppolParticipant } from '../invoicing/peppol-lookup.js';
 import { buildPaymentFile, listPayableInvoices, recordPaymentExports } from '../ledger/payments.js';
 import { computeDeadlines, type OrgForm } from '../ledger/deadlines.js';
+import { assessDeduction } from '../ledger/deduction-advisor.js';
 import { IdPortenClient, generatePkce, randomToken } from '../integrations/idporten.js';
 import { getStatus as idportenStatus, getValidAccessToken, saveLoginState, saveSession, takeLoginState } from '../integrations/idporten-session.js';
 import {
@@ -187,6 +188,8 @@ export interface ApiDeps {
   aiExtraction?: boolean | undefined;
   /** Claude-modell brukt til bilagslesing (til KI-transparens). */
   aiModel?: string | undefined;
+  /** Anthropic-nøkkel for AI-formulering (fradragshjelper). Uten → deterministisk. */
+  anthropicApiKey?: string | undefined;
   /** Oppslag mot MVA-registeret (Brreg åpne data). Uten denne er kontrollen utilgjengelig. */
   vatRegister?: VatRegisterLookup | undefined;
   /** Fullt virksomhetsoppslag (Enhetsregisteret) til kunde-/leverandørrisiko. */
@@ -4021,6 +4024,14 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // ── «Kan jeg trekke fra dette?» — kildekritisk fradragshjelper ────────────
+  app.post('/api/organizations/:orgId/deduction/ask', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ question: z.string().min(2).max(500) }).parse(req.body);
+      res.json(toJson(await assessDeduction(body.question, { ...(deps.anthropicApiKey ? { apiKey: deps.anthropicApiKey } : {}), ...(deps.aiModel ? { model: deps.aiModel } : {}) })));
+    } catch (err) { next(err); }
+  });
 
   // ── Frister & forpliktelser (lovbestemte frister med nedtelling) ──────────
   app.get('/api/organizations/:orgId/deadlines', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {

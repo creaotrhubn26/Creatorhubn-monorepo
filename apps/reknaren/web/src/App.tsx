@@ -27,6 +27,7 @@ import { DimensionsScreen } from './screens-dimensions';
 import { FixedAssetsScreen } from './screens-assets';
 import { PaymentsScreen } from './screens-payments';
 import { DeadlinesScreen } from './screens-deadlines';
+import { DeductionScreen } from './screens-deduction';
 import { InvoicingScreen } from './screens-invoicing';
 import { OrgSettingsScreen } from './screens-org';
 import { AuditScreen, JournalScreen, LedgerScreen } from './screens-pro';
@@ -70,6 +71,7 @@ type Screen =
   | { name: 'calendar' }
   | { name: 'planning' }
   | { name: 'deadlines' }
+  | { name: 'deduction' }
   | { name: 'period-close' }
   | { name: 'assistant' }
   | { name: 'agreements' }
@@ -115,6 +117,7 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
     section: 'Innsikt',
     items: [
       { key: 'ask', label: 'Spør virksomheten', icon: 'mail' },
+      { key: 'deduction', label: 'Kan jeg trekke fra?', icon: 'shield' },
       { key: 'planning', label: 'Framover', icon: 'chart' },
       { key: 'deadlines', label: 'Frister', icon: 'shield' },
       { key: 'calendar', label: 'Betalingskalender', icon: 'chart' },
@@ -351,6 +354,7 @@ export default function App() {
           {screen.name === 'assets' && <FixedAssetsScreen orgId={orgId} />}
           {screen.name === 'payments' && <PaymentsScreen orgId={orgId} />}
           {screen.name === 'deadlines' && <DeadlinesScreen orgId={orgId} onNavigate={(name) => setScreen({ name } as Screen)} />}
+          {screen.name === 'deduction' && <DeductionScreen orgId={orgId} />}
           {screen.name === 'ledger' && <LedgerScreen orgId={orgId} />}
           {screen.name === 'journal' && <JournalScreen orgId={orgId} />}
           {screen.name === 'audit' && <AuditScreen orgId={orgId} />}

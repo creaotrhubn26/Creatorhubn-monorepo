@@ -57,6 +57,7 @@ const app = createApiServer({
   ocrStatus,
   aiExtraction: Boolean(config.anthropicApiKey),
   aiModel: config.aiModel,
+  anthropicApiKey: config.anthropicApiKey,
   // Åpne data fra Brønnøysundregistrene — ekte klient, ingen nøkkel kreves.
   vatRegister: new BrregVatRegisterClient(),
   // Fullt Enhetsregister-oppslag til kunde-/leverandørrisiko (åpne data).
