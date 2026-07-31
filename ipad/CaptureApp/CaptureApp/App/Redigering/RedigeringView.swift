@@ -378,6 +378,9 @@ struct RedigeringView: View {
     @State private var inspectorOpen = true
     /// Histogram + clipping-varsel-overlegg på sammenlignings-bildet.
     @State private var showHistogram = false
+    /// Vis motiv-maske-overlegg (hva AI segmenterer/behandler lokalt).
+    @State private var showMaskOverlay = ProcessInfo.processInfo.arguments.contains("--mask-on")
+    @State private var maskOverlay: UIImage?
 
     var body: some View {
         NavigationStack {
@@ -398,6 +401,14 @@ struct RedigeringView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 14) {
+                        Button {
+                            showMaskOverlay.toggle()
+                            Task { await updateMaskOverlay() }
+                        } label: {
+                            Image(systemName: "person.crop.rectangle.stack")
+                                .foregroundStyle(showMaskOverlay ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis motiv-maske (per-region)")
                         Button {
                             showHistogram.toggle()
                         } label: {
@@ -490,9 +501,22 @@ struct RedigeringView: View {
             rendering: model.rendering,
             zoom: $zoom,
             showHistogram: showHistogram,
+            maskOverlay: showMaskOverlay ? maskOverlay : nil,
         )
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .onChange(of: model.afterImage) { _, _ in Task { await updateMaskOverlay() } }
+    }
+
+    /// Beregn motiv-maske-overlegget fra «Etter»-bildet (Vision, off-main).
+    private func updateMaskOverlay() async {
+        guard showMaskOverlay, let after = model.afterImage, let cg = after.cgImage else {
+            maskOverlay = nil; return
+        }
+        maskOverlay = await Task.detached(priority: .userInitiated) {
+            SubjectSegmentation.subjectOverlay(
+                for: cg, extent: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        }.value
     }
 
     private var toolbarRow: some View {
@@ -672,6 +696,7 @@ struct BeforeAfterCompare: View {
     let rendering: Bool
     @Binding var zoom: CGFloat
     var showHistogram: Bool = false
+    var maskOverlay: UIImage?
     @State private var split: CGFloat = 0.5
     @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
@@ -692,6 +717,11 @@ struct BeforeAfterCompare: View {
                         .mask(alignment: .leading) {
                             Rectangle().frame(width: geo.size.width * effSplit)
                         }
+                }
+                if let maskOverlay {
+                    Image(uiImage: maskOverlay).resizable().scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                        .opacity(0.4).allowsHitTesting(false)
                 }
                 labels
                 if !holdingOriginal { handle(in: geo) }
