@@ -9,11 +9,15 @@
  *      dedicated `reference-archive/` prefix and sign 7-day GET URLs.
  */
 
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import { buildCaptureR2Config } from './capture-upload-service.js';
+import {
+  captureStoreForWrite,
+  captureStoreHandleForKey,
+  type CaptureStoreHandle,
+} from './capture-upload-service.js';
 import { logAIUsage } from './ai-usage-tracker.js';
 
 const MAX_IMAGE_BASE64_BYTES = 6 * 1024 * 1024; // ~4.5 MB decoded
@@ -263,24 +267,10 @@ export async function analyseFrame(input: AnalyseFrameInput): Promise<AnalyseFra
 
 const READ_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d — AWS/R2 hard ceiling
 
-let storageClient: S3Client | null = null;
-
-function getStorageClient(): { client: S3Client; bucket: string } | null {
-  const cfg = buildCaptureR2Config();
-  if (!cfg.enabled || !cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
-    return null;
-  }
-  if (!storageClient) {
-    storageClient = new S3Client({
-      region: 'auto',
-      endpoint: cfg.endpoint,
-      credentials: {
-        accessKeyId: cfg.accessKeyId,
-        secretAccessKey: cfg.secretAccessKey,
-      },
-    });
-  }
-  return { client: storageClient, bucket: cfg.bucket };
+function getStorageClient(key?: string): CaptureStoreHandle | null {
+  // Uten nøkkel: hvor nye referansebilder skrives. Med nøkkel: hvor DET
+  // bildet ligger — bilder fra før B2 ble primær ligger fortsatt i R2.
+  return key === undefined ? captureStoreForWrite() : captureStoreHandleForKey(key);
 }
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -303,7 +293,8 @@ export async function uploadFrameToR2(input: {
   if (!storage) return { ok: false, error: 'storage_not_configured' };
 
   const ext = EXT_BY_MIME[input.mime] ?? 'bin';
-  const key = `reference-archive/${input.ownerUserId}/${randomUUID()}.${ext}`;
+  // Prefikset lar nøkkelen rutes tilbake til riktig lager ved lesing.
+  const key = `${storage.prefix}reference-archive/${input.ownerUserId}/${randomUUID()}.${ext}`;
   const body = Buffer.from(input.imageBase64, 'base64');
 
   try {

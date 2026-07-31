@@ -9,11 +9,15 @@
  * (frie koreografier følger alltid med så de er synlige i alle scoper).
  */
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import { buildCaptureR2Config } from './capture-upload-service.js';
+import {
+  captureStoreForWrite,
+  captureStoreHandleForKey,
+  type CaptureStoreHandle,
+} from './capture-upload-service.js';
 
 export type SegmentKind =
   | 'intro'
@@ -454,24 +458,10 @@ export async function deleteChoreography(
 
 const MUSIC_READ_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7d — R2 hard ceiling
 
-let musicStorageClient: S3Client | null = null;
-
-function getMusicStorage(): { client: S3Client; bucket: string } | null {
-  const cfg = buildCaptureR2Config();
-  if (!cfg.enabled || !cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
-    return null;
-  }
-  if (!musicStorageClient) {
-    musicStorageClient = new S3Client({
-      region: 'auto',
-      endpoint: cfg.endpoint,
-      credentials: {
-        accessKeyId: cfg.accessKeyId,
-        secretAccessKey: cfg.secretAccessKey,
-      },
-    });
-  }
-  return { client: musicStorageClient, bucket: cfg.bucket };
+function getMusicStorage(key?: string): CaptureStoreHandle | null {
+  // Uten nøkkel: hvor ny musikk skrives. Med nøkkel: hvor DET sporet
+  // ligger — spor lastet opp før B2 ble primær ligger fortsatt i R2.
+  return key === undefined ? captureStoreForWrite() : captureStoreHandleForKey(key);
 }
 
 const AUDIO_EXT_BY_MIME: Record<string, string> = {
@@ -507,7 +497,8 @@ export async function uploadChoreographyMusicToR2(input: {
   const ext = AUDIO_EXT_BY_MIME[mime];
   if (!ext) return { ok: false, error: 'unsupported_mime', detail: `Got ${input.mime}` };
 
-  const key = `dance-music/${input.ownerUserId}/${input.choreographyId}/${randomUUID()}.${ext}`;
+  // Prefikset lar nøkkelen rutes tilbake til riktig lager ved lesing.
+  const key = `${storage.prefix}dance-music/${input.ownerUserId}/${input.choreographyId}/${randomUUID()}.${ext}`;
 
   try {
     await storage.client.send(
@@ -534,7 +525,7 @@ export async function uploadChoreographyMusicToR2(input: {
  * null if storage isn't configured.
  */
 export async function signMusicUrl(storageKey: string): Promise<string | null> {
-  const storage = getMusicStorage();
+  const storage = getMusicStorage(storageKey);
   if (!storage) return null;
   try {
     return await getSignedUrl(

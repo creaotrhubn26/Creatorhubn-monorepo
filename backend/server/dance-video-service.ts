@@ -2,7 +2,7 @@
  * Dance video service — review-stack DB-lag.
  *
  * Eier `dance_video_clip` (0066) + `dance_video_annotation` (0067).
- * Filer ligger i R2 via samme buildCaptureR2Config-stack som
+ * Filer ligger i objektlageret via samme capture-stack som
  * choreography music. Annotations støtter threading via parent_id og er
  * sortert per (clip, timestamp).
  *
@@ -10,11 +10,15 @@
  * feltene er forhåndsmodellerte men skrives først i V2/V3.
  */
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import { buildCaptureR2Config } from './capture-upload-service.js';
+import {
+  captureStoreForWrite,
+  captureStoreHandleForKey,
+  type CaptureStoreHandle,
+} from './capture-upload-service.js';
 
 export type VideoClipKind = 'rehearsal' | 'reference' | 'performance';
 export type AnnotationStatus = 'open' | 'resolved';
@@ -139,21 +143,16 @@ function mapAnnotationRow(row: Record<string, unknown>): VideoAnnotation {
 
 const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-let storageClient: S3Client | null = null;
-
-function getStorage(): { client: S3Client; bucket: string } | null {
-  const cfg = buildCaptureR2Config();
-  if (!cfg.enabled || !cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
-    return null;
-  }
-  if (!storageClient) {
-    storageClient = new S3Client({
-      region: 'auto',
-      endpoint: cfg.endpoint,
-      credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
-    });
-  }
-  return { client: storageClient, bucket: cfg.bucket };
+/**
+ * Lageret for et klipp.
+ *
+ * Uten nøkkel: hvor nye klipp skal skrives (B2 når det er konfigurert).
+ * Med nøkkel: hvor DET klippet ligger. Klipp lastet opp før B2 ble
+ * primær ligger fortsatt i R2, og å slå opp dagens primærvalg ville lett
+ * etter dem på feil sted.
+ */
+function getStorage(key?: string): CaptureStoreHandle | null {
+  return key === undefined ? captureStoreForWrite() : captureStoreHandleForKey(key);
 }
 
 const VIDEO_EXT_BY_MIME: Record<string, string> = {
@@ -187,7 +186,9 @@ export async function uploadVideoToR2(input: {
   const ext = VIDEO_EXT_BY_MIME[input.mime.toLowerCase()];
   if (!ext) return { ok: false, error: 'unsupported_mime', detail: `Got ${input.mime}` };
 
-  const key = `dance-video/${input.pathSegment}/${input.ownerUserId}/${randomUUID()}.${ext}`;
+  // Prefikset er det som gjør at nøkkelen kan rutes tilbake til riktig
+  // lager senere — uten det ville et B2-klipp blitt lett etter i R2.
+  const key = `${storage.prefix}dance-video/${input.pathSegment}/${input.ownerUserId}/${randomUUID()}.${ext}`;
   try {
     await storage.client.send(new PutObjectCommand({
       Bucket: storage.bucket,
@@ -207,7 +208,7 @@ export async function uploadVideoToR2(input: {
 }
 
 export async function refreshSignedUrl(storageKey: string): Promise<string | null> {
-  const storage = getStorage();
+  const storage = getStorage(storageKey);
   if (!storage) return null;
   try {
     return await getSignedUrl(

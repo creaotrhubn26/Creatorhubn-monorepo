@@ -158,6 +158,45 @@ export function captureStoreForKey(key: string): CaptureStoreConfig {
   return buildCaptureR2Config();
 }
 
+export interface CaptureStoreHandle {
+  client: S3Client;
+  bucket: string;
+  backend: CaptureStoreBackend;
+  /// Prefiks nye nøkler må skrives under for at captureStoreForKey skal
+  /// finne dem igjen. Tom streng for R2 er ikke riktig — R2 har sitt eget
+  /// prefiks — så bruk alltid dette framfor å gjette.
+  prefix: string;
+}
+
+/**
+ * Klient for lageret nye objekter skal skrives til.
+ *
+ * Modulene som lagrer sine egne ting — dansevideo, koreografimusikk,
+ * referansearkiv, foto-leveranse, marketing-preview — bygde tidligere
+ * hver sin S3-klient rett fra R2-konfigen. Fem kopier av samme oppsett
+ * som alle måtte endres hver for seg når primærlageret flyttet seg.
+ */
+export function captureStoreForWrite(): CaptureStoreHandle | null {
+  const cfg = captureWriteStore();
+  const client = getClient(cfg);
+  if (!client || !cfg.bucket) return null;
+  return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
+}
+
+/**
+ * Klient for lageret en GITT nøkkel ligger i.
+ *
+ * Bruk alltid denne til lesing. Objekter skrevet før B2 ble primær ligger
+ * fortsatt i R2, og å slå opp dagens primærvalg ville lett etter dem på
+ * feil sted.
+ */
+export function captureStoreHandleForKey(key: string): CaptureStoreHandle | null {
+  const cfg = captureStoreForKey(key);
+  const client = getClient(cfg);
+  if (!client || !cfg.bucket) return null;
+  return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
+}
+
 const clientCache = new Map<string, S3Client>();
 
 function getClient(cfg: CaptureStoreConfig): S3Client | null {
