@@ -24,8 +24,11 @@ struct RedigeringDemoView: View {
             if let a = args.first(where: { $0.hasPrefix("--learned-on") }) {
                 // «--learned-on» → stil 0; «--learned-on=N» → stil N; «=auto» → auto.
                 let val = a.split(separator: "=").last.map(String.init)
-                if val == "auto" { LearnedStyleStore.demoForceAuto = true }
-                else { LearnedStyleStore.demoForceStyleIndex = val.flatMap { Int($0) } ?? 0 }
+                if val == "auto" {
+                    LearnedStyleStore.demoForceAuto = true
+                } else {
+                    LearnedStyleStore.demoForceStyleIndex = val.flatMap { Int($0) } ?? 0
+                }
             }
             if SignInService.shared.session == nil {
                 SignInService.shared.setInMemoryDemoSession(

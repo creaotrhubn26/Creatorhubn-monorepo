@@ -378,6 +378,12 @@ struct RedigeringView: View {
     @State private var inspectorOpen = true
     /// Histogram + clipping-varsel-overlegg på sammenlignings-bildet.
     @State private var showHistogram = false
+    /// Vis motiv-maske-overlegg (hva AI segmenterer/behandler lokalt).
+    @State private var showMaskOverlay = ProcessInfo.processInfo.arguments.contains("--mask-on")
+    @State private var maskOverlay: UIImage?
+    /// Vis «AI-endringer»-heatmap (hvor + hvor mye redigeringen endret bildet).
+    @State private var showDiff = ProcessInfo.processInfo.arguments.contains("--diff-on")
+    @State private var diffOverlay: UIImage?
 
     var body: some View {
         NavigationStack {
@@ -398,6 +404,22 @@ struct RedigeringView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 14) {
+                        Button {
+                            showMaskOverlay.toggle()
+                            Task { await updateMaskOverlay() }
+                        } label: {
+                            Image(systemName: "person.crop.rectangle.stack")
+                                .foregroundStyle(showMaskOverlay ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis motiv-maske (per-region)")
+                        Button {
+                            showDiff.toggle()
+                            Task { await updateDiffOverlay() }
+                        } label: {
+                            Image(systemName: "square.on.square.dashed")
+                                .foregroundStyle(showDiff ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis AI-endringer (heatmap)")
                         Button {
                             showHistogram.toggle()
                         } label: {
@@ -490,9 +512,35 @@ struct RedigeringView: View {
             rendering: model.rendering,
             zoom: $zoom,
             showHistogram: showHistogram,
+            maskOverlay: showMaskOverlay ? maskOverlay : nil,
+            diffOverlay: showDiff ? diffOverlay : nil,
         )
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .onChange(of: model.afterImage) { _, _ in
+            Task { await updateMaskOverlay(); await updateDiffOverlay() }
+        }
+    }
+
+    /// Beregn «AI-endringer»-heatmap fra Før (preview) vs Etter (off-main).
+    private func updateDiffOverlay() async {
+        guard showDiff, let after = model.afterImage,
+              let path = model.selected?.previewKey ?? model.selected?.displayPreviewKey,
+              let before = UIImage(contentsOfFile: path) else { diffOverlay = nil; return }
+        diffOverlay = await Task.detached(priority: .userInitiated) {
+            DiffHeatmap.overlay(before: before, after: after)
+        }.value
+    }
+
+    /// Beregn motiv-maske-overlegget fra «Etter»-bildet (Vision, off-main).
+    private func updateMaskOverlay() async {
+        guard showMaskOverlay, let after = model.afterImage, let cg = after.cgImage else {
+            maskOverlay = nil; return
+        }
+        maskOverlay = await Task.detached(priority: .userInitiated) {
+            SubjectSegmentation.subjectOverlay(
+                for: cg, extent: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        }.value
     }
 
     private var toolbarRow: some View {
@@ -672,6 +720,8 @@ struct BeforeAfterCompare: View {
     let rendering: Bool
     @Binding var zoom: CGFloat
     var showHistogram: Bool = false
+    var maskOverlay: UIImage?
+    var diffOverlay: UIImage?
     @State private var split: CGFloat = 0.5
     @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
@@ -692,6 +742,16 @@ struct BeforeAfterCompare: View {
                         .mask(alignment: .leading) {
                             Rectangle().frame(width: geo.size.width * effSplit)
                         }
+                }
+                if let maskOverlay {
+                    Image(uiImage: maskOverlay).resizable().scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                        .opacity(0.4).allowsHitTesting(false)
+                }
+                if let diffOverlay {
+                    Image(uiImage: diffOverlay).resizable().scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                        .opacity(0.7).allowsHitTesting(false)
                 }
                 labels
                 if !holdingOriginal { handle(in: geo) }
@@ -781,10 +841,10 @@ struct SmartEditPanel: View {
                 .padding(10).background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, signed: true)
-            slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, signed: true)
-            slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, signed: false)
-            slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, signed: true)
+            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, unit: .ev)
+            slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, unit: .signedPercent)
+            slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, unit: .percent)
+            slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, unit: .signedPercent)
 
             warmthRow
             toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
@@ -843,13 +903,18 @@ struct SmartEditPanel: View {
         }
     }
 
-    private func slider(_ title: String, systemImage: String, value: Binding<Double>, range: ClosedRange<Double>, signed: Bool) -> some View {
+    /// Standardiserte verdi-enheter (fotografene forventer EV/prosent, ikke
+    /// interne modell-tall). `.ev` = ±X.XX EV · `.signedPercent` = ±100 ·
+    /// `.percent` = 0–100 %.
+    enum SliderUnit { case ev, signedPercent, percent }
+
+    private func slider(_ title: String, systemImage: String, value: Binding<Double>, range: ClosedRange<Double>, unit: SliderUnit) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Label(title, systemImage: systemImage).font(.subheadline).foregroundStyle(CHTheme.textPrimary)
                 Spacer()
-                Text(displayValue(value.wrappedValue, range: range, signed: signed))
-                    .font(.caption).foregroundStyle(CHTheme.accentSoft)
+                Text(displayValue(value.wrappedValue, unit: unit))
+                    .font(.caption.monospacedDigit()).foregroundStyle(CHTheme.accentSoft)
             }
             Slider(value: value, in: range) { editing in
                 if editing { model.beginEdit() } else { model.recipeChanged() }
@@ -858,9 +923,12 @@ struct SmartEditPanel: View {
         }
     }
 
-    private func displayValue(_ v: Double, range: ClosedRange<Double>, signed: Bool) -> String {
-        if signed { return String(format: "%+.0f", v * 100 / max(1, range.upperBound) * range.upperBound) }
-        return "\(Int(v * 100)) %"
+    private func displayValue(_ v: Double, unit: SliderUnit) -> String {
+        switch unit {
+        case .ev: return String(format: "%+.2f EV", v)
+        case .signedPercent: return String(format: "%+.0f", v * 100)
+        case .percent: return "\(Int(v * 100)) %"
+        }
     }
 
     private var warmthRow: some View {
