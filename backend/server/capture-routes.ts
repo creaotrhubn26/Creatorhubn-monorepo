@@ -33,6 +33,7 @@ import {
   uploadCaptureObject,
   type UploadError,
   signAssetReadUrlForMirror,
+  getAssetProjectId,
 } from './capture-upload-service.js';
 import { mirrorUploadToUserB2 } from './user-b2-mirror-worker.js';
 import {
@@ -40,6 +41,10 @@ import {
   recordStorageUsage,
   pushStorageUsageToStripe,
 } from './storage-quota-service.js';
+import {
+  canProductionStore,
+  recordStorageForProduction,
+} from './production-storage-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
@@ -920,20 +925,44 @@ export function createCaptureRouter(
     //
     // Sjekken skjer her, ikke ved complete: da har bytene allerede
     // passert nettet, og et avslag ville vært et løfte vi ikke kan holde.
-    const quota = await canUserUpload(pool, userId, parsed.data?.sizeBytes ?? 0);
-    if (!quota.ok) {
-      // 402 framfor 507: dette er en betalingsgrense, ikke en full disk.
-      // Klienten skal tilby oppgradering, ikke be brukeren prøve igjen.
-      res.status(402).json({
-        error: quota.reason ?? 'plan_limit_reached_no_overage',
-        message: quota.message,
-        quota: {
-          tier: quota.status.user.tier,
-          usedBytes: quota.status.usedBytes,
-          limitBytes: quota.status.user.storageLimitBytes,
-        },
-      });
-      return;
+    // Hører sesjonen til en produksjon, måles det mot produksjonens tak
+    // og kontoen som betaler for den. Ellers mot brukerens egen plan.
+    const wantedBytes = parsed.data?.sizeBytes ?? 0;
+    const projectId = await getAssetProjectId(db, userId, req.params.id);
+    if (projectId) {
+      const decision = await canProductionStore(pool, projectId, wantedBytes);
+      if (!decision.ok) {
+        // 402 framfor 507: dette er en betalingsgrense, ikke en full
+        // disk. Klienten skal tilby oppgradering, ikke be om ny forsøk.
+        res.status(402).json({
+          error: decision.reason,
+          message: decision.message,
+          quota: {
+            scope: 'production',
+            productionUsedBytes: decision.productionUsedBytes,
+            productionCapBytes: decision.productionCapBytes,
+            tier: decision.account?.user.tier ?? null,
+            usedBytes: decision.account?.usedBytes ?? null,
+            limitBytes: decision.account?.user.storageLimitBytes ?? null,
+          },
+        });
+        return;
+      }
+    } else {
+      const quota = await canUserUpload(pool, userId, wantedBytes);
+      if (!quota.ok) {
+        res.status(402).json({
+          error: quota.reason ?? 'plan_limit_reached_no_overage',
+          message: quota.message,
+          quota: {
+            scope: 'user',
+            tier: quota.status.user.tier,
+            usedBytes: quota.status.usedBytes,
+            limitBytes: quota.status.user.storageLimitBytes,
+          },
+        });
+        return;
+      }
     }
 
     const r = await startMultipartUpload(
@@ -999,21 +1028,57 @@ export function createCaptureRouter(
     // klienten oppga, slik at regnskapet følger det som faktisk ligger
     // i bøtta. Feiler bokføringen brytes ikke opplastingen — den er
     // fullført, og en manglende ledger-rad rettes ved reconcile.
+    //
+    // Hører sesjonen til en produksjon, er det produksjonen som eier
+    // bytene og kontoen bak den som betaler — ikke han som tilfeldigvis
+    // trykket opplast på iPad-en. Uten prosjekt finnes ingen produksjon
+    // å bokføre på, og da eier brukeren dem alene.
+    const ledgerRef = `${req.params.id}:${parsed.data?.kind ?? 'unknown'}`;
+    const ledgerMeta = {
+      objectKey: r.result.key,
+      fileName: r.result.originalFilename,
+    };
+    let billedUserId = userId;
     try {
-      await recordStorageUsage(
-        pool,
-        userId,
-        r.result.sizeBytes,
-        r.result.backend,
-        'capture_upload',
-        `${req.params.id}:${parsed.data?.kind ?? 'unknown'}`,
-        { sessionKey: r.result.key, fileName: r.result.originalFilename },
-      );
+      if (r.result.projectId) {
+        const booked = await recordStorageForProduction(
+          pool,
+          {
+            projectId: r.result.projectId,
+            actorUserId: userId,
+            deltaBytes: r.result.sizeBytes,
+            backend: r.result.backend,
+            reason: 'capture_upload',
+            relatedResourceId: ledgerRef,
+            metadata: ledgerMeta,
+          },
+          (billingUserId, bytes, backend) =>
+            recordStorageUsage(
+              pool, billingUserId, bytes, backend, 'capture_upload', ledgerRef,
+              { ...ledgerMeta, projectId: r.result.projectId, uploadedBy: userId },
+            ),
+        );
+        // Uten en fakturerbar konto ble ingenting bokført over. Da må
+        // bytene fortsatt havne et sted, ellers er de gratis.
+        if (booked.billingUserId) {
+          billedUserId = booked.billingUserId;
+        } else {
+          await recordStorageUsage(
+            pool, userId, r.result.sizeBytes, r.result.backend,
+            'capture_upload', ledgerRef, ledgerMeta,
+          );
+        }
+      } else {
+        await recordStorageUsage(
+          pool, userId, r.result.sizeBytes, r.result.backend,
+          'capture_upload', ledgerRef, ledgerMeta,
+        );
+      }
     } catch (ledgerErr) {
       console.error('[capture] lagringsregnskapet kunne ikke oppdateres:', ledgerErr);
     }
 
-    void pushStorageUsageToStripe(pool, userId).catch((err) => {
+    void pushStorageUsageToStripe(pool, billedUserId).catch((err) => {
       console.error('[capture] Stripe usage push feilet:', err);
     });
 

@@ -217,18 +217,44 @@ async function fetchOwnedAsset(
   db: Db,
   ownerUserId: string,
   assetId: string,
-): Promise<{ sessionId: string; originalFilename: string; mime: string } | null> {
+): Promise<{
+  sessionId: string;
+  originalFilename: string;
+  mime: string;
+  projectId: string | null;
+} | null> {
   const rows = await db
     .select({
       sessionId: captureAssets.sessionId,
       originalFilename: captureAssets.originalFilename,
       mime: captureAssets.mime,
+      // Produksjonen bytene tilhører. Nullbar — en capture-sesjon kan
+      // opprettes uten prosjekt, og da faller bokføringen tilbake til
+      // brukeren som lastet opp.
+      projectId: captureSessions.projectId,
     })
     .from(captureAssets)
     .innerJoin(captureSessions, eq(captureAssets.sessionId, captureSessions.id))
     .where(and(eq(captureAssets.id, assetId), eq(captureSessions.ownerUserId, ownerUserId)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Produksjonen et asset tilhører, eller null.
+ *
+ * Egen funksjon fordi kvotesjekken skjer FØR multipart-opplastingen
+ * startes, og da har ruten ikke asset-raden ennå. Eierskapssjekken er
+ * den samme — et asset i en annen brukers sesjon svarer null, ikke
+ * prosjektet.
+ */
+export async function getAssetProjectId(
+  db: Db,
+  ownerUserId: string,
+  assetId: string,
+): Promise<string | null> {
+  const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
+  return asset?.projectId ?? null;
 }
 
 export type UploadError = 'not_configured' | 'not_found' | 'invalid';
@@ -363,6 +389,9 @@ export interface CompletedUpload {
   /// Innholdstypen fra asset-raden. Ligger ikke i complete-bodyen, og B2
   /// trenger den for å lagre objektet med riktig Content-Type.
   mime: string;
+  /// Produksjonen bytene skal bokføres på. Null når sesjonen ikke er
+  /// knyttet til et prosjekt — da eier brukeren dem alene.
+  projectId: string | null;
 }
 
 export async function completeMultipartUpload(
@@ -433,6 +462,7 @@ export async function completeMultipartUpload(
       etag: head.ETag ?? null,
       originalFilename: asset.originalFilename,
       mime: asset.mime,
+      projectId: asset.projectId,
     },
   };
 }
