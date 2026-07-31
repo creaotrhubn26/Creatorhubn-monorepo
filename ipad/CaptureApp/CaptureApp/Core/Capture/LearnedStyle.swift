@@ -91,6 +91,34 @@ enum LearnedStyle {
         return (sum / n / 255.0, clip / n)
     }
 
+    /// Replikér rawpy `no_auto_bright=False`: skalér bildet så 99-persentilen av
+    /// maks-kanalen treffer ~0.94 (near-white med ~1% klipp), klemt 1.0–3.0.
+    /// Normaliserer scene-eksponeringen som rawpy-basen LUT-ene ble trent på.
+    static func autoBrightBase(_ image: CIImage, ctx: CIContext) -> CIImage {
+        let n = 128
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        guard let cg = ctx.createCGImage(image, from: image.extent),
+              let bmp = CGContext(data: &px, width: n, height: n, bitsPerComponent: 8,
+                                  bytesPerRow: n * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        bmp.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+        var maxes = [UInt8](); maxes.reserveCapacity(n * n)
+        var i = 0
+        while i < px.count { maxes.append(max(px[i], max(px[i + 1], px[i + 2]))); i += 4 }
+        maxes.sort()
+        let p99 = Double(maxes[Int(0.99 * Double(maxes.count))]) / 255.0
+        let scale = min(3.0, max(1.0, 0.94 / max(p99, 0.3)))
+        guard scale > 1.01 else { return image }
+        let m = CIFilter.colorMatrix()
+        m.inputImage = image
+        m.rVector = CIVector(x: CGFloat(scale), y: 0, z: 0, w: 0)
+        m.gVector = CIVector(x: 0, y: CGFloat(scale), z: 0, w: 0)
+        m.bVector = CIVector(x: 0, y: 0, z: CGFloat(scale), w: 0)
+        m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
+        return m.outputImage?.cropped(to: image.extent) ?? image
+    }
+
     /// sRGB(0…1) → OpenCV 8-bit Lab (L,a,b i 0…255, 128=nøytral for a/b).
     private static func labCV(r: CGFloat, g: CGFloat, b: CGFloat) -> (Double, Double, Double) {
         let a = SkinToneMath.aStar(r: r, g: g, b: b)          // CIE a*
@@ -163,11 +191,26 @@ enum LearnedStyle {
         let ctx = CIContext(options: [.useSoftwareRenderer: false])
         var out = image
 
-        // MERK: INGEN base-align. Empirisk (harness mot ekte CIRAWFilter) matcher
-        // enhetens develop-base allerede trenings-neutralen (begge ~0.42 snitt-luma)
-        // — den lærte CDF-LUT-en treffer riktig fordeling direkte. Et tidligere
-        // base-align-forsøk mot en global gjennomsnitts-referanse BLÅSTE OPP bildet
-        // (0.42→0.66→0.93) fordi referansen var skjev lys; fjernet.
+        // BASE AUTO-BRIGHT (CIRAWFilter → rawpy): rawpy-develop-en LUT-ene ble trent
+        // på bruker `no_auto_bright=False` — den normaliserer hver scenes eksponering
+        // via høylys-persentil (lyse scener løftes, mørke ned). CIRAWFilter gjør IKKE
+        // dette → base-luma spriker per scene (målt: lys scene 0.69 vs rawpy 0.83) →
+        // LUT-en (lyskurve) forsterker avviket. Replikér auto-bright: skalér så 99-
+        // persentilen treffer ~0.94, så LUT-en får samme normaliserte inngang.
+        out = autoBrightBase(out, ctx: ctx).cropped(to: image.extent)
+
+        // BASE-METNINGS-MATCH (CIRAWFilter → rawpy): CIRAWFilter-basen er mer
+        // konservativt mettet (~63) enn rawpy-basen (~93) LUT-en ble trent på.
+        // Ekte-LAB-overføringen nedenfor gjenoppretter det MESTE (portrett/lyse
+        // scener matcher fasiten på ×1.0); en LETT base-boost løfter i tillegg den
+        // avmettede mellomtone-looken til fasit-nivå. Etterprøvd mørk/lys/portrett.
+        let baseSat = CIFilter.colorControls()
+        baseSat.inputImage = out
+        baseSat.saturation = 1.1
+        baseSat.contrast = 1.0
+        baseSat.brightness = 0
+        out = baseSat.outputImage?.cropped(to: image.extent) ?? out
+
         guard let cg = ctx.createCGImage(out, from: out.extent) else { return image }
         let f = features(of: cg)
         guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
@@ -187,43 +230,15 @@ enum LearnedStyle {
         curves.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
         out = curves.outputImage ?? out
 
-        // a/b-middel-skift approksimert i RGB (0.5× som motoren): +a = rød↔grønn,
-        // +b = gul↔blå. Skalert til RGB-enheter (LAB a/b ~ ±0..30 → små bias).
-        let da = blended.ab[0] * 0.5 / 255.0
-        let db = blended.ab[1] * 0.5 / 255.0
-        if abs(da) > 0.0005 || abs(db) > 0.0005 {
-            let m = CIFilter.colorMatrix()
-            m.inputImage = out
-            m.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
-            m.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
-            m.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
-            m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
-            // +a: rød opp, grønn ned. +b: rød/grønn opp, blå ned (gul).
-            m.biasVector = CIVector(x: da + db, y: -da + db, z: -db, w: 0)
-            out = m.outputImage ?? out
-        }
+        // EKTE-LAB FARGEOVERFØRING (erstatter RGB-a/b + global CIColorControls-
+        // Reinhard): a/b-middelskift + per-kanal Reinhard-std rundt kanalens snitt,
+        // i CIELAB — nøyaktig fotografens farge-/spredningsendring (L=kontrast,
+        // a/b=metning). Dette er den prinsipielle fiksen: RGB-approksimasjonen
+        // krasjet metningen; ekte LAB reproduserer motorens `apply_model`.
+        out = LabColorTransfer.apply(to: out, ab: blended.ab, std: blended.labStd, ctx: ctx)
+            .cropped(to: image.extent)
 
-        // MERK: den tidligere ALLTID-PÅ høylys-skulderen + eksponerings-vakten +
-        // bakgrunns-nøytraliseringen er FJERNET. De var plaster på base-mismatchen
-        // (deep-research: fasiten `apply_model` har ingen av dem). Med base-align
-        // gir LUT-en riktig eksponering/tone selv → korreksjonene stablet bare
-        // feil på feil. Kun en sjelden klipp-SIKRING beholdes nedenfor.
-
-        // (2) Reinhard-STD: L-std → kontrast, a/b-std →
-        // metning. Metnings-GULV hevet til 0.9 så farger/hud beholder liv (ikke
-        // over-avmett), og kontrast klemt lavere så vi ikke hardner tonene.
-        let contrast = min(1.25, max(0.85, blended.labStd[0]))
-        let sat = min(1.30, max(0.9, (blended.labStd[1] + blended.labStd[2]) / 2))
-        if abs(contrast - 1) > 0.01 || abs(sat - 1) > 0.01 {
-            let cc = CIFilter.colorControls()
-            cc.inputImage = out
-            cc.contrast = Float(contrast)
-            cc.saturation = Float(sat)
-            cc.brightness = 0
-            out = cc.outputImage?.cropped(to: image.extent) ?? out
-        }
-
-        // (3) KLIPP-SIKRING (sjelden): kun når høylys FAKTISK er kraftig utblåst,
+        // KLIPP-SIKRING (sjelden): kun når høylys FAKTISK er kraftig utblåst,
         // komprimér lokalt (luminans-maskert) de utblåste flatene. Terskel hevet
         // (0.04) så den ikke rører normalt eksponerte bilder — ingen global
         // eksponerings-endring lenger (den kjempet mot den lærte looken).
@@ -242,25 +257,6 @@ enum LearnedStyle {
         // tekstur-bevarende utjevning — mot «blek/flat/livløs».
         out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
-
-        // 🔑 BASE-KALIBRERING (CIRAWFilter → rawpy): enhetens develop-base er
-        // konsekvent LYSERE (~0.46 vs 0.40) og MINDRE METTET (~63 vs 93) enn rawpy-
-        // basen CDF-LUT-ene ble trent på → resultatet blir for lyst + avmettet
-        // («utvasket»). Målt mot fasiten (`apply_model`): et fast, lett nedtrekk +
-        // metnings-løft ved utgangen bringer looken tilbake til fotografens leverte
-        // stil (luma 0.80→~0.76, metning 34→~54 ≈ fasit 52). Kompenserer den
-        // systematiske motor-forskjellen — ikke en per-bilde-hack.
-        let ev = CIFilter.exposureAdjust()
-        ev.inputImage = out
-        ev.ev = -0.15
-        out = ev.outputImage?.cropped(to: image.extent) ?? out
-        let cal = CIFilter.colorControls()
-        cal.inputImage = out
-        cal.saturation = 1.45
-        cal.contrast = 1.0
-        cal.brightness = 0
-        out = cal.outputImage?.cropped(to: image.extent) ?? out
-
         return out.cropped(to: image.extent)
     }
 }

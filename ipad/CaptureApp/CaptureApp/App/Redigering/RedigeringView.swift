@@ -396,13 +396,13 @@ final class RedigeringModel {
             }
             guard let base else { return nil }
             guard var ci = CIImage(image: base) else { return base }
-            // Auto → la motoren velge stilen som passer bildets lys.
-            var scenes = manualScenes
-            if scenes == nil, auto, let cg = CIContext().createCGImage(ci, from: ci.extent) {
-                let idx = LearnedStyle.autoSelectStyleIndex(features: LearnedStyle.features(of: cg), styles: styles)
-                scenes = idx.flatMap { styles.indices.contains($0) ? styles[$0].scenes : nil }
-            }
-            if let scenes {
+            // Auto → FULL-MODELL kNN over ALLE scener (matcher Python-motorens
+            // `apply_model`, som kNN-er mot hele arkivet). Å auto-velge ÉN klynge
+            // først og kNN-e innen den divergerte (valgte «luftig» → for lyst);
+            // full kNN treffer fasiten på tvers av scener. Manuelt valg = kun den
+            // valgte stilens scener.
+            let scenes = manualScenes ?? (auto ? styles.flatMap { $0.scenes } : nil)
+            if let scenes, !scenes.isEmpty {
                 ci = LearnedStyle.apply(scenes: scenes, to: ci)   // lært look
             }
             // Lokal per-ansikt-justering (normalisert rekt → piksler av ci.extent).
