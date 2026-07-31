@@ -56,9 +56,16 @@ final class RedigeringModel {
         let ext = ci.extent
         let det = CIDetector(ofType: CIDetectorTypeFace, context: nil,
                              options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-        faceRectsNorm = (det?.features(in: ci) ?? []).compactMap { ($0 as? CIFaceFeature)?.bounds }
-            .filter { $0.width > 4 && $0.height > 4 }
-            .map { r in CGRect(x: r.minX / ext.width, y: r.minY / ext.height, width: r.width / ext.width, height: r.height / ext.height) }
+        let faceFeatures = (det?.features(in: ci) ?? []).compactMap { $0 as? CIFaceFeature }
+        faceRectsNorm = faceFeatures.compactMap { (feat: CIFaceFeature) -> CGRect? in
+            let b = feat.bounds
+            guard b.width > 4, b.height > 4 else { return nil }
+            let x = b.minX / ext.width
+            let y = b.minY / ext.height
+            let w = b.width / ext.width
+            let h = b.height / ext.height
+            return CGRect(x: x, y: y, width: w, height: h)
+        }
         if activeFace == nil, !faceRectsNorm.isEmpty { activeFace = 0 }
         // Demo-hekte: forhåndsvis en lokal justering på ansikt 0.
         if ProcessInfo.processInfo.arguments.contains("--face-demo"),
