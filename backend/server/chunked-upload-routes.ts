@@ -35,6 +35,7 @@ import {
   getStorageStatus as getQuotaStatus,
 } from "./storage-quota-service.js";
 import { recordFileAccess } from "./file-access-audit.js";
+import { recordEgress } from "./storage-egress-service.js";
 import { mirrorUploadToUserB2 } from "./user-b2-mirror-worker.js";
 
 export interface ChunkedUploadRoutesDeps {
@@ -680,7 +681,7 @@ export function setupChunkedUploadRoutes(
 
     try {
       const r = await pool.query(
-        `SELECT file_name, mime_type, final_file_path, metadata
+        `SELECT file_name, mime_type, final_file_path, metadata, file_size
            FROM chunked_uploads
           WHERE final_file_id = $1 AND user_id = $2 AND status = 'completed'`,
         [fileId, userId],
@@ -856,6 +857,17 @@ export function setupChunkedUploadRoutes(
               outcome: "success",
               req,
             }).catch(() => undefined);
+            // Egress-estimat. Vi ser aldri bytene — de går rett fra
+            // objektlageret til klienten — så det vi kan måle er at en
+            // URL ble utstedt for et objekt av kjent størrelse.
+            recordEgress(pool, {
+              userId,
+              backend,
+              estimatedBytes: Number(row.file_size ?? 0),
+              source: "chunked_download",
+              relatedResourceId: fileId,
+              metadata: { fileName: row.file_name },
+            });
             return res.redirect(302, fresh);
           } catch (err) {
             console.warn(

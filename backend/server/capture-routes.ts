@@ -34,6 +34,7 @@ import {
   type UploadError,
   signAssetReadUrlForMirror,
   getAssetProjectId,
+  captureStoreForKey,
 } from './capture-upload-service.js';
 import { mirrorUploadToUserB2 } from './user-b2-mirror-worker.js';
 import {
@@ -45,6 +46,7 @@ import {
   canProductionStore,
   recordStorageForProduction,
 } from './production-storage-service.js';
+import { recordEgress } from './storage-egress-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
@@ -1703,10 +1705,39 @@ export function createCaptureRouter(
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    const fullUrl = await signAssetReadUrl(row.fullKey);
+
+    // Egress-estimat på originalen. Bare den — previews er miniatyrer, og
+    // å telle dem ville druknet signalet i støy uten å flytte kostnaden
+    // nevneverdig. Belastes økt-eieren og produksjonen, ikke klienten som
+    // ser på: det er produsenten som betaler for båndbredden.
+    if (fullUrl && row.fullKey) {
+      void db
+        .select({
+          ownerUserId: captureSessions.ownerUserId,
+          projectId: captureSessions.projectId,
+        })
+        .from(captureSessions)
+        .where(eq(captureSessions.id, auth.sessionId))
+        .limit(1)
+        .then(([owner]) => {
+          if (!owner?.ownerUserId) return;
+          recordEgress(pool, {
+            userId: owner.ownerUserId,
+            projectId: owner.projectId,
+            backend: captureStoreForKey(row.fullKey!).backend,
+            estimatedBytes: Number(row.sizeBytes ?? 0),
+            source: 'client_gallery_download',
+            relatedResourceId: row.id,
+          });
+        })
+        .catch(() => undefined);
+    }
+
     res.json({
       ...row,
       previewUrl: await signAssetReadUrl(row.previewKey),
-      fullUrl: await signAssetReadUrl(row.fullKey),
+      fullUrl,
     });
   });
 

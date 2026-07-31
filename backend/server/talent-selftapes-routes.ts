@@ -27,6 +27,7 @@ import {
   signStreamPlaybackUrl,
   signStreamThumbnailUrl,
 } from "./cloudflare-stream-service.js";
+import { recordStorageUsage } from "./storage-quota-service.js";
 import { notifySelftapeActivity } from "./talent-selftape-notifications.js";
 import { composeEmail } from "./email-design-system.js";
 
@@ -463,6 +464,33 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
           `UPDATE talent_selftape_projects SET current_take_id = $1::uuid WHERE id = $2::uuid`,
           [takeId, projectId],
         );
+
+        // Bokfør selftapen. Den ligger i Cloudflare Stream, ikke i B2, og
+        // ble derfor ikke talt i det hele tatt — hverken i kvoten eller i
+        // kostnadsbildet. Stream prises per lagret og levert minutt, så
+        // den må stå på sin egen backend for at marginen skal kunne
+        // regnes riktig; å telle den som B2-bytes ville undervurdert
+        // kostnaden kraftig.
+        //
+        // Bryter ikke opplastingen hvis det feiler — filen ligger hos
+        // Cloudflare uansett, og en manglende ledger-rad rettes ved
+        // reconcile.
+        if (session?.userId) {
+          try {
+            await recordStorageUsage(
+              pool,
+              session.userId,
+              file.size,
+              "cloudflare_stream",
+              "selftape_upload",
+              takeId,
+              { streamUid, mime: file.mimetype, durationMs },
+            );
+          } catch (ledgerErr) {
+            console.error("[selftapes] lagringsregnskapet kunne ikke oppdateres:", ledgerErr);
+          }
+        }
+
         return res.status(201).json({ take: fin.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes upload] failed", err);
