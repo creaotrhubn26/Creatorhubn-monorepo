@@ -100,8 +100,20 @@ jobs:
         # Chrome ligger forhåndsinstallert på ubuntu-latest; chrome-launcher
         # finner den selv.
         #
-        # Ingen `continue-on-error`: `error`-reglene SKAL stoppe kjøringen.
-        # Det er hele poenget med å koble konfigurasjonen til noe.
+        # `continue-on-error` KUN på pull requests, og det er en bevisst
+        # asymmetri: en PR som rører konfigurasjonen skal avsløre at
+        # konfigurasjonen er ødelagt, men den skal ikke blokkeres av at
+        # PRODUKSJON har et problem. PR-en endrer ikke det som er utrullet.
+        #
+        # Uten dette gjentar workflowen nøyaktig den feilen kommentaren
+        # øverst advarer mot — å blokkere på noe annet enn det som måles.
+        # Første kjøring gjorde det: en PR om Lighthouse-oppsettet ble rød
+        # fordi /nextrole har 0,87 i tilgjengelighet.
+        #
+        # Den planlagte kjøringen har INGEN continue-on-error. Der skal
+        # `error`-reglene stoppe alt. Det er hele poenget med å koble
+        # konfigurasjonen til noe.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: npm run audit:lighthouse
 
       - name: Last opp rapportene

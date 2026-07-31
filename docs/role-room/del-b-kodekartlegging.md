@@ -258,7 +258,7 @@ Dette må avklares når fristene settes.
 | 246 | Onboarding under 5 min | 🟡 | `RoleRoomOnboardingDialog.tsx` har sju steg og er admin-konfigurerbar (`stepsEnabled`), pluss `FirstTimeTour`. Men det er **medlemsprofil**-onboarding, ikke talentregistrering, og ingenting måler de fem minuttene |
 | 247 | Lagre halvferdige søknader | ❌ | `ProfileDraft`/`SelfTapeDraft` i talentportalen er skjematilstand i minnet, ikke lagrede utkast |
 | 248 | Hurtigsøknad statistroller | ❌ | — |
-| 249 | Ytelse < 2 sek på 4G | 🟡 | Se merknaden under |
+| 249 | Ytelse < 2 sek på 4G | ❌ | **Nå målt:** FCP 6,9 s på talentportalen mot kravet 2 s. Målestokken er på plass, kravet er ikke innfridd. Se merknaden under |
 | 250 | Universell angrefunksjon | ❌ | Angrefunksjon finnes i bilderedigering og storyboard, ikke på talentflaten |
 
 **⚠️ 245: nynorsk er ikke glemt — den er aktivt slått sammen med bokmål.**
@@ -296,14 +296,39 @@ Den måler den **uinnloggede** skjermen — portalen krever innlogging. Det er
 fortsatt riktig: det er samme bundle og samme first paint, og det er den
 delen 4G straffer.
 
-Verifisert ved å faktisk kjøre Lighthouse mot en lokal side (produksjon er
-ikke naabar herfra — proxyens TLS-interception gir interstitial). Rapporten
-bekrefter at innstillingene treffer, og en midlertidig stram terskel
-bekrefter at `error`-nivået avslutter med kode 1.
-
 Ytelsestersklene står som `warn` inntil det finnes en mobil-baseline; en
 rød gate uten baseline blir ignorert i stedet for fikset. `accessibility`
 og `cumulative-layout-shift` beholder `error` — ingenting er løsnet.
+
+### Første måling (31.07.2026, run 30661101170)
+
+15 kjøringer, mobil, simulert treg 4G. **Nå finnes baselinen.**
+
+| URL | Ytelse | FCP | LCP | TBT |
+| --- | --- | --- | --- | --- |
+| creatorhubn.com/ | 0,26 | 20,7 s | 47,2 s | 2868 ms |
+| creatorhubn.com/nextrole | 0,26 | 20,5 s | 50,4 s | 3185 ms |
+| creatorhubn.com/privacy-policy | 0,28 | 20,7 s | 46,2 s | 1783 ms |
+| theroleroom.com/ | 0,47 | 5,5 s | 17,8 s | — |
+| **theroleroom.com/talentportal** | **0,58** | **6,9 s** | **9,5 s** | — |
+
+**Punkt 249 er bommet med omtrent 3,5×.** Kravet er 2 sekunder; FCP på
+talentportalen er 6,9. Det er ikke marginalt, og det er ikke støy —
+spredningen over tre kjøringer er under 100 ms.
+
+**Verre: creatorhubn.com-sidene.** LCP på 46–50 sekunder på simulert 4G.
+Selv om simulering er pessimistisk, er det en side som i praksis ikke
+lastes på mobildata. De er ikke Role Room, men de er inngangen til den.
+
+**Én `error`, og den var ikke der jeg trodde:**
+`categories.accessibility` på `/nextrole` er **0,87** mot kravet 0,90 —
+stabilt over alle tre kjøringene, altså en reell mangel og ikke variasjon.
+
+**CLS besto overalt.** Det var regelen jeg flagget som uverifiserbar før
+kjøringen; mobilemulering avdekket ingen forskyvning. Bekymringen var
+ubegrunnet, og terskelen kunne stå.
+
+Rapportene ligger som artefakt på kjøringen i 30 dager.
 
 **239 er reell.** Det finnes ingen mobilapp, og doken har rett i at den
 er en paraply. Men `OutboxKit`, `NetworkingKit`, axe-oppsettet og
