@@ -116,6 +116,16 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: npm run audit:lighthouse
 
+      - name: Hvilke revisjoner feilet
+        # `lhci assert` sier hvilken kategori som falt, ikke hvilke regler
+        # som brøt. Det sto bare i rapportene — 8,8 MB artefakt man måtte
+        # laste ned og pakke ut. En rød kjøring fortalte deg dermed ikke
+        # hva du skulle fikse, bare at du måtte begynne å lete.
+        #
+        # Skriptet avslutter alltid med 0; `lhci assert` eier avgjørelsen.
+        if: always()
+        run: node scripts/lighthouse-summary.mjs ./lighthouse-reports
+
       - name: Last opp rapportene
         # `if: always()` — rapportene er mest verdt akkurat når kjøringen
         # feilet. Uten denne må den som feilsøker gjette hva som var rødt.
