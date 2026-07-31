@@ -56,9 +56,16 @@ final class RedigeringModel {
         let ext = ci.extent
         let det = CIDetector(ofType: CIDetectorTypeFace, context: nil,
                              options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-        faceRectsNorm = (det?.features(in: ci) ?? []).compactMap { ($0 as? CIFaceFeature)?.bounds }
-            .filter { $0.width > 4 && $0.height > 4 }
-            .map { r in CGRect(x: r.minX / ext.width, y: r.minY / ext.height, width: r.width / ext.width, height: r.height / ext.height) }
+        let faceFeatures = (det?.features(in: ci) ?? []).compactMap { $0 as? CIFaceFeature }
+        faceRectsNorm = faceFeatures.compactMap { (feat: CIFaceFeature) -> CGRect? in
+            let b = feat.bounds
+            guard b.width > 4, b.height > 4 else { return nil }
+            let x = b.minX / ext.width
+            let y = b.minY / ext.height
+            let w = b.width / ext.width
+            let h = b.height / ext.height
+            return CGRect(x: x, y: y, width: w, height: h)
+        }
         if activeFace == nil, !faceRectsNorm.isEmpty { activeFace = 0 }
         // Demo-hekte: forhåndsvis en lokal justering på ansikt 0.
         if ProcessInfo.processInfo.arguments.contains("--face-demo"),
@@ -76,6 +83,10 @@ final class RedigeringModel {
     /// Rendered "Etter" preview for the selected asset + current recipe.
     private(set) var afterImage: UIImage?
     private(set) var rendering = false
+
+    /// Kamera-EXIF (ISO/blender/lukker/brennvidde) for det valgte bildet — lest
+    /// fra RAW/JPEG ved valg. Vises i editoren; nil når fila mangler metadata.
+    private(set) var exif: ExifInfo?
 
     private(set) var loading = true
     var errorMessage: String?
@@ -136,13 +147,20 @@ final class RedigeringModel {
                 .assets(sessionId: s.id, ownerUserId: ownerUserId)
             selectedId = assets.first?.id
             loadRecipeForSelection()
+            loadExifForSelection()
             await render()
         } catch { errorMessage = "Kunne ikke laste bilder" }
+    }
+
+    /// Les kamera-EXIF for det valgte bildet (RAW først, ellers preview-JPEG).
+    private func loadExifForSelection() {
+        exif = ExifInfo.read(fromPath: selected?.rawKey ?? selected?.displayPreviewKey)
     }
 
     func select(_ asset: Asset) {
         selectedId = asset.id
         undo.removeAll(); redo.removeAll()
+        loadExifForSelection()
         loadRecipeForSelection()
         Task { await render() }
     }
@@ -375,7 +393,7 @@ final class RedigeringModel {
                 scenes = idx.flatMap { styles.indices.contains($0) ? styles[$0].scenes : nil }
             }
             if let scenes {
-                ci = LearnedStyle.apply(scenes: scenes, to: ci)   // lært look på flat base
+                ci = LearnedStyle.apply(scenes: scenes, to: ci)   // lært look
             }
             // Lokal per-ansikt-justering (normalisert rekt → piksler av ci.extent).
             if !faceAdj.isEmpty {
@@ -580,9 +598,30 @@ struct RedigeringView: View {
         )
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(alignment: .bottomLeading) { exifBadge }
         .onChange(of: model.afterImage) { _, _ in
             Task { await updateMaskOverlay(); await updateDiffOverlay() }
             if model.localFaceMode { model.detectFacesForLocal() }
+        }
+    }
+
+    /// Opptaksdata-merke (kamera-EXIF): ISO/blender/lukker/brennvidde + kamera/
+    /// objektiv, lest fra RAW/JPEG. Diskret nederst-venstre i compare-kortet.
+    @ViewBuilder private var exifBadge: some View {
+        if let exif = model.exif, exif.hasData {
+            VStack(alignment: .leading, spacing: 1) {
+                if !exif.techLine.isEmpty {
+                    Text(exif.techLine)
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.white)
+                }
+                if let cam = exif.camera {
+                    Text(exif.lens.map { "\(cam) · \($0)" } ?? cam)
+                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+            .padding(10)
         }
     }
 

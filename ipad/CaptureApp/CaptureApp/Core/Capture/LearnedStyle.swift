@@ -161,10 +161,16 @@ enum LearnedStyle {
     static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5) -> CIImage {
         guard !scenes.isEmpty else { return image }
         let ctx = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cg = ctx.createCGImage(image, from: image.extent) else { return image }
+        var out = image
+
+        // MERK: INGEN base-align. Empirisk (harness mot ekte CIRAWFilter) matcher
+        // enhetens develop-base allerede trenings-neutralen (begge ~0.42 snitt-luma)
+        // — den lærte CDF-LUT-en treffer riktig fordeling direkte. Et tidligere
+        // base-align-forsøk mot en global gjennomsnitts-referanse BLÅSTE OPP bildet
+        // (0.42→0.66→0.93) fordi referansen var skjev lys; fjernet.
+        guard let cg = ctx.createCGImage(out, from: out.extent) else { return image }
         let f = features(of: cg)
         guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
-        var out = image
 
         // Per-kanal 1D-LUT via CIColorCurves. cv2-LUT er BGR → map til RGB.
         var samples = [Float]()
@@ -197,21 +203,13 @@ enum LearnedStyle {
             out = m.outputImage ?? out
         }
 
-        // (1) HØYLYS-RECOVERY FØRST (myk skulder) — henter tilbake utblåste hvite
-        // (bluse/ansikt/vindu) UTEN å mørkne skygger/mellomtoner/hår, i motsetning
-        // til en global eksponerings-reduksjon. Research: myk høylys-skulder er
-        // den viktigste tone-korreksjonen. Alltid en lett skulder + sterkere når
-        // toppen faktisk er utblåst.
-        let tc = CIFilter.toneCurve()
-        tc.inputImage = out
-        tc.point0 = CGPoint(x: 0, y: 0)
-        tc.point1 = CGPoint(x: 0.30, y: 0.30)
-        tc.point2 = CGPoint(x: 0.60, y: 0.60)
-        tc.point3 = CGPoint(x: 0.82, y: 0.79)     // begynn å komprimere
-        tc.point4 = CGPoint(x: 1.00, y: 0.90)     // dra hvitt ned → gjenopprett
-        out = tc.outputImage?.cropped(to: image.extent) ?? out
+        // MERK: den tidligere ALLTID-PÅ høylys-skulderen + eksponerings-vakten +
+        // bakgrunns-nøytraliseringen er FJERNET. De var plaster på base-mismatchen
+        // (deep-research: fasiten `apply_model` har ingen av dem). Med base-align
+        // gir LUT-en riktig eksponering/tone selv → korreksjonene stablet bare
+        // feil på feil. Kun en sjelden klipp-SIKRING beholdes nedenfor.
 
-        // (2) Reinhard-STD ETTER høylys-recovery: L-std → kontrast, a/b-std →
+        // (2) Reinhard-STD: L-std → kontrast, a/b-std →
         // metning. Metnings-GULV hevet til 0.9 så farger/hud beholder liv (ikke
         // over-avmett), og kontrast klemt lavere så vi ikke hardner tonene.
         let contrast = min(1.25, max(0.85, blended.labStd[0]))
@@ -225,25 +223,14 @@ enum LearnedStyle {
             out = cc.outputImage?.cropped(to: image.extent) ?? out
         }
 
-        // (3) ABSOLUTT høylys-/eksponerings-vakt — måler det FAKTISKE resultatet
-        // (ikke bare relativt til basen): hvor mye høylys er utblåst + hvor lyst
-        // er snittet. High-key scener (lyst vinduslys) kan fortsatt være over-
-        // eksponert selv om LUT-en ikke løftet mye. Sterkere høylys-skulder ved
-        // klipping + eksponerings-nedtrekk når snittet er for lyst.
+        // (3) KLIPP-SIKRING (sjelden): kun når høylys FAKTISK er kraftig utblåst,
+        // komprimér lokalt (luminans-maskert) de utblåste flatene. Terskel hevet
+        // (0.04) så den ikke rører normalt eksponerte bilder — ingen global
+        // eksponerings-endring lenger (den kjempet mot den lærte looken).
         if let outCg = ctx.createCGImage(out, from: out.extent) {
-            let (meanL, clipHi) = lumaStats(outCg)   // 0…1
-            if clipHi > 0.015 {
-                // LOKAL (luminans-maskert) recovery — komprimerer KUN de utblåste
-                // flatene (bluse/vindu), ikke riktig-eksponert hud/mellomtoner.
-                out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 8))
-            }
-            if meanL > 0.62 {
-                // For lyst totalt → moderat eksponerings-nedtrekk mot ~0.58.
-                let ev = max(-0.9, min(0.0, 0.8 * log2(0.58 / meanL)))
-                let e = CIFilter.exposureAdjust()
-                e.inputImage = out
-                e.ev = Float(ev)
-                out = e.outputImage?.cropped(to: image.extent) ?? out
+            let (_, clipHi) = lumaStats(outCg)
+            if clipHi > 0.04 {
+                out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 6))
             }
         }
 
@@ -255,32 +242,6 @@ enum LearnedStyle {
         // tekstur-bevarende utjevning — mot «blek/flat/livløs».
         out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
-
-        // LOKAL per-region: nøytraliser BAKGRUNNEN uavhengig av motivet (Vision
-        // person-maske). Bakgrunnen får dempet metning + mildt kjøligere for å
-        // fjerne fargestikk — mens motivet (hud) beholder sin varme behandling.
-        // Løser «redigerer alt som ett område».
-        if let outCg = ctx.createCGImage(out, from: out.extent),
-           let personMask = SubjectSegmentation.personMask(for: outCg, extent: image.extent) {
-            let bg = CIFilter.colorControls()
-            bg.inputImage = out
-            bg.saturation = 0.86          // dempet fargestikk i bakgrunn
-            bg.contrast = 1.0
-            bg.brightness = 0
-            if let neutralBg = bg.outputImage {
-                // Mildt kjøligere/nøytral bakgrunn (fjern varmt stikk, ikke gjør blå).
-                let m = CIFilter.colorMatrix()
-                m.inputImage = neutralBg
-                m.biasVector = CIVector(x: -0.012, y: 0, z: 0.006, w: 0)   // ↓rød ↑blå litt
-                let bgFinal = m.outputImage ?? neutralBg
-                // person=hvit → behold motiv (out); bakgrunn=svart → bgFinal.
-                let blend = CIFilter.blendWithMask()
-                blend.inputImage = out
-                blend.backgroundImage = bgFinal
-                blend.maskImage = personMask
-                out = blend.outputImage?.cropped(to: image.extent) ?? out
-            }
-        }
         return out.cropped(to: image.extent)
     }
 }
