@@ -841,10 +841,10 @@ struct SmartEditPanel: View {
                 .padding(10).background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, signed: true)
-            slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, signed: true)
-            slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, signed: false)
-            slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, signed: true)
+            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, unit: .ev)
+            slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, unit: .signedPercent)
+            slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, unit: .percent)
+            slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, unit: .signedPercent)
 
             warmthRow
             toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
@@ -903,13 +903,18 @@ struct SmartEditPanel: View {
         }
     }
 
-    private func slider(_ title: String, systemImage: String, value: Binding<Double>, range: ClosedRange<Double>, signed: Bool) -> some View {
+    /// Standardiserte verdi-enheter (fotografene forventer EV/prosent, ikke
+    /// interne modell-tall). `.ev` = ±X.XX EV · `.signedPercent` = ±100 ·
+    /// `.percent` = 0–100 %.
+    enum SliderUnit { case ev, signedPercent, percent }
+
+    private func slider(_ title: String, systemImage: String, value: Binding<Double>, range: ClosedRange<Double>, unit: SliderUnit) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Label(title, systemImage: systemImage).font(.subheadline).foregroundStyle(CHTheme.textPrimary)
                 Spacer()
-                Text(displayValue(value.wrappedValue, range: range, signed: signed))
-                    .font(.caption).foregroundStyle(CHTheme.accentSoft)
+                Text(displayValue(value.wrappedValue, unit: unit))
+                    .font(.caption.monospacedDigit()).foregroundStyle(CHTheme.accentSoft)
             }
             Slider(value: value, in: range) { editing in
                 if editing { model.beginEdit() } else { model.recipeChanged() }
@@ -918,9 +923,12 @@ struct SmartEditPanel: View {
         }
     }
 
-    private func displayValue(_ v: Double, range: ClosedRange<Double>, signed: Bool) -> String {
-        if signed { return String(format: "%+.0f", v * 100 / max(1, range.upperBound) * range.upperBound) }
-        return "\(Int(v * 100)) %"
+    private func displayValue(_ v: Double, unit: SliderUnit) -> String {
+        switch unit {
+        case .ev: return String(format: "%+.2f EV", v)
+        case .signedPercent: return String(format: "%+.0f", v * 100)
+        case .percent: return "\(Int(v * 100)) %"
+        }
     }
 
     private var warmthRow: some View {
