@@ -78,6 +78,7 @@ import { loadInvoiceView } from '../invoicing/view.js';
 import { renderInvoicePdf } from '../invoicing/pdf.js';
 import { loadInvoiceEhf, renderEhfXml, type PeppolAccessPoint } from '../invoicing/ehf.js';
 import { lookupPeppolParticipant } from '../invoicing/peppol-lookup.js';
+import { buildPaymentFile, listPayableInvoices, recordPaymentExports } from '../ledger/payments.js';
 import { IdPortenClient, generatePkce, randomToken } from '../integrations/idporten.js';
 import { getStatus as idportenStatus, getValidAccessToken, saveLoginState, saveSession, takeLoginState } from '../integrations/idporten-session.js';
 import {
@@ -4019,6 +4020,45 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
     },
   );
+
+  // ── Utbetalingsfil (pain.001) — betal leverandørfakturaer via nettbank ────
+  app.get('/api/organizations/:orgId/payments/payable', requireAuth, requireOrgPermission('bank.reconcile'), async (req: AuthedRequest, res, next) => {
+    try {
+      res.json(toJson(await listPayableInvoices(deps.db, req.params.orgId!)));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/payments/file', requireAuth, requireOrgPermission('bank.reconcile'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ documentIds: z.array(z.string().uuid()).min(1) }).parse(req.body);
+      const org = (await deps.db.query(`SELECT name, org_number FROM organizations WHERE id=$1`, [req.params.orgId])).rows[0];
+      if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
+      const debtorAccount = (await deps.db.query(`SELECT iban_or_account FROM bank_accounts WHERE organization_id=$1 AND status='active' ORDER BY created_at LIMIT 1`, [req.params.orgId])).rows[0]?.iban_or_account as string | undefined;
+      if (!debtorAccount) { res.status(400).json({ error: { code: 'NO_DEBTOR_ACCOUNT', message: 'Sett opp virksomhetens bankkonto (Bank og avstemming) før du lager betalingsfil.' } }); return; }
+      const selected = new Set(body.documentIds);
+      const payable = (await listPayableInvoices(deps.db, req.params.orgId!)).filter((p) => selected.has(p.documentId) && p.payable && p.bankAccount);
+      if (payable.length === 0) { res.status(400).json({ error: { code: 'NOTHING_PAYABLE', message: 'Ingen av de valgte fakturaene har bankkonto å betale til.' } }); return; }
+      const now = new Date();
+      const msgId = `REKNAREN-${String(req.params.orgId).slice(0, 8)}-${now.getTime()}`;
+      const xml = buildPaymentFile({
+        debtorName: org.name,
+        debtorOrgNumber: org.org_number ? String(org.org_number).replace(/\D/g, '') : null,
+        debtorAccount: String(debtorAccount).replace(/\s/g, ''),
+        msgId,
+        creationDateTime: now.toISOString().slice(0, 19),
+        requestedExecutionDate: now.toISOString().slice(0, 10),
+        payments: payable.map((p) => ({ endToEndId: p.documentId.slice(0, 30), creditorName: p.vendorName ?? 'Leverandør', creditorAccount: p.bankAccount!, amountMinor: p.amountMinor, currency: p.currency, kid: p.kid, message: p.invoiceNumber })),
+      });
+      await recordPaymentExports(deps.db, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        messageRef: msgId,
+        items: payable.map((p) => ({ documentId: p.documentId, amountMinor: p.amountMinor, creditorAccount: p.bankAccount })),
+      });
+      await withTransaction(deps.db, (client) => recordAuditEvent(client, { organizationId: req.params.orgId!, actor: { userId: req.auth!.userId, role: req.orgRole! }, action: 'payments.file_exported', entityType: 'organization', entityId: req.params.orgId!, newValue: { count: payable.length, messageRef: msgId } }));
+      res.setHeader('Content-Disposition', `attachment; filename="betaling_${now.toISOString().slice(0, 10)}.xml"`);
+      res.type('application/xml').send(xml);
+    } catch (err) { next(err); }
+  });
 
   // ── Bilagsjournal og posteringslinjer (avansert/regnskapsførervisning) ──
   app.get(
