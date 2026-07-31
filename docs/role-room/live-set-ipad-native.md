@@ -1,7 +1,7 @@
 # Live Set (film) som native iPad
 
-Hvordan bygge LIVE-modus for filmproduksjon native, **oppå appen som allerede
-finnes** — ikke som et nytt prosjekt.
+Egen app for The Role Room, som gjenbruker de tekniske løsningene fra
+`ipad/CaptureApp` gjennom en delt Swift-pakke.
 
 Skrevet 31. juli 2026, mot kodebasen slik den står.
 
@@ -18,8 +18,10 @@ Det finnes allerede en native iPad-app i repoet: `ipad/CaptureApp/`.
 - CI: `ipad-capture-ci.yml`, TestFlight via fastlane (`capture-testflight.yml`)
 - Widgets og Live Activities
 
-**Du starter ikke fra null. Du starter fra en app som allerede har løst de
-kjedelige delene.**
+**Du starter ikke fra null.** Men Live Set skal være en **egen app** — det er
+The Role Room, ikke CreatorHub-fotografen. Derfor gjenbrukes de tekniske
+løsningene gjennom en delt pakke, ikke ved å legge en modul inn i CaptureApp.
+Se kapittel 1.
 
 ### 0.1 «Live Set» betyr allerede to forskjellige ting
 
@@ -40,25 +42,81 @@ er en feilkilde som varer i årevis.
 
 ---
 
-## 1. Hva som kan gjenbrukes rett av
+## 1. Egen app, delt pakke
 
-Dette er grunnen til at native-veien er billig her.
+### 1.1 Hvorfor ikke en modul i CaptureApp
 
-| Trenger | Finnes som | Merknad |
+Live Set er et annet produkt for andre brukere: script supervisor og regi på et
+filmsett, ikke fotografen med RAW-arbeidsflyt. Egen App Store-oppføring, egen
+utgivelsestakt, egen binær som ikke drar med seg Redigering og CRM.
+
+### 1.2 Hvorfor da ikke bare kopiere
+
+Fordi det allerede har skjedd én gang. `ipad/` har to apper i dag, og de deler
+**ingenting**:
+
+| Konsept | CaptureApp | LeadMapApp |
 |---|---|---|
-| Offline-kø | `Core/Sync/Outbox.swift` (actor + GRDB) | Skriver mutasjonen **atomisk sammen med** lokal radoppdatering i én transaksjon. Nøyaktig semantikken hendelsesloggen krever |
-| Kø-drenering | `Core/Sync/OutboxWorker.swift` | Serialiserer flush-rekkefølge, drenerer ved reconnect |
-| Idempotens | `OutboxMutation.clientMutationId` | Overlever app-restart. Kan bære `eventId` direkte |
-| HTTP-klient | `Core/Sync/BackendClient.swift` | Timeout, bounded retry med jitter, GET-only retry |
-| Lokal database | GRDB 7 | Allerede oppsett og testet |
-| Kameraoppdagelse | `CameraDiscovery.swift`, `CCAPIClient.swift` | Canon. Mønsteret er der for BMD/RED/Sony |
-| CI + TestFlight | To GitHub-workflows | Fungerer i dag |
+| Offline-kø | `Outbox.swift` | `OfflineActionQueue.swift` |
+| HTTP-klient | `BackendClient.swift` | `APIClient.swift` |
+| Realtime | — | `LeadgridRealtimeClient.swift` |
 
-Outbox-en er den viktigste. Kommentaren i den beskriver allerede kravene
-hendelsesloggen stiller — durabel backlog over en hel opptaksdag, serialisert
-rekkefølge, idempotens over restart.
+To uavhengige implementasjoner av samme tre konsepter. En tredje app som
+kopierer gir tre. Det er samme mønster som ga to live-set-skjermer, to
+stripboards og to offline-outbokser på web-siden — og som måtte ryddes.
 
-### 1.1 Hva som mangler helt
+### 1.3 Hva som faktisk lar seg trekke ut
+
+Målt på referanser til app-spesifikke typer (`Asset`, `Shoot`, `Gallery`,
+`Redigering`, `CRM`):
+
+| Fil | Domenereferanser | Vurdering |
+|---|---|---|
+| `Core/Sync/Outbox.swift` | 0 | Flytter som den er |
+| `Core/Sync/OutboxWorker.swift` | 0 | Flytter som den er |
+| `Core/Sync/OutboxSender.swift` | 0 | Flytter som den er |
+| `Core/Models/OutboxMutation.swift` | 0 | Flytter som den er |
+| `Core/Capture/CameraDiscovery.swift` | 0 | Flytter som den er |
+| `Core/Capture/CCAPIClient.swift` | 1 | Nesten ren — én kobling å bryte |
+| `Core/Capture/CCAPIAdapter.swift` | 8 | **Blir igjen.** Det er her domenet hører hjemme |
+
+Alle importerer bare `Foundation` (Outbox også `GRDB`). Utrekket er billig
+nettopp nå, og blir dyrere for hver måned begge appene vokser.
+
+At `CCAPIAdapter` er den koblede er som det skal: adapteren er per definisjon
+laget som oversetter Canon til *ditt* domene. Protokollen i pakken, mappingen
+i appen.
+
+### 1.4 Foreslått oppdeling
+
+```
+ipad/
+  Packages/
+    CHSync/            Outbox, OutboxWorker, OutboxSender, OutboxMutation
+    CHNetworking/      BackendClient + retry/backoff
+    CHCameraControl/   CCAPIClient/Error/Types/InsecureTrust,
+                       CameraDiscovery, CameraSession
+                       + protocol CameraControl  ← BMD/RED/Sony senere
+  CaptureApp/          CCAPIAdapter (foto-mapping) + resten
+  LeadMapApp/
+  SetModeApp/          ny — film-Live-Set
+```
+
+Lokale Swift-pakker via `packages:` med `path:` i XcodeGen. Ingen ny
+infrastruktur, samme mekanisme som GRDB allerede bruker.
+
+**Rekkefølge:** trekk ut `CHSync` først og la CaptureApp bruke pakken i stedet
+for sine egne filer. Én app, én pakke, grønn CI — *før* app nummer tre finnes.
+Da er utrekket bevist mot en app som allerede virker, framfor å bli en
+antakelse den nye appen arver.
+
+`CHCameraControl` kan vente til fase 5. Live Set trenger den ikke før
+kamerakontroll skal inn.
+
+### 1.5 Hva som mangler helt
+
+Ingenting av dette finnes i noen av appene, så det bygges likt uansett hvor
+det havner:
 
 | Mangler | Treff i CaptureApp |
 |---|---|
@@ -239,9 +297,6 @@ CCAPI-mønsteret finnes. BMD/RED/Sony er ett prosjekt hver.
   Maskinvare- og kostnadsvalg, og det avgjør transporten.
 - **Hvilke kameraer først?** SDK-ene er ikke utbyttbare.
 - **Skal appen ta opp, eller bare overvåke?** Endrer lagring, termikk og batteri.
-- **Nytt target, eller modul i CaptureApp?** Samme app gir gjenbruk av Outbox
-  og CI gratis; eget target gir mindre binær for fotografene som aldri skal
-  ha film-modus.
 
 ---
 
