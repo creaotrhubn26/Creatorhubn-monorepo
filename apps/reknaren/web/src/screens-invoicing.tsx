@@ -459,7 +459,7 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
                           Vis
                         </button>
                       )}
-                      {(inv.status === 'issued' || inv.status === 'paid') && inv.kind === 'invoice' && (
+                      {(inv.status === 'issued' || inv.status === 'paid') && (
                         <button className="secondary" onClick={() => openEhf(inv)}>
                           EHF
                         </button>

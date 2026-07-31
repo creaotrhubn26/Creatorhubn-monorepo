@@ -6,9 +6,8 @@
  * (ikke aktiv uten aksesspunkt-avtale). XML-en kan uansett lastes ned og sendes
  * manuelt / lastes opp hos et aksesspunkt.
  *
- * Dekker kjernen i BIS Billing 3.0 for vanlige salgsfakturaer (380). Kreditnota
- * (UBL CreditNote-syntaks) er ikke støttet ennå og avvises eksplisitt — bedre å si
- * det ærlig enn å produsere ugyldig XML.
+ * Dekker BIS Billing 3.0 for både salgsfaktura (380, UBL Invoice) og kreditnota
+ * (381, UBL CreditNote — med påkrevd BillingReference til fakturaen som krediteres).
  */
 import type { Db } from '../db/pool.js';
 import type { RuleRegister } from '../rules/register.js';
@@ -50,6 +49,9 @@ export interface EhfLine {
 }
 
 export interface EhfInvoice {
+  kind: 'invoice' | 'credit_note';
+  /** For kreditnota: fakturaen den krediterer (påkrevd BillingReference i UBL). */
+  billingReference: { invoiceNumber: string; issueDate: string } | null;
   invoiceNumber: string;
   issueDate: string;
   dueDate: string | null;
@@ -85,7 +87,8 @@ export async function loadInvoiceEhf(
   const res = await db.query(
     `SELECT i.kind, i.status, i.invoice_number, i.kid,
             i.invoice_date::TEXT AS invoice_date, i.due_date::TEXT AS due_date,
-            i.net_minor, i.vat_minor, i.gross_minor,
+            i.net_minor, i.vat_minor, i.gross_minor, i.credits_invoice_id,
+            orig.invoice_number AS orig_number, orig.invoice_date::TEXT AS orig_date,
             o.name AS org_name, o.org_number AS org_number, o.vat_status,
             o.street_address AS org_street, o.postal_code AS org_postal, o.city AS org_city,
             c.name AS customer_name, c.org_number AS customer_org_number,
@@ -93,19 +96,16 @@ export async function loadInvoiceEhf(
      FROM invoices i
      JOIN organizations o ON o.id = i.organization_id
      JOIN customers c ON c.id = i.customer_id
+     LEFT JOIN invoices orig ON orig.id = i.credits_invoice_id
      WHERE i.id = $1 AND i.organization_id = $2`,
     [params.invoiceId, params.organizationId],
   );
   if (!res.rowCount) throw new NotFoundError('Fakturaen finnes ikke.');
   const inv = res.rows[0];
   if (inv.status === 'draft' || !inv.invoice_number) {
-    throw new ValidationError('Kladder er ikke gyldige salgsdokumenter. Utsted fakturaen først.');
+    throw new ValidationError('Kladder er ikke gyldige salgsdokumenter. Utsted dokumentet først.');
   }
-  if (inv.kind !== 'invoice') {
-    throw new ValidationError(
-      'EHF-eksport støtter foreløpig kun salgsfaktura (ikke kreditnota). Kreditnota må sendes på annen måte.',
-    );
-  }
+  const kind: 'invoice' | 'credit_note' = inv.kind === 'credit_note' ? 'credit_note' : 'invoice';
 
   const linesRes = await db.query(
     `SELECT description, quantity_thousandths, unit_price_minor, vat_code, net_minor, vat_minor
@@ -149,9 +149,11 @@ export async function loadInvoiceEhf(
   }
 
   return {
+    kind,
+    billingReference: kind === 'credit_note' && inv.orig_number ? { invoiceNumber: String(inv.orig_number), issueDate: inv.orig_date } : null,
     invoiceNumber: String(inv.invoice_number),
     issueDate,
-    dueDate: inv.due_date ?? null,
+    dueDate: kind === 'credit_note' ? null : (inv.due_date ?? null),
     currency: 'NOK',
     kid: inv.kid ?? null,
     bankAccount: bankRes.rowCount ? String(bankRes.rows[0].iban_or_account).replace(/\s/g, '') : null,
@@ -256,9 +258,18 @@ function tidy(xml: string): string {
     .join('\n');
 }
 
-/** Bygger PEPPOL BIS Billing 3.0 UBL-faktura (EHF) fra dataene. */
+/** Bygger PEPPOL BIS Billing 3.0 UBL-dokument (EHF) — faktura (380) eller kreditnota (381). */
 export function renderEhfXml(inv: EhfInvoice): string {
   const cur = inv.currency;
+  const isCredit = inv.kind === 'credit_note';
+  const rootEl = isCredit ? 'CreditNote' : 'Invoice';
+  const ns = isCredit ? 'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2' : 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2';
+  const typeCode = isCredit ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>' : '<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>';
+  const lineEl = isCredit ? 'CreditNoteLine' : 'InvoiceLine';
+  const qtyEl = isCredit ? 'CreditedQuantity' : 'InvoicedQuantity';
+  const billingRef = inv.billingReference
+    ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${xmlEsc(inv.billingReference.invoiceNumber)}</cbc:ID><cbc:IssueDate>${inv.billingReference.issueDate}</cbc:IssueDate></cac:InvoiceDocumentReference></cac:BillingReference>`
+    : '';
   const taxTotal = `<cac:TaxTotal>
     <cbc:TaxAmount currencyID="${cur}">${dec(inv.vatMinor)}</cbc:TaxAmount>
     ${inv.taxSubtotals
@@ -272,7 +283,8 @@ export function renderEhfXml(inv: EhfInvoice): string {
       .join('\n')}
   </cac:TaxTotal>`;
 
-  const paymentMeans = inv.bankAccount
+  // Kreditnota har normalt ikke betalingsinstruks.
+  const paymentMeans = !isCredit && inv.bankAccount
     ? `<cac:PaymentMeans>
     <cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>
     ${inv.kid ? `<cbc:PaymentID>${xmlEsc(inv.kid)}</cbc:PaymentID>` : ''}
@@ -282,9 +294,9 @@ export function renderEhfXml(inv: EhfInvoice): string {
 
   const lines = inv.lines
     .map(
-      (l) => `<cac:InvoiceLine>
+      (l) => `<cac:${lineEl}>
     <cbc:ID>${l.id}</cbc:ID>
-    <cbc:InvoicedQuantity unitCode="EA">${qty(l.quantityThousandths)}</cbc:InvoicedQuantity>
+    <cbc:${qtyEl} unitCode="EA">${qty(l.quantityThousandths)}</cbc:${qtyEl}>
     <cbc:LineExtensionAmount currencyID="${cur}">${dec(l.netMinor)}</cbc:LineExtensionAmount>
     <cac:Item>
       <cbc:Name>${xmlEsc(l.description)}</cbc:Name>
@@ -295,12 +307,12 @@ export function renderEhfXml(inv: EhfInvoice): string {
       </cac:ClassifiedTaxCategory>
     </cac:Item>
     <cac:Price><cbc:PriceAmount currencyID="${cur}">${dec(l.unitPriceMinor)}</cbc:PriceAmount></cac:Price>
-  </cac:InvoiceLine>`,
+  </cac:${lineEl}>`,
     )
     .join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+<${rootEl} xmlns="${ns}"
          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
          xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
   <cbc:CustomizationID>${CUSTOMIZATION_ID}</cbc:CustomizationID>
@@ -308,8 +320,9 @@ export function renderEhfXml(inv: EhfInvoice): string {
   <cbc:ID>${xmlEsc(inv.invoiceNumber)}</cbc:ID>
   <cbc:IssueDate>${inv.issueDate}</cbc:IssueDate>
   ${inv.dueDate ? `<cbc:DueDate>${inv.dueDate}</cbc:DueDate>` : ''}
-  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  ${typeCode}
   <cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>
+  ${billingRef}
   ${partyXml('AccountingSupplierParty', inv.seller)}
   ${partyXml('AccountingCustomerParty', inv.buyer)}
   ${paymentMeans}
@@ -321,7 +334,7 @@ export function renderEhfXml(inv: EhfInvoice): string {
     <cbc:PayableAmount currencyID="${cur}">${dec(inv.grossMinor)}</cbc:PayableAmount>
   </cac:LegalMonetaryTotal>
   ${lines}
-</Invoice>`;
+</${rootEl}>`;
   return tidy(xml);
 }
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { renderEhfXml, type EhfInvoice } from '../src/invoicing/ehf.js';
 
 const inv: EhfInvoice = {
+  kind: 'invoice',
+  billingReference: null,
   invoiceNumber: '1',
   issueDate: '2025-12-01',
   dueDate: '2025-12-15',
@@ -96,5 +98,37 @@ describe('renderEhfXml (PEPPOL BIS Billing 3.0)', () => {
     expect(close).toBe(2);
     // ingen naken & (alle er entiteter)
     expect(xml).not.toMatch(/&(?!(amp|lt|gt|quot|apos);)/);
+  });
+});
+
+describe('renderEhfXml — kreditnota (381)', () => {
+  const credit: EhfInvoice = {
+    ...inv,
+    kind: 'credit_note',
+    invoiceNumber: '2',
+    issueDate: '2026-01-10',
+    dueDate: null,
+    billingReference: { invoiceNumber: '1', issueDate: '2025-12-01' },
+  };
+  const xml = renderEhfXml(credit);
+
+  it('bruker CreditNote-rot, namespace og type 381', () => {
+    expect(xml).toContain('<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"');
+    expect(xml).toContain('<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>');
+    expect((xml.match(/<CreditNote[ >]/g) ?? []).length).toBe(1);
+    expect((xml.match(/<\/CreditNote>/g) ?? []).length).toBe(1);
+    expect(xml).not.toContain('<cbc:InvoiceTypeCode>');
+  });
+
+  it('refererer fakturaen som krediteres (BillingReference)', () => {
+    expect(xml).toContain('<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>1</cbc:ID><cbc:IssueDate>2025-12-01</cbc:IssueDate></cac:InvoiceDocumentReference></cac:BillingReference>');
+  });
+
+  it('bruker CreditNoteLine + CreditedQuantity, og ingen betalingsinstruks', () => {
+    expect((xml.match(/<cac:CreditNoteLine>/g) ?? []).length).toBe(2);
+    expect(xml).toContain('<cbc:CreditedQuantity unitCode="EA">2.500</cbc:CreditedQuantity>');
+    expect(xml).not.toContain('<cac:InvoiceLine>');
+    expect(xml).not.toContain('<cac:PaymentMeans>'); // kreditnota har ikke betalingsmiddel
+    expect(xml).not.toContain('<cbc:DueDate>');
   });
 });
