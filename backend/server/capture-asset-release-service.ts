@@ -25,7 +25,7 @@
 
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import type { Pool } from "pg";
-import { captureStoreHandleForKey } from "./capture-upload-service.js";
+import { captureDeleteHandleForKey } from "./capture-upload-service.js";
 import {
   recordProductionUsage,
   type StorageLedgerBackend,
@@ -60,7 +60,9 @@ export async function releaseCaptureObject(
   pool: Pool,
   input: ReleaseInput,
 ): Promise<ReleaseOutcome> {
-  const store = captureStoreHandleForKey(input.key);
+  // Sletterollen, ikke leserollen: lesenøkkelen har med vilje ikke
+  // `deleteFiles`, så en lekkasje derfra ikke kan fjerne originaler.
+  const store = captureDeleteHandleForKey(input.key);
   if (!store) return { ok: false, error: "not_configured" };
 
   try {

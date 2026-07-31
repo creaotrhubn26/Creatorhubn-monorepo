@@ -6,7 +6,7 @@ const recordStorageUsageMock = vi.fn();
 const handleMock = vi.fn();
 
 vi.mock("./capture-upload-service.js", () => ({
-  captureStoreHandleForKey: (key: string) => handleMock(key),
+  captureDeleteHandleForKey: (key: string) => handleMock(key),
 }));
 vi.mock("./production-storage-service.js", () => ({
   recordProductionUsage: (...a: unknown[]) => recordProductionUsageMock(...a),

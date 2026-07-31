@@ -67147,6 +67147,14 @@ setupChunkedUploadRoutes({
   pool,
   requireUserSession,
 });
+
+// Én linje ved oppstart om hvilke B2-roller som fortsatt deler
+// plattformens fellesnøkkel. Uten den er en halvferdig nøkkelutrulling
+// usynlig: alt virker, og ingen oppdager at tjenester som bare skal lese
+// fortsatt har full slettetilgang til hele bøtta.
+void import("./b2-key-registry.js")
+  .then((m) => m.logKeyRoleStatus())
+  .catch(() => undefined);
 setupUploadsRoutes({
   app,
   pool,

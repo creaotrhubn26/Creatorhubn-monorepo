@@ -28,6 +28,7 @@ import {
   buildStreamConfig,
   uploadToStream,
 } from "./cloudflare-stream-service.js";
+import { resolveB2Key, type B2KeyRole } from "./b2-key-registry.js";
 
 /** S3-kompatible objektlagre. Samme kode-path, ulik klient og bucket. */
 export const OBJECT_STORE_BACKENDS = ["b2", "r2"] as const;
@@ -200,25 +201,47 @@ export function objectStoreWriteOrder(): ObjectStoreConfig[] {
 
 const clientCache = new Map<string, S3Client>();
 
-const getObjectStoreClient = (cfg: ObjectStoreConfig): S3Client | null => {
-  if (
-    !cfg.enabled ||
-    !cfg.endpoint ||
-    !cfg.accessKeyId ||
-    !cfg.secretAccessKey
-  ) {
-    return null;
+/**
+ * Legitimasjonen for en operasjon.
+ *
+ * B2 har egne nokler per rolle - skrivenokkelen kan ikke slette, og
+ * lesenokkelen kan ikke skrive. R2 har ikke fatt samme oppdeling, sa der
+ * brukes konfigens nokkel uansett rolle; a late som noe annet ville vaert
+ * en falsk trygghet.
+ */
+const credentialsFor = (
+  cfg: ObjectStoreConfig,
+  role: B2KeyRole,
+): { accessKeyId: string; secretAccessKey: string } | null => {
+  if (cfg.backend === "b2") {
+    const scoped = resolveB2Key(role);
+    if (scoped) {
+      return {
+        accessKeyId: scoped.keyId,
+        secretAccessKey: scoped.applicationKey,
+      };
+    }
   }
-  const cacheKey = `${cfg.backend}|${cfg.endpoint}|${cfg.accessKeyId}`;
+  if (!cfg.accessKeyId || !cfg.secretAccessKey) return null;
+  return { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey };
+};
+
+const getObjectStoreClient = (
+  cfg: ObjectStoreConfig,
+  role: B2KeyRole,
+): S3Client | null => {
+  if (!cfg.enabled || !cfg.endpoint) return null;
+  const creds = credentialsFor(cfg, role);
+  if (!creds) return null;
+  // Nokkel-id-en er med i cache-nokkelen, slik at to roller med ulik
+  // nokkel aldri deler klient.
+  const cacheKey = `${cfg.backend}|${cfg.endpoint}|${creds.accessKeyId}`;
   const cached = clientCache.get(cacheKey);
   if (cached) return cached;
   const client = new S3Client({
     region: cfg.region,
     endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: cfg.accessKeyId,
-      secretAccessKey: cfg.secretAccessKey,
-    },
+    credentials: creds,
     ...(cfg.forcePathStyle ? { forcePathStyle: true } : {}),
   });
   clientCache.set(cacheKey, client);
@@ -235,7 +258,7 @@ export function getObjectStoreClientFor(
 ): { client: S3Client; bucket: string } | null {
   if (!isObjectStoreBackend(backend)) return null;
   const cfg = buildObjectStoreConfig(backend);
-  const client = getObjectStoreClient(cfg);
+  const client = getObjectStoreClient(cfg, "uploads-read");
   if (!client || !cfg.bucket) return null;
   return { client, bucket: cfg.bucket };
 }
@@ -392,7 +415,7 @@ export async function routeAssembledUpload(
   //    til den neste før vi gir opp og lar fila bli liggende på disk.
   const stores = opts.preferFilesystem ? [] : objectStoreWriteOrder();
   for (const cfg of stores) {
-    const client = getObjectStoreClient(cfg);
+    const client = getObjectStoreClient(cfg, "uploads-write");
     if (!client || !cfg.bucket) continue;
     try {
       const safeName = input.fileName

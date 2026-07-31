@@ -12,6 +12,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Pool } from 'pg';
+import { resolveB2Key, type B2KeyRole } from './b2-key-registry.js';
 import {
   discardVersion,
   promoteVersion,
@@ -186,7 +187,7 @@ export interface CaptureStoreHandle {
  */
 export function captureStoreForWrite(): CaptureStoreHandle | null {
   const cfg = captureWriteStore();
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-write');
   if (!client || !cfg.bucket) return null;
   return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
 }
@@ -200,25 +201,67 @@ export function captureStoreForWrite(): CaptureStoreHandle | null {
  */
 export function captureStoreHandleForKey(key: string): CaptureStoreHandle | null {
   const cfg = captureStoreForKey(key);
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-read');
+  if (!client || !cfg.bucket) return null;
+  return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
+}
+
+/**
+ * Klient som faktisk kan slette.
+ *
+ * Egen funksjon fordi lesenøkkelen med vilje IKKE har `deleteFiles`. Ville
+ * frigjøringen brukt `captureStoreHandleForKey`, måtte lesenøkkelen fått
+ * slettetilgang — og da kunne enhver lekkasje fra preview-visningen slette
+ * originalene fra en innspilling.
+ */
+export function captureDeleteHandleForKey(key: string): CaptureStoreHandle | null {
+  const cfg = captureStoreForKey(key);
+  const client = getClient(cfg, 'capture-delete');
   if (!client || !cfg.bucket) return null;
   return { client, bucket: cfg.bucket, backend: cfg.backend, prefix: cfg.prefix };
 }
 
 const clientCache = new Map<string, S3Client>();
 
-function getClient(cfg: CaptureStoreConfig): S3Client | null {
-  if (!cfg.enabled || !cfg.endpoint || !cfg.accessKeyId || !cfg.secretAccessKey) return null;
-  const cacheKey = `${cfg.backend}|${cfg.endpoint}|${cfg.accessKeyId}`;
+/**
+ * Legitimasjonen en operasjon skal bruke.
+ *
+ * B2 har egne nøkler per rolle: den som signerer en preview-URL trenger
+ * ikke kunne skrive, og den som laster opp trenger ikke kunne slette. R2
+ * har ikke fått samme oppdeling, så der brukes konfigens nøkkel uansett
+ * rolle — å late som noe annet ville vært en falsk trygghet.
+ */
+function credentialsFor(
+  cfg: CaptureStoreConfig,
+  role: B2KeyRole,
+): { accessKeyId: string; secretAccessKey: string } | null {
+  if (cfg.backend === 'b2') {
+    const scoped = resolveB2Key(role);
+    if (scoped) {
+      return {
+        accessKeyId: scoped.keyId,
+        secretAccessKey: scoped.applicationKey,
+      };
+    }
+  }
+  if (!cfg.accessKeyId || !cfg.secretAccessKey) return null;
+  return { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey };
+}
+
+function getClient(cfg: CaptureStoreConfig, role: B2KeyRole): S3Client | null {
+  if (!cfg.enabled || !cfg.endpoint) return null;
+  const creds = credentialsFor(cfg, role);
+  if (!creds) return null;
+  // Nøkkel-id-en er med i cache-nøkkelen, så to roller med ulik nøkkel
+  // aldri deler klient — ellers ville den første rollen som koblet opp
+  // bestemt legitimasjonen for de andre.
+  const cacheKey = `${cfg.backend}|${cfg.endpoint}|${creds.accessKeyId}`;
   const cached = clientCache.get(cacheKey);
   if (cached) return cached;
   const client = new S3Client({
     region: cfg.region,
     endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: cfg.accessKeyId,
-      secretAccessKey: cfg.secretAccessKey,
-    },
+    credentials: creds,
     ...(cfg.forcePathStyle ? { forcePathStyle: true } : {}),
   });
   clientCache.set(cacheKey, client);
@@ -343,7 +386,7 @@ export async function startMultipartUpload(
     return { ok: false, error: 'invalid' };
   }
   const cfg = captureWriteStore();
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-write');
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
 
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
@@ -434,7 +477,7 @@ export async function signPartUrls(
   // Nøkkelen bestemmer lageret — en pågående opplasting mot R2 må kunne
   // fullføres selv om B2 ble slått på mellom start og siste part.
   const cfg = captureStoreForKey(key);
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-write');
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
@@ -504,7 +547,7 @@ export async function completeMultipartUpload(
     return { ok: false, error: 'invalid' };
   }
   const cfg = captureStoreForKey(key);
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-write');
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
 
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
@@ -621,7 +664,7 @@ export async function uploadCaptureObject(params: {
   const cfg = params.key.startsWith(buildCaptureB2Config().prefix)
     ? captureStoreForKey(params.key)
     : captureWriteStore();
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-write');
   if (!cfg.enabled || !cfg.bucket || !client) {
     return null;
   }
@@ -675,7 +718,7 @@ async function signAssetReadUrlWithTtl(
 ): Promise<string | null> {
   if (!key) return null;
   const cfg = captureStoreForKey(key);
-  const client = getClient(cfg);
+  const client = getClient(cfg, 'capture-read');
   if (!client || !cfg.bucket) return null;
   return getSignedUrl(
     client,
@@ -693,7 +736,10 @@ export async function abortMultipartUpload(
   key: string,
 ): Promise<{ ok: true } | { ok: false; error: UploadError }> {
   const cfg = captureStoreForKey(key);
-  const client = getClient(cfg);
+  // Avbrudd rydder en ufullstendig multipart, ikke et ferdig objekt.
+  // Skrive-rollen holder — sletterollen er reservert for det som er
+  // uopprettelig.
+  const client = getClient(cfg, 'capture-write');
   if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
