@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaptureApp
+import OutboxKit
 
 /// Pure tests for the realtime reconnect-backoff table. Mirrors the
 /// ``OutboxWorker`` ladder so flaky-network behaviour is predictable

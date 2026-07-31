@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OutboxKit
 
 /// Kvikk-teaser: send 3-5 hero-frames til klient fra iPad mellom
 /// sesjonene. Fotografen trykker Send, backend speiler sesjonen inn

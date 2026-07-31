@@ -10,7 +10,7 @@ import Foundation
 ///     references something that doesn't exist; no retry will fix it.
 ///     Mark failed with attempts := maxAttempts so the UI parks it
 ///     for manual resolution.
-enum OutboxSendOutcome: Sendable {
+public enum OutboxSendOutcome: Sendable {
     case succeeded
     case failedTransient(String)
     case failedPermanent(String)
@@ -20,6 +20,6 @@ enum OutboxSendOutcome: Sendable {
 /// The worker depends on this protocol, not on ``BackendClient``, so
 /// tests can inject a mock sender that records calls without any
 /// networking setup.
-protocol OutboxSender: Sendable {
+public protocol OutboxSender: Sendable {
     func send(_ mutation: OutboxMutation) async -> OutboxSendOutcome
 }

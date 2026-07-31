@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OutboxKit
 
 /// Swipe decisions the photographer makes on each asset during Live
 /// Cull. Mapped to backend fields on commit:

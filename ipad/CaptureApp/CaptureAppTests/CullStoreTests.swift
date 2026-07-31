@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaptureApp
+import OutboxKit
 
 /// Tests for the Live Cull commit store. All run against an
 /// in-memory GRDB. We verify:

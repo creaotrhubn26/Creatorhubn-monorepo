@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaptureApp
+import OutboxKit
 
 /// Tests for ``AssetMarkupStore`` + ``MarkupStorage``. Run against
 /// in-memory GRDB + temp-dir markup storage so nothing touches the

@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaptureApp
+import OutboxKit
 
 /// Tests for the iPad shot-list mutation store. Verifies:
 ///   - Local row updates + outbox enqueue happen atomically so

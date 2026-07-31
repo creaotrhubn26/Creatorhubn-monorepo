@@ -13,6 +13,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: 7.0.0
+  # Delt mellom iPad-appene. Se ipad/Packages/OutboxKit.
+  OutboxKit:
+    path: ../Packages/OutboxKit
 
 settings:
   base:
@@ -40,6 +43,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: OutboxKit
+        product: OutboxKit
       - target: CaptureWidgets
         embed: true
     info:

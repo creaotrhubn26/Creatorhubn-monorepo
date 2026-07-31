@@ -92,25 +92,38 @@ i appen.
 ```
 ipad/
   Packages/
-    CHSync/            Outbox, OutboxWorker, OutboxSender, OutboxMutation
-    CHNetworking/      BackendClient + retry/backoff
-    CHCameraControl/   CCAPIClient/Error/Types/InsecureTrust,
-                       CameraDiscovery, CameraSession
-                       + protocol CameraControl  ← BMD/RED/Sony senere
+    OutboxKit/         ✅ trukket ut — Outbox, OutboxWorker, OutboxSender,
+                          OutboxMutation, OutboxSchema, OutboxDatabase
+    NetworkingKit/     senere — BackendClient + retry/backoff
+    CameraControlKit/  senere — CCAPIClient/Error/Types/InsecureTrust,
+                          CameraDiscovery, CameraSession
+                          + protocol CameraControl  ← BMD/RED/Sony
   CaptureApp/          CCAPIAdapter (foto-mapping) + resten
   LeadMapApp/
   SetModeApp/          ny — film-Live-Set
 ```
 
-Lokale Swift-pakker via `packages:` med `path:` i XcodeGen. Ingen ny
-infrastruktur, samme mekanisme som GRDB allerede bruker.
+Navnene er produktnøytrale med vilje. Pakkene deles mellom CreatorHub og
+The Role Room, så et `CH`-prefiks ville pekt på feil eier.
 
-**Rekkefølge:** trekk ut `CHSync` først og la CaptureApp bruke pakken i stedet
-for sine egne filer. Én app, én pakke, grønn CI — *før* app nummer tre finnes.
-Da er utrekket bevist mot en app som allerede virker, framfor å bli en
-antakelse den nye appen arver.
+Lokale Swift-pakker via `packages:` med `path:` i XcodeGen — samme mekanisme
+som GRDB allerede bruker, ingen ny infrastruktur.
 
-`CHCameraControl` kan vente til fase 5. Live Set trenger den ikke før
+**`OutboxKit` er gjort.** CaptureApp bruker pakken i stedet for sine egne
+filer, så utrekket er bevist mot en app som allerede virker — framfor å bli en
+antakelse den nye appen arver. To ting fulgte med som ikke lå i selve
+kø-koden:
+
+- **GRDB-konformansen** lå i appens `DatabaseSchema.swift`. Den hører til
+  typen — en ny app skal ikke måtte vite at den må skrives.
+- **DDL-en** lå inline i migratoren. `OutboxSchema.createTable(db)` eier den
+  nå, mens *migreringsnavnet* blir stående i appen: å flytte navnet ville
+  fått GRDB til å tro at en allerede kjørt migrering var ny.
+
+Koblingen til appens database går gjennom `OutboxDatabase`-protokollen, så
+alle ni `Outbox(database: db)`-kallstedene står urørt.
+
+`CameraControlKit` kan vente til fase 5. Live Set trenger den ikke før
 kamerakontroll skal inn.
 
 ### 1.5 Hva som mangler helt

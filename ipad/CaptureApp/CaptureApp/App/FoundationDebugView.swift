@@ -1,5 +1,6 @@
 import SwiftUI
 import GRDB
+import OutboxKit
 
 /// Foundation diagnostics — designed to be the first thing running
 /// in simulator so you can *see* that v3 migration ran, outbox is

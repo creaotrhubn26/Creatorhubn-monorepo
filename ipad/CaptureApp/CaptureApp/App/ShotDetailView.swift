@@ -1,5 +1,6 @@
 import SwiftUI
 import PencilKit
+import OutboxKit
 
 /// Detail view for one shot — shown when the photographer taps a row
 /// on ``ShotListView``. Two editable surfaces:

@@ -1,4 +1,5 @@
 import Foundation
+import OutboxKit
 
 /// Owns the user-scoped WebSocket connection to the backend at
 /// ``/api/ipad/ws/events?token=<bearer>`` and dispatches decoded

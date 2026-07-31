@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OutboxKit
 
 /// Read + mutate surface for contracts on the iPad. Mirrors the
 /// offline-first pattern used everywhere else in CreatorHub One:

@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaptureApp
+import OutboxKit
 
 /// Tests for ``ContractStore``. Run against in-memory GRDB + a
 /// temp-dir ``SignatureStorage`` so nothing touches the real app
