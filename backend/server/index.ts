@@ -759,6 +759,7 @@ import { setupRoleRoomCalendarRoutes } from "./role-room-calendar-routes.js";
 import { setupRoleRoomFundingRoutes } from "./role-room-funding-routes.js";
 import { setupRoleRoomWorkTimeRoutes } from "./role-room-work-time-routes.js";
 import { setupRoleRoomStripboardRoutes } from "./role-room-stripboard-routes.js";
+import { setupRoleRoomTakeApprovalRoutes } from "./role-room-take-approval-routes.js";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
@@ -31814,6 +31815,7 @@ setupRoleRoomCalendarRoutes({ app, pool, requireUserSession });
 setupRoleRoomFundingRoutes({ app, pool, requireUserSession });
 setupRoleRoomWorkTimeRoutes({ app, pool, requireUserSession });
 setupRoleRoomStripboardRoutes({ app, pool, requireUserSession });
+setupRoleRoomTakeApprovalRoutes({ app, pool, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
