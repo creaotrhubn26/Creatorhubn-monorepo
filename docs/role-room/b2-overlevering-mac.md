@@ -10,6 +10,49 @@ og `frontend/node_modules`. Alt annet er verifisert her — backend-suiten
 
 ---
 
+## 0. Komme i gang i terminalen
+
+Alt arbeidet ligger på grenen `claude/new-session-s15c36`. Ingen
+pull request er opprettet — det er din beslutning.
+
+```bash
+git fetch origin
+git checkout claude/new-session-s15c36
+git pull
+
+npm install                      # rot
+cd backend  && npm install && cd ..
+cd frontend && npm install && cd ..
+
+claude                           # start Claude Code her
+```
+
+To ting som biter i dette repoet:
+
+- **`*.md` er gitignored.** Nye dokumenter må legges til med
+  `git add -f docs/…`, ellers forsvinner de stille.
+- **Pre-push-hooken henger.** Den kjører npm + frontend-tsc og blir
+  stående. Kjør sjekkene manuelt og bruk `git push --no-verify`.
+
+Verifiser at du står på samme sted som meg:
+
+```bash
+cd backend && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "error TS"
+# forventet: 135 (preeksisterende baseline, ikke innført her)
+
+npx vitest run | tail -3
+# forventet: 2801 passed
+```
+
+Åpningsprompt til Claude Code:
+
+> Les `docs/role-room/b2-overlevering-mac.md`. Vi er midt i å flytte
+> lagringen til Backblaze B2. Punkt 1–9 er ting jeg må gjøre lokalt.
+> Start med å bekrefte at typecheck står på 135 og at backend-suiten er
+> grønn, og si fra hvis noe avviker fra doken.
+
+---
+
 ## 1. Provisjoner B2-nøklene
 
 **Hvorfor ikke gjort her:** krever innlogging hos Backblaze. Koden er
