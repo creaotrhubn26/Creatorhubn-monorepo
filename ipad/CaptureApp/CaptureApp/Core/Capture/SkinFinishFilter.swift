@@ -10,8 +10,11 @@ enum SkinFinishFilter {
     static func apply(to image: CIImage, warmth: Double = 0.12, vibrance: Double = 0.18,
                       dimension: Double = 0.10, smooth: Double = 0.25) -> CIImage {
         let extent = image.extent
-        guard extent.width >= 4, extent.height >= 4,
-              let faceRect = detectFaceRect(in: image, extent: extent) else { return image }
+        guard extent.width >= 4, extent.height >= 4 else { return image }
+        // ALLE ansikter (ikke bare største) — på gruppebilder skal forloverne få
+        // samme finish som brudeparet; inkonsistent finish er mer synlig enn ingen.
+        let faceRects = detectFaceRects(in: image, extent: extent)
+        guard !faceRects.isEmpty else { return image }
 
         var skin = image
 
@@ -60,7 +63,7 @@ enum SkinFinishFilter {
             }
         }
 
-        guard let mask = faceMask(extent: extent, faceRect: faceRect) else { return image }
+        guard let mask = unionFaceMask(extent: extent, faceRects: faceRects) else { return image }
         let blend = CIFilter.blendWithMask()
         blend.inputImage = skin
         blend.backgroundImage = image
@@ -68,16 +71,28 @@ enum SkinFinishFilter {
         return blend.outputImage?.cropped(to: extent) ?? image
     }
 
-    private static func detectFaceRect(in image: CIImage, extent: CGRect) -> CGRect? {
+    private static func detectFaceRects(in image: CIImage, extent: CGRect) -> [CGRect] {
         let det = CIDetector(ofType: CIDetectorTypeFace, context: nil,
                              options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-        let faces = (det?.features(in: image) ?? []).compactMap { $0 as? CIFaceFeature }
-        guard let biggest = faces.max(by: { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height })
-        else { return nil }
-        return biggest.bounds.intersection(extent)
+        return (det?.features(in: image) ?? [])
+            .compactMap { ($0 as? CIFaceFeature)?.bounds.intersection(extent) }
+            .filter { $0.width > 2 && $0.height > 2 }
     }
 
-    private static func faceMask(extent: CGRect, faceRect: CGRect) -> CIImage? {
+    /// Union av alle ansikters myke masker (lighten = maks) → hvit på hvert ansikt.
+    private static func unionFaceMask(extent: CGRect, faceRects: [CGRect]) -> CIImage? {
+        var mask = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: extent)
+        for faceRect in faceRects {
+            guard let g = faceGradient(extent: extent, faceRect: faceRect) else { continue }
+            let lighten = CIFilter.lightenBlendMode()
+            lighten.inputImage = g
+            lighten.backgroundImage = mask
+            mask = lighten.outputImage?.cropped(to: extent) ?? mask
+        }
+        return mask
+    }
+
+    private static func faceGradient(extent: CGRect, faceRect: CGRect) -> CIImage? {
         let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: extent)
         let g = CIFilter.radialGradient()
         g.center = CGPoint(x: faceRect.midX, y: faceRect.midY)

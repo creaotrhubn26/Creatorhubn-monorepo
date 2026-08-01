@@ -60,6 +60,30 @@ final class MagicRecipeWeddingTests: XCTestCase {
         }
     }
 
+    /// `isNeutral` MÅ bli false så snart EN akse er rørt — ellers merger
+    /// RAWExportPipeline inn Picture Style-baselinen oppå fotografens valg.
+    /// skinGuard + filmGrain manglet i sjekken; denne fanger «nytt felt, glemt
+    /// isNeutral» permanent (sett hver akse enkeltvis, assert IKKE nøytral).
+    func testIsNeutralIsFalseForEachSingleAxis() {
+        XCTAssertTrue(MagicRecipe().isNeutral, "en urørt recipe skal være nøytral")
+        var mutators: [(String, (inout MagicRecipe) -> Void)] = [
+            ("warmth", { $0.warmth = 0.2 }), ("skinHighFreq", { $0.skinHighFreq = 0.2 }),
+            ("skinLowFreq", { $0.skinLowFreq = 0.2 }), ("skinSmooth", { $0.skinSmooth = 0.2 }),
+            ("shadowLift", { $0.shadowLift = 0.2 }), ("contrast", { $0.contrast = 0.2 }),
+            ("saturation", { $0.saturation = 0.2 }), ("highlightRecovery", { $0.highlightRecovery = 0.2 }),
+            ("vibrance", { $0.vibrance = 0.2 }), ("texture", { $0.texture = 0.2 }),
+            ("dehaze", { $0.dehaze = 0.2 }), ("eyeSharpen", { $0.eyeSharpen = 0.2 }),
+            ("eyeCatchlight", { $0.eyeCatchlight = 0.2 }), ("autoStraighten", { $0.autoStraighten = true }),
+            ("teethWhiten", { $0.teethWhiten = 0.2 }), ("skinUnify", { $0.skinUnify = 0.2 }),
+            ("skinGuard", { $0.skinGuard = 0.2 }), ("filmGrain", { $0.filmGrain = 0.2 }),
+        ]
+        for (name, mutate) in mutators {
+            var r = MagicRecipe()
+            mutate(&r)
+            XCTAssertFalse(r.isNeutral, "isNeutral skal være false når \(name) er satt")
+        }
+    }
+
     private static func meanLuma(_ cg: CGImage) -> Double {
         let w = 32, h = 32
         var px = [UInt8](repeating: 0, count: w * h * 4)

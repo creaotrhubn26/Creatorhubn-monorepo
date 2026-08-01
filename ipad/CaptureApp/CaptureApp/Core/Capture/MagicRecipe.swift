@@ -481,6 +481,12 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if skinUnify >= 0.05 {
             chips.append("Skin Unify +\(Int((skinUnify * 100).rounded()))%")
         }
+        if skinGuard >= 0.05 {
+            chips.append("Skin Guard +\(Int((skinGuard * 100).rounded()))%")
+        }
+        if filmGrain >= 0.05 {
+            chips.append("Film Grain +\(Int((filmGrain * 100).rounded()))%")
+        }
         if subjectType != .none {
             chips.append("Type: \(subjectType.rawValue.capitalized)")
         }
@@ -494,6 +500,10 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             && dehaze == 0 && eyeSharpen == 0 && eyeCatchlight == 0
             && !autoStraighten && straightenAngle == 0
             && teethWhiten == 0 && subjectType == .none && skinUnify == 0
+            // skinGuard/filmGrain manglet → en recipe med KUN én av dem ble regnet
+            // nøytral, og RAWExportPipeline merget inn Picture Style-baselinen selv
+            // om fotografen hadde rørt en slider (mot den dokumenterte regelen).
+            && skinGuard == 0 && filmGrain == 0
     }
 
     // MARK: - Codable (forward-compat decode)

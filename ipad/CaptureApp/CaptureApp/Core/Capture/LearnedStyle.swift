@@ -188,7 +188,13 @@ enum LearnedStyle {
     /// (CIColorCurves) + a/b-skift, scene-matchet on-device.
     static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5) -> CIImage {
         guard !scenes.isEmpty else { return image }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        // #3: eksplisitt sRGB arbeidsrom. Alle readbacks (autoBright/features/
+        // lumaStats) + LAB-cuben antar sRGB 0–1; uten dette kan default-konteksten
+        // tolke P3/lineære verdier → a/b-skift + Reinhard treffer litt feil på
+        // mettede farger. Låser hele kjeden til sRGB.
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)
+        let ctx = CIContext(options: [.useSoftwareRenderer: false,
+                                      .workingColorSpace: srgb as Any])
         var out = image
 
         // BASE AUTO-BRIGHT (CIRAWFilter → rawpy): rawpy-develop-en LUT-ene ble trent
