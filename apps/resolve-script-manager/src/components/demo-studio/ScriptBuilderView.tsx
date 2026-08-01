@@ -11,11 +11,11 @@
  * + device + opptak henger sammen (spec §11.3).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 import { captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
-import { generateSceneScript, improveScript, annotateFrame, type ImproveAction } from './demoStudioAI';
+import { generateSceneScript, improveScript, annotateFrame, fetchSiteContext, type ImproveAction } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { FramedDevice } from './FramedDevice';
@@ -121,12 +121,24 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   const sceneShot = (): string | null =>
     pickShot(project?.scanShots, (selected?.startScrollPct ?? 0) / 100);
 
+  // Cache av nettside-innhold per URL (hentes én gang) — forankrer manus-AI-en i
+  // hva produktet FAKTISK er, så den ikke gjetter ut fra navnet.
+  const siteCtxRef = useRef<{ url: string; ctx: string } | null>(null);
+  const getSiteContext = async (): Promise<string> => {
+    if (!project) return '';
+    if (siteCtxRef.current?.url === project.url) return siteCtxRef.current.ctx;
+    const ctx = await fetchSiteContext(project.url).catch(() => '');
+    siteCtxRef.current = { url: project.url, ctx };
+    return ctx;
+  };
+
   const onGenerate = async () => {
     if (!project || !selected) return;
     if (!aiReady) { setShowSignIn(true); return; }
     setAiError(null); setAiBusy('generate');
     try {
-      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, screenshot: selected.thumbnailDataUrl || sceneShot() || undefined });
+      const siteContext = await getSiteContext();
+      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, siteContext, screenshot: selected.thumbnailDataUrl || sceneShot() || undefined });
       updateScene(selected.id, {
         narration: g.narration, visualInstruction: g.visualInstruction,
         requiredAction: g.requiredAction, overlayText: g.overlayText, status: 'in_progress',
