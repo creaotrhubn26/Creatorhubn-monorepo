@@ -2234,3 +2234,35 @@ export const marketingSegmentsApi = {
   unlinkCampaign: (id: string, campaignId: string): Promise<{ removed: boolean; performance: SegmentPerformance }> =>
     jsonFetch(`/marketing-segments/${id}/campaigns/${campaignId}`, { method: 'DELETE' }),
 };
+
+// ─────────────────────────────────────────────────────────
+// Business DNA — Catalog (auto-populert fra systemets vertikaler)
+// ─────────────────────────────────────────────────────────
+
+export type CatalogSource = 'system_vertical' | 'custom' | 'url_import';
+
+export interface CatalogItem {
+  id: string;
+  itemKey: string | null;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  source: CatalogSource;
+  active: boolean;
+}
+
+export const marketingCatalogApi = {
+  list: async (): Promise<CatalogItem[]> => {
+    const data = await jsonFetch<{ items: CatalogItem[] }>('/marketing-catalog');
+    return data.items;
+  },
+  create: (input: { name: string; description?: string; imageUrl?: string }): Promise<{ item: CatalogItem }> =>
+    jsonFetch('/marketing-catalog', { method: 'POST', body: JSON.stringify(input) }),
+  update: (
+    id: string,
+    patch: { name?: string; description?: string; imageUrl?: string; active?: boolean },
+  ): Promise<{ item: CatalogItem }> =>
+    jsonFetch(`/marketing-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string): Promise<{ deleted: boolean }> =>
+    jsonFetch(`/marketing-catalog/${id}`, { method: 'DELETE' }),
+};
