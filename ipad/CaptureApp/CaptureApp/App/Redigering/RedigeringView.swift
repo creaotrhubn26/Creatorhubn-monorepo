@@ -83,6 +83,10 @@ final class RedigeringModel {
     /// Rendered "Etter" preview for the selected asset + current recipe.
     private(set) var afterImage: UIImage?
     private(set) var rendering = false
+    /// Monotont løpenummer per render. En detached render tar sekunder (RAW-
+    /// dekoding); bytter brukeren asset eller slipper en slider på nytt i mellom-
+    /// tiden, må det GAMLE resultatet forkastes — ellers lander feil bilde oppå.
+    private var renderGeneration = 0
 
     /// Kamera-EXIF (ISO/blender/lukker/brennvidde) for det valgte bildet — lest
     /// fra RAW/JPEG ved valg. Vises i editoren; nil når fila mangler metadata.
@@ -234,6 +238,11 @@ final class RedigeringModel {
             let useRaw = a.autoCleanedKey == nil ? a.rawKey : nil
             let jpeg = a.displayPreviewKey
             let crop = crops[a.id]
+            // PERSISTÉR selve oppskriften per asset (ikke bare den eksporterte
+            // JPEG-en) — ellers er edits/crops borte etter app-restart for alle
+            // unntatt det valgte bildet. `applied` holdes også i sync.
+            applied[a.id] = recipe
+            RedigeringEditStore.save(a.id, .init(recipe: recipe, exposureEV: ev, crop: crop))
             let data = await Task.detached(priority: .utility) {
                 RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
             }.value
@@ -359,6 +368,8 @@ final class RedigeringModel {
 
     private func render() async {
         guard let asset = selected else { afterImage = nil; return }
+        renderGeneration += 1
+        let gen = renderGeneration
         rendering = true
         // Working base priority: server "sky" enhance → AI-cleaned → RAW.
         // Local recipe/exposure/crop layer on top of whichever base.
@@ -423,6 +434,9 @@ final class RedigeringModel {
             else { return base }
             return UIImage(cgImage: cg)
         }.value
+        // GENERASJONSVAKT: forkast resultatet hvis en nyere render har startet
+        // (raske slider-slipp) ELLER brukeren har byttet asset i mellomtiden.
+        guard gen == renderGeneration, selectedId == asset.id else { return }
         afterImage = img
         rendering = false
     }
@@ -874,6 +888,8 @@ struct BeforeAfterCompare: View {
     @State private var split: CGFloat = 0.5
     @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
+    /// «Før»-bildet dekodes ÉN gang (i .task) — ikke i body ved hver drag-frame.
+    @State private var beforeImage: UIImage?
 
     var body: some View {
         GeometryReader { geo in
@@ -883,7 +899,7 @@ struct BeforeAfterCompare: View {
             let effSplit = holdingOriginal ? 1 : split
             ZStack(alignment: .topLeading) {
                 CHTheme.surfaceElevated
-                if let beforePath, let before = UIImage(contentsOfFile: beforePath) {
+                if let before = beforeImage {
                     Image(uiImage: before).resizable().scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height).clipped()
                 }
@@ -940,6 +956,12 @@ struct BeforeAfterCompare: View {
                     .updating($pinch) { value, state, _ in state = value }
                     .onEnded { value in zoom = min(4, max(1, zoom * value)) }
             )
+        }
+        .task(id: beforePath) {
+            let path = beforePath
+            beforeImage = await Task.detached(priority: .userInitiated) {
+                path.flatMap { UIImage(contentsOfFile: $0) }
+            }.value
         }
     }
 
