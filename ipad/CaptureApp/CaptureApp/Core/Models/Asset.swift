@@ -98,5 +98,11 @@ struct AssetSignals: Hashable, Sendable, Codable {
     /// meantime.
     var markupRef: String?
 
+    /// Samlet per-bilde-analyse (``AssetAnalysis``) — måles ÉN gang og deles av
+    /// HUD/cull/forslag/Kvalitetssjekk. Lagres inline på signals (JSONB) i stedet
+    /// for egen kolonne, samme mønster som ``markupRef`` (unknown-key round-trip).
+    /// nil = ikke analysert enda.
+    var analysis: AssetAnalysis?
+
     static let empty = AssetSignals()
 }
