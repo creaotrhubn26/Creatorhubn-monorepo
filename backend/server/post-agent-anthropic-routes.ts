@@ -824,8 +824,12 @@ Tidspunkt: ${new Date().toISOString()}
       if (!imageUrl) { res.status(400).json({ error: 'image_required', detail: 'fal Seedance er image-to-video — send imageUrl (forankre i en produkt-ramme).' }); return; }
       const duration = Math.max(4, Math.min(15, Math.round(Number(body.durationSec) || 6)));
       const resolution = ['480p', '720p', '1080p'].includes(String(body.resolution)) ? String(body.resolution) : '720p';
-      const model = GEN_MODELS['seedance-2-i2v'];
-      const sub = await falSubmit(model.falPath, { prompt, image_url: imageUrl, duration: String(duration), resolution });
+      // Seedance v1 Pro i2v — den produksjons-beviste stien (fal-ai/-prefiks).
+      // Speiler ad-film-Python sitt kall {image_url, prompt}; duration er en
+      // enum ("5"/"10") på denne modellen, så vi mapper i stedet for å sende sek.
+      const model = GEN_MODELS['seedance-i2v-pro'];
+      const durEnum = duration <= 7 ? '5' : '10';
+      const sub = await falSubmit(model.falPath, { prompt, image_url: imageUrl, resolution, duration: durEnum });
       if (sub.error || !sub.responseUrl) {
         res.status(502).json({ error: 'video_submit_failed', detail: sub.error ?? 'ingen responseUrl' });
         return;
