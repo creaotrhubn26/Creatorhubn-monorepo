@@ -38,6 +38,11 @@ struct SmartEditPanel: View {
                 .padding(.horizontal, 8).padding(.vertical, 5)
                 .background(CHTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
             }
+            // Server-gradet base: justeringene ville dobbelt-gradere → deaktivert.
+            // Ærlig banner + handling (rediger originalen) i stedet for stille inerte
+            // slidere.
+            if model.serverGraded { serverGradedBanner }
+            let adjustmentsOff = learnedActive || model.serverGraded
             VStack(alignment: .leading, spacing: 14) {
                 slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, unit: .ev)
                 slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, unit: .signedPercent)
@@ -45,8 +50,8 @@ struct SmartEditPanel: View {
                 slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, unit: .signedPercent)
                 warmthRow
             }
-            .disabled(learnedActive)
-            .opacity(learnedActive ? 0.45 : 1)
+            .disabled(adjustmentsOff)
+            .opacity(adjustmentsOff ? 0.45 : 1)
             toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
                 .onChange(of: model.recipe.autoStraighten) { _, _ in model.recipeChanged() }
             Divider().overlay(CHTheme.border)
@@ -124,6 +129,29 @@ struct SmartEditPanel: View {
         case .signedPercent: return String(format: "%+.0f", v * 100)
         case .percent: return "\(Int(v * 100)) %"
         }
+    }
+
+    /// Banner når basen er server-forbedret: forklarer hvorfor justeringene er
+    /// av, med en handling for å redigere originalen i stedet.
+    private var serverGradedBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "cloud.bolt.fill").font(.caption2)
+                Text("Justeringer deaktivert — bildet er server-forbedret.")
+                    .font(.caption2)
+                Spacer()
+            }
+            Button {
+                model.toggleEditOriginal()
+            } label: {
+                Label("Rediger originalen i stedet", systemImage: "arrow.uturn.backward")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.bordered).controlSize(.small).tint(.orange)
+        }
+        .foregroundStyle(.orange)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var warmthRow: some View {

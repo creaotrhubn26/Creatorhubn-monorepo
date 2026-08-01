@@ -63,6 +63,8 @@ final class RedigeringModel {
         // [CGRect] (Sendable) tilbake til MainActor. Vision gir NORMALISERTE
         // nede-venstre-rekter direkte — samme konvensjon som `faceRectsNorm`.
         nonisolated(unsafe) let src = cg
+        faceDetectGeneration += 1
+        let faceGen = faceDetectGeneration
         Task {
             let rects = await Task.detached(priority: .userInitiated) { () -> [CGRect] in
                 let req = VNDetectFaceRectanglesRequest()
@@ -72,6 +74,9 @@ final class RedigeringModel {
                     .map(\.boundingBox)
                     .filter { $0.width > 0.01 && $0.height > 0.01 }
             }.value
+            // Koalescér: flere renders → flere deteksjoner i kappløp; kun det
+            // NYESTE resultatet skal lande (samme generasjonsmønster som render()).
+            guard faceGen == faceDetectGeneration else { return }
             faceRectsNorm = rects
             if activeFace == nil, !rects.isEmpty { activeFace = 0 }
             // Demo-hekte: forhåndsvis en lokal justering på ansikt 0.
@@ -95,6 +100,8 @@ final class RedigeringModel {
     /// dekoding); bytter brukeren asset eller slipper en slider på nytt i mellom-
     /// tiden, må det GAMLE resultatet forkastes — ellers lander feil bilde oppå.
     private var renderGeneration = 0
+    /// Løpenummer for lokal ansiktsdeteksjon — koalescerer samtidige pass.
+    private var faceDetectGeneration = 0
 
     /// Kamera-EXIF (ISO/blender/lukker/brennvidde) for det valgte bildet — lest
     /// fra RAW/JPEG ved valg. Vises i editoren; nil når fila mangler metadata.
@@ -127,6 +134,47 @@ final class RedigeringModel {
     private var redo: [RedigeringEditStore.EditState] = []
 
     private var ownerUserId: String? { SignInService.shared.session?.userId }
+
+    /// Bilder der fotografen har valgt å redigere ORIGINALEN i stedet for den
+    /// server-forbedrede («AI-forbedring (sky)») basen — så preset/slider-
+    /// justeringene virker igjen. Uten dette er sliderne stille inerte på server-
+    /// gradede bilder (basen er alt gradet → flat recipe → ingenting skjer).
+    private var bypassServerEnhance: Set<UUID> = []
+
+    /// Sann når det valgte bildet redigeres på en server-gradet base (og ikke
+    /// er overstyrt) → preset/sliders er deaktivert (dobbel-gradering unngås).
+    /// Driver banner + disabling i ``SmartEditPanel``.
+    var serverGraded: Bool {
+        guard let a = selected else { return false }
+        return a.serverEnhancedKey != nil && !bypassServerEnhance.contains(a.id)
+    }
+
+    /// Bytt mellom å redigere den server-forbedrede basen (justeringer av) og
+    /// originalen (justeringer på) for det valgte bildet.
+    func toggleEditOriginal() {
+        guard let id = selectedId else { return }
+        if bypassServerEnhance.contains(id) { bypassServerEnhance.remove(id) } else { bypassServerEnhance.insert(id) }
+        Task { await render() }
+    }
+
+    /// Flat base-recipe for gradede baser (server-sky / lært stil): kun høylys-
+    /// vern, INGEN auto-enhance/skygge-løft — så den alt-gradede tonen ikke
+    /// dobbelt-prosesseres. Delt av interaktiv render + batch-eksport.
+    private static let flatGradedRecipe = MagicRecipe(highlightRecovery: 0.30, autoEnhance: false)
+
+    /// Base-utvalg + gradering-status for ett bilde — ÉN kilde delt av preview-
+    /// render OG batch-eksport, så det fotografen SER er det som LEVERES.
+    /// Prioritet: server-sky → AI-cleaned → RAW. `bypassServerEnhance` lar
+    /// fotografen redigere originalen.
+    private struct WorkingBase { let rawPath: String?; let jpegPath: String?; let graded: Bool }
+    private func workingBase(for asset: Asset) -> WorkingBase {
+        let server = bypassServerEnhance.contains(asset.id) ? nil : asset.serverEnhancedKey
+        let cleaned = asset.autoCleanedKey
+        // RAW kun når ingen alt-prosessert JPEG-base finnes (server/cleaned).
+        let raw = (server == nil && cleaned == nil) ? asset.rawKey : nil
+        let jpeg = server ?? cleaned ?? asset.displayPreviewKey
+        return WorkingBase(rawPath: raw, jpegPath: jpeg, graded: server != nil)
+    }
 
     var selected: Asset? { assets.first { $0.id == selectedId } }
     var canUndo: Bool { !undo.isEmpty }
@@ -279,19 +327,28 @@ final class RedigeringModel {
         guard let svc = services() else { return }
         working = true; seriesTotal = assets.count; seriesProgress = 0
         defer { working = false; seriesTotal = 0 }
-        let r = effectiveRecipe(); let ev = exposureEV
+        let baseRecipe = effectiveRecipe(); let ev = exposureEV
         var failed: [String] = []
         for a in assets {
-            let useRaw = a.autoCleanedKey == nil ? a.rawKey : nil
-            let jpeg = a.displayPreviewKey
-            let crop = crops[a.id]
-            // PERSISTÉR selve oppskriften per asset (ikke bare den eksporterte
-            // JPEG-en) — ellers er edits/crops borte etter app-restart for alle
-            // unntatt det valgte bildet. `applied` holdes også i sync.
-            applied[a.id] = recipe
-            RedigeringEditStore.save(a.id, .init(recipe: recipe, exposureEV: ev, crop: crop))
+            // #4: SAMME base-valg som interaktiv render (server-sky → cleaned →
+            // RAW) — før ignorerte batch serverEnhancedKey, så et server-forbedret
+            // bilde ble eksportert fra RAW med full recipe mens previewen viste
+            // server-basen flat. Nå matcher det fotografen ser det som leveres.
+            let base = workingBase(for: a)
+            // Gradet base (server-sky) → flat recipe, akkurat som render(). Ellers
+            // brukerens effektive recipe.
+            let exportRecipe = base.graded ? Self.flatGradedRecipe : baseRecipe
+            // #3a: crop fra minne ELLER persistert edit — etter app-restart er
+            // in-memory-dictet tomt for alle unntatt valgt asset, så batch mistet
+            // ellers beskjæringene.
+            let crop = crops[a.id] ?? RedigeringEditStore.load(a.id)?.crop
+            // #3b: PERSISTÉR DET VI RENDRER (exportRecipe), ikke rå-recipen — ellers
+            // matcher ikke lagret oppskrift den eksporterte JPEG-en etter restart.
+            applied[a.id] = exportRecipe
+            RedigeringEditStore.save(a.id, .init(recipe: exportRecipe, exposureEV: ev, crop: crop))
             let data = await Task.detached(priority: .utility) {
-                RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+                RedigeringPipeline.renderExport(rawPath: base.rawPath, jpegPath: base.jpegPath,
+                                                recipe: exportRecipe, exposureEV: ev, crop: crop)
             }.value
             var ok = false
             if let data {
@@ -461,12 +518,11 @@ final class RedigeringModel {
         renderGeneration += 1
         let gen = renderGeneration
         rendering = true
-        // Working base priority: server "sky" enhance → AI-cleaned → RAW.
-        // Local recipe/exposure/crop layer on top of whichever base.
-        let serverEnhanced = asset.serverEnhancedKey
-        let cleaned = asset.autoCleanedKey
-        let raw = (serverEnhanced == nil && cleaned == nil) ? asset.rawKey : nil
-        let jpeg = serverEnhanced ?? cleaned ?? asset.displayPreviewKey
+        // Working base priority (DELT med batch-eksport via workingBase): server
+        // "sky" enhance → AI-cleaned → RAW. Local recipe/exposure/crop layer on top.
+        let base = workingBase(for: asset)
+        let raw = base.rawPath
+        let jpeg = base.jpegPath
         let styles = LearnedStyleStore.shared.styles
         let manualScenes: [LearnedStyleProfile.Scene]? = {
             guard let i = learnedStyleIndex, styles.indices.contains(i) else { return nil }
@@ -479,14 +535,13 @@ final class RedigeringModel {
         // og som blåser opp lyse scener), kun høylys-vern. Da opererer LUT-en på
         // et sant nøytralt utgangspunkt i stedet for et alt-oppløftet.
         let learnedActive = manualScenes != nil || auto
-        let learnedBase = MagicRecipe(highlightRecovery: 0.30, autoEnhance: false)
         // #12: server-enhanced base er ALLEREDE fargestyrt/gradet av «AI-forbedring
         // (sky)». Å legge preset-graden (Bryllup osv.) oppå dobbeltprosesserer tonen
-        // — samme feil vi løste for lært stil. Bruk flat base når basen er server-
-        // gradet, så sliderne ikke dobbelt-graderer. (auto-cleaned er IKKE gradet →
-        // beholder recipen der.)
-        let serverGraded = serverEnhanced != nil
-        let r = (learnedActive || serverGraded) ? learnedBase : effectiveRecipe()
+        // — samme feil vi løste for lært stil. Bruk flat base når basen er gradet,
+        // så sliderne ikke dobbelt-graderer. (auto-cleaned er IKKE gradet → beholder
+        // recipen der.) Server-gradede bilder viser i tillegg et banner + deaktiverte
+        // slidere (se `serverGraded`), så inertien er FORKLART, ikke stille.
+        let r = (learnedActive || base.graded) ? Self.flatGradedRecipe : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
         let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
@@ -537,8 +592,11 @@ final class RedigeringModel {
             return UIImage(cgImage: cg)
         }.value
         // GENERASJONSVAKT: forkast resultatet hvis en nyere render har startet
-        // (raske slider-slipp) ELLER brukeren har byttet asset i mellomtiden.
-        guard gen == renderGeneration, selectedId == asset.id else { return }
+        // (raske slider-slipp) — den nyere renderen eier `rendering`-flagget.
+        guard gen == renderGeneration else { return }
+        // Byttet asset uten en nyere render i flukt → nullstill flagget selv
+        // (ellers står spinneren evig på det gamle bildet).
+        guard selectedId == asset.id else { rendering = false; return }
         afterImage = img
         rendering = false
     }
