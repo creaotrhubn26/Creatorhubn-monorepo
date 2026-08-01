@@ -36,8 +36,10 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
 import {
   marketingSegmentsApi,
+  type LinkableCampaign,
   type MarketingAudiencePlatform,
   type MarketingSegment,
 } from '../../../services/adminRoomApi';
@@ -95,6 +97,11 @@ export function MarketingSegmentsTab() {
   const [platform, setPlatform] = useState<MarketingAudiencePlatform>('google_customer_match');
   const [accountId, setAccountId] = useState('');
   const [materializeResult, setMaterializeResult] = useState<string | null>(null);
+
+  // Attribusjon — koble kampanje
+  const [linkFor, setLinkFor] = useState<MarketingSegment | null>(null);
+  const [campaigns, setCampaigns] = useState<LinkableCampaign[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -185,6 +192,42 @@ export function MarketingSegmentsTab() {
     }
   };
 
+  const openLink = async (segment: MarketingSegment) => {
+    setLinkFor(segment);
+    setSelectedCampaign('');
+    try {
+      setCampaigns(await marketingSegmentsApi.listCampaigns());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const doLink = async () => {
+    if (!linkFor || !selectedCampaign) return;
+    setBusy('link');
+    try {
+      await marketingSegmentsApi.linkCampaign(linkFor.id, selectedCampaign);
+      setLinkFor(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doUnlink = async (segmentId: string, campaignId: string) => {
+    setBusy(`unlink-${campaignId}`);
+    try {
+      await marketingSegmentsApi.unlinkCampaign(segmentId, campaignId);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const activePlatform = useMemo(() => PLATFORMS.find((p) => p.value === platform), [platform]);
 
   return (
@@ -265,6 +308,11 @@ export function MarketingSegmentsTab() {
                         <CloudUploadOutlinedIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    <Tooltip title="Koble annonsekampanje (for ROAS per segment)">
+                      <IconButton size="small" onClick={() => openLink(s)}>
+                        <LinkOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Slett segment">
                       <span>
                         <IconButton
@@ -310,6 +358,47 @@ export function MarketingSegmentsTab() {
                       ))}
                     </Stack>
                   </>
+                )}
+
+                {s.performance && s.performance.campaignCount > 0 && (
+                  <>
+                    <Divider sx={{ my: 1 }} />
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                      <Typography variant="body2" fontWeight={600}>
+                        Avkastning:
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color={s.performance.roas !== null && s.performance.roas >= 1 ? 'success' : 'warning'}
+                        label={s.performance.roas !== null ? `ROAS ${s.performance.roas.toFixed(2)}×` : 'ingen data ennå'}
+                      />
+                      <Typography variant="body2" color="text.secondary">
+                        {Math.round(s.performance.spendNok).toLocaleString('nb-NO')} kr brukt ·{' '}
+                        {Math.round(s.performance.convValueNok).toLocaleString('nb-NO')} kr verdi ·{' '}
+                        {s.performance.conversions} konv.
+                      </Typography>
+                    </Stack>
+                  </>
+                )}
+
+                {(s.campaigns ?? []).length > 0 && (
+                  <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                    {(s.campaigns ?? []).map((c) => (
+                      <Stack key={c.campaignId} direction="row" alignItems="center" spacing={1}>
+                        <Chip size="small" variant="outlined" label={c.platform} />
+                        <Typography variant="body2" color="text.secondary">
+                          {c.goal ?? c.externalCampaignId ?? c.campaignId.slice(0, 8)} · {c.status}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          disabled={busy === `unlink-${c.campaignId}`}
+                          onClick={() => doUnlink(s.id, c.campaignId)}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    ))}
+                  </Stack>
                 )}
               </CardContent>
             </Card>
@@ -427,6 +516,43 @@ export function MarketingSegmentsTab() {
             onClick={handleMaterialize}
           >
             Materialiser
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Link campaign dialog */}
+      <Dialog open={Boolean(linkFor)} onClose={() => setLinkFor(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Koble kampanje til «{linkFor?.name}»</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+            Koble en annonsekampanje som targeter dette segmentets audience, så ruller ROAS og spend opp til segment-nivå.
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel id="campaign-label">Kampanje</InputLabel>
+            <Select
+              labelId="campaign-label"
+              label="Kampanje"
+              value={selectedCampaign}
+              onChange={(e) => setSelectedCampaign(e.target.value)}
+            >
+              {campaigns.length === 0 && (
+                <MenuItem value="" disabled>
+                  Ingen kampanjer funnet
+                </MenuItem>
+              )}
+              {campaigns.map((c) => (
+                <MenuItem key={c.id} value={c.id}>
+                  [{c.platform}] {c.goal ?? c.externalCampaignId ?? c.id.slice(0, 8)} · {c.status} ·{' '}
+                  {Math.round(c.spendNok).toLocaleString('nb-NO')} kr
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLinkFor(null)}>Avbryt</Button>
+          <Button variant="contained" disabled={!selectedCampaign || busy === 'link'} onClick={doLink}>
+            Koble
           </Button>
         </DialogActions>
       </Dialog>

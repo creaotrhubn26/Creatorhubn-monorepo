@@ -88,6 +88,17 @@ export async function ensureTables(pool: Pool): Promise<void> {
     -- laget med, så cronen kan re-uploade medlemmer til den EKSISTERENDE audiencen.
     ALTER TABLE marketing_segment_audiences ADD COLUMN IF NOT EXISTS account_ref TEXT;
     ALTER TABLE marketing_segment_audiences ADD COLUMN IF NOT EXISTS producer_user_id UUID;
+    -- Attribusjon (fase 4): segment → annonsekampanje-lenke, så ROAS/spend fra
+    -- ads_attribution_daily kan rulles opp per segment.
+    CREATE TABLE IF NOT EXISTS marketing_segment_campaigns (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      segment_id   UUID NOT NULL REFERENCES marketing_segments(id) ON DELETE CASCADE,
+      campaign_id  UUID NOT NULL REFERENCES ads_campaigns(id) ON DELETE CASCADE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (segment_id, campaign_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_marketing_segment_campaigns_segment
+      ON marketing_segment_campaigns (segment_id);
   `);
   tablesReady = true;
 }
@@ -473,4 +484,144 @@ export async function refreshSyncedAudiences(
   }
 
   return { processed: rows.rows.length, ok: okCount, failed: failedCount };
+}
+
+// ── Attribusjon per segment (fase 4) ──────────────────────────────────
+
+export interface LinkableCampaign {
+  id: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+  spendNok: number;
+}
+
+export interface SegmentCampaign {
+  campaignId: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+}
+
+export interface SegmentPerformance {
+  campaignCount: number;
+  spendNok: number;
+  convValueNok: number;
+  conversions: number;
+  roas: number | null;
+}
+
+/** Kampanjer som kan kobles til et segment (m/ akkumulert spend for kontekst). */
+export async function listLinkableCampaigns(pool: Pool): Promise<LinkableCampaign[]> {
+  await ensureTables(pool);
+  const r = await pool.query<{
+    id: string;
+    platform: string;
+    external_campaign_id: string | null;
+    goal: string | null;
+    status: string;
+    spend: string | null;
+  }>(
+    `SELECT c.id, c.platform, c.external_campaign_id, c.goal, c.status,
+            COALESCE(SUM(a.spend_nok), 0) AS spend
+       FROM ads_campaigns c
+       LEFT JOIN ads_attribution_daily a ON a.campaign_id = c.id
+      GROUP BY c.id
+      ORDER BY spend DESC NULLS LAST, c.created_at DESC
+      LIMIT 100`,
+  );
+  return r.rows.map((x) => ({
+    id: x.id,
+    platform: x.platform,
+    externalCampaignId: x.external_campaign_id,
+    goal: x.goal,
+    status: x.status,
+    spendNok: Number(x.spend ?? 0),
+  }));
+}
+
+export async function linkCampaign(pool: Pool, segmentId: string, campaignId: string): Promise<void> {
+  await ensureTables(pool);
+  await pool.query(
+    `INSERT INTO marketing_segment_campaigns (segment_id, campaign_id)
+     VALUES ($1, $2) ON CONFLICT (segment_id, campaign_id) DO NOTHING`,
+    [segmentId, campaignId],
+  );
+}
+
+export async function unlinkCampaign(
+  pool: Pool,
+  segmentId: string,
+  campaignId: string,
+): Promise<boolean> {
+  await ensureTables(pool);
+  const r = await pool.query(
+    `DELETE FROM marketing_segment_campaigns WHERE segment_id = $1 AND campaign_id = $2`,
+    [segmentId, campaignId],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+/** Kampanjene som er koblet til et segment. */
+export async function listSegmentCampaigns(
+  pool: Pool,
+  segmentId: string,
+): Promise<SegmentCampaign[]> {
+  await ensureTables(pool);
+  const r = await pool.query<{
+    campaign_id: string;
+    platform: string;
+    external_campaign_id: string | null;
+    goal: string | null;
+    status: string;
+  }>(
+    `SELECT c.id AS campaign_id, c.platform, c.external_campaign_id, c.goal, c.status
+       FROM marketing_segment_campaigns mc
+       JOIN ads_campaigns c ON c.id = mc.campaign_id
+      WHERE mc.segment_id = $1
+      ORDER BY c.created_at DESC`,
+    [segmentId],
+  );
+  return r.rows.map((x) => ({
+    campaignId: x.campaign_id,
+    platform: x.platform,
+    externalCampaignId: x.external_campaign_id,
+    goal: x.goal,
+    status: x.status,
+  }));
+}
+
+/** Ruller spend/konverteringsverdi/ROAS opp til segment-nivå (koblede kampanjer). */
+export async function getSegmentPerformance(
+  pool: Pool,
+  segmentId: string,
+): Promise<SegmentPerformance> {
+  await ensureTables(pool);
+  const r = await pool.query<{
+    campaigns: string;
+    spend: string | null;
+    conv_value: string | null;
+    conversions: string | null;
+  }>(
+    `SELECT COUNT(DISTINCT mc.campaign_id) AS campaigns,
+            COALESCE(SUM(a.spend_nok), 0) AS spend,
+            COALESCE(SUM(a.conversion_value_nok), 0) AS conv_value,
+            COALESCE(SUM(a.conversions), 0) AS conversions
+       FROM marketing_segment_campaigns mc
+       LEFT JOIN ads_attribution_daily a ON a.campaign_id = mc.campaign_id
+      WHERE mc.segment_id = $1`,
+    [segmentId],
+  );
+  const row = r.rows[0];
+  const spendNok = Number(row?.spend ?? 0);
+  const convValueNok = Number(row?.conv_value ?? 0);
+  return {
+    campaignCount: Number(row?.campaigns ?? 0),
+    spendNok,
+    convValueNok,
+    conversions: Number(row?.conversions ?? 0),
+    roas: spendNok > 0 ? Math.round((convValueNok / spendNok) * 100) / 100 : null,
+  };
 }
