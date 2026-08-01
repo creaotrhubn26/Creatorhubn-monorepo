@@ -393,7 +393,13 @@ final class RedigeringModel {
         // et sant nøytralt utgangspunkt i stedet for et alt-oppløftet.
         let learnedActive = manualScenes != nil || auto
         let learnedBase = MagicRecipe(highlightRecovery: 0.30, autoEnhance: false)
-        let r = learnedActive ? learnedBase : effectiveRecipe()
+        // #12: server-enhanced base er ALLEREDE fargestyrt/gradet av «AI-forbedring
+        // (sky)». Å legge preset-graden (Bryllup osv.) oppå dobbeltprosesserer tonen
+        // — samme feil vi løste for lært stil. Bruk flat base når basen er server-
+        // gradet, så sliderne ikke dobbelt-graderer. (auto-cleaned er IKKE gradet →
+        // beholder recipen der.)
+        let serverGraded = serverEnhanced != nil
+        let r = (learnedActive || serverGraded) ? learnedBase : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
         let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
@@ -1076,7 +1082,7 @@ struct SmartEditPanel: View {
             aiAction("AI-forbedring (sky)", subtitle: "Høyoppløst rekonstruksjon + støyreduksjon (server)",
                      systemImage: "cloud.bolt", prominent: false, busy: false,
                      disabled: model.selected == nil) { showSky = true }
-            aiAction("Bruk på serie", subtitle: "Synk disse justeringene til lignende bilder",
+            aiAction("Bruk på serie", subtitle: "Bruk disse justeringene på alle \(model.assets.count) bildene i økten",
                      systemImage: "sparkles", prominent: true, busy: false) { model.applyToSeries() }
             aiAction("Lagre som preset", subtitle: nil,
                      systemImage: "bookmark", prominent: false, busy: false) { showSavePreset = true }
