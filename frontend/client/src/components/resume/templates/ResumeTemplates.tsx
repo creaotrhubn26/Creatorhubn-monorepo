@@ -2308,86 +2308,6 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
       display: 'flex', fontFamily: 'Inter, "Segoe UI", sans-serif',
       boxShadow: preview ? 1 : 0,
     }}>
-      {/* Left light sidebar */}
-      <Box sx={{ width: '36%', bgcolor: sidebarBg, p: preview ? 2.5 : 4.5 }}>
-        {/* Profile photo */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          <Box sx={{
-            width: 130, height: 130, borderRadius: '50%', overflow: 'hidden',
-            border: `4px solid ${tan}`,
-            backgroundImage: `url(${resume.personalInfo?.profilePhoto ?? ''})`,
-            backgroundSize: 'cover', backgroundPosition: 'center',
-            bgcolor: '#ccc',
-          }} />
-        </Box>
-
-        {chip(SECTION.contact)}
-        <Stack spacing={1.2} sx={{ mb: 3 }}>
-          {resume.personalInfo?.phone && (
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              {round(<MailOutlineIcon sx={{ fontSize: 14 }} />)}
-              <Typography sx={{ fontSize: 11.5, color: dark }}>{resume.personalInfo.phone}</Typography>
-            </Stack>
-          )}
-          {resume.personalInfo?.email && (
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              {round(<MailOutlineIcon sx={{ fontSize: 14 }} />)}
-              <Typography sx={{ fontSize: 11.5, color: dark, wordBreak: 'break-all' }}>{resume.personalInfo.email}</Typography>
-            </Stack>
-          )}
-          {resume.personalInfo?.location && (
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              {round(<LocationOnIcon sx={{ fontSize: 14 }} />)}
-              <Typography sx={{ fontSize: 11.5, color: dark }}>{resume.personalInfo.location}</Typography>
-            </Stack>
-          )}
-        </Stack>
-
-        {(resume.education ?? []).length > 0 && (
-          <Box sx={{ mb: 3 }}>
-            {chip(SECTION.education)}
-            <Stack spacing={1.2}>
-              {resume.education.map((e: any) => (
-                <Box key={e.id} sx={{ breakInside: 'avoid' }}>
-                  <Typography sx={{ fontWeight: 700, fontSize: 11.5, letterSpacing: 0.5 }}>
-                    {e.degree?.toUpperCase()}
-                  </Typography>
-                  <Typography sx={{ fontSize: 11, color: muted }}>
-                    {new Date(e.startDate).getFullYear()} - {e.isCurrent ? 'Nå' : (e.endDate ? new Date(e.endDate).getFullYear() : '')}
-                  </Typography>
-                  <Typography sx={{ fontSize: 11, color: dark }}>{e.institution}</Typography>
-                </Box>
-              ))}
-            </Stack>
-          </Box>
-        )}
-
-        {(resume.skills ?? []).length > 0 && (
-          <Box sx={{ mb: 3 }}>
-            {chip(SECTION.skills)}
-            <Box sx={{ color: dark }}>
-              {renderSkillList(resume.skills, { fontSize: 11.5 })}
-            </Box>
-          </Box>
-        )}
-
-        {(resume.languages ?? []).length > 0 && (
-          <Box>
-            {chip(SECTION.languages)}
-            <Stack spacing={0.6}>
-              {resume.languages.map((l: any) => (
-                <Stack key={l.id} direction="row" justifyContent="space-between">
-                  <Typography sx={{ fontSize: 11.5, color: dark }}>{l.name}</Typography>
-                  {l.levelLabel && (
-                    <Typography sx={{ fontSize: 11, color: tan, fontWeight: 600 }}>{l.levelLabel}</Typography>
-                  )}
-                </Stack>
-              ))}
-            </Stack>
-          </Box>
-        )}
-      </Box>
-
       {/* Main column */}
       <Box sx={{ flex: 1, p: preview ? 2.5 : 5, bgcolor: 'rgba(255,255,255,0.04)' }}>
         <Typography component="h1" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 32, letterSpacing: 2, color: dark, lineHeight: 1 }}>
@@ -2493,6 +2413,98 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
           <Box sx={{ mt: 2 }}>
             {chip(SECTION.references)}
             {renderReferences(resume)}
+          </Box>
+        )}
+      </Box>
+
+      {/*
+        Sidefeltet ligger SIST i DOM-en, men vises foerst via flex `order`.
+
+        Foer laa det foerst, og en skjermleser leste da Kontakt, Utdanning,
+        Ferdigheter og Spraak foer personens navn — paa et dokument der
+        navnet er hele poenget. Axe flagger det ikke, men rekkefoelgen var
+        feil.
+
+        `order` er normalt noe man skal vaere varsom med, nettopp fordi det
+        skiller visuell og logisk rekkefoelge. Her er det motsatt vei: DOM-en
+        blir riktig, og det visuelle beholdes. Sidefeltet har ingen
+        fokuserbare elementer, saa tabbrekkefoelgen paavirkes ikke.
+      */}
+      <Box sx={{ order: -1, width: '36%', bgcolor: sidebarBg, p: preview ? 2.5 : 4.5 }}>
+        {/* Profile photo */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+          <Box sx={{
+            width: 130, height: 130, borderRadius: '50%', overflow: 'hidden',
+            border: `4px solid ${tan}`,
+            backgroundImage: `url(${resume.personalInfo?.profilePhoto ?? ''})`,
+            backgroundSize: 'cover', backgroundPosition: 'center',
+            bgcolor: '#ccc',
+          }} />
+        </Box>
+
+        {chip(SECTION.contact)}
+        <Stack spacing={1.2} sx={{ mb: 3 }}>
+          {resume.personalInfo?.phone && (
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              {round(<MailOutlineIcon sx={{ fontSize: 14 }} />)}
+              <Typography sx={{ fontSize: 11.5, color: dark }}>{resume.personalInfo.phone}</Typography>
+            </Stack>
+          )}
+          {resume.personalInfo?.email && (
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              {round(<MailOutlineIcon sx={{ fontSize: 14 }} />)}
+              <Typography sx={{ fontSize: 11.5, color: dark, wordBreak: 'break-all' }}>{resume.personalInfo.email}</Typography>
+            </Stack>
+          )}
+          {resume.personalInfo?.location && (
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              {round(<LocationOnIcon sx={{ fontSize: 14 }} />)}
+              <Typography sx={{ fontSize: 11.5, color: dark }}>{resume.personalInfo.location}</Typography>
+            </Stack>
+          )}
+        </Stack>
+
+        {(resume.education ?? []).length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            {chip(SECTION.education)}
+            <Stack spacing={1.2}>
+              {resume.education.map((e: any) => (
+                <Box key={e.id} sx={{ breakInside: 'avoid' }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: 11.5, letterSpacing: 0.5 }}>
+                    {e.degree?.toUpperCase()}
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, color: muted }}>
+                    {new Date(e.startDate).getFullYear()} - {e.isCurrent ? 'Nå' : (e.endDate ? new Date(e.endDate).getFullYear() : '')}
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, color: dark }}>{e.institution}</Typography>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {(resume.skills ?? []).length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            {chip(SECTION.skills)}
+            <Box sx={{ color: dark }}>
+              {renderSkillList(resume.skills, { fontSize: 11.5 })}
+            </Box>
+          </Box>
+        )}
+
+        {(resume.languages ?? []).length > 0 && (
+          <Box>
+            {chip(SECTION.languages)}
+            <Stack spacing={0.6}>
+              {resume.languages.map((l: any) => (
+                <Stack key={l.id} direction="row" justifyContent="space-between">
+                  <Typography sx={{ fontSize: 11.5, color: dark }}>{l.name}</Typography>
+                  {l.levelLabel && (
+                    <Typography sx={{ fontSize: 11, color: tan, fontWeight: 600 }}>{l.levelLabel}</Typography>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
           </Box>
         )}
       </Box>
