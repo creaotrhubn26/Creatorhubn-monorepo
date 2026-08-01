@@ -522,6 +522,71 @@ Svar med KUN ett JSON-objekt:
   };
 }
 
+/** Ett AI-forslag om en kinematisk (AI-generert) scene å flette inn i demoen. */
+export interface CinematicSuggestion {
+  /** Hvor scenen hører hjemme. 'after' bruker afterIndex (0-basert scene-indeks). */
+  position: 'intro' | 'outro' | 'after';
+  afterIndex?: number;
+  /** Kort norsk tittel på scenen. */
+  title: string;
+  /** Engelsk Seedance-prompt (kroken/konteksten/overgangen/outroen). */
+  prompt: string;
+  /** Norsk voiceover for scenen (kan være tom for ren b-roll). */
+  narration: string;
+  /** Kort begrunnelse (hvorfor akkurat her). */
+  reason: string;
+}
+
+/**
+ * Kinematisk regi: Director ser HELE storyboardet + produkt-konteksten og
+ * foreslår hvor AI-generert footage (Higgsfield/Seedance) styrker demoen —
+ * krok, menneskelig kontekst, overgang, outro. Ekte opptak er beviset; disse er
+ * innrammingen. Returnerer forslag (ikke generert ennå) som brukeren kan flette
+ * inn og generere med kreditt-vokteren.
+ */
+export async function suggestCinematicScenes(params: {
+  url: string;
+  demoType: DemoType;
+  goal?: string;
+  meta: ScriptMeta;
+  scenes: DemoScene[];
+}): Promise<CinematicSuggestion[]> {
+  const { url, demoType, goal, meta, scenes } = params;
+  const sceneList = scenes.map((s, i) => `${i}: "${s.title}" (${s.source === 'broll' ? 'AI-klipp' : 'ekte opptak'}) — ${(s.narration || '(tomt)').slice(0, 80)}`).join('\n');
+  const user = `Du regisserer en produktdemo. De ekte opptakene er BEVISET; du legger til AI-generert kinematisk footage der det løfter filmen — men bare der det faktisk hjelper (ikke overdriv, ekte skjermer skal dominere).
+
+Produkt-URL: ${url}
+Demo-type: ${demoType}
+${goal ? `Konverteringsmål: ${goal}\n` : ''}Tone: ${meta.tone} · Publikum: ${meta.audience}
+Nåværende storyboard:
+${sceneList}
+
+Foreslå 1–4 kinematiske scener (krok/etablering/overgang/outro) som styrker demoen. For hver:
+- prompt: en ENGELSK Seedance-prompt (kinematisk, konkret, produktfilm-kvalitet) forankret i HVA produktet er.
+- narration: kort NORSK voiceover (kan være "" for ren b-roll).
+- position: "intro" (start), "outro" (slutt) eller "after" med afterIndex = scene-indeksen den skal ligge etter.
+Svar med KUN ett JSON-objekt:
+{ "suggestions": [ { "position": "intro|outro|after", "afterIndex": <tall når after>, "title": "kort norsk tittel", "prompt": "engelsk seedance-prompt", "narration": "norsk voiceover eller tom", "reason": "kort hvorfor" } ] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en kresen produktfilm-regissør. Du legger bare til AI-footage der det virkelig hjelper, aldri som fyll. Du svarer ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 1400,
+  });
+  const parsed = extractJson<{ suggestions?: Array<Partial<CinematicSuggestion>> }>(raw);
+  if (!parsed?.suggestions) return [];
+  const pos = (p: unknown): CinematicSuggestion['position'] => (p === 'intro' || p === 'outro' || p === 'after' ? p : 'intro');
+  return parsed.suggestions
+    .filter((s) => (s.prompt || '').trim())
+    .map((s) => ({
+      position: pos(s.position),
+      afterIndex: typeof s.afterIndex === 'number' ? s.afterIndex : undefined,
+      title: (s.title || 'Kinematisk klipp').trim(),
+      prompt: (s.prompt || '').trim(),
+      narration: (s.narration || '').trim(),
+      reason: (s.reason || '').trim(),
+    }));
+}
+
 /** Oversett manus-linjer for voiceover (Resolve-stemmer er engelske). Beholder
  *  rekkefølge; faller tilbake til original ved feil. */
 export async function translateForVoiceover(texts: string[], targetLang = 'engelsk'): Promise<string[]> {

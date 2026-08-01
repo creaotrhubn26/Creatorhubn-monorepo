@@ -29,6 +29,7 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
   const [durationSec, setDurationSec] = useState(6);
   const [resolution, setResolution] = useState<BrollResolution>('1080p');
   const [noPeople, setNoPeople] = useState(false);
+  const [anchor, setAnchor] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const [accountErr, setAccountErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,6 +51,9 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
   }, []);
 
   const estCredits = estimateBrollCredits(resolution, durationSec);
+  // «Forankre i ekte ramme»: en fanget produkt-skjerm Seedance animerer fra
+  // (levende produkt-skjerm). Web-scan gir dataURL-er; fall tilbake til mobil-scan.
+  const anchorFrame = project?.scanShots?.[0]?.dataUrl ?? project?.scanShotsMobile?.[0]?.dataUrl ?? null;
 
   const generate = async () => {
     if (!project || !prompt.trim() || busy) return;
@@ -77,7 +81,7 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
     try {
       const path = await generateBrollClip({
         projectId: project.id, sceneId: scene.id, prompt: prompt.trim(),
-        startImage: null, durationSec, resolution, noPeople,
+        startImage: anchor && anchorFrame ? anchorFrame : null, durationSec, resolution, noPeople,
       });
       updateScene(scene.id, { recordingPath: path, status: 'done' });
       onClose();
@@ -140,6 +144,16 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.inkSoft, marginTop: 12, cursor: 'pointer' }}>
           <input type="checkbox" checked={noPeople} onChange={(e) => setNoPeople(e.target.checked)} />
           Ingen mennesker/ansikter (ren miljø-/produkt-b-roll)
+        </label>
+
+        {/* Forankre i ekte ramme (levende produkt-skjerm) */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: anchorFrame ? C.inkSoft : C.inkFaint, marginTop: 10, cursor: anchorFrame ? 'pointer' : 'default' }}>
+          <input type="checkbox" checked={anchor && !!anchorFrame} disabled={!anchorFrame} onChange={(e) => setAnchor(e.target.checked)} />
+          Forankre i produkt-ramme <span style={{ color: C.inkFaint }}>(animér en ekte skjerm)</span>
+          {anchorFrame && anchor && (
+            <img src={anchorFrame} alt="anker" style={{ width: 40, height: 26, objectFit: 'cover', borderRadius: 4, border: `1px solid ${C.line}`, marginLeft: 'auto' }} />
+          )}
+          {!anchorFrame && <span style={{ marginLeft: 'auto', fontSize: 10.5 }}>(skann siden først)</span>}
         </label>
 
         {/* Kreditt-vokter + konto-status */}
