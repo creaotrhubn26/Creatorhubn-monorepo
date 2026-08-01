@@ -58,59 +58,16 @@ enum RAWExportPipeline {
         guard let filter = makeRawFilter(rawData: rawData, identifierHint: identifierHint) else {
             throw Error.decodeFailed
         }
-
-        // Phase 5.2 — Picture Style baseline. Only when the user's
-        // recipe is fully neutral (no slider touched yet) do we read
-        // the in-camera Picture Style and merge its small baseline
-        // adjustment in. Once the photographer reaches for any axis
-        // their explicit choice trumps everything and we skip — see
-        // the doc comment on `CanonPictureStyle` for the rationale +
-        // double-counting risk with `CIRAWFilter`.
-        // Layer Picture Style baseline (when recipe is neutral) and
-        // subject-type overlay (always, when subjectType != .none) on
-        // top of the user's recipe. SubjectType applies even on
-        // explicit recipes — Male/Female/Child/Elderly modifiers are
-        // intentional structural choices, not "soft defaults".
-        let withStyle: MagicRecipe = recipe.isNeutral
-            ? recipe.merging(baseline: (CanonPictureStyle.read(fromImageData: rawData)
-                ?? .unknown).baselineRecipeAdjustment)
-            : recipe
-        let effectiveRecipe = withStyle.merging(baseline: withStyle.subjectTypeAdjustment)
-
-        applyRecipe(effectiveRecipe, to: filter)
-
-        // Downsample at decode time when caller wants a preview-size
-        // render — `CIRAWFilter.scaleFactor` runs the bayer pipeline at
-        // a lower resolution rather than demosaicing-then-shrinking, so
-        // we save both wall-clock and RAM. Computed from the native
-        // size before any orientation flip.
-        if let targetMaxDimension {
-            let nativeLong = max(filter.nativeSize.width, filter.nativeSize.height)
-            if nativeLong > targetMaxDimension {
-                filter.scaleFactor = Float(targetMaxDimension / nativeLong)
-            }
-        }
-
-        guard let rawOutput = filter.outputImage else {
-            throw Error.renderFailed
-        }
-
-        // No manual orientation correction needed: CIRAWFilter reads
-        // EXIF orientation from the CR3 and rotates `outputImage`
-        // automatically. Verified empirically — _L9A7437.CR3 (sensor
-        // 8192×5464, EXIF orientation 8 = "rotate 270 CW") emerges
-        // as 5464×8192 in the right orientation. Adding a manual
-        // `.oriented()` here would double-rotate.
-
-        // Phase 7C — auto-straighten / horizon levelling. Runs before
-        // tone adjustments + face detection so all downstream steps
-        // see the post-rotation image (face-detection coordinates +
-        // mask geometry need to match the final pixels).
-        let straightened = AutoStraightenFilter.apply(
-            recipe: effectiveRecipe, to: rawOutput,
-        )
-
-        let toned = applyToneAdjustments(recipe: effectiveRecipe, to: straightened)
+        // Picture Style-baseline (Phase 5.2) leses fra rå-bytene ÉN gang her.
+        let baseline = (CanonPictureStyle.read(fromImageData: rawData) ?? .unknown).baselineRecipeAdjustment
+        guard let toned = tonedImage(
+            filter: filter,
+            asShotTemperature: filter.neutralTemperature,
+            defaultLuminanceNR: filter.luminanceNoiseReductionAmount,
+            pictureStyleBaseline: baseline,
+            recipe: recipe,
+            targetMaxDimension: targetMaxDimension,
+        ) else { throw Error.renderFailed }
 
         let context = ColorManagement.makeContext(for: colorPurpose)
         guard let cgImage = ColorManagement.renderCGImage(
@@ -130,6 +87,47 @@ enum RAWExportPipeline {
         } catch {
             throw Error.encodeFailed
         }
+    }
+
+    // MARK: - Delt tone-kjerne (engangs-render OG cachet interaktiv render)
+
+    /// Demosaic + recipe + tone → tonet `CIImage` (før farge-styring/encode).
+    /// Tar et FERDIGBYGD `CIRAWFilter` så den interaktive banen kan GJENBRUKE ett
+    /// cachet filter per asset (ingen disk-les / re-parse per slider-slipp) — kun
+    /// properties muteres + demosaic re-kjøres (Core Image cacher dekodingen).
+    /// `asShotTemperature`/`defaultLuminanceNR`/`pictureStyleBaseline` er filterets
+    /// opprinnelige verdier (fanget ved opprettelse) så gjenbruk er idempotent.
+    static func tonedImage(
+        filter: CIRAWFilter,
+        asShotTemperature: Float,
+        defaultLuminanceNR: Float,
+        pictureStyleBaseline: MagicRecipe,
+        recipe: MagicRecipe,
+        targetMaxDimension: CGFloat?,
+    ) -> CIImage? {
+        // Picture Style-baseline kun når recipen er nøytral (ingen slider rørt);
+        // ellers vinner fotografens eksplisitte valg. SubjectType legges alltid på.
+        let withStyle: MagicRecipe = recipe.isNeutral
+            ? recipe.merging(baseline: pictureStyleBaseline)
+            : recipe
+        let effectiveRecipe = withStyle.merging(baseline: withStyle.subjectTypeAdjustment)
+
+        applyRecipe(effectiveRecipe, to: filter,
+                    asShotTemperature: asShotTemperature, defaultLuminanceNR: defaultLuminanceNR)
+
+        // Downsample ved decode (scaleFactor kjører bayer-pipelinen lavere-oppløst).
+        // Settes ABSOLUTT (=1 uten nedskalering) så gjenbruk ikke arver stale skala.
+        if let targetMaxDimension {
+            let nativeLong = max(filter.nativeSize.width, filter.nativeSize.height)
+            filter.scaleFactor = nativeLong > targetMaxDimension ? Float(targetMaxDimension / nativeLong) : 1
+        } else {
+            filter.scaleFactor = 1
+        }
+
+        guard let rawOutput = filter.outputImage else { return nil }
+        // CIRAWFilter roterer selv etter EXIF-orientering (ingen manuell .oriented()).
+        let straightened = AutoStraightenFilter.apply(recipe: effectiveRecipe, to: rawOutput)
+        return applyToneAdjustments(recipe: effectiveRecipe, to: straightened)
     }
 
     // MARK: - CIRAWFilter wiring
@@ -173,14 +171,20 @@ enum RAWExportPipeline {
     /// Contrast + saturation are applied post-demosaic in
     /// ``applyToneAdjustments`` (display-gamma so the slider behaves
     /// identically to the display-JPEG MagicPipeline).
-    static func applyRecipe(_ recipe: MagicRecipe, to filter: CIRAWFilter) {
-        if recipe.warmth != 0 {
-            filter.neutralTemperature += Float(recipe.warmth) * 600.0
-        }
+    /// - Parameters:
+    ///   - asShotTemperature: filterets `neutralTemperature` ved OPPRETTELSE
+    ///     (kamera-as-shot). Settes ABSOLUTT hver gang (ikke `+=`) så et
+    ///     GJENBRUKT filter (RAW-cache) ikke akkumulerer warmth over renders.
+    ///   - defaultLuminanceNR: filterets `luminanceNoiseReductionAmount` ved
+    ///     opprettelse (sensor-kalibrert default) — gjenopprettes når ingen
+    ///     hud-glatting er valgt, så gjenbruk ikke arver forrige renders NR.
+    static func applyRecipe(_ recipe: MagicRecipe, to filter: CIRAWFilter,
+                            asShotTemperature: Float, defaultLuminanceNR: Float) {
+        // WB: ABSOLUTT (= as-shot + delta). warmth==0 → uendret as-shot.
+        filter.neutralTemperature = asShotTemperature + Float(recipe.warmth) * 600.0
 
-        if recipe.shadowLift > 0 {
-            filter.boostShadowAmount = 1.0 + Float(recipe.shadowLift)
-        }
+        // Shadow boost: absolutt (1.0 = nøytral) så gjenbruk nullstilles.
+        filter.boostShadowAmount = recipe.shadowLift > 0 ? 1.0 + Float(recipe.shadowLift) : 1.0
 
         // Phase 7: low-freq skin smoothing folds in here (CIRAWFilter
         // luminance NR runs pre-demosaic at full sensor precision —
@@ -189,9 +193,10 @@ enum RAWExportPipeline {
         // negative skinLowFreq (enhance structure) is handled post-output.
         // Legacy `skinSmooth` adds in identically for backwards compat.
         let lowFreqAmt = max(0, recipe.skinLowFreq) + max(0, recipe.skinSmooth)
-        if lowFreqAmt > 0, filter.isLuminanceNoiseReductionSupported {
-            let clamped = Float(min(1, lowFreqAmt))
-            filter.luminanceNoiseReductionAmount = 0.2 + clamped * 0.5
+        if filter.isLuminanceNoiseReductionSupported {
+            filter.luminanceNoiseReductionAmount = lowFreqAmt > 0
+                ? 0.2 + Float(min(1, lowFreqAmt)) * 0.5
+                : defaultLuminanceNR   // gjenopprett sensor-default (ikke 0)
         }
 
         // Lens correction (vignette, distortion, chromatic aberration)
