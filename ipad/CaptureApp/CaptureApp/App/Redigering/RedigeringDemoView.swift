@@ -31,9 +31,15 @@ struct RedigeringDemoView: View {
                 }
             }
             if SignInService.shared.session == nil {
+                // Demo-sesjonen finnes kun i DEBUG (setInMemoryDemoSession er
+                // DEBUG-gated). --demo-redigering brukes uansett kun til lokal
+                // sim-testing, aldri i Release/TestFlight — men ruten MÅ kompilere
+                // i Release siden Surface-switchen ikke er DEBUG-guardet.
+                #if DEBUG
                 SignInService.shared.setInMemoryDemoSession(
                     userId: "demo-redigering",
                     backendBaseURL: URL(string: "https://creatorhub-backend-rtbl.onrender.com")!)
+                #endif
             }
             ready = true
         }
