@@ -332,6 +332,10 @@ export interface DemoProject {
   productBrain?: string;
   /** URL-en Product Brain ble bygget for (invalideres hvis prosjekt-URL endres). */
   productBrainUrl?: string;
+  /** Om Product Brain inkluderte vision av FAKTISKE app-skjermer (ofte innlogget)
+   *  — ikke bare markedsføringstekst. Lar den oppgraderes marketing-only → dyp
+   *  når brukeren har fanget ekte skjermer fra inne i produktet. */
+  productBrainHasScreens?: boolean;
   /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
    *  required action automatisk. Default 'manual'. */
   continueMode?: 'manual' | 'auto';
