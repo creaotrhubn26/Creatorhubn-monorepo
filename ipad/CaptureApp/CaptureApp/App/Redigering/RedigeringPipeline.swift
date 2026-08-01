@@ -73,6 +73,28 @@ enum RedigeringPipeline {
         rawPath: String, exposureEV: Double = 0, crop: CGRect? = nil,
         maxDimension: CGFloat? = 1600,
     ) -> UIImage? {
+        // CACHE: den demosaikede basen (Data-lesing 30–50MB + CIRAWFilter-develop +
+        // skalering) er RECIPE-UAVHENGIG for den lærte banen og endrer seg aldri for
+        // en gitt RAW. Cache per (sti, maxDim) → slider-slipp gjenbruker basen og
+        // påfører kun EV/crop (billige) i stedet for full re-develop hver gang.
+        guard let base = cachedNeutralBase(rawPath: rawPath, maxDimension: maxDimension) else { return nil }
+        var img = base
+        if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
+        if let crop { img = cropped(img, to: crop) }
+        return img
+    }
+
+    // Lås-beskyttet base-cache (nås fra render()-ens detached task, off-main).
+    private nonisolated(unsafe) static var neutralBaseCache: [String: UIImage] = [:]
+    private static let cacheLock = NSLock()
+
+    private static func cachedNeutralBase(rawPath: String, maxDimension: CGFloat?) -> UIImage? {
+        let key = "\(rawPath)@\(maxDimension.map { Int($0) } ?? 0)"
+        cacheLock.lock()
+        let hit = neutralBaseCache[key]
+        cacheLock.unlock()
+        if let hit { return hit }
+
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)),
               let filter = CIFilter(imageData: data, options: nil),
               var out = filter.outputImage else { return nil }
@@ -86,10 +108,17 @@ enum RedigeringPipeline {
         guard let cg = sharedContext.createCGImage(
             out, from: out.extent, format: .RGBA8,
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else { return nil }
-        var img = UIImage(cgImage: cg)
-        if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
-        if let crop { img = cropped(img, to: crop) }
+        let img = UIImage(cgImage: cg)
+        cacheLock.lock()
+        if neutralBaseCache.count >= 4 { neutralBaseCache.removeAll() }   // enkel minne-cap
+        neutralBaseCache[key] = img
+        cacheLock.unlock()
         return img
+    }
+
+    /// Tøm base-cachen (f.eks. ved minnepress / øktbytte).
+    static func clearBaseCache() {
+        cacheLock.lock(); neutralBaseCache.removeAll(); cacheLock.unlock()
     }
 
     /// Crop to a normalised rect (origin top-left, 0…1).
