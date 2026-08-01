@@ -21,6 +21,7 @@ import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { FramedDevice } from './FramedDevice';
 import { type FrameVariant } from './deviceFrames';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
+import { BrollComposer } from './BrollComposer';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
@@ -66,6 +67,7 @@ function fmt(sec: number) {
 export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = {}) {
   const { project, selectedSceneId, selectScene, updateScene, addScene, setProjectField, saveStatus } = useDemoStudio();
   const scenes = project?.scenes ?? [];
+  const [showBroll, setShowBroll] = useState(false);
   const selected = scenes.find((s) => s.id === selectedSceneId) ?? scenes[0];
   const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'General', language: 'Norsk', length: 'medium' as ScriptLength };
   const render = project?.render ?? defaultRenderOptions();
@@ -448,8 +450,13 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             style={{ minWidth: 110, borderRadius: 10, border: `1px dashed ${C.lineStrong}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft }}>
             <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>⊕</div><div style={{ fontSize: 11 }}>Add Scene</div></div>
           </div>
+          <div onClick={() => setShowBroll(true)} title="AI-generert kinematisk footage (krok, kontekst, outro)"
+            style={{ minWidth: 110, borderRadius: 10, border: `1px dashed ${C.accent}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.accent, background: C.cream }}>
+            <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>✦</div><div style={{ fontSize: 11 }}>Kinematisk scene</div></div>
+          </div>
         </div>
       </div>
+      {showBroll && <BrollComposer C={C} onClose={() => setShowBroll(false)} />}
       {showSignIn && (
         <RoleRoomSignInDialog onClose={() => setShowSignIn(false)} onSignedIn={() => { setAiReady(true); setShowSignIn(false); }} />
       )}

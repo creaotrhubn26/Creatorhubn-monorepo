@@ -22,7 +22,7 @@ const FFMPEG_FALLBACK: &[&str] = &[
     "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/local/bin/ffmpeg", "/usr/bin/ffmpeg",
 ];
 
-fn find_ffmpeg() -> Option<PathBuf> {
+pub(crate) fn find_ffmpeg() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("RESOLVE_SCRIPT_MANAGER_FFMPEG") {
         let pb = PathBuf::from(&p);
         if pb.is_file() { return Some(pb); }
@@ -155,7 +155,7 @@ pub async fn list_capture_sources() -> Result<Vec<CaptureSource>, String> {
     Ok(out)
 }
 
-fn recordings_dir(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> {
+pub(crate) fn recordings_dir(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> {
     let safe: String = project_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?
         .join("demo-recordings").join(safe);

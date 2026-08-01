@@ -340,6 +340,46 @@ export async function iosSimDescribe(udid: string): Promise<SimScreen> {
   return { elements: out, screenWidth, screenHeight };
 }
 
+// ── AI-generert kinematisk footage (Higgsfield Seedance) ─────────────────────
+
+export type BrollResolution = "480p" | "720p" | "1080p" | "4k";
+
+/** Grovt kreditt-estimat (samme sats som generate_broll.py). Vises FØR generering. */
+export function estimateBrollCredits(resolution: BrollResolution, durationSec: number): number {
+  const perSec: Record<BrollResolution, number> = { "480p": 15, "720p": 25, "1080p": 12, "4k": 22 };
+  return (perSec[resolution] ?? 12) * Math.max(4, Math.min(15, Math.round(durationSec)));
+}
+
+/** Higgsfield konto-/kreditt-status (rå tekst). Kaster hvis CLI-en mangler. */
+export async function higgsfieldAccountStatus(): Promise<string> {
+  return invoke<string>("higgsfield_account_status");
+}
+
+/**
+ * Generér ett kinematisk klipp (Seedance 2.0) og få mp4-stien tilbake. Lagres
+ * som scenens recordingPath, så det flyter gjennom samme eksport som en fanget
+ * scene. startImage (valgfritt) = forankre i en ekte ramme (levende produkt-skjerm).
+ */
+export async function generateBrollClip(args: {
+  projectId: string;
+  sceneId: string;
+  prompt: string;
+  startImage?: string | null;
+  durationSec: number;
+  resolution: BrollResolution;
+  noPeople: boolean;
+}): Promise<string> {
+  return invoke<string>("generate_broll_clip", {
+    projectId: args.projectId,
+    sceneId: args.sceneId,
+    prompt: args.prompt,
+    startImage: args.startImage ?? null,
+    durationSec: args.durationSec,
+    resolution: args.resolution,
+    noPeople: args.noPeople,
+  });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }
