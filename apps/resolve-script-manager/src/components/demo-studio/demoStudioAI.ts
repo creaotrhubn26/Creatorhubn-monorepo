@@ -306,13 +306,16 @@ export async function generateSceneScript(params: {
   meta: ScriptMeta;
   /** Skjermbilde (data-URL) av scenen → Claude vision skriver presist det som vises. */
   screenshot?: string;
+  /** Faktisk nettside-innhold (tittel/beskrivelse/tekst) — forankrer manuset i
+   *  HVA produktet faktisk er, så AI-en ikke gjetter ut fra navnet/URL-en. */
+  siteContext?: string;
 }): Promise<GeneratedScript> {
-  const { url, demoType, scene, meta, screenshot } = params;
+  const { url, demoType, scene, meta, screenshot, siteContext } = params;
   const user = `Produkt-URL: ${url}
 Demo-type: ${demoType}
 Scene: "${scene.title}" (scene ${scene.index + 1}), enhet: ${scene.device}
 Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
-
+${siteContext ? `\nFAKTISK NETTSIDE-INNHOLD (dette er hva produktet ER — bruk dette, ikke antakelser fra navnet):\n${siteContext}\n` : ''}
 Skriv manus for DENNE scenen. Svar med JSON:
 {
   "narration": "hva som sies (1-3 setninger, ${meta.length})",
@@ -325,8 +328,11 @@ Skriv manus for DENNE scenen. Svar med JSON:
   const content: string | ClaudeContentBlock[] = img
     ? [img, { type: 'text', text: user }]
     : user;
+  const grounding = ' Skriv manuset UTELUKKENDE ut fra det faktiske nettside-innholdet' +
+    (img ? ' og skjermbildet du ser' : '') +
+    '. IKKE anta hva produktet gjør ut fra navnet eller URL-en — hvis navnet antyder én ting men innholdet viser noe annet, følg ALLTID innholdet.';
   const raw = await claudeProxyService.send({
-    systemPrompt: SYSTEM + (img ? ' Du SER et skjermbilde av denne scenen — beskriv presist det som faktisk vises på skjermen.' : ''),
+    systemPrompt: SYSTEM + grounding + (img ? ' Du SER et skjermbilde av denne scenen — beskriv presist det som faktisk vises på skjermen.' : ''),
     messages: [{ role: 'user', content }],
     maxTokens: 700,
   });
