@@ -32,7 +32,7 @@ struct ImageAnalysis: Sendable, Equatable {
         /// means we're inside the professional skin-tone range.
         var cast: Cast
 
-        enum Cast: String, Sendable, CaseIterable {
+        enum Cast: String, Sendable, CaseIterable, Codable, Hashable {
             case neutral, tooWarm, tooCool, tooGreen, tooMagenta
         }
     }

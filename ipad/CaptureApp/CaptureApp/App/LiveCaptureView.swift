@@ -436,6 +436,7 @@ struct LiveCaptureView: View {
                         recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
                         recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
                         analysis: model.showHUD ? model.focusedAnalysis : nil,
+                        faceAnalysis: model.showHUD ? model.focusedAssetAnalysis : nil,
                         aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
                         aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
                         showMagic: model.showMagic,
@@ -1307,6 +1308,7 @@ private struct HeroStage: View {
     let recipe: MagicRecipe
     let recipeSource: LiveCaptureModel.RecipeSource
     let analysis: ImageAnalysis?
+    let faceAnalysis: AssetAnalysis?
     let aiAnalysis: BackendPhotoAnalysis?
     let aiNotesDismissed: Bool
     let showMagic: Bool
@@ -1344,7 +1346,7 @@ private struct HeroStage: View {
                         }
                         .overlay(alignment: .topLeading) {
                             if let analysis {
-                                HUDOverlay(analysis: analysis)
+                                HUDOverlay(analysis: analysis, faceAnalysis: faceAnalysis)
                                     .padding(.top, 28)
                                     .padding(.leading, 36)
                                     .allowsHitTesting(false)
@@ -2944,6 +2946,9 @@ private struct ColorLabelControls: View {
 /// or underexposed shadows without leaving the shooting screen.
 private struct HUDOverlay: View {
     let analysis: ImageAnalysis
+    /// Samlet per-bilde-analyse — driver ansikts-varsler (soft/lukkede øyne) og
+    /// motiv-klipping. nil = ikke ferdig analysert enda.
+    var faceAnalysis: AssetAnalysis?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2952,6 +2957,12 @@ private struct HUDOverlay: View {
                 .padding(8)
                 .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.1), lineWidth: 0.5))
+
+            // De varslene fotografen faktisk kan handle på MENS bildet kan tas om
+            // igjen: ansiktet ute av fokus, lukkede øyne, utbrent MOTIV.
+            ForEach(faceWarnings, id: \.self) { warning in
+                CaptureWarningChip(warning: warning)
+            }
 
             if analysis.highlightClipping > 0.005 || analysis.shadowClipping > 0.005 {
                 ClippingBadges(highlight: analysis.highlightClipping, shadow: analysis.shadowClipping)
@@ -2965,6 +2976,59 @@ private struct HUDOverlay: View {
                 SharpnessIndicator(reading: sharpness)
             }
         }
+    }
+
+    /// Leveranse-kritiske ansikts-/motiv-advarsler, avledet av `faceAnalysis`.
+    private var faceWarnings: [CaptureWarning] {
+        guard let a = faceAnalysis else { return [] }
+        var out: [CaptureWarning] = []
+        if let face = a.primaryFace {
+            if face.isSoft(globalSharpness: a.globalSharpness) { out.append(.faceSoft) }
+            if face.eyesOpen == false { out.append(.eyesClosed) }
+        }
+        if let sub = a.subjectHighlightClip, sub > 0.02 { out.append(.subjectClipped) }
+        return out
+    }
+}
+
+/// De handlingsbare on-set-advarslene — separate fra histogram/klipp fordi de
+/// gjelder MOTIVET spesifikt (det eneste fotografen virkelig trenger å reagere på
+/// mens hen fortsatt står på location).
+enum CaptureWarning: Hashable {
+    case faceSoft, eyesClosed, subjectClipped
+
+    var label: String {
+        switch self {
+        case .faceSoft:       return "Ansikt uskarpt"
+        case .eyesClosed:     return "Lukkede øyne"
+        case .subjectClipped: return "Motiv utbrent"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .faceSoft:       return "camera.metering.spot"
+        case .eyesClosed:     return "eye.slash"
+        case .subjectClipped: return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+private struct CaptureWarningChip: View {
+    let warning: CaptureWarning
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: warning.icon)
+                .font(.caption2.weight(.bold))
+            Text(warning.label)
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Color.orange.opacity(0.9), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 0.5))
     }
 }
 
@@ -5040,15 +5104,43 @@ final class LiveCaptureModel {
               FileManager.default.fileExists(atPath: key)
         else {
             focusedAnalysis = nil
+            focusedAssetAnalysis = nil
             return
         }
         let url = URL(fileURLWithPath: key)
         let analyser = self.analyser
+        let assetAnalyzer = self.assetAnalyzer
         analysisTask = Task { [weak self] in
-            let result = await analyser.analyze(imageURL: url)
+            // Histogram-/klipp-HUD (rask) og den samlede per-bilde-analysen
+            // (ansikter/motiv-klipp/skarphet) kjøres i parallell.
+            async let hud = analyser.analyze(imageURL: url)
+            async let full = assetAnalyzer.analyze(imageURL: url)
+            let (result, assetResult) = await (hud, full)
             guard !Task.isCancelled, self?.focusedAssetId == asset.id else { return }
-            await MainActor.run { self?.focusedAnalysis = result }
+            await MainActor.run {
+                self?.focusedAnalysis = result
+                self?.focusedAssetAnalysis = assetResult
+            }
+            if let assetResult { await self?.persistAnalysis(assetResult, for: asset.id) }
         }
+    }
+
+    /// Persister den samlede analysen inline på asset-radens signals (JSONB) —
+    /// måles én gang, tilgjengelig for cull/Kvalitetssjekk/synk lenge etter at
+    /// HUD-et er lukket. Oppdaterer også in-memory-asseten så en re-render er
+    /// konsistent. Feiler stille (analyse er en berikelse, ikke en blokker).
+    func persistAnalysis(_ analysis: AssetAnalysis, for id: UUID) async {
+        guard let idx = assets.firstIndex(where: { $0.id == id }) else { return }
+        var signals = assets[idx].signals
+        guard signals.analysis != analysis else { return }
+        signals.analysis = analysis
+        // Fyll også de eksisterende cull-signalene fra samme måling (én kilde).
+        if let face = analysis.primaryFace {
+            signals.eyesOpen = face.eyesOpen ?? signals.eyesOpen
+        }
+        signals.faceCount = analysis.faces.count
+        assets[idx].signals = signals
+        try? await store?.updateAssetSignals(id: id, signals: signals)
     }
 
     var canShoot: Bool {
@@ -5063,6 +5155,9 @@ final class LiveCaptureModel {
     private var store: SessionStore?
     private var currentSessionId: UUID?
     private let analyser = ImageAnalyser()
+    /// Samlet per-bilde-analyse (ansikter/motiv-klipp/skarphet/scene) — kjøres
+    /// sammen med histogram-HUD-en, persisteres på signals, deles av cull/QC.
+    private let assetAnalyzer = AssetAnalyzer()
     private var analysisTask: Task<Void, Never>?
     /// Configured at connect time from UserDefaults. Nil = no backend, in
     /// which case the on-device pipeline is the only source of truth and
@@ -5078,6 +5173,9 @@ final class LiveCaptureModel {
     /// On-set coaching signals for the currently focused asset. Cleared
     /// when focus changes; refreshed in background. Nil = no reading yet.
     var focusedAnalysis: ImageAnalysis?
+    /// Samlet per-bilde-analyse for fokusert asset (ansikts-varsler, motiv-klipp).
+    /// Cleared ved fokusbytte; oppdateres i bakgrunn parallelt med `focusedAnalysis`.
+    var focusedAssetAnalysis: AssetAnalysis?
     var showHUD: Bool = true
     /// Slice 4 + 7 — auto-clean mode picker. `.off` does nothing.
     /// `.autoClean` (Slice 4) auto-removes every detected distraction
