@@ -34,9 +34,34 @@ enum LabColorTransfer {
         let sL = clampStd(std[0]), sA = clampStd(std[1]), sB = clampStd(std[2])
         let shA = 0.5 * ab[0], shB = 0.5 * ab[1]
 
+        // #7 CACHE: cuben avhenger KUN av (means, ab, std) — ikke pikslene. Ved
+        // re-render (slider-slipp) med samme scene-match er den identisk → hopp over
+        // 110k celler × ~6 pow(). Nøkkel avrundet så små snitt-avvik treffer.
+        let dim = 48
+        let key = String(format: "%.1f_%.1f_%.1f_%.2f_%.2f_%.2f_%.2f_%.2f",
+                         mL, mA, mB, shA, shB, sL, sA, sB)
+        let cubeData = cachedCube(key: key, dim: dim, mL: mL, mA: mA, mB: mB,
+                                  shA: shA, shB: shB, sL: sL, sA: sA, sB: sB)
+
+        let f = CIFilter.colorCubeWithColorSpace()
+        f.inputImage = image
+        f.cubeDimension = Float(dim)
+        f.cubeData = cubeData
+        f.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+        return f.outputImage?.cropped(to: extent) ?? image
+    }
+
+    // Lås-beskyttet cube-cache (nås fra render()-ens detached task).
+    private nonisolated(unsafe) static var cubeCache: [String: Data] = [:]
+    private static let cubeLock = NSLock()
+
+    private static func cachedCube(key: String, dim: Int, mL: Double, mA: Double, mB: Double,
+                                   shA: Double, shB: Double, sL: Double, sA: Double, sB: Double) -> Data {
+        cubeLock.lock(); let hit = cubeCache[key]; cubeLock.unlock()
+        if let hit { return hit }
+
         // Bygg 3D-LUT (N³): hver celle sRGB→LAB→affine→sRGB. RED innerst (fastest),
         // så GREEN, så BLUE — CIColorCube-layouten.
-        let dim = 48
         var cube = [Float](repeating: 0, count: dim * dim * dim * 4)
         let inv = 1.0 / Double(dim - 1)
         var o = 0
@@ -45,11 +70,11 @@ enum LabColorTransfer {
             for gi in 0..<dim {
                 let gf = Double(gi) * inv
                 for ri in 0..<dim {
-                    var (L, A, B) = srgbToLab(Double(ri) * inv, gf, bf)
-                    L = mL + (L - mL) * sL
-                    A = mA + shA + (A - mA) * sA
-                    B = mB + shB + (B - mB) * sB
-                    let (nr, ng, nb) = labToSrgb(clamp255(L), clamp255(A), clamp255(B))
+                    var (labL, labA, labB) = srgbToLab(Double(ri) * inv, gf, bf)
+                    labL = mL + (labL - mL) * sL
+                    labA = mA + shA + (labA - mA) * sA
+                    labB = mB + shB + (labB - mB) * sB
+                    let (nr, ng, nb) = labToSrgb(clamp255(labL), clamp255(labA), clamp255(labB))
                     cube[o] = Float(max(0, min(1, nr)))
                     cube[o + 1] = Float(max(0, min(1, ng)))
                     cube[o + 2] = Float(max(0, min(1, nb)))
@@ -58,12 +83,9 @@ enum LabColorTransfer {
                 }
             }
         }
-        let f = CIFilter.colorCubeWithColorSpace()
-        f.inputImage = image
-        f.cubeDimension = Float(dim)
-        f.cubeData = cube.withUnsafeBufferPointer { Data(buffer: $0) }
-        f.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
-        return f.outputImage?.cropped(to: extent) ?? image
+        let data = cube.withUnsafeBufferPointer { Data(buffer: $0) }
+        cubeLock.lock(); if cubeCache.count >= 8 { cubeCache.removeAll() }; cubeCache[key] = data; cubeLock.unlock()
+        return data
     }
 
     // MARK: - Kanal-snitt (nedskalert)

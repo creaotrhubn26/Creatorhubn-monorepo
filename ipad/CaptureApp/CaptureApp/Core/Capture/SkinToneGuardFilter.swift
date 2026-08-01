@@ -30,10 +30,12 @@ enum SkinToneGuardFilter {
     /// PER-ANSIKT + MASKERT: hvert ansikt måles og korrigeres UAVHENGIG (ulik hud/
     /// lys → «Ansikt 1 vs Ansikt 2»), maskert til sitt eget område så bakgrunnen
     /// ikke tones. Håndterer grupper/reception med flere personer riktig.
-    static func apply(strength: Double, to image: CIImage) -> CIImage {
+    static func apply(strength: Double, to image: CIImage, faces: [CGRect]? = nil) -> CIImage {
         guard strength > 0 else { return image }
         let extent = image.extent
-        let faces = detectFaces(in: image, extent: extent)
+        // #5: bruk delte ansikts-rekter når de er gitt (LearnedStyle-kjeden), ellers
+        // detektér selv.
+        let faces = faces ?? detectFaces(in: image, extent: extent)
         guard !faces.isEmpty else { return image }
 
         var out = image

@@ -94,10 +94,19 @@ enum LearnedStyle {
     /// Replikér rawpy `no_auto_bright=False`: skalér bildet så 99-persentilen av
     /// maks-kanalen treffer ~0.94 (near-white med ~1% klipp), klemt 1.0–3.0.
     /// Normaliserer scene-eksponeringen som rawpy-basen LUT-ene ble trent på.
+    /// Nedskalert readback: skaler CIImage-en FØR createCGImage så vi ikke drar
+    /// hele full-res-bildet gjennom GPU→CPU bare for å regne en liten statistikk.
+    static func smallCG(_ image: CIImage, ctx: CIContext, side: Int) -> CGImage? {
+        let longEdge = max(image.extent.width, image.extent.height)
+        let scale = min(1, CGFloat(side) / max(1, longEdge))
+        let scaled = scale < 1 ? image.transformed(by: CGAffineTransform(scaleX: scale, y: scale)) : image
+        return ctx.createCGImage(scaled, from: scaled.extent)
+    }
+
     static func autoBrightBase(_ image: CIImage, ctx: CIContext) -> CIImage {
         let n = 128
         var px = [UInt8](repeating: 0, count: n * n * 4)
-        guard let cg = ctx.createCGImage(image, from: image.extent),
+        guard let cg = smallCG(image, ctx: ctx, side: n),
               let bmp = CGContext(data: &px, width: n, height: n, bitsPerComponent: 8,
                                   bytesPerRow: n * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
@@ -217,7 +226,7 @@ enum LearnedStyle {
         baseSat.brightness = 0
         out = baseSat.outputImage?.cropped(to: image.extent) ?? out
 
-        guard let cg = ctx.createCGImage(out, from: out.extent) else { return image }
+        guard let cg = smallCG(out, ctx: ctx, side: 128) else { return image }
         let f = features(of: cg)
         guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
 
@@ -248,7 +257,7 @@ enum LearnedStyle {
         // komprimér lokalt (luminans-maskert) de utblåste flatene. Terskel hevet
         // (0.04) så den ikke rører normalt eksponerte bilder — ingen global
         // eksponerings-endring lenger (den kjempet mot den lærte looken).
-        if let outCg = ctx.createCGImage(out, from: out.extent) {
+        if let outCg = smallCG(out, ctx: ctx, side: 64) {
             let (_, clipHi) = lumaStats(outCg)
             if clipHi > 0.04 {
                 out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 6))
@@ -256,13 +265,13 @@ enum LearnedStyle {
         }
 
         // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
-        // hud-tone (a*≈11 — fikser oransje/flekkete varme) + lett utjevning +
-        // ansikts-dodge. Uten dette går lys hud i varmt vinduslys ujevn.
-        out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
-        // Ordentlig hud-finish: varme + vibrance (liv, ikke pale) + dimensjon +
-        // tekstur-bevarende utjevning — mot «blek/flat/livløs».
-        out = SkinFinishFilter.apply(to: out)
-        out = FaceDodgeFilter.apply(to: out)
+        // hud-tone (a*≈11) + lett utjevning + ansikts-dodge.
+        // #5: ÉN delt ansiktsdeteksjon for de tre hud-filtrene — de kjørte før tre
+        // separate CIDetector-pass på samme bilde.
+        let faces = FaceContext.detect(in: out)
+        out = SkinToneGuardFilter.apply(strength: 0.7, to: out, faces: faces)
+        out = SkinFinishFilter.apply(to: out, faces: faces)
+        out = FaceDodgeFilter.apply(to: out, faces: faces)
         return out.cropped(to: image.extent)
     }
 }
