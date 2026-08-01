@@ -68,10 +68,15 @@ export const SAMPLE_RESUME = {
     { id: 's5', name: 'Risikostyring', proficiencyLevel: 4 },
     { id: 's6', name: 'Dataanalyse', proficiencyLevel: 3 },
   ],
+  // Feltet heter levelLabel — det speiler kolonnen level_label fra
+  // migrasjon 0132, som er den malene leser. Sto som `proficiency` her, og
+  // konsekvensen var at ingen forhåndsvisning viste språknivå selv om
+  // ekte CV-er gjør det. Malvelgeren viste altså produktet dårligere enn
+  // det er.
   languages: [
-    { id: 'l1', name: 'Norsk', proficiency: 'Morsmål' },
-    { id: 'l2', name: 'Engelsk', proficiency: 'Flytende' },
-    { id: 'l3', name: 'Tysk', proficiency: 'Middels' },
+    { id: 'l1', name: 'Norsk', levelLabel: 'Morsmål' },
+    { id: 'l2', name: 'Engelsk', levelLabel: 'Flytende' },
+    { id: 'l3', name: 'Tysk', levelLabel: 'Middels' },
   ],
   certifications: [
     { id: 'c1', name: 'PRINCE2 Practitioner', issuer: 'AXELOS', issueDate: '2020-05-01' },

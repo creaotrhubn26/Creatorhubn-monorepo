@@ -239,56 +239,75 @@ function getExperienceBullets(
   return ach.length ? [{ items: ach }] : [];
 }
 
-/** Generic språk-render — mottar styling-config så hver template kan
- *  bestemme farge + variant (bar/dot/text). */
-interface LanguageRenderConfig {
+/* ── Ferdigheter og språk ─────────────────────────────────────────────
+ *
+ * Begge rendres som løpende tekst, ikke som barer eller bokser.
+ *
+ * Tre grunner. Barene var selvrapporterte: «Budsjett & økonomi 70 %» er
+ * et tall søkeren fant på, og rekrutterere leser dem deretter. De var
+ * heller ikke lesbare — mellom 80 % og 95 % er det ingen synlig forskjell
+ * på fire piksler. Og de kostet mye: seks enkeltord fikk seks fullbreddes
+ * rader, i Toppledelse omtrent en fjerdedel av arket.
+ *
+ * Nivå beholdes når det finnes, men som ord i parentes. «Flytende» sier
+ * det «90 %» later som at det sier.
+ *
+ * `proficiencyLevel` blir dermed ubrukt i visningen. Feltet står igjen i
+ * datamodellen med vilje — brukere har tall lagret, og en migrasjon som
+ * sletter dem er en annen beslutning enn denne.
+ */
+
+interface InlineListConfig {
+  /** Farge på nivå-etiketten. Selve navnet arver farge fra konteksten. */
   accent: string;
-  bgTrack?: string;
-  variant?: 'bar' | 'text';
   fontSize?: number;
-  labelSize?: number;
+  /** Skilletegn mellom oppføringene. Malene bruker ulike av stilgrunner. */
+  separator?: string;
 }
 
 function renderLanguageList(
   languages: any[] = [],
-  cfg: LanguageRenderConfig,
+  cfg: InlineListConfig,
 ): React.ReactNode {
   if (!languages?.length) return null;
   const fontSize = cfg.fontSize ?? 12;
-  const labelSize = cfg.labelSize ?? 11;
+  const sep = cfg.separator ?? ' · ';
   return (
-    <Stack spacing={1}>
-      {languages.map((l: any) => (
-        <Box key={l.id}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.3 }}>
-            <Typography sx={{ fontSize, fontWeight: 600 }}>{l.name}</Typography>
-            {l.levelLabel && (
-              <Typography sx={{ fontSize: labelSize, color: cfg.accent, fontWeight: 600 }}>
-                {l.levelLabel}
-              </Typography>
-            )}
-          </Stack>
-          {cfg.variant !== 'text' && (
-            <Box
-              sx={{
-                height: 4,
-                bgcolor: cfg.bgTrack ?? '#E5E7EB',
-                borderRadius: 2,
-                overflow: 'hidden',
-              }}
-            >
-              <Box
-                sx={{
-                  width: `${Math.max(20, Math.min(100, l.proficiencyLevel ?? 80))}%`,
-                  height: '100%',
-                  bgcolor: cfg.accent,
-                }}
-              />
-            </Box>
+    <Typography component="p" sx={{ fontSize, lineHeight: 1.7, m: 0 }}>
+      {languages.map((l: any, i: number) => (
+        <React.Fragment key={l.id ?? i}>
+          {i > 0 && <Box component="span" sx={{ opacity: 0.45 }}>{sep}</Box>}
+          <Box component="span" sx={{ fontWeight: 600 }}>{l.name}</Box>
+          {l.levelLabel && (
+            <Box component="span" sx={{ color: cfg.accent }}> ({l.levelLabel})</Box>
           )}
-        </Box>
+        </React.Fragment>
       ))}
-    </Stack>
+    </Typography>
+  );
+}
+
+/**
+ * Samme behandling for ferdigheter. Egen funksjon fordi ferdigheter ikke
+ * har nivå-etikett — bare navn — og fordi flere maler ellers ville
+ * duplisert denne løkka en gang hver.
+ */
+function renderSkillList(
+  skills: any[] = [],
+  cfg: Omit<InlineListConfig, 'accent'> & { accent?: string } = {},
+): React.ReactNode {
+  if (!skills?.length) return null;
+  const fontSize = cfg.fontSize ?? 12;
+  const sep = cfg.separator ?? ' · ';
+  return (
+    <Typography component="p" sx={{ fontSize, lineHeight: 1.7, m: 0 }}>
+      {skills.map((s: any, i: number) => (
+        <React.Fragment key={s.id ?? i}>
+          {i > 0 && <Box component="span" sx={{ opacity: 0.45 }}>{sep}</Box>}
+          {s.name}
+        </React.Fragment>
+      ))}
+    </Typography>
   );
 }
 
@@ -528,13 +547,9 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, fontSize: '14px' }}>
                   FERDIGHETER
                 </Typography>
-                <Stack spacing={1} sx={{ fontSize: '12px', mb: 2 }}>
-                  {resume.skills.map((skill: any) => (
-                    <Typography key={skill.id} variant="body2">
-                      • {skill.name}
-                    </Typography>
-                  ))}
-                </Stack>
+                <Box sx={{ mb: 2 }}>
+                  {renderSkillList(resume.skills, { fontSize: 12 })}
+                </Box>
               </>
             )}
 
@@ -838,7 +853,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
               <Typography sx={{ fontSize: '11px', color: MUTED, mb: 1 }}>
                 {new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' })}
                 {' – '}
-                {exp.isCurrent ? 'DAGS DATO' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' }) : '')}
+                {exp.isCurrent ? 'NÅ' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'long' }) : '')}
               </Typography>
               {renderExperienceContent(exp, { bulletSize: 11 })}
             </Box>
@@ -918,24 +933,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
         {resume.skills?.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography sx={styles.rightSectionTitle}>Ferdigheter</Typography>
-            <Stack spacing={1}>
-              {resume.skills.map((skill: any) => (
-                <Box key={skill.id}>
-                  <Typography variant="body2" sx={{ fontSize: '12px', mb: 0.5 }}>
-                    {skill.name}
-                  </Typography>
-                  <Box sx={{ width: '100%', height: 4, bgcolor: 'rgba(255,255,255,0.3)', borderRadius: 2 }}>
-                    <Box
-                      sx={{
-                        width: `${skill.proficiencyLevel || 80}%`,
-                        height: '100%',
-                        bgcolor: 'white',
-                        borderRadius: 2}}
-                    />
-                  </Box>
-                </Box>
-              ))}
-            </Stack>
+            {renderSkillList(resume.skills, { fontSize: 12 })}
           </Box>
         )}
 
@@ -1046,16 +1044,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
               <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>
                 Kompetanse
               </Typography>
-              <Stack spacing={1}>
-                {resume.skills.map((skill: any) => (
-                  <Box key={skill.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 8, height: 8, bgcolor: `${_sc.accent}`, borderRadius: '50%' }} />
-                    <Typography variant="body2" sx={{ fontSize: '12px' }}>
-                      {skill.name}
-                    </Typography>
-                  </Box>
-                ))}
-              </Stack>
+              {renderSkillList(resume.skills, { fontSize: 12 })}
             </Box>
           )}
 
@@ -1174,29 +1163,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 <SectionHeading icon={<BuildIcon />} label="Teknologier" />
               </Typography>
-              <Stack spacing={2}>
-                {resume.skills.map((skill: any) => (
-                  <Box key={skill.id}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="body2" sx={{ fontSize: '12px' }}>
-                        {skill.name}
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontSize: '11px', color: MUTED }}>
-                        {skill.proficiencyLevel || 85}%
-                      </Typography>
-                    </Box>
-                    <Box sx={{ width: '100%', height: 6, bgcolor: '#f0f0f0', borderRadius: 3 }}>
-                      <Box
-                        sx={{
-                          width: `${skill.proficiencyLevel || 85}%`,
-                          height: '100%',
-                          bgcolor: `${_sc.accent}`,
-                          borderRadius: 3}}
-                      />
-                    </Box>
-                  </Box>
-                ))}
-              </Stack>
+              {renderSkillList(resume.skills, { fontSize: 12 })}
             </Box>
           )}
 
@@ -1620,6 +1587,19 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
 
 export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#1a1a1a', accentDark: '#2d2d2d', bgSoft: '#f0f0f0' });
+  // Én form for alle seksjonsoverskrifter. Malen hadde to systemer side om
+  // side — h5 med strek under for Erfaring og Utdanning, h6 uten strek for
+  // Kjernkompetanser, Sertifiseringer og Språk — som leste som to ulike
+  // nivåer der det bare finnes ett.
+  const execHead = (label: string) => (
+    <Typography
+      component="h2"
+      variant="h5"
+      sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2, borderBottom: `2px solid ${_sc.accent}`, pb: 1 }}
+    >
+      {label}
+    </Typography>
+  );
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with executive styling */}
@@ -1661,9 +1641,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Leadership Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 3, borderBottom: `2px solid ${_sc.accent}`, pb: 1 }}>
-                Ledelseserfaring
-              </Typography>
+              {execHead('Ledelseserfaring')}
               {resume.experiences.map((exp: any, index: number) => (
                 <Box key={exp.id} sx={{ mb: 3, p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -1693,9 +1671,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2, borderBottom: `2px solid ${_sc.accent}`, pb: 1 }}>
-                Utdanning
-              </Typography>
+              {execHead('Utdanning')}
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '14px', color: `${_sc.accent}` }}>
@@ -1717,32 +1693,15 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Core Competencies */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                Kjernkompetanser
-              </Typography>
-              <Stack spacing={1}>
-                {resume.skills.map((skill: any) => (
-                  <Box key={skill.id} sx={{ 
-                    p: 1.5, 
-                    bgcolor: '#f0f0f0', 
-                    borderRadius: 1,
-                    borderLeft: `3px solid ${_sc.accent}`
-                  }}>
-                    <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 500}}>
-                      {skill.name}
-                    </Typography>
-                  </Box>
-                ))}
-              </Stack>
+              {execHead('Kjernkompetanser')}
+              {renderSkillList(resume.skills, { fontSize: 12.5 })}
             </Box>
           )}
 
           {/* Board Positions */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                Styreverv & Roller
-              </Typography>
+              {execHead('Sertifiseringer')}
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
                   <Box key={cert.id} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
@@ -1760,9 +1719,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                Språk
-              </Typography>
+              {execHead('Språk')}
               {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
@@ -1999,7 +1956,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
                   <Typography sx={{ fontSize: 10, color: muted, letterSpacing: 1.2, mt: 0.2, mb: 0.6 }}>
                     {new Date(exp.startDate).toLocaleDateString('no-NO', { month: 'long', year: 'numeric' }).toUpperCase()}
                     {' — '}
-                    {exp.isCurrent ? 'DAGS DATO' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { month: 'long', year: 'numeric' }).toUpperCase() : '')}
+                    {exp.isCurrent ? 'NÅ' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { month: 'long', year: 'numeric' }).toUpperCase() : '')}
                   </Typography>
                   {exp.description && (
                     <Typography sx={{ fontSize: 12, lineHeight: 1.5, mb: 0.5 }}>{exp.description}</Typography>
@@ -2119,37 +2076,16 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
         {(resume.skills ?? []).length > 0 && (
           <>
             {sidebarTitle('Ferdigheter')}
-            <Stack spacing={1.5} sx={{ mb: 3 }}>
-              {resume.skills.map((s: any) => (
-                <Box key={s.id}>
-                  <Typography sx={{ fontSize: 12, mb: 0.5 }}>{s.name}</Typography>
-                  <Box sx={{ height: 3, bgcolor: 'rgba(255,255,255,0.18)', borderRadius: 1, overflow: 'hidden' }}>
-                    <Box sx={{ width: `${Math.max(20, Math.min(100, s.proficiencyLevel ?? 80))}%`, height: '100%', bgcolor: '#fff' }} />
-                  </Box>
-                </Box>
-              ))}
-            </Stack>
+            <Box sx={{ mb: 3 }}>
+              {renderSkillList(resume.skills, { fontSize: 12 })}
+            </Box>
           </>
         )}
 
         {(resume.languages ?? []).length > 0 && (
           <>
             {sidebarTitle('Språk')}
-            <Stack spacing={1.5}>
-              {resume.languages.map((l: any) => (
-                <Box key={l.id}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.3 }}>
-                    <Typography sx={{ fontSize: 12 }}>{l.name}</Typography>
-                    {l.levelLabel && (
-                      <Typography sx={{ fontSize: 10, color: '#D1D5DB' }}>{l.levelLabel}</Typography>
-                    )}
-                  </Stack>
-                  <Box sx={{ height: 3, bgcolor: 'rgba(255,255,255,0.18)', borderRadius: 1, overflow: 'hidden' }}>
-                    <Box sx={{ width: `${Math.max(20, Math.min(100, l.proficiencyLevel ?? 80))}%`, height: '100%', bgcolor: '#fff' }} />
-                  </Box>
-                </Box>
-              ))}
-            </Stack>
+            {renderLanguageList(resume.languages, { accent: ON_ACCENT, fontSize: 12 })}
           </>
         )}
       </Box>
@@ -2202,7 +2138,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
           }} />
         </Box>
 
-        {chip('Contacts')}
+        {chip('Kontakt')}
         <Stack spacing={1.2} sx={{ mb: 3 }}>
           {resume.personalInfo?.phone && (
             <Stack direction="row" spacing={1.5} alignItems="center">
@@ -2246,24 +2182,9 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
         {(resume.skills ?? []).length > 0 && (
           <Box sx={{ mb: 3 }}>
             {chip('Ferdigheter')}
-            <Stack spacing={1.2}>
-              {resume.skills.slice(0, 8).map((s: any) => {
-                const pct = Math.max(10, Math.min(100, s.proficiencyLevel ?? 70));
-                return (
-                  <Box key={s.id}>
-                    <Typography sx={{ fontSize: 11.5, color: dark, mb: 0.4 }}>{s.name}</Typography>
-                    <Box sx={{ position: 'relative', height: 4, bgcolor: '#E5DDD3', borderRadius: 2 }}>
-                      <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: tan, borderRadius: 2 }} />
-                      <Box sx={{
-                        position: 'absolute', left: `calc(${pct}% - 4px)`, top: -3,
-                        width: 10, height: 10, borderRadius: '50%', bgcolor: tan,
-                        border: '2px solid #fff', boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                      }} />
-                    </Box>
-                  </Box>
-                );
-              })}
-            </Stack>
+            <Box sx={{ color: dark }}>
+              {renderSkillList(resume.skills, { fontSize: 11.5 })}
+            </Box>
           </Box>
         )}
 
@@ -2308,14 +2229,14 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
           if (!regular.length) return null;
           return (
             <Box sx={{ mb: 3 }}>
-              {chip('Work Experience')}
+              {chip('Arbeidserfaring')}
               {regular.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2 }}>
                   <Typography sx={{ fontWeight: 800, fontSize: 13, color: dark, letterSpacing: 1 }}>
                     {(exp.jobTitle ?? '').toUpperCase()}
                   </Typography>
                   <Typography sx={{ fontSize: 11, color: muted }}>
-                    {new Date(exp.startDate).getFullYear()} - {exp.isCurrent ? 'Present' : (exp.endDate ? new Date(exp.endDate).getFullYear() : '')}
+                    {new Date(exp.startDate).getFullYear()} - {exp.isCurrent ? 'nå' : (exp.endDate ? new Date(exp.endDate).getFullYear() : '')}
                   </Typography>
                   <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.7 }}>
                     {exp.company}{exp.location ? `, ${exp.location}` : ''}
@@ -2465,7 +2386,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
           {resume.personalInfo?.linkedin && (
             <>
-              {sideHead('Link')}
+              {sideHead('Lenker')}
               <Box sx={{ textAlign: 'center', mb: 2 }}>
                 <Typography sx={{ fontSize: 12, color: '#1D4ED8', textDecoration: 'underline' }}>
                   Linkedin-profil
@@ -2491,16 +2412,9 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
           {(resume.languages ?? []).length > 0 && (
             <>
               {sideHead('Språk')}
-              <Stack spacing={1} sx={{ alignItems: 'center' }}>
-                {resume.languages.map((l: any) => (
-                  <Box key={l.id} sx={{ textAlign: 'center', width: '85%' }}>
-                    <Typography sx={{ fontSize: 12, mb: 0.4 }}>{l.name}</Typography>
-                    <Box sx={{ height: 2, bgcolor: '#E5E7EB', overflow: 'hidden' }}>
-                      <Box sx={{ width: `${Math.max(20, Math.min(100, l.proficiencyLevel ?? 80))}%`, height: '100%', bgcolor: dark }} />
-                    </Box>
-                  </Box>
-                ))}
-              </Stack>
+              <Box sx={{ textAlign: 'center', color: dark }}>
+                {renderLanguageList(resume.languages, { accent: dark, fontSize: 12 })}
+              </Box>
             </>
           )}
         </Grid>
@@ -2534,7 +2448,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
                         <Typography sx={{ fontSize: 11, color: muted, mb: 0.4 }}>
                           {new Date(exp.startDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}
                           {' — '}
-                          {exp.isCurrent ? 'Dags dato' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' }) : '')}
+                          {exp.isCurrent ? 'nå' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' }) : '')}
                         </Typography>
                         {exp.description && (
                           <Typography sx={{ fontSize: 11.5, lineHeight: 1.55, mb: 0.5 }}>{exp.description}</Typography>
@@ -2905,7 +2819,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
         <Grid item xs={4}>
           {(resume.skills ?? []).length > 0 && (
             <>
-              {head('Skills')}
+              {head('Ferdigheter')}
               <Stack spacing={0.6}>
                 {resume.skills.map((s: any) => (
                   <Box key={s.id} sx={{
@@ -2938,7 +2852,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
           {(resume.certifications ?? []).length > 0 && (
             <>
-              {head('Cert')}
+              {head('Sertifiseringer')}
               <Stack spacing={0.5}>
                 {resume.certifications.map((c: any) => (
                   <Box key={c.id}>
