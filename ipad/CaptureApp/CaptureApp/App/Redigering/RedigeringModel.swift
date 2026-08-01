@@ -28,9 +28,14 @@ final class RedigeringModel {
     /// a/b, scene-matchet on-device) oppå den valgte recipen. Kun tilgjengelig
     /// når en profil er bundlet/lastet (``LearnedStyleStore``).
     /// Valgt lært stil (indeks i ``LearnedStyleStore.styles``); nil = av.
+    #if DEBUG
     var learnedStyleIndex: Int? = LearnedStyleStore.demoForceStyleIndex
     /// Auto: motoren velger looken som passer bildets lys (per bilde).
     var learnedStyleAuto: Bool = LearnedStyleStore.demoForceAuto
+    #else
+    var learnedStyleIndex: Int?
+    var learnedStyleAuto = false
+    #endif
     var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
     var learnedStyleNames: [String] { LearnedStyleStore.shared.styleNames }
 
@@ -143,6 +148,10 @@ final class RedigeringModel {
         #if DEBUG
         await RedigeringSampleSeeder.seedIfNeeded(ownerUserId: ownerUserId)
         #endif
+        // #1: dekod den bundlete stil-profilen off-main FØR første render, så
+        // «Min stil»-getterne (isAvailable/styleNames) og apply() ikke tvinger
+        // synkron disk-I/O på main ved første UI-berøring.
+        await LearnedStyleStore.shared.preload()
         do {
             let url = try AppDatabase.defaultDiskURL()
             let db = try AppDatabase.openOnDisk(at: url)

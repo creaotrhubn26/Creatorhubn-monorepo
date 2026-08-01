@@ -20,6 +20,8 @@ struct RedigeringDemoView: View {
         }
         .preferredColorScheme(.dark)
         .task {
+            #if DEBUG
+            // Demo-hektene finnes kun i DEBUG (holdes ute av Release-binæret).
             let args = ProcessInfo.processInfo.arguments
             if let a = args.first(where: { $0.hasPrefix("--learned-on") }) {
                 // «--learned-on» → stil 0; «--learned-on=N» → stil N; «=auto» → auto.
@@ -30,6 +32,7 @@ struct RedigeringDemoView: View {
                     LearnedStyleStore.demoForceStyleIndex = val.flatMap { Int($0) } ?? 0
                 }
             }
+            #endif
             if SignInService.shared.session == nil {
                 // Demo-sesjonen finnes kun i DEBUG (setInMemoryDemoSession er
                 // DEBUG-gated). --demo-redigering brukes uansett kun til lokal
