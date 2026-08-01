@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreImage
+import Vision
 
 // MARK: - Model
 
@@ -52,26 +53,28 @@ final class RedigeringModel {
     /// + maskert lokal justering). Kjøres når lokal ansikts-modus slås på.
     func detectFacesForLocal() {
         guard let after = afterImage, let cg = after.cgImage else { faceRectsNorm = []; return }
-        let ci = CIImage(cgImage: cg)
-        let ext = ci.extent
-        let det = CIDetector(ofType: CIDetectorTypeFace, context: nil,
-                             options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-        let faceFeatures = (det?.features(in: ci) ?? []).compactMap { $0 as? CIFaceFeature }
-        faceRectsNorm = faceFeatures.compactMap { (feat: CIFaceFeature) -> CGRect? in
-            let b = feat.bounds
-            guard b.width > 4, b.height > 4 else { return nil }
-            let x = b.minX / ext.width
-            let y = b.minY / ext.height
-            let w = b.width / ext.width
-            let h = b.height / ext.height
-            return CGRect(x: x, y: y, width: w, height: h)
-        }
-        if activeFace == nil, !faceRectsNorm.isEmpty { activeFace = 0 }
-        // Demo-hekte: forhåndsvis en lokal justering på ansikt 0.
-        if ProcessInfo.processInfo.arguments.contains("--face-demo"),
-           faceAdjust.isEmpty, !faceRectsNorm.isEmpty {
-            faceAdjust[0] = .init(brightness: 0.55, warmth: 0.3)
-            Task { await render() }
+        // OFF-MAIN: Vision-ansiktsdeteksjon frøs UI-en (synkron CIDetector high-
+        // accuracy på 1600px, re-kjørt etter hver render). Kjør detached, kun
+        // [CGRect] (Sendable) tilbake til MainActor. Vision gir NORMALISERTE
+        // nede-venstre-rekter direkte — samme konvensjon som `faceRectsNorm`.
+        nonisolated(unsafe) let src = cg
+        Task {
+            let rects = await Task.detached(priority: .userInitiated) { () -> [CGRect] in
+                let req = VNDetectFaceRectanglesRequest()
+                let handler = VNImageRequestHandler(cgImage: src, orientation: .up, options: [:])
+                try? handler.perform([req])
+                return (req.results ?? [])
+                    .map(\.boundingBox)
+                    .filter { $0.width > 0.01 && $0.height > 0.01 }
+            }.value
+            faceRectsNorm = rects
+            if activeFace == nil, !rects.isEmpty { activeFace = 0 }
+            // Demo-hekte: forhåndsvis en lokal justering på ansikt 0.
+            if ProcessInfo.processInfo.arguments.contains("--face-demo"),
+               faceAdjust.isEmpty, !rects.isEmpty {
+                faceAdjust[0] = .init(brightness: 0.55, warmth: 0.3)
+                await render()
+            }
         }
     }
 
