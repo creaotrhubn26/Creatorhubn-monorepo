@@ -261,16 +261,18 @@ actor ImageAnalyser {
         filter.setValue(ciImage, forKey: kCIInputImageKey)
         filter.setValue(CIVector(cgRect: extent), forKey: "inputExtent")
         guard let output = filter.outputImage else { return 0 }
-        var buffer = [UInt8](repeating: 0, count: 4)
+        // Float-readback (som histogrammet) — klipp-fraksjonen er ofte < 1/255, så
+        // en UInt8-readback kvantiserte den til 0 (0,4 % oppløsning).
+        var buffer = [Float](repeating: 0, count: 4)
         ctx.render(
             output,
             toBitmap: &buffer,
-            rowBytes: 4,
+            rowBytes: 4 * MemoryLayout<Float>.size,
             bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
+            format: .RGBAf,
             colorSpace: nil
         )
-        return (Double(buffer[0]) + Double(buffer[1]) + Double(buffer[2])) / 3.0 / 255.0
+        return (Double(buffer[0]) + Double(buffer[1]) + Double(buffer[2])) / 3.0
     }
 
     // MARK: - Skin tone
