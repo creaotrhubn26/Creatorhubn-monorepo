@@ -380,6 +380,36 @@ export async function generateBrollClip(args: {
   });
 }
 
+export type BrollProvider = "higgsfield" | "fal";
+
+/** Grovt USD-estimat for fal Seedance (serverside) — ~$0.10/s. */
+export function estimateFalCostUsd(durationSec: number): number {
+  return Math.round(Math.max(4, Math.min(15, Math.round(durationSec))) * 0.1 * 100) / 100;
+}
+
+/**
+ * Generér ett kinematisk klipp SERVERSIDE via fal Seedance (Role Room-proxy) —
+ * ingen lokal higgsfield-CLI/kreditter. Seedance er image-to-video → en ekte
+ * fanget produkt-ramme (data-URL) KREVES som startImage.
+ */
+export async function generateBrollClipFal(args: {
+  projectId: string;
+  sceneId: string;
+  prompt: string;
+  imageDataUrl: string;
+  durationSec: number;
+  resolution: "480p" | "720p" | "1080p";
+}): Promise<string> {
+  return invoke<string>("generate_broll_clip_fal", {
+    projectId: args.projectId,
+    sceneId: args.sceneId,
+    prompt: args.prompt,
+    imageDataUrl: args.imageDataUrl,
+    durationSec: args.durationSec,
+    resolution: args.resolution,
+  });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }

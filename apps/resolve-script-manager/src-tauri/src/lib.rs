@@ -1068,6 +1068,7 @@ pub fn run() {
             capture_sources::ios_sim_swipe,
             broll::higgsfield_account_status,
             broll::generate_broll_clip,
+            broll::generate_broll_clip_fal,
             autonomous_demo::synthesize_tts,
             autonomous_demo::tts_from_audio,
             autonomous_demo::extract_frame,
