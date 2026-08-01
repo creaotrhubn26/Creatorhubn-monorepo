@@ -28,7 +28,7 @@ import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession,
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
 import { ensureCreditSchema as ensureCreditSchemaShared, getUserCredits as getUserCreditsShared, creditMove as creditMoveShared } from "./ai-credits";
 import { createGoogleMeetLink } from "./google-meet";
@@ -1922,6 +1922,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         enabled: settings.enabled && falConfigured(),
         whitelisted: aiAllowed(settings, me.email, me.role),
         beebleConfigured: beebleConfigured(),
+        higgsfieldConfigured: higgsfieldConfigured(),
         billingMode: settings.billingMode,
         consent: consent.rows[0] ? { consented: !!consent.rows[0].consented, by: consent.rows[0].consented_by, at: consent.rows[0].consented_at } : { consented: false },
         dailyCapUsd: settings.dailyCapUsd,
@@ -2079,9 +2080,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
-      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-video er ikke aktivert for din konto." });
-      const model = GEN_MODELS["seedance-2-i2v"];
+      // Video-leverandør: Seedance (fal, standard) eller Higgsfield DoP (kinematisk).
+      const wantHiggsfield = ["higgsfield", "higgsfield-dop-i2v"].includes(String(req.body?.model || req.body?.provider || ""));
+      const model = GEN_MODELS[wantHiggsfield ? "higgsfield-dop-i2v" : "seedance-2-i2v"];
+      const providerReady = model.provider === "higgsfield" ? higgsfieldConfigured() : falConfigured();
+      if (!providerReady) return res.status(503).json({ error: "provider_not_configured", message: model.provider === "higgsfield" ? "Higgsfield (HIGGSFIELD_API_KEY) er ikke konfigurert." : "fal (FAL_KEY) er ikke konfigurert." });
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
       const duration = Math.min(15, Math.max(4, parseInt(String(req.body?.duration || 5), 10) || 5));
@@ -2098,8 +2103,17 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const srcUrl = await signAssetReadUrl(srcKey);
       if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
-      const sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
-      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "fal_submit_failed" });
+      // Dispatch til riktig leverandør. request-id → fal_request_id, poll-url →
+      // response_url (Higgsfield: status_url; fal: response_url). Poll-ruten
+      // dispatcher tilbake på job.provider.
+      let sub: { requestId?: string; responseUrl?: string | null; error?: string };
+      if (model.provider === "higgsfield") {
+        const hs = await higgsfieldSubmit({ imageUrl: srcUrl, prompt, model: "dop-turbo" });
+        sub = { requestId: hs.id, responseUrl: hs.statusUrl || null, error: hs.error };
+      } else {
+        sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
+      }
+      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "submit_failed" });
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
@@ -2182,6 +2196,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (job.provider === "beeble") {
         const bp = await beeblePoll(job.fal_request_id);
         p = { status: bp.status, result: bp.outputUrl ? { video: { url: bp.outputUrl } } : null, error: bp.error };
+      } else if (job.provider === "higgsfield") {
+        // Poll via lagret status_url (response_url); fall tilbake til request-id.
+        const hp = await higgsfieldPoll(job.response_url || job.fal_request_id);
+        p = { status: hp.status, result: hp.outputUrl ? { video: { url: hp.outputUrl } } : null, error: hp.error };
       } else {
         if (!job.response_url) return res.json({ status: job.status || "queued", kind: job.kind, beforeUrl });
         p = await falPoll(job.response_url);
