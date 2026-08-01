@@ -149,13 +149,25 @@ pub async fn generate_broll_clip(
     let mut cmd = Command::new(&hf);
     cmd.args(["generate", "create", "seedance_2_0", "--prompt", &prompt,
         "--duration", &dur, "--resolution", res, "--aspect_ratio", "16:9", "--wait", "--json"]);
+    // start_image kan være en fil-sti ELLER en data-URL (ekte fanget ramme fra
+    // frontend — «forankre i produkt-skjerm»). Data-URL → skriv til temp-fil.
+    let mut _tmp_start: Option<PathBuf> = None;
     if let Some(img) = start_image.as_ref() {
-        let img = shellexpand_home(img);
-        if PathBuf::from(&img).is_file() {
-            cmd.args(["--start-image", &img]);
+        let resolved = if img.starts_with("data:") {
+            let p = data_url_to_temp(img, &dir, &safe_scene);
+            _tmp_start = p.clone();
+            p
+        } else {
+            let expanded = shellexpand_home(img);
+            let pb = PathBuf::from(&expanded);
+            if pb.is_file() { Some(pb) } else { None }
+        };
+        if let Some(pb) = resolved.as_ref() {
+            cmd.args(["--start-image", &pb.to_string_lossy()]);
         }
     }
     let out = cmd.output().map_err(|e| format!("higgsfield generate: {}", e))?;
+    if let Some(p) = _tmp_start.as_ref() { let _ = std::fs::remove_file(p); } // rydd anker-ramme
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     let url = extract_url(&stdout, &stderr).ok_or_else(|| {
@@ -190,6 +202,22 @@ pub async fn generate_broll_clip(
     }
     // Fallback: behold rå-klippet hvis transcoding ikke gikk.
     Ok(raw_path.to_string_lossy().to_string())
+}
+
+/// Dekod en data-URL (data:image/...;base64,....) og skriv til en temp-fil i
+/// scene-katalogen. Returnerer stien, eller None ved ugyldig data.
+fn data_url_to_temp(data_url: &str, dir: &std::path::Path, safe_scene: &str) -> Option<PathBuf> {
+    use base64::Engine;
+    let comma = data_url.find(',')?;
+    let header = &data_url[..comma];
+    if !header.contains("base64") { return None; }
+    let ext = if header.contains("jpeg") || header.contains("jpg") { "jpg" } else { "png" };
+    let payload = &data_url[comma + 1..];
+    let bytes = base64::engine::general_purpose::STANDARD.decode(payload.trim()).ok()?;
+    if bytes.len() < 100 { return None; }
+    let path = dir.join(format!("{}._anchor.{}", safe_scene, ext));
+    std::fs::write(&path, &bytes).ok()?;
+    Some(path)
 }
 
 /// Utvid en ledende ~ til $HOME (start-image kan komme som «~/...»).
