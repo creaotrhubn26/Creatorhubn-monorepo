@@ -20,6 +20,26 @@ final class MagicRecipeWeddingTests: XCTestCase {
         XCTAssertTrue(MagicRecipe.neutral.autoEnhance)
     }
 
+    /// REGRESJON: `merging(baseline:)` MÅ videreføre autoEnhance/skinGuard/
+    /// filmGrain. De manglet i memberwise-rekonstruksjonen → ble stille nullstilt
+    /// (true/0/0) ved HVER render (merging kalles ubetinget i begge pipelines), så
+    /// Bryllup-presetets `autoEnhance:false` + skinGuard + filmGrain forsvant helt.
+    func testMergingPreservesAutoEnhanceSkinGuardAndFilmGrain() {
+        var recipe = MagicRecipe.wedding
+        recipe.skinGuard = 0.7
+        recipe.filmGrain = 0.15
+        XCTAssertFalse(recipe.autoEnhance)
+        // Merge mot en tom baseline (som subjectType `.none` gir i pipelinen).
+        let merged = recipe.merging(baseline: MagicRecipe())
+        XCTAssertFalse(merged.autoEnhance, "merging nullstilte autoEnhance til true")
+        XCTAssertEqual(merged.skinGuard, 0.7, accuracy: 0.0001, "merging nullstilte skinGuard")
+        XCTAssertEqual(merged.filmGrain, 0.15, accuracy: 0.0001, "merging nullstilte filmGrain")
+        // Baseline som VIL auto-enhance overstyrer ikke recipens «av».
+        var wantsEnhance = MagicRecipe(); wantsEnhance.autoEnhance = true
+        XCTAssertFalse(recipe.merging(baseline: wantsEnhance).autoEnhance,
+                       "recipens autoEnhance:false skal vinne over baseline")
+    }
+
     /// autoEnhance runder trippen gjennom Codable (persistert edit-state).
     func testAutoEnhanceRoundTripsThroughCodable() throws {
         let enc = try JSONEncoder().encode(MagicRecipe.wedding)

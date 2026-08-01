@@ -232,6 +232,15 @@ extension MagicRecipe {
             eyeSharpen: clampUnit(eyeSharpen + baseline.eyeSharpen),
             eyeCatchlight: clampUnit(eyeCatchlight + baseline.eyeCatchlight),
             autoStraighten: autoStraighten || baseline.autoStraighten,
+            // 🔑 autoEnhance/skinGuard/filmGrain MÅ videreføres — utelot man dem
+            // her (memberwise-init-ens defaults true/0/0 tok over), ble de STILLE
+            // nullstilt ved HVER render (merging kalles ubetinget), så f.eks.
+            // Bryllup-presetets `autoEnhance:false` + skinGuard + filmGrain forsvant
+            // i hele pipelinen. autoEnhance: recipens «false» vinner (unngå
+            // dobbel-prosessering); skinGuard/filmGrain additivt som andre akser.
+            autoEnhance: autoEnhance && baseline.autoEnhance,
+            skinGuard: clampUnit(skinGuard + baseline.skinGuard),
+            filmGrain: clampUnit(filmGrain + baseline.filmGrain),
             straightenAngle: max(-AutoStraightenFilter.maxAngle,
                                  min(AutoStraightenFilter.maxAngle,
                                      straightenAngle + baseline.straightenAngle)),
