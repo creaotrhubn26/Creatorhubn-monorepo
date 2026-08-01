@@ -145,6 +145,12 @@ export function BusinessDnaOnboarding() {
     const swatchRow = ([label, color]: readonly [string, string]): string =>
       `<div class="sw"><div class="chip" style="background:${esc(color)}"></div><div><b>${esc(label)}</b><br><code>${esc(color)}</code></div></div>`;
     const usps = brand.usps.map((u) => `<li>${esc(u)}</li>`).join('');
+    const images = Array.from(
+      new Set(slides.map((s) => imageUrl(s.image_ref)).filter((u): u is string => Boolean(u))),
+    ).slice(0, 7);
+    const moodboard = images.length
+      ? `<h2>Bildeverden</h2><div class="grid">${images.map((u) => `<img src="${esc(u)}" alt="">`).join('')}</div>`
+      : '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Brandbook — ${esc(brand.businessName)}</title>
 <style>
   @page { margin: 24mm; }
@@ -159,6 +165,8 @@ export function BusinessDnaOnboarding() {
   code { font-family: ui-monospace, monospace; font-size: 13px; }
   .tone { display: inline-block; background: ${esc(brand.colors.accent)}; color: ${esc(brand.colors.background)}; padding: 4px 14px; border-radius: 999px; font-weight: 600; }
   ul { line-height: 1.7; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .grid img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; }
 </style></head><body>
   <div class="cover">
     ${brand.logoUrl ? `<img src="${esc(brand.logoUrl)}" alt="" style="height:48px;margin-bottom:16px">` : ''}
@@ -177,6 +185,7 @@ export function BusinessDnaOnboarding() {
     ${usps ? `<h2>Kjernebudskap (USP-er)</h2><ul>${usps}</ul>` : ''}
     <h2>Målgruppe</h2>
     <p>${esc(brand.targetAudience)}</p>
+    ${moodboard}
     <p style="margin-top:40px;color:#888;font-size:12px">Generert automatisk fra ${esc(brand.url)} · Creatorhub Business DNA</p>
   </div>
 </body></html>`;
