@@ -2148,6 +2148,31 @@ export interface MarketingSegmentAudience {
   lastSyncedAt: string | null;
 }
 
+export interface SegmentCampaign {
+  campaignId: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+}
+
+export interface SegmentPerformance {
+  campaignCount: number;
+  spendNok: number;
+  convValueNok: number;
+  conversions: number;
+  roas: number | null;
+}
+
+export interface LinkableCampaign {
+  id: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+  spendNok: number;
+}
+
 export interface MarketingSegment {
   id: string;
   userId: string;
@@ -2157,6 +2182,8 @@ export interface MarketingSegment {
   createdAt: string;
   updatedAt: string;
   audiences?: MarketingSegmentAudience[];
+  campaigns?: SegmentCampaign[];
+  performance?: SegmentPerformance;
 }
 
 export interface MaterializeResult {
@@ -2193,4 +2220,17 @@ export const marketingSegmentsApi = {
     jsonFetch(`/marketing-segments/${id}/materialize`, { method: 'POST', body: JSON.stringify(body) }),
   remove: (id: string): Promise<{ deleted: boolean }> =>
     jsonFetch(`/marketing-segments/${id}`, { method: 'DELETE' }),
+  listCampaigns: async (): Promise<LinkableCampaign[]> => {
+    const data = await jsonFetch<{ campaigns: LinkableCampaign[] }>(
+      '/marketing-segments/campaigns/linkable',
+    );
+    return data.campaigns;
+  },
+  linkCampaign: (id: string, campaignId: string): Promise<{ ok: boolean; performance: SegmentPerformance }> =>
+    jsonFetch(`/marketing-segments/${id}/campaigns`, {
+      method: 'POST',
+      body: JSON.stringify({ campaignId }),
+    }),
+  unlinkCampaign: (id: string, campaignId: string): Promise<{ removed: boolean; performance: SegmentPerformance }> =>
+    jsonFetch(`/marketing-segments/${id}/campaigns/${campaignId}`, { method: 'DELETE' }),
 };
