@@ -371,9 +371,30 @@ struct RedigeringView: View {
 
     private var suggestionsCard: some View {
         InfoCard(title: "AI forslag", icon: "lightbulb") {
-            suggestion("Match lys mot referanse")
-            suggestion("Fjern støv på utvalgte bilder")
-            suggestion("Lag web-versjon 2048px")
+            let items = model.editSuggestions
+            if items.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal").foregroundStyle(CHTheme.success)
+                    Text("Ingen justeringer foreslått").font(.caption).foregroundStyle(CHTheme.textSecondary)
+                }
+            } else {
+                // Data-drevet: hvert forslag leser AssetAnalysis for det valgte
+                // bildet og bærer en ETT-KLIKKS recipe-delta.
+                ForEach(items) { s in
+                    Button { model.applySuggestion(s) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: s.icon).foregroundStyle(CHTheme.accent).frame(width: 18)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(s.title).font(.caption.weight(.semibold)).foregroundStyle(CHTheme.textPrimary)
+                                Text(s.detail).font(.caption2).foregroundStyle(CHTheme.textMuted)
+                            }
+                            Spacer()
+                            Image(systemName: "plus.circle").font(.caption).foregroundStyle(CHTheme.accent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -394,14 +415,6 @@ struct RedigeringView: View {
 
     private func row(_ icon: String, _ text: String, _ tint: Color) -> some View {
         Label(text, systemImage: icon).font(.caption).foregroundStyle(tint)
-    }
-    private func suggestion(_ text: String) -> some View {
-        HStack {
-            Image(systemName: "sparkles").foregroundStyle(CHTheme.accent)
-            Text(text).font(.caption).foregroundStyle(CHTheme.textSecondary)
-            Spacer()
-            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CHTheme.textMuted)
-        }
     }
 }
 
