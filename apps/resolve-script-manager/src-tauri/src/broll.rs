@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::capture_sources::{find_ffmpeg, recordings_dir};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 /// Finn higgsfield-CLI: env-override, standard install-sti, deretter PATH.
 fn find_higgsfield() -> Option<PathBuf> {
@@ -201,6 +201,101 @@ pub async fn generate_broll_clip(
         }
     }
     // Fallback: behold rå-klippet hvis transcoding ikke gikk.
+    Ok(raw_path.to_string_lossy().to_string())
+}
+
+/// Generér ett kinematisk klipp via fal Seedance SERVERSIDE (Role Room-proxy) —
+/// ingen lokal higgsfield-CLI/kreditter (FAL_KEY bor på serveren). Seedance er
+/// image-to-video, så `image_data_url` (en ekte fanget produkt-ramme) KREVES.
+/// Kø-basert: submit → poll til COMPLETED → last ned + normaliser.
+#[tauri::command]
+pub async fn generate_broll_clip_fal(
+    app: AppHandle,
+    project_id: String,
+    scene_id: String,
+    prompt: String,
+    image_data_url: String,
+    duration_sec: u32,
+    resolution: String,
+) -> Result<String, String> {
+    use crate::python::AppSettings;
+    if prompt.trim().is_empty() { return Err("prompt kreves".into()); }
+    if !image_data_url.starts_with("data:") && !image_data_url.starts_with("http") {
+        return Err("fal Seedance er image-to-video — forankre i en produkt-ramme først.".into());
+    }
+    let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
+        let snap = settings.snapshot();
+        (
+            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
+            snap.get("RR_POST_AGENT_BASE_URL").cloned().filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
+        )
+    } else {
+        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
+    };
+    if bearer.is_empty() {
+        return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler). Logg inn fra Settings.".into());
+    }
+    let base = base_url.trim_end_matches('/').to_string();
+    let res = match resolution.as_str() { "480p" | "720p" | "1080p" => resolution.as_str(), _ => "720p" };
+    let dur = duration_sec.clamp(4, 15);
+
+    let client = reqwest::Client::new();
+    // 1) Submit
+    let sub = client.post(format!("{}/ai/generate-video", base))
+        .header("Authorization", format!("Bearer {}", bearer))
+        .json(&serde_json::json!({ "prompt": prompt.trim(), "imageUrl": image_data_url, "durationSec": dur, "resolution": res }))
+        .send().await.map_err(|e| format!("video-submit feilet: {}", e))?;
+    if !sub.status().is_success() {
+        let s = sub.status();
+        let t = sub.text().await.unwrap_or_default();
+        return Err(format!("video-submit {}: {}", s, t.chars().take(300).collect::<String>()));
+    }
+    let sub_json: serde_json::Value = sub.json().await.map_err(|e| format!("submit-svar: {}", e))?;
+    let response_url = sub_json.get("responseUrl").and_then(|v| v.as_str())
+        .ok_or("fikk ingen responseUrl fra serveren")?.to_string();
+
+    // 2) Poll til COMPLETED (fal tar ~1–3 min).
+    let mut video_url: Option<String> = None;
+    for _ in 0..48 {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let p = client.post(format!("{}/ai/generate-video/poll", base))
+            .header("Authorization", format!("Bearer {}", bearer))
+            .json(&serde_json::json!({ "responseUrl": response_url }))
+            .send().await.map_err(|e| format!("poll feilet: {}", e))?;
+        if !p.status().is_success() {
+            let s = p.status(); let t = p.text().await.unwrap_or_default();
+            return Err(format!("poll {}: {}", s, t.chars().take(200).collect::<String>()));
+        }
+        let pj: serde_json::Value = p.json().await.map_err(|e| format!("poll-svar: {}", e))?;
+        let status = pj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        if status == "COMPLETED" {
+            video_url = pj.get("videoUrl").and_then(|v| v.as_str()).map(|s| s.to_string());
+            break;
+        }
+    }
+    let url = video_url.ok_or("tidsavbrudd — klippet ble ikke ferdig i tide")?;
+
+    // 3) Last ned + normaliser (samme som higgsfield-veien).
+    let dir = recordings_dir(&app, &project_id)?;
+    let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let raw_path = dir.join(format!("{}._broll_raw.mp4", safe_scene));
+    let dl = Command::new("/usr/bin/curl").args(["-sL", "-o", &raw_path.to_string_lossy(), &url])
+        .status().map_err(|e| format!("curl: {}", e))?;
+    if !dl.success() || raw_path.metadata().map(|m| m.len() < 10_000).unwrap_or(true) {
+        let _ = std::fs::remove_file(&raw_path);
+        return Err("nedlasting av generert klipp feilet".into());
+    }
+    let out_path = dir.join(format!("{}.mp4", safe_scene));
+    if let Some(ffmpeg) = find_ffmpeg() {
+        let ok = Command::new(&ffmpeg)
+            .args(["-y", "-i", &raw_path.to_string_lossy(),
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart", &out_path.to_string_lossy()])
+            .status().map(|s| s.success()).unwrap_or(false);
+        let _ = std::fs::remove_file(&raw_path);
+        if ok && out_path.is_file() { return Ok(out_path.to_string_lossy().to_string()); }
+    }
     Ok(raw_path.to_string_lossy().to_string())
 }
 

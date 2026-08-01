@@ -9,7 +9,8 @@
  */
 import { useEffect, useState } from 'react';
 import {
-  generateBrollClip, higgsfieldAccountStatus, estimateBrollCredits, type BrollResolution,
+  generateBrollClip, generateBrollClipFal, higgsfieldAccountStatus, estimateBrollCredits,
+  estimateFalCostUsd, type BrollResolution, type BrollProvider,
 } from '../../api';
 import { useDemoStudio } from './demoStudioStore';
 import { makeScene } from './demoStudioModel';
@@ -30,6 +31,7 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
   const [resolution, setResolution] = useState<BrollResolution>('1080p');
   const [noPeople, setNoPeople] = useState(false);
   const [anchor, setAnchor] = useState(false);
+  const [provider, setProvider] = useState<BrollProvider>('higgsfield');
   const [account, setAccount] = useState<string | null>(null);
   const [accountErr, setAccountErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,10 +81,21 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
     selectScene(scene.id);
 
     try {
-      const path = await generateBrollClip({
-        projectId: project.id, sceneId: scene.id, prompt: prompt.trim(),
-        startImage: anchor && anchorFrame ? anchorFrame : null, durationSec, resolution, noPeople,
-      });
+      let path: string;
+      if (provider === 'fal') {
+        // fal Seedance er image-to-video → forankrings-rammen kreves.
+        if (!anchorFrame) throw new Error('fal krever en produkt-ramme — skann siden først.');
+        path = await generateBrollClipFal({
+          projectId: project.id, sceneId: scene.id, prompt: prompt.trim(),
+          imageDataUrl: anchorFrame, durationSec,
+          resolution: (resolution === '4k' ? '1080p' : resolution) as '480p' | '720p' | '1080p',
+        });
+      } else {
+        path = await generateBrollClip({
+          projectId: project.id, sceneId: scene.id, prompt: prompt.trim(),
+          startImage: anchor && anchorFrame ? anchorFrame : null, durationSec, resolution, noPeople,
+        });
+      }
       updateScene(scene.id, { recordingPath: path, status: 'done' });
       onClose();
     } catch (e) {
@@ -111,6 +124,19 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
         <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 3, lineHeight: 1.45 }}>
           AI-generert footage for kroken, konteksten eller outroen — det et skjermopptak ikke kan gi. Flyter inn i demoen som en vanlig scene.
         </div>
+
+        <div style={label}>Leverandør</div>
+        <select value={provider} onChange={(e) => setProvider(e.target.value as BrollProvider)} style={field}>
+          <option value="higgsfield">Higgsfield (lokal · dine kreditter)</option>
+          <option value="fal">fal Seedance (serverside · ingen lokalt oppsett)</option>
+        </select>
+        {provider === 'fal' && (
+          <div style={{ fontSize: 11, color: anchorFrame ? C.inkFaint : '#d9534f', marginTop: 5, lineHeight: 1.4 }}>
+            {anchorFrame
+              ? 'Serverside — animerer den fangede produkt-rammen (image-to-video). Ingen lokal CLI eller Higgsfield-kreditter.'
+              : 'fal krever en produkt-ramme — skann siden først (image-to-video).'}
+          </div>
+        )}
 
         <div style={label}>Prompt (engelsk)</div>
         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} style={{ ...field, resize: 'vertical', lineHeight: 1.4 }} />
@@ -156,26 +182,44 @@ export function BrollComposer({ C, onClose }: { C: Palette; onClose: () => void 
           {!anchorFrame && <span style={{ marginLeft: 'auto', fontSize: 10.5 }}>(skann siden først)</span>}
         </label>
 
-        {/* Kreditt-vokter + konto-status */}
+        {/* Kostnads-vokter + konto-status */}
         <div style={{ marginTop: 16, padding: '11px 13px', borderRadius: 10, background: C.cream, border: `1px solid ${C.line}` }}>
-          <div style={{ fontSize: 12.5, color: C.ink }}>
-            Estimert kostnad: <strong>~{estCredits} kreditter</strong> <span style={{ color: C.inkFaint }}>({resolution}, {durationSec}s)</span>
-          </div>
-          <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 4 }}>
-            {accountErr ? `Konto: ${accountErr}` : account ? `Higgsfield: ${account}` : 'Sjekker konto…'}
-          </div>
+          {provider === 'fal' ? (
+            <>
+              <div style={{ fontSize: 12.5, color: C.ink }}>
+                Estimert kostnad: <strong>~${estimateFalCostUsd(durationSec)}</strong> <span style={{ color: C.inkFaint }}>({resolution === '4k' ? '1080p' : resolution}, {durationSec}s)</span>
+              </div>
+              <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 4 }}>fal serverside — belastes via Role Room (FAL_KEY på serveren). Ingen lokal konto.</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 12.5, color: C.ink }}>
+                Estimert kostnad: <strong>~{estCredits} kreditter</strong> <span style={{ color: C.inkFaint }}>({resolution}, {durationSec}s)</span>
+              </div>
+              <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 4 }}>
+                {accountErr ? `Konto: ${accountErr}` : account ? `Higgsfield: ${account}` : 'Sjekker konto…'}
+              </div>
+            </>
+          )}
         </div>
 
         {err && <div style={{ marginTop: 12, fontSize: 12, color: '#d9534f', lineHeight: 1.45 }}>{err}</div>}
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} disabled={busy} style={{ padding: '9px 16px', borderRadius: 9, border: `1px solid ${C.lineStrong}`, background: C.panel, color: C.ink, fontWeight: 700, fontSize: 12.5, cursor: busy ? 'default' : 'pointer', fontFamily: C.font }}>
-            Avbryt
-          </button>
-          <button onClick={generate} disabled={busy || !prompt.trim() || !!accountErr} style={{ padding: '9px 18px', borderRadius: 9, border: `1px solid ${C.accent}`, background: C.accent, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: busy || !prompt.trim() || accountErr ? 'default' : 'pointer', opacity: busy || !prompt.trim() || accountErr ? 0.55 : 1, fontFamily: C.font }}>
-            {busy ? 'Genererer — 1-3 min…' : `Generér (~${estCredits} kr)`}
-          </button>
-        </div>
+        {(() => {
+          const falBlocked = provider === 'fal' && !anchorFrame;
+          const disabled = busy || !prompt.trim() || falBlocked || (provider === 'higgsfield' && !!accountErr);
+          const label = busy ? 'Genererer — 1-3 min…' : provider === 'fal' ? `Generér (~$${estimateFalCostUsd(durationSec)})` : `Generér (~${estCredits} kr)`;
+          return (
+            <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} disabled={busy} style={{ padding: '9px 16px', borderRadius: 9, border: `1px solid ${C.lineStrong}`, background: C.panel, color: C.ink, fontWeight: 700, fontSize: 12.5, cursor: busy ? 'default' : 'pointer', fontFamily: C.font }}>
+                Avbryt
+              </button>
+              <button onClick={generate} disabled={disabled} style={{ padding: '9px 18px', borderRadius: 9, border: `1px solid ${C.accent}`, background: C.accent, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1, fontFamily: C.font }}>
+                {label}
+              </button>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
