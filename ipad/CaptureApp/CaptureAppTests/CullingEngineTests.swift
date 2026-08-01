@@ -33,6 +33,34 @@ final class CullingEngineTests: XCTestCase {
         XCTAssertEqual(result.ranked.first?.id, "sharp")
     }
 
+    // MARK: - Fase 2b: AssetAnalysis-berikelse (øyne / ansikts-softness)
+
+    func testClosedEyesDemotesHardBelowOpenEyes() {
+        // SAMME estetikk + face-quality; kun øyne skiller. Lukkede øyne skal falle
+        // bak selv om alt annet er likt (klassisk burst-kastekandidat).
+        var closed = score("closed", 0.8, face: 0.8); closed.eyesOpen = false
+        var open = score("open", 0.8, face: 0.8); open.eyesOpen = true
+        let result = CullingEngine.cull(scores: [closed, open], duplicateGroups: [])
+        XCTAssertEqual(result.ranked.first?.id, "open")
+        XCTAssertLessThan(closed.rank, open.rank)
+    }
+
+    func testSoftFaceDemotesButLessThanClosedEyes() {
+        var soft = score("soft", 0.8, face: 0.8); soft.faceSoft = true
+        var sharp = score("sharp", 0.8, face: 0.8); sharp.faceSoft = false
+        var blink = score("blink", 0.8, face: 0.8); blink.eyesOpen = false
+        // Mykt ansikt demoteres (×0.7), men mindre enn lukkede øyne (×0.4).
+        XCTAssertLessThan(soft.rank, sharp.rank)
+        XCTAssertLessThan(blink.rank, soft.rank)
+    }
+
+    func testNilAnalysisSignalsLeaveRankUnchanged() {
+        // Bakoverkompat: uten øyne/softness-signaler er rank som før.
+        let a = score("a", 0.7, face: 0.6)
+        var b = score("b", 0.7, face: 0.6); b.eyesOpen = nil; b.faceSoft = nil
+        XCTAssertEqual(a.rank, b.rank, accuracy: 0.0001)
+    }
+
     func testGroupDuplicatesUnionsNearby() {
         // a~b (0.1), c isolert (langt unna).
         let ids = ["a", "b", "c"]
