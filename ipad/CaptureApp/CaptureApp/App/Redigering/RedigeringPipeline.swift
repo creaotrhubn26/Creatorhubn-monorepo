@@ -69,35 +69,60 @@ enum RedigeringPipeline {
     /// `.appPreview`-fargestyrt base — påfører man LUT-en på DEN, blir det utvasket.
     /// Denne matcher trenings-neutralen (bekreftet: harness mot bar CIRAWFilter gir
     /// riktig, rikt resultat). EV + crop påføres etterpå som i `renderPreview`.
-    static func renderNeutralRAW(
+    /// NØYTRAL 16-BIT base som CIImage — for «Min stil»-banen. 🔑 CR3 er 14-bit og
+    /// CIRAWFilter gir ut flyttall; å kollapse til 8-bit HER (som før) kastet
+    /// headroom + ga banding for HELE redigeringskjeden (LUT/LAB/hud). Nå
+    /// materialiseres basen til **RGBA16 (16-bit)** og forblir en høy-bit CIImage
+    /// gjennom hele `LearnedStyle.apply`; 8-bit skjer KUN ved siste visning/eksport
+    /// (`ColorManagement.renderCGImage`). LearnedStyle-filtrene er late (float
+    /// internt), så presisjonen bevares helt til slutt.
+    ///   • EV=0 (vanligst) → cachet (demosaic er dyr, endres aldri for en RAW).
+    ///   • EV≠0 → EKTE eksponering: CIExposureAdjust på den FLYTENDE RAW-utgangen
+    ///     FØR 16-bit-materialisering → utblåste høylys hentes tilbake.
+    static func neutralBaseCIImage(
         rawPath: String, exposureEV: Double = 0, crop: CGRect? = nil,
         maxDimension: CGFloat? = 1600,
-    ) -> UIImage? {
-        // CACHE: den demosaikede basen (Data-lesing 30–50MB + CIRAWFilter-develop +
-        // skalering) er RECIPE-UAVHENGIG for den lærte banen og endrer seg aldri for
-        // en gitt RAW. Cache per (sti, maxDim) → slider-slipp gjenbruker basen og
-        // påfører kun EV/crop (billige) i stedet for full re-develop hver gang.
-        guard let base = cachedNeutralBase(rawPath: rawPath, maxDimension: maxDimension) else { return nil }
-        var img = base
-        if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
-        if let crop { img = cropped(img, to: crop) }
-        return img
+    ) -> CIImage? {
+        let cg = exposureEV == 0
+            ? cachedNeutral16(rawPath: rawPath, maxDimension: maxDimension)
+            : develop16(rawPath: rawPath, exposureEV: exposureEV, maxDimension: maxDimension)
+        guard let cg else { return nil }
+        var ci = CIImage(cgImage: cg)
+        if let crop { ci = croppedCI(ci, to: crop) }
+        return ci
     }
 
     // Lås-beskyttet base-cache (nås fra render()-ens detached task, off-main).
-    private nonisolated(unsafe) static var neutralBaseCache: [String: UIImage] = [:]
+    // Holder 16-bit CGImage (materialisert demosaic) for rask gjenbruk.
+    private nonisolated(unsafe) static var neutral16Cache: [String: CGImage] = [:]
     private static let cacheLock = NSLock()
 
-    private static func cachedNeutralBase(rawPath: String, maxDimension: CGFloat?) -> UIImage? {
+    private static func cachedNeutral16(rawPath: String, maxDimension: CGFloat?) -> CGImage? {
         let key = "\(rawPath)@\(maxDimension.map { Int($0) } ?? 0)"
         cacheLock.lock()
-        let hit = neutralBaseCache[key]
+        let hit = neutral16Cache[key]
         cacheLock.unlock()
         if let hit { return hit }
+        guard let cg = develop16(rawPath: rawPath, exposureEV: 0, maxDimension: maxDimension) else { return nil }
+        cacheLock.lock()
+        if neutral16Cache.count >= 4 { neutral16Cache.removeAll() }   // enkel minne-cap
+        neutral16Cache[key] = cg
+        cacheLock.unlock()
+        return cg
+    }
 
+    /// Bar CIRAWFilter-develop → 16-bit (RGBA16, sRGB). EV på den FLYTENDE utgangen
+    /// FØR 16-bit-materialisering (lineært lys → ekte eksponering + headroom).
+    private static func develop16(rawPath: String, exposureEV: Double, maxDimension: CGFloat?) -> CGImage? {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)),
               let filter = CIFilter(imageData: data, options: nil),
               var out = filter.outputImage else { return nil }
+        if exposureEV != 0 {
+            let e = CIFilter.exposureAdjust()
+            e.inputImage = out
+            e.ev = Float(exposureEV)
+            out = e.outputImage ?? out
+        }
         if let maxDimension {
             let longEdge = max(out.extent.width, out.extent.height)
             if longEdge > maxDimension {
@@ -105,20 +130,25 @@ enum RedigeringPipeline {
                 out = out.transformed(by: CGAffineTransform(scaleX: s, y: s))
             }
         }
-        guard let cg = sharedContext.createCGImage(
-            out, from: out.extent, format: .RGBA8,
-            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else { return nil }
-        let img = UIImage(cgImage: cg)
-        cacheLock.lock()
-        if neutralBaseCache.count >= 4 { neutralBaseCache.removeAll() }   // enkel minne-cap
-        neutralBaseCache[key] = img
-        cacheLock.unlock()
-        return img
+        return sharedContext.createCGImage(
+            out, from: out.extent, format: .RGBA16,
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+    }
+
+    /// Beskjær et CIImage til en normalisert rekt (origo topp-venstre, som crops-
+    /// dictet) — CIImage har origo NEDE-venstre, så Y flippes.
+    private static func croppedCI(_ image: CIImage, to norm: CGRect) -> CIImage {
+        let e = image.extent
+        let rect = CGRect(x: e.origin.x + norm.minX * e.width,
+                          y: e.origin.y + (1 - norm.minY - norm.height) * e.height,
+                          width: norm.width * e.width, height: norm.height * e.height)
+        let c = image.cropped(to: rect)
+        return c.extent.isEmpty ? image : c
     }
 
     /// Tøm base-cachen (f.eks. ved minnepress / øktbytte).
     static func clearBaseCache() {
-        cacheLock.lock(); neutralBaseCache.removeAll(); cacheLock.unlock()
+        cacheLock.lock(); neutral16Cache.removeAll(); cacheLock.unlock()
     }
 
     /// Crop to a normalised rect (origin top-left, 0…1).
