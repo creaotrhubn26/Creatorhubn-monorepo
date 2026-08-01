@@ -23,14 +23,12 @@ enum RedigeringPipeline {
     ) -> UIImage? {
         var base: UIImage?
 
-        if let rawPath, let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)) {
-            let hint = (rawPath as NSString).pathExtension.lowercased()
-            if let jpeg = try? RAWExportPipeline.render(
-                rawData: data, recipe: recipe, identifierHint: hint.isEmpty ? nil : hint,
-                targetMaxDimension: maxDimension, colorPurpose: .appPreview,
-            ) {
-                base = UIImage(data: jpeg)
-            }
+        // #1 RAW-CACHE: den interaktive banen GJENBRUKER ett CIRAWFilter per asset
+        // (cachet) i stedet for å lese 30–50 MB fra disk + re-parse RAW hvert
+        // slider-slipp. Kun filter-properties muteres → Core Image gjenbruker
+        // dekodingen; ingen JPEG-round-trip (rendrer rett til UIImage).
+        if let rawPath, let entry = cachedRawFilter(rawPath: rawPath) {
+            base = entry.render(recipe: recipe, maxDimension: maxDimension)
         }
         if base == nil, let jpegPath {
             base = MagicPipeline.renderPreview(source: jpegPath, recipe: recipe)
@@ -146,9 +144,70 @@ enum RedigeringPipeline {
         return c.extent.isEmpty ? image : c
     }
 
+    // MARK: - RAW-filter-cache (#1: interaktiv slider-følelse)
+
+    /// Cachet, gjenbrukbart CIRAWFilter for den INTERAKTIVE preset-banen — så
+    /// slider-slipp ikke leser 30–50 MB fra disk + re-parser RAW hver gang. Kun
+    /// filter-properties muteres; Core Image gjenbruker den dyre dekodingen.
+    /// Lås-serialisert (CIRAWFilter er ikke trådsikkert for samtidig mutasjon).
+    final class CachedRawFilter: @unchecked Sendable {
+        let filter: CIRAWFilter
+        let asShotTemperature: Float
+        let defaultLuminanceNR: Float
+        let pictureStyleBaseline: MagicRecipe
+        private let lock = NSLock()
+
+        init(filter: CIRAWFilter, pictureStyleBaseline: MagicRecipe) {
+            self.filter = filter
+            self.asShotTemperature = filter.neutralTemperature
+            self.defaultLuminanceNR = filter.luminanceNoiseReductionAmount
+            self.pictureStyleBaseline = pictureStyleBaseline
+        }
+
+        /// Tonet UIImage for recipen (serialisert per asset), rett til UIImage.
+        func render(recipe: MagicRecipe, maxDimension: CGFloat?) -> UIImage? {
+            lock.lock(); defer { lock.unlock() }
+            guard let ci = RAWExportPipeline.tonedImage(
+                filter: filter, asShotTemperature: asShotTemperature,
+                defaultLuminanceNR: defaultLuminanceNR, pictureStyleBaseline: pictureStyleBaseline,
+                recipe: recipe, targetMaxDimension: maxDimension) else { return nil }
+            let ctx = ColorManagement.makeContext(for: .appPreview)
+            guard let cg = ColorManagement.renderCGImage(from: ci, context: ctx, purpose: .appPreview)
+            else { return nil }
+            return UIImage(cgImage: cg)
+        }
+    }
+
+    private nonisolated(unsafe) static var rawFilterCache: [String: CachedRawFilter] = [:]
+    private static let rawFilterCacheLock = NSLock()
+
+    /// Hent (eller bygg) det cachede filteret for en RAW-sti. Bygging leser +
+    /// parser rå-bytene ÉN gang; nøkkel inkluderer mtime så en re-import invalideres.
+    private static func cachedRawFilter(rawPath: String) -> CachedRawFilter? {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: rawPath)
+        let mtime = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let key = "\(rawPath)@\(mtime)"
+        rawFilterCacheLock.lock()
+        if let hit = rawFilterCache[key] { rawFilterCacheLock.unlock(); return hit }
+        rawFilterCacheLock.unlock()
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)) else { return nil }
+        let hint = (rawPath as NSString).pathExtension.lowercased()
+        guard let filter = RAWExportPipeline.makeRawFilter(
+            rawData: data, identifierHint: hint.isEmpty ? nil : hint) else { return nil }
+        let baseline = (CanonPictureStyle.read(fromImageData: data) ?? .unknown).baselineRecipeAdjustment
+        let entry = CachedRawFilter(filter: filter, pictureStyleBaseline: baseline)
+        rawFilterCacheLock.lock()
+        if rawFilterCache.count >= 2 { rawFilterCache.removeAll() }   // RAW-filtre er minnetunge
+        rawFilterCache[key] = entry
+        rawFilterCacheLock.unlock()
+        return entry
+    }
+
     /// Tøm base-cachen (f.eks. ved minnepress / øktbytte).
     static func clearBaseCache() {
         cacheLock.lock(); neutral16Cache.removeAll(); cacheLock.unlock()
+        rawFilterCacheLock.lock(); rawFilterCache.removeAll(); rawFilterCacheLock.unlock()
     }
 
     /// Crop to a normalised rect (origin top-left, 0…1).
