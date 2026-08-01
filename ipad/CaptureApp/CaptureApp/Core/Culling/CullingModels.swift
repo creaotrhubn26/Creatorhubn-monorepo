@@ -19,11 +19,22 @@ struct PhotoScore: Sendable, Equatable {
     /// nil hvis ingen ansikter (landskap/produkt).
     let faceQuality: Float?
 
+    /// Fase 2b — signaler fra den samlede ``AssetAnalysis`` (delt måling). nil
+    /// når ingen analyse/ansikt. `eyesOpen == false` og `faceSoft == true` er
+    /// nettopp de kaste-grunnene estetikk + faceQuality alene bommer på.
+    var eyesOpen: Bool?
+    var faceSoft: Bool?
+
     /// Samlet rangerings-score. Vekter estetikk + ansikts-kvalitet (når ansikt
-    /// finnes); utility halverer.
+    /// finnes); lukkede øyne demoterer hardt, mykt/bommet ansikt moderat;
+    /// utility halverer.
     var rank: Float {
         let face = faceQuality ?? aesthetics
-        let combined = faceQuality == nil ? aesthetics : (0.6 * aesthetics + 0.4 * face)
+        var combined = faceQuality == nil ? aesthetics : (0.6 * aesthetics + 0.4 * face)
+        // Lukkede øyne på hovedpersonen = nesten alltid kastekandidat i en burst.
+        if eyesOpen == false { combined *= 0.4 }
+        // Bommet fokus på ansiktet (ikke vakker bokeh) = moderat demotering.
+        if faceSoft == true { combined *= 0.7 }
         return isUtility ? combined * 0.5 : combined
     }
 }
