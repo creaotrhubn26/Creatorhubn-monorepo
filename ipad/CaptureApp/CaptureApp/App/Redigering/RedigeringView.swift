@@ -431,15 +431,21 @@ final class RedigeringModel {
             // «Min stil» krever en NØYTRAL rawpy-lignende base (den LUT-en ble lært
             // på). renderPreview gir en Picture-Style-baket/fargestyrt base → LUT
             // vasker den ut. Bruk bar CIRAWFilter-develop for den lærte banen.
-            let base: UIImage?
-            if learnedActive, let raw {
-                base = RedigeringPipeline.renderNeutralRAW(rawPath: raw, exposureEV: ev, crop: crop)
-                    ?? RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+            // 🔑 16-BIT: den lærte banen får basen som en 16-bit CIImage rett fra
+            // CIRAWFilter (ingen 8-bit-mellomledd) → CR3-ens 14-bit-presisjon +
+            // headroom bevares gjennom HELE LUT/LAB/hud-kjeden; 8-bit skjer kun i
+            // ColorManagement.renderCGImage til slutt.
+            var ci: CIImage
+            if learnedActive, let raw,
+               let neutral = RedigeringPipeline.neutralBaseCIImage(rawPath: raw, exposureEV: ev, crop: crop) {
+                ci = neutral
             } else {
-                base = RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+                // Preset-bane (ikke lært) eller RAW-fallback → 8-bit via renderPreview.
+                guard let base = RedigeringPipeline.renderPreview(
+                        rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop),
+                      let ci0 = CIImage(image: base) else { return nil }
+                ci = ci0
             }
-            guard let base else { return nil }
-            guard var ci = CIImage(image: base) else { return base }
             // Auto → FULL-MODELL kNN over ALLE scener (matcher Python-motorens
             // `apply_model`, som kNN-er mot hele arkivet). Å auto-velge ÉN klynge
             // først og kNN-e innen den divergerte (valgte «luftig» → for lyst);
@@ -464,7 +470,7 @@ final class RedigeringModel {
             // CGImage-en i lineært arbeidsrom.
             let ctx = ColorManagement.makeContext(for: .appPreview)
             guard let cg = ColorManagement.renderCGImage(from: ci, context: ctx, purpose: .appPreview)
-            else { return base }
+            else { return nil }
             return UIImage(cgImage: cg)
         }.value
         // GENERASJONSVAKT: forkast resultatet hvis en nyere render har startet
