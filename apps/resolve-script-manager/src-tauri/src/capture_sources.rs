@@ -237,6 +237,185 @@ pub async fn record_simulator(
     Ok(raw_path.to_string_lossy().to_string())
 }
 
+// ── iOS-simulator-styring (live-preview, launch, deep-link, autonom drift) ────
+// Post Agent kan ikke bare TA OPP en simulator — den kan DRIVE den. simctl gir
+// boot/launch/openurl/screenshot uten noen ekstra avhengighet. For autonom
+// gjennomgang trenger vi å FORSTÅ skjermen (accessibility-treet) og TRYKKE:
+// det gjør `idb` (Facebooks iOS Development Bridge). idb er valgfritt — Phase-1-
+// funksjonene (preview/launch/deep-link) virker uten den.
+
+/// Finn `idb`-CLI: env-override, PATH, deretter vanlige installasjonsstier.
+fn find_idb() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("POST_AGENT_IDB") {
+        let pb = PathBuf::from(&p);
+        if pb.is_file() { return Some(pb); }
+    }
+    if let Ok(o) = Command::new("/usr/bin/which").arg("idb").output() {
+        if o.status.success() {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !s.is_empty() && PathBuf::from(&s).is_file() { return Some(PathBuf::from(s)); }
+        }
+    }
+    for cand in ["/opt/homebrew/bin/idb", "/usr/local/bin/idb"] {
+        let pb = PathBuf::from(cand);
+        if pb.is_file() { return Some(pb); }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let pb = PathBuf::from(home).join(".local/bin/idb");
+        if pb.is_file() { return Some(pb); }
+    }
+    None
+}
+
+/// Boot en simulator (idempotent) og bring Simulator.app til front så
+/// live-preview + opptak har et synlig vindu.
+#[tauri::command]
+pub async fn ios_sim_boot(udid: String) -> Result<bool, String> {
+    // "Unable to boot ... current state: Booted" er ikke en ekte feil.
+    let out = Command::new("xcrun").args(["simctl", "boot", &udid]).output()
+        .map_err(|e| format!("simctl boot: {}", e))?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success() && !stderr.contains("Booted") && !stderr.contains("current state") {
+        return Err(format!("kunne ikke boote simulator: {}", stderr.trim()));
+    }
+    let _ = Command::new("/usr/bin/open").args(["-a", "Simulator"]).status();
+    Ok(true)
+}
+
+/// Launch en app i simulatoren via bundle-id. Returnerer PID (0 hvis ukjent).
+#[tauri::command]
+pub async fn ios_sim_launch(udid: String, bundle_id: String) -> Result<u32, String> {
+    let out = Command::new("xcrun").args(["simctl", "launch", &udid, &bundle_id]).output()
+        .map_err(|e| format!("simctl launch: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("launch feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    // stdout: "com.foo.bar: 12345"
+    let s = String::from_utf8_lossy(&out.stdout);
+    let pid = s.rsplit(':').next().and_then(|p| p.trim().parse::<u32>().ok()).unwrap_or(0);
+    Ok(pid)
+}
+
+/// Åpne en deep-link (URL-scheme eller universal link) i simulatoren — driver
+/// appen rett til en bestemt skjerm for en scene.
+#[tauri::command]
+pub async fn ios_sim_openurl(udid: String, url: String) -> Result<bool, String> {
+    let out = Command::new("xcrun").args(["simctl", "openurl", &udid, &url]).output()
+        .map_err(|e| format!("simctl openurl: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("openurl feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(true)
+}
+
+#[derive(Serialize)]
+pub struct SimApp {
+    pub bundle_id: String,
+    pub name: String,
+}
+
+/// List brukerinstallerte apper i simulatoren. `simctl listapps` gir en
+/// NeXTSTEP-plist; vi konverterer til JSON via `plutil` (innebygd) og filtrerer
+/// til ApplicationType == "User".
+#[tauri::command]
+pub async fn ios_sim_list_apps(udid: String) -> Result<Vec<SimApp>, String> {
+    let out = Command::new("xcrun").args(["simctl", "listapps", &udid]).output()
+        .map_err(|e| format!("simctl listapps: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("listapps feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    // Skriv plist til temp og konverter til JSON med plutil.
+    let tmp = std::env::temp_dir().join(format!("postagent_apps_{}.plist", &udid.chars().take(8).collect::<String>()));
+    std::fs::write(&tmp, &out.stdout).map_err(|e| e.to_string())?;
+    let json_out = Command::new("/usr/bin/plutil")
+        .args(["-convert", "json", "-o", "-", &tmp.to_string_lossy()])
+        .output().map_err(|e| format!("plutil: {}", e))?;
+    let _ = std::fs::remove_file(&tmp);
+    if !json_out.status.success() {
+        return Err("kunne ikke tolke app-lista (plutil)".into());
+    }
+    let val: serde_json::Value = serde_json::from_slice(&json_out.stdout)
+        .map_err(|e| format!("json: {}", e))?;
+    let mut apps = vec![];
+    if let Some(map) = val.as_object() {
+        for (bundle_id, info) in map {
+            let app_type = info.get("ApplicationType").and_then(|v| v.as_str()).unwrap_or("");
+            if app_type != "User" { continue; }
+            let name = info.get("CFBundleDisplayName").and_then(|v| v.as_str())
+                .or_else(|| info.get("CFBundleName").and_then(|v| v.as_str()))
+                .unwrap_or(bundle_id).to_string();
+            apps.push(SimApp { bundle_id: bundle_id.clone(), name });
+        }
+    }
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(apps)
+}
+
+/// Ta ett skjermbilde av simulatoren og returner det som base64 data-URL
+/// (nedskalert med `sips` så IPC-en holder seg lett for live-preview-polling).
+#[tauri::command]
+pub async fn ios_sim_screenshot(udid: String) -> Result<String, String> {
+    use base64::Engine;
+    let tmp = std::env::temp_dir().join(format!("postagent_shot_{}.png", &udid.chars().take(8).collect::<String>()));
+    let out = Command::new("xcrun")
+        .args(["simctl", "io", &udid, "screenshot", &tmp.to_string_lossy()])
+        .output().map_err(|e| format!("simctl screenshot: {}", e))?;
+    if !out.status.success() && !tmp.is_file() {
+        return Err(format!("skjermbilde feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    // Nedskaler til maks 1200px lengste side (behold detaljer for vision, lett nok for polling).
+    let _ = Command::new("/usr/bin/sips").args(["-Z", "1200", &tmp.to_string_lossy()]).output();
+    let bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(&tmp);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+/// Les accessibility-treet (iOS-DOM-ekvivalent) via idb. Returnerer rå JSON fra
+/// `idb ui describe-all` som frontend/autonom-motoren tolker (label+type+ramme
+/// per element). Krever idb installert.
+#[tauri::command]
+pub async fn ios_sim_describe(udid: String) -> Result<String, String> {
+    let idb = find_idb().ok_or(
+        "idb er ikke installert. For autonom gjennomgang: `brew install facebook/fb/idb-companion` + `pipx install fb-idb`, eller sett POST_AGENT_IDB til idb-stien.")?;
+    let out = Command::new(&idb)
+        .args(["ui", "describe-all", "--udid", &udid, "--json"])
+        .output().map_err(|e| format!("idb describe-all: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("describe-all feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// Trykk på et punkt i simulatoren via idb (autonom drift). x/y i punkt-koordinater
+/// slik describe-all rapporterer dem.
+#[tauri::command]
+pub async fn ios_sim_tap(udid: String, x: f64, y: f64) -> Result<bool, String> {
+    let idb = find_idb().ok_or("idb er ikke installert (kreves for autonom trykking)")?;
+    let out = Command::new(&idb)
+        .args(["ui", "tap", "--udid", &udid, &(x as i64).to_string(), &(y as i64).to_string()])
+        .output().map_err(|e| format!("idb tap: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("tap feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(true)
+}
+
+/// Sveip i simulatoren via idb (for scroll under autonom gjennomgang).
+#[tauri::command]
+pub async fn ios_sim_swipe(udid: String, x1: f64, y1: f64, x2: f64, y2: f64) -> Result<bool, String> {
+    let idb = find_idb().ok_or("idb er ikke installert (kreves for autonom sveiping)")?;
+    let out = Command::new(&idb)
+        .args(["ui", "swipe", "--udid", &udid,
+            &(x1 as i64).to_string(), &(y1 as i64).to_string(),
+            &(x2 as i64).to_string(), &(y2 as i64).to_string()])
+        .output().map_err(|e| format!("idb swipe: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("swipe feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(true)
+}
+
 /// Kjør osascript og returner trimmet stdout (eller None ved feil).
 fn osascript(script: &str) -> Option<String> {
     let out = Command::new("/usr/bin/osascript").args(["-e", script]).output().ok()?;
