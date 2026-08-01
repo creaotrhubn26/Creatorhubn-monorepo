@@ -13,39 +13,40 @@ enum FaceDodgeFilter {
 
     static func apply(to image: CIImage) -> CIImage {
         let extent = image.extent
-        guard extent.width >= 2, extent.height >= 2,
-              let faceRect = detectFaceRect(in: image, extent: extent),
-              let luma = meanLuma(of: image, in: faceRect.insetBy(dx: faceRect.width * 0.15, dy: faceRect.height * 0.15))
-        else { return image }
-        // Alt godt eksponert (med liten margin) → ikke rør.
-        guard luma < target - 0.02 else { return image }
+        guard extent.width >= 2, extent.height >= 2 else { return image }
+        // HVERT ansikt (ikke bare største): på gruppebilder kan flere ansikter
+        // være for mørke — hvert for-mørkt ansikt løftes med SIN egen gamma,
+        // maskert til seg; godt eksponerte ansikter hoppes over.
+        let faceRects = detectFaceRects(in: image, extent: extent)
+        guard !faceRects.isEmpty else { return image }
 
-        // Gamma-løft: out = in^gamma, gamma<1 lysner. Klemt dempet.
-        let gamma = max(0.55, min(0.98, log(Double(target)) / log(Double(max(0.02, luma)))))
-        let lift = CIFilter.gammaAdjust()
-        lift.inputImage = image
-        lift.power = Float(gamma)
-        guard let lifted = lift.outputImage else { return image }
-
-        // Myk ansikts-maske (radial: hvit inni ansikt → svart ute) så løftet kun
-        // treffer ansikts-/hals-området.
-        guard let mask = faceMask(extent: extent, faceRect: faceRect) else { return image }
-        let blend = CIFilter.blendWithMask()
-        blend.inputImage = lifted
-        blend.backgroundImage = image
-        blend.maskImage = mask
-        return blend.outputImage?.cropped(to: extent) ?? image
+        var out = image
+        for faceRect in faceRects {
+            let inner = faceRect.insetBy(dx: faceRect.width * 0.15, dy: faceRect.height * 0.15)
+            guard let luma = meanLuma(of: out, in: inner), luma < target - 0.02 else { continue }
+            // Gamma-løft: out = in^gamma, gamma<1 lysner. Klemt dempet.
+            let gamma = max(0.55, min(0.98, log(Double(target)) / log(Double(max(0.02, luma)))))
+            let lift = CIFilter.gammaAdjust()
+            lift.inputImage = out
+            lift.power = Float(gamma)
+            guard let lifted = lift.outputImage,
+                  let mask = faceMask(extent: extent, faceRect: faceRect) else { continue }
+            let blend = CIFilter.blendWithMask()
+            blend.inputImage = lifted
+            blend.backgroundImage = out
+            blend.maskImage = mask
+            out = blend.outputImage?.cropped(to: extent) ?? out
+        }
+        return out
     }
 
-    private static func detectFaceRect(in image: CIImage, extent: CGRect) -> CGRect? {
+    private static func detectFaceRects(in image: CIImage, extent: CGRect) -> [CGRect] {
         let detector = CIDetector(
             ofType: CIDetectorTypeFace, context: nil,
             options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-        // Velg det STØRSTE ansiktet (hovedmotivet).
-        let faces = (detector?.features(in: image) ?? []).compactMap { $0 as? CIFaceFeature }
-        guard let biggest = faces.max(by: { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height })
-        else { return nil }
-        return biggest.bounds.intersection(extent)
+        return (detector?.features(in: image) ?? [])
+            .compactMap { ($0 as? CIFaceFeature)?.bounds.intersection(extent) }
+            .filter { $0.width > 2 && $0.height > 2 }
     }
 
     private static func meanLuma(of image: CIImage, in rect: CGRect) -> CGFloat? {

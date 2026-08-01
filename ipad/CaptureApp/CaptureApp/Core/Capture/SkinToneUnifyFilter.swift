@@ -48,13 +48,15 @@ enum SkinToneUnifyFilter {
         guard let faceMean = areaAverage(of: image, in: faceRect) else {
             return image
         }
-        // Body-skin sample = whole frame minus face rect, then we'll
-        // approximate "skin pixels only" by sampling the whole-extent
-        // average (cheap proxy that works when body skin dominates the
-        // non-face region — typical for tight portraits + half-body).
-        // For wider scenes the proxy degrades but we cap effect via
-        // the `amount` multiplier so the result still looks natural.
-        guard let bodyMean = areaAverageExcluding(image, faceRect: faceRect, extent: extent) else {
+        // 🔑 KROPPS-region = person-maske (Vision) MINUS ansiktsrekten. Den gamle
+        // proxyen samplet 4 striper UTENFOR ansiktet — altså gress/brudekjole/
+        // himmel — og masken var hvit OVERALT unntatt ansikt. På et bryllupsbilde
+        // med grønn bakgrunn ble deltaet «ansikt − gress», og filteret skjøv HELE
+        // bildet mot hudfarge (en global fargetint kamuflert som hudverktøy).
+        // Nå: personMask ∧ ¬ansikt = faktisk kropps-hud — både til sampling og som
+        // korreksjons-maske, så bare kroppen tones.
+        guard let mask = bodyMask(for: image, extent: extent, faceRect: faceRect),
+              let bodyMean = maskedAverage(of: image, mask: mask, extent: extent) else {
             return image
         }
 
@@ -68,12 +70,6 @@ enum SkinToneUnifyFilter {
         // Skip if the delta is tiny — saves a render pass when face
         // and body already agree.
         guard abs(deltaR) > 0.005 || abs(deltaG) > 0.005 || abs(deltaB) > 0.005
-        else { return image }
-
-        // Build a face-protect mask: white everywhere except the face
-        // rect (with soft falloff) so the colour shift hits body skin
-        // and ignores the face.
-        guard let mask = makeBodyMask(extent: extent, faceRect: faceRect)
         else { return image }
 
         // Apply additive colour shift via CIColorMatrix. We bias each
@@ -108,10 +104,13 @@ enum SkinToneUnifyFilter {
             ofType: CIDetectorTypeFace, context: nil,
             options: [CIDetectorAccuracy: CIDetectorAccuracyHigh],
         )
-        let features = detector?.features(in: image) ?? []
-        guard let first = features.first as? CIFaceFeature else { return nil }
+        // STØRSTE ansikt (ikke `.first` — søsterfiltrene bruker også største).
+        let faces = (detector?.features(in: image) ?? []).compactMap { $0 as? CIFaceFeature }
+        guard let biggest = faces.max(by: {
+            $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height
+        }) else { return nil }
         // Clamp to extent in case face touches the edge.
-        return first.bounds.intersection(extent)
+        return biggest.bounds.intersection(extent)
     }
 
     // MARK: - Area average
@@ -130,36 +129,34 @@ enum SkinToneUnifyFilter {
         return readSinglePixel(out)
     }
 
-    /// Body-mean: average over the rest of the frame (extent minus
-    /// face). Done via a quick approximation — sample 4 strips around
-    /// the face rect, take their mean, weighted by area. Cheaper than
-    /// rendering an exclusion mask + areaAverage, and good enough for
-    /// "what colour is the body skin on average" purposes.
-    private static func areaAverageExcluding(
-        _ image: CIImage, faceRect: CGRect, extent: CGRect,
-    ) -> RGBA? {
-        let strips: [CGRect] = [
-            CGRect(x: extent.minX, y: extent.minY,
-                   width: extent.width, height: max(0, faceRect.minY - extent.minY)),
-            CGRect(x: extent.minX, y: faceRect.maxY,
-                   width: extent.width, height: max(0, extent.maxY - faceRect.maxY)),
-            CGRect(x: extent.minX, y: faceRect.minY,
-                   width: max(0, faceRect.minX - extent.minX), height: faceRect.height),
-            CGRect(x: faceRect.maxX, y: faceRect.minY,
-                   width: max(0, extent.maxX - faceRect.maxX), height: faceRect.height)
-        ].filter { $0.width > 1 && $0.height > 1 }
+    /// Kropps-maske = person-maske (Vision) ∧ ¬ansikt. Person-masken hentes fra en
+    /// nedskalering (masker trenger ikke full res) og multipliseres med ansikts-
+    /// eksklusjonen (svart i ansiktet) → hvit KUN på synlig kropp utenfor ansiktet.
+    private static func bodyMask(for image: CIImage, extent: CGRect, faceRect: CGRect) -> CIImage? {
+        let side: CGFloat = 1024
+        let scale = min(1, side / max(extent.width, extent.height))
+        let small = scale < 1 ? image.transformed(by: CGAffineTransform(scaleX: scale, y: scale)) : image
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cg = ctx.createCGImage(small, from: small.extent),
+              let person = SubjectSegmentation.personMask(for: cg, extent: extent),
+              let faceExcl = makeBodyMask(extent: extent, faceRect: faceRect) else { return nil }
+        let mult = CIFilter.multiplyCompositing()
+        mult.inputImage = person
+        mult.backgroundImage = faceExcl
+        return mult.outputImage?.cropped(to: extent)
+    }
 
-        var sumR: CGFloat = 0, sumG: CGFloat = 0, sumB: CGFloat = 0, sumA: CGFloat = 0
-        for strip in strips {
-            guard let rgba = areaAverage(of: image, in: strip) else { continue }
-            let a = strip.width * strip.height
-            sumR += rgba.r * a
-            sumG += rgba.g * a
-            sumB += rgba.b * a
-            sumA += a
-        }
-        guard sumA > 0 else { return nil }
-        return RGBA(r: sumR / sumA, g: sumG / sumA, b: sumB / sumA)
+    /// Snitt-RGB av bildet OVER et maske-område: mean(bilde·maske) / mean(maske).
+    /// No-op-signal når masken dekker < ~1% (for lite kropp → ikke nok signal).
+    private static func maskedAverage(of image: CIImage, mask: CIImage, extent: CGRect) -> RGBA? {
+        let mult = CIFilter.multiplyCompositing()
+        mult.inputImage = image
+        mult.backgroundImage = mask
+        guard let masked = mult.outputImage,
+              let sum = areaAverage(of: masked, in: extent),
+              let cover = areaAverage(of: mask, in: extent),
+              cover.r > 0.01 else { return nil }
+        return RGBA(r: sum.r / cover.r, g: sum.g / cover.r, b: sum.b / cover.r)
     }
 
     private static func readSinglePixel(_ image: CIImage) -> RGBA? {
