@@ -179,6 +179,28 @@ final class RedigeringRawPipelineTests: XCTestCase {
                        "properties ble ikke nullstilt ved gjenbruk (shadowLift hang igjen)")
     }
 
+    /// EV I RAW (#2) — eksponering påføres nå NATIVT på `CIRAWFilter.exposure`
+    /// (pre-demosaic, scene-lineært) i stedet for en post-develop 8-bit-justering.
+    /// +EV lysner, −EV mørkner, OG det er idempotent på det gjenbrukte filteret
+    /// (retur til EV 0 = identisk med første EV-0-render → `exposure` nullstilt).
+    func testNativeExposureInRawBrightensDarkensAndResets() throws {
+        guard let url = Bundle(for: Self.self).url(forResource: "_MG_9300", withExtension: "CR2") else {
+            throw XCTSkip("CR2 fixture not bundled")
+        }
+        RedigeringPipeline.clearBaseCache()
+        let path = url.path
+        func luma(_ ev: Double) throws -> Double {
+            let img = try XCTUnwrap(RedigeringPipeline.renderPreview(
+                rawPath: path, jpegPath: nil, recipe: .neutral, exposureEV: ev))
+            return Self.meanLuma(try XCTUnwrap(img.cgImage))
+        }
+        let base = try luma(0)
+        XCTAssertGreaterThan(try luma(1.5), base, "native +EV lysnet ikke")
+        XCTAssertLessThan(try luma(-1.5), base, "native −EV mørknet ikke")
+        // Retur til EV 0 på det gjenbrukte filteret → identisk med første render.
+        XCTAssertEqual(try luma(0), base, accuracy: 0.001, "exposure ble ikke nullstilt ved gjenbruk")
+    }
+
     // MARK: - Helpers
 
     /// Mean luma over a downsampled grid — cheap proxy for "the image changed".
