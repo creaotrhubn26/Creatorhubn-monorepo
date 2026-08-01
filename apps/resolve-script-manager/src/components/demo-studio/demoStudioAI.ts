@@ -556,14 +556,18 @@ export async function suggestCinematicScenes(params: {
   goal?: string;
   meta: ScriptMeta;
   scenes: DemoScene[];
+  /** Dyp produkt-kontekst (Product Brain) — så prompt-ene forankres i hva
+   *  produktet faktisk er, ikke gjettes ut fra navnet. */
+  siteContext?: string;
 }): Promise<CinematicSuggestion[]> {
-  const { url, demoType, goal, meta, scenes } = params;
+  const { url, demoType, goal, meta, scenes, siteContext } = params;
   const sceneList = scenes.map((s, i) => `${i}: "${s.title}" (${s.source === 'broll' ? 'AI-klipp' : 'ekte opptak'}) — ${(s.narration || '(tomt)').slice(0, 80)}`).join('\n');
   const user = `Du regisserer en produktdemo. De ekte opptakene er BEVISET; du legger til AI-generert kinematisk footage der det løfter filmen — men bare der det faktisk hjelper (ikke overdriv, ekte skjermer skal dominere).
 
 Produkt-URL: ${url}
 Demo-type: ${demoType}
 ${goal ? `Konverteringsmål: ${goal}\n` : ''}Tone: ${meta.tone} · Publikum: ${meta.audience}
+${siteContext ? `\nHVA PRODUKTET FAKTISK ER (bruk dette — ikke gjett ut fra navnet):\n${siteContext}\n` : ''}
 Nåværende storyboard:
 ${sceneList}
 

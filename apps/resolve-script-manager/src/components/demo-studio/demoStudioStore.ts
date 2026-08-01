@@ -31,6 +31,7 @@ import {
   defaultRenderOptions,
   DEMO_TYPE_TEMPLATES,
 } from './demoStudioModel';
+import { gatherSiteContext } from './demoStudioAI';
 
 interface DemoStudioState {
   project: DemoProject | null;
@@ -69,6 +70,11 @@ interface DemoStudioState {
   removeScene: (id: string) => void;
   /** Bytt ut hele scene-listen (AI Director). */
   replaceScenes: (scenes: DemoScene[]) => void;
+  /**
+   * Bygg/hent «Product Brain» — dyp flersides produkt-kontekst, cachet på
+   * prosjektet og gjenbrukt av alle AI-generatorene. Henter kun én gang per URL.
+   */
+  ensureProductBrain: () => Promise<string>;
   reorderScenes: (fromIndex: number, toIndex: number) => void;
   setSceneStatus: (id: string, status: SceneStatus) => void;
   setSceneDevice: (id: string, device: DemoDevice) => void;
@@ -298,6 +304,20 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
     snapshot('replace');
     const reindexed = reindex(scenes);
     set({ project: persist({ ...project, scenes: reindexed }), selectedSceneId: reindexed[0]?.id ?? null });
+  },
+
+  ensureProductBrain: async () => {
+    const project = get().project;
+    if (!project?.url) return '';
+    // Cachet: bygg kun én gang per URL (invalideres om prosjekt-URL endres).
+    if (project.productBrain && project.productBrainUrl === project.url) return project.productBrain;
+    // Flersides-skann: forside + /features + /pricing + /about … → rik kontekst.
+    const { context } = await gatherSiteContext(project.url, { maxPages: 5 }).catch(() => ({ context: '', pages: [] as string[] }));
+    const cur = get().project;
+    if (context && cur && cur.url === project.url) {
+      set({ project: persist({ ...cur, productBrain: context, productBrainUrl: cur.url }) });
+    }
+    return context;
   },
 
   reorderScenes: (fromIndex, toIndex) => {

@@ -19,7 +19,7 @@ interface Palette {
 const POS_LABEL: Record<CinematicSuggestion['position'], string> = { intro: 'Intro', outro: 'Outro', after: 'Etter scene' };
 
 export function CinematicSuggestions({ C, onClose }: { C: Palette; onClose: () => void }) {
-  const { project, replaceScenes, selectScene } = useDemoStudio();
+  const { project, replaceScenes, selectScene, ensureProductBrain } = useDemoStudio();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<CinematicSuggestion[]>([]);
@@ -29,9 +29,12 @@ export function CinematicSuggestions({ C, onClose }: { C: Palette; onClose: () =
     if (!project) return;
     let alive = true;
     const meta: ScriptMeta = project.scriptMeta ?? { tone: 'professional', audience: 'General', language: 'Norsk', length: 'medium' };
-    suggestCinematicScenes({
-      url: project.url, demoType: project.demoType as DemoType, goal: project.goal, meta, scenes: project.scenes,
-    })
+    // Forankre regien i dyp produkt-forståelse (Product Brain, cachet).
+    ensureProductBrain()
+      .catch(() => '')
+      .then((siteContext) => suggestCinematicScenes({
+        url: project.url, demoType: project.demoType as DemoType, goal: project.goal, meta, scenes: project.scenes, siteContext,
+      }))
       .then((s) => { if (!alive) return; setSuggestions(s); setPicked(new Set(s.map((_, i) => i))); })
       .catch((e) => { if (alive) setErr(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });

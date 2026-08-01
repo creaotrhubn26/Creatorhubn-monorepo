@@ -322,6 +322,16 @@ export interface DemoProject {
    *  iPhone/iPad-preview og fallback, så portrett-enheter viser mobil-layouten
    *  i stedet for en nedskalert desktop-side. */
   scanShotsMobile?: Array<{ scrollPct: number; dataUrl: string }>;
+  /**
+   * «Product Brain» — dyp produkt-kontekst fra et FLERSIDES skann (forside +
+   * /features + /pricing + /about …), hentet ÉN gang og delt av ALLE AI-
+   * generatorene: manus, AI-regi, b-roll-prompter. Forankrer hele studioet i hva
+   * produktet FAKTISK er (funksjoner, målgruppe, differensiatorer) — ikke bare
+   * forsidens første avsnitt, og aldri gjetting ut fra navnet.
+   */
+  productBrain?: string;
+  /** URL-en Product Brain ble bygget for (invalideres hvis prosjekt-URL endres). */
+  productBrainUrl?: string;
   /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
    *  required action automatisk. Default 'manual'. */
   continueMode?: 'manual' | 'auto';
