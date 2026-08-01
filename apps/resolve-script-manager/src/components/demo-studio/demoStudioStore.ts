@@ -31,6 +31,23 @@ import {
   defaultRenderOptions,
   DEMO_TYPE_TEMPLATES,
 } from './demoStudioModel';
+import { gatherSiteContext, synthesizeProductBrain } from './demoStudioAI';
+
+/** Samle FAKTISKE produkt-skjermer (data-URL-er) fra prosjektet — prioriter
+ *  demoede scene-skjermer (kan være innlogget) framfor den offentlige scan-en. */
+function collectProductScreens(project: DemoProject): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (d?: string | null) => {
+    if (!d || !d.startsWith('data:')) return;
+    const key = d.slice(0, 96);
+    if (seen.has(key)) return;
+    seen.add(key); out.push(d);
+  };
+  for (const s of project.scenes) add(s.thumbnailDataUrl);   // ekte demoede skjermer først
+  for (const s of project.scanShots ?? []) add(s.dataUrl);   // så offentlig scan
+  return out.slice(0, 6);
+}
 
 interface DemoStudioState {
   project: DemoProject | null;
@@ -69,6 +86,13 @@ interface DemoStudioState {
   removeScene: (id: string) => void;
   /** Bytt ut hele scene-listen (AI Director). */
   replaceScenes: (scenes: DemoScene[]) => void;
+  /**
+   * Bygg/hent «Product Brain» — dyp produkt-forståelse (markedsføring + vision av
+   * FAKTISKE app-skjermer, ofte innlogget), cachet på prosjektet og gjenbrukt av
+   * alle AI-generatorene. Bygger på nytt når ekte skjermer blir tilgjengelige,
+   * eller ved force.
+   */
+  ensureProductBrain: (opts?: { force?: boolean }) => Promise<string>;
   reorderScenes: (fromIndex: number, toIndex: number) => void;
   setSceneStatus: (id: string, status: SceneStatus) => void;
   setSceneDevice: (id: string, device: DemoDevice) => void;
@@ -298,6 +322,32 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
     snapshot('replace');
     const reindexed = reindex(scenes);
     set({ project: persist({ ...project, scenes: reindexed }), selectedSceneId: reindexed[0]?.id ?? null });
+  },
+
+  ensureProductBrain: async (opts) => {
+    const project = get().project;
+    if (!project?.url) return '';
+    const screens = collectProductScreens(project);
+    const hasScreensNow = screens.length > 0;
+    const cached = !!project.productBrain && project.productBrainUrl === project.url;
+    // Gjenbruk cache HVIS: samme URL, ikke force, og enten allerede bygget MED
+    // skjermer, ELLER ingen ekte skjermer er tilgjengelige ennå (så vi ikke låser
+    // en marketing-only-hjerne når appen senere blir fanget).
+    if (cached && !opts?.force && (project.productBrainHasScreens || !hasScreensNow)) {
+      return project.productBrain as string;
+    }
+    // Lag 1: markedsføring (flersides — hva produktet PÅSTÅR å være).
+    const { context } = await gatherSiteContext(project.url, { maxPages: 5 }).catch(() => ({ context: '', pages: [] as string[] }));
+    // Lag 2: vision av FAKTISKE app-skjermer (ofte innlogget — hva det GJØR).
+    let brain = context;
+    if (hasScreensNow) {
+      brain = await synthesizeProductBrain({ url: project.url, marketingContext: context, screenshots: screens }).catch(() => context);
+    }
+    const cur = get().project;
+    if (brain && cur && cur.url === project.url) {
+      set({ project: persist({ ...cur, productBrain: brain, productBrainUrl: cur.url, productBrainHasScreens: hasScreensNow }) });
+    }
+    return brain;
   },
 
   reorderScenes: (fromIndex, toIndex) => {

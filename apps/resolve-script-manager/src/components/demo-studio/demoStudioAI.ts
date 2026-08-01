@@ -457,6 +457,37 @@ export async function fetchSiteContext(url: string): Promise<string> {
 }
 
 /**
+ * Destillér en DYP «Product Brain» fra markedsføringstekst + FAKTISKE app-skjermer
+ * (vision). Skjermene er ofte skjermer INNE i produktet (etter innlogging), så
+ * dette fanger hva produktet virkelig gjør — ikke bare hva landingssiden påstår.
+ * Ett Claude-vision-kall; kjøres én gang og caches på prosjektet.
+ */
+export async function synthesizeProductBrain(params: {
+  url: string;
+  marketingContext: string;
+  /** data-URL-er av ekte produkt-skjermer (scene-thumbnails / scan). */
+  screenshots: string[];
+}): Promise<string> {
+  const { url, marketingContext, screenshots } = params;
+  const imgs = screenshots.slice(0, 6).map(imageBlock).filter((b): b is ClaudeContentBlock => b !== null);
+  const textPart = `Produkt-URL: ${url}
+${marketingContext ? `Markedsføring (offentlige sider):\n${marketingContext}\n` : ''}
+Du får ${imgs.length} SKJERMBILDER av det FAKTISKE produktet — ofte skjermer INNE i appen (etter innlogging), ikke bare landingssiden. Destillér hva produktet VIRKELIG er og gjør, basert på det du SER i appen kombinert med markedsføringen:
+- Hva produktet er (én setning)
+- Kjernefunksjoner — hva kan brukeren FAKTISK gjøre (fra skjermene, ikke bare påstander)
+- Nøkkel-skjermer / flyter du ser i appen
+- Målgruppe
+Svar som kompakt norsk punktliste, maks ~200 ord. Dette blir «Product Brain» som forankrer alt manus og all regi.`;
+  const content: string | ClaudeContentBlock[] = imgs.length ? [...imgs, { type: 'text', text: textPart }] : textPart;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du destillerer en dyp, konkret produkt-forståelse fra FAKTISKE app-skjermer + markedsføring. Beskriv det du SER inne i produktet (funksjoner, flyter), ikke bare hva markedsføringen påstår. Svar kompakt, ingen forklaring rundt.',
+    messages: [{ role: 'user', content }],
+    maxTokens: 700,
+  });
+  return raw.trim();
+}
+
+/**
  * AI self-healing: når en scenes mål-element ikke lenger finnes (brutt selector),
  * la Claude velge elementet i dagens katalog som best matcher den opprinnelige
  * intensjonen. Returnerer katalog-indeks, eller null hvis ingen passer.
@@ -556,14 +587,18 @@ export async function suggestCinematicScenes(params: {
   goal?: string;
   meta: ScriptMeta;
   scenes: DemoScene[];
+  /** Dyp produkt-kontekst (Product Brain) — så prompt-ene forankres i hva
+   *  produktet faktisk er, ikke gjettes ut fra navnet. */
+  siteContext?: string;
 }): Promise<CinematicSuggestion[]> {
-  const { url, demoType, goal, meta, scenes } = params;
+  const { url, demoType, goal, meta, scenes, siteContext } = params;
   const sceneList = scenes.map((s, i) => `${i}: "${s.title}" (${s.source === 'broll' ? 'AI-klipp' : 'ekte opptak'}) — ${(s.narration || '(tomt)').slice(0, 80)}`).join('\n');
   const user = `Du regisserer en produktdemo. De ekte opptakene er BEVISET; du legger til AI-generert kinematisk footage der det løfter filmen — men bare der det faktisk hjelper (ikke overdriv, ekte skjermer skal dominere).
 
 Produkt-URL: ${url}
 Demo-type: ${demoType}
 ${goal ? `Konverteringsmål: ${goal}\n` : ''}Tone: ${meta.tone} · Publikum: ${meta.audience}
+${siteContext ? `\nHVA PRODUKTET FAKTISK ER (bruk dette — ikke gjett ut fra navnet):\n${siteContext}\n` : ''}
 Nåværende storyboard:
 ${sceneList}
 
