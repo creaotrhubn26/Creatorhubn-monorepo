@@ -44,6 +44,31 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
 
     static let currentVersion = 1
 
+    /// Erstatt eventuelle non-finite Double-er (nan/inf fra divisjon/areaAverage)
+    /// med 0 FØR persistering — én non-finite i bloben fikk ellers JSONEncoder til
+    /// å kaste, som stille slettet HELE `signals`-bloben. Kalles av
+    /// `AssetAnalyzer.run()`. Ren, testbar.
+    func sanitized() -> AssetAnalysis {
+        func f(_ v: Double) -> Double { v.isFinite ? v : 0 }
+        func fo(_ v: Double?) -> Double? { v.map { $0.isFinite ? $0 : 0 } }
+        return AssetAnalysis(
+            version: version,
+            medianLuma: f(medianLuma), p5Luma: f(p5Luma), p95Luma: f(p95Luma),
+            highlightClip: f(highlightClip), shadowClip: f(shadowClip),
+            subjectHighlightClip: fo(subjectHighlightClip),
+            globalSharpness: f(globalSharpness), subjectSharpness: fo(subjectSharpness),
+            skinCast: skinCast,
+            faces: faces.map { face in
+                var s = face
+                s.sizeFraction = f(face.sizeFraction)
+                s.luma = f(face.luma)
+                s.captureQuality = fo(face.captureQuality)
+                s.sharpness = fo(face.sharpness)
+                return s
+            },
+            sceneFeature: sceneFeature.map { $0.isFinite ? $0 : 0 })
+    }
+
     /// Praktiske avledninger for HUD/QC (rene, testbare — ingen Vision).
     var hasFaces: Bool { !faces.isEmpty }
     /// Største ansikt (etter areal) — «hovedpersonen» i de fleste portretter.
@@ -157,7 +182,7 @@ actor AssetAnalyzer {
             globalSharpness: globalSharp, subjectSharpness: subjectSharp,
             skinCast: primaryCast,
             faces: faces,
-            sceneFeature: sceneFeature)
+            sceneFeature: sceneFeature).sanitized()   // aldri non-finite → trygg persistering
     }
 
     // MARK: - Histogram / persentiler

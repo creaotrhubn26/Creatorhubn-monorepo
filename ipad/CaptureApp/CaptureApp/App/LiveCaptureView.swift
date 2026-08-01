@@ -5013,6 +5013,9 @@ final class LiveCaptureModel {
     }
     var assets: [Asset] = [] {
         didSet {
+            // Ved teardown settes `assets = []` ETTER at store/backend/kamera er
+            // nilet — ikke re-fyr planleggings-/fokus-hooks mot nilede avhengigheter.
+            guard !isTearingDown else { return }
             // Follow latest unless the user has pinned focus to a specific
             // asset. Pinning is a UX affordance for reviewing while shooting
             // continues — without it every new capture would steal focus.
@@ -5159,6 +5162,9 @@ final class LiveCaptureModel {
     /// sammen med histogram-HUD-en, persisteres på signals, deles av cull/QC.
     private let assetAnalyzer = AssetAnalyzer()
     private var analysisTask: Task<Void, Never>?
+    /// Sann mens ``teardown`` rydder — `assets.didSet`-kjeden (AI-/RAW-planlegging,
+    /// fokus) skal ikke re-fyre mot alt-nilede avhengigheter ved `assets = []`.
+    private var isTearingDown = false
     /// Configured at connect time from UserDefaults. Nil = no backend, in
     /// which case the on-device pipeline is the only source of truth and
     /// no Claude Vision call is ever attempted.
@@ -7370,6 +7376,12 @@ final class LiveCaptureModel {
     }
 
     private func teardown() async {
+        isTearingDown = true
+        defer { isTearingDown = false }
+        // Fang presence-avhengighetene FØR de nulles — broadcasten under leste dem
+        // ETTER nulling (statisk død kode), så peers slapp oss først ved 5-min-timeout.
+        let leavingBackend = backendClient
+        let leavingSessionId = currentSessionId
         if let cameraSession {
             await cameraSession.stop()
         }
@@ -7378,6 +7390,10 @@ final class LiveCaptureModel {
         for task in aiAnalyseTasks.values { task.cancel() }
         aiAnalyseTasks.removeAll()
         aiAnalyseDispatched.removeAll()
+        // Bakgrunns-analyse (histogram + samlet AssetAnalysis) — ellers lever
+        // compute-tasken videre etter frakobling (lekkasje per økt).
+        analysisTask?.cancel()
+        analysisTask = nil
         backendClient = nil
         deliveryService = nil
         lastDelivery = nil
@@ -7389,6 +7405,13 @@ final class LiveCaptureModel {
         aiAnalyses.removeAll()
         recipeSource.removeAll()
         dismissedNoteAssets.removeAll()
+        // Per-asset-tilstand som ellers vokser monotont over en heldags-økt
+        // (modellen er langlivet på tvers av connect/disconnect-sykluser).
+        autoCleanDispatched.removeAll()
+        autoCheckedShotAssetIds.removeAll()
+        tunedRecipes.removeAll()
+        autoCheckLog.removeAll()
+        voiceMemoTranscripts.removeAll()
         if let downloadDirectory {
             try? FileManager.default.removeItem(at: downloadDirectory)
         }
@@ -7416,9 +7439,10 @@ final class LiveCaptureModel {
         }
         realtimeService = nil
         realtimeObserverId = nil
-        // Phase 5.3 — fire presence-leave so peer iPads drop us
-        // immediately rather than waiting for the 5-min stale-cleanup.
-        if let backend = backendClient, let sessionId = currentSessionId {
+        // Phase 5.3 — fire presence-leave so peer iPads drop us immediately
+        // rather than waiting for the 5-min stale-cleanup. Bruker de FANGEDE
+        // verdiene (backendClient/currentSessionId er alt nilet på dette punktet).
+        if let backend = leavingBackend, let sessionId = leavingSessionId {
             Task { [backend, sessionId] in
                 try? await backend.broadcastPresence(
                     sessionId: sessionId, joining: false, displayName: nil,
