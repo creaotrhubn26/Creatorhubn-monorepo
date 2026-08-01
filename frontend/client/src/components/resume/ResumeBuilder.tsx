@@ -4208,14 +4208,29 @@ export default function ResumeBuilder() {
   // for 1:1 match med live-preview. Åpner et nytt vindu med kun
   // template-rendering, injiserer minimal CSS, og trigger window.print()
   // som lar brukeren lagre som PDF eller printe.
+  /**
+   * Lager PDF-en brukeren faktisk har designet.
+   *
+   * Dette er den ENE PDF-veien. Tidligere fantes to: denne, som klonet
+   * malen 1:1, og `handleExport('pdf')`, som gikk til serverens PDFKit-
+   * generator og ignorerte malvalget fullstendig — Helvetica og blå
+   * overskrifter uansett hvilken av de femten malene brukeren hadde valgt.
+   *
+   * Den serversiden var i tillegg merket «PDF (Anbefalt)». Samme handling,
+   * to vidt forskjellige dokumenter, og det anbefalte alternativet var det
+   * som ikke lignet forhåndsvisningen.
+   *
+   * Serverruten finnes fortsatt for DOCX/TXT/HTML/JSON — de er dataformater
+   * og har ingen mal å bryte med.
+   */
   const handlePrintPdf = useCallback(() => {
     if (!selectedResume) return;
     const previewEl = document.querySelector('[data-resume-print-source]') as HTMLElement | null;
     if (!previewEl) {
       setSnackbar({
         open: true,
-        severity: 'warning',
-        message: 'Slå på forhåndsvisning først for å printe.',
+        severity: 'error',
+        message: 'Fant ikke CV-en å skrive ut. Last siden på nytt.',
       });
       return;
     }
@@ -6386,6 +6401,40 @@ export default function ResumeBuilder() {
                       </Box>
                     </Grid>
                   )}
+
+                  {/*
+                    Skjult printkilde naar forhaandsvisningen er av.
+
+                    Utskriften kloner DOM-en til `[data-resume-print-source]`.
+                    Uten dette fantes elementet bare naar forhaandsvisningen
+                    var paa, og brukeren fikk «Slaa paa forhaandsvisning
+                    foerst for aa printe» — som er en merkelig ting aa be om
+                    naar hun akkurat har trykket «Last ned PDF».
+
+                    Bare én av de to finnes om gangen, saa selektoren treffer
+                    alltid nøyaktig ett element. Plassert utenfor skjermen i
+                    stedet for `display: none`, fordi et skjult element ikke
+                    faar layout — og da hadde det ikke vaert noe aa klone.
+                  */}
+                  {!showLivePreview && (
+                    <Box
+                      aria-hidden="true"
+                      data-resume-print-source
+                      sx={{
+                        position: 'absolute',
+                        left: -99999,
+                        top: 0,
+                        width: '210mm',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {(() => {
+                        const reg = RESUME_TEMPLATES[selectedResume.templateId as keyof typeof RESUME_TEMPLATES];
+                        const Component = reg?.component ?? ModernATSTemplate;
+                        return <Component resume={selectedResume} preview />;
+                      })()}
+                    </Box>
+                  )}
                 </Grid>{/* /split */}
 
                 {/* ATS Score Card */}
@@ -8545,17 +8594,22 @@ export default function ResumeBuilder() {
             Velg format for eksport:
           </Typography>
           <Stack spacing={2} sx={{ mt: 2 }}>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              onClick={() => handleExport('pdf')}
+            {/*
+              PDF gaar til utskriftsveien, ikke til serverens eksportrute.
+              Serverens PDF ignorerer malvalget — se handlePrintPdf. De
+              oevrige formatene er dataformater og har ingen mal aa bryte med.
+            */}
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={() => { setShowExportDialog(false); handlePrintPdf(); }}
               startIcon={<DownloadIcon />}
             >
-              PDF (Anbefalt)
+              PDF — slik den ser ut nå
             </Button>
-            <Button 
-              variant="outlined" 
-              fullWidth 
+            <Button
+              variant="outlined"
+              fullWidth
               onClick={() => handleExport('docx')}
               startIcon={<DownloadIcon />}
             >

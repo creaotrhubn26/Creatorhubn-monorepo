@@ -858,6 +858,22 @@ function buildPlainText(full: FullResume): string {
   return out.join("\n");
 }
 
+/**
+ * Enkel PDF med fast oppsett. Ser IKKE paa resume.templateId.
+ *
+ * Dette er ikke PDF-en brukeren laster ned. Byggeren skriver ut malen via
+ * nettleseren (handlePrintPdf i ResumeBuilder.tsx), som gir et dokument
+ * som er identisk med forhaandsvisningen.
+ *
+ * Frem til august 2026 laa begge i grensesnittet samtidig, og denne var
+ * merket «PDF (Anbefalt)». En bruker som valgte Modern Tan og trykket det
+ * anbefalte alternativet fikk Helvetica med blaa overskrifter. Knappen er
+ * fjernet; ruten staar igjen fordi den er et offentlig endepunkt og kan ha
+ * andre konsumenter.
+ *
+ * Skal den brukes som ekte CV-eksport, maa den rendre malen — det betyr en
+ * headless nettleser paa serveren, ikke flere PDFKit-kall her.
+ */
 function buildPdf(full: FullResume): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
