@@ -110,6 +110,35 @@ const MUTED_ON_TINT = '#4B5563';
  */
 const ON_ACCENT = '#FFFFFF';
 
+
+// ── Seksjonstitler ───────────────────────────────────────────────────
+//
+// Ett vokabular for alle malene, fordi et rekrutteringssystem kjenner
+// igjen seksjoner PÅ TITTELEN. Kaller en mal kompetansefeltet sitt
+// «Kjernkompetanser» eller erfaringen «Arbeidshistorikk», finner ikke
+// parseren dem — og da faller innholdet ut av søket uansett hvor godt
+// det er skrevet.
+//
+// Malene hadde seks avvik: Arbeidshistorikk, Erfaring, Ledelseserfaring,
+// Kjernkompetanser, Kompetanse og Teknologier, pluss «Om meg» og
+// «Lederskapsprofil» for profilteksten og «Detaljer» for kontaktfeltet.
+//
+// Dette koster noe: «Ledelseserfaring» var en stemme i toppledermalen.
+// Men en mal kan beholde sitt uttrykk i form, farge og typografi — ordet
+// over seksjonen er det ene stedet den ikke bør være original.
+export const SECTION = {
+  profile: 'Profil',
+  experience: 'Arbeidserfaring',
+  internships: 'Praksisplasser',
+  education: 'Utdanning',
+  skills: 'Ferdigheter',
+  languages: 'Språk',
+  certifications: 'Sertifiseringer',
+  contact: 'Kontakt',
+  links: 'Lenker',
+  references: 'Referanser',
+} as const;
+
 // ============================================================================
 // COLOR SCHEMES — globalt sett brukere kan velge mellom.
 // ============================================================================
@@ -311,6 +340,57 @@ function renderSkillList(
   );
 }
 
+/**
+ * Referanser.
+ *
+ * En norsk CV avslutter konvensjonelt med referanser, enten navngitt
+ * eller med linja «Referanser oppgis på forespørsel». Ingen av de femten
+ * malene hadde seksjonen, og datamodellen har den ikke heller — derfor
+ * leser denne `resume.references` hvis den finnes, og faller ellers
+ * tilbake på standardlinja.
+ *
+ * Standardlinja vises som default. Det er et valg: den er riktig for
+ * nesten enhver CV, og `referencesOnRequest: false` slår den av. Skal
+ * navngitte referanser kunne redigeres, trengs en tabell og et felt i
+ * byggeren — det er ikke gjort her.
+ */
+function renderReferences(
+  resume: any,
+  cfg: { fontSize?: number; mutedColor?: string } = {},
+): React.ReactNode {
+  const list = Array.isArray(resume?.references) ? resume.references : [];
+  const onRequest = resume?.referencesOnRequest !== false;
+  if (!list.length && !onRequest) return null;
+  const fontSize = cfg.fontSize ?? 12;
+
+  if (!list.length) {
+    return (
+      <Typography sx={{ fontSize, color: cfg.mutedColor ?? MUTED, fontStyle: 'italic' }}>
+        Oppgis på forespørsel
+      </Typography>
+    );
+  }
+  return (
+    <Stack spacing={1}>
+      {list.map((r: any, i: number) => (
+        <Box key={r.id ?? i}>
+          <Typography sx={{ fontSize, fontWeight: 700 }}>{r.name}</Typography>
+          {(r.title || r.company) && (
+            <Typography sx={{ fontSize: fontSize - 1, color: cfg.mutedColor ?? MUTED }}>
+              {[r.title, r.company].filter(Boolean).join(', ')}
+            </Typography>
+          )}
+          {(r.phone || r.email) && (
+            <Typography sx={{ fontSize: fontSize - 1, color: cfg.mutedColor ?? MUTED }}>
+              {[r.phone, r.email].filter(Boolean).join(' · ')}
+            </Typography>
+          )}
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
 /** Render én experience-blokks bullet-innhold (description + groups/achievements).
  *  Hver template kaller dette inni sin egen wrapper. */
 function renderExperienceContent(
@@ -399,7 +479,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
       {/* Professional Summary */}
       {resume.personalInfo.summary && (
         <Box sx={styles.section}>
-          <Typography sx={styles.sectionTitle}>Profesjonelt sammendrag</Typography>
+          <Typography sx={styles.sectionTitle}>{SECTION.profile}</Typography>
           <Typography variant="body2" sx={{ fontSize: '12px', lineHeight: 1.6 }}>
             {resume.personalInfo.summary}
           </Typography>
@@ -428,13 +508,13 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
           <>
             {regular.length > 0 && (
               <Box sx={styles.section}>
-                <Typography sx={styles.sectionTitle}>Arbeidserfaring</Typography>
+                <Typography sx={styles.sectionTitle}>{SECTION.experience}</Typography>
                 {regular.map(renderExp)}
               </Box>
             )}
             {internships.length > 0 && (
               <Box sx={styles.section}>
-                <Typography sx={styles.sectionTitle}>Praksisplasser</Typography>
+                <Typography sx={styles.sectionTitle}>{SECTION.internships}</Typography>
                 {internships.map(renderExp)}
               </Box>
             )}
@@ -445,7 +525,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
       {/* Skills */}
       {resume.skills?.length > 0 && (
         <Box sx={styles.section}>
-          <Typography sx={styles.sectionTitle}>Ferdigheter</Typography>
+          <Typography sx={styles.sectionTitle}>{SECTION.skills}</Typography>
           <Typography variant="body2" sx={{ fontSize: '12px' }}>
             {resume.skills.map((skill: any) => skill.name).join(' • ')}
           </Typography>
@@ -455,7 +535,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
       {/* Languages */}
       {resume.languages?.length > 0 && (
         <Box sx={styles.section}>
-          <Typography sx={styles.sectionTitle}>Språk</Typography>
+          <Typography sx={styles.sectionTitle}>{SECTION.languages}</Typography>
           {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, variant: 'text', fontSize: 12 })}
         </Box>
       )}
@@ -463,7 +543,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
       {/* Education */}
       {resume.education?.length > 0 && (
         <Box sx={styles.section}>
-          <Typography sx={styles.sectionTitle}>Utdanning</Typography>
+          <Typography sx={styles.sectionTitle}>{SECTION.education}</Typography>
           {resume.education.map((edu: any) => (
             <Box key={edu.id} sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -489,7 +569,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
       {/* Certifications */}
       {resume.certifications?.length > 0 && (
         <Box sx={styles.section}>
-          <Typography sx={styles.sectionTitle}>Sertifiseringer</Typography>
+          <Typography sx={styles.sectionTitle}>{SECTION.certifications}</Typography>
           {resume.certifications.map((c: any) => (
             <Box key={c.id} sx={{ mb: 0.5 }}>
               <Typography sx={{ fontSize: 13 }}>
@@ -503,6 +583,15 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
               </Typography>
             </Box>
           ))}
+        </Box>
+      )}
+
+      {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+          malens egen form, ellers blir dette et andre overskriftssystem. */}
+      {renderReferences(resume) && (
+        <Box sx={{ mt: 2 }}>
+          <Typography sx={styles.sectionTitle}>{SECTION.references}</Typography>
+          {renderReferences(resume)}
         </Box>
       )}
     </Box>
@@ -595,13 +684,13 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
               <>
                 {regular.length > 0 && (
                   <Box sx={{ mb: 3 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>ERFARING</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}`, textTransform: 'uppercase' }}>{SECTION.experience}</Typography>
                     {regular.map(renderExp)}
                   </Box>
                 )}
                 {internships.length > 0 && (
                   <Box sx={{ mb: 3 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>PRAKSISPLASSER</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}`, textTransform: 'uppercase' }}>{SECTION.internships}</Typography>
                     {internships.map(renderExp)}
                   </Box>
                 )}
@@ -636,9 +725,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
           {/* Certifications */}
           {resume.certifications?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>
-                SERTIFISERINGER
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>{SECTION.certifications}</Typography>
               {resume.certifications.map((c: any) => (
                 <Box key={c.id} sx={{ mb: 0.5 }}>
                   <Typography sx={{ fontSize: 12 }}>
@@ -647,6 +734,15 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
                   </Typography>
                 </Box>
               ))}
+            </Box>
+          )}
+
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>{SECTION.references}</Typography>
+              {renderReferences(resume)}
             </Box>
           )}
         </Grid>
@@ -702,14 +798,14 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
       {resume.personalInfo?.summary && (
         <>
-          {head('Profil')}
+          {head(SECTION.profile)}
           <Typography sx={{ fontSize: 12, lineHeight: 1.7 }}>{resume.personalInfo.summary}</Typography>
         </>
       )}
-      {regular.length > 0 && (<>{head('Erfaring')}{regular.map(renderExp)}</>)}
+      {regular.length > 0 && (<>{head(SECTION.experience)}{regular.map(renderExp)}</>)}
       {resume.education?.length > 0 && (
         <>
-          {head('Utdanning')}
+          {head(SECTION.education)}
           {resume.education.map((e: any) => (
             <Box key={e.id} sx={{ mb: 1.5 }}>
               <Stack direction="row" justifyContent="space-between">
@@ -727,7 +823,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
       )}
       {resume.skills?.length > 0 && (
         <>
-          {head('Ferdigheter')}
+          {head(SECTION.skills)}
           <Typography sx={{ fontSize: 12, lineHeight: 1.8 }}>
             {resume.skills.map((s: any) => s.name).join(' · ')}
           </Typography>
@@ -735,13 +831,13 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
       )}
       {resume.languages?.length > 0 && (
         <>
-          {head('Språk')}
+          {head(SECTION.languages)}
           {renderLanguageList(resume.languages, { accent: '#111', variant: 'text', fontSize: 12 })}
         </>
       )}
       {resume.certifications?.length > 0 && (
         <>
-          {head('Sertifiseringer')}
+          {head(SECTION.certifications)}
           {resume.certifications.map((c: any) => (
             <Stack key={c.id} direction="row" justifyContent="space-between" sx={{ mb: 0.4 }}>
               <Typography sx={{ fontSize: 12 }}>
@@ -756,7 +852,16 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
           ))}
         </>
       )}
-      {internships.length > 0 && (<>{head('Praksisplasser')}{internships.map(renderExp)}</>)}
+
+      {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+          malens egen form, ellers blir dette et andre overskriftssystem. */}
+      {renderReferences(resume) && (
+        <Box sx={{ mt: 2 }}>
+          {head(SECTION.references)}
+          {renderReferences(resume)}
+        </Box>
+      )}
+      {internships.length > 0 && (<>{head(SECTION.internships)}{internships.map(renderExp)}</>)}
     </Box>
   );
 };
@@ -835,7 +940,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
         {/* Profile */}
         {resume.personalInfo.summary && (
           <Box sx={{ mb: 3 }}>
-            <Typography sx={styles.sectionTitle}>Profil</Typography>
+            <Typography sx={styles.sectionTitle}>{SECTION.profile}</Typography>
             <Typography variant="body2" sx={{ fontSize: '12px', lineHeight: 1.6 }}>
               {resume.personalInfo.summary}
             </Typography>
@@ -862,13 +967,13 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
             <>
               {regular.length > 0 && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography sx={styles.sectionTitle}>Arbeidshistorikk</Typography>
+                  <Typography sx={styles.sectionTitle}>{SECTION.experience}</Typography>
                   {regular.map(renderExp)}
                 </Box>
               )}
               {internships.length > 0 && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography sx={styles.sectionTitle}>Praksisplasser</Typography>
+                  <Typography sx={styles.sectionTitle}>{SECTION.internships}</Typography>
                   {internships.map(renderExp)}
                 </Box>
               )}
@@ -879,7 +984,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
         {/* Education */}
         {resume.education?.length > 0 && (
           <Box>
-            <Typography sx={styles.sectionTitle}>Utdanning</Typography>
+            <Typography sx={styles.sectionTitle}>{SECTION.education}</Typography>
             {resume.education.map((edu: any) => (
               <Box key={edu.id} sx={{ mb: 2 }}>
                 <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
@@ -895,13 +1000,22 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
             ))}
           </Box>
         )}
+
+        {/* Referanser — malen har ingen sertifiseringsseksjon, saa den
+            henger etter utdanning. */}
+        {renderReferences(resume) && (
+          <Box sx={{ mt: 2 }}>
+            <Typography sx={styles.sectionTitle}>{SECTION.references}</Typography>
+            {renderReferences(resume)}
+          </Box>
+        )}
       </Box>
 
       {/* Right Column */}
       <Box sx={styles.rightColumn}>
         {/* Details */}
         <Box sx={{ mb: 3 }}>
-          <Typography sx={styles.rightSectionTitle}>Detaljer</Typography>
+          <Typography sx={styles.rightSectionTitle}>{SECTION.contact}</Typography>
           <Stack spacing={1} sx={{ fontSize: '12px' }}>
             <Typography variant="body2">{resume.personalInfo.location}</Typography>
             <Typography variant="body2">Norge</Typography>
@@ -913,7 +1027,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
         {/* Links */}
         {(resume.personalInfo.linkedin || resume.personalInfo.website) && (
           <Box sx={{ mb: 3 }}>
-            <Typography sx={styles.rightSectionTitle}>Link</Typography>
+            <Typography sx={styles.rightSectionTitle}>{SECTION.links}</Typography>
             <Stack spacing={1} sx={{ fontSize: '12px' }}>
               {resume.personalInfo.linkedin && (
                 <Typography variant="body2" sx={{ textDecoration: 'underline' }}>
@@ -932,7 +1046,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
         {/* Skills */}
         {resume.skills?.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography sx={styles.rightSectionTitle}>Ferdigheter</Typography>
+            <Typography sx={styles.rightSectionTitle}>{SECTION.skills}</Typography>
             {renderSkillList(resume.skills, { fontSize: 12 })}
           </Box>
         )}
@@ -940,7 +1054,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
         {/* Languages — bruker faktisk resume.languages-data nå (ikke hardkodet) */}
         {resume.languages?.length > 0 && (
           <Box>
-            <Typography sx={styles.rightSectionTitle}>Språk</Typography>
+            <Typography sx={styles.rightSectionTitle}>{SECTION.languages}</Typography>
             {renderLanguageList(resume.languages, {
               accent: 'white',
               bgTrack: 'rgba(255,255,255,0.3)',
@@ -1000,9 +1114,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
           {/* Summary */}
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>
-                Om meg
-              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>{SECTION.profile}</Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.7 }}>
                 {resume.personalInfo.summary}
               </Typography>
@@ -1012,9 +1124,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
           {/* Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>
-                Arbeidserfaring
-              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>{SECTION.experience}</Typography>
               {resume.experiences.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2, pl: 2, borderLeft: `3px solid ${_sc.accent}` }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '15px', color: '#2c3e50' }}>
@@ -1041,18 +1151,14 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
           {/* Skills with icons */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>
-                Kompetanse
-              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>{SECTION.skills}</Typography>
               {renderSkillList(resume.skills, { fontSize: 12 })}
             </Box>
           )}
 
           {resume.languages?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>
-                Språk
-              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>{SECTION.languages}</Typography>
               {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
@@ -1115,7 +1221,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 1 }}>
-                <SectionHeading icon={<DescriptionIcon />} label="Profil" />
+                <SectionHeading icon={<DescriptionIcon />} label={SECTION.profile} />
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.6 }}>
                 {resume.personalInfo.summary}
@@ -1127,7 +1233,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                <SectionHeading icon={<WorkOutlineIcon />} label="Arbeidserfaring" />
+                <SectionHeading icon={<WorkOutlineIcon />} label={SECTION.experience} />
               </Typography>
               {resume.experiences.map((exp: any, index: number) => (
                 <Box key={exp.id} sx={{ mb: 2 }}>
@@ -1161,7 +1267,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                <SectionHeading icon={<BuildIcon />} label="Teknologier" />
+                <SectionHeading icon={<BuildIcon />} label={SECTION.skills} />
               </Typography>
               {renderSkillList(resume.skills, { fontSize: 12 })}
             </Box>
@@ -1170,7 +1276,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {resume.languages?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                <SectionHeading icon={<PublicIcon />} label="Språk" />
+                <SectionHeading icon={<PublicIcon />} label={SECTION.languages} />
               </Typography>
               {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
@@ -1180,7 +1286,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {resume.education?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                <SectionHeading icon={<SchoolIcon />} label="Utdanning" />
+                <SectionHeading icon={<SchoolIcon />} label={SECTION.education} />
               </Typography>
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2 }}>
@@ -1202,7 +1308,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {resume.certifications?.length > 0 && (
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-                <SectionHeading icon={<EmojiEventsIcon />} label="Sertifiseringer" />
+                <SectionHeading icon={<EmojiEventsIcon />} label={SECTION.certifications} />
               </Typography>
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
@@ -1216,6 +1322,15 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                   </Box>
                 ))}
               </Stack>
+            </Box>
+          )}
+
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              <SectionHeading icon={<EmojiEventsIcon />} label={SECTION.references} />
+              {renderReferences(resume)}
             </Box>
           )}
         </Grid>
@@ -1284,7 +1399,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 1 }}>
-                <SectionHeading icon={<MedicalServicesIcon />} label="Profesjonell profil" />
+                <SectionHeading icon={<MedicalServicesIcon />} label={SECTION.profile} />
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.7, color: '#424242' }}>
                 {resume.personalInfo.summary}
@@ -1296,7 +1411,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<LocalHospitalIcon />} label="Klinisk erfaring" />
+                <SectionHeading icon={<LocalHospitalIcon />} label={SECTION.experience} />
               </Typography>
               {resume.experiences.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2, p: 2, bgcolor: `${_sc.bgSoft}`, borderRadius: 1, borderLeft: `3px solid ${_sc.accent}` }}>
@@ -1328,7 +1443,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {resume.education?.length > 0 && (
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<SchoolIcon />} label="Utdanning & sertifiseringer" />
+                <SectionHeading icon={<SchoolIcon />} label={SECTION.education} />
               </Typography>
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2 }}>
@@ -1352,7 +1467,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<ScienceIcon />} label="Spesialiseringer" />
+                <SectionHeading icon={<ScienceIcon />} label={SECTION.skills} />
               </Typography>
               <Stack spacing={1}>
                 {resume.skills.map((skill: any) => (
@@ -1378,7 +1493,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<VerifiedIcon />} label="Lisenser & godkjenninger" />
+                <SectionHeading icon={<VerifiedIcon />} label={SECTION.certifications} />
               </Typography>
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
@@ -1395,11 +1510,20 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
             </Box>
           )}
 
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              <SectionHeading icon={<VerifiedIcon />} label={SECTION.references} />
+              {renderReferences(resume)}
+            </Box>
+          )}
+
           {/* Languages — bruker resume.languages-data (ikke hardkodet lenger) */}
           {resume.languages?.length > 0 && (
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<PublicIcon />} label="Språk" />
+                <SectionHeading icon={<PublicIcon />} label={SECTION.languages} />
               </Typography>
               {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
@@ -1451,9 +1575,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
-                Utdanning
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>{SECTION.education}</Typography>
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1567,11 +1689,18 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
             </Box>
           )}
 
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>{SECTION.references}</Typography>
+              {renderReferences(resume)}
+            </Box>
+          )}
+
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
-                Språk
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>{SECTION.languages}</Typography>
               {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
@@ -1627,9 +1756,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
       {/* Executive Summary */}
       {resume.personalInfo.summary && (
         <Box sx={{ mb: 4, p: 3, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, borderLeft: `4px solid ${_sc.accent}` }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
-            Lederskapsprofil
-          </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>{SECTION.profile}</Typography>
           <Typography variant="body2" sx={{ fontSize: '14px', lineHeight: 1.7, color: '#424242' }}>
             {resume.personalInfo.summary}
           </Typography>
@@ -1641,7 +1768,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Leadership Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              {execHead('Ledelseserfaring')}
+              {execHead(SECTION.experience)}
               {resume.experiences.map((exp: any, index: number) => (
                 <Box key={exp.id} sx={{ mb: 3, p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -1671,7 +1798,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box>
-              {execHead('Utdanning')}
+              {execHead(SECTION.education)}
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '14px', color: `${_sc.accent}` }}>
@@ -1693,7 +1820,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Core Competencies */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              {execHead('Kjernkompetanser')}
+              {execHead(SECTION.skills)}
               {renderSkillList(resume.skills, { fontSize: 12.5 })}
             </Box>
           )}
@@ -1701,7 +1828,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Board Positions */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              {execHead('Sertifiseringer')}
+              {execHead(SECTION.certifications)}
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
                   <Box key={cert.id} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
@@ -1717,9 +1844,18 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
             </Box>
           )}
 
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              {execHead(SECTION.references)}
+              {renderReferences(resume)}
+            </Box>
+          )}
+
           {resume.languages?.length > 0 && (
             <Box>
-              {execHead('Språk')}
+              {execHead(SECTION.languages)}
               {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
@@ -1777,7 +1913,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<WorkOutlineIcon />} label="Salgserfaring" />
+                <SectionHeading icon={<WorkOutlineIcon />} label={SECTION.experience} />
               </Typography>
               {resume.experiences.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2, p: 2, border: '1px solid #ffcc80', borderRadius: 1 }}>
@@ -1809,7 +1945,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {resume.education?.length > 0 && (
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<SchoolIcon />} label="Utdanning" />
+                <SectionHeading icon={<SchoolIcon />} label={SECTION.education} />
               </Typography>
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2 }}>
@@ -1833,7 +1969,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<TrackChangesIcon />} label="Salgsferdigheter" />
+                <SectionHeading icon={<TrackChangesIcon />} label={SECTION.skills} />
               </Typography>
               <Stack spacing={1}>
                 {resume.skills.map((skill: any) => (
@@ -1873,11 +2009,20 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
             </Box>
           )}
 
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>{SECTION.references}</Typography>
+              {renderReferences(resume)}
+            </Box>
+          )}
+
           {/* Languages — bruker resume.languages-data (ikke hardkodet) */}
           {resume.languages?.length > 0 && (
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
-                <SectionHeading icon={<PublicIcon />} label="Språk" />
+                <SectionHeading icon={<PublicIcon />} label={SECTION.languages} />
               </Typography>
               {renderLanguageList(resume.languages, { accent: `${_sc.accentDark}`, fontSize: 12 })}
             </Box>
@@ -1935,7 +2080,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
         {resume.personalInfo?.summary && (
           <Box sx={{ mb: 3 }}>
-            {sectionTitle('Profil')}
+            {sectionTitle(SECTION.profile)}
             <Typography sx={{ fontSize: 12, lineHeight: 1.6, color: '#374151' }}>
               {resume.personalInfo.summary}
             </Typography>
@@ -1947,7 +2092,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
           if (!regular.length) return null;
           return (
             <Box sx={{ mb: 3 }}>
-              {sectionTitle('Arbeidshistorikk')}
+              {sectionTitle(SECTION.experience)}
               {regular.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2 }}>
                   <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
@@ -1985,7 +2130,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
         {(resume.education ?? []).length > 0 && (
           <Box sx={{ mb: 3 }}>
-            {sectionTitle('Utdanning')}
+            {sectionTitle(SECTION.education)}
             {resume.education.map((e: any) => (
               <Box key={e.id} sx={{ mb: 1.5 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
@@ -2008,7 +2153,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
         {(resume.certifications ?? []).length > 0 && (
           <Box sx={{ mb: 3 }}>
-            {sectionTitle('Sertifiseringer')}
+            {sectionTitle(SECTION.certifications)}
             {resume.certifications.map((c: any) => (
               <Box key={c.id} sx={{ mb: 1 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: 12 }}>{c.name}, {c.issuer}</Typography>
@@ -2021,12 +2166,21 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
           </Box>
         )}
 
+        {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+            malens egen form, ellers blir dette et andre overskriftssystem. */}
+        {renderReferences(resume) && (
+          <Box sx={{ mt: 2 }}>
+            {sectionTitle(SECTION.references)}
+            {renderReferences(resume)}
+          </Box>
+        )}
+
         {(() => {
           const interns = (resume.experiences ?? []).filter((e: any) => e.employmentType === 'internship');
           if (!interns.length) return null;
           return (
             <Box sx={{ mb: 3 }}>
-              {sectionTitle('Praksisplasser')}
+              {sectionTitle(SECTION.internships)}
               {interns.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 1.5 }}>
                   <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
@@ -2051,7 +2205,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
       <Box sx={{
         width: '34%', bgcolor: accent, color: accentText, p: preview ? 2 : 4,
       }}>
-        {sidebarTitle('Detaljer')}
+        {sidebarTitle(SECTION.contact)}
         <Stack spacing={0.4} sx={{ mb: 3 }}>
           {resume.personalInfo?.location && (
             <Typography sx={{ fontSize: 12 }}>{resume.personalInfo.location}</Typography>
@@ -2066,7 +2220,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
         {resume.personalInfo?.linkedin && (
           <>
-            {sidebarTitle('Lenker')}
+            {sidebarTitle(SECTION.links)}
             <Typography sx={{ fontSize: 12, color: ON_ACCENT, textDecoration: 'underline', mb: 3 }}>
               Linkedin-profil
             </Typography>
@@ -2075,7 +2229,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
         {(resume.skills ?? []).length > 0 && (
           <>
-            {sidebarTitle('Ferdigheter')}
+            {sidebarTitle(SECTION.skills)}
             <Box sx={{ mb: 3 }}>
               {renderSkillList(resume.skills, { fontSize: 12 })}
             </Box>
@@ -2084,7 +2238,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
         {(resume.languages ?? []).length > 0 && (
           <>
-            {sidebarTitle('Språk')}
+            {sidebarTitle(SECTION.languages)}
             {renderLanguageList(resume.languages, { accent: ON_ACCENT, fontSize: 12 })}
           </>
         )}
@@ -2138,7 +2292,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
           }} />
         </Box>
 
-        {chip('Kontakt')}
+        {chip(SECTION.contact)}
         <Stack spacing={1.2} sx={{ mb: 3 }}>
           {resume.personalInfo?.phone && (
             <Stack direction="row" spacing={1.5} alignItems="center">
@@ -2162,7 +2316,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
         {(resume.education ?? []).length > 0 && (
           <Box sx={{ mb: 3 }}>
-            {chip('Utdanning')}
+            {chip(SECTION.education)}
             <Stack spacing={1.2}>
               {resume.education.map((e: any) => (
                 <Box key={e.id}>
@@ -2181,7 +2335,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
         {(resume.skills ?? []).length > 0 && (
           <Box sx={{ mb: 3 }}>
-            {chip('Ferdigheter')}
+            {chip(SECTION.skills)}
             <Box sx={{ color: dark }}>
               {renderSkillList(resume.skills, { fontSize: 11.5 })}
             </Box>
@@ -2190,7 +2344,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
         {(resume.languages ?? []).length > 0 && (
           <Box>
-            {chip('Språk')}
+            {chip(SECTION.languages)}
             <Stack spacing={0.6}>
               {resume.languages.map((l: any) => (
                 <Stack key={l.id} direction="row" justifyContent="space-between">
@@ -2229,7 +2383,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
           if (!regular.length) return null;
           return (
             <Box sx={{ mb: 3 }}>
-              {chip('Arbeidserfaring')}
+              {chip(SECTION.experience)}
               {regular.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2 }}>
                   <Typography sx={{ fontWeight: 800, fontSize: 13, color: dark, letterSpacing: 1 }}>
@@ -2269,7 +2423,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
           if (!interns.length) return null;
           return (
             <Box sx={{ mb: 3 }}>
-              {chip('Praksisplasser')}
+              {chip(SECTION.internships)}
               {interns.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 1.5 }}>
                   <Typography sx={{ fontWeight: 800, fontSize: 12.5, color: dark, letterSpacing: 1 }}>
@@ -2292,7 +2446,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
         {(resume.certifications ?? []).length > 0 && (
           <Box>
-            {chip('Sertifiseringer')}
+            {chip(SECTION.certifications)}
             <Stack spacing={0.8}>
               {resume.certifications.map((c: any) => (
                 <Box key={c.id}>
@@ -2301,6 +2455,15 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
                 </Box>
               ))}
             </Stack>
+          </Box>
+        )}
+
+        {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+            malens egen form, ellers blir dette et andre overskriftssystem. */}
+        {renderReferences(resume) && (
+          <Box sx={{ mt: 2 }}>
+            {chip(SECTION.references)}
+            {renderReferences(resume)}
           </Box>
         )}
       </Box>
@@ -2371,7 +2534,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
       <Grid container spacing={3}>
         {/* Left details column */}
         <Grid item xs={4}>
-          {sideHead('Detaljer')}
+          {sideHead(SECTION.contact)}
           <Stack spacing={0.3} sx={{ textAlign: 'center', mb: 2 }}>
             {resume.personalInfo?.location && (
               <Typography sx={{ fontSize: 12 }}>{resume.personalInfo.location}</Typography>
@@ -2386,7 +2549,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
           {resume.personalInfo?.linkedin && (
             <>
-              {sideHead('Lenker')}
+              {sideHead(SECTION.links)}
               <Box sx={{ textAlign: 'center', mb: 2 }}>
                 <Typography sx={{ fontSize: 12, color: '#1D4ED8', textDecoration: 'underline' }}>
                   Linkedin-profil
@@ -2397,7 +2560,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
           {(resume.skills ?? []).length > 0 && (
             <>
-              {sideHead('Ferdigheter')}
+              {sideHead(SECTION.skills)}
               <Stack spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
                 {resume.skills.map((s: any) => (
                   <Box key={s.id} sx={{ textAlign: 'center', width: '85%' }}>
@@ -2411,7 +2574,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
           {(resume.languages ?? []).length > 0 && (
             <>
-              {sideHead('Språk')}
+              {sideHead(SECTION.languages)}
               <Box sx={{ textAlign: 'center', color: dark }}>
                 {renderLanguageList(resume.languages, { accent: dark, fontSize: 12 })}
               </Box>
@@ -2423,7 +2586,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
         <Grid item xs={8}>
           {resume.personalInfo?.summary && (
             <>
-              {mainHead(<Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dark }} />, 'Profil')}
+              {mainHead(<Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dark }} />, SECTION.profile)}
               {timelineItem(
                 <Typography sx={{ fontSize: 12, lineHeight: 1.6 }}>
                   {resume.personalInfo.summary}
@@ -2437,7 +2600,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
             if (!regular.length) return null;
             return (
               <>
-                {mainHead(<WorkOutlineIcon sx={{ fontSize: 16 }} />, 'Arbeidshistorikk')}
+                {mainHead(<WorkOutlineIcon sx={{ fontSize: 16 }} />, SECTION.experience)}
                 {regular.map((exp: any) => (
                   <Box key={exp.id} sx={{ mb: 2 }}>
                     {timelineItem(
@@ -2477,7 +2640,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
           {(resume.education ?? []).length > 0 && (
             <>
-              {mainHead(<SchoolIcon sx={{ fontSize: 16 }} />, 'Utdanning')}
+              {mainHead(<SchoolIcon sx={{ fontSize: 16 }} />, SECTION.education)}
               {resume.education.map((e: any) => (
                 <Box key={e.id} sx={{ mb: 2 }}>
                   {timelineItem(
@@ -2504,7 +2667,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
           {(resume.certifications ?? []).length > 0 && (
             <>
-              {mainHead(<VerifiedIcon sx={{ fontSize: 16 }} />, 'Sertifiseringer')}
+              {mainHead(<VerifiedIcon sx={{ fontSize: 16 }} />, SECTION.certifications)}
               {resume.certifications.map((c: any) => (
                 <Box key={c.id} sx={{ mb: 1.2 }}>
                   {timelineItem(
@@ -2521,12 +2684,21 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
             </>
           )}
 
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 12 }}>{SECTION.references}</Typography>
+              {renderReferences(resume)}
+            </Box>
+          )}
+
           {(() => {
             const interns = (resume.experiences ?? []).filter((e: any) => e.employmentType === 'internship');
             if (!interns.length) return null;
             return (
               <>
-                {mainHead(<EmojiEventsIcon sx={{ fontSize: 16 }} />, 'Praksisplasser')}
+                {mainHead(<EmojiEventsIcon sx={{ fontSize: 16 }} />, SECTION.internships)}
                 {interns.map((exp: any) => (
                   <Box key={exp.id} sx={{ mb: 1.5 }}>
                     {timelineItem(
@@ -2590,14 +2762,14 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
 
       {resume.personalInfo?.summary && (
         <>
-          {head('Profil')}
+          {head(SECTION.profile)}
           <Typography sx={{ fontSize: 12, lineHeight: 1.7 }}>{resume.personalInfo.summary}</Typography>
         </>
       )}
 
       {(resume.experiences ?? []).length > 0 && (
         <>
-          {head('Erfaring')}
+          {head(SECTION.experience)}
           {resume.experiences.map((exp: any) => (
             <Box key={exp.id} sx={{ mb: 2 }}>
               <Stack direction="row" justifyContent="space-between">
@@ -2629,7 +2801,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
 
       {(resume.education ?? []).length > 0 && (
         <>
-          {head('Utdanning')}
+          {head(SECTION.education)}
           {resume.education.map((e: any) => (
             <Stack key={e.id} direction="row" justifyContent="space-between" sx={{ mb: 0.6 }}>
               <Typography sx={{ fontSize: 12 }}>
@@ -2647,7 +2819,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
       <Grid container spacing={3}>
         {(resume.skills ?? []).length > 0 && (
           <Grid item xs={6}>
-            {head('Ferdigheter')}
+            {head(SECTION.skills)}
             <Typography sx={{ fontSize: 11.5, lineHeight: 1.8 }}>
               {resume.skills.map((s: any) => s.name).join(' · ')}
             </Typography>
@@ -2655,7 +2827,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
         )}
         {(resume.languages ?? []).length > 0 && (
           <Grid item xs={6}>
-            {head('Språk')}
+            {head(SECTION.languages)}
             <Stack spacing={0.3}>
               {resume.languages.map((l: any) => (
                 <Stack key={l.id} direction="row" justifyContent="space-between">
@@ -2670,7 +2842,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
 
       {(resume.certifications ?? []).length > 0 && (
         <>
-          {head('Sertifiseringer')}
+          {head(SECTION.certifications)}
           {resume.certifications.map((c: any) => (
             <Stack key={c.id} direction="row" justifyContent="space-between">
               <Typography sx={{ fontSize: 11.5 }}>{c.name} · {c.issuer}</Typography>
@@ -2680,6 +2852,15 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
             </Stack>
           ))}
         </>
+      )}
+
+      {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+          malens egen form, ellers blir dette et andre overskriftssystem. */}
+      {renderReferences(resume) && (
+        <Box sx={{ mt: 2 }}>
+          {head(SECTION.references)}
+          {renderReferences(resume)}
+        </Box>
       )}
     </Box>
   );
@@ -2759,7 +2940,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
       {resume.personalInfo?.summary && (
         <>
-          {head('Om meg')}
+          {head(SECTION.profile)}
           <Typography sx={{ fontSize: 12.5, lineHeight: 1.7 }}>
             {resume.personalInfo.summary}
           </Typography>
@@ -2770,7 +2951,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
         <Grid item xs={8}>
           {(resume.experiences ?? []).length > 0 && (
             <>
-              {head('Erfaring')}
+              {head(SECTION.experience)}
               {resume.experiences.map((exp: any) => (
                 <Box key={exp.id} sx={{ mb: 2, borderLeft: `3px solid ${orange}`, pl: 2 }}>
                   <Typography sx={{ fontWeight: 800, fontSize: 13.5 }}>{exp.jobTitle}</Typography>
@@ -2802,7 +2983,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
           {(resume.education ?? []).length > 0 && (
             <>
-              {head('Utdanning')}
+              {head(SECTION.education)}
               {resume.education.map((e: any) => (
                 <Box key={e.id} sx={{ mb: 1.5 }}>
                   <Typography sx={{ fontWeight: 700, fontSize: 12.5 }}>{e.degree}</Typography>
@@ -2819,7 +3000,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
         <Grid item xs={4}>
           {(resume.skills ?? []).length > 0 && (
             <>
-              {head('Ferdigheter')}
+              {head(SECTION.skills)}
               <Stack spacing={0.6}>
                 {resume.skills.map((s: any) => (
                   <Box key={s.id} sx={{
@@ -2836,7 +3017,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
           {(resume.languages ?? []).length > 0 && (
             <>
-              {head('Språk')}
+              {head(SECTION.languages)}
               <Stack spacing={0.5}>
                 {resume.languages.map((l: any) => (
                   <Box key={l.id}>
@@ -2852,7 +3033,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
           {(resume.certifications ?? []).length > 0 && (
             <>
-              {head('Sertifiseringer')}
+              {head(SECTION.certifications)}
               <Stack spacing={0.5}>
                 {resume.certifications.map((c: any) => (
                   <Box key={c.id}>
@@ -2862,6 +3043,15 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
                 ))}
               </Stack>
             </>
+          )}
+
+          {/* Referanser — norsk CV-konvensjon. Overskriften speiler
+              malens egen form, ellers blir dette et andre overskriftssystem. */}
+          {renderReferences(resume) && (
+            <Box sx={{ mt: 2 }}>
+              {head(SECTION.references)}
+              {renderReferences(resume)}
+            </Box>
           )}
         </Grid>
       </Grid>
@@ -2883,6 +3073,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 100,
     category: 'professional',
     layout: 'single-column',
+    industries: ['finans', 'jus', 'offentlig sektor', 'regnskap', 'administrasjon'],
+    guidance: 'Nøytral enkeltkolonne. Det tryggeste valget når søknaden går gjennom et rekrutteringssystem.',
     isPremium: false,
   }, 'professional-two-column': {
     id: 'professional-two-column',
@@ -2892,6 +3084,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 85,
     category: 'professional',
     layout: 'two-column',
+    industries: ['administrasjon', 'prosjektledelse', 'konsulent'],
+    guidance: 'To kolonner gir oversikt, men sidefeltet kan flettes inn i brødteksten av eldre rekrutteringssystemer.',
     isPremium: false,
   }, 'norwegian-two-column': {
     id: 'norwegian-two-column',
@@ -2901,6 +3095,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'professional',
     layout: 'two-column',
+    industries: ['offentlig sektor', 'undervisning', 'administrasjon'],
+    guidance: 'Norsk oppsett med to kolonner. Samme forbehold om rekrutteringssystemer som over.',
     isPremium: false,
   }, 'minimal-clean': {
     id: 'minimal-clean',
@@ -2910,6 +3106,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 95,
     category: 'minimal',
     layout: 'single-column',
+    industries: ['finans', 'jus', 'forskning', 'offentlig sektor'],
+    guidance: 'Stram enkeltkolonne uten farge. Passer der innholdet skal snakke og formen ikke skal merkes.',
     isPremium: false,
   }, 'creative-photographer': {
     id: 'creative-photographer',
@@ -2919,6 +3117,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 80,
     category: 'creative',
     layout: 'modern-split',
+    industries: ['foto', 'film', 'media', 'reklame'],
+    guidance: 'Visuelt uttrykk for kreative fag. Ikke det beste valget til stillinger som screenes maskinelt.',
     isPremium: false,
   }, 'modern-tech': {
     id: 'modern-tech',
@@ -2928,6 +3128,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 95,
     category: 'technology',
     layout: 'single-column',
+    industries: ['teknologi', 'utvikling', 'data'],
+    guidance: 'Ren layout med aksentfarge. Laget for tekniske roller der verktøy og stack skal fram.',
     isPremium: false,
   }, 'healthcare-professional': {
     id: 'healthcare-professional',
@@ -2937,6 +3139,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'healthcare',
     layout: 'single-column',
+    industries: ['helse', 'omsorg', 'pleie'],
+    guidance: 'Plass til autorisasjon, journalsystem og turnuserfaring — det helseledere leter etter.',
     isPremium: false,
   }, 'academic-researcher': {
     id: 'academic-researcher',
@@ -2946,6 +3150,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 95,
     category: 'academic',
     layout: 'single-column',
+    industries: ['forskning', 'universitet', 'høgskole'],
+    guidance: 'Akademisk oppsett. Publikasjoner, undervisning og stipend står sentralt.',
     isPremium: false,
   }, 'executive-leadership': {
     id: 'executive-leadership',
@@ -2955,6 +3161,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 85,
     category: 'executive',
     layout: 'single-column',
+    industries: ['ledelse', 'styrearbeid', 'finans'],
+    guidance: 'Formelt lederuttrykk. Vekt på ansvar, resultat og omfang framfor oppgaver.',
     isPremium: false,
   }, 'sales-professional': {
     id: 'sales-professional',
@@ -2964,6 +3172,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'sales',
     layout: 'single-column',
+    industries: ['salg', 'kundeoppfølging', 'markedsføring'],
+    guidance: 'Bygget for tallfestede resultater — måloppnåelse, portefølje, vekst.',
     isPremium: false,
   }, 'nordic-dark-sidebar': {
     id: 'nordic-dark-sidebar',
@@ -2973,6 +3183,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 92,
     category: 'creative',
     layout: 'two-column',
+    industries: ['teknologi', 'konsulent', 'markedsføring'],
+    guidance: 'Mørkt sidefelt. Merk at det trykker en fylt spalte gjennom hele arket ved utskrift.',
     isPremium: false,
   }, 'modern-tan-sidebar': {
     id: 'modern-tan-sidebar',
@@ -2982,6 +3194,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 88,
     category: 'creative',
     layout: 'two-column',
+    industries: ['design', 'kommunikasjon', 'markedsføring'],
+    guidance: 'Dempet sidefelt med varm aksent. Kreativt uten å rope.',
     isPremium: false,
   }, 'timeline-centered': {
     id: 'timeline-centered',
@@ -2991,6 +3205,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'creative',
     layout: 'two-column',
+    industries: ['teknologi', 'prosjektledelse', 'konsulent'],
+    guidance: 'Tidslinje som viser progresjon. Fungerer best med en sammenhengende karrierevei.',
     isPremium: false,
   }, 'minimal-mono': {
     id: 'minimal-mono',
@@ -3000,6 +3216,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 100,
     category: 'professional',
     layout: 'single-column',
+    industries: ['arkitektur', 'design', 'forskning'],
+    guidance: 'Typografisk stram enkeltkolonne. Rolig uttrykk, høy lesbarhet.',
     isPremium: false,
   }, 'bold-creative': {
     id: 'bold-creative',
@@ -3009,6 +3227,8 @@ export const RESUME_TEMPLATES = {
     atsScore: 82,
     category: 'creative',
     layout: 'two-column',
+    industries: ['design', 'reklame', 'markedsføring', 'media'],
+    guidance: 'Sterkest visuell signatur i settet. Bruk der porteføljen og uttrykket teller mest.',
     isPremium: false,
   },
 };
