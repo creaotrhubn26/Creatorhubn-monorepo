@@ -91,6 +91,34 @@ enum LearnedStyle {
         return (sum / n / 255.0, clip / n)
     }
 
+    /// Replikér rawpy `no_auto_bright=False`: skalér bildet så 99-persentilen av
+    /// maks-kanalen treffer ~0.94 (near-white med ~1% klipp), klemt 1.0–3.0.
+    /// Normaliserer scene-eksponeringen som rawpy-basen LUT-ene ble trent på.
+    static func autoBrightBase(_ image: CIImage, ctx: CIContext) -> CIImage {
+        let n = 128
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        guard let cg = ctx.createCGImage(image, from: image.extent),
+              let bmp = CGContext(data: &px, width: n, height: n, bitsPerComponent: 8,
+                                  bytesPerRow: n * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        bmp.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+        var maxes = [UInt8](); maxes.reserveCapacity(n * n)
+        var i = 0
+        while i < px.count { maxes.append(max(px[i], max(px[i + 1], px[i + 2]))); i += 4 }
+        maxes.sort()
+        let p99 = Double(maxes[Int(0.99 * Double(maxes.count))]) / 255.0
+        let scale = min(3.0, max(1.0, 0.94 / max(p99, 0.3)))
+        guard scale > 1.01 else { return image }
+        let m = CIFilter.colorMatrix()
+        m.inputImage = image
+        m.rVector = CIVector(x: CGFloat(scale), y: 0, z: 0, w: 0)
+        m.gVector = CIVector(x: 0, y: CGFloat(scale), z: 0, w: 0)
+        m.bVector = CIVector(x: 0, y: 0, z: CGFloat(scale), w: 0)
+        m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
+        return m.outputImage?.cropped(to: image.extent) ?? image
+    }
+
     /// sRGB(0…1) → OpenCV 8-bit Lab (L,a,b i 0…255, 128=nøytral for a/b).
     private static func labCV(r: CGFloat, g: CGFloat, b: CGFloat) -> (Double, Double, Double) {
         let a = SkinToneMath.aStar(r: r, g: g, b: b)          // CIE a*
@@ -163,6 +191,14 @@ enum LearnedStyle {
         let ctx = CIContext(options: [.useSoftwareRenderer: false])
         var out = image
 
+        // BASE AUTO-BRIGHT (CIRAWFilter → rawpy): rawpy-develop-en LUT-ene ble trent
+        // på bruker `no_auto_bright=False` — den normaliserer hver scenes eksponering
+        // via høylys-persentil (lyse scener løftes, mørke ned). CIRAWFilter gjør IKKE
+        // dette → base-luma spriker per scene (målt: lys scene 0.69 vs rawpy 0.83) →
+        // LUT-en (lyskurve) forsterker avviket. Replikér auto-bright: skalér så 99-
+        // persentilen treffer ~0.94, så LUT-en får samme normaliserte inngang.
+        out = autoBrightBase(out, ctx: ctx).cropped(to: image.extent)
+
         // BASE-METNINGS-MATCH (CIRAWFilter → rawpy): CIRAWFilter-basen er mer
         // konservativt mettet (~63) enn rawpy-basen (~93) LUT-en ble trent på.
         // Ekte-LAB-overføringen nedenfor gjenoppretter det MESTE (portrett/lyse
@@ -221,28 +257,6 @@ enum LearnedStyle {
         // tekstur-bevarende utjevning — mot «blek/flat/livløs».
         out = SkinFinishFilter.apply(to: out)
         out = FaceDodgeFilter.apply(to: out)
-<<<<<<< Updated upstream
-
-        // 🔑 BASE-KALIBRERING (CIRAWFilter → rawpy): enhetens develop-base er
-        // konsekvent LYSERE (~0.46 vs 0.40) og MINDRE METTET (~63 vs 93) enn rawpy-
-        // basen CDF-LUT-ene ble trent på → resultatet blir for lyst + avmettet
-        // («utvasket»). Målt mot fasiten (`apply_model`): et fast, lett nedtrekk +
-        // metnings-løft ved utgangen bringer looken tilbake til fotografens leverte
-        // stil (luma 0.80→~0.76, metning 34→~54 ≈ fasit 52). Kompenserer den
-        // systematiske motor-forskjellen — ikke en per-bilde-hack.
-        let ev = CIFilter.exposureAdjust()
-        ev.inputImage = out
-        ev.ev = -0.15
-        out = ev.outputImage?.cropped(to: image.extent) ?? out
-        let cal = CIFilter.colorControls()
-        cal.inputImage = out
-        cal.saturation = 1.45
-        cal.contrast = 1.0
-        cal.brightness = 0
-        out = cal.outputImage?.cropped(to: image.extent) ?? out
-
-=======
->>>>>>> Stashed changes
         return out.cropped(to: image.extent)
     }
 }
