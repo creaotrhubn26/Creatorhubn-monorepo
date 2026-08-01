@@ -105,9 +105,10 @@ final class RedigeringModel {
     /// Full-series batch progress.
     private(set) var seriesProgress = 0
     private(set) var seriesTotal = 0
-    /// Undo/redo stacks of the recipe for the selected asset.
-    private var undo: [MagicRecipe] = []
-    private var redo: [MagicRecipe] = []
+    /// Undo/redo av HELE edit-tilstanden (recipe + eksponering + crop) for det
+    /// valgte bildet — ikke bare recipe.
+    private var undo: [RedigeringEditStore.EditState] = []
+    private var redo: [RedigeringEditStore.EditState] = []
 
     private var ownerUserId: String? { SignInService.shared.session?.userId }
 
@@ -115,6 +116,15 @@ final class RedigeringModel {
     var canUndo: Bool { !undo.isEmpty }
     var canRedo: Bool { !redo.isEmpty }
     var appliedCount: Int { applied.count }
+
+    /// #4: sann når videre redigering + eksport skjer fra en ~2400px preview-JPEG
+    /// (etter AI-retusj/inpaint, som produserer `autoCleanedKey`) i stedet for
+    /// kamera-RAW-en — et kvalitetstap fotografen ellers ikke ser. Driver en
+    /// advarsel. (Full-res inpaint / composite-tilbake-i-RAW er egen oppgave.)
+    var baseIsDegraded: Bool {
+        guard let a = selected else { return false }
+        return a.autoCleanedKey != nil && a.rawKey != nil
+    }
 
     static let presets: [(String, MagicRecipe)] = [
         ("Bryllup", .wedding),
@@ -212,16 +222,30 @@ final class RedigeringModel {
     func recipeChanged() { persistEdit(); Task { await render() } }
     func beginEdit() { pushUndo() }
 
+    /// Øyeblikksbilde av HELE redigeringstilstanden (recipe + eksponering + crop)
+    /// — undo dekket før bare `recipe`, så Angre etter en beskjæring/eksponering
+    /// hoppet feil verdi.
+    private func snapshot() -> RedigeringEditStore.EditState {
+        .init(recipe: recipe, exposureEV: exposureEV, crop: selectedId.flatMap { crops[$0] })
+    }
+    private func restore(_ s: RedigeringEditStore.EditState) {
+        recipe = s.recipe
+        exposureEV = s.exposureEV
+        if let id = selectedId { crops[id] = s.crop }
+        syncPresetName(to: s.recipe)
+        persistEdit(); Task { await render() }
+    }
+
     func undoEdit() {
         guard let prev = undo.popLast() else { return }
-        redo.append(recipe); recipe = prev; persistEdit(); Task { await render() }
+        redo.append(snapshot()); restore(prev)
     }
     func redoEdit() {
         guard let next = redo.popLast() else { return }
-        undo.append(recipe); recipe = next; persistEdit(); Task { await render() }
+        undo.append(snapshot()); restore(next)
     }
 
-    private func pushUndo() { undo.append(recipe); redo.removeAll() }
+    private func pushUndo() { undo.append(snapshot()); redo.removeAll() }
 
     /// Apply the current recipe to every asset, then render + persist each one
     /// full-res in the background (real batch). Crop is per-asset; the recipe +
@@ -467,6 +491,7 @@ final class RedigeringModel {
     var currentCrop: CGRect? { selectedId.flatMap { crops[$0] } }
     func setCrop(_ rect: CGRect?) {
         guard let id = selectedId else { return }
+        pushUndo()   // #10: crop var utenfor undo-stacken
         if let rect { crops[id] = rect } else { crops[id] = nil }
         persistEdit()
         Task { await render() }
@@ -636,9 +661,26 @@ struct RedigeringView: View {
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(alignment: .bottomLeading) { exifBadge }
+        .overlay(alignment: .top) { degradedBaseWarning }
         .onChange(of: model.afterImage) { _, _ in
             Task { await updateMaskOverlay(); await updateDiffOverlay() }
             if model.localFaceMode { model.detectFacesForLocal() }
+        }
+    }
+
+    /// #4: advar når redigering + eksport nå skjer fra en ~2400px preview-JPEG
+    /// (etter AI-retusj) i stedet for kamera-RAW — et kvalitetstap ellers usett.
+    @ViewBuilder private var degradedBaseWarning: some View {
+        if model.baseIsDegraded {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
+                Text("Videre redigering skjer fra ~2400px-preview (ikke RAW) etter AI-retusj")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.orange.opacity(0.9), in: Capsule())
+            .padding(8)
         }
     }
 
