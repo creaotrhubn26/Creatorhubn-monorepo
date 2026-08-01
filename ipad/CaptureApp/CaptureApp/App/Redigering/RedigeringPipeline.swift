@@ -83,8 +83,7 @@ enum RedigeringPipeline {
                 out = out.transformed(by: CGAffineTransform(scaleX: s, y: s))
             }
         }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cg = ctx.createCGImage(
+        guard let cg = sharedContext.createCGImage(
             out, from: out.extent, format: .RGBA8,
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else { return nil }
         var img = UIImage(cgImage: cg)
@@ -110,8 +109,11 @@ enum RedigeringPipeline {
         f.inputImage = ci
         f.ev = Float(ev)
         guard let out = f.outputImage else { return image }
-        let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cg = context.createCGImage(out, from: out.extent) else { return image }
+        guard let cg = sharedContext.createCGImage(out, from: out.extent) else { return image }
         return UIImage(cgImage: cg)
     }
+
+    /// Delt GPU-render-kontekst. CIContext er dyr å opprette (allokerer Metal-
+    /// ressurser) og skal gjenbrukes — ikke opprettes per slider-slipp.
+    static let sharedContext = CIContext(options: [.useSoftwareRenderer: false])
 }
