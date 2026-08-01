@@ -50,6 +50,20 @@ export const GEN_MODELS: Record<string, GenModel> = {
     imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
+  // Seedance v1 Pro i2v — den PRODUKSJONS-BEVISTE stien (samme som ad-film-Python).
+  // 🔑 Har `fal-ai/`-prefiks (queue.fal.run krever eier-prefiks); uten den svarer
+  // fal 403. Brukes av Post Agent Demo Studio sin /ai/generate-video-rute.
+  "seedance-i2v-pro": {
+    key: "seedance-i2v-pro",
+    label: "Seedance v1 Pro — bilde→video",
+    falPath: "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+    kind: "image-to-video",
+    provider: "bytedance",
+    estCostUsd: 0.5,
+    costPerSecondUsd: 0.12,
+    imageField: "image_url", outputField: "video",
+    sendsPersonalData: true,
+  },
   // Photo enhancer (GFPGAN/Real-ESRGAN) — kjører på VÅR infra (CPU/RunPod-GPU),
   // ikke fal. «Kost» = compute; margin via påslag. Egen kø (enqueuePhotoEnhancer…).
   "photo-enhance": {
