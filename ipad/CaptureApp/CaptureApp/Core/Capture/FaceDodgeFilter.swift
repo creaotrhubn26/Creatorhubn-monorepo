@@ -11,13 +11,12 @@ enum FaceDodgeFilter {
     /// Mål-median-luma for ansikt (0…1). ~0.41 ≈ 105/255 (samme som motoren).
     static let target: CGFloat = 0.41
 
-    static func apply(to image: CIImage) -> CIImage {
+    static func apply(to image: CIImage, faces: [CGRect]? = nil) -> CIImage {
         let extent = image.extent
         guard extent.width >= 2, extent.height >= 2 else { return image }
-        // HVERT ansikt (ikke bare største): på gruppebilder kan flere ansikter
-        // være for mørke — hvert for-mørkt ansikt løftes med SIN egen gamma,
-        // maskert til seg; godt eksponerte ansikter hoppes over.
-        let faceRects = detectFaceRects(in: image, extent: extent)
+        // HVERT ansikt (ikke bare største): hvert for-mørkt ansikt løftes med SIN
+        // egen gamma, maskert til seg. #5: bruk delte rekter når gitt.
+        let faceRects = faces ?? detectFaceRects(in: image, extent: extent)
         guard !faceRects.isEmpty else { return image }
 
         var out = image

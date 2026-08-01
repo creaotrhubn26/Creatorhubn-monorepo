@@ -8,12 +8,13 @@ import CoreImage.CIFilterBuiltins
 /// blur som flater ut). Erstatter den rene blur-utjevningen.
 enum SkinFinishFilter {
     static func apply(to image: CIImage, warmth: Double = 0.12, vibrance: Double = 0.18,
-                      dimension: Double = 0.10, smooth: Double = 0.25) -> CIImage {
+                      dimension: Double = 0.10, smooth: Double = 0.25,
+                      faces: [CGRect]? = nil) -> CIImage {
         let extent = image.extent
         guard extent.width >= 4, extent.height >= 4 else { return image }
         // ALLE ansikter (ikke bare største) — på gruppebilder skal forloverne få
-        // samme finish som brudeparet; inkonsistent finish er mer synlig enn ingen.
-        let faceRects = detectFaceRects(in: image, extent: extent)
+        // samme finish som brudeparet. #5: bruk delte rekter når gitt.
+        let faceRects = faces ?? detectFaceRects(in: image, extent: extent)
         guard !faceRects.isEmpty else { return image }
 
         var skin = image
