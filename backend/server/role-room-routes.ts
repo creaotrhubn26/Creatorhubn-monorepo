@@ -25144,7 +25144,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { url, weekStarting, skipClaude, projectId: bestTimeProjectId } = req.body ?? {};
+        const { url, weekStarting, skipClaude, focus, projectId: bestTimeProjectId } = req.body ?? {};
         if (!url || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -25182,8 +25182,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           analysisId = inserted.rows[0].id;
         }
 
-        // 2) Strategist
-        const plan = await generateWeekPlan(brandProfile, weekStarting);
+        // 2) Strategist (valgfritt kampanje-fokus fra katalog-produkt)
+        const plan = await generateWeekPlan(brandProfile, weekStarting, {
+          focus: typeof focus === 'string' ? focus : undefined,
+        });
         await applyBestTimeOverride(pool, plan, bestTimeProjectId);
 
         // 3) Generator (DB transaction inside)

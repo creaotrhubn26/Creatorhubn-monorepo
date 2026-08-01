@@ -19,7 +19,11 @@ import {
   Chip,
   CircularProgress,
   Fade,
+  FormControl,
   Grow,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   Typography,
@@ -33,6 +37,7 @@ import {
   type CarouselPostRow,
   type CarouselSlideRow,
 } from '../../../services/carouselService';
+import { marketingCatalogApi, type CatalogItem } from '../../../services/adminRoomApi';
 
 type Phase = 'idle' | 'analyzing' | 'dna' | 'generating' | 'done' | 'error';
 
@@ -71,6 +76,9 @@ export function BusinessDnaOnboarding() {
   const [brand, setBrand] = useState<BrandProfile | null>(null);
   const [posts, setPosts] = useState<CarouselPostRow[]>([]);
   const [slides, setSlides] = useState<CarouselSlideRow[]>([]);
+  const [scannedUrl, setScannedUrl] = useState('');
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [focus, setFocus] = useState('');
 
   const coverByPost = useMemo(() => {
     const map = new Map<string, CarouselSlideRow>();
@@ -81,6 +89,17 @@ export function BusinessDnaOnboarding() {
     return map;
   }, [slides]);
 
+  const generateCampaign = async (target: string, focusArg?: string) => {
+    setPhase('generating');
+    setPosts([]);
+    setSlides([]);
+    const { draft } = await generateDraft(target, nextMondayISO(), focusArg ? { focus: focusArg } : {});
+    const full = await getDraft(draft.id);
+    setPosts(full.posts);
+    setSlides(full.slides);
+    setPhase('done');
+  };
+
   const run = async () => {
     const target = normalizeUrl(url);
     if (!target) return;
@@ -88,20 +107,31 @@ export function BusinessDnaOnboarding() {
     setBrand(null);
     setPosts([]);
     setSlides([]);
+    setFocus('');
     try {
       // 1) Business DNA — avsløres først
       setPhase('analyzing');
       const { brandProfile } = await analyzeWebsite(target);
       setBrand(brandProfile);
+      setScannedUrl(target);
       setPhase('dna');
-
+      // Katalog for refokus-valg (fire-and-forget)
+      void marketingCatalogApi
+        .list()
+        .then((items) => setCatalog(items.filter((i) => i.active)))
+        .catch(() => {});
       // 2) Kampanje med sidens egne bilder
-      setPhase('generating');
-      const { draft } = await generateDraft(target, nextMondayISO());
-      const full = await getDraft(draft.id);
-      setPosts(full.posts);
-      setSlides(full.slides);
-      setPhase('done');
+      await generateCampaign(target);
+    } catch (err) {
+      setError((err as Error).message);
+      setPhase('error');
+    }
+  };
+
+  const refocus = async () => {
+    if (!scannedUrl) return;
+    try {
+      await generateCampaign(scannedUrl, focus || undefined);
     } catch (err) {
       setError((err as Error).message);
       setPhase('error');
@@ -341,6 +371,31 @@ export function BusinessDnaOnboarding() {
               );
             })}
           </Stack>
+          {phase === 'done' && catalog.length > 0 && (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center" sx={{ mt: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 280 }}>
+                <InputLabel id="focus-label">Fokusér på et katalog-produkt</InputLabel>
+                <Select
+                  labelId="focus-label"
+                  label="Fokusér på et katalog-produkt"
+                  value={focus}
+                  onChange={(e) => setFocus(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>Ingen — bred kampanje</em>
+                  </MenuItem>
+                  {catalog.map((c) => (
+                    <MenuItem key={c.id} value={c.description ? `${c.name} — ${c.description}` : c.name}>
+                      {c.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button variant="outlined" disabled={!focus} onClick={() => void refocus()}>
+                Generér på nytt med fokus
+              </Button>
+            </Stack>
+          )}
           {phase === 'done' && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
               Bygget med dine egne bilder fra nettsiden (brand-assets), grunnet i merkevaren din — rediger og
