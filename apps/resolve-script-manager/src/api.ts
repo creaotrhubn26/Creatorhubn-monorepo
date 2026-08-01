@@ -237,6 +237,109 @@ export async function recordIphoneMirroring(
   return invoke<string>("record_iphone_mirroring", { projectId, sceneId, screenIndex, durationSec });
 }
 
+// ── iOS-simulator-styring (live-preview, launch, deep-link, autonom drift) ────
+
+/** En brukerinstallert app i simulatoren. */
+export interface SimApp {
+  bundleId: string;
+  name: string;
+}
+
+/** Ett element i iOS accessibility-treet (fra idb describe-all). */
+export interface SimElement {
+  label: string;
+  type: string;
+  /** Sentrum i punkt-koordinater (klar for tap). */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Boot simulatoren (idempotent) + bring Simulator.app til front. */
+export async function iosSimBoot(udid: string): Promise<boolean> {
+  return invoke<boolean>("ios_sim_boot", { udid });
+}
+
+/** Launch en app i simulatoren via bundle-id. Returnerer PID (0 = ukjent). */
+export async function iosSimLaunch(udid: string, bundleId: string): Promise<number> {
+  return invoke<number>("ios_sim_launch", { udid, bundleId });
+}
+
+/** Åpne en deep-link i simulatoren (driver appen til en scene-skjerm). */
+export async function iosSimOpenUrl(udid: string, url: string): Promise<boolean> {
+  return invoke<boolean>("ios_sim_openurl", { udid, url });
+}
+
+/** List brukerinstallerte apper i simulatoren. */
+export async function iosSimListApps(udid: string): Promise<SimApp[]> {
+  return invoke<SimApp[]>("ios_sim_list_apps", { udid });
+}
+
+/** Ett skjermbilde av simulatoren som base64 data-URL (til live-preview). */
+export async function iosSimScreenshot(udid: string): Promise<string> {
+  return invoke<string>("ios_sim_screenshot", { udid });
+}
+
+/** Trykk i simulatoren via idb (autonom drift). */
+export async function iosSimTap(udid: string, x: number, y: number): Promise<boolean> {
+  return invoke<boolean>("ios_sim_tap", { udid, x, y });
+}
+
+/** Sveip i simulatoren via idb (scroll under autonom gjennomgang). */
+export async function iosSimSwipe(udid: string, x1: number, y1: number, x2: number, y2: number): Promise<boolean> {
+  return invoke<boolean>("ios_sim_swipe", { udid, x1, y1, x2, y2 });
+}
+
+/** Accessibility-treet + skjermbounds (for å konvertere koordinater → hotspot-%). */
+export interface SimScreen {
+  elements: SimElement[];
+  screenWidth: number;
+  screenHeight: number;
+}
+
+/**
+ * Les accessibility-treet og normaliser til {label,type,x,y,width,height} med
+ * sentrum-koordinater klare for tap. Filtrerer til elementer med en label eller
+ * en meningsfull type (knapper/celler/lenker/tekstfelt). Returnerer også
+ * skjermbounds (største element-ramme = vindu/app-root).
+ */
+export async function iosSimDescribe(udid: string): Promise<SimScreen> {
+  const raw = await invoke<string>("ios_sim_describe", { udid });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // idb kan gi JSON-lines; prøv linje-for-linje.
+    parsed = raw.split("\n").filter((l) => l.trim().startsWith("{")).map((l) => {
+      try { return JSON.parse(l); } catch { return null; }
+    }).filter(Boolean);
+  }
+  const arr = Array.isArray(parsed) ? parsed : [];
+  const out: SimElement[] = [];
+  let screenWidth = 0;
+  let screenHeight = 0;
+  for (const el of arr as Array<Record<string, unknown>>) {
+    const frame = (el.frame ?? el.AXFrame) as Record<string, number> | undefined;
+    if (!frame) continue;
+    const x = Number(frame.x ?? 0);
+    const y = Number(frame.y ?? 0);
+    const w = Number(frame.width ?? 0);
+    const h = Number(frame.height ?? 0);
+    if (w <= 0 || h <= 0) continue;
+    // Skjermbounds = ytterste kant over alle elementer (vindu-root spenner hele skjermen).
+    screenWidth = Math.max(screenWidth, x + w);
+    screenHeight = Math.max(screenHeight, y + h);
+    const label = String(el.AXLabel ?? el.label ?? el.AXValue ?? "").trim();
+    const type = String(el.type ?? el.AXType ?? el.role ?? "").trim();
+    // Behold interaktive/navngitte elementer; hopp over rene layout-containere uten label.
+    const interactive = /button|cell|link|textfield|searchfield|tab|switch|slider|menuitem|statictext/i.test(type);
+    if (!label && !interactive) continue;
+    out.push({ label, type, x: x + w / 2, y: y + h / 2, width: w, height: h });
+  }
+  return { elements: out, screenWidth, screenHeight };
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }
