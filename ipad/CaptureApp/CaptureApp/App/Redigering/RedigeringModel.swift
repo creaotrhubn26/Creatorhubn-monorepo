@@ -128,6 +128,42 @@ final class RedigeringModel {
     private let assetAnalyzer = AssetAnalyzer()
     var qualityBlockerCount: Int { qualityFindings.filter(\.hasBlocker).count }
     var qualityWarningCount: Int { qualityFindings.count - qualityBlockerCount }
+
+    /// Samlet analyse for det VALGTE bildet — driver data-drevne auto-forslag.
+    /// Gjenbruker persistert `signals.analysis`, ellers målt on-demand (cache).
+    private(set) var selectedAnalysis: AssetAnalysis?
+
+    /// Data-drevne auto-edit-forslag for det valgte bildet (motiv-klipp→høylys,
+    /// motlys→skygge-løft, cast→WB, flatt→kontrast). Tom når justeringer er av
+    /// (server-gradet/lært stil) siden recipe-deltaene da ikke slår gjennom.
+    var editSuggestions: [EditSuggestion] {
+        guard !serverGraded, !learnedStyleAuto, learnedStyleIndex == nil,
+              let a = selectedAnalysis else { return [] }
+        return EditSuggestionEngine.suggestions(for: a)
+    }
+
+    /// Påfør ett forslags recipe-delta (med angre-støtte), render + persister.
+    func applySuggestion(_ s: EditSuggestion) {
+        beginEdit()
+        s.apply(to: &recipe)
+        recipeChanged()
+    }
+
+    /// Oppdater `selectedAnalysis` for det valgte bildet — persistert hvis den
+    /// finnes, ellers målt off-main (cache-drevet → rask ved gjenbesøk).
+    private func refreshSelectedAnalysis() {
+        selectedAnalysis = selected?.signals.analysis
+        guard selectedAnalysis == nil, let asset = selected,
+              let key = asset.previewKey ?? asset.displayPreviewKey,
+              FileManager.default.fileExists(atPath: key) else { return }
+        let id = asset.id
+        let analyzer = assetAnalyzer
+        Task { [weak self] in
+            let measured = await analyzer.analyze(imageURL: URL(fileURLWithPath: key))
+            guard let self, self.selectedId == id else { return }
+            self.selectedAnalysis = measured
+        }
+    }
     /// Undo/redo av HELE edit-tilstanden (recipe + eksponering + crop) for det
     /// valgte bildet — ikke bare recipe.
     private var undo: [RedigeringEditStore.EditState] = []
@@ -233,6 +269,7 @@ final class RedigeringModel {
             selectedId = assets.first?.id
             loadRecipeForSelection()
             loadExifForSelection()
+            refreshSelectedAnalysis()
             await render()
         } catch { errorMessage = "Kunne ikke laste bilder" }
     }
@@ -247,6 +284,7 @@ final class RedigeringModel {
         undo.removeAll(); redo.removeAll()
         loadExifForSelection()
         loadRecipeForSelection()
+        refreshSelectedAnalysis()
         Task { await render() }
     }
 
