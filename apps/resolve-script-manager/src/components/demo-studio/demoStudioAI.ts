@@ -470,19 +470,26 @@ export async function synthesizeProductBrain(params: {
 }): Promise<string> {
   const { url, marketingContext, screenshots } = params;
   const imgs = screenshots.slice(0, 6).map(imageBlock).filter((b): b is ClaudeContentBlock => b !== null);
-  const textPart = `Produkt-URL: ${url}
+  const textPart = `Demo-URL (det SPESIFIKKE produktet vi lager demo for): ${url}
 ${marketingContext ? `Markedsføring (offentlige sider):\n${marketingContext}\n` : ''}
-Du får ${imgs.length} SKJERMBILDER av det FAKTISKE produktet — ofte skjermer INNE i appen (etter innlogging), ikke bare landingssiden. Destillér hva produktet VIRKELIG er og gjør, basert på det du SER i appen kombinert med markedsføringen:
-- Hva produktet er (én setning)
-- Kjernefunksjoner — hva kan brukeren FAKTISK gjøre (fra skjermene, ikke bare påstander)
-- Nøkkel-skjermer / flyter du ser i appen
-- Målgruppe
-Svar som kompakt norsk punktliste, maks ~200 ord. Dette blir «Product Brain» som forankrer alt manus og all regi.`;
+Du får ${imgs.length} FAKTISKE app-skjermer (ofte skjermer INNE i appen, etter innlogging).
+
+VIKTIG — hold TO nivåer, ikke bland dem sammen:
+1. DET SPESIFIKKE PRODUKTET på denne URL-en/forsiden, ved navn slik det står på siden — DETTE er hva demoen handler om, og det du skal forankre manuset i.
+2. Hvis skjermene/appen viser at det er DEL AV en større plattform/økosystem, noter den moder-plattformen som KONTEKST — men IKKE bytt ut det spesifikke produktet med moder-plattformen. En modul i en større suite er fortsatt sin egen ting.
+
+Svar som kompakt norsk punktliste (maks ~220 ord):
+- Produkt (spesifikt, ved navn fra siden): … — hva det er (én setning)
+- Del av plattform (hvis relevant, ellers utelat): …
+- Kjernefunksjoner (hva brukeren FAKTISK kan gjøre — fra skjermene, ikke bare påstander): …
+- Nøkkel-skjermer / flyter du ser: …
+- Målgruppe: …
+Dette blir «Product Brain» som forankrer alt manus og all regi i DET SPESIFIKKE produktet.`;
   const content: string | ClaudeContentBlock[] = imgs.length ? [...imgs, { type: 'text', text: textPart }] : textPart;
   const raw = await claudeProxyService.send({
-    systemPrompt: 'Du destillerer en dyp, konkret produkt-forståelse fra FAKTISKE app-skjermer + markedsføring. Beskriv det du SER inne i produktet (funksjoner, flyter), ikke bare hva markedsføringen påstår. Svar kompakt, ingen forklaring rundt.',
+    systemPrompt: 'Du destillerer en dyp, konkret produkt-forståelse fra FAKTISKE app-skjermer + markedsføring. Forankre i DET SPESIFIKKE produktet på demo-URL-en (navnet fra siden) — ikke generaliser til moder-plattformen selv om app-chromet viser en større suite; nevn suiten kun som kontekst. Beskriv det du SER (funksjoner, flyter), ikke bare påstander. Svar kompakt, ingen forklaring rundt.',
     messages: [{ role: 'user', content }],
-    maxTokens: 700,
+    maxTokens: 750,
   });
   return raw.trim();
 }
