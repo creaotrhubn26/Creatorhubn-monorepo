@@ -52,6 +52,7 @@ enum RAWExportPipeline {
         recipe: MagicRecipe,
         identifierHint: String? = nil,
         jpegCompressionQuality: CGFloat = 0.92,
+        exposureEV: Double = 0,
         targetMaxDimension: CGFloat? = nil,
         colorPurpose: ColorManagement.Purpose = .webDelivery,
     ) throws -> Data {
@@ -66,6 +67,7 @@ enum RAWExportPipeline {
             defaultLuminanceNR: filter.luminanceNoiseReductionAmount,
             pictureStyleBaseline: baseline,
             recipe: recipe,
+            exposureEV: exposureEV,
             targetMaxDimension: targetMaxDimension,
         ) else { throw Error.renderFailed }
 
@@ -103,6 +105,7 @@ enum RAWExportPipeline {
         defaultLuminanceNR: Float,
         pictureStyleBaseline: MagicRecipe,
         recipe: MagicRecipe,
+        exposureEV: Double = 0,
         targetMaxDimension: CGFloat?,
     ) -> CIImage? {
         // Picture Style-baseline kun når recipen er nøytral (ingen slider rørt);
@@ -114,6 +117,12 @@ enum RAWExportPipeline {
 
         applyRecipe(effectiveRecipe, to: filter,
                     asShotTemperature: asShotTemperature, defaultLuminanceNR: defaultLuminanceNR)
+
+        // #2 EV NATIVT: `CIRAWFilter.exposure` (pre-demosaic, scene-lineært RAW) i
+        // stedet for en post-develop CIExposureAdjust på 8-bit. +EV henter tilbake
+        // klippede høylys (RAW-headroom), −EV gir ingen banding. ABSOLUTT (0 =
+        // nøytral) så et gjenbrukt filter ikke arver forrige renders EV.
+        filter.exposure = Float(exposureEV)
 
         // Downsample ved decode (scaleFactor kjører bayer-pipelinen lavere-oppløst).
         // Settes ABSOLUTT (=1 uten nedskalering) så gjenbruk ikke arver stale skala.

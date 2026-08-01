@@ -21,19 +21,19 @@ enum RedigeringPipeline {
         crop: CGRect? = nil,
         maxDimension: CGFloat? = 1600,
     ) -> UIImage? {
-        var base: UIImage?
-
         // #1 RAW-CACHE: den interaktive banen GJENBRUKER ett CIRAWFilter per asset
         // (cachet) i stedet for å lese 30–50 MB fra disk + re-parse RAW hvert
         // slider-slipp. Kun filter-properties muteres → Core Image gjenbruker
-        // dekodingen; ingen JPEG-round-trip (rendrer rett til UIImage).
-        if let rawPath, let entry = cachedRawFilter(rawPath: rawPath) {
-            base = entry.render(recipe: recipe, maxDimension: maxDimension)
+        // dekodingen; ingen JPEG-round-trip (rendrer rett til UIImage). #2 EV
+        // påføres NATIVT på CIRAWFilter (pre-demosaic) i denne banen.
+        if let rawPath, let entry = cachedRawFilter(rawPath: rawPath),
+           var img = entry.render(recipe: recipe, exposureEV: exposureEV, maxDimension: maxDimension) {
+            if let crop { img = cropped(img, to: crop) }
+            return img
         }
-        if base == nil, let jpegPath {
-            base = MagicPipeline.renderPreview(source: jpegPath, recipe: recipe)
-        }
-        guard var img = base else { return nil }
+        // JPEG-fallback (ingen RAW): EV som post-steg på 8-bit — det beste vi kan
+        // uten sensor-headroom (henter ikke klippede høylys).
+        guard let jpegPath, var img = MagicPipeline.renderPreview(source: jpegPath, recipe: recipe) else { return nil }
         if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
         if let crop { img = cropped(img, to: crop) }
         return img
@@ -43,20 +43,25 @@ enum RedigeringPipeline {
     /// available, else re-encodes the display JPEG with the recipe.
     static func renderExport(rawPath: String?, jpegPath: String?, recipe: MagicRecipe, exposureEV: Double, crop: CGRect? = nil) -> Data? {
         var out: UIImage?
+        var evAppliedInRaw = false
         if let rawPath, let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)) {
             let hint = (rawPath as NSString).pathExtension.lowercased()
+            // #2 EV NATIVT (pre-demosaic) også på eksport → leveransen henter samme
+            // høylys som previewen viser (WYSIWYG mot den cachede render-banen).
             if let jpeg = try? RAWExportPipeline.render(
                 rawData: data, recipe: recipe, identifierHint: hint.isEmpty ? nil : hint,
-                targetMaxDimension: nil, colorPurpose: .webDelivery,
+                exposureEV: exposureEV, targetMaxDimension: nil, colorPurpose: .webDelivery,
             ) {
                 out = UIImage(data: jpeg)
+                evAppliedInRaw = true
             }
         }
         if out == nil, let jpegPath {
             out = MagicPipeline.renderPreview(source: jpegPath, recipe: recipe)
         }
         guard var img = out else { return nil }
-        if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
+        // Kun JPEG-fallback trenger post-EV; RAW-banen har alt påført det nativt.
+        if exposureEV != 0, !evAppliedInRaw { img = applyExposure(exposureEV, to: img) ?? img }
         if let crop { img = cropped(img, to: crop) }
         return img.jpegData(compressionQuality: 0.92)
     }
@@ -165,12 +170,13 @@ enum RedigeringPipeline {
         }
 
         /// Tonet UIImage for recipen (serialisert per asset), rett til UIImage.
-        func render(recipe: MagicRecipe, maxDimension: CGFloat?) -> UIImage? {
+        /// EV påføres NATIVT på CIRAWFilter (pre-demosaic) via `tonedImage`.
+        func render(recipe: MagicRecipe, exposureEV: Double, maxDimension: CGFloat?) -> UIImage? {
             lock.lock(); defer { lock.unlock() }
             guard let ci = RAWExportPipeline.tonedImage(
                 filter: filter, asShotTemperature: asShotTemperature,
                 defaultLuminanceNR: defaultLuminanceNR, pictureStyleBaseline: pictureStyleBaseline,
-                recipe: recipe, targetMaxDimension: maxDimension) else { return nil }
+                recipe: recipe, exposureEV: exposureEV, targetMaxDimension: maxDimension) else { return nil }
             let ctx = ColorManagement.makeContext(for: .appPreview)
             guard let cg = ColorManagement.renderCGImage(from: ci, context: ctx, purpose: .appPreview)
             else { return nil }
