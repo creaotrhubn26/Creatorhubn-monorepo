@@ -68,6 +68,27 @@ final class MagicRecipeWeddingTests: XCTestCase {
         XCTAssertGreaterThan(Self.meanLuma(rOff), 0.02, "enhance=av rendret svart")
     }
 
+    /// REGRESJON (preview↔leveranse): MagicPipeline bruker nå SAMME sene
+    /// CIToneCurve for highlightRecovery som RAWExportPipeline (før: en tidlig
+    /// CIHighlightShadowAdjust → ulik høylys-rulloff preview vs levert bilde).
+    /// Beviser at kurven er koblet + aktiv: høylys skal dempes ved recovery > 0.
+    func testHighlightRecoveryDarkensBrightRegionInPreview() throws {
+        // Nesten-utblåst bilde så tone-kurvens topp-segment (>65 %) treffer.
+        let img = UIGraphicsImageRenderer(size: CGSize(width: 128, height: 128)).image { ctx in
+            UIColor(white: 0.97, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 128, height: 128))
+        }
+        let jpeg = try XCTUnwrap(img.jpegData(compressionQuality: 0.98))
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("redig_hr.jpg")
+        try jpeg.write(to: tmp); defer { try? FileManager.default.removeItem(at: tmp) }
+        var flat = MagicRecipe.neutral; flat.highlightRecovery = 0
+        var recovered = MagicRecipe.neutral; recovered.highlightRecovery = 1.0
+        let rFlat = try XCTUnwrap(MagicPipeline.renderPreview(source: tmp.path, recipe: flat)?.cgImage)
+        let rRec = try XCTUnwrap(MagicPipeline.renderPreview(source: tmp.path, recipe: recovered)?.cgImage)
+        XCTAssertLessThan(Self.meanLuma(rRec), Self.meanLuma(rFlat),
+                          "highlightRecovery dempet ikke høylysene (tone-kurve ikke aktiv)")
+    }
+
     private func makeImage(_ side: CGFloat = 256) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
             let cs = CGColorSpaceCreateDeviceRGB()
