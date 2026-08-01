@@ -410,6 +410,29 @@ export async function generateBrollClipFal(args: {
   });
 }
 
+/**
+ * Generér en SYNTETISK PRESENTØR — et talehode leppesynket til en voiceover
+ * (Seedance --start-image person + --audio-references voiceover). presenterImage
+ * er en lokal sti / data-URL / http-URL til personen; audioDataUrl er voiceoveren.
+ */
+export async function generatePresenterClip(args: {
+  projectId: string;
+  sceneId: string;
+  prompt: string;
+  presenterImage: string;
+  audioDataUrl: string;
+  resolution: BrollResolution;
+}): Promise<string> {
+  return invoke<string>("generate_presenter_clip", {
+    projectId: args.projectId,
+    sceneId: args.sceneId,
+    prompt: args.prompt,
+    presenterImage: args.presenterImage,
+    audioDataUrl: args.audioDataUrl,
+    resolution: args.resolution,
+  });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }
