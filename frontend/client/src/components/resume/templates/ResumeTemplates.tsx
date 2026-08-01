@@ -793,7 +793,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
 export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#374151', accentDark: '#111827', bgSoft: '#f3f4f6' });
   const head = (label: string) => (
-    <Typography sx={{ fontSize: 13, fontWeight: 300, letterSpacing: 4, color: '#111', mt: 3, mb: 1.5 }}>
+    <Typography component="h2" sx={{ fontSize: 13, fontWeight: 300, letterSpacing: 4, color: '#111', mt: 3, mb: 1.5 }}>
       {label.toUpperCase()}
     </Typography>
   );
@@ -817,7 +817,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
   return (
     <Box sx={{ ...PAGE_PRINT_SX, maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4, fontFamily: 'Inter, sans-serif' }}>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <Typography variant="h2" sx={{ fontWeight: 300, fontSize: '36px', letterSpacing: 2 }}>
+        <Typography component="h1" variant="h2" sx={{ fontWeight: 300, fontSize: '36px', letterSpacing: 2 }}>
           {(resume.personalInfo?.fullName ?? '').toUpperCase()}
         </Typography>
         {resume.personalInfo?.professionalTitle && (
@@ -2069,12 +2069,12 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
   const accentText = '#FFFFFF';
   const muted = '#6B7280';
   const sectionTitle = (label: string) => (
-    <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 14, mb: 1.2, color: accent, letterSpacing: 0.4 }}>
+    <Typography component="h2" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 14, mb: 1.2, color: accent, letterSpacing: 0.4 }}>
       {label.toUpperCase()}
     </Typography>
   );
   const sidebarTitle = (label: string) => (
-    <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 12, mb: 1, color: ON_ACCENT, letterSpacing: 1.5 }}>
+    <Typography component="h2" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 12, mb: 1, color: ON_ACCENT, letterSpacing: 1.5 }}>
       {label.toUpperCase()}
     </Typography>
   );
@@ -2287,8 +2287,8 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
   const dark = '#1A1A1A';
   const muted = '#666666';
   const chip = (label: string, bg: string = tan, color: string = '#fff') => (
-    <Box sx={{
-      display: 'inline-block', bgcolor: bg, color, px: 2.5, py: 0.6, mb: 1.5,
+    <Box component="h2" sx={{
+      display: 'inline-block', bgcolor: bg, color, px: 2.5, py: 0.6, mt: 0, mb: 1.5,
       fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: 2,
     }}>
       {label.toUpperCase()}
@@ -2390,7 +2390,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
 
       {/* Main column */}
       <Box sx={{ flex: 1, p: preview ? 2.5 : 5, bgcolor: 'rgba(255,255,255,0.04)' }}>
-        <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 32, letterSpacing: 2, color: dark, lineHeight: 1 }}>
+        <Typography component="h1" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 32, letterSpacing: 2, color: dark, lineHeight: 1 }}>
           {(resume.personalInfo?.fullName ?? '').split(' ').map((w, i, arr) => (
             <Box component="span" key={i} sx={{ color: i === arr.length - 1 ? tan : dark }}>
               {w}{i < arr.length - 1 ? ' ' : ''}
@@ -2512,7 +2512,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
   // Vertical timeline with dots, centered name + photo, left sidebar with details
   const sideHead = (label: string) => (
     <Box sx={{ textAlign: 'center', position: 'relative', my: 2 }}>
-      <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 11, letterSpacing: 3, color: dark, display: 'inline-block', px: 1, bgcolor: '#fff' }}>
+      <Typography component="h2" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 11, letterSpacing: 3, color: dark, display: 'inline-block', px: 1, bgcolor: '#fff' }}>
         {label.toUpperCase()}
       </Typography>
       <Box sx={{ position: 'absolute', left: 18, right: 18, top: '50%', borderTop: `1px solid ${dark}`, zIndex: -1 }} />
@@ -2523,7 +2523,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
   const mainHead = (icon: React.ReactNode, label: string) => (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, mt: 2 }}>
       <Box sx={{ color: dark, display: 'inline-flex', alignItems: 'center' }}>{icon}</Box>
-      <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 13, letterSpacing: 2, color: dark }}>
+      <Typography component="h2" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 13, letterSpacing: 2, color: dark }}>
         {label.toUpperCase()}
       </Typography>
     </Stack>
@@ -2552,7 +2552,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
             backgroundSize: 'cover', backgroundPosition: 'center',
           }} />
         )}
-        <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 32, letterSpacing: 4, color: dark }}>
+        <Typography component="h1" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 32, letterSpacing: 4, color: dark }}>
           {(resume.personalInfo?.fullName ?? '').toUpperCase()}
         </Typography>
         <Typography sx={{ fontSize: 11, color: muted, letterSpacing: 1.5, mt: 0.5 }}>
@@ -2767,7 +2767,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
   const muted = '#666666';
   const head = (label: string) => (
     <Box sx={{ mt: 3, mb: 1 }}>
-      <Typography sx={{ fontWeight: 700, fontSize: 11, letterSpacing: 3, color: dark }}>
+      <Typography component="h2" sx={{ fontWeight: 700, fontSize: 11, letterSpacing: 3, color: dark }}>
         {label.toUpperCase()}
       </Typography>
       <Box sx={{ height: '1px', bgcolor: dark, mt: 0.5 }} />
@@ -2913,7 +2913,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
       px: 2, py: 0.5,
       transform: 'skewX(-12deg)',
     }}>
-      <Typography sx={{
+      <Typography component="h2" sx={{
         fontFamily: 'Inter, sans-serif', fontWeight: 800,
         fontSize: 13, letterSpacing: 2,
         transform: 'skewX(12deg)',
