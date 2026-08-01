@@ -8,6 +8,8 @@ struct RedigeringView: View {
     @State private var zoom: CGFloat = 1
     @State private var showCrop = false
     @State private var showMask = false
+    /// Kvalitetssjekk-review (steg 4) — flagg leveranse-blokkere over serien.
+    @State private var showQualityReview = false
     /// Bilde-først: skjul inspector-panelet så bildet fyller bredden.
     @State private var inspectorOpen = true
     /// Histogram + clipping-varsel-overlegg på sammenlignings-bildet.
@@ -97,6 +99,9 @@ struct RedigeringView: View {
                 }
             }
         }
+        .sheet(isPresented: $showQualityReview) {
+            QualityReviewSheet(model: model)
+        }
         .chBranded()
     }
 
@@ -132,7 +137,11 @@ struct RedigeringView: View {
                 }
                 // Sekundært (prosjekt/status) — komprimert nederst, ikke i veien.
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 12) { queueStrip; StepFlow(); bottomCards }
+                    VStack(alignment: .leading, spacing: 12) {
+                        queueStrip
+                        StepFlow(qualityDone: model.qualityDidRun) { showQualityReview = true }
+                        bottomCards
+                    }
                 }
                 .frame(maxHeight: geo.size.height * 0.22)
             }
@@ -304,7 +313,42 @@ struct RedigeringView: View {
 
     private var bottomCards: some View {
         HStack(alignment: .top, spacing: 12) {
-            batchCard; suggestionsCard; deliveryCard
+            batchCard; qualityCard; suggestionsCard; deliveryCard
+        }
+    }
+
+    /// Kvalitetssjekk-kort (steg 4) — kjør passet og se antall flaggede; trykk
+    /// for full review-liste (hopp til hvert problembilde).
+    private var qualityCard: some View {
+        InfoCard(title: "Kvalitetssjekk", icon: "checkmark.seal") {
+            if model.qualityRunning {
+                row("hourglass", "Analyserer \(model.qualityProgress)/\(model.qualityTotal)…", CHTheme.accent)
+                ProgressView(value: Double(model.qualityProgress), total: Double(max(1, model.qualityTotal)))
+                    .tint(CHTheme.accent)
+            } else if model.qualityDidRun {
+                if model.qualityFindings.isEmpty {
+                    row("checkmark.circle.fill", "Ingen blokkere", CHTheme.success)
+                } else {
+                    if model.qualityBlockerCount > 0 {
+                        row("exclamationmark.triangle.fill", "\(model.qualityBlockerCount) blokkere", Color(hex: 0xE0606A))
+                    }
+                    if model.qualityWarningCount > 0 {
+                        row("eye.trianglebadge.exclamationmark", "\(model.qualityWarningCount) svake", .orange)
+                    }
+                }
+                Button { showQualityReview = true } label: {
+                    Label("Se gjennomgang", systemImage: "list.bullet.rectangle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered).controlSize(.small).tint(CHTheme.accent)
+            } else {
+                row("sparkle.magnifyingglass", "Lukkede øyne · fokus · motiv-klipp", CHTheme.textMuted)
+                Button { showQualityReview = true } label: {
+                    Label("Kjør kvalitetssjekk", systemImage: "checkmark.seal")
+                        .font(.caption.weight(.semibold)).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small).tint(CHTheme.accent)
+            }
         }
     }
 
