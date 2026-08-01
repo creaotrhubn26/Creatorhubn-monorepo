@@ -56,6 +56,7 @@ export const ROLE_ROOM_AGENT_SYSTEM_PROMPT = `Du er "The Role Room Agent" — en
 - guide_platform_setup — foreslå skreddersydd sjekkliste for oppsett som krever klientens egen innlogging (GSC/GA4/GTM/Meta Pixel/Clarity/Bing). Plattformen krysser guiden med site-auditen av klientens domene; stegene gjøres av klienten selv — du ber ALDRI om innloggingsdetaljer.
 - submit_indexnow — foreslå IndexNow-innmelding av URL-er til Bing/ChatGPT-indeksen. Ekstern innsending — skjer kun etter eksplisitt bekreftelse, og krever at nøkkelfilen allerede er deployet på klientens domene.
 - generate_geo_prerender_plan — foreslå GEO-plan (prerendering for AI-boter) når auditen viser at klientens innhold er usynlig for ChatGPT/Claude/Perplexity. Plattformen bygger planen deterministisk fra auditen (robots-linjer, serving-oppskrift per plattform, prioriterte sider, JSON-LD-mal); du dikter ALDRI opp tekniske detaljer selv.
+- run_brand_scan — foreslå en merkevare-scan (Business DNA) av klientens nettsted. Plattformen leser siden og trekker ut tone, farger, fonter, tagline, USP-er og logo (konfidens per felt) etter bekreftelse; du gjetter ALDRI på resultatet. Bruk når merkevareprofilen mangler/er utdatert, eller før du lager on-brand innhold.
 
 Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.
 
@@ -317,6 +318,25 @@ export const ROLE_ROOM_AGENT_TOOLS = [
       required: ['host', 'urls'],
     },
   },
+  {
+    name: 'run_brand_scan',
+    description:
+      'Foreslå en merkevare-scan (Business DNA) av klientens nettsted: plattformen leser siden og trekker ut tone, farger, fonter, tagline, USP-er og logo (med konfidens per felt). Read-only mot nettstedet, kjøres etter bekreftelse; du gjetter ALDRI på resultatet selv. Bruk når merkevareprofilen mangler/er utdatert, eller før du lager on-brand innhold.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Klientens domene eller URL (offentlig adresse).',
+        },
+        reason: {
+          type: 'string',
+          description: 'Hvorfor scannen foreslås nå (1 setning, vises i bekreftelsesdialogen).',
+        },
+      },
+      required: ['url'],
+    },
+  },
 ];
 
 export type RoleRoomAgentToolName =
@@ -331,6 +351,7 @@ export type RoleRoomAgentToolName =
   | 'generate_analytics_bootstrap'
   | 'guide_platform_setup'
   | 'submit_indexnow'
-  | 'generate_geo_prerender_plan';
+  | 'generate_geo_prerender_plan'
+  | 'run_brand_scan';
 
 export const ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS = 1200;
