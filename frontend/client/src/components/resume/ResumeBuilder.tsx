@@ -311,6 +311,14 @@ const SCHEME_AWARE_TEMPLATE_IDS = new Set<string>([
   'timeline-centered',
 ]);
 
+// Layout-verdien er en intern nøkkel. Kortet viste den rått, så brukeren
+// fikk «single-column» i et ellers norsk grensesnitt.
+const LAYOUT_LABELS: Record<string, string> = {
+  'single-column': 'Én kolonne',
+  'two-column': 'To kolonner',
+  'modern-split': 'Delt oppsett',
+};
+
 /**
  * Galleri-kort for én CV-mal. Viser previewImage + (for skjema-bevisste maler) en rad
  * fargeskjema-swatches. Klikk på en swatch bytter forhåndsvisnings-bildet til den
@@ -325,6 +333,11 @@ function TemplateGalleryCard({
 }) {
   const [scheme, setScheme] = useState<string | null>(null);
   const schemeAware = SCHEME_AWARE_TEMPLATE_IDS.has(template.id);
+  // Designmetadata (bransje, veiledning) bor i frontend-registeret, mens
+  // selve mallisten kommer fra API-et. Oppslag på id knytter dem sammen.
+  const reg = RESUME_TEMPLATES[template.id as keyof typeof RESUME_TEMPLATES] as
+    | { industries?: string[]; guidance?: string }
+    | undefined;
   const previewSrc = scheme
     ? `/templates/${template.id}-${scheme}-preview.jpg`
     : template.previewImage;
@@ -357,9 +370,38 @@ function TemplateGalleryCard({
         <Typography variant="body2" color="text.secondary">
           {template.description}
         </Typography>
+
+        {/* Bransje og veiledning.
+            Galleriet henter maler fra API-et, mens bransjedataene ligger i
+            RESUME_TEMPLATES i frontend. Derfor slås de opp på id her i
+            stedet for å dupliseres inn i databasen — designmetadata hører
+            sammen med malen, ikke i en tabell som må migreres. */}
+        {reg?.industries?.length ? (
+          <Stack direction="row" spacing={0.5} sx={{ mt: 1.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+            {reg.industries.map((bransje) => (
+              <Chip key={bransje} label={bransje} size="small" variant="outlined" />
+            ))}
+          </Stack>
+        ) : null}
+        {reg?.guidance && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, fontSize: 13, lineHeight: 1.55 }}>
+            {reg.guidance}
+          </Typography>
+        )}
+
         <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-          <Chip label={template.layout} size="small" />
-          <Chip label={`ATS ${template.atsScore}%`} size="small" color="success" />
+          <Chip label={LAYOUT_LABELS[template.layout] ?? template.layout} size="small" />
+          {/* ATS-tallet er hardkodet per mal, ikke målt. Det sto grønt, som
+              leser som en verifisert score — og motsa veiledningen over på
+              maler der to kolonner er en reell parse-risiko. Nøytral farge
+              og en tooltip som sier hva tallet er. Å måle det på ekte er
+              fortsatt ugjort. */}
+          <Tooltip
+            arrow
+            title="Anslag basert på malens oppbygging, ikke en måling av en faktisk eksport."
+          >
+            <Chip label={`ATS-anslag ${template.atsScore}`} size="small" variant="outlined" />
+          </Tooltip>
           {template.isPremium && <Chip label="Premium" size="small" color="warning" />}
         </Stack>
         {schemeAware && (

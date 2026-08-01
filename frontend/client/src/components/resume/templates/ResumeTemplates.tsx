@@ -3073,7 +3073,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 100,
     category: 'professional',
     layout: 'single-column',
-    industries: ['finans', 'jus', 'offentlig sektor', 'regnskap', 'administrasjon'],
+    industries: ['Regnskap og finans', 'Jus', 'Offentlig sektor', 'Administrasjon'],
     guidance: 'Nøytral enkeltkolonne. Det tryggeste valget når søknaden går gjennom et rekrutteringssystem.',
     isPremium: false,
   }, 'professional-two-column': {
@@ -3084,18 +3084,18 @@ export const RESUME_TEMPLATES = {
     atsScore: 85,
     category: 'professional',
     layout: 'two-column',
-    industries: ['administrasjon', 'prosjektledelse', 'konsulent'],
+    industries: ['Administrasjon', 'Prosjektledelse', 'Konsulent / Rådgivning'],
     guidance: 'To kolonner gir oversikt, men sidefeltet kan flettes inn i brødteksten av eldre rekrutteringssystemer.',
     isPremium: false,
   }, 'norwegian-two-column': {
     id: 'norwegian-two-column',
     name: 'Norsk To-kolonne',
-    description: 'Inspirert av norske CV-standarder med profilbilde og ferdighetsindikatorer',
+    description: 'Inspirert av norske CV-standarder, med profilbilde',
     component: NorwegianTwoColumnTemplate,
     atsScore: 90,
     category: 'professional',
     layout: 'two-column',
-    industries: ['offentlig sektor', 'undervisning', 'administrasjon'],
+    industries: ['Offentlig sektor', 'Undervisning', 'Administrasjon'],
     guidance: 'Norsk oppsett med to kolonner. Samme forbehold om rekrutteringssystemer som over.',
     isPremium: false,
   }, 'minimal-clean': {
@@ -3106,7 +3106,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 95,
     category: 'minimal',
     layout: 'single-column',
-    industries: ['finans', 'jus', 'forskning', 'offentlig sektor'],
+    industries: ['Regnskap og finans', 'Jus', 'Forskning', 'Offentlig sektor'],
     guidance: 'Stram enkeltkolonne uten farge. Passer der innholdet skal snakke og formen ikke skal merkes.',
     isPremium: false,
   }, 'creative-photographer': {
@@ -3117,7 +3117,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 80,
     category: 'creative',
     layout: 'modern-split',
-    industries: ['foto', 'film', 'media', 'reklame'],
+    industries: ['Foto', 'Film', 'Media', 'Reklame'],
     guidance: 'Visuelt uttrykk for kreative fag. Ikke det beste valget til stillinger som screenes maskinelt.',
     isPremium: false,
   }, 'modern-tech': {
@@ -3128,7 +3128,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 95,
     category: 'technology',
     layout: 'single-column',
-    industries: ['teknologi', 'utvikling', 'data'],
+    industries: ['IT / Utvikling'],
     guidance: 'Ren layout med aksentfarge. Laget for tekniske roller der verktøy og stack skal fram.',
     isPremium: false,
   }, 'healthcare-professional': {
@@ -3139,7 +3139,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'healthcare',
     layout: 'single-column',
-    industries: ['helse', 'omsorg', 'pleie'],
+    industries: ['Helse / Omsorg'],
     guidance: 'Plass til autorisasjon, journalsystem og turnuserfaring — det helseledere leter etter.',
     isPremium: false,
   }, 'academic-researcher': {
@@ -3150,7 +3150,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 95,
     category: 'academic',
     layout: 'single-column',
-    industries: ['forskning', 'universitet', 'høgskole'],
+    industries: ['Forskning', 'Universitet', 'Høgskole'],
     guidance: 'Akademisk oppsett. Publikasjoner, undervisning og stipend står sentralt.',
     isPremium: false,
   }, 'executive-leadership': {
@@ -3161,7 +3161,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 85,
     category: 'executive',
     layout: 'single-column',
-    industries: ['ledelse', 'styrearbeid', 'finans'],
+    industries: ['Ledelse', 'Styrearbeid', 'Regnskap og finans'],
     guidance: 'Formelt lederuttrykk. Vekt på ansvar, resultat og omfang framfor oppgaver.',
     isPremium: false,
   }, 'sales-professional': {
@@ -3172,7 +3172,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'sales',
     layout: 'single-column',
-    industries: ['salg', 'kundeoppfølging', 'markedsføring'],
+    industries: ['Salg', 'Markedsføring'],
     guidance: 'Bygget for tallfestede resultater — måloppnåelse, portefølje, vekst.',
     isPremium: false,
   }, 'nordic-dark-sidebar': {
@@ -3183,7 +3183,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 92,
     category: 'creative',
     layout: 'two-column',
-    industries: ['teknologi', 'konsulent', 'markedsføring'],
+    industries: ['IT / Utvikling', 'Konsulent / Rådgivning', 'Markedsføring'],
     guidance: 'Mørkt sidefelt. Merk at det trykker en fylt spalte gjennom hele arket ved utskrift.',
     isPremium: false,
   }, 'modern-tan-sidebar': {
@@ -3194,7 +3194,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 88,
     category: 'creative',
     layout: 'two-column',
-    industries: ['design', 'kommunikasjon', 'markedsføring'],
+    industries: ['Design', 'Kommunikasjon', 'Markedsføring'],
     guidance: 'Dempet sidefelt med varm aksent. Kreativt uten å rope.',
     isPremium: false,
   }, 'timeline-centered': {
@@ -3205,7 +3205,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 90,
     category: 'creative',
     layout: 'two-column',
-    industries: ['teknologi', 'prosjektledelse', 'konsulent'],
+    industries: ['IT / Utvikling', 'Prosjektledelse', 'Konsulent / Rådgivning'],
     guidance: 'Tidslinje som viser progresjon. Fungerer best med en sammenhengende karrierevei.',
     isPremium: false,
   }, 'minimal-mono': {
@@ -3216,7 +3216,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 100,
     category: 'professional',
     layout: 'single-column',
-    industries: ['arkitektur', 'design', 'forskning'],
+    industries: ['Arkitektur', 'Design', 'Forskning'],
     guidance: 'Typografisk stram enkeltkolonne. Rolig uttrykk, høy lesbarhet.',
     isPremium: false,
   }, 'bold-creative': {
@@ -3227,7 +3227,7 @@ export const RESUME_TEMPLATES = {
     atsScore: 82,
     category: 'creative',
     layout: 'two-column',
-    industries: ['design', 'reklame', 'markedsføring', 'media'],
+    industries: ['Design', 'Reklame', 'Markedsføring', 'Media'],
     guidance: 'Sterkest visuell signatur i settet. Bruk der porteføljen og uttrykket teller mest.',
     isPremium: false,
   },
@@ -3301,7 +3301,7 @@ export const RESUME_TEMPLATE_SEED_DATA = [
   {
     id: 'norwegian-two-column',
     name: 'Norsk To-kolonne',
-    description: 'Inspirert av norske CV-standarder med profilbilde, ferdighetsindikatorer og mørk sidebar.',
+    description: 'Inspirert av norske CV-standarder, med profilbilde og mørk sidebar.',
     category: 'professional',
     atsScore: 90,
     isAtsOptimized: true,
