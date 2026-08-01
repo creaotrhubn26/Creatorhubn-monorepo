@@ -302,17 +302,129 @@ pub async fn generate_broll_clip_fal(
 /// Dekod en data-URL (data:image/...;base64,....) og skriv til en temp-fil i
 /// scene-katalogen. Returnerer stien, eller None ved ugyldig data.
 fn data_url_to_temp(data_url: &str, dir: &std::path::Path, safe_scene: &str) -> Option<PathBuf> {
+    decode_data_url(data_url, dir, &format!("{}._anchor", safe_scene))
+}
+
+/// Generell data-URL-dekoder (bilde ELLER lyd) → temp-fil. Velger endelse fra mime.
+fn decode_data_url(data_url: &str, dir: &std::path::Path, stem: &str) -> Option<PathBuf> {
     use base64::Engine;
     let comma = data_url.find(',')?;
     let header = &data_url[..comma];
     if !header.contains("base64") { return None; }
-    let ext = if header.contains("jpeg") || header.contains("jpg") { "jpg" } else { "png" };
+    let ext = if header.contains("jpeg") || header.contains("jpg") { "jpg" }
+        else if header.contains("mpeg") || header.contains("mp3") { "mp3" }
+        else if header.contains("wav") { "wav" }
+        else if header.contains("mp4") { "mp4" }
+        else { "png" };
     let payload = &data_url[comma + 1..];
     let bytes = base64::engine::general_purpose::STANDARD.decode(payload.trim()).ok()?;
     if bytes.len() < 100 { return None; }
-    let path = dir.join(format!("{}._anchor.{}", safe_scene, ext));
+    let path = dir.join(format!("{}.{}", stem, ext));
     std::fs::write(&path, &bytes).ok()?;
     Some(path)
+}
+
+/// Løs et media-input (data-URL / http-URL / lokal sti) til en LOKAL fil-sti
+/// higgsfield kan laste opp. Laster ned http-URL-er med curl.
+fn resolve_media_to_local(input: &str, dir: &std::path::Path, stem: &str, ext: &str) -> Option<PathBuf> {
+    if input.starts_with("data:") {
+        return decode_data_url(input, dir, stem);
+    }
+    if input.starts_with("http") {
+        let path = dir.join(format!("{}.{}", stem, ext));
+        let ok = Command::new("/usr/bin/curl").args(["-sL", "-o", &path.to_string_lossy(), input])
+            .status().map(|s| s.success()).unwrap_or(false);
+        if ok && path.metadata().map(|m| m.len() > 100).unwrap_or(false) { return Some(path); }
+        return None;
+    }
+    let expanded = shellexpand_home(input);
+    let pb = PathBuf::from(&expanded);
+    if pb.is_file() { Some(pb) } else { None }
+}
+
+/// Les varigheten (sekunder) på en lyd-/videofil via ffmpeg-stderr ("Duration: HH:MM:SS.ss").
+fn probe_duration_secs(ffmpeg: &std::path::Path, media: &std::path::Path) -> Option<u32> {
+    let out = Command::new(ffmpeg).args(["-i", &media.to_string_lossy()]).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stderr);
+    let idx = text.find("Duration:")?;
+    let rest = &text[idx + 9..];
+    let ts = rest.split(',').next()?.trim(); // "HH:MM:SS.ss"
+    let parts: Vec<&str> = ts.split(':').collect();
+    if parts.len() != 3 { return None; }
+    let h: f64 = parts[0].trim().parse().ok()?;
+    let m: f64 = parts[1].trim().parse().ok()?;
+    let s: f64 = parts[2].trim().parse().ok()?;
+    Some((h * 3600.0 + m * 60.0 + s).ceil() as u32)
+}
+
+/// Generér en SYNTETISK PRESENTØR — et talehode leppesynket til en voiceover.
+/// seedance_2_0 tar `--start-image` (personen) + `--audio-references` (voiceoveren);
+/// modellen krever et start-bilde når audio er med. Presenter_image kan være
+/// data-URL / http-URL / sti; audio_data_url er voiceover-lyden (data-URL).
+#[tauri::command]
+pub async fn generate_presenter_clip(
+    app: AppHandle,
+    project_id: String,
+    scene_id: String,
+    prompt: String,
+    presenter_image: String,
+    audio_data_url: String,
+    resolution: String,
+) -> Result<String, String> {
+    let hf = find_higgsfield().ok_or(
+        "higgsfield-CLI mangler (~/.local/bin/higgsfield). Installer den, eller sett POST_AGENT_HIGGSFIELD til stien.")?;
+    if prompt.trim().is_empty() { return Err("prompt kreves".into()); }
+    let dir = recordings_dir(&app, &project_id)?;
+    let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+
+    // Løs presentør-bilde + voiceover til lokale filer (higgsfield laster dem opp).
+    let img_path = resolve_media_to_local(&presenter_image, &dir, &format!("{}._presenter", safe_scene), "png")
+        .ok_or("kunne ikke lese presentør-bildet (data-URL / URL / sti)")?;
+    let audio_path = decode_data_url(&audio_data_url, &dir, &format!("{}._vo", safe_scene))
+        .ok_or("kunne ikke lese voiceover-lyden (forventet audio-data-URL)")?;
+
+    let res = match resolution.as_str() { "480p" | "720p" | "1080p" | "4k" => resolution.as_str(), _ => "1080p" };
+    let ffmpeg = find_ffmpeg();
+    // Varighet = voiceover-lengden (klemt 4..15s; seedance duration er heltall).
+    let dur = ffmpeg.as_ref().and_then(|f| probe_duration_secs(f, &audio_path)).unwrap_or(6).clamp(4, 15);
+    // 'fast'-modus støtter kun 480p/720p → bruk 'std' for 1080p/4k.
+    let mode = if res == "1080p" || res == "4k" { "std" } else { "std" };
+
+    let out = Command::new(&hf)
+        .args(["generate", "create", "seedance_2_0",
+            "--prompt", prompt.trim(),
+            "--start-image", &img_path.to_string_lossy(),
+            "--audio-references", &audio_path.to_string_lossy(),
+            "--resolution", res, "--duration", &dur.to_string(), "--mode", mode,
+            "--aspect_ratio", "16:9", "--wait", "--json"])
+        .output().map_err(|e| format!("higgsfield presenter: {}", e))?;
+    // Rydd temp-innputt.
+    let _ = std::fs::remove_file(&img_path);
+    let _ = std::fs::remove_file(&audio_path);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let url = extract_url(&stdout, &stderr).ok_or_else(|| {
+        format!("Fikk ingen resultat-URL fra Higgsfield: {}", format!("{}{}", stdout, stderr).chars().rev().take(300).collect::<String>().chars().rev().collect::<String>())
+    })?;
+
+    let raw_path = dir.join(format!("{}._presenter_raw.mp4", safe_scene));
+    let dl = Command::new("/usr/bin/curl").args(["-sL", "-o", &raw_path.to_string_lossy(), &url])
+        .status().map_err(|e| format!("curl: {}", e))?;
+    if !dl.success() || raw_path.metadata().map(|m| m.len() < 10_000).unwrap_or(true) {
+        let _ = std::fs::remove_file(&raw_path);
+        return Err("nedlasting av presentør-klipp feilet".into());
+    }
+    let out_path = dir.join(format!("{}.mp4", safe_scene));
+    if let Some(ffmpeg) = ffmpeg {
+        let ok = Command::new(&ffmpeg)
+            .args(["-y", "-i", &raw_path.to_string_lossy(),
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart", &out_path.to_string_lossy()])
+            .status().map(|s| s.success()).unwrap_or(false);
+        let _ = std::fs::remove_file(&raw_path);
+        if ok && out_path.is_file() { return Ok(out_path.to_string_lossy().to_string()); }
+    }
+    Ok(raw_path.to_string_lossy().to_string())
 }
 
 /// Utvid en ledende ~ til $HOME (start-image kan komme som «~/...»).

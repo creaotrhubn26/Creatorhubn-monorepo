@@ -1069,6 +1069,7 @@ pub fn run() {
             broll::higgsfield_account_status,
             broll::generate_broll_clip,
             broll::generate_broll_clip_fal,
+            broll::generate_presenter_clip,
             autonomous_demo::synthesize_tts,
             autonomous_demo::tts_from_audio,
             autonomous_demo::extract_frame,
