@@ -85,7 +85,9 @@ import {
 import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
 import { MarketingSegmentsTab } from '../components/admin/content-marketing/MarketingSegmentsTab';
 import { BusinessDnaOnboarding } from '../components/admin/content-marketing/BusinessDnaOnboarding';
+import { MarketingCatalogTab } from '../components/admin/content-marketing/MarketingCatalogTab';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
 import { OperatingSystemTab } from '../components/admin/content-marketing/OperatingSystemTab';
 import { AiCitationTab } from '../components/admin/content-marketing/AiCitationTab';
@@ -171,6 +173,7 @@ type WorkspaceItemId =
   | 'partners'
   | 'industry-crm'
   | 'business-dna'
+  | 'marketing-catalog'
   | 'marketing-segments'
   | 'content-marketing'
   | 'marketing-cockpit'
@@ -1449,6 +1452,12 @@ function OverviewView({
       icon: <AutoAwesomeOutlinedIcon />,
     },
     {
+      id: 'marketing-catalog',
+      label: 'Katalog',
+      description: 'Produkter og vertikaler kampanjene trekker fra — auto-oppdaget fra systemet.',
+      icon: <Inventory2OutlinedIcon />,
+    },
+    {
       id: 'marketing-segments',
       label: 'Målgrupper',
       description: 'Segmenter → synkroniserte Google/Meta/LinkedIn-audiences.',
@@ -1761,6 +1770,12 @@ function resolveContent(
         breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Business DNA'],
         render: () => <BusinessDnaOnboarding />,
       };
+    case 'marketing-catalog':
+      return {
+        title: 'Katalog',
+        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Katalog'],
+        render: () => <MarketingCatalogTab />,
+      };
     case 'marketing-segments':
       return {
         title: 'Målgrupper',
@@ -1873,6 +1888,7 @@ function resolveContent(
             label="Markedsføring"
             cards={[
               { id: 'business-dna', label: 'Business DNA' },
+              { id: 'marketing-catalog', label: 'Katalog' },
               { id: 'marketing-cockpit', label: 'Marketing Cockpit' },
               { id: 'content-marketing', label: 'Content marketing' },
               { id: 'content-calendar', label: 'Content-kalender' },
