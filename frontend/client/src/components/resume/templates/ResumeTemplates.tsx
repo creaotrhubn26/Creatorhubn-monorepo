@@ -111,6 +111,23 @@ const MUTED_ON_TINT = '#4B5563';
 const ON_ACCENT = '#FFFFFF';
 
 
+// ── Sideformat ───────────────────────────────────────────────────────
+//
+// Malene var satt til 8.5 × 11 tommer — US Letter — mens utskriftsvinduet
+// i byggeren erklærer `@page { size: A4 }`. A4 er 210 × 297 mm, altså
+// smalere og høyere. Resultatet var at nettleseren skalerte arket ned for
+// å få bredden til å passe, og at innholdet drev i forhold til papiret
+// nedover siden.
+//
+// Norske CV-er skrives ut på A4. Målene under er sannheten både for
+// malene og for sidetelleren i forhåndsvisningen — de leser samme
+// konstant, slik at telleren ikke kan komme i utakt med arket.
+export const PAGE_WIDTH = '210mm';
+export const PAGE_HEIGHT = '297mm';
+
+/** A4-høyde i CSS-piksler ved 96 dpi. Brukes til å telle sider. */
+export const PAGE_HEIGHT_PX = 1122.5;
+
 // ── Seksjonstitler ───────────────────────────────────────────────────
 //
 // Ett vokabular for alle malene, fordi et rekrutteringssystem kjenner
@@ -433,8 +450,9 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
   const _sc = resolveScheme(resume, { accent: '#2c3e50', accentDark: '#34495e', bgSoft: '#f5f5f5' });
   const styles = {
     container: {
-      maxWidth: '8.5in',
-      minHeight: '11in',
+      maxWidth: PAGE_WIDTH,
+      boxSizing: 'border-box',
+      minHeight: PAGE_HEIGHT,
       bgcolor: 'rgba(255,255,255,0.04)',
       p: preview ? 2 : 4,
       fontFamily: '"Helvetica""Arial", sans-serif',
@@ -605,7 +623,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
 export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#34495e', accentDark: '#2c3e50', bgSoft: '#f4f6f7' });
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       <Grid container spacing={3}>
         {/* Left Column */}
         <Grid item xs={4}>
@@ -780,7 +798,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
     </Box>
   );
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4, fontFamily: 'Inter, sans-serif' }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4, fontFamily: 'Inter, sans-serif' }}>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
         <Typography variant="h2" sx={{ fontWeight: 300, fontSize: '36px', letterSpacing: 2 }}>
           {(resume.personalInfo?.fullName ?? '').toUpperCase()}
@@ -874,8 +892,9 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
   const _sc = resolveScheme(resume, { accent: '#2c3e50', accentDark: '#1a252f', bgSoft: '#f4f6f7' });
   const styles = {
     container: {
-      maxWidth: '8.5in',
-      minHeight: '11in',
+      maxWidth: PAGE_WIDTH,
+      boxSizing: 'border-box',
+      minHeight: PAGE_HEIGHT,
       bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: ', "Helvetica","Arial", sans-serif',
       display: 'flex',
@@ -1075,7 +1094,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
 export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#C0392B', accentDark: '#96271B', bgSoft: '#fdf0ee' });
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with large photo area */}
       <Box sx={{ display: 'flex', mb: 4 }}>
         <Box sx={{ width: '200px', height: '250px', bgcolor: '#2c3e50', mr: 3, borderRadius: 2 }}>
@@ -1191,7 +1210,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
 export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#4C51BF', accentDark: '#3C3F99', bgSoft: '#eef1fe' });
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with gradient */}
       <Box sx={{
         background: `linear-gradient(135deg, ${_sc.accent} 0%, ${_sc.accentDark} 100%)`,
@@ -1346,7 +1365,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
 export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#2E7D32', accentDark: '#1B5E20', bgSoft: '#e8f5e8' });
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with medical theme */}
       <Box sx={{ 
         bgcolor: `${_sc.bgSoft}`, 
@@ -1541,7 +1560,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
 export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#1976d2', accentDark: '#0d47a1', bgSoft: '#e3f2fd' });
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header */}
       <Box sx={{ textAlign: 'center', mb: 4, borderBottom: `2px solid ${_sc.accent}`, pb: 3 }}>
         <Typography variant="h3" sx={{ fontWeight: 300, fontSize: '32px', color: `${_sc.accent}`, mb: 1 }}>
@@ -1730,7 +1749,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
     </Typography>
   );
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with executive styling */}
       <Box sx={{ 
         background: `linear-gradient(135deg, ${_sc.accent} 0%, ${_sc.accentDark} 100%)`,
@@ -1872,7 +1891,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const _sc = resolveScheme(resume, { accent: '#B23A00', accentDark: '#9A3412', bgSoft: '#fff8e1' });
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with sales theme */}
       <Box sx={{ 
         background: `linear-gradient(135deg, ${_sc.accent} 0%, #f7931e 100%)`,
@@ -2053,7 +2072,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
+      maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)',
       display: 'flex', fontFamily: 'Inter, "Segoe UI", sans-serif',
       boxShadow: preview ? 1 : 0,
     }}>
@@ -2275,7 +2294,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
+      maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)',
       display: 'flex', fontFamily: 'Inter, "Segoe UI", sans-serif',
       boxShadow: preview ? 1 : 0,
     }}>
@@ -2507,7 +2526,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
+      maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: 'Inter, "Segoe UI", sans-serif', color: dark,
       p: preview ? 2.5 : 5, boxShadow: preview ? 1 : 0,
     }}>
@@ -2745,7 +2764,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
+      maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Courier New", monospace',
       color: dark, p: preview ? 2.5 : 5, boxShadow: preview ? 1 : 0,
     }}>
@@ -2893,7 +2912,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
+      maxWidth: PAGE_WIDTH, boxSizing: 'border-box', minHeight: PAGE_HEIGHT, bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: 'Inter, "Segoe UI", sans-serif', color: dark,
       p: preview ? 2.5 : 5, boxShadow: preview ? 1 : 0,
     }}>

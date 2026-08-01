@@ -19,6 +19,7 @@ import {
   RESUME_COLOR_SCHEMES,
   RESUME_TEMPLATES,
   ModernATSTemplate,
+  PAGE_HEIGHT_PX,
 } from './templates/ResumeTemplates';
 import NextRoleStatsBanner from './NextRoleStatsBanner';
 import NextRoleTrialBanner from './NextRoleTrialBanner';
@@ -320,6 +321,84 @@ const LAYOUT_LABELS: Record<string, string> = {
 };
 
 /**
+ * Sidetelling i forhåndsvisningen.
+ *
+ * Norske kilder er samstemte: 1–2 sider. Nyutdannet holder seg til én,
+ * ti års erfaring tåler to. Brukeren fikk ingen indikasjon på hvor hun lå
+ * — hun så et skalert utsnitt i en scrollboks, og oppdaget lengden først
+ * ved utskrift.
+ *
+ * Måler den urendrede høyden på malen og deler på A4. `PAGE_HEIGHT_PX`
+ * kommer fra samme konstant malene bruker til `minHeight`, så telleren
+ * ikke kan komme i utakt med arket.
+ *
+ * Tallet er et anslag: hvor sidebruddet faktisk lander avhenger av
+ * nettleserens paginering, og malene har ingen `break-inside`-styring
+ * ennå. Derfor «omtrent», ikke et eksakt sidetall.
+ */
+function usePageCount(ref: React.RefObject<HTMLElement>, deps: unknown[]): number | null {
+  const [pages, setPages] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      // scrollHeight er den ustransformerte høyden — forhåndsvisningen er
+      // skalert med CSS transform, som ikke påvirker layoutboksen.
+      const h = el.scrollHeight;
+      if (!h) { setPages(null); return; }
+      const raw = h / PAGE_HEIGHT_PX;
+      // En CV som fyller arket nøyaktig maalte 1123 px mot en side paa
+      // 1122,5 og ble rapportert som 1,1 sider. Snap til hel side naar vi
+      // er innenfor to prosent, ellers rund opp til naermeste tidel.
+      const nearest = Math.round(raw);
+      const snapped = Math.abs(raw - nearest) < 0.02 ? nearest : Math.ceil(raw * 10) / 10;
+      setPages(Math.max(1, snapped));
+    };
+    measure();
+    // Innholdet endrer seg mens brukeren skriver. ResizeObserver fanger
+    // det uten at vi må gjette på når.
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return pages;
+}
+
+/** Én linje under forhåndsvisningen: hvor lang CV-en er, og om det er greit. */
+const PageCountHint: React.FC<{ pages: number | null }> = ({ pages }) => {
+  if (pages === null) return null;
+
+  // Grensene er hentet fra norsk CV-veiledning, ikke funnet på: under to
+  // sider er trygt, over to bør begrunnes, over tre blir sjelden lest.
+  const tone = pages <= 2 ? 'success' : pages <= 3 ? 'warning' : 'error';
+  const note =
+    pages <= 1.15
+      ? 'Én side — trygt for de fleste stillinger.'
+      : pages <= 2
+        ? 'Innenfor anbefalingen på 1–2 sider.'
+        : pages <= 3
+          ? 'Over to sider. Vurder å korte ned de eldste jobbene.'
+          : 'Over tre sider blir sjelden lest i sin helhet.';
+
+  return (
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.75 }}>
+      <Chip
+        size="small"
+        color={tone}
+        variant="outlined"
+        label={`≈ ${pages.toLocaleString('nb-NO')} ${pages <= 1.15 ? 'side' : 'sider'}`}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {note}
+      </Typography>
+    </Stack>
+  );
+};
+
+/**
  * Galleri-kort for én CV-mal. Viser previewImage + (for skjema-bevisste maler) en rad
  * fargeskjema-swatches. Klikk på en swatch bytter forhåndsvisnings-bildet til den
  * genererte varianten; "Velg mal" tar med det valgte skjemaet inn i editoren.
@@ -590,6 +669,17 @@ export default function ResumeBuilder() {
       window.localStorage.setItem('resumeBuilder:showLivePreview', String(showLivePreview));
     }
   }, [showLivePreview]);
+
+  // Sidetelling for forhåndsvisningen. Ref-en peker på det samme elementet
+  // utskriften bruker, så telleren måler nøyaktig det som blir papir.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const previewPages = usePageCount(previewRef, [
+    selectedResume?.id,
+    selectedResume?.templateId,
+    selectedResume?.updatedAt,
+    showLivePreview,
+  ]);
+
   const [showLanguageDialog, setShowLanguageDialog] = useState(false);
   const [editingLanguage, setEditingLanguage] = useState<ResumeLanguage | null>(null);
   const [languageFormData, setLanguageFormData] = useState<{
@@ -6278,6 +6368,7 @@ export default function ResumeBuilder() {
                         </Stack>
                         <Box
                           data-resume-print-source
+                          ref={previewRef}
                           sx={{
                             transform: 'scale(0.62)',
                             transformOrigin: 'top left',
@@ -6291,6 +6382,7 @@ export default function ResumeBuilder() {
                             return <Component resume={selectedResume} preview />;
                           })()}
                         </Box>
+                        <PageCountHint pages={previewPages} />
                       </Box>
                     </Grid>
                   )}
