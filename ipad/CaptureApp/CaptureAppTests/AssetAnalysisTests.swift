@@ -112,6 +112,37 @@ final class AssetAnalysisTests: XCTestCase {
         XCTAssertEqual(original, decoded)
     }
 
+    // MARK: - Sanitering (non-finite → 0 før persistering)
+
+    func testSanitizedReplacesNonFiniteValues() throws {
+        let dirty = AssetAnalysis(
+            version: AssetAnalysis.currentVersion,
+            medianLuma: .nan, p5Luma: 0.1, p95Luma: .infinity,
+            highlightClip: 0.01, shadowClip: -.infinity,
+            subjectHighlightClip: .nan,
+            globalSharpness: .infinity, subjectSharpness: .nan,
+            skinCast: .neutral,
+            faces: [FaceAnalysis(rect: .zero, sizeFraction: .nan, luma: .infinity,
+                                 eyesOpen: true, captureQuality: .nan, sharpness: .infinity,
+                                 skinCast: .neutral)],
+            sceneFeature: [0, .nan, .infinity])
+        let clean = dirty.sanitized()
+        // Alle Double-felt skal nå være finite.
+        XCTAssertTrue(clean.medianLuma.isFinite && clean.p95Luma.isFinite
+                      && clean.shadowClip.isFinite && clean.globalSharpness.isFinite)
+        XCTAssertEqual(clean.subjectHighlightClip, 0)
+        XCTAssertEqual(clean.subjectSharpness, 0)
+        XCTAssertEqual(clean.faces[0].sizeFraction, 0)
+        XCTAssertEqual(clean.faces[0].luma, 0)
+        XCTAssertEqual(clean.faces[0].captureQuality, 0)
+        XCTAssertTrue(clean.sceneFeature.allSatisfy { $0.isFinite })
+        // KRITISK: den saniterte MÅ nå kunne JSON-encodes (rå ville kastet →
+        // hele signals-bloben ville kollapset til «{}»).
+        XCTAssertNoThrow(try JSONEncoder().encode(clean))
+        XCTAssertThrowsError(try JSONEncoder().encode(dirty),
+                             "urenset non-finite skal kaste (beviser hvorfor sanitering trengs)")
+    }
+
     // MARK: - Helper
 
     private func makeAnalysis(faces: [FaceAnalysis]) -> AssetAnalysis {
