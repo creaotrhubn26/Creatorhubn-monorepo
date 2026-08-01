@@ -121,6 +121,19 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   const sceneShot = (): string | null =>
     pickShot(project?.scanShots, (selected?.startScrollPct ?? 0) / 100);
 
+  // Bygg produkt-forståelsen (Product Brain) på nytt — nødvendig etter innlogging /
+  // nye app-opptak (så vision ser det ekte, innloggede produktet), og for at
+  // forbedret logikk skal tre i kraft på et prosjekt som allerede har en hjerne.
+  const onRefreshBrain = async () => {
+    if (!project) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setAiError(null); setAiBusy('brain');
+    try {
+      const ctx = await ensureProductBrain({ force: true });
+      if (!ctx) setAiError('Kunne ikke lese produktet — sjekk URL/tilkobling.');
+    } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
+  };
+
   const onGenerate = async () => {
     if (!project || !selected) return;
     if (!aiReady) { setShowSignIn(true); return; }
@@ -237,6 +250,10 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           </button>
           <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onImprove('clarify')}>
             ✎ {aiBusy && aiBusy !== 'generate' ? 'Forbedrer…' : 'AI Improve'}
+          </button>
+          <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onRefreshBrain()}
+            title="Bygg produkt-forståelsen på nytt fra sidene + de FANGEDE app-skjermene (gjør dette etter innlogging / nye opptak).">
+            ↻ {aiBusy === 'brain' ? 'Leser produktet…' : 'Oppdater produkt-forståelse'}
           </button>
           <span style={{ fontSize: 12, color: saveStatus === 'error' ? '#dc2626' : saveStatus === 'saved_partial' ? '#f59e0b' : C.green, fontWeight: 600, whiteSpace: 'nowrap' }}
             title={saveStatus === 'error' ? 'localStorage er full — siste endringer er ikke persistert' : saveStatus === 'saved_partial' ? 'Lagret uten skjermbilder (lite lagringsplass)' : 'Endringer lagres automatisk'}>
