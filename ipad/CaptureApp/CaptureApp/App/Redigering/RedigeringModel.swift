@@ -110,6 +110,17 @@ final class RedigeringModel {
     /// Full-series batch progress.
     private(set) var seriesProgress = 0
     private(set) var seriesTotal = 0
+
+    /// Kvalitetssjekk (steg 4): leveranse-blokkere per bilde + kjøre-status.
+    /// `qualityFindings` er sortert med blokkere øverst; tom etter en ren kjøring.
+    private(set) var qualityFindings: [QualityFinding] = []
+    private(set) var qualityRunning = false
+    private(set) var qualityProgress = 0
+    private(set) var qualityTotal = 0
+    private(set) var qualityDidRun = false
+    private let assetAnalyzer = AssetAnalyzer()
+    var qualityBlockerCount: Int { qualityFindings.filter(\.hasBlocker).count }
+    var qualityWarningCount: Int { qualityFindings.count - qualityBlockerCount }
     /// Undo/redo av HELE edit-tilstanden (recipe + eksponering + crop) for det
     /// valgte bildet — ikke bare recipe.
     private var undo: [RedigeringEditStore.EditState] = []
@@ -297,6 +308,49 @@ final class RedigeringModel {
         statusMessage = failed.isEmpty
             ? "Lagret \(saved) bilder."
             : "Lagret \(saved), feilet \(failed.count): \(failed.prefix(3).joined(separator: ", "))\(failed.count > 3 ? "…" : "")"
+    }
+
+    /// Kvalitetssjekk-passet: sørg for at hvert bilde har en `AssetAnalysis`
+    /// (gjenbruk persistert, ellers MÅL én gang off-main + persister), oversett
+    /// til leveranse-blokkere (``QualityCheckService``), og bygg review-listen.
+    /// Cache-drevet → en re-kjøring etter at alle er målt er umiddelbar.
+    func runQualityCheck() async {
+        guard !qualityRunning, !assets.isEmpty else { return }
+        qualityRunning = true
+        qualityTotal = assets.count; qualityProgress = 0
+        defer { qualityRunning = false; qualityDidRun = true }
+        let store = services()?.store
+        var findings: [QualityFinding] = []
+        for asset in assets {
+            var analysis = asset.signals.analysis
+            if analysis == nil,
+               let key = asset.previewKey ?? asset.displayPreviewKey,
+               FileManager.default.fileExists(atPath: key) {
+                let measured = await assetAnalyzer.analyze(imageURL: URL(fileURLWithPath: key))
+                if let measured, let idx = assets.firstIndex(where: { $0.id == asset.id }) {
+                    // Persistér målingen (én kilde) → cull/HUD/senere QC gjenbruker.
+                    var signals = assets[idx].signals
+                    signals.analysis = measured
+                    signals.faceCount = measured.faces.count
+                    if let face = measured.primaryFace { signals.eyesOpen = face.eyesOpen ?? signals.eyesOpen }
+                    assets[idx].signals = signals
+                    try? await store?.updateAssetSignals(id: asset.id, signals: signals)
+                }
+                analysis = measured
+            }
+            if let analysis {
+                let issues = QualityCheckService.evaluate(analysis)
+                if !issues.isEmpty { findings.append(QualityFinding(assetId: asset.id, issues: issues)) }
+            }
+            qualityProgress += 1
+        }
+        // Blokkere øverst; ellers bevart opptaksrekkefølge (stabil sortering).
+        qualityFindings = findings.sorted { $0.worstSeverity > $1.worstSeverity }
+    }
+
+    /// Velg bildet bak et kvalitetsfunn (fra review-listen → hovedbildet).
+    func selectFinding(_ finding: QualityFinding) {
+        if let asset = assets.first(where: { $0.id == finding.assetId }) { select(asset) }
     }
 
     var working = false

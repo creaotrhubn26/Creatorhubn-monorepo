@@ -266,8 +266,16 @@ struct QueueThumb: View {
 }
 
 struct StepFlow: View {
+    /// Steg 4 (Kvalitetssjekk) er fullført → flytt aktivt steg til Eksporter.
+    var qualityDone = false
+    /// Trykk på Kvalitetssjekk-steget → åpne review-listen.
+    var onTapQuality: () -> Void = {}
+
     private let steps = ["Cull", "Preset", "AI Retusj", "Kvalitetssjekk", "Eksporter"]
-    private let current = 2
+    private let qualityStep = 3
+    /// Aktivt steg: AI Retusj til kvalitetssjekk er kjørt, deretter Eksporter.
+    private var current: Int { qualityDone ? 4 : 2 }
+
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(steps.enumerated()), id: \.offset) { idx, label in
@@ -283,6 +291,9 @@ struct StepFlow: View {
                     }
                     Text(label).font(.caption).foregroundStyle(idx <= current ? CHTheme.textPrimary : CHTheme.textMuted)
                 }
+                // Kvalitetssjekk-steget er en snarvei inn i review-listen.
+                .contentShape(Rectangle())
+                .onTapGesture { if idx == qualityStep { onTapQuality() } }
                 if idx < steps.count - 1 { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CHTheme.textMuted).frame(maxWidth: .infinity) }
             }
         }
