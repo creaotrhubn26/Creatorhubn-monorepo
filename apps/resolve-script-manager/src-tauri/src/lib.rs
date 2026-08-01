@@ -8,6 +8,7 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod autonomous_demo;
+mod broll;
 mod capture_sources;
 mod demo_capture;
 mod demo_export;
@@ -1065,6 +1066,8 @@ pub fn run() {
             capture_sources::ios_sim_describe,
             capture_sources::ios_sim_tap,
             capture_sources::ios_sim_swipe,
+            broll::higgsfield_account_status,
+            broll::generate_broll_clip,
             autonomous_demo::synthesize_tts,
             autonomous_demo::tts_from_audio,
             autonomous_demo::extract_frame,

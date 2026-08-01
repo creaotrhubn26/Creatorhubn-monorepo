@@ -177,6 +177,16 @@ export interface DemoScene {
   verifiedAt?: string;
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
+  /**
+   * Footage-kilde for scenen. 'capture' (default) = ekte opptak (web/Mac/iOS/
+   * simulator). 'broll' = AI-generert kinematisk klipp (Higgsfield/fal Seedance)
+   * — kroken/konteksten/outroen som et skjermopptak ikke kan gi. En broll-scene
+   * lagrer det genererte klippet i recordingPath, så den flyter gjennom nøyaktig
+   * samme eksport (mockupRenderVideo) som en fanget scene — ingen egen rørledning.
+   */
+  source?: 'capture' | 'broll';
+  /** Prompt brukt til å generere broll-klippet (for re-generering + sporbarhet). */
+  brollPrompt?: string;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
    *  capture-screenshot. Når tomt viser kortet en live mini-preview. */
   thumbnailDataUrl?: string;
