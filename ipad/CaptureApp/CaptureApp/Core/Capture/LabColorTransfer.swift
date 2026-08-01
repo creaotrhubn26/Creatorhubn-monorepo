@@ -1,5 +1,6 @@
 import Foundation
 import CoreImage
+import CoreImage.CIFilterBuiltins
 import CoreGraphics
 
 /// EKTE-LAB fargeoverføring — den prinsipielle porten av Python-motorens
@@ -9,47 +10,60 @@ import CoreGraphics
 ///   • REINHARD-STD:      kanal = m + (verdi − m)·stdRatio  rundt kanalens SNITT
 ///     (L=kontrast, a/b=metning) — nøyaktig fotografens spredningsendring per
 ///     LAB-kanal, i motsetning til en global CIColorControls-metning.
-/// Snittet måles på bildet SELV (etter LUT) på en nedskalering; affinen påføres
-/// full oppløsning. Reinhard-ratio klemmes 0.6–1.7 som i motoren.
+///
+/// GPU-VEI (zero-copy): affinen er LINEÆR i LAB, men ikke-lineær i sRGB, så den
+/// destilleres til en 3D-LUT (N³ celler) bygget på CPU — bittesmått (~110k celler
+/// mot ~2M piksler) — og påføres på GPU via `CIColorCubeWithColorSpace` (Metal-
+/// akselerert). Ingen full-res CPU-pikselløkke; bildet forblir en GPU-tekstur i
+/// hele kjeden. Snittet måles på en 96×96-nedskalering. Reinhard klemt 0.6–1.7.
 enum LabColorTransfer {
 
     /// `ab`  = [Δa, Δb] (OpenCV a/b-enheter, fra profilen).
     /// `std` = [L, a, b] Reinhard-spredningsforhold (dimensjonsløst).
     static func apply(to image: CIImage, ab: [Double], std: [Double], ctx: CIContext) -> CIImage {
-        guard ab.count == 2, std.count == 3,
-              let cg = ctx.createCGImage(image, from: image.extent) else { return image }
-        let w = cg.width, h = cg.height
-        guard w > 1, h > 1 else { return image }
+        let extent = image.extent
+        guard ab.count == 2, std.count == 3, extent.width > 1, extent.height > 1 else { return image }
 
-        // Kanal-snitt (OpenCV LAB) fra en 96×96-nedskalering — raskt, representativt.
-        let (mL, mA, mB) = means(of: cg)
+        // Kanal-snitt (OpenCV LAB) fra en 96×96-NEDSKALERING (ikke full-res) — CPU,
+        // men trivielt. Unngår en full-res createCGImage-readback.
+        let side: CGFloat = 96
+        let scaled = image.transformed(by: CGAffineTransform(
+            scaleX: side / extent.width, y: side / extent.height))
+        guard let cgSmall = ctx.createCGImage(scaled, from: scaled.extent) else { return image }
+        let (mL, mA, mB) = means(of: cgSmall)
         let sL = clampStd(std[0]), sA = clampStd(std[1]), sB = clampStd(std[2])
         let shA = 0.5 * ab[0], shB = 0.5 * ab[1]
 
-        // Full-oppløsnings-buffer.
-        var px = [UInt8](repeating: 0, count: w * h * 4)
-        guard let bmp = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8,
-                                  bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return image }
-        bmp.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-
-        px.withUnsafeMutableBufferPointer { buf in
-            var i = 0
-            while i < buf.count {
-                let r = Double(buf[i]) / 255, g = Double(buf[i + 1]) / 255, b = Double(buf[i + 2]) / 255
-                var (L, A, B) = srgbToLab(r, g, b)
-                // Reinhard-std rundt snittet + a/b-middelskift (samme rekkefølge som motoren).
-                L = mL + (L - mL) * sL
-                A = mA + shA + (A - mA) * sA
-                B = mB + shB + (B - mB) * sB
-                let (nr, ng, nb) = labToSrgb(clamp255(L), clamp255(A), clamp255(B))
-                buf[i] = u8(nr); buf[i + 1] = u8(ng); buf[i + 2] = u8(nb)
-                i += 4
+        // Bygg 3D-LUT (N³): hver celle sRGB→LAB→affine→sRGB. RED innerst (fastest),
+        // så GREEN, så BLUE — CIColorCube-layouten.
+        let dim = 48
+        var cube = [Float](repeating: 0, count: dim * dim * dim * 4)
+        let inv = 1.0 / Double(dim - 1)
+        var o = 0
+        for bi in 0..<dim {
+            let bf = Double(bi) * inv
+            for gi in 0..<dim {
+                let gf = Double(gi) * inv
+                for ri in 0..<dim {
+                    var (L, A, B) = srgbToLab(Double(ri) * inv, gf, bf)
+                    L = mL + (L - mL) * sL
+                    A = mA + shA + (A - mA) * sA
+                    B = mB + shB + (B - mB) * sB
+                    let (nr, ng, nb) = labToSrgb(clamp255(L), clamp255(A), clamp255(B))
+                    cube[o] = Float(max(0, min(1, nr)))
+                    cube[o + 1] = Float(max(0, min(1, ng)))
+                    cube[o + 2] = Float(max(0, min(1, nb)))
+                    cube[o + 3] = 1
+                    o += 4
+                }
             }
         }
-        guard let out = bmp.makeImage() else { return image }
-        return CIImage(cgImage: out)
+        let f = CIFilter.colorCubeWithColorSpace()
+        f.inputImage = image
+        f.cubeDimension = Float(dim)
+        f.cubeData = cube.withUnsafeBufferPointer { Data(buffer: $0) }
+        f.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+        return f.outputImage?.cropped(to: extent) ?? image
     }
 
     // MARK: - Kanal-snitt (nedskalert)
@@ -108,5 +122,4 @@ enum LabColorTransfer {
 
     private static func clampStd(_ v: Double) -> Double { max(0.6, min(1.7, v)) }
     private static func clamp255(_ v: Double) -> Double { max(0, min(255, v)) }
-    private static func u8(_ v: Double) -> UInt8 { UInt8(max(0, min(255, v * 255)).rounded()) }
 }
