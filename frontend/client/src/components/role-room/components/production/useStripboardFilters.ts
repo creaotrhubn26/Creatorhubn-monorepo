@@ -156,9 +156,11 @@ export function useStripboardFilters(
     (items: StripboardStrip[]): StripboardStrip[] => {
       const statusOrder: Record<StripboardStrip['status'], number> = {
         shot: 0,
-        scheduled: 1,
-        'not-scheduled': 2,
-        postponed: 3,
+        partial: 1,
+        scheduled: 2,
+        'not-scheduled': 3,
+        postponed: 4,
+        omitted: 5,
       };
       const sorted = [...items];
       switch (groupBy) {
