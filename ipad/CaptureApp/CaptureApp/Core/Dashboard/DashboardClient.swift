@@ -11,7 +11,7 @@ import NetworkingKit
 /// show a readable message + retry.
 actor DashboardClient {
     /// Røret. Timeout og retry-på-idempotente-kall ligger der. Se NetworkingKit.
-    private let transport: HTTPTransport
+    let transport: HTTPTransport
     let baseURL: URL
     /// Beholdes for kallsteder som bygger absolutte URL-er selv.
     private var authHeaders: [String: String]
@@ -93,13 +93,13 @@ actor DashboardClient {
 
     // MARK: - Internals
 
-    func getJSON<Response: Decodable>(path: String) async throws -> Response {
+    func getJSON<Response: Decodable & Sendable>(path: String) async throws -> Response {
         do { return try await transport.get(path) }
         catch let error as HTTPError { throw Self.asDashboardError(error) }
     }
 
     /// POST/PATCH med JSON-body; 2xx med body ignorert.
-    func send<Body: Encodable>(path: String, method: String, body: Body) async throws {
+    func send<Body: Encodable & Sendable>(path: String, method: String, body: Body) async throws {
         do {
             switch method.uppercased() {
             case "PATCH": try await transport.patchIgnoringResponse(path, body: body)
@@ -108,7 +108,7 @@ actor DashboardClient {
         } catch let error as HTTPError { throw Self.asDashboardError(error) }
     }
 
-    func postJSON<Body: Encodable, Response: Decodable>(path: String, body: Body) async throws -> Response {
+    func postJSON<Body: Encodable & Sendable, Response: Decodable & Sendable>(path: String, body: Body) async throws -> Response {
         do { return try await transport.post(path, body: body) }
         catch let error as HTTPError { throw Self.asDashboardError(error) }
     }

@@ -78,7 +78,7 @@ extension DashboardClient {
         request.httpMethod = "PUT"
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.httpBody = data
-        let (respData, response) = try await self.data(for: request)
+        let (respData, response) = try await transport.rawData(for: request)
         try check(response, respData)
     }
 

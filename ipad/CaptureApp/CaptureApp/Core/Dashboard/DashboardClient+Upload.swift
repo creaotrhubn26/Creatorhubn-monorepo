@@ -54,7 +54,7 @@ extension DashboardClient {
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         applyAuth(&request)
         request.httpBody = data
-        let (respData, response) = try await self.data(for: request)
+        let (respData, response) = try await transport.rawData(for: request)
         try check(response, respData)
     }
 }

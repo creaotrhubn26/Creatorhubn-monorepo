@@ -572,7 +572,7 @@ actor BackendClient {
 
     /// PATCH a JSON body, expect 2xx with no/ignored response. Used for
     /// idempotent link operations where the server returns 204.
-    private func patchEmpty<RequestBody: Encodable>(
+    private func patchEmpty<RequestBody: Encodable & Sendable>(
         path: String,
         body: RequestBody,
     ) async throws {
@@ -580,7 +580,7 @@ actor BackendClient {
         catch let error as HTTPError { throw Self.asBackendError(error) }
     }
 
-    private func getJSON<Response: Decodable>(path: String) async throws -> Response {
+    private func getJSON<Response: Decodable & Sendable>(path: String) async throws -> Response {
         do { return try await transport.get(path) }
         catch let error as HTTPError { throw Self.asBackendError(error) }
     }
@@ -748,7 +748,7 @@ actor BackendClient {
         guard (200..<300).contains(http.statusCode) else { throw ShotAutoCheckError.failed }
     }
 
-    private func postJSON<RequestBody: Encodable, Response: Decodable>(
+    private func postJSON<RequestBody: Encodable & Sendable, Response: Decodable & Sendable>(
         path: String,
         body: RequestBody,
     ) async throws -> Response {
