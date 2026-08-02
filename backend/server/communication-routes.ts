@@ -21,6 +21,7 @@ import * as schema from '../migrations/schema.js';
 import crypto from 'crypto';
 import { Readable } from 'stream';
 import { decryptGoogleToken as sharedDecryptGoogleToken } from './google-oauth-shared.js';
+import { loadPersistedAuthSession } from './auth-session-store.js';
 import { ensureContractsCompatibilitySchema } from './contract-google-signing.js';
 import {
   getGoogleWorkspaceOauthConfig,
@@ -192,8 +193,146 @@ type ConversationContractRow = {
   updated_at: string | null;
 };
 
-export function createCommunicationRouter(db: DB, pool: Pool): Router {
+type AuthedUser = { userId: string; email: string };
+
+export function createCommunicationRouter(
+  db: DB,
+  pool: Pool,
+  activeSessions?: Map<string, any>,
+): Router {
   const router = Router();
+
+  // ── Tilgangskontroll for prosjekt-kanaler (channelId = project-<projectId>) ──
+  // Bare prosjekt-kanaler gates; alle andre kanaltyper (support/anonyme widgets
+  // osv.) beholder eksisterende oppførsel så vi ikke brekker andre chat-flater.
+  const projectIdFromChannel = (channelId: string): string | null => {
+    const m = /^project-(.+)$/.exec(String(channelId || '').trim());
+    return m ? m[1] : null;
+  };
+  const resolveAuthedUser = async (req: Request): Promise<AuthedUser | null> => {
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) return null;
+    const inMem = activeSessions?.get(bearer);
+    if (inMem?.userId) return { userId: String(inMem.userId), email: String(inMem.email || '') };
+    const persisted = await loadPersistedAuthSession(pool, bearer);
+    if (persisted?.userId) return { userId: String(persisted.userId), email: String(persisted.email || '') };
+    return null;
+  };
+  // Plattform-admin-sjekk (samme rolle-katalog som admin-communication-extras +
+  // broadcast: users.role IN admin/super_admin/owner). Fail-closed ved feil.
+  const isAdminUser = async (userId: string): Promise<boolean> => {
+    if (!userId) return false;
+    try {
+      const r = await pool.query(
+        `SELECT 1 FROM users WHERE id::text = $1 AND LOWER(COALESCE(role, '')) IN ('admin', 'super_admin', 'owner') LIMIT 1`,
+        [userId],
+      );
+      return r.rows.length > 0;
+    } catch { return false; }
+  };
+  // Eier ELLER aktivt teammedlem (via user_id eller e-post). Returnerer et
+  // visningsnavn utledet server-side (aldri klientstyrt) eller null hvis nektet.
+  const resolveProjectAccess = async (projectId: string, user: AuthedUser): Promise<{ displayName: string } | null> => {
+    try {
+      const owner = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), name, email) AS display_name
+           FROM projects p JOIN users u ON u.id = p.user_id
+          WHERE p.id::text = $1 AND p.user_id::text = $2 LIMIT 1`,
+        [projectId, user.userId],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (owner.rows[0]) return { displayName: String(owner.rows[0].display_name || user.email) };
+      const mem = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(m.name), ''), NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, m.email) AS display_name
+           FROM project_team_members m LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.project_id = $1 AND m.deactivated_at IS NULL
+            AND (m.user_id = $2 OR LOWER(m.email) = LOWER($3)) LIMIT 1`,
+        [projectId, user.userId, user.email || ''],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (mem.rows[0]) return { displayName: String(mem.rows[0].display_name || user.email) };
+      return null;
+    } catch { return null; }
+  };
+  // Gate lesing/skriving av en prosjekt-kanal. For ikke-prosjekt-kanaler
+  // returnerer den { ok:true, user:null } (uendret oppførsel).
+  const guardProjectChannel = async (
+    channelId: string, req: Request, res: Response,
+  ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
+    const projectId = projectIdFromChannel(channelId);
+    if (!projectId) return { ok: true, access: null, user: null };
+    const user = await resolveAuthedUser(req);
+    if (!user) { res.status(401).json({ error: 'unauthorized' }); return { ok: false, access: null, user: null }; }
+    const access = await resolveProjectAccess(projectId, user);
+    if (!access) { res.status(403).json({ error: 'forbidden' }); return { ok: false, access: null, user: null }; }
+    return { ok: true, access, user };
+  };
+  // Medlemskaps-sjekk for IKKE-prosjekt-kanaler (DM `dm-admin-<userId>`, chat,
+  // email, team/Google Space). Speiler den prod-verifiserte predikaten i
+  // websocket-chat.ts `canAccessChannel` og REST /conversations-synligheten: en
+  // innlogget bruker har tilgang når kanalen ikke finnes enda (de oppretter
+  // den), heter noe som inneholder identiteten (dm-admin-<userId>/e-postnavn),
+  // er listet i settings.participants, har en deltaker-rad, eller allerede har
+  // sendt en melding. Alt annet nektes → ingen kan lese/oppsummere/skrive i en
+  // annen tenants DM ved å gjette kanal-ID. Fail-closed ved feil. Delt
+  // support-lobby ('general') er bevisst åpen (samme som WS-gaten).
+  const canAccessNonProjectChannel = async (
+    channelId: string, user: AuthedUser,
+  ): Promise<boolean> => {
+    if (!channelId) return false;
+    if (channelId === 'general') return true;
+    try {
+      const chan = await pool.query(
+        `SELECT name, settings FROM communication_channels WHERE id = $1 LIMIT 1`,
+        [channelId],
+      );
+      if ((chan.rowCount ?? 0) === 0) return true; // finnes ikke → sender oppretter den
+      const row = chan.rows[0] as { name?: string; settings?: any };
+      // Match mot BÅDE userId og e-post (chat-widgeten lagrer sender_id som
+      // e-post; deltaker-/meldingsrader kan nøkle på enten) — faithful superset
+      // av /conversations-predikaten.
+      const identifiers = [String(user.userId)];
+      if (user.email) identifiers.push(String(user.email));
+      const needles = identifiers.map((v) => v.toLowerCase());
+      if (row.name) {
+        const name = String(row.name).toLowerCase();
+        if (needles.some((n) => n && name.includes(n))) return true;
+      }
+      const parts = row.settings?.participants;
+      if (Array.isArray(parts) && parts.some((p: unknown) => identifiers.includes(String(p)))) return true;
+      const pr = await pool.query(
+        `SELECT 1 FROM communication_participants WHERE channel_id = $1 AND user_id = ANY($2::text[]) LIMIT 1`,
+        [channelId, identifiers],
+      );
+      if ((pr.rowCount ?? 0) > 0) return true;
+      const mr = await pool.query(
+        `SELECT 1 FROM communication_messages WHERE channel_id = $1 AND sender_id = ANY($2::text[]) LIMIT 1`,
+        [channelId, identifiers],
+      );
+      return (mr.rowCount ?? 0) > 0;
+    } catch (e) {
+      console.error('[communication] canAccessNonProjectChannel error:', e);
+      return false; // fail closed
+    }
+  };
+  // Enhetlig kanal-gate: prosjekt-kanaler → guardProjectChannel (auth +
+  // prosjekt-medlemskap, uendret). Ikke-prosjekt-kanaler → krev Bearer-sesjon
+  // (401) + medlemskap (403). Tidligere gikk alle ikke-prosjekt-kanaler fritt
+  // (guardProjectChannel returnerte { ok:true, user:null } for dem), så hvem
+  // som helst kunne lese/patche/oppsummere/skrive i en DM ved å kjenne/gjette
+  // kanal-ID. Erstatter guardProjectChannel på meldings-lese/skrive-endepunktene.
+  const guardChannelAccess = async (
+    channelId: string, req: Request, res: Response,
+  ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
+    if (projectIdFromChannel(channelId)) {
+      return guardProjectChannel(channelId, req, res);
+    }
+    const user = await resolveAuthedUser(req);
+    if (!user) { res.status(401).json({ error: 'unauthorized' }); return { ok: false, access: null, user: null }; }
+    if (!(await canAccessNonProjectChannel(channelId, user))) {
+      res.status(403).json({ error: 'forbidden' }); return { ok: false, access: null, user: null };
+    }
+    return { ok: true, access: null, user };
+  };
+
   const GMAIL_READ_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
   const GMAIL_DRAFT_SCOPES = ['https://www.googleapis.com/auth/gmail.compose'];
   const GMAIL_SEND_SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
@@ -214,6 +353,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     limits: {
       fileSize: CONTEXTUAL_DRIVE_UPLOAD_MAX_BYTES,
       files: 24,
+    },
+    fileFilter: (_req, file, cb) => {
+      if (/^(image\/|video\/|audio\/|application\/pdf|text\/)/.test(file.mimetype)) cb(null, true);
+      else cb(new Error("Filtype ikke tillatt") as any, false);
     },
   });
 
@@ -329,36 +472,30 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
   };
 
-  const readOptionalHeaderValue = (req: Request, headerName: string): string | null => {
-    const raw = req.headers[headerName.toLowerCase()];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    return toNonEmptyString(value);
-  };
-
-  const getPreferredGoogleWorkspaceIdentity = (
+  // SIKKERHET (kontoovertakelse/IDOR): identiteten som avgjør HVEM sine
+  // Google-OAuth-tokens som lastes (via resolveLiveGoogleWorkspaceContext →
+  // role_room_google_connections) MÅ utledes fra den autentiserte
+  // Bearer-sesjonen — ALDRI fra klientstyrte headere/query/body. Tidligere
+  // leste denne x-role-room-user-id / x-user-id / query.userId / payload.userId,
+  // som en angriper fritt kan spoofe: å sende `x-user-id: <offer>` lastet
+  // offerets Gmail/Drive/Tasks/Chat-tokens, dekrypterte dem og mintet et
+  // access-token på tvers av tenants (full kontoovertakelse på ~25 endepunkter).
+  // Nå: kun sesjonsutledet. Uten gyldig Bearer-sesjon faller vi LUKKET (null)
+  // slik at ingen Google-kontekst kan bygges. Frontenden sender alltid Bearer
+  // for innloggede produsenter (queryClient.getAuthHeader), så legitime flyter
+  // er uendret; sesjonens userId er nettopp role_room_google_connections.user_id.
+  const getPreferredGoogleWorkspaceIdentity = async (
     req: Request,
-    payload?: Record<string, unknown>,
-  ): { userId: string | null; userEmail: string | null } => {
-    const userId =
-      readOptionalHeaderValue(req, 'x-role-room-user-id')
-      || readOptionalHeaderValue(req, 'x-user-id')
-      || toNonEmptyString(req.query.userId)
-      || toNonEmptyString(payload?.userId)
-      || null;
-
-    const userEmail =
-      readOptionalHeaderValue(req, 'x-role-room-email')
-      || readOptionalHeaderValue(req, 'x-user-email')
-      || toNonEmptyString(req.query.userEmail)
-      || toNonEmptyString(payload?.userEmail)
-      || null;
-
-    return (
-      {
-        userId,
-        userEmail: userEmail?.toLowerCase() || null,
-      }
-    );
+    _payload?: Record<string, unknown>,
+  ): Promise<{ userId: string | null; userEmail: string | null }> => {
+    const authed = await resolveAuthedUser(req);
+    if (authed?.userId) {
+      return {
+        userId: authed.userId,
+        userEmail: authed.email?.toLowerCase() || null,
+      };
+    }
+    return { userId: null, userEmail: null };
   };
 
   const deriveRoleRoomGoogleEncryptionKey = (): Buffer | null => {
@@ -1025,6 +1162,15 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       );
     };
 
+    // SIKKERHET (kontoovertakelse): identiteten er nå utledet fra Bearer-sesjonen
+    // (se getPreferredGoogleWorkspaceIdentity). Uten en autentisert identitet skal
+    // INGEN Google-kobling kunne løses — ellers ville auto-velg-fallbackene under
+    // gitt en uautentisert kaller en vilkårlig tenants tokens (spesielt farlig når
+    // det finnes nøyaktig én kobling, som i tidlig-fase-deploy). Fail-closed.
+    if (!preferredUserId && !preferredUserEmail) {
+      return null;
+    }
+
     let row: RoleRoomGoogleConnectionRow | null = null;
     if (preferredUserId) {
       row = await selectConnection(`user_id = $1`, [preferredUserId]);
@@ -1051,35 +1197,14 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       }
     }
 
-    if (!row) {
-      const corporateConnectionCount = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-         FROM role_room_google_connections
-         WHERE ${baseWhere}
-           AND google_email IS NOT NULL
-           AND LOWER(split_part(google_email, '@', 2)) NOT IN ('gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com')`,
-      );
-      const availableCorporateConnections = Number.parseInt(corporateConnectionCount.rows[0]?.count ?? '0', 10);
-      if (availableCorporateConnections === 1) {
-        row = await selectConnection(
-          `google_email IS NOT NULL
-           AND LOWER(split_part(google_email, '@', 2)) NOT IN ('gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'icloud.com')`,
-        );
-      }
-    }
-
-    if (!row) {
-      const countResult = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-         FROM role_room_google_connections
-         WHERE ${baseWhere}`,
-      );
-      const availableConnections = Number.parseInt(countResult.rows[0]?.count ?? '0', 10);
-      if (availableConnections === 1) {
-        row = await selectConnection();
-      }
-    }
-
+    // FJERNET (kontoovertakelse): tidligere auto-valgte denne «den eneste
+    // corporate-koblingen» eller «den eneste koblingen totalt» UTEN noen
+    // identitetskobling til kalleren. Det betød at en autentisert (eller, før
+    // fail-closed-guarden over, uautentisert) bruker uten egen Google-kobling
+    // fikk en annen tenants Gmail/Drive/Tasks-tokens når det fantes én kobling.
+    // Nå løses KUN kallerens egen kobling (user_id/google_email fra sesjonen)
+    // eller den operatør-konfigurerte GOOGLE_WORKSPACE_EMAIL-domenekoblingen
+    // (eksplisitt delt-arbeidsområde-intensjon). Uten treff: fail-closed.
     if (!row) {
       return null;
     }
@@ -1183,7 +1308,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         const id = toNonEmptyString(record?.id) ?? crypto.randomUUID();
         const filename = toNonEmptyString(record?.filename ?? record?.name);
         const mimeType = toNonEmptyString(record?.mimeType) ?? 'application/octet-stream';
-        const downloadUrl = toNonEmptyString(record?.downloadUrl ?? record?.webViewUrl ?? record?.webContentLink);
+        const rawDownloadUrl = toNonEmptyString(record?.downloadUrl ?? record?.webViewUrl ?? record?.webContentLink);
+        // Avvis farlige skjemaer (javascript:/data:/vbscript:) — ingen ekte
+        // vedlegg bruker dem, men de gir lagret XSS når URL-en rendres som href.
+        const downloadUrl = rawDownloadUrl && !/^\s*(javascript|data|vbscript):/i.test(rawDownloadUrl) ? rawDownloadUrl : undefined;
         const uploadedAt = toNonEmptyString(record?.uploadedAt) ?? new Date().toISOString();
         const fileSizeValue = Number(record?.fileSize ?? record?.size ?? 1);
         const fileSize = Number.isFinite(fileSizeValue) && fileSizeValue > 0
@@ -1232,7 +1360,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     response: globalThis.Response;
     body: unknown;
   } | null> => {
-    const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+    const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
     const context = await resolveLiveGoogleChatContext(preferredIdentity.userId, preferredIdentity.userEmail);
     if (!context) {
       return null;
@@ -1662,17 +1790,23 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     } as const;
   };
 
-  const fetchCrmCustomerById = async (customerId: string | null) => {
-    if (!customerId) {
+  // Eier-scope: crm_customers er per-tenant (owner_user_id, jf. universal-crm-
+  // routes). Uten ownerId ELLER uten eier-filter kunne en kaller lese en ANNEN
+  // tenants kunde via customerId (cross-tenant IDOR). Null ownerId → null kunde.
+  const fetchCrmCustomerById = async (
+    customerId: string | null,
+    ownerId: string | null,
+  ) => {
+    if (!customerId || !ownerId) {
       return null;
     }
 
     const result = await pool.query<CrmCustomerRow>(
       `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
          FROM crm_customers
-        WHERE id::text = $1
+        WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
         LIMIT 1`,
-      [customerId],
+      [customerId, ownerId],
     );
     return mapCrmCustomer(result.rows[0]);
   };
@@ -1716,12 +1850,20 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     };
   };
 
+  // Eier-scope alle forslag: uten dette lekket fuzzy-oppslag (e-post/telefon/
+  // navn) EN ANNEN tenants kunder — uautentisert PII-søk. ownerId er påkrevd;
+  // null → ingen forslag (aldri ufiltrert på tvers av tenants).
   const fetchSuggestedCrmCustomers = async (params: {
+    ownerId: string | null;
     customerId?: string | null;
     email?: string | null;
     phone?: string | null;
     name?: string | null;
   }) => {
+    if (!params.ownerId) {
+      return [] as Array<ReturnType<typeof mapCrmCustomer> & { matchReason: string; matchStrength: number }>;
+    }
+    const ownerId = params.ownerId;
     const candidates = new Map<string, ReturnType<typeof mapCrmCustomer> & {
       matchReason: string;
       matchStrength: number;
@@ -1741,9 +1883,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE id::text = $1
+          WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
           LIMIT 1`,
-        [params.customerId],
+        [params.customerId, ownerId],
       );
       addRows(result.rows, 'valgt klient', 100);
     }
@@ -1752,10 +1894,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE LOWER(email) = LOWER($1)
+          WHERE LOWER(email) = LOWER($1) AND owner_user_id::text = $2 AND deleted_at IS NULL
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 3`,
-        [params.email],
+        [params.email, ownerId],
       );
       addRows(result.rows, 'e-post', 96);
     }
@@ -1765,10 +1907,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE regexp_replace(COALESCE(phone, ''), '\D', '', 'g') = $1
+          WHERE regexp_replace(COALESCE(phone, ''), '\D', '', 'g') = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 3`,
-        [phoneDigits],
+        [phoneDigits, ownerId],
       );
       addRows(result.rows, 'telefon', 88);
     }
@@ -1778,13 +1920,13 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const result = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE name ILIKE $1 OR company ILIKE $1
+          WHERE (name ILIKE $1 OR company ILIKE $1) AND owner_user_id::text = $3 AND deleted_at IS NULL
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
             updated_at DESC NULLS LAST,
             created_at DESC NULLS LAST
           LIMIT 6`,
-        [`%${normalizedName}%`, normalizedName],
+        [`%${normalizedName}%`, normalizedName, ownerId],
       );
       addRows(result.rows, 'navn', 72);
     }
@@ -1804,6 +1946,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     hintProjectId?: string | null;
     hintProjectName?: string | null;
     preferredUserId?: string | null;
+    ownerUserId?: string | null;
   }) => {
     await ensureCrmConversationLinksTable();
     await ensureContractsCompatibilitySchema(pool);
@@ -1833,8 +1976,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     const hintEmail = params.hintEmail || internalHints.email;
     const hintPhone = params.hintPhone || internalHints.phone;
 
-    const linkedCustomer = await fetchCrmCustomerById(toNonEmptyString(linkRow?.customer_id));
+    const ownerUserId = params.ownerUserId || null;
+    const linkedCustomer = await fetchCrmCustomerById(toNonEmptyString(linkRow?.customer_id), ownerUserId);
     const suggestedCustomers = await fetchSuggestedCrmCustomers({
+      ownerId: ownerUserId,
       customerId: params.hintCustomerId || null,
       email: hintEmail,
       phone: hintPhone,
@@ -1894,12 +2039,13 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       openTasks = taskResult.rows.map(mapCrmTask).filter(Boolean);
     }
 
-    const commercialProjectId =
-      toNonEmptyString(linkRow?.project_id)
-      || params.hintProjectId
-      || linkedCustomer?.projectId
-      || null;
-    const commercialEmail = hintEmail || linkedCustomer?.email || null;
+    // Kommersielle oppslag (tilbud/kontrakt) utledes KUN fra den eier-verifiserte
+    // kunden — aldri fra klient-oppgitte hints. Ellers kunne hintEmail/hintProjectId
+    // dra en annen tenants quotes/contracts (beløp, status) på tvers av tenants.
+    const commercialProjectId = linkedCustomer
+      ? (toNonEmptyString(linkRow?.project_id) || linkedCustomer.projectId || null)
+      : null;
+    const commercialEmail = linkedCustomer?.email || null;
     let latestQuote: ReturnType<typeof mapConversationQuoteSummary> = null;
     let latestContract: ReturnType<typeof mapConversationContractSummary> = null;
 
@@ -2172,6 +2318,11 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'conversationId is required' });
       }
 
+      // Eier-identitet fra Bearer-sesjon (ikke spoofbar x-user-id). Uten dette
+      // returnerer motoren tom/ulenket kontekst — ingen kundedata på tvers av
+      // tenants (fail-closed, jf. CRM-kontekst-eierscope).
+      const ownerUserId = (await resolveAuthedUser(req))?.userId || null;
+
       const context = await fetchConversationCrmContext({
         provider: normalizeCrmConversationProvider(req.query.provider),
         conversationId: rawConversationId,
@@ -2181,7 +2332,12 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         hintPhone: toNonEmptyString(req.query.hintPhone),
         hintProjectId: toNonEmptyString(req.query.projectId),
         hintProjectName: toNonEmptyString(req.query.projectName),
-        preferredUserId: readOptionalHeaderValue(req, 'x-user-id'),
+        // Sesjonsutledet eier (ikke spoofbar x-user-id). Uten sesjon er
+        // ownerUserId null → konteksten er allerede tom (fail-closed), så
+        // header-fallbacken hadde ingen legitim funksjon og ble en potensiell
+        // spoofbar identitet inn mot Drive-mappeoppslag. Fjernet.
+        preferredUserId: ownerUserId,
+        ownerUserId,
       });
 
       return res.json(context);
@@ -2195,15 +2351,18 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     try {
       await ensureCrmConversationLinksTable();
 
+      // Eier-gate: en samtale kan KUN lenkes til en kunde kalleren selv eier.
+      // Uten dette kunne hvem som helst lenke sin egen samtale til en ANNEN
+      // tenants kunde og deretter lese kundens dossier via by-conversation.
+      const linkOwnerId = (await resolveAuthedUser(req))?.userId || null;
+      if (!linkOwnerId) return res.status(401).json({ error: 'unauthorized' });
+
       const payload = (req.body || {}) as Record<string, unknown>;
       const conversationId = toNonEmptyString(payload.conversationId);
       const customerId = toNonEmptyString(payload.customerId);
       const provider = normalizeCrmConversationProvider(payload.provider);
       const matchedBy = toNonEmptyString(payload.matchedBy) || 'manual';
-      const createdBy =
-        toNonEmptyString(payload.createdBy) ||
-        readOptionalHeaderValue(req, 'x-user-id') ||
-        readOptionalHeaderValue(req, 'x-user-email');
+      const createdBy = linkOwnerId;
       const projectId = toNonEmptyString(payload.projectId);
       const dealId = toNonEmptyString(payload.dealId);
       const confidence = Math.max(0, Math.min(100, parseFiniteInteger(payload.confidence, 100)));
@@ -2214,6 +2373,14 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
       if (!conversationId || !customerId) {
         return res.status(400).json({ error: 'conversationId and customerId are required' });
+      }
+
+      const ownsCustomer = await pool.query(
+        `SELECT 1 FROM crm_customers WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL LIMIT 1`,
+        [customerId, linkOwnerId],
+      );
+      if (!ownsCustomer.rowCount) {
+        return res.status(404).json({ error: 'customer_not_found' });
       }
 
       await pool.query(
@@ -2247,7 +2414,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         provider,
         conversationId,
         hintCustomerId: customerId,
-        preferredUserId: readOptionalHeaderValue(req, 'x-user-id'),
+        preferredUserId: linkOwnerId,
+        ownerUserId: linkOwnerId,
       });
 
       return res.json({ success: true, context });
@@ -2261,6 +2429,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     try {
       await ensureCrmConversationLinksTable();
 
+      const unlinkOwnerId = (await resolveAuthedUser(req))?.userId || null;
+      if (!unlinkOwnerId) return res.status(401).json({ error: 'unauthorized' });
+
       const payload = (req.body || {}) as Record<string, unknown>;
       const conversationId = toNonEmptyString(payload.conversationId);
       const provider = normalizeCrmConversationProvider(payload.provider);
@@ -2269,10 +2440,19 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'conversationId is required' });
       }
 
+      // Eier-scope: fjern bare lenken hvis den peker på kallerens egen kunde
+      // (eller en ulenket rad). Ellers kunne en fremmed slette en annen tenants
+      // samtale-kobling (write-IDOR).
       await pool.query(
         `DELETE FROM crm_conversation_links
-          WHERE provider = $1 AND conversation_id = $2`,
-        [provider, conversationId],
+          WHERE provider = $1 AND conversation_id = $2
+            AND (
+              customer_id IS NULL
+              OR customer_id::text IN (
+                SELECT id::text FROM crm_customers WHERE owner_user_id::text = $3
+              )
+            )`,
+        [provider, conversationId, unlinkOwnerId],
       );
 
       return res.json({ success: true });
@@ -2298,10 +2478,12 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const projectType = toNonEmptyString(payload.projectType);
       const source = toNonEmptyString(payload.source) || 'chat-conversation';
       const notes = toNonEmptyString(payload.notes);
-      const createdBy =
-        toNonEmptyString(payload.createdBy) ||
-        readOptionalHeaderValue(req, 'x-user-id') ||
-        readOptionalHeaderValue(req, 'x-user-email');
+      // Eier fra Bearer-sesjon: den nye kunden MÅ stemples med owner_user_id,
+      // ellers blir den foreldreløs (usynlig i CRM-lista, som filtrerer på eier)
+      // OG lesbar av alle via kontekst-motoren. Krev autentisering.
+      const ownerUserId = (await resolveAuthedUser(req))?.userId || null;
+      if (!ownerUserId) return res.status(401).json({ error: 'unauthorized' });
+      const createdBy = ownerUserId;
       const status = toNonEmptyString(payload.status) || 'lead';
 
       if (!conversationId || !name) {
@@ -2310,9 +2492,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
       const customerResult = await pool.query<CrmCustomerRow>(
         `INSERT INTO crm_customers (
-           id, name, email, phone, company, profession, project_type, status, source, notes, custom_fields, created_at, updated_at
+           id, name, email, phone, company, profession, project_type, status, source, notes, custom_fields, owner_user_id, created_at, updated_at
          ) VALUES (
-           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, NOW(), NOW()
+           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, NOW(), NOW()
          )
          RETURNING id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at`,
         [
@@ -2330,6 +2512,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
             provider,
             createdFrom: 'universal-chat-widget',
           }),
+          ownerUserId,
         ],
       );
 
@@ -2365,7 +2548,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         provider,
         conversationId,
         hintCustomerId: customer.id,
-        preferredUserId: readOptionalHeaderValue(req, 'x-user-id'),
+        preferredUserId: ownerUserId,
+        ownerUserId,
       });
 
       return res.status(201).json({ success: true, customer, context });
@@ -2378,7 +2562,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.post('/api/universal-crm/context/drive-folder/ensure', async (req, res) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const preferredUserId = preferredIdentity.userId;
       const customerId = toNonEmptyString(payload.customerId);
       if (!preferredUserId || !customerId) {
@@ -2390,12 +2574,14 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
       }
 
+      // Eier-scope: du kan bare opprette kundemappe for din EGEN CRM-kunde.
+      const driveOwnerId = (await resolveAuthedUser(req))?.userId || preferredUserId;
       const customerResult = await pool.query<CrmCustomerRow>(
         `SELECT id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, project_id, created_at, updated_at
            FROM crm_customers
-          WHERE id::text = $1
+          WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
           LIMIT 1`,
-        [customerId],
+        [customerId, driveOwnerId],
       );
       const customer = customerResult.rows[0];
       if (!customer) {
@@ -2434,6 +2620,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
   router.post('/api/universal-crm/context/log-activity', async (req, res) => {
     try {
+      // Eier fra Bearer-sesjon: aktiviteter logges KUN på kallerens egen kunde.
+      const activityOwnerId = (await resolveAuthedUser(req))?.userId || null;
+      if (!activityOwnerId) return res.status(401).json({ error: 'unauthorized' });
+
       const payload = (req.body || {}) as Record<string, unknown>;
       const conversationId = toNonEmptyString(payload.conversationId);
       const provider = normalizeCrmConversationProvider(payload.provider);
@@ -2443,10 +2633,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const direction = toNonEmptyString(payload.direction);
       const outcome = toNonEmptyString(payload.outcome);
       const scheduledAt = toNonEmptyString(payload.scheduledAt);
-      const assignedTo =
-        toNonEmptyString(payload.assignedTo) ||
-        readOptionalHeaderValue(req, 'x-user-id') ||
-        readOptionalHeaderValue(req, 'x-user-email');
+      const assignedTo = toNonEmptyString(payload.assignedTo) || activityOwnerId;
 
       if (!conversationId || !type || !subject) {
         return res.status(400).json({ error: 'conversationId, type and subject are required' });
@@ -2460,11 +2647,21 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(409).json({ error: 'Conversation is not linked to a CRM customer' });
       }
 
+      // Eier-gate: verifiser at den lenkede kunden faktisk tilhører kalleren før
+      // vi skriver aktivitet/oppgave (ellers write-IDOR mot en annen tenants kunde).
+      const ownsActivityCustomer = await pool.query(
+        `SELECT 1 FROM crm_customers WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL LIMIT 1`,
+        [customerId, activityOwnerId],
+      );
+      if (!ownsActivityCustomer.rowCount) {
+        return res.status(404).json({ error: 'customer_not_found' });
+      }
+
       const activityResult = await pool.query<CrmActivityRow>(
         `INSERT INTO crm_activities (
-           id, customer_id, deal_id, type, subject, description, scheduled_at, direction, outcome, created_at, updated_at
+           id, customer_id, deal_id, type, subject, description, scheduled_at, direction, outcome, owner_user_id, created_at, updated_at
          ) VALUES (
-           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()
+           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
          )
          RETURNING id, type, subject, description, scheduled_at, direction, outcome, created_at, updated_at`,
         [
@@ -2476,6 +2673,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           scheduledAt,
           direction,
           outcome,
+          activityOwnerId,
         ],
       );
 
@@ -2526,26 +2724,29 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   // ─── GET /api/communication/conversations ─────────────────
   router.get('/api/communication/conversations', async (req, res) => {
     try {
-      const userEmail = (req.query.userEmail as string) || req.headers['x-user-email'] as string || '';
+      // SIKKERHET (IDOR/privacy): identiteten som avgjør HVILKE samtaler/DM-er
+      // som listes MÅ komme fra den autentiserte Bearer-sesjonen — ALDRI fra
+      // spoofbar query.userEmail / x-user-email. Tidligere leste denne e-posten
+      // fra klientstyrt input, så en kaller kunne sende en ANNEN brukers e-post
+      // og få listet offerets DM-kanaler (kanalnavn + siste meldingsinnhold +
+      // ulest-antall) på tvers av tenants. Nå: sesjonsutledet (userId+email fra
+      // resolveAuthedUser). Uten gyldig sesjon → tom liste (fail-closed, aldri
+      // lekk). Frontenden kaller alltid via apiRequest (sender Bearer), så
+      // legitime produsent-innbokser er uendret.
+      const authed = await resolveAuthedUser(req);
+      if (!authed) {
+        return res.json({ conversations: [] });
+      }
+      const userEmail = authed.email || '';
 
-      // PRIVACY: only return channels this user is actually connected to.
-      // Previously this selected ALL active channels for EVERY caller (userEmail
-      // was read but never used in the query) — leaking other users' DMs. The
+      // PRIVACY: only return channels this user is actually connected to. The
       // communication_participants table is mostly placeholder, so we match on
       // reliable signals: channels the user has messaged in, channels named for
       // them (incl. dm-admin-<id> DMs from the admin send flow), or real
-      // participant rows. Empty identity → empty arrays → zero channels (safe
-      // default; never leak). Verified live: daniel sees 2 channels, not 419.
-      const identifiers: string[] = userEmail ? [userEmail] : [];
-      if (userEmail) {
-        const resolved = await db.execute(
-          sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${userEmail}) LIMIT 1`,
-        );
-        const resolvedId = (resolved.rows?.[0] as { id?: string } | undefined)?.id;
-        if (resolvedId && !identifiers.includes(String(resolvedId))) identifiers.push(String(resolvedId));
-      }
-      // Tom identitet → null kanaler (trygt default). Returner tidlig: kallere
-      // uten userEmail (gamle ChatWidget) skal ikke kjøre kanal-spørringen.
+      // participant rows. Identiteten er nå sesjonens egen userId + e-post.
+      const identifiers: string[] = [];
+      if (userEmail) identifiers.push(userEmail);
+      if (authed.userId && !identifiers.includes(authed.userId)) identifiers.push(authed.userId);
       if (identifiers.length === 0) {
         return res.json({ conversations: [] });
       }
@@ -2608,7 +2809,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.get('/api/communication/messages/:channelId', async (req, res) => {
     try {
       const { channelId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 100;
+      // Prosjekt-kanaler krever auth + medlemskap (ellers IDOR på tvers av prosjekter).
+      const gate = await guardChannelAccess(channelId, req, res);
+      if (!gate.ok) return;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 500);
 
       const messages = await db
         .select({
@@ -2629,21 +2833,31 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         })
         .from(schema.communicationMessages)
         .where(eq(schema.communicationMessages.channelId, channelId))
-        .orderBy(schema.communicationMessages.createdAt)
+        // Hent de NYESTE `limit` meldingene (desc), og snu til stigende for
+        // visning. Tidligere hentet asc+limit de ELDSTE, så nye meldinger
+        // aldri kom med når en kanal passerte limit-taket.
+        .orderBy(desc(schema.communicationMessages.createdAt))
         .limit(limit);
+      messages.reverse();
 
       const mappedMessages = messages.map((msg) => {
         const metadata = getMessageMetadataRecord(msg.metadata);
         const attachments = sanitizeChatAttachments(metadata.attachments);
+        // senderName/tag lagres i metadata (kolonnen har ikke egne felter) —
+        // eksponer dem så klienten viser visningsnavn, ikke e-post, og tagg-chip.
+        const senderName = toNonEmptyString(metadata.senderName) || null;
+        const tag = toNonEmptyString(metadata.tag) || null;
 
         return {
         id: msg.id,
         senderId: msg.senderId,
+        senderName,
         content: msg.content,
         timestamp: msg.createdAt,
         type: msg.messageType,
         status: msg.isRead ? 'read' : msg.deliveredAt ? 'delivered' : 'sent',
         attachments,
+        tag,
         metadata: msg.metadata,
         };
       });
@@ -2660,12 +2874,15 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const payload = (req.body || {}) as Record<string, unknown>;
       const content = toNonEmptyString(payload.content) || toNonEmptyString(payload.message);
       const conversationId = normalizeChannelId(payload.conversationId || payload.contactId || payload.channelId);
-      const senderId =
-        toNonEmptyString(req.headers['x-user-id']) ||
-        toNonEmptyString(req.headers['x-user-email']) ||
-        'anonymous';
+      // Prosjekt-kanal: krev auth + medlemskap, bind avsender til sesjonen.
+      const gate = await guardChannelAccess(conversationId, req, res);
+      if (!gate.ok) return;
+      const senderId = gate.user
+        ? gate.user.email
+        : (toNonEmptyString(req.headers['x-user-id']) || toNonEmptyString(req.headers['x-user-email']) || 'anonymous');
       const attachments = sanitizeChatAttachments(payload.attachments);
       const rawMetadata = getMessageMetadataRecord(payload.metadata);
+      if (gate.access) rawMetadata.senderName = gate.access.displayName;
       const persistedContent = content || (attachments.length > 0
         ? attachments.length === 1
           ? `Delte vedlegg: ${attachments[0]?.filename ?? 'vedlegg'}`
@@ -2725,21 +2942,24 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.post('/api/chat/messages', async (req, res) => {
     try {
       const msg = (req.body || {}) as Record<string, unknown>;
-      const senderId =
-        toNonEmptyString(msg.senderId) ||
-        toNonEmptyString(req.headers['x-user-email']) ||
-        'anonymous';
       const channelId = normalizeChannelId(msg.conversationId || 'general');
+      // Prosjekt-kanal: krev auth + medlemskap, og bind avsender-identitet til
+      // den autentiserte brukeren (klientstyrt senderId/senderName ignoreres).
+      const gate = await guardChannelAccess(channelId, req, res);
+      if (!gate.ok) return;
+      const senderId = gate.user
+        ? gate.user.email
+        : (toNonEmptyString(msg.senderId) || toNonEmptyString(req.headers['x-user-email']) || 'anonymous');
       const content = toNonEmptyString(msg.content);
       const attachments = sanitizeChatAttachments(msg.attachments);
       const rawMetadata = getMessageMetadataRecord(msg.metadata);
-      const persistedContent = content || (attachments.length > 0
-        ? attachments.length === 1
-          ? `Delte vedlegg: ${attachments[0]?.filename ?? 'vedlegg'}`
-          : `Delte ${attachments.length} vedlegg fra Google Drive`
-        : null);
+      // For prosjekt-kanaler: overstyr visningsnavn med server-utledet navn.
+      if (gate.access) rawMetadata.senderName = gate.access.displayName;
+      // Vedlegg-kun-melding lagres med tomt innhold (ikke en hardkodet/feil
+      // «fra Google Drive»-caption) — klienten viser bare selve vedlegget.
+      const persistedContent = content ?? (attachments.length > 0 ? '' : null);
 
-      if (!persistedContent) {
+      if (persistedContent === null) {
         return res.status(400).json({ error: 'Message content is required' });
       }
 
@@ -2768,9 +2988,85 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     }
   });
 
+  // ─── PATCH /api/communication/messages/:id ────────────────
+  // Oppdaterer status i en meldings metadata (f.eks. løs/gjenåpne en
+  // forespørsel). Prosjekt-kanal krever auth + medlemskap.
+  router.patch('/api/communication/messages/:id', async (req, res) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const row = await db
+        .select({ channelId: schema.communicationMessages.channelId, metadata: schema.communicationMessages.metadata })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.id, id)).limit(1);
+      if (!row[0]) return res.status(404).json({ error: 'not_found' });
+      const gate = await guardChannelAccess(row[0].channelId, req, res);
+      if (!gate.ok) return;
+      const status = String((req.body || {}).status || '');
+      if (!['open', 'resolved'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+      const meta = { ...getMessageMetadataRecord(row[0].metadata), status };
+      await db.update(schema.communicationMessages)
+        .set({ metadata: meta as any })
+        .where(eq(schema.communicationMessages.id, id));
+      return res.json({ success: true, id, status });
+    } catch (error) {
+      console.error('Error patching message:', error);
+      res.status(500).json({ error: 'Failed to update message' });
+    }
+  });
+
+  // ─── POST /api/communication/:channelId/ai ────────────────
+  // Leser de siste meldingene og lar Claude (a) foreslå et svar-utkast eller
+  // (b) oppsummere «hva venter på teamet». Returnerer kun tekst — klienten
+  // fyller komposeren (ingenting sendes auto). Prosjekt-kanal: auth + medlemskap.
+  router.post('/api/communication/:channelId/ai', async (req, res) => {
+    try {
+      const channelId = String(req.params.channelId || '').trim();
+      const gate = await guardChannelAccess(channelId, req, res);
+      if (!gate.ok) return;
+      const mode = String((req.body || {}).mode) === 'summary' ? 'summary' : 'draft';
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return res.status(503).json({ error: 'AI er ikke tilgjengelig (mangler nøkkel).' });
+      const rows = await db
+        .select({ senderId: schema.communicationMessages.senderId, content: schema.communicationMessages.content, metadata: schema.communicationMessages.metadata, createdAt: schema.communicationMessages.createdAt })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.channelId, channelId))
+        .orderBy(desc(schema.communicationMessages.createdAt)).limit(40);
+      rows.reverse();
+      const transcript = rows.map((r) => {
+        const meta = getMessageMetadataRecord(r.metadata);
+        const who = toNonEmptyString(meta.senderName) || String(r.senderId || 'Medlem');
+        const tag = meta.tag === 'question' || meta.status ? ' [forespørsel]' : '';
+        return `${who}${tag}: ${String(r.content || '')}`;
+      }).join('\n');
+      const system = mode === 'summary'
+        ? 'Du er assistent i et prosjekt-team i CreatorHubn. Oppsummer teamsamtalen kort på norsk: hva er status og hva venter på teamet nå (punktliste med konkrete neste steg). Maks 8 linjer.'
+        : 'Du er assistent i et prosjekt-team i CreatorHubn. Foreslå ÉN kort, profesjonell og vennlig norsk melding til teamet basert på samtalen. Kun selve meldingsteksten, ingen forklaring.';
+      let text = '';
+      try {
+        const mod: any = await import('@anthropic-ai/sdk');
+        const Ctor = mod.default ?? mod.Anthropic;
+        const client: any = new Ctor({ apiKey, maxRetries: 1, timeout: 30_000 });
+        const response = await client.messages.create({
+          model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 700, system,
+          messages: [{ role: 'user', content: `Samtale så langt:\n${transcript || '(tom)'}\n\n${mode === 'summary' ? 'Oppsummer.' : 'Foreslå en melding.'}` }],
+        });
+        text = (response.content ?? []).filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('\n').trim();
+      } catch (aiErr) {
+        console.error('[chat] AI-kall feilet', aiErr);
+        return res.status(502).json({ error: 'AI-kallet feilet. Prøv igjen.' });
+      }
+      return res.json({ success: true, text });
+    } catch (error) {
+      console.error('Error in chat AI:', error);
+      res.status(500).json({ error: 'Kunne ikke generere AI-tekst' });
+    }
+  });
+
   router.get('/api/communication/email/status', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.json({
@@ -2828,7 +3124,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
   router.get('/api/communication/email/threads', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -2944,7 +3240,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'threadId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3052,7 +3348,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'message is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3126,7 +3422,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'message is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3243,7 +3539,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       // #7 — actually DELIVER via Gmail (this endpoint used to only persist a
       // row with status:'queued' and never send — a silent no-op). A "send"
       // that never sends is worse than an honest error.
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren. Koble Gmail i Innstillinger for å sende e-post.' });
@@ -3321,7 +3617,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   // the timeline. Honest error when Gmail isn't connected.
   router.post('/api/universal-crm/inbound/gmail-sync', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const ownerUserId = preferredIdentity.userId;
       if (!ownerUserId) return res.status(400).json({ error: 'Mangler bruker-identitet.' });
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
@@ -3367,7 +3663,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
 
   router.get('/api/google-tasks/lists', async (req, res) => {
     try {
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3402,7 +3698,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'listId er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3448,7 +3744,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'title er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3492,7 +3788,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'title er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3542,7 +3838,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'taskId og listId er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -3587,7 +3883,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'taskId og listId er påkrevd.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren.' });
@@ -4190,7 +4486,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   const buildGoogleDriveContext = async (req: Request, res: Response) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       // Triage-fix: resolveLiveGoogleWorkspaceContext kunne throw når
       // OAuth-tokens var utløpt eller bruker mangler workspace-kobling
       // — outer try/catch konverterte det til 500. Wrap separat og
@@ -4620,7 +4916,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   const listGoogleDriveFiles = async (req: Request, res: Response) => {
     try {
       const payload = (req.body || {}) as Record<string, unknown>;
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4673,7 +4969,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4810,7 +5106,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4857,7 +5153,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4918,7 +5214,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4955,7 +5251,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId and permissionId are required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -4996,7 +5292,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5061,7 +5357,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'fileId is required' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5150,7 +5446,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         return res.status(400).json({ error: 'Velg minst én fil å laste opp.' });
       }
 
-      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const preferredIdentity = await getPreferredGoogleWorkspaceIdentity(req, payload);
       const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
       if (!workspaceContext) {
         return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
@@ -5594,7 +5890,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       }
 
       const channelId = normalizeChannelId(rawSpace);
-      const limit = Number.parseInt(String(req.query.limit || '100'), 10) || 100;
+      const limit = Math.min(Math.max(1, Number.parseInt(String(req.query.limit || '100'), 10) || 100), 500);
 
       const messages = await db
         .select({
@@ -6009,7 +6305,16 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   });
 
   // ─── GET /api/admin/communication/users ───────────────────
-  router.get('/api/admin/communication/users', async (_req, res) => {
+  router.get('/api/admin/communication/users', async (req, res) => {
+    // SECURITY: returns platform-wide message senders enriched with real e-post
+    // + full name + presence. Was ungated (`_req`) so ANY unauthenticated caller
+    // could harvest up to 100 users' e-post/navn and enumerate the platform.
+    // Now ADMIN-ONLY: the sole remaining consumer is the admin dashboard's
+    // AdminCommunicationPanel (the non-admin FullscreenChatWidget that used to
+    // depend on this list has been disabled). Require an admin session.
+    const authed = await resolveAuthedUser(req);
+    if (!authed) return res.status(401).json({ error: 'unauthorized' });
+    if (!(await isAdminUser(authed.userId))) return res.status(403).json({ error: 'forbidden' });
     try {
       // Distinkte sendere fra meldinger, beriket med ekte navn + presence.
       // Online = user_presence.last_seen_at innen 90 sek og ikke idle (samme
@@ -6051,7 +6356,12 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   });
 
   // ─── GET /api/admin/communication/stats ───────────────────
-  router.get('/api/admin/communication/stats', async (_req, res) => {
+  router.get('/api/admin/communication/stats', async (req, res) => {
+    // SECURITY: leaks global message/channel/unread counts. Was ungated
+    // (`_req`) — now admin-only (see /users above).
+    const authed = await resolveAuthedUser(req);
+    if (!authed) return res.status(401).json({ error: 'unauthorized' });
+    if (!(await isAdminUser(authed.userId))) return res.status(403).json({ error: 'forbidden' });
     try {
       const totalMessages = await db
         .select({ count: sql<number>`count(*)::int` })

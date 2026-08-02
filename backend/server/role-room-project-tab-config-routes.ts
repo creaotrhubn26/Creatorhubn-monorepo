@@ -25,10 +25,18 @@ interface Deps {
 }
 
 const VALID_TAB_VALUES = new Set([
+  // Eksisterende Role Room-dashbord-nøkler (visnings-styring)
   "roles", "candidates", "crew", "schedule", "publishing", "carousel",
   "approval", "brief", "planner", "shooting", "shotlist", "mannskap",
   "agent", "economy", "admin-room",
+  // Story Arc Studio-faner (studioAccessModel.ts). Union med over slik at
+  // begge konsumenter deler samme override-tabell uten kollisjon.
+  "oversikt", "story-arc", "storyboard", "auditions", "selection",
+  "locations", "callsheet", "equipment", "live-set", "workspace",
+  "timeline", "delivery",
 ]);
+
+const VALID_ACCESS_LEVELS = new Set(["view", "manage"]);
 
 const VALID_TARGET_TYPES = new Set(["role", "user"]);
 
@@ -43,12 +51,16 @@ async function ensureTable(pool: Pool): Promise<boolean> {
         target_type VARCHAR(16) NOT NULL CHECK (target_type IN ('role','user')),
         target_value VARCHAR(255) NOT NULL,
         tab_values TEXT[] NOT NULL DEFAULT '{}'::text[],
+        tab_access JSONB NOT NULL DEFAULT '{}'::jsonb,
         updated_by_user_id VARCHAR(255),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (project_id, target_type, target_value)
       );
       CREATE INDEX IF NOT EXISTS idx_rrptc_project_id
         ON role_room_project_tab_overrides(project_id);
+      -- Legg til nivå-kolonnen for tabeller som ble opprettet før RBAC-nivåene.
+      ALTER TABLE role_room_project_tab_overrides
+        ADD COLUMN IF NOT EXISTS tab_access JSONB NOT NULL DEFAULT '{}'::jsonb;
     `);
     tableEnsured = true;
     return true;
@@ -101,6 +113,63 @@ function sanitizeTabValues(input: unknown): string[] | null {
   return cleaned;
 }
 
+type TabAccessMap = Record<string, "view" | "manage">;
+
+/** Valider et nivå-kart { tabKey: 'view' | 'manage' }. */
+function sanitizeTabAccess(input: unknown): TabAccessMap | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const out: TabAccessMap = {};
+  for (const [rawKey, rawLevel] of Object.entries(input as Record<string, unknown>)) {
+    const key = String(rawKey).trim();
+    if (!VALID_TAB_VALUES.has(key)) return null;
+    if (typeof rawLevel !== "string" || !VALID_ACCESS_LEVELS.has(rawLevel)) return null;
+    out[key] = rawLevel as "view" | "manage";
+  }
+  return out;
+}
+
+/**
+ * Utled både `tab_access` (nivå-kart) og `tab_values` (synlige nøkler) fra en
+ * PUT-body. Ny studio-dialog sender `tabAccess`; det gamle dashbordet sender
+ * bare `tabValues` (synlighet) — de behandles som full tilgang ('manage') for
+ * å bevare eksisterende oppførsel.
+ */
+function deriveOverridePayload(
+  body: Record<string, unknown>,
+): { tabAccess: TabAccessMap; tabValues: string[] } | null {
+  if (body.tabAccess !== undefined) {
+    const tabAccess = sanitizeTabAccess(body.tabAccess);
+    if (!tabAccess) return null;
+    return { tabAccess, tabValues: Object.keys(tabAccess) };
+  }
+  const tabValues = sanitizeTabValues(body.tabValues);
+  if (!tabValues) return null;
+  const tabAccess: TabAccessMap = {};
+  for (const key of tabValues) tabAccess[key] = "manage";
+  return { tabAccess, tabValues };
+}
+
+/**
+ * Normaliser en lagret rad til et nivå-kart. Nyere rader har `tab_access`;
+ * eldre rader har kun `tab_values` → tolkes som full tilgang.
+ */
+function rowToTabAccess(
+  tabAccess: unknown,
+  tabValues: unknown,
+): TabAccessMap {
+  if (tabAccess && typeof tabAccess === "object" && !Array.isArray(tabAccess)) {
+    const parsed = sanitizeTabAccess(tabAccess);
+    if (parsed && Object.keys(parsed).length > 0) return parsed;
+  }
+  const out: TabAccessMap = {};
+  if (Array.isArray(tabValues)) {
+    for (const v of tabValues) {
+      if (typeof v === "string" && VALID_TAB_VALUES.has(v)) out[v] = "manage";
+    }
+  }
+  return out;
+}
+
 export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps): void {
   const { pool, activeSessions } = deps;
   void ensureTable(pool);
@@ -127,7 +196,7 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
       try {
         const [overridesRes, membersRes] = await Promise.all([
           pool.query(
-            `SELECT target_type, target_value, tab_values, updated_at
+            `SELECT target_type, target_value, tab_values, tab_access, updated_at
                FROM role_room_project_tab_overrides
               WHERE project_id = $1`,
             [projectId],
@@ -151,10 +220,11 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
 
         res.json({
           projectId,
-          overrides: overridesRes.rows.map((row: { target_type: string; target_value: string; tab_values: string[]; updated_at: Date }) => ({
+          overrides: overridesRes.rows.map((row: { target_type: string; target_value: string; tab_values: string[]; tab_access: unknown; updated_at: Date }) => ({
             targetType: row.target_type,
             targetValue: row.target_value,
             tabValues: row.tab_values,
+            tabAccess: rowToTabAccess(row.tab_access, row.tab_values),
             updatedAt: row.updated_at,
           })),
           members: membersRes.rows.map((row: { user_id: string; role: string | null; email: string | null; display_name: string | null; profile_image_url: string | null }) => ({
@@ -198,23 +268,25 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
       if (!VALID_TARGET_TYPES.has(targetType) || !targetValue) {
         res.status(400).json({ error: "ugyldig_target" }); return;
       }
-      const tabValues = sanitizeTabValues(body.tabValues);
-      if (!tabValues) {
-        res.status(400).json({ error: "ugyldig_tabValues" }); return;
+      const payload = deriveOverridePayload(body);
+      if (!payload) {
+        res.status(400).json({ error: "ugyldig_tabAccess" }); return;
       }
+      const { tabAccess, tabValues } = payload;
 
       try {
         await pool.query(
           `INSERT INTO role_room_project_tab_overrides
-                (project_id, target_type, target_value, tab_values, updated_by_user_id, updated_at)
-              VALUES ($1, $2, $3, $4, $5, NOW())
+                (project_id, target_type, target_value, tab_values, tab_access, updated_by_user_id, updated_at)
+              VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())
             ON CONFLICT (project_id, target_type, target_value) DO UPDATE
               SET tab_values = EXCLUDED.tab_values,
+                  tab_access = EXCLUDED.tab_access,
                   updated_by_user_id = EXCLUDED.updated_by_user_id,
                   updated_at = NOW()`,
-          [projectId, targetType, targetValue, tabValues, viewerId],
+          [projectId, targetType, targetValue, tabValues, JSON.stringify(tabAccess), viewerId],
         );
-        res.json({ ok: true, targetType, targetValue, tabValues });
+        res.json({ ok: true, targetType, targetValue, tabValues, tabAccess });
       } catch (err) {
         console.error("[rr-project-tab-config] PUT failed:", err);
         res.status(500).json({ error: "intern_feil" });
@@ -399,11 +471,20 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
         res.status(400).json({ error: "projectId_mangler" }); return;
       }
       if (!(await ensureTable(pool))) {
-        res.json({ tabValues: null, source: "default", role: null });
+        res.json({ tabValues: null, tabAccess: null, source: "default", role: null });
         return;
       }
 
       try {
+        // Lederen har ALLTID full tilgang til eget prosjekt — sjekk dette først
+        // og kortslutt, slik at en eventuell egen casting_user_role-rad (f.eks.
+        // "director") ikke låser lederen ut av faner. role='leder' → frontend
+        // bruker 'leder'-preset (alt = administrere).
+        if (await isProjectLeader(pool, viewerId, projectId)) {
+          res.json({ tabValues: null, tabAccess: null, source: "default", role: "leder" });
+          return;
+        }
+
         // Finn brukerens rolle på prosjektet
         const roleRes = await pool.query(
           `SELECT role FROM casting_user_roles
@@ -411,45 +492,48 @@ export function registerRoleRoomProjectTabConfigRoutes(app: Express, deps: Deps)
             LIMIT 1`,
           [projectId, viewerId],
         );
-        let role: string | null = roleRes.rows[0]?.role ?? null;
-        if (!role) {
-          // Sjekk om viewer er lederen
-          const leaderRes = await pool.query(
-            `SELECT 1 FROM casting_projects
-              WHERE id = $1 AND created_by = $2 LIMIT 1`,
-            [projectId, viewerId],
-          );
-          if (leaderRes.rows.length > 0) role = "leder";
-        }
+        const role: string | null = roleRes.rows[0]?.role ?? null;
 
         // 1. Sjekk bruker-spesifikk override
         const userOverride = await pool.query(
-          `SELECT tab_values FROM role_room_project_tab_overrides
+          `SELECT tab_values, tab_access FROM role_room_project_tab_overrides
             WHERE project_id = $1 AND target_type = 'user' AND target_value = $2
             LIMIT 1`,
           [projectId, viewerId],
         );
         if (userOverride.rows[0]) {
-          res.json({ tabValues: userOverride.rows[0].tab_values, source: "user", role });
+          const row = userOverride.rows[0];
+          res.json({
+            tabValues: row.tab_values,
+            tabAccess: rowToTabAccess(row.tab_access, row.tab_values),
+            source: "user",
+            role,
+          });
           return;
         }
 
         // 2. Sjekk rolle-override
         if (role) {
           const roleOverride = await pool.query(
-            `SELECT tab_values FROM role_room_project_tab_overrides
+            `SELECT tab_values, tab_access FROM role_room_project_tab_overrides
               WHERE project_id = $1 AND target_type = 'role' AND target_value = $2
               LIMIT 1`,
             [projectId, role],
           );
           if (roleOverride.rows[0]) {
-            res.json({ tabValues: roleOverride.rows[0].tab_values, source: "role", role });
+            const row = roleOverride.rows[0];
+            res.json({
+              tabValues: row.tab_values,
+              tabAccess: rowToTabAccess(row.tab_access, row.tab_values),
+              source: "role",
+              role,
+            });
             return;
           }
         }
 
-        // 3. Ingen override — frontend faller til plattform-default
-        res.json({ tabValues: null, source: "default", role });
+        // 3. Ingen override — frontend faller til rollens preset (studioAccessModel)
+        res.json({ tabValues: null, tabAccess: null, source: "default", role });
       } catch (err) {
         console.error("[rr-project-tab-config] my-tabs failed:", err);
         res.status(500).json({ error: "intern_feil" });

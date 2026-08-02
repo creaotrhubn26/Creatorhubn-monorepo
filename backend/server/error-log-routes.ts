@@ -101,7 +101,7 @@ export function registerErrorLogRoutes({
       });
       return res.json({ ok: true, errorId: id });
     } catch (err) {
-      return res.status(500).json({ error: "log_failed", detail: String(err) });
+      return res.status(500).json({ error: "log_failed", detail: "internal_error" });
     }
   });
 
@@ -116,7 +116,7 @@ export function registerErrorLogRoutes({
         endpoint: req.query.endpoint as string | undefined,
         userEmail: req.query.userEmail as string | undefined,
         hoursAgo: req.query.hoursAgo ? Number(req.query.hoursAgo) : undefined,
-        limit: req.query.limit ? Number(req.query.limit) : 200,
+        limit: Math.min(Math.max(1, req.query.limit ? Number(req.query.limit) : 200), 1000),
       });
       return res.json({ errors });
     } catch (err) {
@@ -156,7 +156,7 @@ export function registerErrorLogRoutes({
       });
       return res.json({ ok });
     } catch (err) {
-      return res.status(500).json({ error: "resolve_failed", detail: String(err) });
+      return res.status(500).json({ error: "resolve_failed", detail: "internal_error" });
     }
   };
   app.patch("/api/admin-room/errors/:id/resolve", resolveHandler);
@@ -169,7 +169,7 @@ export function registerErrorLogRoutes({
       const ok = await reopenError(pool, req.params.id);
       return res.json({ ok });
     } catch (err) {
-      return res.status(500).json({ error: "reopen_failed", detail: String(err) });
+      return res.status(500).json({ error: "reopen_failed", detail: "internal_error" });
     }
   };
   app.patch("/api/admin-room/errors/:id/reopen", reopenHandler);
@@ -222,7 +222,7 @@ export function registerErrorLogRoutes({
         },
       });
     } catch (err) {
-      return res.status(500).json({ error: "error_detail_failed", detail: String(err) });
+      return res.status(500).json({ error: "error_detail_failed", detail: "internal_error" });
     }
   });
 
@@ -233,7 +233,7 @@ export function registerErrorLogRoutes({
       const ok = await deleteError(pool, req.params.id);
       return res.json({ ok });
     } catch (err) {
-      return res.status(500).json({ error: "delete_failed", detail: String(err) });
+      return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
     }
   });
 }

@@ -10,6 +10,8 @@ import SwiftUI
 /// ``@Environment`` without threading the service through manually.
 @main
 struct CaptureAppMain: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -74,6 +76,49 @@ struct RootView: View {
                 OnboardingView(onFinish: finishOnboarding)
             case .mainShell:
                 CreatorHubOneRootView()
+                    .task {
+                        // Innlogget → be om push-tillatelse + registrer APNs-token.
+                        PushNotificationService.shared.requestAuthorizationAndRegister()
+                    }
+            case .demoAI:
+                DemoAIView()
+            case .demoRedigering:
+                RedigeringDemoView()
+            case .demoShotList:
+                ShotListDemoView()
+            case .demoMessages:
+                MessagesDemoView()
+            case .demoBrief:
+                ShotListFromBriefView(
+                    onSave: { _ in },
+                    fetchTimeline: {
+                        "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
+                            + "- 12:30 Forberedelser (brudesuiten) — sminke, detaljer: ringer, bukett, sko\n"
+                            + "- 13:30 First look (hagen)\n"
+                            + "- 14:30 Vielse (kapellet)\n"
+                            + "- 15:15 Gratulasjoner + familiebilder (utenfor kapellet)\n"
+                            + "- 16:00 Brudepar-portretter (gyllen time ved vannet)\n"
+                            + "- 18:00 Middag + taler (festsalen)\n"
+                            + "- 21:00 Kake + første dans\n"
+                            + "- 22:00 Fest på dansegulvet"
+                    },
+                    callSheetURL: { scenes in
+                        let steps: [[String: String]] = scenes.map { s in
+                            if let r = s.range(of: " — ") {
+                                return ["label": String(s[..<r.lowerBound]).trimmingCharacters(in: .whitespaces),
+                                        "desc": String(s[r.upperBound...]).trimmingCharacters(in: .whitespaces)]
+                            }
+                            return ["label": s]
+                        }
+                        let data: [String: Any] = ["title": "Nora & Jonas — Call-sheet", "accent": "#FF6B35", "steps": steps]
+                        return BackendClient(baseURL: URL(string: "https://creatorhub-backend-rtbl.onrender.com")!)
+                            .infographicRenderURL(tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500, data: data, accentHex: "FF6B35")
+                    },
+                    initialBrief: "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
+                        + "- 13:30 First look (hagen)\n- 14:30 Vielse (kapellet)\n"
+                        + "- 16:00 Brudepar-portretter (gyllen time)\n- 21:00 Kake + første dans",
+                    autoGenerate: true)
+                    .preferredColorScheme(.dark)
             }
         }
         // Globalt overlegg som dukker opp uansett hvilken surface som
@@ -112,9 +157,29 @@ struct RootView: View {
         case onboardingForced
         case onboarding
         case mainShell
+        case demoAI
+        case demoRedigering
+        case demoShotList
+        case demoMessages
+        case demoBrief
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-redigering") {
+            return .demoRedigering
+        }
+        if launchArguments.contains("--demo-brief") {
+            return .demoBrief
+        }
+        if launchArguments.contains("--demo-messages") {
+            return .demoMessages
+        }
+        if launchArguments.contains("--demo-shotlist") {
+            return .demoShotList
+        }
+        if launchArguments.contains("--demo-ai") {
+            return .demoAI
+        }
         if launchArguments.contains("--legacy-capture-only") {
             return .legacyCapture
         }

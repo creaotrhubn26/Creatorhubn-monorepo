@@ -33,6 +33,8 @@ interface Vendor {
   is_foreign: boolean; approval_status: string; partner_type: string | null;
   prototype_until: string | null; platform_fee_bps: number | null;
   rating: number | null; review_count: number | null; quality_flagged: boolean; approved_at: string | null;
+  cleared: boolean; verificationPercent: number; missing: string[];
+  lastLinkSentAt: string | null; lastLinkUsedAt: string | null;
 }
 
 // Avledet visnings-type for en vendor (prototype aktiv? utløpt? standard? uavklart?)
@@ -148,6 +150,8 @@ export default function EditingPartnersAdminPanel() {
   const allVendors = Array.isArray(vendors.data?.vendors) ? vendors.data.vendors : [];
   const prototypeVendors = allVendors.filter((v) => v.partner_type === "prototype");
   const standardVendors = allVendors.filter((v) => v.partner_type === "standard");
+  // Godkjent MEN ikke cleared → kan ikke jobbe på oppdrag (compliance ikke fullført).
+  const pendingCompliance = allVendors.filter((v) => v.approval_status === "approved" && !v.cleared);
 
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [snack, setSnack] = useState("");
@@ -160,6 +164,12 @@ export default function EditingPartnersAdminPanel() {
     mutationFn: (id: string) => apiRequest(`/api/superadmin/editing-partner-applications/${id}/invite`, { method: "POST" }),
     onSuccess: () => setSnack("Invitasjon sendt — prospektet søker selv."),
     onError: () => setSnack("Kunne ikke sende invitasjon."),
+  });
+  // Send fersk magic-link til en godkjent partner (tilbakekaller gamle lenker først).
+  const resendLink = useMutation({
+    mutationFn: (userId: string) => apiRequest(`/api/superadmin/editing/vendors/${userId}/resend-link`, { method: "POST" }),
+    onSuccess: () => setSnack("Fersk magic-link sendt på e-post (gamle lenker slutter å virke)."),
+    onError: () => setSnack("Kunne ikke sende magic-link."),
   });
 
   const refresh = () => {
@@ -179,6 +189,13 @@ export default function EditingPartnersAdminPanel() {
         </Box>
         <AdminButton tone="secondary" size="small" onClick={() => setAddLeadOpen(true)}>+ Legg til lead</AdminButton>
       </Stack>
+
+      {pendingCompliance.length > 0 && (
+        <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mb: 2 }}>
+          <b>{pendingCompliance.length} godkjent{pendingCompliance.length === 1 ? "" : "e"} partner{pendingCompliance.length === 1 ? "" : "e"} har ikke fullført compliance</b> — de kan ikke akseptere/jobbe på oppdrag før det er gjort:{" "}
+          {pendingCompliance.map((v) => `${v.vendor_name} (${v.verificationPercent}%)`).join(", ")}. Send fersk magic-link + be dem fullføre Compliance-fanen.
+        </Alert>
+      )}
 
       <Tabs value={filter} onChange={(_, v) => setFilter(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto">
         <Tab label={`Søknader (${pending.length})`} />
@@ -263,6 +280,9 @@ export default function EditingPartnersAdminPanel() {
                     <Typography variant="body2" color="text.secondary">{v.email} · {v.country || "—"}{v.is_foreign ? " (utland)" : ""}</Typography>
                     <Stack direction="row" spacing={1} sx={{ mt: 0.6 }} alignItems="center">
                       <StatusChip tone={tl.tone} icon={tl.icon as React.ReactElement | undefined} label={tl.label} />
+                      {v.cleared
+                        ? <StatusChip tone="success" label="Compliance ✓" />
+                        : <Tooltip title={`Mangler: ${(v.missing || []).join(", ") || "—"}`}><span><StatusChip tone="warning" label={`Compliance ikke fullført · ${v.verificationPercent}%`} /></span></Tooltip>}
                       {v.partner_type === "prototype" && fb ? (
                         <StatusChip
                           tone={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
@@ -280,9 +300,20 @@ export default function EditingPartnersAdminPanel() {
                         />
                       ) : null}
                       {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
+                      {v.lastLinkSentAt && (
+                        <StatusChip
+                          tone={v.lastLinkUsedAt ? "success" : "warning"}
+                          label={v.lastLinkUsedAt
+                            ? `Magic-link åpnet ${new Date(v.lastLinkUsedAt).toLocaleDateString("nb-NO")}`
+                            : `Magic-link sendt ${new Date(v.lastLinkSentAt).toLocaleDateString("nb-NO")} · ikke åpnet`}
+                        />
+                      )}
                     </Stack>
                   </Box>
-                  <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
+                  <Stack direction="row" spacing={1}>
+                    <AdminButton tone="secondary" size="small" loading={resendLink.isPending} onClick={() => { if (confirm(`Send fersk magic-link til ${v.vendor_name}? Gamle lenker slutter å virke.`)) resendLink.mutate(v.user_id); }}>Send magic-link</AdminButton>
+                    <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
+                  </Stack>
                 </Stack>
               </AdminCard>
             );

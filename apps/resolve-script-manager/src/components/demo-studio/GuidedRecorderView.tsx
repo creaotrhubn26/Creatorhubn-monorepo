@@ -2,7 +2,7 @@
  * GuidedRecorderView — piksel-matchet Guided Recorder (fasit: Daniels mockup
  * + spec §2.4/§3.4). Kjernen i Product Demo Studio.
  *
- * Layout: mørk sidebar · topbar (URL + device-toggle + Generate Demo Flow +
+ * Layout: mørk sidebar · topbar (URL + device-toggle + Manual/Auto +
  * Record) · device-trio-preview i senter (Mac+iPad+iPhone) m/ "Recording
  * Paused"-badge · høyre Guide/Script/Notes-panel med Step X of N, Narration,
  * REQUIRED ACTION (m/ knapp-preview) + Retake/Mark as Done/Next Step · bunn
@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
+import { SimulatorStage } from './SimulatorStage';
 import { useSceneRecorder, REC_UNAVAILABLE } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, recordIphoneMirroring, checkUrlEmbeddable, playwrightCaptureShots, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
@@ -27,10 +28,10 @@ import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const C = {
-  navBg: '#1c1a18', navText: '#cbc6bf', navActive: '#2a2724',
-  bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd', lineStrong: '#ddd6cc',
-  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#2f2a26',
-  green: '#4a9d6b', red: '#d9534f', amber: '#e0922f', deviceFrame: '#2a2a2e',
+  navBg: '#17141f', navText: '#c9c4d6', navActive: '#2a2340',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee', lineStrong: '#d8d2e2',
+  ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8', accent: '#8b5cf6', dark: '#241d42',
+  green: '#22c55e', red: '#d9534f', amber: '#e0922f', deviceFrame: '#2a2a2e',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -51,12 +52,13 @@ function fmt(sec: number) {
 export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } = {}) {
   const {
     project, recorderStepIndex, selectScene, goToStep,
-    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField, addScene,
+    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField, setSceneStatus, addScene,
   } = useDemoStudio();
   const rec = useSceneRecorder();
   const macFrameRef = useRef<HTMLIFrameElement | null>(null);
   const autoAbort = useRef(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [autoWarn, setAutoWarn] = useState<string | null>(null);
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
@@ -103,8 +105,13 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     if (!url || shotsTried.current === url) return;
     if (project?.scanShots && project.scanShots.length) return;
     shotsTried.current = url;
+    const jobId = project?.id;
     void playwrightCaptureShots(url).then((r) => {
+      // Dropp hvis brukeren byttet prosjekt/url mens skann kjørte.
+      const cur = useDemoStudio.getState().project;
+      if (!cur || cur.id !== jobId || cur.url !== url) return;
       if (r?.shots?.length) setProjectField('scanShots', r.shots);
+      if (r?.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile);
     }).catch(() => { /* Playwright ikke satt opp — miniatyrer forblir tomme */ });
   }, [project?.url, project?.scanShots, setProjectField]);
 
@@ -187,25 +194,33 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
    * Same-origin kreves for DOM-tilgang; cross-origin → vi simulerer kun
    * scroll/wait på toppnivå. Aldri fatal.
    */
-  const performAction = async (scene: typeof cur) => {
+  const performAction = async (scene: typeof cur): Promise<'ok' | 'noop' | 'blocked'> => {
     const type = scene.actionType ?? 'click';
     const win = macFrameRef.current?.contentWindow;
     const doc = (() => { try { return macFrameRef.current?.contentDocument ?? null; } catch { return null; } })();
     try {
       if (type === 'scroll') {
         win?.scrollBy({ top: 500, behavior: 'smooth' });
-      } else if ((type === 'click' || type === 'hover' || type === 'highlight') && doc) {
+        return 'ok';
+      }
+      if (type === 'click' || type === 'hover' || type === 'highlight') {
+        // Cross-origin → ingen DOM-tilgang. Rapporter «blocked» så auto-kjøringen
+        // kan varsle brukeren i stedet for å vente stille uten å klikke.
+        if (!doc) return 'blocked';
         const label = targetLabel(scene.requiredAction).toLowerCase();
         const el = Array.from(doc.querySelectorAll('a,button,[role=button]'))
           .find((e) => (e.textContent ?? '').toLowerCase().includes(label)) as HTMLElement | undefined;
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.style.outline = '3px solid #ef8a5d'; el.style.outlineOffset = '2px';
+          el.style.outline = '3px solid #8b5cf6'; el.style.outlineOffset = '2px';
           await sleep(500);
           if (type === 'click') el.click();
+          return 'ok';
         }
+        return 'noop';
       }
-    } catch { /* cross-origin/blokkert — hopp over */ }
+    } catch { return 'blocked'; }
+    return 'noop';
   };
 
   /** Les gjeldende scene FERSKT fra storen (unngår stale closure-indeks). */
@@ -239,6 +254,18 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const runAuto = async () => {
     autoAbort.current = false;
     setAutoRunning(true);
+    // Cross-origin preview → ingen DOM-tilgang → kan ikke klikke. Varsle brukeren
+    // i stedet for å vente stille (før: klikk-scener gjorde ingenting, kun venting).
+    setAutoWarn(null);
+    {
+      const stPre = useDemoStudio.getState();
+      const listPre = stPre.project?.scenes ?? [];
+      const crossOrigin = (() => { try { return !macFrameRef.current?.contentDocument; } catch { return true; } })();
+      const needsDom = listPre.some((s) => ['click', 'hover', 'highlight'].includes(s.actionType ?? 'click'));
+      if (crossOrigin && needsDom) {
+        setAutoWarn('Auto-modus kan ikke klikke på eksterne nettsider (cross-origin) — scenene tas opp med riktig varighet, men uten simulerte klikk. Bruk «Kjør automatisk» i opptaks-sesjonen for ekte klikk på eksterne sider.');
+      }
+    }
     // Les start-indeks og scener FERSKT fra storen: beginRecording kaller
     // startRecorder() rett før oss, så render-closurens recorderStepIndex
     // kan peke på feil scene.
@@ -260,7 +287,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       // MediaRecorder-tilstanden og er no-op hvis ingenting tas opp.
       const path = await rec.stopAndSave(proj.id, scene.id);
       if (path) updateScene(scene.id, { recordingPath: path });
-      markCurrentDone();
+      // Marker «done» KUN hvis scenen faktisk har et opptak (nytt eller fra før).
+      // Feilet lagringen → needs_review, så demo-score ikke viser ferdig uten klipp.
+      const hasRec = !!path || !!useDemoStudio.getState().project?.scenes.find((s) => s.id === scene.id)?.recordingPath;
+      if (hasRec) markCurrentDone(); else setSceneStatus(scene.id, 'needs_review');
       if (i < sceneList.length - 1) { nextStep(); await startForCurrent(); }
     }
     setAutoRunning(false);
@@ -270,7 +300,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     const sc = freshCurrent() ?? cur;
     if (isNativeCapture) {
       // Native: opptak skjer per scene via recordNativeScene (allerede lagret).
-      markCurrentDone();
+      // Marker done kun hvis scenen faktisk fikk et opptak; ellers needs_review.
+      const hasRec = !!useDemoStudio.getState().project?.scenes.find((s) => s.id === sc.id)?.recordingPath;
+      if (hasRec) markCurrentDone(); else setSceneStatus(sc.id, 'needs_review');
       nextStep();
       const next = freshCurrent();
       if (next && next.id !== sc.id) {
@@ -283,7 +315,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     // og render-verdien rec.state kan være stale (se runAuto).
     const path = await rec.stopAndSave(project.id, sc.id);
     if (path) updateScene(sc.id, { recordingPath: path });
-    markCurrentDone();
+    // Marker done kun hvis scenen faktisk har et opptak; ellers needs_review, så
+    // videre progresjon ikke skjuler at klippet mangler.
+    const hasRec = !!path || !!useDemoStudio.getState().project?.scenes.find((s) => s.id === sc.id)?.recordingPath;
+    if (hasRec) markCurrentDone(); else setSceneStatus(sc.id, 'needs_review');
     if (recorderStepIndex < scenes.length - 1) { nextStep(); await startForCurrent(); }
   };
 
@@ -294,7 +329,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   };
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
+    <div style={{ display: 'flex', width: '100%', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
       {/* ── Left nav (mørk) ── */}
       <div style={{ width: 210, background: C.navBg, color: C.navText, display: 'flex', flexDirection: 'column', flexShrink: 0, padding: '14px 12px' }}>
         <div style={{ padding: '4px 8px 16px' }}>
@@ -338,7 +373,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             <span style={{ color: C.inkFaint }}>🌐</span>
             <input style={{ flex: 1, border: 0, outline: 'none', fontSize: 13, color: C.ink, background: 'transparent', colorScheme: 'light' }} value={project.url}
               placeholder="https://din-side.no" onChange={(e) => setProjectField('url', e.target.value)} />
-            <span style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
+            {project.url ? (
+              <span role="button" title="Tøm URL-feltet" onClick={() => setProjectField('url', '')}
+                style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
+            ) : null}
           </div>
 
           {/* Capture-kilde-velger: web / Mac-skjerm / kablet iOS / simulator */}
@@ -396,7 +434,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         {/* Body: device-trio + Guide-panel */}
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           {/* Device-trio preview */}
-          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#f6f3ee,#efe9e0)', minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#faf8f7,#efe9e0)', minWidth: 0, overflow: 'hidden' }}>
             {/* Advarsel: siden tillater ikke innbygging → web-opptak gir svart skjerm */}
             {captureKind === 'web' && embedBlocked && (
               <div style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 5, background: '#fdeee0', border: `1px solid #f0c9a8`, borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: '#8a4b15', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -417,15 +455,19 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <span style={{ fontSize: 12, color: C.inkFaint }}>{fmt(cur?.duration ?? 0)}</span>
               </div>
             )}
-            {isNativeCapture ? (
+            {captureKind === 'ios_simulator' ? (
+              /* Simulator: LIVE-flate — Post Agent driver simulatoren (preview +
+                 start app + deep-link + autonom gjennomgang). */
+              <SimulatorStage udid={project.captureSourceId ?? ''} device={previewDevice === 'macbook' ? 'ipad' : previewDevice} C={C} />
+            ) : isNativeCapture ? (
               /* Native kilde: previewet kan ikke speile kilden live — vis hva
                  som faktisk tas opp ved Record, så det ikke er forvirrende. */
               <div style={{ textAlign: 'center', maxWidth: 420, padding: 24 }}>
                 <div style={{ fontSize: 46, marginBottom: 12 }}>
-                  {captureKind === 'iphone_mirroring' ? '📡' : captureKind === 'mac_screen' ? '🖥' : captureKind === 'ios_simulator' ? '⊞' : '📱'}
+                  {captureKind === 'iphone_mirroring' ? '📡' : captureKind === 'mac_screen' ? '🖥' : '📱'}
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-                  Tar opp: {captureKind === 'iphone_mirroring' ? 'iPhone Mirroring-vinduet' : captureKind === 'mac_screen' ? 'Mac-skjermen' : captureKind === 'ios_simulator' ? 'iOS-simulatoren' : (project.captureSourceLabel ?? 'iOS-enheten')}
+                  Tar opp: {captureKind === 'iphone_mirroring' ? 'iPhone Mirroring-vinduet' : captureKind === 'mac_screen' ? 'Mac-skjermen' : (project.captureSourceLabel ?? 'iOS-enheten')}
                 </div>
                 <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5 }}>
                   Forhåndsvisning er ikke tilgjengelig for native kilder. Hold {captureKind === 'iphone_mirroring' ? 'iPhone Mirroring-vinduet' : 'kilden'} synlig og trykk <strong>Record</strong> — appen fanger den direkte (croppet til vinduet).
@@ -499,7 +541,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
               {/* REQUIRED ACTION */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>Required Action</span>
-                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }}>⚙</span>
+                {/* ⚙-ikonet er fjernet: det så klikkbart ut, men hadde ingen handler. */}
+                <div style={{ flex: 1 }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.lineStrong}`, display: 'grid', placeItems: 'center', fontSize: 11, color: C.inkSoft }}>{actionMeta.icon}</span>
@@ -532,6 +575,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 </div>
               )}
                 </>
+              )}
+              {autoWarn && (
+                <div style={{ display: 'flex', gap: 8, background: '#fdecec', border: '1px solid #f3c0c0', borderRadius: 10, padding: '10px 12px', marginBottom: 16 }}>
+                  <span style={{ color: '#c0392b' }}>⚠</span>
+                  <div style={{ fontSize: 11.5, color: '#8a2a2a', lineHeight: 1.45 }}>{autoWarn}</div>
+                </div>
               )}
               {rec.error === REC_UNAVAILABLE ? (
                 <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 10, padding: 10, border: `1px solid ${C.line}`, borderRadius: 8, background: C.cream }}>
@@ -617,9 +666,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
 function SourceItem({ label, sub, onClick, active }: { label: string; sub: string; onClick: () => void; active: boolean }) {
   return (
-    <div onClick={onClick} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? '#f3ece2' : 'transparent' }}>
-      <div style={{ fontSize: 12.5, fontWeight: active ? 600 : 500, color: '#1d1b19' }}>{label}</div>
-      <div style={{ fontSize: 10.5, color: '#9a9186' }}>{sub}</div>
+    <div onClick={onClick} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? '#efeaf7' : 'transparent' }}>
+      <div style={{ fontSize: 12.5, fontWeight: active ? 600 : 500, color: '#1e1b2e' }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: '#9a94a8' }}>{sub}</div>
     </div>
   );
 }

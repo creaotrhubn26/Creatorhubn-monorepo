@@ -77,6 +77,10 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 const prizeImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Kun bildefiler er tillatt") as any, false);
+  },
 });
 
 const B2_REGION = process.env.B2_REGION || "eu-central-003";
@@ -268,7 +272,7 @@ export function registerSalesLeadershipRoutes(
       });
     } catch (err) {
       console.error("[sales-leadership] commission-config GET failed:", err);
-      return res.status(500).json({ error: "commission_config_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "commission_config_failed", detail: "internal_error" });
     }
   });
 
@@ -308,7 +312,7 @@ export function registerSalesLeadershipRoutes(
       });
     } catch (err) {
       console.error("[sales-leadership] commission-config PUT failed:", err);
-      return res.status(500).json({ error: "commission_config_save_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "commission_config_save_failed", detail: "internal_error" });
     }
   });
 
@@ -346,7 +350,7 @@ export function registerSalesLeadershipRoutes(
       return res.json({ templates: merged });
     } catch (err) {
       console.error("[sales-leadership] contest-templates GET failed:", err);
-      return res.status(500).json({ error: "contest_templates_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_templates_failed", detail: "internal_error" });
     }
   });
 
@@ -375,7 +379,7 @@ export function registerSalesLeadershipRoutes(
       return res.json(r.rows[0]);
     } catch (err) {
       console.error("[sales-leadership] contest-templates PUT failed:", err);
-      return res.status(500).json({ error: "contest_template_save_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_template_save_failed", detail: "internal_error" });
     }
   });
 
@@ -399,7 +403,7 @@ export function registerSalesLeadershipRoutes(
       return res.json({ prizes: r.rows });
     } catch (err) {
       console.error("[sales-leadership] prize-catalog GET failed:", err);
-      return res.status(500).json({ error: "prize_catalog_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "prize_catalog_failed", detail: "internal_error" });
     }
   });
 
@@ -641,7 +645,7 @@ export function registerSalesLeadershipRoutes(
       });
     } catch (err) {
       console.error("[sales-leadership] commission-earnings failed:", err);
-      return res.status(500).json({ error: "commission_earnings_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "commission_earnings_failed", detail: "internal_error" });
     }
   });
 
@@ -672,7 +676,7 @@ export function registerSalesLeadershipRoutes(
       return res.status(201).json(r.rows[0]);
     } catch (err) {
       console.error("[sales-leadership] prize-catalog POST failed:", err);
-      return res.status(500).json({ error: "prize_create_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "prize_create_failed", detail: "internal_error" });
     }
   });
 
@@ -715,7 +719,7 @@ export function registerSalesLeadershipRoutes(
       return res.json(r.rows[0]);
     } catch (err) {
       console.error("[sales-leadership] prize-catalog PATCH failed:", err);
-      return res.status(500).json({ error: "prize_update_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "prize_update_failed", detail: "internal_error" });
     }
   });
 
@@ -736,7 +740,7 @@ export function registerSalesLeadershipRoutes(
       return res.json({ ok: true, id });
     } catch (err) {
       console.error("[sales-leadership] prize-catalog DELETE failed:", err);
-      return res.status(500).json({ error: "prize_delete_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "prize_delete_failed", detail: "internal_error" });
     }
   });
 
@@ -772,7 +776,7 @@ export function registerSalesLeadershipRoutes(
         );
       } catch (err) {
         console.error("[sales-leadership] prize image upload failed:", err);
-        return res.status(500).json({ error: "upload_failed", detail: String((err as Error).message) });
+        return res.status(500).json({ error: "upload_failed", detail: "internal_error" });
       }
       const imageUrl = `${B2_ENDPOINT}/${config.bucket}/${b2Key}`;
       return res.status(201).json({ image_url: imageUrl, image_b2_key: b2Key });
@@ -803,7 +807,7 @@ export function registerSalesLeadershipRoutes(
       return res.json({ contests: r.rows });
     } catch (err) {
       console.error("[sales-leadership] contests GET failed:", err);
-      return res.status(500).json({ error: "contests_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contests_failed", detail: "internal_error" });
     }
   });
 
@@ -861,7 +865,7 @@ export function registerSalesLeadershipRoutes(
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
       console.error("[sales-leadership] contest create failed:", err);
-      return res.status(500).json({ error: "contest_create_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_create_failed", detail: "internal_error" });
     } finally {
       client.release();
     }
@@ -881,7 +885,7 @@ export function registerSalesLeadershipRoutes(
           LIMIT 1`,
         [id, orgId],
       );
-      if (contestRes.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!contestRes.rows.length) return res.status(404).json({ error: "not_found" });
       const contest = contestRes.rows[0];
 
       const prizesRes = await pool.query(
@@ -925,7 +929,7 @@ export function registerSalesLeadershipRoutes(
       });
     } catch (err) {
       console.error("[sales-leadership] contest detail failed:", err);
-      return res.status(500).json({ error: "contest_detail_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_detail_failed", detail: "internal_error" });
     }
   });
 
@@ -951,7 +955,7 @@ export function registerSalesLeadershipRoutes(
       return res.json(r.rows[0]);
     } catch (err) {
       console.error("[sales-leadership] contest PATCH failed:", err);
-      return res.status(500).json({ error: "contest_update_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_update_failed", detail: "internal_error" });
     }
   });
 
@@ -1067,7 +1071,7 @@ export function registerSalesLeadershipRoutes(
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
       console.error("[sales-leadership] contest close failed:", err);
-      return res.status(500).json({ error: "contest_close_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_close_failed", detail: "internal_error" });
     } finally {
       client.release();
     }
@@ -1090,7 +1094,7 @@ export function registerSalesLeadershipRoutes(
       return res.json({ ok: true, id });
     } catch (err) {
       console.error("[sales-leadership] contest DELETE failed:", err);
-      return res.status(500).json({ error: "contest_delete_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "contest_delete_failed", detail: "internal_error" });
     }
   });
 
@@ -1138,7 +1142,7 @@ export function registerSalesLeadershipRoutes(
       return res.json({ awards: r.rows });
     } catch (err) {
       console.error("[sales-leadership] awards GET failed:", err);
-      return res.status(500).json({ error: "awards_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "awards_failed", detail: "internal_error" });
     }
   });
 
@@ -1159,7 +1163,7 @@ export function registerSalesLeadershipRoutes(
           LIMIT 1`,
         [id],
       );
-      if (currentRes.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!currentRes.rows.length) return res.status(404).json({ error: "not_found" });
       const current = currentRes.rows[0] as Record<string, unknown>;
 
       // Tilgang: org-admin ELLER vinneren selv (for awaiting_address-flyt).
@@ -1228,7 +1232,7 @@ export function registerSalesLeadershipRoutes(
       return res.json(updated);
     } catch (err) {
       console.error("[sales-leadership] award advance failed:", err);
-      return res.status(500).json({ error: "award_advance_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "award_advance_failed", detail: "internal_error" });
     }
   });
 
@@ -1261,7 +1265,7 @@ export function registerSalesLeadershipRoutes(
           LIMIT 1`,
         [id],
       );
-      if (currentRes.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!currentRes.rows.length) return res.status(404).json({ error: "not_found" });
       const current = currentRes.rows[0] as Record<string, unknown>;
       if (String(current.winner_user_id) !== session.userId) {
         return res.status(403).json({ error: "forbidden" });
@@ -1295,7 +1299,7 @@ export function registerSalesLeadershipRoutes(
       return res.json(r.rows[0]);
     } catch (err) {
       console.error("[sales-leadership] award shipping-address failed:", err);
-      return res.status(500).json({ error: "shipping_address_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "shipping_address_failed", detail: "internal_error" });
     }
   });
 }

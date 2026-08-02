@@ -34,7 +34,19 @@ final class SkyEnhanceModel {
     /// Source bytes for /enhance — prefer the camera RAW (best quality).
     private func sourceBytes() -> (data: Data, name: String, mime: String)? {
         if let raw = asset.rawKey, let d = try? Data(contentsOf: URL(fileURLWithPath: raw)) {
-            return (d, asset.originalFilename, "image/x-canon-cr2")
+            // Utled mime fra filendelsen — hardkodet CR2 feiltolker CR3 (demoen!)
+            // og andre merker på serverens dcraw-rute.
+            let mime: String
+            switch (raw as NSString).pathExtension.lowercased() {
+            case "cr3": mime = "image/x-canon-cr3"
+            case "cr2": mime = "image/x-canon-cr2"
+            case "arw": mime = "image/x-sony-arw"
+            case "nef": mime = "image/x-nikon-nef"
+            case "raf": mime = "image/x-fuji-raf"
+            case "dng": mime = "image/x-adobe-dng"
+            default: mime = "image/x-dcraw"
+            }
+            return (d, asset.originalFilename, mime)
         }
         if let p = asset.displayPreviewKey, let d = try? Data(contentsOf: URL(fileURLWithPath: p)) {
             return (d, "image.jpg", "image/jpeg")

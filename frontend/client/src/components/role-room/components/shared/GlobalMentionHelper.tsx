@@ -208,7 +208,7 @@ export function GlobalMentionHelper({
             background: 'linear-gradient(135deg, rgba(8,32,58,0.82) 0%, rgba(14,34,72,0.78) 100%)',
           }}
         >
-          <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
+          <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
             {suggestionTitle}
           </Typography>
           <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">

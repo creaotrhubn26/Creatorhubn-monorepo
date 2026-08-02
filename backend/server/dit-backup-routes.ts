@@ -236,7 +236,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
           body.path ?? null,
           body.storage_type ?? 'raid',
           Number.isFinite(body.priority) ? body.priority : 1,
-          body.status ?? 'configured',
+          (['configured', 'active', 'error', 'offline'].includes(String(body.status ?? '')) ? String(body.status) : 'configured'),
           body.notes ?? null,
         ],
       );
@@ -403,7 +403,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
           body.source_size_bytes ?? null,
           body.source_hash ?? null,
           body.hash_algorithm ?? 'xxh64',
-          body.status ?? 'queued',
+          (['queued', 'in_progress', 'completed', 'failed', 'cancelled'].includes(String(body.status ?? '')) ? String(body.status) : 'queued'),
           auth.token_id,
           body.helper_hostname ?? null,
           body.helper_version ?? null,
@@ -712,7 +712,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
         `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
         [providerId, userId],
       );
-      if (provCheck.rowCount === 0) {
+      if (!provCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Provider tilhører ikke deg' });
@@ -723,7 +723,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
         `SELECT id FROM legacy.projects WHERE id = $1 AND user_id = $2`,
         [projectId, userId],
       );
-      if (projCheck.rowCount === 0) {
+      if (!projCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Prosjekt tilhører ikke deg' });

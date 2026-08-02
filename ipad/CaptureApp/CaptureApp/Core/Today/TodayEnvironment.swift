@@ -195,6 +195,88 @@ extension OpenMeteoProvider {
     }
 }
 
+// MARK: - #8 Timevis nedbør + «i dag»-anbefaling
+
+struct HourPrecip: Sendable, Equatable {
+    let time: Date
+    let probability: Int   // %
+    let mm: Double
+    var isWet: Bool { probability >= 50 || mm >= 0.2 }
+}
+
+/// Handlingsrettet plan for I DAG: golden hour-vindu + når regnet gir seg.
+struct TodayShootPlan: Sendable, Equatable {
+    let goldenStart: Date?
+    let goldenEnd: Date?
+    let rainClearsAt: Date?
+    let sunset: Date?
+}
+
+extension OpenMeteoProvider {
+    func hourlyPrecipitation(latitude lat: Double, longitude lon: Double) async throws -> [HourPrecip] {
+        var c = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
+        c.queryItems = [
+            .init(name: "latitude", value: String(lat)),
+            .init(name: "longitude", value: String(lon)),
+            .init(name: "hourly", value: "precipitation_probability,precipitation"),
+            .init(name: "forecast_days", value: "2"),
+            .init(name: "timezone", value: "auto")
+        ]
+        struct Resp: Decodable {
+            struct Hourly: Decodable {
+                let time: [String]
+                let precipitation_probability: [Int?]?
+                let precipitation: [Double?]?
+            }
+            let hourly: Hourly
+            let utc_offset_seconds: Int?
+        }
+        let (data, response) = try await URLSession.shared.data(from: c.url!)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        let r = try JSONDecoder().decode(Resp.self, from: data)
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: r.utc_offset_seconds ?? 0)
+        var out: [HourPrecip] = []
+        for i in r.hourly.time.indices {
+            guard let t = df.date(from: r.hourly.time[i]) else { continue }
+            let prob = r.hourly.precipitation_probability?[safe: i].flatMap { $0 } ?? 0
+            let mm = r.hourly.precipitation?[safe: i].flatMap { $0 } ?? 0
+            out.append(HourPrecip(time: t, probability: prob, mm: mm))
+        }
+        return out
+    }
+}
+
+enum TodayShootPlanner {
+    /// Bygg dagens plan fra golden hour (dag[0]) + timevis nedbør. `now`
+    /// injiseres for testbarhet.
+    static func plan(today: DailyForecast?, hours: [HourPrecip], now: Date) -> TodayShootPlan {
+        // «Regnet gir seg»: hvis det er vått i inneværende/neste time, finn
+        // første tørre time etter det (prob < 30 % + < 0.1 mm).
+        let upcoming = hours.filter { $0.time >= now.addingTimeInterval(-3600) }.sorted { $0.time < $1.time }
+        var rainClearsAt: Date?
+        if let firstWet = upcoming.first, firstWet.isWet {
+            rainClearsAt = upcoming.first { $0.time > firstWet.time && $0.probability < 30 && $0.mm < 0.1 }?.time
+        }
+        return TodayShootPlan(
+            goldenStart: today?.sun.goldenStart,
+            goldenEnd: today?.sun.goldenEnd,
+            rainClearsAt: rainClearsAt,
+            sunset: today?.sun.sunset,
+        )
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 // MARK: - Location
 
 /// One-shot location for sun + weather. Uses the modern async

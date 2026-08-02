@@ -19,6 +19,7 @@ import SplitSheetEarningsOverview from '../universal/split-sheets/SplitSheetEarn
 import TeamMembersDirectory from '../universal/split-sheets/TeamMembersDirectory';
 import SplitSheetRoleWizard from '../universal/split-sheets/SplitSheetRoleWizard';
 import { ws } from './workspaceTheme';
+import { wsIcon } from './crewIcons';
 import { WsCard, WsTag } from './ui';
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
@@ -144,7 +145,7 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
             const link = share?.shareUrl || entries.find((e: any) => e.shareUrl)?.shareUrl;
             return (
               <Box sx={{ mb: 2, p: 1.75, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
-                <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 0.5 }}>🔗 Del til signering</Typography>
+                <Typography sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, fontSize: 13, fontWeight: 700, mb: 0.5 }}>{wsIcon('Link', { fontSize: 14 })}Del til signering</Typography>
                 <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1 }}>Send lenken til bandet/bidragsyterne. De ser hele fordelingen og signerer godkjennelse — uten konto. Har de CreatorHub-konto med samme e-post, finner de avtalen igjen under «Mine avtaler».</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Box sx={{ flex: 1, px: 1.25, py: 0.9, borderRadius: 1, bgcolor: ws.panel, border: `1px solid ${ws.borderSoft}`, fontSize: 12, color: ws.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Box>

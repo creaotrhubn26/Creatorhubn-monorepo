@@ -34,6 +34,7 @@ import {
   Search as SearchIcon,
   TipsAndUpdates as TipsIcon,
 } from "@mui/icons-material";
+import PanelStateContainer, { toLoadingState } from "./PanelStateContainer";
 
 // ── Types matching backend ────────────────────────────────────────────
 type ConfidenceLevel = "low" | "medium" | "high";
@@ -349,17 +350,11 @@ export default function MarketIntelligenceOverviewPanel({
 
       <WorkflowStrip activeStep={activeStep} />
 
-      {error && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
+      <PanelStateContainer
+        state={toLoadingState({ loading, error })}
+        error={error}
+        onRetry={fetchData}
+      >
         <Stack spacing={2}>
           {/* Recent scans */}
           <Card>
@@ -387,8 +382,9 @@ export default function MarketIntelligenceOverviewPanel({
                     </TableHead>
                     <TableBody>
                       {scans.map((s) => {
-                        const stMeta = STATUS_META[s.status];
-                        const cfMeta = CONFIDENCE_META[s.confidenceSummary];
+                        // Ukjent/null status skal aldri felle panelet (lærdom 14.07)
+                        const stMeta = STATUS_META[s.status] ?? { label: s.status ?? "ukjent", color: "#94a3b8" };
+                        const cfMeta = CONFIDENCE_META[s.confidenceSummary] ?? { label: s.confidenceSummary ?? "ukjent", color: "#94a3b8" };
                         return (
                           <TableRow key={s.id} hover>
                             <TableCell>
@@ -401,7 +397,7 @@ export default function MarketIntelligenceOverviewPanel({
                             </TableCell>
                             <TableCell>
                               <Typography variant="caption">
-                                {s.marketQuery.slice(0, 60)}{s.marketQuery.length > 60 ? "…" : ""}
+                                {(s.marketQuery ?? "").slice(0, 60)}{(s.marketQuery ?? "").length > 60 ? "…" : ""}
                               </Typography>
                             </TableCell>
                             <TableCell>
@@ -463,8 +459,9 @@ export default function MarketIntelligenceOverviewPanel({
                 </Stack>
                 <Stack spacing={1}>
                   {opportunities.map((o) => {
-                    const imp = IMPACT_META[o.impact];
-                    const cf = CONFIDENCE_META[o.confidence];
+                    // Samme fallback-regel som scan-listen: ukjent verdi feller aldri panelet
+                    const imp = IMPACT_META[o.impact] ?? { label: o.impact ?? "ukjent", color: "#94a3b8" };
+                    const cf = CONFIDENCE_META[o.confidence] ?? { label: o.confidence ?? "ukjent", color: "#94a3b8" };
                     return (
                       <Card key={o.id} variant="outlined" sx={{ bgcolor: "rgba(251, 191, 36, 0.04)" }}>
                         <CardContent sx={{ "&:last-child": { pb: 2 } }}>
@@ -499,7 +496,7 @@ export default function MarketIntelligenceOverviewPanel({
             </Card>
           )}
         </Stack>
-      )}
+      </PanelStateContainer>
 
       {/* New scan dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>

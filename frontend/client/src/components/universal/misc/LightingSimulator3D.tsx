@@ -70,7 +70,7 @@ export default function LightingSimulator3D() {
 });
 
   // Fetch lighting setups
-  const { data: setups = [, ],} = useQuery({
+  const { data: setups = [],} = useQuery({
     queryKey: [`/api/lighting-setups/${currentUserd}`],
     queryFn: async () => {
       return apiRequest(`/api/lighting-setups/${currentUserd}`);

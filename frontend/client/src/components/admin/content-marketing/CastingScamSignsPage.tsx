@@ -2,6 +2,9 @@ import { Box, Container, Stack, Typography } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Trust & Safety-pillar — synlig content-side for "casting-svindel-tegn".
@@ -47,6 +50,12 @@ const AUTHORITIES = [
 ];
 
 export function CastingScamSignsPage() {
+  const cmsBlocks = useCmsBlocks('casting-svindel-tegn');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

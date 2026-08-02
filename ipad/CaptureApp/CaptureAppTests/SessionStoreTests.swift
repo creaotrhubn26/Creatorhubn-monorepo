@@ -43,6 +43,56 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(refreshed?.state, .previewReady)
     }
 
+    /// P1: `updateCaptureTime` setter den EKTE opptakstiden (fra EXIF) i stedet for
+    /// nedlastings-Date()-fallbacken descriptoren ble opprettet med.
+    func testUpdateCaptureTimeSetsRealShootTime() async throws {
+        let store = try makeStore()
+        let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)
+        let fallback = Date(timeIntervalSince1970: 2_000_000_000)
+        let asset = try await store.createAsset(sessionId: session.id, descriptor: AssetDescriptor(
+            id: UUID(), originalFilename: "IMG.JPG", captureTime: fallback,
+            mime: "image/jpeg", sizeBytes: nil))
+        let realShot = Date(timeIntervalSince1970: 1_700_000_000)   // ekte EXIF-tid
+        try await store.updateCaptureTime(id: asset.id, captureTime: realShot)
+        let refreshed = try await store.fetchAsset(id: asset.id)
+        XCTAssertEqual(refreshed?.captureTime.timeIntervalSince1970 ?? 0,
+                       realShot.timeIntervalSince1970, accuracy: 1.0)
+    }
+
+    /// En preview (liten, avledet variant) som lander SIST skal ikke overskrive
+    /// full/raw-variantens `sizeBytes`/`checksum` (én kolonne, kanonisk vinner).
+    func testAttachStorageKeyPreviewDoesNotClobberCanonicalSize() async throws {
+        let store = try makeStore()
+        let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)
+        let asset = try await store.createAsset(sessionId: session.id, descriptor: AssetDescriptor(
+            id: UUID(), originalFilename: "IMG.CR3", captureTime: Date(),
+            mime: "image/x-canon-cr3", sizeBytes: nil))
+        try await store.attachStorageKey(id: asset.id, kind: .full, key: "/full.jpg",
+                                         checksumSha256: "fullsum", sizeBytes: 8_000_000)
+        try await store.attachStorageKey(id: asset.id, kind: .preview, key: "/preview.jpg",
+                                         checksumSha256: "prevsum", sizeBytes: 120_000)
+        let a = try await store.fetchAsset(id: asset.id)
+        XCTAssertEqual(a?.previewKey, "/preview.jpg")
+        XCTAssertEqual(a?.sizeBytes, 8_000_000, "preview klobbet original-størrelsen")
+        XCTAssertEqual(a?.checksumSha256, "fullsum", "preview klobbet original-sjekksummen")
+    }
+
+    /// Preview som lander FØRST fyller inn; full etterpå (kanonisk) vinner.
+    func testAttachStorageKeyPreviewFirstThenFullWins() async throws {
+        let store = try makeStore()
+        let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)
+        let asset = try await store.createAsset(sessionId: session.id, descriptor: AssetDescriptor(
+            id: UUID(), originalFilename: "IMG.CR3", captureTime: Date(),
+            mime: "image/x-canon-cr3", sizeBytes: nil))
+        try await store.attachStorageKey(id: asset.id, kind: .preview, key: "/p.jpg",
+                                         checksumSha256: "p", sizeBytes: 120_000)
+        try await store.attachStorageKey(id: asset.id, kind: .full, key: "/f.jpg",
+                                         checksumSha256: "f", sizeBytes: 8_000_000)
+        let a = try await store.fetchAsset(id: asset.id)
+        XCTAssertEqual(a?.sizeBytes, 8_000_000)
+        XCTAssertEqual(a?.checksumSha256, "f")
+    }
+
     func testUpdateAssetSignalsRoundTripsThroughJSON() async throws {
         let store = try makeStore()
         let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)

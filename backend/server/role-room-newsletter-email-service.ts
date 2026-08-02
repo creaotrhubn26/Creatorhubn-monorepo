@@ -211,6 +211,14 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function safeHref(url: string): string {
+  const trimmed = url.trim().toLowerCase();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("/")) {
+    return escapeHtml(url);
+  }
+  return "#";
+}
+
 export function renderBlocksToHtml(blocks: NewsletterBlock[]): string {
   if (!Array.isArray(blocks) || blocks.length === 0) return "";
   const parts: string[] = [];
@@ -225,7 +233,7 @@ export function renderBlocksToHtml(blocks: NewsletterBlock[]): string {
         parts.push(markdownToHtml(block.markdown));
         break;
       case "image": {
-        const img = `<img src="${escapeHtml(block.url)}" alt="${escapeHtml(block.alt ?? "")}" style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;">`;
+        const img = `<img src="${safeHref(block.url)}" alt="${escapeHtml(block.alt ?? "")}" style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;">`;
         const caption = block.caption
           ? `<p style="text-align:center;font-size:13px;color:rgba(229,231,235,0.6);margin-top:8px;">${escapeHtml(block.caption)}</p>`
           : "";
@@ -235,7 +243,7 @@ export function renderBlocksToHtml(blocks: NewsletterBlock[]): string {
       case "cta": {
         const align = block.align ?? "center";
         parts.push(
-          `<p style="text-align:${align};margin:28px 0;"><a href="${escapeHtml(block.url)}" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(block.label)}</a></p>`,
+          `<p style="text-align:${align};margin:28px 0;"><a href="${safeHref(block.url)}" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(block.label)}</a></p>`,
         );
         break;
       }
@@ -265,8 +273,8 @@ export function markdownToHtml(md: string): string {
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    // Links — URL sanitised to http/https/relative only (blocks javascript:)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => `<a href="${safeHref(url)}">${label}</a>`)
     // Bold + italic
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")

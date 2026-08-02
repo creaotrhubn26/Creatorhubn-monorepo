@@ -430,7 +430,7 @@ export default function StoryArcStudioPage() {
 }, [projectData, projectId]);
 
   const handleBackToDashboard = () => {
-    setLocation('/dashboard');
+    setLocation('/workspace');
 };
 
   const handlePublishToShowcase = async (storyArcData: any) => {

@@ -1,7 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import * as schema from "../migrations/schema.js";
 import { readString } from "./_shared";
 
@@ -183,12 +183,23 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.get("/api/audio/versions/:projectId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const projectId = req.params.projectId;
+      // Versjonshistorikk er per-bruker: rader stemples med den innloggede
+      // eierens id ved lagring (se POST under). Uten userId-filteret her kunne
+      // hvem som helst med en (gjettbar) projectId hente en annens versjoner
+      // inkl. audioUrl. Ingen delt/samarbeids-modell på denne tabellen.
       const rows = await db
         .select()
         .from(schema.projectVersionHistory)
-        .where(eq(schema.projectVersionHistory.projectId, projectId))
+        .where(
+          and(
+            eq(schema.projectVersionHistory.projectId, projectId),
+            eq(schema.projectVersionHistory.userId, session.userId),
+          ),
+        )
         .orderBy(desc(schema.projectVersionHistory.createdAt));
 
       const versions = rows.map((row, index) => ({
@@ -215,9 +226,10 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.post("/api/audio/versions", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const { projectId, name, description, audioUrl, settings, userId } =
+      const { projectId, name, description, audioUrl, settings } =
         req.body || {};
       if (!projectId || !name || !audioUrl) {
         return res.status(400).json({ success: false, error: "Missing fields" });
@@ -228,7 +240,9 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
         .values({
           id,
           projectId,
-          userId: userId || "system",
+          // Eierskap stemples fra sesjonen — IKKE fra body (spoofbar). GET/
+          // DELETE håndhever samme userId, så en versjon eies av den som lagret.
+          userId: session.userId,
           projectType: "audio",
           versionName: name,
           description,
@@ -243,9 +257,24 @@ export function setupAudioRoutes(deps: AudioRoutesDeps): void {
   });
 
   app.delete("/api/audio/versions/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const id = req.params.id;
+      // Object-first eierskap: hent raden, bekreft at den innloggede eier den,
+      // og slett kun da. Uten dette kunne enhver innlogget bruker slette hvilken
+      // som helst versjon på id (IDOR).
+      const [existing] = await db
+        .select({ userId: schema.projectVersionHistory.userId })
+        .from(schema.projectVersionHistory)
+        .where(eq(schema.projectVersionHistory.id, id))
+        .limit(1);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: "Not found" });
+      }
+      if (String(existing.userId) !== String(session.userId)) {
+        return res.status(403).json({ success: false, error: "Forbidden" });
+      }
       await db
         .delete(schema.projectVersionHistory)
         .where(eq(schema.projectVersionHistory.id, id));

@@ -18,6 +18,7 @@ import {
   Skeleton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -28,6 +29,12 @@ import {
 
 import { useProductionCrew } from '../../hooks/useProductionCrew';
 import type { RoleRoomViewportMode } from '../../hooks/useRoleRoomViewportMode';
+import { useProjectMemberAvailability } from '../../hooks/useProjectMemberAvailability';
+import {
+  professionToCrewRole,
+  summarizeAvailabilityForToday,
+  virtualCrewId,
+} from '../../utils/crewAvailabilitySync';
 
 interface RoleRoomMobileCrewViewProps {
   projectId: string | null;
@@ -46,17 +53,48 @@ export const RoleRoomMobileCrewView: React.FC<RoleRoomMobileCrewViewProps> = ({
   mode,
 }) => {
   const { items, loading, error } = useProductionCrew(projectId ?? undefined);
+  const { members: projectMembers, availabilityByUser, emailToUser } =
+    useProjectMemberAvailability(projectId ?? undefined);
   const [search, setSearch] = useState('');
+
+  // Berik crew med tilgjengelighet fra medlemmenes egne kalendere, og la
+  // brukere som er lagt til i prosjektet dukke opp automatisk (samme kilde som
+  // Crew Management på desktop). Kun display — ingenting persisteres her.
+  const enrichedItems = useMemo(() => {
+    const usedUserIds = new Set<string>();
+    const rows = items.map((member: any) => {
+      const em = (member.email || '').toLowerCase().trim();
+      const userId = em ? emailToUser.get(em) : undefined;
+      if (!userId) return member;
+      usedUserIds.add(userId);
+      const label = summarizeAvailabilityForToday(availabilityByUser.get(userId));
+      return label ? { ...member, availability: label, __synced: true } : member;
+    });
+    for (const m of projectMembers) {
+      if (usedUserIds.has(m.userId)) continue;
+      const label = summarizeAvailabilityForToday(availabilityByUser.get(m.userId));
+      rows.push({
+        id: virtualCrewId(m.userId),
+        name: m.displayName || m.email || 'Medlem',
+        role: professionToCrewRole(m.professions),
+        department: 'Prosjektmedlemmer',
+        email: m.email ?? undefined,
+        availability: label ?? undefined,
+        __synced: Boolean(label),
+      });
+    }
+    return rows;
+  }, [items, projectMembers, availabilityByUser, emailToUser]);
 
   const grouped = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = query
-      ? items.filter((c: any) =>
+      ? enrichedItems.filter((c: any) =>
           (c.name || '').toLowerCase().includes(query) ||
           (c.role || '').toLowerCase().includes(query) ||
           (c.department || '').toLowerCase().includes(query),
         )
-      : items;
+      : enrichedItems;
     const byDept = new Map<string, any[]>();
     for (const member of filtered) {
       const dept = (member as any).department || 'Uten avdeling';
@@ -64,7 +102,7 @@ export const RoleRoomMobileCrewView: React.FC<RoleRoomMobileCrewViewProps> = ({
       byDept.get(dept)!.push(member);
     }
     return Array.from(byDept.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [items, search]);
+  }, [enrichedItems, search]);
 
   if (!projectId) {
     return (
@@ -184,12 +222,28 @@ const CrewRow: React.FC<CrewRowProps> = ({ member }) => {
         ) : null}
       </Stack>
       {member.availability ? (
-        <Chip
-          size="small"
-          label={`Tilgjengelig: ${member.availability}`}
-          sx={{ mt: 0.75 }}
-          variant="outlined"
-        />
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.75 }}>
+          <Chip
+            size="small"
+            label={member.__synced ? member.availability : `Tilgjengelig: ${member.availability}`}
+            variant="outlined"
+            sx={member.__synced ? { borderColor: '#a030c0', color: '#c07fe0' } : undefined}
+          />
+          {member.__synced ? (
+            <Tooltip title="Synket fra medlemmets egen kalender" arrow>
+              <Box
+                sx={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  bgcolor: '#a030c0',
+                  boxShadow: '0 0 4px rgba(160,48,192,0.9)',
+                  flexShrink: 0,
+                }}
+              />
+            </Tooltip>
+          ) : null}
+        </Stack>
       ) : null}
     </Box>
   );

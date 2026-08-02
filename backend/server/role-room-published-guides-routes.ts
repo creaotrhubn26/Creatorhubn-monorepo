@@ -135,13 +135,16 @@ export function registerRoleRoomPublishedGuidesRoutes(
       if (!ID_RE.test(id)) { res.status(400).json({ error: "ugyldig_id" }); return; }
       if (!pool || !analyticsReady) { res.json({ id, views: 0, analytics: false }); return; }
       try {
+        // Eierskaps-scoping: kun publisisten (created_by) ser sine egne visningstall.
+        // Innlogging alene beviser ikke eierskap; uten dette kan enhver innlogget
+        // bruker med en guide-id lese en annen produsents analytics (IDOR).
         const { rows } = await pool.query<{ views: string; last_seen: string | null }>(
-          `SELECT views, last_seen FROM published_guide_views WHERE guide_id = $1`,
-          [id],
+          `SELECT views, last_seen FROM published_guide_views WHERE guide_id = $1 AND created_by = $2`,
+          [id, viewerId],
         );
         res.json({ id, views: Number(rows[0]?.views ?? 0), lastSeen: rows[0]?.last_seen ?? null, analytics: true });
       } catch (e) {
-        res.status(500).json({ error: "stats_feil", detail: (e as Error).message });
+        res.status(500).json({ error: "stats_feil", detail: "internal_error" });
       }
     },
   );

@@ -2128,3 +2128,141 @@ export const workspaceAggregatorApi = {
     return jsonFetch<{ items: DeadlineItem[]; windowDays: number }>(`/workspace/upcoming-deadlines?days=${days}`);
   },
 };
+
+// ─────────────────────────────────────────────────────────
+// Målrettet markedsføring — segment → ad-audience-bro
+// ─────────────────────────────────────────────────────────
+
+export type MarketingSegmentSource = 'industry_targets' | 'leadgrid_leads';
+export type MarketingAudiencePlatform =
+  | 'google_customer_match'
+  | 'meta_custom_audience'
+  | 'linkedin_matched_audience';
+
+export interface MarketingSegmentAudience {
+  platform: string;
+  externalAudienceId: string | null;
+  memberCount: number;
+  status: string;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface SegmentCampaign {
+  campaignId: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+}
+
+export interface SegmentPerformance {
+  campaignCount: number;
+  spendNok: number;
+  convValueNok: number;
+  conversions: number;
+  roas: number | null;
+}
+
+export interface LinkableCampaign {
+  id: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+  spendNok: number;
+}
+
+export interface MarketingSegment {
+  id: string;
+  userId: string;
+  name: string;
+  source: MarketingSegmentSource;
+  filters: { tiers?: string[]; segments?: string[]; statuses?: string[] };
+  createdAt: string;
+  updatedAt: string;
+  audiences?: MarketingSegmentAudience[];
+  campaigns?: SegmentCampaign[];
+  performance?: SegmentPerformance;
+}
+
+export interface MaterializeResult {
+  ok: boolean;
+  platform: string;
+  memberCount: number;
+  externalAudienceId?: string;
+  error?: string;
+  note?: string;
+}
+
+export const marketingSegmentsApi = {
+  list: async (): Promise<MarketingSegment[]> => {
+    const data = await jsonFetch<{ items: MarketingSegment[] }>('/marketing-segments');
+    return data.items;
+  },
+  create: async (input: {
+    name: string;
+    source: MarketingSegmentSource;
+    filters: { tiers?: string[]; segments?: string[]; statuses?: string[] };
+  }): Promise<MarketingSegment> => {
+    const data = await jsonFetch<{ segment: MarketingSegment }>('/marketing-segments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.segment;
+  },
+  preview: (id: string): Promise<{ total: number; sample: string[]; note?: string }> =>
+    jsonFetch(`/marketing-segments/${id}/preview`),
+  materialize: (
+    id: string,
+    body: { platform: MarketingAudiencePlatform; customerId?: string; adAccountId?: string; adAccountUrn?: string },
+  ): Promise<MaterializeResult> =>
+    jsonFetch(`/marketing-segments/${id}/materialize`, { method: 'POST', body: JSON.stringify(body) }),
+  remove: (id: string): Promise<{ deleted: boolean }> =>
+    jsonFetch(`/marketing-segments/${id}`, { method: 'DELETE' }),
+  listCampaigns: async (): Promise<LinkableCampaign[]> => {
+    const data = await jsonFetch<{ campaigns: LinkableCampaign[] }>(
+      '/marketing-segments/campaigns/linkable',
+    );
+    return data.campaigns;
+  },
+  linkCampaign: (id: string, campaignId: string): Promise<{ ok: boolean; performance: SegmentPerformance }> =>
+    jsonFetch(`/marketing-segments/${id}/campaigns`, {
+      method: 'POST',
+      body: JSON.stringify({ campaignId }),
+    }),
+  unlinkCampaign: (id: string, campaignId: string): Promise<{ removed: boolean; performance: SegmentPerformance }> =>
+    jsonFetch(`/marketing-segments/${id}/campaigns/${campaignId}`, { method: 'DELETE' }),
+};
+
+// ─────────────────────────────────────────────────────────
+// Business DNA — Catalog (auto-populert fra systemets vertikaler)
+// ─────────────────────────────────────────────────────────
+
+export type CatalogSource = 'system_vertical' | 'custom' | 'url_import';
+
+export interface CatalogItem {
+  id: string;
+  itemKey: string | null;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  source: CatalogSource;
+  active: boolean;
+}
+
+export const marketingCatalogApi = {
+  list: async (): Promise<CatalogItem[]> => {
+    const data = await jsonFetch<{ items: CatalogItem[] }>('/marketing-catalog');
+    return data.items;
+  },
+  create: (input: { name: string; description?: string; imageUrl?: string }): Promise<{ item: CatalogItem }> =>
+    jsonFetch('/marketing-catalog', { method: 'POST', body: JSON.stringify(input) }),
+  update: (
+    id: string,
+    patch: { name?: string; description?: string; imageUrl?: string; active?: boolean },
+  ): Promise<{ item: CatalogItem }> =>
+    jsonFetch(`/marketing-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string): Promise<{ deleted: boolean }> =>
+    jsonFetch(`/marketing-catalog/${id}`, { method: 'DELETE' }),
+};

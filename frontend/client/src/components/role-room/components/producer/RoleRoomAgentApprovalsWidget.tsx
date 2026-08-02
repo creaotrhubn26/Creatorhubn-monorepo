@@ -180,7 +180,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
             width: 28,
             height: 28,
             borderRadius: '50%',
-            bgcolor: '#22d3ee',
+            bgcolor: 'var(--role-cyan, #22d3ee)',
             color: '#0f172a',
             fontWeight: 800,
             fontSize: '0.85rem',
@@ -253,7 +253,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
                       fontSize: '0.66rem',
                       fontWeight: 700,
                       bgcolor: 'rgba(34,211,238,0.18)',
-                      color: '#22d3ee',
+                      color: 'var(--role-cyan, #22d3ee)',
                       '& .MuiChip-label': { px: 0.7 },
                     }}
                   />

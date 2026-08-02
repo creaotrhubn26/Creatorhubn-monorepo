@@ -11,6 +11,8 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -309,6 +311,11 @@ export default function ProducerTimelinePanel({
   const { groupedByPhase, loading, error, createItem, updateItem, removeItem } = useProducerTimeline(projectId);
   const { enqueueSnackbar } = useSnackbar();
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Planner-visning: skiller «Tidslinje & fremdrift» (faseprioritet +
+  // milepæler) fra «Klientplan» (brief, den røde tråden, gantt, publisering)
+  // så alt ikke ligger i én lang scroll. Begge holdes montert (display-
+  // toggle) så data ikke re-hentes ved fanebytte.
+  const [plannerView, setPlannerView] = useState<'tidslinje' | 'klientplan'>('tidslinje');
   const [phase, setPhase] = useState<ProducerPhase>('preproduction');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -996,14 +1003,40 @@ export default function ProducerTimelinePanel({
       </Stack>
       <Stack direction="row" spacing={1} flexWrap="wrap">
         <Chip size="small" label={`Fullført ${statusSummary.completed}`} sx={{ bgcolor: 'rgba(74,222,128,0.16)', color: '#86efac' }} />
-        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#7dd3fc' }} />
+        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'var(--role-cyan, #7dd3fc)' }} />
         <Chip size="small" label={`Planlagt ${statusSummary.planned}`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
         <Chip size="small" label={`Blokkert ${statusSummary.blocked}`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fca5a5' }} />
         <Chip size="small" label={`Fremdrift ${completionPct}%`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />
       </Stack>
 
+      {/* Planner-faner: tidslinje/fremdrift vs. klientplan — jf. Daniels
+          ønske om at Planner ikke skal være én lang scroll. */}
+      <Tabs
+        value={plannerView}
+        onChange={(_event, next) => setPlannerView(next)}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        sx={{
+          borderBottom: '1px solid rgba(148,163,184,0.18)',
+          minHeight: 44,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 800,
+            fontSize: '0.9rem',
+            color: 'rgba(226,232,240,0.78)',
+            minHeight: 44,
+          },
+          '& .Mui-selected': { color: '#f8fafc' },
+          '& .MuiTabs-indicator': { backgroundColor: '#38bdf8', height: 3 },
+        }}
+      >
+        <Tab value="tidslinje" label="Tidslinje & fremdrift" />
+        <Tab value="klientplan" label="Klientplan" />
+      </Tabs>
+
       <Box
         sx={{
+          display: plannerView === 'tidslinje' ? 'block' : 'none',
           borderRadius: 1.75,
           border: '1px solid rgba(148,163,184,0.22)',
           background: 'rgba(2,6,23,0.34)',
@@ -1013,7 +1046,7 @@ export default function ProducerTimelinePanel({
         <Stack spacing={1.1}>
           <Box>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-              Faseprioritet akkurat nå
+              Hva som haster nå
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.92rem', mt: 0.4 }}>
               Shotlist, opptaksdager og klientgodkjenning prioriteres her etter hva som faktisk kan stoppe flyten før, under og etter produksjonen.
@@ -1114,6 +1147,7 @@ export default function ProducerTimelinePanel({
         </Stack>
       )}
 
+      <Box sx={{ display: plannerView === 'klientplan' ? 'block' : 'none' }}>
       {project ? (
         <ProducerClientPlanningPanel
           project={project}
@@ -1126,7 +1160,9 @@ export default function ProducerTimelinePanel({
           onOpenMedia={onOpenMedia}
         />
       ) : null}
+      </Box>
 
+      <Box sx={{ display: plannerView === 'tidslinje' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
       {!readOnly && (
         <Stack direction="column" spacing={1}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
@@ -1260,11 +1296,11 @@ export default function ProducerTimelinePanel({
               />
             )}
             <Button
-              variant="contained"
+              variant="outlined"
               startIcon={<AddIcon />}
               onClick={() => { void handleCreate(); }}
               disabled={loading || !title.trim()}
-              sx={{ bgcolor: '#fbbf24', color: '#111827', fontWeight: 700, textTransform: 'none', minWidth: 170 }}
+              sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.4)', fontWeight: 700, textTransform: 'none', minWidth: 170, '&:hover': { borderColor: 'rgba(148,163,184,0.7)', background: 'rgba(148,163,184,0.08)' } }}
             >
               Legg til milepæl
             </Button>
@@ -1693,6 +1729,7 @@ export default function ProducerTimelinePanel({
           </Box>
         ))}
       </Stack>
+      </Box>
     </Box>
   );
 }

@@ -22,10 +22,13 @@ import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { requireTeamAccess } from "./team-access";
+import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
+import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
 import { ensureCreditSchema as ensureCreditSchemaShared, getUserCredits as getUserCreditsShared, creditMove as creditMoveShared } from "./ai-credits";
 import { createGoogleMeetLink } from "./google-meet";
@@ -34,10 +37,34 @@ import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } f
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
-const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
+const mediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    // Explicit allowlist — image/svg+xml excluded (SVG can contain <script> → stored XSS).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+      "video/mpeg", "video/ogg",
+      "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
+      "audio/webm", "audio/aac", "audio/x-m4a", "audio/m4a",
+      "application/pdf",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
+});
 // Video-review-kopier (komprimert H.264/H.265) — 500 MB tak. Større mastere
 // hører hjemme i capture/leveranse-flyten, ikke review-rommet.
-const videoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+const videoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
+  },
+});
 
 export interface ProjectWorkspaceRoutesDeps {
   app: express.Application;
@@ -144,6 +171,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     return session.userId;
   };
 
+  // Middleware-variant som MÅ kjøre FØR multer på opplastings-ruter. Ellers
+  // buffrer multer hele filen (opptil 500 MB) i minnet for uautentiserte
+  // requests før guard-en inne i handleren kjører → minne-DoS. Kjør auth først.
+  const guardMw = async (req: any, res: any, next: any) => {
+    const uid = await guard(req, res);
+    if (!uid) return; // guard har allerede sendt respons
+    req._guardUid = uid;
+    next();
+  };
+
   // ─────────── Samkjøringsboard / Oppgaver ───────────
   app.get("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -156,6 +193,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index })) });
     } catch (e) { console.error("GET board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
+  // ─────────── Crew-roller som DATA (blandede team) ───────────
+  // Et prosjekts rollekolonner = eier-kategoriens default-sett ∪ roller
+  // teamet/boardet faktisk bruker (project_team_members + project_board_tasks).
+  // Kategorien hentes fra profession_types.workspace_category (admin-styrt),
+  // med kanonisk kode-baseline som fallback. Ukjente nøkler beholdes med
+  // generisk visning — et blandet team (foto + musikk) mister aldri kolonner.
+  app.get("/api/projects/:projectId/crew-roles", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const [owner, members, tasks] = await Promise.all([
+        pool.query(`SELECT u.profession FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id = $1 LIMIT 1`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_team_members WHERE project_id = $1 AND status <> 'revoked' AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_board_tasks WHERE project_id = $1 AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const profession = normalizeCanonProfession(owner.rows[0]?.profession);
+      // Kategori: DB (profession_types.workspace_category) vinner, baseline som fallback.
+      let category = CANONICAL_PROFESSIONS.find((c) => c.name === profession)?.workspaceCategory || "visual";
+      try {
+        const c = await pool.query(`SELECT workspace_category FROM profession_types WHERE name = $1 LIMIT 1`, [profession]);
+        if (isWsCategory(c.rows[0]?.workspace_category)) category = c.rows[0].workspace_category;
+      } catch { /* kolonnen kom i mig 0369 — baseline holder */ }
+      const used = [...members.rows, ...tasks.rows].map((r: any) => r.crew_role);
+      const { roles, fallbackKey } = resolveCrewRoles(category as any, used);
+      res.json({ category, fallbackKey, roles });
+    } catch (e) { console.error("GET crew-roles", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -375,6 +440,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       res.json({ success: true });
     } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ── Capture-innstillinger (team-flagg i projects.settings) ──
+  // shotListAutoCheck styrer om iPad-en auto-huker shots. Delt tilstand:
+  // web-toggle + iPad leser samme flagg. Default PÅ (opt-out).
+  app.get("/api/projects/:projectId/capture-settings", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(`SELECT settings FROM projects WHERE id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const s = (r.rows[0]?.settings ?? {}) as Record<string, unknown>;
+      res.json({ shotListAutoCheck: s.shotListAutoCheck !== false, updatedBy: (s as any).shotListAutoCheckBy ?? null });
+    } catch (e) { console.error("GET capture-settings", e); res.json({ shotListAutoCheck: true }); }
+  });
+  // PUT er eier-gated (kun prosjekteier/lead-fotograf kan endre for teamet).
+  app.put("/api/projects/:projectId/capture-settings", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const owns = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [req.params.projectId, uid]);
+      if (!owns.rows.length) return res.status(403).json({ error: "not_owner" });
+      const enabled = req.body?.shotListAutoCheck !== false;
+      const by = typeof req.body?.updatedBy === 'string' ? req.body.updatedBy : null;
+      await pool.query(
+        `UPDATE projects SET settings = COALESCE(settings, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+        [req.params.projectId, JSON.stringify({ shotListAutoCheck: enabled, shotListAutoCheckBy: by })],
+      );
+      res.json({ success: true, shotListAutoCheck: enabled });
+    } catch (e) { console.error("PUT capture-settings", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Auto-uttrekk av fargepalett fra moodboard-referansebildene (node-vibrant).
@@ -803,7 +895,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'client_submissions'`,
       ).catch(() => ({ rows: [] as any[] }));
       const has = new Set(cols.rows.map((c: any) => c.column_name));
-      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : ``;
+      // FAIL-CLOSED: uten tenant-scoping-kolonnen (vendor_email) returnerer vi
+      // INGENTING i stedet for ALLE leverandørers kunde-innsendinger (PII-lekkasje).
+      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : `WHERE 1=0`;
       const params = has.has("vendor_email") ? [session.email] : [];
       const order = has.has("submitted_at") ? "submitted_at" : "created_at";
       const r = await pool.query(
@@ -846,6 +940,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       ).catch(() => ({ rows: [] as any[] }));
       const has = new Set(cols.rows.map((c: any) => c.column_name));
       if (!has.has("status")) return res.json({ ok: false });
+      // FAIL-CLOSED: uten vendor_email-scoping kan vi ikke bekrefte eierskap →
+      // ikke oppdater (ellers kunne man booke en hvilken som helst innsending-id).
+      if (!has.has("vendor_email")) return res.json({ ok: false, error: "unscoped" });
       const sets: string[] = [`status = 'booked'`];
       const params: any[] = [];
       if (projectId && has.has("project_id")) { params.push(projectId); sets.push(`project_id = $${params.length}`); }
@@ -1150,12 +1247,28 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           const resp = await fetch(url);
           if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
           const buffer = Buffer.from(await resp.arrayBuffer());
+          // Kreditt trekkes FØR arbeidet køes (atomisk debit). Preflight-en over er
+          // kun en LESNING, så parallelle batcher kan alle passere den mot samme
+          // saldo (TOCTOU) og køe ubetalt arbeid. Her gater den atomiske debiten
+          // hvert bilde individuelt: går saldoen tom returnerer creditMove false og
+          // vi stopper resten av batchen. Idempotent ref pr. asset-forsøk.
+          const retailUsd = model.estCostUsd * (settings.markupMultiplier || 1);
+          let chargeRef: string | null = null;
+          if (settings.enabled && settings.billingMode === "credits") {
+            chargeRef = `enhance:${r.id}:${crypto.randomUUID()}`;
+            let charged = false;
+            try { charged = await creditMove(uid, "spend", -retailUsd, chargeRef, "photo-enhance"); } catch { /* */ }
+            if (!charged) { failures.push({ assetId: r.id, reason: "insufficient_credits" }); break; }
+          }
           const jobId = await enqueuePhotoEnhancerJobFromBuffer({
             buffer, fileName: r.original_filename || `${r.id}.jpg`, mimeType: r.mime || "image/jpeg",
             projectId: pid, owner: uid, userId: uid, preset,
           });
-          if (!jobId) { failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue; }
-          // Bill per faktisk køet bilde (charge-on-submit; enhancer kjører i egen kø).
+          if (!jobId) {
+            // Køing feilet → arbeidet skjer aldri; refunder debiten (idempotent ref).
+            if (chargeRef) { try { await creditMove(uid, "purchase", retailUsd, `refund:${chargeRef}`, "photo-enhance-refund"); } catch { /* */ } }
+            failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue;
+          }
           if (settings.enabled) {
             const gid = crypto.randomUUID();
             await pool.query(
@@ -1164,7 +1277,6 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
               [gid, pid, uid, me.email, model.key, model.provider, r.id, model.estCostUsd, JSON.stringify({ prompt: "Foto-forbedring", enhancerJobId: jobId })],
             ).catch(() => {});
             try { await emitGenAiMeter(pool, { userId: uid, valueUsd: model.estCostUsd, settings }); } catch { /* */ }
-            if (settings.billingMode === "credits") { try { await creditMove(uid, "spend", -(model.estCostUsd * (settings.markupMultiplier || 1)), `enhance:${jobId}`, "photo-enhance"); } catch { /* */ } }
           }
           jobs.push({ assetId: r.id, jobId });
         } catch { failures.push({ assetId: r.id, reason: "fetch_threw" }); }
@@ -1262,18 +1374,68 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId],
       ).catch(() => ({ rows: [] }));
       const linkedTrackId = linked.rows[0]?.easeverse_track_id || null;
+      // Per-track review-statistikk via siste ikke-arkiverte review-rom (LATERAL):
+      // antall versjoner, siste versjon (label/status) og åpne kommentarer.
       const t = await pool.query(
-        `SELECT id, title, artist, status, bpm, musical_key, duration_seconds, updated_at,
-                EXISTS(SELECT 1 FROM audio_review_projects ar WHERE ar.easeverse_track_id = easeverse_tracks.id::text) AS has_review
-           FROM easeverse_tracks WHERE user_id = $1 ORDER BY updated_at DESC NULLS LAST LIMIT 50`,
+        `SELECT t.id, t.title, t.artist, t.status, t.bpm, t.musical_key, t.duration_seconds, t.updated_at,
+                EXISTS(SELECT 1 FROM audio_review_projects ar0 WHERE ar0.easeverse_track_id = t.id::text) AS has_review,
+                (SELECT count(*)::int FROM audio_review_versions v WHERE v.project_id = ar.id) AS version_count,
+                lv.version_label AS latest_version_label, lv.status AS latest_version_status,
+                (SELECT count(*)::int FROM audio_review_comments c
+                   JOIN audio_review_versions v2 ON v2.id = c.version_id
+                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count,
+                ssx.status AS split_status, ssx.signed AS split_signed, ssx.total AS split_total
+           FROM easeverse_tracks t
+           LEFT JOIN LATERAL (SELECT a.id, a.owner_user_id FROM audio_review_projects a
+                               WHERE a.easeverse_track_id = t.id::text AND a.status <> 'archived'
+                               ORDER BY a.created_at DESC LIMIT 1) ar ON true
+           LEFT JOIN LATERAL (SELECT v.version_label, v.status FROM audio_review_versions v
+                               WHERE v.project_id = ar.id ORDER BY v.version_number DESC LIMIT 1) lv ON true
+           -- Split-sheet per låt: audio-showcase-systemet kobler via
+           -- metadata->>'sourceReviewId' (ikke FK) — se audio-showcase-routes.
+           LEFT JOIN LATERAL (SELECT ss.status,
+                                (SELECT count(*) FILTER (WHERE c2.signed_at IS NOT NULL)::int
+                                   FROM split_sheet_contributors c2 WHERE c2.split_sheet_id = ss.id) AS signed,
+                                (SELECT count(*)::int FROM split_sheet_contributors c2
+                                  WHERE c2.split_sheet_id = ss.id) AS total
+                                FROM split_sheets ss
+                               WHERE ss.metadata->>'sourceReviewId' = ar.id::text
+                                 AND ss.user_id = ar.owner_user_id AND ss.status <> 'archived'
+                               ORDER BY ss.created_at DESC LIMIT 1) ssx ON true
+          WHERE t.user_id = $1 ORDER BY t.updated_at DESC NULLS LAST LIMIT 50`,
         [uid],
       ).catch(() => ({ rows: [] }));
       res.json({
         connected: t.rows.length > 0,
         linkedTrackId,
-        tracks: t.rows.map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key, durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId })),
+        tracks: t.rows.map((r: any) => ({
+          id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key,
+          durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId,
+          versionCount: r.version_count || 0, latestVersionLabel: r.latest_version_label || null,
+          latestVersionStatus: r.latest_version_status || null, openCommentCount: r.open_comment_count || 0,
+          splitSheet: r.split_status ? { status: r.split_status, signed: r.split_signed || 0, total: r.split_total || 0 } : null,
+        })),
       });
     } catch (e) { console.error("GET easeverse-tracks", e); res.json({ connected: false, tracks: [] }); }
+  });
+
+  // Manuell status-fremrykk på en EaseVerse-låt fra Låter-fanen (opptak→miks→
+  // master→ferdig). Kun eieren av låten; godkjenningsflyten i Sound Room synker
+  // samme felt automatisk (se audio-showcase-routes approve).
+  app.patch("/api/projects/:projectId/easeverse-tracks/:trackId/status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const status = String(req.body?.status || "");
+      if (!["recording", "mixing", "mastering", "completed"].includes(status)) {
+        return res.status(400).json({ error: "invalid_status" });
+      }
+      const r = await pool.query(
+        `UPDATE easeverse_tracks SET status = $2, updated_at = NOW() WHERE id = $1::uuid AND user_id = $3 RETURNING id, status`,
+        [req.params.trackId, status, uid],
+      ).catch(() => ({ rows: [] }));
+      if (!r.rows.length) return res.status(404).json({ error: "track_not_found" });
+      res.json({ ok: true, id: r.rows[0].id, status: r.rows[0].status });
+    } catch (e) { console.error("PATCH easeverse-track status", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Koble en EaseVerse-track til prosjektets Sound Room: finn/opprett review-rom
@@ -1281,6 +1443,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // bro-tabellen på den. Krever at brukeren eier track-en.
   app.post("/api/projects/:projectId/audio-room/link-easeverse", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    // EaseVerse-kobling synker collaborators inn → team-/Enterprise-gated.
+    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       const pid = req.params.projectId;
       const trackId = String(req.body?.trackId || "");
@@ -1349,13 +1513,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       const arId = await resolveAudioRoomId(req.params.projectId, uid);
       if (!arId) return res.json({ members: [] });
+      // Kun prosjekteier ser andres e-post (GDPR — team-medlemmer får maskert).
+      const ownerChk = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [req.params.projectId, uid]).catch(() => ({ rowCount: 0 }));
+      const isProjectOwner = (ownerChk.rowCount ?? 0) > 0;
+      const maskEmail = (e: string | null): string | null => {
+        const v = String(e || "").trim(); const at = v.indexOf("@");
+        if (at < 1) return null;
+        const user = v.slice(0, at), dom = v.slice(at + 1);
+        return `${user.slice(0, 2)}${user.length > 2 ? "***" : "*"}@${dom}`;
+      };
       const m = await pool.query(
         `SELECT id, name, role, instrument, email, avatar_color, is_owner, invite_status, invite_token, easeverse_access
          FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`,
         [arId],
       ).catch(() => ({ rows: [] }));
       const members = m.rows.map((x: any) => ({
-        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null, email: x.email || null,
+        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null,
+        email: isProjectOwner ? (x.email || null) : maskEmail(x.email),
         avatarColor: x.avatar_color, isOwner: x.is_owner, status: x.invite_status,
         inviteUrl: x.invite_token && !x.is_owner ? `/audio-review/invite/${x.invite_token}` : null,
         easeverseAccess: x.easeverse_access || false,
@@ -1366,6 +1540,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   app.post("/api/projects/:projectId/audio-room/members", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    // Band-invitasjon er en team-/Enterprise-funksjon — håndhev server-side.
+    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       // Finn-eller-opprett lydrommet, så «Inviter band» fungerer selv før første låt er koblet.
       let arId = await resolveAudioRoomId(req.params.projectId, uid);
@@ -1453,6 +1629,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Prosjekt-scopet: sesjonene koblet til prosjektets lydrom (project_audio_rooms →
   // protools_companion_sessions.audio_review_project_id). Read-only oversikt for
   // «Sesjoner»-fanen; selve sesjonene settes opp via companion-appen (se Sound Room).
+  // ?include=details legger på markers (låt-seksjoner) + siste 5 bounces per sesjon.
   app.get("/api/projects/:projectId/recording-sessions", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -1469,7 +1646,29 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           ORDER BY s.last_activity DESC LIMIT 50`,
         [arId],
       ).catch(() => ({ rows: [] }));
-      res.json({ sessions: r.rows, audioRoomId: arId });
+      let sessions = r.rows;
+      if (String(req.query.include || "") === "details" && sessions.length) {
+        const ids = sessions.map((s: any) => s.id);
+        const [markers, bounces] = await Promise.all([
+          pool.query(
+            `SELECT session_id, name, start_seconds, end_seconds, color FROM protools_companion_markers
+              WHERE session_id = ANY($1::uuid[]) ORDER BY session_id, order_index, start_seconds`,
+            [ids],
+          ).catch(() => ({ rows: [] })),
+          pool.query(
+            `SELECT id, session_id, file_name, duration_seconds, review_version_id, created_at
+               FROM (SELECT *, row_number() OVER (PARTITION BY session_id ORDER BY created_at DESC) AS rn
+                       FROM protools_companion_bounces WHERE session_id = ANY($1::uuid[])) x
+              WHERE rn <= 5 ORDER BY session_id, created_at DESC`,
+            [ids],
+          ).catch(() => ({ rows: [] })),
+        ]);
+        const mBy: Record<string, any[]> = {}; const bBy: Record<string, any[]> = {};
+        for (const m of markers.rows) (mBy[m.session_id] ||= []).push({ name: m.name, startSeconds: m.start_seconds, endSeconds: m.end_seconds, color: m.color });
+        for (const b of bounces.rows) (bBy[b.session_id] ||= []).push({ id: b.id, fileName: b.file_name, durationSeconds: b.duration_seconds, reviewVersionId: b.review_version_id, createdAt: b.created_at });
+        sessions = sessions.map((s: any) => ({ ...s, markers: mBy[s.id] || [], bounces: bBy[s.id] || [] }));
+      }
+      res.json({ sessions, audioRoomId: arId });
     } catch (e) { console.error("GET recording-sessions", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -1567,6 +1766,18 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensurePhotoSchema();
+      // Eier-scope: guard beviser tilgang til prosjektet, men assetId er
+      // caller-oppgitt. Uten å bekrefte at asset-en hører til DETTE prosjektet
+      // kunne eieren av et vilkårlig prosjekt sette rejected/flagged (og
+      // review_status via upsert, keyet globalt på asset_id) på en ANNEN
+      // fotografs capture_asset (cross-tenant write-IDOR). Samme session_id-
+      // scoping som bulk-approve nedenfor.
+      const sessionIds = await photoSessionIds(req.params.projectId);
+      const owns = await pool.query(
+        `SELECT 1 FROM capture_assets WHERE id = $1 AND session_id = ANY($2::uuid[]) LIMIT 1`,
+        [req.params.assetId, sessionIds],
+      ).catch(() => ({ rowCount: 0 }));
+      if (!owns.rowCount) return res.status(404).json({ error: "asset_not_found" });
       const status = req.body?.reviewStatus ? String(req.body.reviewStatus).slice(0, 20) : null;
       await pool.query(
         `INSERT INTO project_photo_review (asset_id, project_id, review_status, updated_by, updated_at)
@@ -1711,6 +1922,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         enabled: settings.enabled && falConfigured(),
         whitelisted: aiAllowed(settings, me.email, me.role),
         beebleConfigured: beebleConfigured(),
+        higgsfieldConfigured: higgsfieldConfigured(),
         billingMode: settings.billingMode,
         consent: consent.rows[0] ? { consented: !!consent.rows[0].consented, by: consent.rows[0].consented_by, at: consent.rows[0].consented_at } : { consented: false },
         dailyCapUsd: settings.dailyCapUsd,
@@ -1868,9 +2080,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
-      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-video er ikke aktivert for din konto." });
-      const model = GEN_MODELS["seedance-2-i2v"];
+      // Video-leverandør: Seedance (fal, standard) eller Higgsfield DoP (kinematisk).
+      const wantHiggsfield = ["higgsfield", "higgsfield-dop-i2v"].includes(String(req.body?.model || req.body?.provider || ""));
+      const model = GEN_MODELS[wantHiggsfield ? "higgsfield-dop-i2v" : "seedance-2-i2v"];
+      const providerReady = model.provider === "higgsfield" ? higgsfieldConfigured() : falConfigured();
+      if (!providerReady) return res.status(503).json({ error: "provider_not_configured", message: model.provider === "higgsfield" ? "Higgsfield (HIGGSFIELD_API_KEY) er ikke konfigurert." : "fal (FAL_KEY) er ikke konfigurert." });
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
       const duration = Math.min(15, Math.max(4, parseInt(String(req.body?.duration || 5), 10) || 5));
@@ -1887,8 +2103,17 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const srcUrl = await signAssetReadUrl(srcKey);
       if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
-      const sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
-      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "fal_submit_failed" });
+      // Dispatch til riktig leverandør. request-id → fal_request_id, poll-url →
+      // response_url (Higgsfield: status_url; fal: response_url). Poll-ruten
+      // dispatcher tilbake på job.provider.
+      let sub: { requestId?: string; responseUrl?: string | null; error?: string };
+      if (model.provider === "higgsfield") {
+        const hs = await higgsfieldSubmit({ imageUrl: srcUrl, prompt, model: "dop-turbo" });
+        sub = { requestId: hs.id, responseUrl: hs.statusUrl || null, error: hs.error };
+      } else {
+        sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
+      }
+      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "submit_failed" });
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
@@ -1971,6 +2196,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (job.provider === "beeble") {
         const bp = await beeblePoll(job.fal_request_id);
         p = { status: bp.status, result: bp.outputUrl ? { video: { url: bp.outputUrl } } : null, error: bp.error };
+      } else if (job.provider === "higgsfield") {
+        // Poll via lagret status_url (response_url); fall tilbake til request-id.
+        const hp = await higgsfieldPoll(job.response_url || job.fal_request_id);
+        p = { status: hp.status, result: hp.outputUrl ? { video: { url: hp.outputUrl } } : null, error: hp.error };
       } else {
         if (!job.response_url) return res.json({ status: job.status || "queued", kind: job.kind, beforeUrl });
         p = await falPoll(job.response_url);
@@ -2363,8 +2592,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Last opp videofil → B2 → opprett versjon. Server-side (samme beviste mønster
   // som /images): multer → archiveToRoleRoomB2. Cloudflare Stream = kun streaming,
   // kilden bor på B2. b2_key presignes til avspilling i GET /video-room.
-  app.post("/api/projects/:projectId/video-versions/upload", videoUpload.single("file"), async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/video-versions/upload", guardMw, videoUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureVideoSchema();
       const pid = req.params.projectId;
@@ -2598,8 +2827,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET images", e); res.status(500).json({ error: "failed" }); }
   });
 
-  app.post("/api/projects/:projectId/images", mediaUpload.single("file"), async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/images", guardMw, mediaUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureSchema(pool);
       const file = (req as any).file;
@@ -2657,7 +2886,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
         [req.params.projectId],
       );
-      if (r.rowCount === 0) return res.json({ shotList: null, shots: [] });
+      if (!r.rows.length) return res.json({ shotList: null, shots: [] });
       const s = r.rows[0];
       const shots = Array.isArray(s.shots_data) ? s.shots_data : [];
       res.json({
@@ -2763,6 +2992,39 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     catch (e) { console.error("DELETE deliverables", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // (Vendor-oppdrag for Team Chat-referanser bruker det eksisterende
+  //  GET /api/projects/:projectId/editing-jobs-endepunktet lenger opp.)
+
+  // ─────────── Aktivitets-feed — flettes inn i Team Chat-tidslinjen ───────────
+  // Samler de nyeste prosjekt-hendelsene (leveranser, oppgaver, møter, låter,
+  // oppdrag) med tidsstempel, så chatten blir prosjektets puls.
+  app.get("/api/projects/:projectId/activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    const pid = req.params.projectId;
+    const iso = (v: any) => (v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null);
+    try {
+      const [deliv, tasks, tracks, jobs, cust] = await Promise.all([
+        pool.query(`SELECT id, title, status, created_at FROM project_workspace_deliverables WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT id, title, status, created_at FROM project_board_tasks WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT t.id, t.title, t.status, t.updated_at FROM easeverse_tracks t JOIN project_audio_rooms r ON r.audio_review_project_id IN (SELECT id FROM audio_review_projects a WHERE a.easeverse_track_id = t.id::text) WHERE r.project_id = $1 ORDER BY t.updated_at DESC LIMIT 8`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT id, project_title, vendor_name, status, created_at FROM editing_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 8`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT id FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`, [pid]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      let meetings: any[] = [];
+      if (cust.rows[0]?.id) {
+        meetings = (await pool.query(`SELECT id, title, scheduled_at, created_at FROM crm_meetings WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 8`, [cust.rows[0].id]).catch(() => ({ rows: [] as any[] }))).rows;
+      }
+      const items = [
+        ...deliv.rows.map((d: any) => ({ id: `dl-${d.id}`, type: "deliverable", title: d.title, detail: d.status, ts: iso(d.created_at), linkedId: d.id })),
+        ...tasks.rows.map((t: any) => ({ id: `tk-${t.id}`, type: "task", title: t.title, detail: t.status, ts: iso(t.created_at), linkedId: t.id })),
+        ...tracks.rows.map((t: any) => ({ id: `tr-${t.id}`, type: "track", title: t.title, detail: t.status, ts: iso(t.updated_at), linkedId: t.id })),
+        ...jobs.rows.map((j: any) => ({ id: `jb-${j.id}`, type: "job", title: j.project_title || j.vendor_name || "Oppdrag", detail: j.status, ts: iso(j.created_at), linkedId: j.id })),
+        ...meetings.map((mt: any) => ({ id: `mt-${mt.id}`, type: "meeting", title: mt.title || "Møte", detail: iso(mt.scheduled_at), ts: iso(mt.created_at), linkedId: mt.id })),
+      ].filter((x) => x.ts).sort((a, b) => (a.ts! < b.ts! ? 1 : -1)).slice(0, 30);
+      res.json({ activity: items });
+    } catch (e) { console.error("GET activity", e); res.json({ activity: [] }); }
+  });
+
   // ─────────── Hurtignotater (Produksjonskart «rask notat» + Shotlist «kommentar») ───────────
   const ensureNotesTable = () => pool.query(`CREATE TABLE IF NOT EXISTS project_workspace_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2806,7 +3068,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   app.delete("/api/projects/:projectId/notes/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2 AND author_id=$3`, [req.params.id, req.params.projectId, uid]); res.json({ success: true }); }
     catch (e) { console.error("DELETE notes", e); res.status(500).json({ error: "failed" }); }
   });
 }

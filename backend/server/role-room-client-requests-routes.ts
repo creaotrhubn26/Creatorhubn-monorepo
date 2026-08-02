@@ -28,6 +28,7 @@ import {
   type ClientRequestKind,
   type ClientRequestStatus,
 } from "./role-room-client-request-service.js";
+import { canAccessProjectAds } from "./role-room-project-access.js";
 
 interface AdminSession {
   userId: string;
@@ -55,6 +56,28 @@ const VALID_KINDS: ReadonlySet<ClientRequestKind> = new Set<ClientRequestKind>([
 export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps): void {
   const { app, pool, requireAdminSession, isCompatAdminFeatureEnabled } = deps;
 
+  // Prosjekt-scoping: requireAdminSession beviser KUN at kalleren har en
+  // admin-sesjon — ikke at hun har tilgang til nettopp DETTE prosjektet.
+  // Uten dette kunne enhver admin/super_admin lese, purre på og lukke et
+  // annet prosjekts klient-forespørsler (m/ klient-PII) ved å gjette
+  // projectId/request-id (IDOR). Samme kontrakt som søster-ruten
+  // role-room-client-portal-routes.ts (canAccessProjectAds).
+  async function ensureProjectAccess(
+    session: AdminSession,
+    projectId: string,
+    res: express.Response,
+  ): Promise<boolean> {
+    const ok = await canAccessProjectAds(pool, projectId, {
+      userId: session.userId,
+      email: session.email,
+    });
+    if (!ok) {
+      res.status(403).json({ success: false, error: "Ingen tilgang til dette prosjektet." });
+      return false;
+    }
+    return true;
+  }
+
   // List for et prosjekt
   app.get("/api/role-room/client-requests/:projectId", async (req, res) => {
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
@@ -66,6 +89,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!projectId) {
       return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     }
+    if (!(await ensureProjectAccess(session, projectId, res))) return;
     const status = typeof req.query.status === "string" ? (req.query.status as ClientRequestStatus) : undefined;
     const contextArea = typeof req.query.contextArea === "string" ? req.query.contextArea : undefined;
 
@@ -94,6 +118,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!projectId) {
       return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     }
+    if (!(await ensureProjectAccess(session, projectId, res))) return;
 
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const kind = typeof body.kind === "string" ? body.kind : "";
@@ -151,6 +176,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!request) {
       return res.status(404).json({ success: false, error: "Request ikke funnet." });
     }
+    if (!(await ensureProjectAccess(session, request.projectId, res))) return;
     const messages = await listClientRequestMessages(pool, id);
     return res.json({ success: true, request, messages });
   });
@@ -163,6 +189,11 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     const session = requireAdminSession(req, res);
     if (!session) return;
     const id = String(req.params.id || "").trim();
+    const existing = await getClientRequest(pool, id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: "Request ikke funnet." });
+    }
+    if (!(await ensureProjectAccess(session, existing.projectId, res))) return;
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const bodyMarkdown = typeof body.bodyMarkdown === "string" ? body.bodyMarkdown : "";
     if (!bodyMarkdown.trim()) {
@@ -188,6 +219,11 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     const session = requireAdminSession(req, res);
     if (!session) return;
     const id = String(req.params.id || "").trim();
+    const existing = await getClientRequest(pool, id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: "Request ikke funnet." });
+    }
+    if (!(await ensureProjectAccess(session, existing.projectId, res))) return;
     const ok = await closeClientRequest(pool, id);
     return res.json({ success: true, closed: ok });
   });

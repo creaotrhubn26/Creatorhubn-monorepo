@@ -51,6 +51,7 @@ async function ensureSchema(pool: Pool): Promise<void> {
       secret_encrypted TEXT NOT NULL,
       enabled_at TIMESTAMPTZ,
       last_used_at TIMESTAMPTZ,
+      last_used_window BIGINT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -255,7 +256,21 @@ export async function verifyLoginToken(
     window: 1,
   });
   if (totpValid) {
-    await pool.query(`UPDATE user_totp_secrets SET last_used_at = NOW() WHERE user_id = $1`, [input.userId]);
+    // Replay-guard: atomisk UPDATE som bare lykkes hvis dette vinduet ikke
+    // allerede er brukt. Vinduet er 30s-epoch (Math.floor(Date.now()/30000)).
+    const currentWindow = Math.floor(Date.now() / 30000);
+    const upd = await pool.query(
+      `UPDATE user_totp_secrets
+          SET last_used_at = NOW(), last_used_window = $2
+        WHERE user_id = $1
+          AND (last_used_window IS NULL OR last_used_window < $2)
+        RETURNING user_id`,
+      [input.userId, currentWindow],
+    );
+    if (upd.rowCount === 0) {
+      // Samme vindu allerede brukt — replay-angrep
+      return { ok: false, reason: "wrong_code" };
+    }
     return { ok: true };
   }
 
@@ -268,10 +283,15 @@ export async function verifyLoginToken(
     );
     for (const row of backupRows.rows) {
       if (await bcrypt.compare(cleaned.toUpperCase(), row.code_hash)) {
-        await pool.query(
-          `UPDATE user_totp_backup_codes SET used_at = NOW() WHERE id = $1`,
+        // Atomisk mark-as-used: bare én concurrent request vinner
+        const mark = await pool.query(
+          `UPDATE user_totp_backup_codes
+              SET used_at = NOW()
+            WHERE id = $1 AND used_at IS NULL
+            RETURNING id`,
           [row.id],
         );
+        if (mark.rowCount === 0) continue; // En annen request brukte den akkurat nå
         return { ok: true, usedBackupCode: true };
       }
     }

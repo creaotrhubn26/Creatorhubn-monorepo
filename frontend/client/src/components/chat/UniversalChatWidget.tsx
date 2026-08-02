@@ -1,4 +1,5 @@
 // @ts-nocheck
+import DOMPurify from 'dompurify';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -971,6 +972,14 @@ const getChatWebSocketUrl = (
     if (userIdentifier && userIdentifier.trim()) {
       url.searchParams.set('userId', userIdentifier.trim());
     }
+    // Bearer token so the /ws chat server can verify identity at handshake
+    // (chat send/receive is gated on this server-side).
+    try {
+      const token = localStorage.getItem('creatorhub_auth_token')
+        || localStorage.getItem('token')
+        || localStorage.getItem('role_room_auth_token');
+      if (token) url.searchParams.set('token', token);
+    } catch { /* localStorage unavailable */ }
     return url.toString();
   } catch {
     return null;
@@ -3949,8 +3958,14 @@ export default function UniversalChatWidget({
     }
 
     try {
+      const authToken =
+        localStorage.getItem('creatorhub_auth_token') ||
+        localStorage.getItem('role_room_auth_token') ||
+        localStorage.getItem('token') ||
+        '';
       const response = await fetch(`/api/contracts/${contractId}/pdf`, {
         headers: {
+          'Authorization': `Bearer ${authToken}`,
           'X-User-Email': userEmail || 'anonymous',
         },
       });
@@ -13490,7 +13505,7 @@ export default function UniversalChatWidget({
                 <Box>
                   <Typography variant="subtitle2" gutterBottom>Admin Notater</Typography>
                   <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
-                    <div dangerouslySetInnerHTML={{ __html: selectedFeedback.adminNotes }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedFeedback.adminNotes ?? '') }} />
                   </Paper>
                 </Box>
               )}

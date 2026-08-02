@@ -14,7 +14,11 @@
  *   POST   /api/casting/project-agreements                     — opprett
  *   PUT    /api/casting/project-agreements/:agreementId/status — endre status
  *
- * Tilgang: ÅPEN (matcher eksisterende oppførsel).
+ * Tilgang: AUTH + prosjekt-eierskap. Alle endpoints (inkl. de tre GET-
+ * listene) krever innlogget bruker som eier prosjektet (callerOwnsProject
+ * → userOwnsCastingProjectViaStore). Tidligere var GET-listene helt åpne —
+ * en uauth cross-tenant lekkasje av kompensasjon/vilkår + motparts-PII
+ * (samme delte legacy*ByProject-state som /api/role-room-GETene).
  *
  * Delt state med /api/role-room (KRITISK):
  *   legacyOffersByProject, legacyContractsByProject,
@@ -118,7 +122,13 @@ export function setupCastingAgreementsRoutes(
   // ── GET-list endpoints (project-skopede) ──────────────────────────
 
   app.get("/api/casting/projects/:projectId/offers", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const projectId = req.params.projectId;
+    if (!(await callerOwnsProject(projectId, session.userId))) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
     const dbOffers = await compatStoreGet<any[]>(dbLegacyOffersKey(projectId));
     if (Array.isArray(dbOffers)) {
       setProjectItems(legacyOffersByProject, projectId, dbOffers);
@@ -129,7 +139,13 @@ export function setupCastingAgreementsRoutes(
   });
 
   app.get("/api/casting/projects/:projectId/contracts", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const projectId = req.params.projectId;
+    if (!(await callerOwnsProject(projectId, session.userId))) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
     const dbContracts = await compatStoreGet<any[]>(
       dbLegacyContractsKey(projectId),
     );
@@ -144,7 +160,13 @@ export function setupCastingAgreementsRoutes(
   app.get(
     "/api/casting/projects/:projectId/project-agreements",
     async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
       const projectId = req.params.projectId;
+      if (!(await callerOwnsProject(projectId, session.userId))) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
       const dbAgreements = await compatStoreGet<any[]>(
         dbLegacyProjectAgreementsKey(projectId),
       );

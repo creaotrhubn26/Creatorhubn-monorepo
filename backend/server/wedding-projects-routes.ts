@@ -51,11 +51,20 @@ export function setupWeddingProjectsRoutes(
   app.get("/api/wedding-projects/:projectId", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     try {
+      // Eierskaps-scope: samme modell som listen over (legacy.projects.user_id).
+      // Uten dette kunne enhver innlogget bruker hente et vilkårlig prosjekt
+      // (inkl. klient-/pris-data) ved å gjette/enumere id (IDOR).
+      const userId = compatResolveUserId(req);
+      if (!userId || userId === "guest") {
+        return res
+          .status(404)
+          .json({ success: false, error: "Project not found" });
+      }
       const result = await pool.query(
-        "SELECT * FROM legacy.projects WHERE id = $1 LIMIT 1",
-        [req.params.projectId],
+        "SELECT * FROM legacy.projects WHERE id = $1 AND user_id = $2 LIMIT 1",
+        [req.params.projectId, userId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return res
           .status(404)
           .json({ success: false, error: "Project not found" });

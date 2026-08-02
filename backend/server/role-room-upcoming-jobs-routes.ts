@@ -214,7 +214,7 @@ export function registerRoleRoomUpcomingJobsRoutes(app: Express, deps: Deps): vo
         });
       } catch (err) {
         console.error("[upcoming-jobs] GET failed:", err);
-        res.status(500).json({ error: "intern_feil", detail: (err as Error).message });
+        res.status(500).json({ error: "intern_feil", detail: "internal_error" });
       }
     },
   );

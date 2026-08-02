@@ -249,7 +249,7 @@ export function setupRoleRoomCandidateStatusRoutes(deps: RoleRoomCandidateStatus
       });
     } catch (err) {
       console.error("[candidates/status PATCH] failed", err);
-      return res.status(500).json({ error: "Kunne ikke oppdatere status", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke oppdatere status", detail: "internal_error" });
     }
   });
 }

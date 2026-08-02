@@ -305,9 +305,19 @@ const getQuoteNumber = (quote: Record<string, unknown>, keys: string[]): number 
   return undefined;
 };
 
-export default function FullscreenChatWidget({ 
-  open, 
-  onClose, 
+// DISABLED (2026-07-12): superseded by WorkspaceChatPanel (team chat lives in the
+// workspace `project-<id>` channel, which is properly membership-gated). This widget
+// is no longer needed. The default export is a no-op so none of its mounts render and
+// none of its queries fire (notably the admin-namespaced /api/admin/communication/*
+// readers, which are now tightened to admin-only server-side). The original
+// implementation is preserved below as `FullscreenChatWidgetImpl` but is never invoked.
+export default function FullscreenChatWidget(_props: FullscreenChatWidgetProps) {
+  return null;
+}
+
+function FullscreenChatWidgetImpl({
+  open,
+  onClose,
   profession,
   userEmail,
   supportTicketId,

@@ -325,6 +325,19 @@ final class AppState {
     /// True hvis user.role == 'super_admin' eller user.isPlatformAdmin.
     var isSuperAdmin: Bool { userRole == "super_admin" }
 
+    // ── Admin-room multi-produkt (#1318, portet i main-mergen) ──
+    /// Hvilket produkt admin-room-flatene (pipeline, industry-targets)
+    /// er i kontekst for. Default `.leadgrid`; persistert i UserDefaults.
+    var activeAdminProduct: AdminProductKey = .leadgrid {
+        didSet {
+            guard oldValue != activeAdminProduct else { return }
+            UserDefaults.standard.set(
+                activeAdminProduct.rawValue,
+                forKey: AdminProductDefaultsKey.activeProduct
+            )
+        }
+    }
+
     // ── Min dag (PR #616) ───────────────────────────────────────
     var workloadLeads: [WorkloadLead] = []
     var quota: QuotaProgress?
@@ -518,6 +531,10 @@ final class AppState {
         // 1. Hent persistert prosjekt + org-valg
         if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
             self.activeProjectId = stored
+        }
+        if let storedProduct = UserDefaults.standard.string(forKey: AdminProductDefaultsKey.activeProduct),
+           let product = AdminProductKey(rawValue: storedProduct) {
+            self.activeAdminProduct = product
         }
         if let storedOrg = UserDefaults.standard.string(forKey: "rr.lead_map.active_org"), !storedOrg.isEmpty {
             self.activeOrganizationId = storedOrg

@@ -193,7 +193,7 @@ function renderLineSvg(style: GuideAnnotationStyle, color: string, secondary: st
 }
 
 function renderAnnotationShape(annotation: GuideStepAnnotation, index: number) {
-  const color = annotation.color ?? '#00d4ff';
+  const color = annotation.color ?? 'var(--role-cyan, #00d4ff)';
   const secondary = annotation.secondaryColor ?? '#ffb800';
   const thickness = clamp(annotation.thickness ?? 3, 1, 12);
   const radius = clamp(annotation.radius ?? 12, 0, 32);
@@ -487,8 +487,8 @@ export function GuideAnnotationOverlay({
                     py: 0.2,
                     borderRadius: 0.75,
                     bgcolor: '#0b1220d9',
-                    border: `1px solid ${annotation.color ?? '#00d4ff'}`,
-                    color: annotation.color ?? '#00d4ff',
+                    border: `1px solid ${annotation.color ?? 'var(--role-cyan, #00d4ff)'}`,
+                    color: annotation.color ?? 'var(--role-cyan, #00d4ff)',
                     fontSize: tinyTarget ? '0.58rem' : '0.64rem',
                     fontWeight: 700,
                     lineHeight: 1.2,

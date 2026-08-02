@@ -386,7 +386,7 @@ export default function UniversalContractHub({
     try {
       const response = await fetch(`/api/contracts/${contractId}/pdf`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Authorization': `Bearer ${localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('role_room_auth_token') || localStorage.getItem('token') || ''}`,
         },
       });
       
@@ -734,7 +734,7 @@ export default function UniversalContractHub({
                             const promises = Array.from(selectedContracts).map(async (id) => {
                               const response = await fetch(`/api/contracts/${id}/pdf`, {
                                 headers: {
-                                  'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+                                  'Authorization': `Bearer ${localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('role_room_auth_token') || localStorage.getItem('token') || ''}`,
                                 },
                               });
                               if (response.ok) {

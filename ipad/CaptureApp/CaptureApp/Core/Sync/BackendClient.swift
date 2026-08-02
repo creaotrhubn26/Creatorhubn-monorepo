@@ -470,6 +470,19 @@ actor BackendClient {
         return response.assets
     }
 
+    /// Bygg STABILE thumbnail-URL-er for shot-oppdaterings-kortet: de siste
+    /// `limit` opplastede bildene i økta, som `…/assets/<id>/preview`-
+    /// redirecter (aldri utløper — backend re-signerer R2 pr kall). Kun
+    /// bilder som faktisk har en preview i skyen tas med.
+    func shotThumbURLs(sessionId: UUID, limit: Int) async -> [String] {
+        guard let assets = try? await listSessionAssets(sessionId: sessionId, limit: 500, offset: 0)
+        else { return [] }
+        return assets
+            .filter { $0.previewUrl != nil }
+            .suffix(limit)
+            .map { baseURL.appendingPathComponent("/api/capture/assets/\($0.id)/preview").absoluteString }
+    }
+
     /// Run the Claude-backed Live Set coverage check. Backend lives at
     /// ``POST /api/live-set/ai/coverage-check``; the rest of the
     /// LiveSet AI suite (replan-day, continuity-check, end-of-day)
@@ -627,6 +640,175 @@ actor BackendClient {
         }
     }
 
+    /// Registrer denne enhetens APNs-token for push-varsler (kunde signerte,
+    /// likte bilder, redigerer ferdig m.m. — også når appen er lukket).
+    func registerCaptureDeviceToken(token: String) async throws {
+        struct Body: Encodable { let deviceToken: String; let platform: String }
+        struct Ack: Decodable { let ok: Bool? }
+        let _: Ack = try await postJSON(
+            path: "/api/capture/me/device-token",
+            body: Body(deviceToken: token, platform: "ios"))
+    }
+
+    /// Post en melding i prosjektets team-chat (`project-<id>` i communication_
+    /// channels — SAMME kanal som web-workspacens WorkspaceChatPanel). Brukes
+    /// til team-varsler om shot-progresjon.
+    func postProjectChatMessage(projectId: String, text: String) async throws {
+        struct Body: Encodable {
+            let channelId: String; let conversationId: String
+            let content: String; let text: String
+        }
+        struct Ack: Decodable {}
+        let channel = "project-\(projectId)"
+        let _: Ack = try await postJSON(
+            path: "/api/communication/messages",
+            body: Body(channelId: channel, conversationId: channel, content: text, text: text))
+    }
+
+    /// Post/OPPDATER shot-oppdaterings-kortet i team-chatten. `clientMessageId`
+    /// er stabil pr opptaksøkt → backend upserter (persistMessage 23505→update)
+    /// slik at SAMME melding vokser in-place når flere bilder tas. `shotUpdate`
+    /// er strukturert metadata (who/scenes/next/count/backup) som web + iPad
+    /// rendrer som kort. `content` beholdes lesbar for varsler/fallback.
+    func postProjectShotCard(
+        projectId: String, clientMessageId: String, text: String,
+        shotUpdate: [String: Any]
+    ) async throws {
+        let channel = "project-\(projectId)"
+        let body: [String: Any] = [
+            "id": clientMessageId,
+            "channelId": channel,
+            "conversationId": channel,
+            "content": text,
+            "text": text,
+            "metadata": ["shotUpdate": shotUpdate]
+        ]
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/communication/messages"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await self.data(for: request)
+    }
+
+    /// Ett shot i POST-en til `/api/projects/:id/shot-list`. Fullt felt-sett så
+    /// APPEND kan bevare eksisterende shots (fullført-status, koblet asset osv.)
+    /// i stedet for å nulle dem.
+    struct ShotListPostItem: Encodable, Sendable {
+        let id: String
+        let scene: String
+        var description: String?
+        var priority: String?
+        var shotType: String?
+        var locationName: String?
+        var notes: String?
+        var scouted: Bool?
+        var isCompleted: Bool?
+        var capturedAssetId: String?
+        var capturedAssetBackendId: String?
+        var completedBy: String?
+    }
+
+    /// #9 Lagre en shot-list til prosjektet (samme array-baserte endepunkt som
+    /// auto-huk + web ShotlistTab leser). Endepunktet er array-erstattende, så
+    /// APPEND gjøres ved å sende eksisterende items (fullt) + de nye.
+    func postProjectShotList(
+        projectId: String, items: [ShotListPostItem],
+        listName: String = "Fra brief", eventType: String = "photo_session"
+    ) async throws {
+        struct Body: Encodable { let shots: [ShotListPostItem]; let listName: String; let eventType: String }
+        struct Ack: Decodable {}
+        let _: Ack = try await postJSON(
+            path: "/api/projects/\(projectId)/shot-list",
+            body: Body(shots: items, listName: listName, eventType: eventType))
+    }
+
+    /// Bygg en OFFENTLIG render-URL til Infographic-motoren (`GET /api/
+    /// infographics/render.png`) — laster i AsyncImage/`<img>` uten auth.
+    /// Gjenbruker Post Agents infographic-verktøy til å designe f.eks. en
+    /// call-sheet fra shot-listen (tpl=timeline). `data` blir `window.__CFG__`.
+    nonisolated func infographicRenderURL(
+        tpl: String, width: Int, height: Int,
+        data: [String: Any], accentHex: String?
+    ) -> URL? {
+        guard let json = try? JSONSerialization.data(withJSONObject: data) else { return nil }
+        // `d` må være base64url-kodet JSON (backend: Buffer.from(d,'base64url')).
+        let b64 = json.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        var c = URLComponents(
+            url: baseURL.appendingPathComponent("/api/infographics/render.png"),
+            resolvingAgainstBaseURL: false)
+        var items: [URLQueryItem] = [
+            .init(name: "tpl", value: tpl),
+            .init(name: "w", value: String(width)),
+            .init(name: "h", value: String(height)),
+            .init(name: "d", value: b64)
+        ]
+        if let accentHex { items.append(.init(name: "accent", value: accentHex)) }
+        c?.queryItems = items
+        return c?.url
+    }
+
+    /// Stabil preview-URL for et backend-asset (thumbnail overalt). Offentlig
+    /// redirect → laster i AsyncImage/`<img>` uten auth.
+    nonisolated func assetPreviewURL(backendAssetId: String) -> URL? {
+        baseURL.appendingPathComponent("/api/capture/assets/\(backendAssetId)/preview")
+    }
+
+    /// #9 Hent bryllups-timelinen for prosjektet og form den til en kompakt
+    /// brief (dagsplan) FM kan lage shot-list fra. nil hvis ingen timeline.
+    func fetchWeddingTimelineBrief(projectId: String) async -> String? {
+        struct Event: Decodable {
+            let title: String?; let time: String?; let description: String?; let location: String?
+        }
+        struct Timeline: Decodable { let title: String?; let coupleName: String?; let events: [Event]? }
+        guard let tl: Timeline = try? await getJSON(path: "/api/wedding/timeline/project/\(projectId)"),
+              let events = tl.events, !events.isEmpty else { return nil }
+        let lines: [String] = events.compactMap { e in
+            let title = (e.title ?? "").trimmingCharacters(in: .whitespaces)
+            guard !title.isEmpty else { return nil }
+            var s = ""
+            if let t = e.time, !t.isEmpty { s += "\(t) " }
+            s += title
+            if let loc = e.location, !loc.isEmpty { s += " (\(loc))" }
+            if let d = e.description, !d.isEmpty { s += " — \(d)" }
+            return "- " + s
+        }
+        guard !lines.isEmpty else { return nil }
+        let header = (tl.coupleName ?? tl.title).map { "Bryllup: \($0)." } ?? "Bryllup."
+        return "\(header)\nDagsplan (fra bryllups-timeline):\n" + lines.joined(separator: "\n")
+    }
+
+    /// Les team-flagget for shot-list auto-huk (delt via projects.settings).
+    /// Default PÅ hvis ukjent/feil.
+    func fetchShotListAutoCheck(projectId: String) async -> Bool {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/projects/\(projectId)/capture-settings"))
+        request.httpMethod = "GET"
+        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        guard let (data, response) = try? await self.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return true }
+        struct Resp: Decodable { let shotListAutoCheck: Bool? }
+        return (try? JSONDecoder().decode(Resp.self, from: data))?.shotListAutoCheck ?? true
+    }
+
+    /// Skru auto-huk av/på for teamet. Eier-gated i backend → 403 kastes som
+    /// `ShotAutoCheckError.notOwner` så UI kan vise «kun eier kan endre».
+    func setShotListAutoCheck(projectId: String, enabled: Bool, updatedBy: String?) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/projects/\(projectId)/capture-settings"))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        struct Body: Encodable { let shotListAutoCheck: Bool; let updatedBy: String? }
+        request.httpBody = try JSONEncoder().encode(Body(shotListAutoCheck: enabled, updatedBy: updatedBy))
+        let (_, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw ShotAutoCheckError.failed }
+        if http.statusCode == 403 { throw ShotAutoCheckError.notOwner }
+        guard (200..<300).contains(http.statusCode) else { throw ShotAutoCheckError.failed }
+    }
+
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,
         body: RequestBody,
@@ -670,6 +852,14 @@ actor BackendClient {
             throw BackendError.transport(String(describing: urlError.code))
         }
     }
+}
+
+/// Feil fra shot-list auto-huk-styringen. `.notOwner` = backend 403
+/// (kun prosjekteier kan endre for teamet).
+enum ShotAutoCheckError: Error, Equatable {
+    case notOwner
+    case noBackend
+    case failed
 }
 
 /// Phase 5.1 — multipart helpers for the voice-memo upload path.

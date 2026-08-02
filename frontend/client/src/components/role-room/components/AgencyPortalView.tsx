@@ -35,13 +35,16 @@ import roleRoomTalentsService, {
   type RoleRoomAgencyOrg,
   type RoleRoomMaskedTalent,
 } from '../services/roleRoomTalentsService';
+import BlockRenderer from '../cms/BlockRenderer';
+import { useCmsBlocks } from '../cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../cms/blockSchema';
 
 const SURFACE = 'rgba(7, 13, 26, 0.72)';
 const BORDER = 'rgba(125, 211, 252, 0.14)';
 const TEXT_PRIMARY = 'rgba(241, 245, 249, 0.96)';
 const TEXT_SECONDARY = 'rgba(191, 219, 254, 0.74)';
 const TEXT_MUTED = 'rgba(148, 163, 184, 0.78)';
-const ACCENT = '#7dd3fc';
+const ACCENT = 'var(--role-portal-accent, #7dd3fc)';
 const SUCCESS = '#34d399';
 
 const cardSx = {
@@ -67,6 +70,10 @@ interface AgencyPortalViewProps {
 }
 
 export default function AgencyPortalView(_props: AgencyPortalViewProps) {
+  // Optional CMS-editable welcome banner shown above the live dashboard —
+  // admins can add copy for this via AdminRoom (slug 'agencyportal') without
+  // touching the dynamic agency/talents data/functionality below it.
+  const cmsHeroBlocks = useCmsBlocks('agencyportal');
   const [agency, setAgency] = useState<RoleRoomAgencyOrg | null>(null);
   const [agencyRole, setAgencyRole] = useState<'admin' | 'member' | null>(null);
   const [talents, setTalents] = useState<RoleRoomMaskedTalent[]>([]);
@@ -159,6 +166,9 @@ export default function AgencyPortalView(_props: AgencyPortalViewProps) {
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: 'auto' }}>
       <Stack spacing={2.4}>
+        {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+          <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+        ) : null}
         {/* Agency-header */}
         <Box sx={cardSx}>
           <Stack

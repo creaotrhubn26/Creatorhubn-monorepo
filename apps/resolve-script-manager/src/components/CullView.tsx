@@ -250,15 +250,15 @@ export function CullView({ activeTemplate }: CullViewProps) {
       {resumeMatch && selectedSource && (
         <div className="resume-banner">
           <div>
-            <strong>Resume previous session?</strong>
+            <strong>Gjenoppta forrige økt?</strong>
             <div className="card-chip-meta">
-              {resumeMatch.sourceLabel} · {resumeMatch.totalClips} clips · {resumeMatch.kept} kept ·
-              {' '}updated {new Date(resumeMatch.updatedAt).toLocaleString()}
+              {resumeMatch.sourceLabel} · {resumeMatch.totalClips} klipp · {resumeMatch.kept} beholdt ·
+              {' '}oppdatert {new Date(resumeMatch.updatedAt).toLocaleString('nb-NO')}
             </div>
           </div>
           <div className="cull-actions">
-            <button className="small" onClick={handleStartFresh}><IconSparkle /> Start fresh</button>
-            <button className="small primary" onClick={handleResume}><IconPlay /> Resume</button>
+            <button className="small" onClick={handleStartFresh}><IconSparkle /> Start på nytt</button>
+            <button className="small primary" onClick={handleResume}><IconPlay /> Gjenoppta</button>
           </div>
         </div>
       )}
@@ -266,7 +266,7 @@ export function CullView({ activeTemplate }: CullViewProps) {
       {!session && (
         <>
           <h3 className="section-title" style={{ margin: "12px 18px 6px" }}>
-            Mounted Cards
+            Monterte kort
           </h3>
           {cards.length === 0 ? (
             <div className="empty" style={{ margin: "0 18px" }}>

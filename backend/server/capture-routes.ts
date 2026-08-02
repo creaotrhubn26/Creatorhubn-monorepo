@@ -15,6 +15,7 @@ import {
 import {
   registerAsset,
   fetchAsset,
+  fetchAssetPreviewKey,
   listAssets,
   updateAssetLabels,
   updateAssetSignals,
@@ -33,10 +34,12 @@ import {
   type UploadError,
 } from './capture-upload-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
+import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
   createClientToken,
   fetchSessionForClient,
   listClientTokens,
+  recordClientGalleryView,
   revokeClientToken,
   validateClientToken,
   type ValidatedClientAuth,
@@ -140,6 +143,12 @@ const deliverToShowcaseBody = z.object({
   clientName: z.string().min(1).max(255),
   clientEmail: z.string().email().max(255),
   projectTitle: z.string().min(1).max(255).optional(),
+  // Samme-dags levering: send «bildene dine er klare»-e-post automatisk.
+  sendEmail: z.boolean().default(false),
+  // Valgfri FM-skrevet e-post-kropp (on-device, iPad). Faller tilbake til en
+  // standard norsk mal hvis utelatt.
+  emailBody: z.string().max(4000).optional(),
+  photographerName: z.string().max(255).optional(),
 });
 
 // 12 MB cap on the base64 payload — comfortably above any preview JPEG
@@ -468,6 +477,8 @@ export function buildExifTags(exif: NormalizedExif): string[] {
   return Array.from(tags).slice(0, 50);
 }
 
+import { registerCaptureDeviceToken } from './capture-push';
+
 export function createCaptureRouter(
   pool: Pool,
   activeSessions?: Map<string, SessionData>,
@@ -486,6 +497,21 @@ export function createCaptureRouter(
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
     const rows = await listProjectsForPhotographer(db, userId, limit);
     res.json({ projects: rows });
+  });
+
+  // ── Push: registrer APNs-token (varsler når appen er lukket) ──
+  router.post('/me/device-token', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const token = String(req.body?.deviceToken ?? '').trim();
+    if (!token) {
+      res.status(400).json({ error: 'deviceToken required' });
+      return;
+    }
+    await registerCaptureDeviceToken(pool, userId, token, {
+      deviceName: typeof req.body?.deviceName === 'string' ? req.body.deviceName : undefined,
+      appVersion: typeof req.body?.appVersion === 'string' ? req.body.appVersion : undefined,
+    });
+    res.json({ ok: true });
   });
 
   router.get('/projects/:id', auth, async (req, res) => {
@@ -735,6 +761,23 @@ export function createCaptureRouter(
         return;
       }
       throw err;
+    }
+  });
+
+  // Stabil thumbnail-URL for shot-oppdaterings-kortet i team-chatten. 302 →
+  // fersk-signert R2-preview hver gang (aldri utløper), så en varig chat-
+  // melding kan peke hit. INGEN auth: må lastes av <img>/AsyncImage uten
+  // headere, og team-medlemmer (ikke bare økt-eier) må se den. Asset-id er en
+  // ugjettbar UUID; den underliggende R2-URL-en er fortsatt kortlevd signert.
+  router.get('/assets/:id/preview', async (req, res) => {
+    try {
+      const key = await fetchAssetPreviewKey(db, req.params.id);
+      if (!key) { res.status(404).json({ error: 'not_found' }); return; }
+      const url = await signAssetReadUrl(key);
+      res.setHeader('Cache-Control', 'private, max-age=120');
+      res.redirect(302, url);
+    } catch {
+      res.status(404).json({ error: 'not_found' });
     }
   });
 
@@ -1360,12 +1403,58 @@ export function createCaptureRouter(
       });
       return;
     }
+    // Samme-dags levering + oppfølging: auto-send e-post med galleri-lenken.
+    // Variant-bevisst: «bildene klare» ved første levering, «N nye bilder lagt
+    // til» ved re-levering med nye bilder. Hopper over hvis re-levering ikke
+    // ga noe nytt (ingenting å varsle om). FM-kroppen brukes for førstegangs-
+    // leveringen; standard norsk mal ellers. Best-effort — feil blokkerer ikke.
+    const newCount = result.uploadedImageCount;
+    const isNewPhotos = result.reusedExisting && newCount > 0;
+    const nothingNew = result.reusedExisting && newCount === 0;
+    let emailSent = false;
+    if (parsed.data.sendEmail && !nothingNew) {
+      const esc = (s: string) =>
+        s.replace(/[&<>"]/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string));
+      const photographer = parsed.data.photographerName?.trim() || 'Fotografen din';
+      const project = parsed.data.projectTitle?.trim() || 'shooten';
+      const url = result.shareUrl;
+      const subject = isNewPhotos
+        ? `${newCount} ${newCount === 1 ? 'nytt bilde' : 'nye bilder'} i galleriet ditt ✨`
+        : 'Bildene dine er klare ✨';
+      const intro = isNewPhotos
+        ? `Hei ${parsed.data.clientName}!\n\nFotografen har lagt til ${newCount} ${newCount === 1 ? 'nytt bilde' : 'nye bilder'} i galleriet ditt. Åpne for å se dem, hjerte favorittene dine og laste ned.`
+        : (parsed.data.emailBody?.trim()
+           || `Hei ${parsed.data.clientName}!\n\nBildene fra ${project} er klare. Åpne galleriet under for å se dem, hjerte favorittene dine og laste ned.`);
+      const cta = isNewPhotos ? 'Se de nye bildene →' : 'Se galleriet ditt →';
+      const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">`
+        + `<p style="white-space:pre-wrap;font-size:15px;line-height:1.55">${esc(intro)}</p>`
+        + `<p style="margin:28px 0"><a href="${esc(url)}" style="background:#FF6B35;color:#fff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:700;display:inline-block">${esc(cta)}</a></p>`
+        + `<p style="font-size:12px;color:#888">Eller åpne lenken: <a href="${esc(url)}" style="color:#FF6B35">${esc(url)}</a></p>`
+        + `<p style="font-size:13px;color:#555;margin-top:24px">Hilsen ${esc(photographer)}</p></div>`;
+      const text = `${intro}\n\nSe galleriet: ${url}\n\nHilsen ${photographer}`;
+      try {
+        const sendResult = await sendTransactionalEmail({
+          to: parsed.data.clientEmail,
+          subject,
+          html,
+          text,
+          fromLabel: photographer,
+          kind: isNewPhotos ? 'capture_new_photos_notification' : 'capture_delivery_notification',
+          pool,
+        });
+        emailSent = sendResult.sent;
+      } catch (err) {
+        console.warn('[capture] delivery email failed', err);
+      }
+    }
+
     res.status(result.reusedExisting ? 200 : 201).json({
       galleryId: result.galleryId,
       accessToken: result.accessToken,
       shareUrl: result.shareUrl,
       uploadedImageCount: result.uploadedImageCount,
       reusedExisting: result.reusedExisting,
+      emailSent,
     });
   });
 
@@ -1418,6 +1507,8 @@ export function createCaptureRouter(
 
   router.get('/client/assets', clientAuth, async (req, res) => {
     const { clientAuth: auth } = req as ClientAuthedRequest;
+    // Les-kvittering: klienten åpnet galleriet. Fire-and-forget (best-effort).
+    void recordClientGalleryView(db, auth.tokenId);
     const limit = Math.min(Number(req.query.limit ?? 500), 2000);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
     const rows = await db

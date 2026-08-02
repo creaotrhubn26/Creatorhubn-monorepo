@@ -45,6 +45,10 @@ const upload = multer({
     fileSize: SMALL_UPLOAD_MAX,
     files: 1,
   },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/|application\/pdf|text\/plain|text\/csv)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
 });
 
 export function setupUploadsRoutes(deps: UploadsRoutesDeps): void {

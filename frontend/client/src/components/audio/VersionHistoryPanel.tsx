@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { getAuthHeader } from '@/lib/queryClient';
 import {
   Dialog,
   DialogTitle,
@@ -74,7 +75,8 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
 
     try {
       const response = await fetch(`/api/audio/versions/${projectId}`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: { ...(await getAuthHeader()) }
       });
       const data = await response.json();
 
@@ -106,7 +108,7 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
     try {
       const response = await fetch('/api/audio/versions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
         credentials: 'include',
         body: JSON.stringify({
           projectId,
@@ -147,7 +149,8 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
     try {
       const response = await fetch(`/api/audio/versions/${versionId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: { ...(await getAuthHeader()) }
       });
 
       const data = await response.json();

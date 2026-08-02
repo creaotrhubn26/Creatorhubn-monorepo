@@ -1,5 +1,9 @@
 // @ts-nocheck
 import React, { Suspense, useEffect, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
+import { useLandingBrand } from '@/hooks/useLandingAccent';
+import { useElementEdits } from '@/components/workspace/elementEdits';
+import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import {
   AccountTree,
   ArrowForward,
@@ -32,6 +36,9 @@ const InviteRequestForm = React.lazy(() => import('@/components/InviteRequestFor
 import { GdprNotice } from '@/components/common/GdprNotice';
 import { useLanguage } from '@/components/language-provider';
 import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 type Locale = 'no' | 'en';
 type LandingMode = 'desktop' | 'mobile';
@@ -534,6 +541,12 @@ function SectionHeading({
 export default function CreatorHubInvestorLanding({
   mode,
 }: CreatorHubInvestorLandingProps) {
+  useLandingBrand('creatorhub', { landingAccent: '--chl-accent', landingBg: '--chl-bg', landingText: '--chl-text' });
+  // CreatorHub Design (per-element-lag): anvend lagrede edits + ?design=1 live-editor.
+  useElementEdits('creatorhub');
+  const [designMode, setDesignMode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [prototypeTesterFormOpen, setPrototypeTesterFormOpen] = useState(false);
@@ -541,6 +554,7 @@ export default function CreatorHubInvestorLanding({
   const [publicPricingPlans, setPublicPricingPlans] = useState<CreatorHubPublicPricingPlan[] | null>(null);
   const [, setLocation] = useLocation();
   const { language, setLanguage } = useLanguage();
+  const cmsBlocks = useCmsBlocks('creatorhub-home');
   const isMobile = mode === 'mobile';
   const locale = language as Locale;
   const copy = landingCopy[locale];
@@ -733,17 +747,22 @@ export default function CreatorHubInvestorLanding({
   })();
   const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
 
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
-    <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea' }}>
+    <Box sx={{ bgcolor: 'var(--chl-bg, #05060a)', color: '#f6f2ea' }}>
+      {designMode && <WorkspaceDesignOverlay workspace="creatorhub" targetFile="frontend/client/src/components/landing/CreatorHubInvestorLanding.tsx" onClose={() => setDesignMode(false)} />}
       <GlobalStyles
         styles={{
           html: { scrollBehavior: 'smooth' },
           body: {
-            backgroundColor: '#05060a',
+            backgroundColor: 'var(--chl-bg, #05060a)',
             color: '#f6f2ea',
           },
           '#root': {
-            backgroundColor: '#05060a',
+            backgroundColor: 'var(--chl-bg, #05060a)',
           },
         }}
       />
@@ -791,7 +810,7 @@ export default function CreatorHubInvestorLanding({
                 sx={{
                   px: 0,
                   minWidth: 0,
-                  color: '#fff5e8',
+                  color: 'var(--chl-text, #fff5e8)',
                   textTransform: 'none',
                   '&:hover': { bgcolor: 'transparent' },
                 }}
@@ -822,7 +841,7 @@ export default function CreatorHubInvestorLanding({
                         fontSize: '0.82rem',
                         letterSpacing: '0.16em',
                         textTransform: 'uppercase',
-                        '&:hover': { color: '#fff5e8', bgcolor: 'transparent' },
+                        '&:hover': { color: 'var(--chl-text, #fff5e8)', bgcolor: 'transparent' },
                       }}
                     >
                       {item.label}
@@ -854,13 +873,13 @@ export default function CreatorHubInvestorLanding({
                         borderRadius: '999px',
                         color: locale === option.value ? '#150d05' : 'rgba(246,242,234,0.72)',
                         backgroundColor:
-                          locale === option.value ? '#ffba6c' : 'transparent',
+                          locale === option.value ? 'var(--chl-accent, #ffba6c)' : 'transparent',
                         fontSize: '0.78rem',
                         fontWeight: 700,
                         textTransform: 'none',
                         '&:hover': {
                           backgroundColor:
-                            locale === option.value ? '#ffba6c' : 'rgba(255,255,255,0.06)',
+                            locale === option.value ? 'var(--chl-accent, #ffba6c)' : 'rgba(255,255,255,0.06)',
                         },
                       }}
                     >
@@ -876,11 +895,11 @@ export default function CreatorHubInvestorLanding({
                     endIcon={<ArrowForward />}
                     sx={{
                       borderColor: 'rgba(255,186,108,0.4)',
-                      color: '#ffba6c',
+                      color: 'var(--chl-accent, #ffba6c)',
                       borderRadius: '999px',
                       px: 2.2,
                       '&:hover': {
-                        borderColor: '#ffba6c',
+                        borderColor: 'var(--chl-accent, #ffba6c)',
                         bgcolor: 'rgba(255,186,108,0.08)',
                       },
                     }}
@@ -890,7 +909,7 @@ export default function CreatorHubInvestorLanding({
                 ) : (
                   <IconButton
                     onClick={() => setMenuOpen(true)}
-                    sx={{ color: '#fff5e8' }}
+                    sx={{ color: 'var(--chl-text, #fff5e8)' }}
                     aria-label="Open navigation"
                   >
                     <Menu />
@@ -998,7 +1017,7 @@ export default function CreatorHubInvestorLanding({
                       borderRadius: '999px',
                       px: 3.2,
                       py: 1.4,
-                      bgcolor: '#ffba6c',
+                      bgcolor: 'var(--chl-accent, #ffba6c)',
                       color: '#150d05',
                       fontWeight: 800,
                       '&:hover': { bgcolor: '#ffc788' },
@@ -1123,7 +1142,7 @@ export default function CreatorHubInvestorLanding({
                                   borderRadius: '999px',
                                   mt: 0.95,
                                   flexShrink: 0,
-                                  bgcolor: index === 0 ? '#ffba6c' : 'rgba(246,242,234,0.72)',
+                                  bgcolor: index === 0 ? 'var(--chl-accent, #ffba6c)' : 'rgba(246,242,234,0.72)',
                                 }}
                               />
                               <Typography sx={{ fontSize: '0.92rem', color: 'rgba(246,242,234,0.82)' }}>
@@ -1301,7 +1320,7 @@ export default function CreatorHubInvestorLanding({
                         endIcon={<NorthEast />}
                         sx={{
                           alignSelf: 'flex-start',
-                          color: '#ffba6c',
+                          color: 'var(--chl-accent, #ffba6c)',
                           px: 0,
                           '&:hover': { bgcolor: 'transparent', color: '#ffd59f' },
                         }}
@@ -1383,7 +1402,7 @@ export default function CreatorHubInvestorLanding({
                         endIcon={<NorthEast />}
                         sx={{
                           alignSelf: 'flex-start',
-                          color: '#ffba6c',
+                          color: 'var(--chl-accent, #ffba6c)',
                           px: 0,
                           '&:hover': { bgcolor: 'transparent', color: '#ffd59f' },
                         }}
@@ -1422,7 +1441,7 @@ export default function CreatorHubInvestorLanding({
                 <Stack spacing={2.2} sx={{ mt: 5 }}>
                   {copy.community.points.map((point) => (
                     <Stack key={point} direction="row" spacing={1.5}>
-                      <Groups sx={{ color: '#ffba6c', mt: 0.2 }} />
+                      <Groups sx={{ color: 'var(--chl-accent, #ffba6c)', mt: 0.2 }} />
                       <Typography sx={{ color: 'rgba(246,242,234,0.72)', lineHeight: 1.8 }}>
                         {point}
                       </Typography>
@@ -1435,7 +1454,7 @@ export default function CreatorHubInvestorLanding({
                   endIcon={<NorthEast />}
                   sx={{
                     mt: 4,
-                    color: '#ffba6c',
+                    color: 'var(--chl-accent, #ffba6c)',
                     px: 0,
                     '&:hover': { bgcolor: 'transparent', color: '#ffd59f' },
                   }}
@@ -1458,9 +1477,9 @@ export default function CreatorHubInvestorLanding({
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
                   <Stack spacing={2.2}>
                     {[
-                      { icon: <AccountTree sx={{ color: '#ffba6c' }} />, label: copy.community.panelItems[0] },
-                      { icon: <AutoAwesome sx={{ color: '#ffba6c' }} />, label: copy.community.panelItems[1] },
-                      { icon: <Insights sx={{ color: '#ffba6c' }} />, label: copy.community.panelItems[2] },
+                      { icon: <AccountTree sx={{ color: 'var(--chl-accent, #ffba6c)' }} />, label: copy.community.panelItems[0] },
+                      { icon: <AutoAwesome sx={{ color: 'var(--chl-accent, #ffba6c)' }} />, label: copy.community.panelItems[1] },
+                      { icon: <Insights sx={{ color: 'var(--chl-accent, #ffba6c)' }} />, label: copy.community.panelItems[2] },
                     ].map((entry) => (
                       <Stack key={entry.label} direction="row" spacing={1.5} alignItems="center">
                         {entry.icon}
@@ -1653,11 +1672,11 @@ export default function CreatorHubInvestorLanding({
                           textTransform: 'none',
                           fontWeight: 700,
                           color: pricingBillingCycle === value ? '#150d05' : 'rgba(246,242,234,0.76)',
-                          bgcolor: pricingBillingCycle === value ? '#ffba6c' : 'transparent',
+                          bgcolor: pricingBillingCycle === value ? 'var(--chl-accent, #ffba6c)' : 'transparent',
                           '&:hover': {
                             bgcolor:
                               pricingBillingCycle === value
-                                ? '#ffba6c'
+                                ? 'var(--chl-accent, #ffba6c)'
                                 : 'rgba(255,255,255,0.06)',
                           },
                         }}
@@ -1668,7 +1687,7 @@ export default function CreatorHubInvestorLanding({
                   </Stack>
 
                   {pricingBillingCycle === 'yearly' ? (
-                    <Typography sx={{ color: '#ffba6c', fontWeight: 700 }}>
+                    <Typography sx={{ color: 'var(--chl-accent, #ffba6c)', fontWeight: 700 }}>
                       {copy.pricing.yearlyBadge}
                     </Typography>
                   ) : null}
@@ -1681,9 +1700,9 @@ export default function CreatorHubInvestorLanding({
                       alignSelf: { xs: 'flex-start', md: 'center' },
                       borderRadius: '999px',
                       borderColor: 'rgba(255,186,108,0.36)',
-                      color: '#ffba6c',
+                      color: 'var(--chl-accent, #ffba6c)',
                       '&:hover': {
-                        borderColor: '#ffba6c',
+                        borderColor: 'var(--chl-accent, #ffba6c)',
                         bgcolor: 'rgba(255,186,108,0.08)',
                       },
                     }}
@@ -1724,7 +1743,7 @@ export default function CreatorHubInvestorLanding({
                           top: 18,
                           right: 18,
                           borderRadius: '999px',
-                          bgcolor: '#ffba6c',
+                          bgcolor: 'var(--chl-accent, #ffba6c)',
                           color: '#150d05',
                           px: 1.3,
                           py: 0.55,
@@ -1758,7 +1777,7 @@ export default function CreatorHubInvestorLanding({
                               fontSize: { xs: '2.2rem', md: '2.6rem' },
                               lineHeight: 0.95,
                               letterSpacing: '-0.05em',
-                              color: '#ffba6c',
+                              color: 'var(--chl-accent, #ffba6c)',
                               fontWeight: 700,
                             }}
                           >
@@ -1771,7 +1790,7 @@ export default function CreatorHubInvestorLanding({
                         {pricingBillingCycle === 'yearly' ? (
                           <Typography
                             sx={{
-                              color: '#ffba6c',
+                              color: 'var(--chl-accent, #ffba6c)',
                               fontSize: '0.8rem',
                               fontWeight: 700,
                               letterSpacing: '0.08em',
@@ -1797,7 +1816,7 @@ export default function CreatorHubInvestorLanding({
                                 borderRadius: '999px',
                                 flexShrink: 0,
                                 mt: 0.9,
-                                bgcolor: '#ffba6c',
+                                bgcolor: 'var(--chl-accent, #ffba6c)',
                               }}
                             />
                             <Typography sx={{ color: 'rgba(246,242,234,0.84)', lineHeight: 1.65 }}>{point}</Typography>
@@ -1816,12 +1835,12 @@ export default function CreatorHubInvestorLanding({
                             py: 1.25,
                             fontWeight: 700,
                             textTransform: 'none',
-                            bgcolor: plan.highlight ? '#ffba6c' : 'transparent',
-                            color: plan.highlight ? '#150d05' : '#fff5e8',
-                            borderColor: plan.highlight ? '#ffba6c' : 'rgba(255,255,255,0.16)',
+                            bgcolor: plan.highlight ? 'var(--chl-accent, #ffba6c)' : 'transparent',
+                            color: plan.highlight ? '#150d05' : 'var(--chl-text, #fff5e8)',
+                            borderColor: plan.highlight ? 'var(--chl-accent, #ffba6c)' : 'rgba(255,255,255,0.16)',
                             '&:hover': {
                               bgcolor: plan.highlight ? '#ffc788' : 'rgba(255,255,255,0.05)',
-                              borderColor: plan.highlight ? '#ffc788' : '#fff5e8',
+                              borderColor: plan.highlight ? '#ffc788' : 'var(--chl-text, #fff5e8)',
                             },
                           }}
                         >
@@ -1888,7 +1907,7 @@ export default function CreatorHubInvestorLanding({
                         sx={{
                           fontFamily: '"Space Grotesk", "Manrope", sans-serif',
                           fontSize: { xs: '1.4rem', md: '1.7rem' },
-                          color: '#ffba6c',
+                          color: 'var(--chl-accent, #ffba6c)',
                           fontWeight: 700,
                           flexShrink: 0,
                         }}
@@ -1908,7 +1927,7 @@ export default function CreatorHubInvestorLanding({
                             borderRadius: '999px',
                             flexShrink: 0,
                             mt: 0.9,
-                            bgcolor: '#ffba6c',
+                            bgcolor: 'var(--chl-accent, #ffba6c)',
                           }}
                         />
                         <Typography sx={{ color: 'rgba(246,242,234,0.84)', lineHeight: 1.65 }}>{point}</Typography>
@@ -1927,11 +1946,11 @@ export default function CreatorHubInvestorLanding({
                         px: 2.5,
                         fontWeight: 700,
                         textTransform: 'none',
-                        color: '#fff5e8',
+                        color: 'var(--chl-text, #fff5e8)',
                         borderColor: 'rgba(255,255,255,0.18)',
                         '&:hover': {
                           bgcolor: 'rgba(255,255,255,0.05)',
-                          borderColor: '#fff5e8',
+                          borderColor: 'var(--chl-text, #fff5e8)',
                         },
                       }}
                     >
@@ -2004,8 +2023,8 @@ export default function CreatorHubInvestorLanding({
                     fontWeight: 700,
                     textTransform: 'none',
                     color: '#150d05',
-                    bgcolor: '#ffba6c',
-                    borderColor: '#ffba6c',
+                    bgcolor: 'var(--chl-accent, #ffba6c)',
+                    borderColor: 'var(--chl-accent, #ffba6c)',
                     '&:hover': {
                       bgcolor: '#ffc788',
                       borderColor: '#ffc788',
@@ -2072,7 +2091,7 @@ export default function CreatorHubInvestorLanding({
                     borderRadius: '999px',
                     px: 3,
                     py: 1.3,
-                    bgcolor: '#ffba6c',
+                    bgcolor: 'var(--chl-accent, #ffba6c)',
                     color: '#150d05',
                     fontWeight: 800,
                     '&:hover': { bgcolor: '#ffcb91' },
@@ -2089,9 +2108,9 @@ export default function CreatorHubInvestorLanding({
                     px: 3,
                     py: 1.3,
                     borderColor: 'rgba(255,245,232,0.22)',
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     '&:hover': {
-                      borderColor: '#fff5e8',
+                      borderColor: 'var(--chl-text, #fff5e8)',
                       bgcolor: 'rgba(255,255,255,0.04)',
                     },
                   }}
@@ -2128,7 +2147,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/creatorhub-innovasjon"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2141,7 +2160,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/partner"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2154,7 +2173,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/privacy-policy"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2167,7 +2186,7 @@ export default function CreatorHubInvestorLanding({
                   component="a"
                   href="/terms-and-conditions"
                   sx={{
-                    color: '#fff5e8',
+                    color: 'var(--chl-text, #fff5e8)',
                     textDecoration: 'underline',
                     textUnderlineOffset: '0.18em',
                     fontSize: '0.82rem',
@@ -2238,7 +2257,7 @@ export default function CreatorHubInvestorLanding({
                 py: 1.4,
                 px: 0,
                 textTransform: 'none',
-                '&:hover': { bgcolor: 'transparent', color: '#ffba6c' },
+                '&:hover': { bgcolor: 'transparent', color: 'var(--chl-accent, #ffba6c)' },
               }}
               endIcon={<ArrowForward />}
             >
@@ -2254,7 +2273,7 @@ export default function CreatorHubInvestorLanding({
               variant="contained"
               sx={{
                 borderRadius: '999px',
-                bgcolor: '#ffba6c',
+                bgcolor: 'var(--chl-accent, #ffba6c)',
                 color: '#150d05',
                 fontWeight: 800,
                 '&:hover': { bgcolor: '#ffcb91' },
@@ -2268,10 +2287,10 @@ export default function CreatorHubInvestorLanding({
               sx={{
                 borderRadius: '999px',
                 borderColor: 'rgba(255,245,232,0.22)',
-                color: '#fff5e8',
+                color: 'var(--chl-text, #fff5e8)',
                 fontWeight: 700,
                 '&:hover': {
-                  borderColor: '#fff5e8',
+                  borderColor: 'var(--chl-text, #fff5e8)',
                   bgcolor: 'rgba(255,255,255,0.04)',
                 },
               }}
@@ -2282,10 +2301,11 @@ export default function CreatorHubInvestorLanding({
         </Stack>
       </Drawer>
 
+      <ErrorBoundary componentName="investor-landing-modals">
       <Suspense
         fallback={
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
-            <CircularProgress sx={{ color: '#ffba6c' }} />
+            <CircularProgress sx={{ color: 'var(--chl-accent, #ffba6c)' }} />
           </Box>
         }
       >
@@ -2310,6 +2330,7 @@ export default function CreatorHubInvestorLanding({
           source="prototype_tester_pricing"
         />
       </Suspense>
+      </ErrorBoundary>
 
       <GdprNotice position="bottom" />
     </Box>

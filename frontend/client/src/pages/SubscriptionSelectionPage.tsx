@@ -36,6 +36,7 @@ const subscriptionPageCopy: Record<
     successSubtitle: string;
     backHome: string;
     successInfo: string;
+    continueToWorkspace: string;
   }
 > = {
   no: {
@@ -53,6 +54,7 @@ const subscriptionPageCopy: Record<
     backHome: 'Tilbake til hjem',
     successInfo:
       'Stripe-betalingen er registrert. CreatorHub oppdaterer medlemskap og tilgang etter bekreftet betaling.',
+    continueToWorkspace: 'Fortsett til workspace',
   },
   en: {
     commerceLabel: 'CreatorHub Commerce',
@@ -69,6 +71,7 @@ const subscriptionPageCopy: Record<
     backHome: 'Back to home',
     successInfo:
       'The Stripe payment has been recorded. CreatorHub updates membership and access after the payment is confirmed.',
+    continueToWorkspace: 'Continue to workspace',
   },
 };
 
@@ -181,6 +184,17 @@ export default function SubscriptionSelectionPage() {
     navigate('/');
 };
 
+  // Fortsett til hovedflaten etter betaling. Workspace for skaper-profesjoner;
+  // klient-/admin-typer beholder sine egne dashbord (speiler fromInvite-logikken).
+  const goToWorkspace = () => {
+    const nonWorkspaceDash: { [key: string]: string } = {
+      couple: '/couple-dashboard',
+      partner: '/partner-dashboard',
+      admin: '/admin-dashboard',
+    };
+    window.location.href = nonWorkspaceDash[profession] || '/workspace';
+};
+
   const handlePaymentComplete = (
     plan: any,
     paymentMethod: string,
@@ -223,17 +237,14 @@ export default function SubscriptionSelectionPage() {
             const shouldAutoRedirect = data?.autoRedirectToDashboard ?? true; // Default to true for new users
 
             if (shouldAutoRedirect) {
-              // Redirect to profession-specific dashboard
-              const dashboardMap: { [key: string]: string } = {
-                photographer: '/photographer-dashboard-material',
-                videographer: '/videographer-dashboard',
-                music_producer: '/music-producer-dashboard',
-                vendor: '/vendor-dashboard',
+              // Workspace er hovedflaten for skaper-profesjoner; klient-/admin-typer
+              // beholder sine egne dashbord.
+              const nonWorkspaceDash: { [key: string]: string } = {
                 couple: '/couple-dashboard',
                 partner: '/partner-dashboard',
-                admin: '/admin-dashboard'
+                admin: '/admin-dashboard',
               };
-              const dashboardUrl = dashboardMap[profession] || '/photographer-dashboard-material';
+              const dashboardUrl = nonWorkspaceDash[profession] || '/workspace';
               window.location.href = dashboardUrl;
             } else {
               // Go back to landing page
@@ -308,6 +319,22 @@ export default function SubscriptionSelectionPage() {
           />
 
           <Box sx={{ textAlign: 'center', mt: 4 }}>
+            <Button
+              variant="contained"
+              onClick={goToWorkspace}
+              sx={{
+                mr: 2,
+                bgcolor: '#ff8c00',
+                color: '#150d05',
+                fontWeight: 700,
+                borderRadius: '999px',
+                px: 3,
+                py: 1.1,
+                '&:hover': { bgcolor: '#ffa733' },
+              }}
+            >
+              {copy.continueToWorkspace}
+            </Button>
             <Button
               variant="outlined"
               startIcon={<HomeIcon />}

@@ -16,6 +16,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
+import { aiRateLimit } from "./ai-rate-limiter.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -126,9 +127,19 @@ Regler:
 - Ingen generisk salgs-vrøvl — bare det som er relevant for dette spesifikke leadet.`;
 
 export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: Deps): void {
+  // Per-user throttle on the two Claude-backed endpoints below. Keyed on
+  // the bearer token (getUser reads activeSessions by bearer), so one
+  // logged-in user can't loop these into unbounded Anthropic spend.
+  const claudeLimit = aiRateLimit({
+    windowMs: 60_000,
+    max: 15,
+    label: "Lead-map transcript AI",
+  });
+
   // ─── POST /leads/:id/meeting-brief ──────────────────────────────
   app.post(
     "/api/admin-room/lead-map/leads/:id/meeting-brief",
+    claudeLimit,
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -147,8 +158,10 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           `SELECT name, address, city, lead_status, lead_category,
                   ai_opportunity_score, claude_recommendation_reason,
                   notes, next_action, assigned_user_id, project_id
-             FROM crm_customers WHERE id = $1 LIMIT 1`,
-          [req.params.id],
+             FROM crm_customers
+            WHERE id = $1 AND (owner_user_id = $2 OR assigned_user_id = $2)
+            LIMIT 1`,
+          [req.params.id, session.userId],
         );
         if (leadRes.rows.length === 0) return res.status(404).json({ error: "lead_ikke_funnet" });
         const lead = leadRes.rows[0];
@@ -301,13 +314,14 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
         }
         return res.json(JSON.parse(jsonMatch[0]));
       } catch (err) {
-        return res.status(500).json({ error: "brief_failed", detail: String(err) });
+        return res.status(500).json({ error: "brief_failed", detail: "internal_error" });
       }
     },
   );
 
   app.post(
     "/api/admin-room/lead-map/visits/parse-transcript",
+    claudeLimit,
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -323,8 +337,11 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
 
       // Hent lead-navn for kontekst + sjekk eierskap
       const r = await pool.query<{ name: string; assigned_user_id: string | null }>(
-        `SELECT name, assigned_user_id FROM crm_customers WHERE id = $1 LIMIT 1`,
-        [body.lead_id],
+        `SELECT name, assigned_user_id
+           FROM crm_customers
+          WHERE id = $1 AND (owner_user_id = $2 OR assigned_user_id = $2)
+          LIMIT 1`,
+        [body.lead_id, session.userId],
       );
       if (r.rows.length === 0) return res.status(404).json({ error: "lead_ikke_funnet" });
       const leadName = r.rows[0].name;
@@ -376,7 +393,7 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
         const analysis = JSON.parse(jsonMatch[0]) as TranscriptAnalysis;
         return res.json(analysis);
       } catch (err) {
-        return res.status(500).json({ error: "claude_failed", detail: String(err) });
+        return res.status(500).json({ error: "claude_failed", detail: "internal_error" });
       }
     },
   );

@@ -208,9 +208,16 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       if (sets.length === 0) { res.status(400).json({ error: 'ingen_endringer' }); return; }
       sets.push('updated_at = NOW()');
       vals.push(String(req.params.id).trim()); vals.push(String(req.params.projectId).trim());
+      // «Rom & roller»-guard speiler GET: en klient (eller assistent uten
+      // internal_chat) kan kun endre delte meldinger. Uten dette kunne en klient
+      // som kjenner en intern meldings UUID PATCHe den — endre body/status og få
+      // hele den interne raden tilbake via RETURNING * (innsyn + tukling).
+      const asstPatch = await getAssistantAreas(pool, String(req.params.projectId).trim(), { userId: session.userId, email: session.email });
+      const restrictedToShared = isClientRole(session.role) || (asstPatch != null && asstPatch.areas.internal_chat !== true);
+      const visibilityGuard = restrictedToShared ? " AND visibility = 'shared'" : '';
       const result = await pool.query(
         `UPDATE role_room_messages SET ${sets.join(', ')}
-          WHERE id = $${vals.length - 1} AND project_id = $${vals.length} RETURNING *`,
+          WHERE id = $${vals.length - 1} AND project_id = $${vals.length}${visibilityGuard} RETURNING *`,
         vals,
       );
       if (result.rowCount === 0) { res.status(404).json({ error: 'fant_ikke_melding' }); return; }
@@ -233,9 +240,16 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) { res.status(503).json({ error: 'AI er ikke tilgjengelig (mangler nøkkel).' }); return; }
 
+      // Transkript-scope MÅ speile GET-synligheten: en klient (eller assistent
+      // uten internal_chat) skal aldri få interne produsent-meldinger matet inn i
+      // AI-utkastet/oppsummeringen — ellers lekker Claude-outputen internt innhold
+      // uten at klienten trenger en melding-ID i det hele tatt.
+      const asstAi = await getAssistantAreas(pool, projectId, { userId: session.userId, email: session.email });
+      const restrictedToShared = isClientRole(session.role) || (asstAi != null && asstAi.areas.internal_chat !== true);
       const rows = await pool.query(
         `SELECT author_role, kind, body, created_at FROM role_room_messages
-          WHERE project_id = $1 ORDER BY created_at DESC LIMIT 40`,
+          WHERE project_id = $1 ${restrictedToShared ? "AND visibility = 'shared'" : ''}
+          ORDER BY created_at DESC LIMIT 40`,
         [projectId],
       );
       const transcript = rows.rows.reverse().map((r: Record<string, unknown>) => {

@@ -7,6 +7,7 @@
  * leveransene mine klare?»
  */
 import { lazy, Suspense } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, CircularProgress, Stack, Typography } from '@mui/material';
 import { useRoleRoomViewportMode } from '../../hooks/useRoleRoomViewportMode';
 
@@ -26,15 +27,17 @@ export default function ClientPlanView({ projectId }: { projectId: string }) {
           Leveranser, frister og hva produsenten jobber med nå.
         </Typography>
       </Box>
+      <ErrorBoundary componentName="client-plan-view">
       <Suspense
         fallback={
           <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-            <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+            <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
           </Stack>
         }
       >
         <RoleRoomMobilePlannerView projectId={projectId} mode={viewport.mode} canCreate={false} />
       </Suspense>
+      </ErrorBoundary>
     </Stack>
   );
 }

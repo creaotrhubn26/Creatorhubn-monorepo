@@ -33,14 +33,14 @@ export default function InsightsCard({ connectionId, leads }: { connectionId: st
   return (
     <Box sx={{ border: '1px solid rgba(34,211,238,0.3)', bgcolor: 'rgba(34,211,238,0.06)', borderRadius: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 1.4, cursor: 'pointer' }} onClick={() => setOpen((v) => !v)}>
-        <InsightsIcon sx={{ color: '#22d3ee' }} />
+        <InsightsIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>AI-innsikt fra leadsene</Typography>
           <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
             Hva spør folk om? Få innholdsidéer å bruke i markedsplanen og feed-planneren.
           </Typography>
         </Box>
-        <Typography sx={{ color: '#22d3ee', fontSize: '0.8rem', fontWeight: 700 }}>{open ? 'Skjul' : 'Vis'}</Typography>
+        <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '0.8rem', fontWeight: 700 }}>{open ? 'Skjul' : 'Vis'}</Typography>
       </Stack>
       <Collapse in={open}>
         <Box sx={{ px: 1.4, pb: 1.6 }}>

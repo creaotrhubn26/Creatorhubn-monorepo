@@ -54,7 +54,7 @@ type Bucket = 'urgent' | 'today' | 'soon' | 'attention';
 const BUCKET_META: Record<Bucket, { label: string; color: string; Icon: typeof UrgentIcon }> = {
   urgent: { label: 'Haster nå', color: '#fca5a5', Icon: UrgentIcon },
   today: { label: 'I dag', color: '#fbbf24', Icon: TodayIcon },
-  soon: { label: 'Kommende', color: '#22d3ee', Icon: SoonIcon },
+  soon: { label: 'Kommende', color: 'var(--role-cyan, #22d3ee)', Icon: SoonIcon },
   attention: { label: 'Krever oppmerksomhet', color: '#c4b5fd', Icon: AttentionIcon },
 };
 const BUCKET_ORDER: Bucket[] = ['urgent', 'today', 'soon', 'attention'];

@@ -460,9 +460,11 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
     dataFlow.syncData('smart-workflow-builder:workflows', workflows);
   }, [communication, dataFlow, profession, workflows]);
 
-  // Filter actions by profession
-  const availableActions = allActions.filter(action => 
-    !action.profession || action.profession === profession
+  // Filter actions by profession. Actions er tagget 'musicproducer' (legacy),
+  // mens kanonisk users.profession er 'music_producer' — sammenlign normalisert.
+  const profKey = (p?: string) => (p || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const availableActions = allActions.filter(action =>
+    !action.profession || profKey(action.profession) === profKey(profession)
 );
 
   // Group actions by category

@@ -5,18 +5,78 @@
  * og kan mountes som én seksjon i MarketingCockpitTab.
  *
  * State: 'overview' (default) | 'detail' (når Daniel åpner en scan).
+ *
+ * Leadgrid-panelene (LeadInbox/WonLost/ScheduledReports) er gatet bak
+ * module_feature_entitlements (CTO-audit P1, Migration Plan steg 3) — MI
+ * skal fungere fullt ut med Leadgrid deaktivert for org-en. Komponentene
+ * lazy-importeres så de hverken mountes eller fyrer API-kall når modulen
+ * er låst.
  */
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
+
+/** Én panel-krasj skal aldri hvitskjerme hele AdminRoom (lærdom 14.07:
+ *  marketQuery-null felte alt). Boundary per seksjon, ærlig feilmelding. */
+class MiErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <Box sx={{ p: 2, border: "1px solid rgba(248,113,113,0.4)", borderRadius: 2 }}>
+          <Typography variant="subtitle2" sx={{ color: "#f87171", fontWeight: 700 }}>
+            Market Intelligence krasjet — resten av AdminRoom virker.
+          </Typography>
+          <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
+            {String(this.state.error)}
+          </Typography>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 import BrandKitPanel from "./BrandKitPanel";
 import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
-import { LeadInboxSection } from "@/components/leadgrid/LeadInboxSection";
-import { WonLostDashboard } from "@/components/leadgrid/WonLostDashboard";
-import { ScheduledReportsPanel } from "@/components/leadgrid/ScheduledReportsPanel";
+import MorningBriefCard from "./MorningBriefCard";
+import ButlerChatPanel from "./ButlerChatPanel";
+import InsightsFeedPanel from "./InsightsFeedPanel";
+import SiteSetupAuditPanel from "./SiteSetupAuditPanel";
+import AnalyticsSetupPanel from "./AnalyticsSetupPanel";
+import SetupGuidesPanel from "./SetupGuidesPanel";
+import IndexNowPanel from "./IndexNowPanel";
+import OpportunityScorePanel from "./OpportunityScorePanel";
+import GrantWorkspacePanel from "./GrantWorkspacePanel";
+import SocialQueuePanel from "./SocialQueuePanel";
+import ProspectsPanel from "./ProspectsPanel";
+import GeoVisibilityPanel from "./GeoVisibilityPanel";
+import AiTrafficPanel from "./AiTrafficPanel";
+import { useModuleFeature } from "@/hooks/useModuleFeature";
+
+const LeadInboxSection = React.lazy(() =>
+  import("@/components/leadgrid/LeadInboxSection").then((m) => ({
+    default: m.LeadInboxSection,
+  })),
+);
+const WonLostDashboard = React.lazy(() =>
+  import("@/components/leadgrid/WonLostDashboard").then((m) => ({
+    default: m.WonLostDashboard,
+  })),
+);
+const ScheduledReportsPanel = React.lazy(() =>
+  import("@/components/leadgrid/ScheduledReportsPanel").then((m) => ({
+    default: m.ScheduledReportsPanel,
+  })),
+);
 
 interface Props {
   /** Aktivt prosjekt — brukes til Brand Kit + scans-isolering. */
@@ -25,11 +85,12 @@ interface Props {
   defaultBrandScanUrl?: string;
 }
 
-export default function MarketIntelligenceSection({
+function MarketIntelligenceSectionInner({
   projectId,
   defaultBrandScanUrl,
 }: Props) {
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
+  const { enabled: leadgridEnabled } = useModuleFeature("leadgrid");
 
   return (
     <Box>
@@ -56,14 +117,44 @@ export default function MarketIntelligenceSection({
         />
       ) : (
         <Stack spacing={3}>
-          {/* Innkommende Leadgrid-leads — øverst, høyest urgency */}
-          <LeadInboxSection />
+          {leadgridEnabled && (
+            <ErrorBoundary componentName="market-intelligence-leadgrid">
+            <Suspense fallback={null}>
+              {/* Innkommende Leadgrid-leads — øverst, høyest urgency */}
+              <LeadInboxSection />
 
-          {/* Won/Lost-dashboard — KPI + MoM + funnel */}
-          <WonLostDashboard />
+              {/* Won/Lost-dashboard — KPI + MoM + funnel */}
+              <WonLostDashboard />
 
-          {/* Schedulerte rapporter — ukentlig PDF på e-post */}
-          <ScheduledReportsPanel />
+              {/* Schedulerte rapporter — ukentlig PDF på e-post */}
+              <ScheduledReportsPanel />
+            </Suspense>
+            </ErrorBoundary>
+          )}
+
+          <MorningBriefCard />
+
+          <ButlerChatPanel />
+
+          <InsightsFeedPanel />
+
+          <OpportunityScorePanel />
+
+          {/* Anbud (tavle, frister, radar, kravbilde) bor i cockpit-fanen «Anbud» */}
+
+          <GrantWorkspacePanel />
+
+          <SocialQueuePanel />
+
+          <ProspectsPanel />
+
+          <SiteSetupAuditPanel />
+
+          <AnalyticsSetupPanel />
+
+          <SetupGuidesPanel />
+
+          <IndexNowPanel />
 
           <BrandKitPanel
             projectId={projectId}
@@ -73,10 +164,21 @@ export default function MarketIntelligenceSection({
             projectId={projectId}
             onOpenScanDetail={setActiveScanId}
           />
+          <GeoVisibilityPanel />
+          <AiTrafficPanel />
           <LeadMapCampaignsPanel />
           <AgentContextPreviewPanel projectId={projectId} />
         </Stack>
       )}
     </Box>
+  );
+}
+
+
+export default function MarketIntelligenceSection(props: Parameters<typeof MarketIntelligenceSectionInner>[0]) {
+  return (
+    <MiErrorBoundary>
+      <MarketIntelligenceSectionInner {...props} />
+    </MiErrorBoundary>
   );
 }

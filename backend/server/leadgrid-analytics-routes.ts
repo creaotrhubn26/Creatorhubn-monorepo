@@ -111,7 +111,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, sinceDays, overview });
     } catch (err) {
       console.error("[leadgrid/analytics/overview] failed", err);
-      return res.status(500).json({ error: "overview_failed", detail: String(err) });
+      return res.status(500).json({ error: "overview_failed", detail: "internal_error" });
     }
   });
 
@@ -129,7 +129,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, sinceDays, channels });
     } catch (err) {
       console.error("[leadgrid/analytics/channels] failed", err);
-      return res.status(500).json({ error: "channels_failed", detail: String(err) });
+      return res.status(500).json({ error: "channels_failed", detail: "internal_error" });
     }
   });
 
@@ -146,7 +146,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, sources });
     } catch (err) {
       console.error("[leadgrid/analytics/sources] failed", err);
-      return res.status(500).json({ error: "sources_failed", detail: String(err) });
+      return res.status(500).json({ error: "sources_failed", detail: "internal_error" });
     }
   });
 
@@ -168,7 +168,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, by, segments });
     } catch (err) {
       console.error("[leadgrid/analytics/segments] failed", err);
-      return res.status(500).json({ error: "segments_failed", detail: String(err) });
+      return res.status(500).json({ error: "segments_failed", detail: "internal_error" });
     }
   });
 
@@ -185,7 +185,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, territories });
     } catch (err) {
       console.error("[leadgrid/analytics/territories] failed", err);
-      return res.status(500).json({ error: "territories_failed", detail: String(err) });
+      return res.status(500).json({ error: "territories_failed", detail: "internal_error" });
     }
   });
 
@@ -203,7 +203,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, days, history });
     } catch (err) {
       console.error("[leadgrid/analytics/velocity-history] failed", err);
-      return res.status(500).json({ error: "velocity_failed", detail: String(err) });
+      return res.status(500).json({ error: "velocity_failed", detail: "internal_error" });
     }
   });
 
@@ -220,7 +220,7 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
       return res.json({ organization_id: orgId, funnel });
     } catch (err) {
       console.error("[leadgrid/analytics/conversion-funnel] failed", err);
-      return res.status(500).json({ error: "funnel_failed", detail: String(err) });
+      return res.status(500).json({ error: "funnel_failed", detail: "internal_error" });
     }
   });
 }

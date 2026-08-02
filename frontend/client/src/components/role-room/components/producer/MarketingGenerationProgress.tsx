@@ -66,12 +66,12 @@ export function MarketingGenerationProgress({
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-        <CircularProgress size={16} sx={{ color: '#22d3ee' }} />
+        <CircularProgress size={16} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Typography sx={{ color: '#a5f3fc', fontWeight: 800, fontSize: '0.9rem' }}>
           {title}
         </Typography>
       </Stack>
-      <LinearProgress sx={{ height: 2, mb: 1.2, bgcolor: 'rgba(34,211,238,0.12)', '& .MuiLinearProgress-bar': { bgcolor: '#22d3ee' } }} />
+      <LinearProgress sx={{ height: 2, mb: 1.2, bgcolor: 'rgba(34,211,238,0.12)', '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-cyan, #22d3ee)' } }} />
       <Stack spacing={0.55}>
         {stages.map((stage, index) => {
           const isDone = index < activeIndex;
@@ -81,7 +81,7 @@ export function MarketingGenerationProgress({
               {isDone ? (
                 <DoneIcon sx={{ fontSize: '0.95rem', color: '#34d399' }} />
               ) : isRunning ? (
-                <CircularProgress size={12} sx={{ color: '#22d3ee' }} />
+                <CircularProgress size={12} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
               ) : (
                 <PendingIcon sx={{ fontSize: '0.95rem', color: 'rgba(148,163,184,0.5)' }} />
               )}

@@ -187,7 +187,11 @@ export function registerRoleRoomMeetingsRoutes(app: Express, deps: Deps): void {
           meetLink, calendarEventId, typeof body.location === 'string' ? body.location : null,
           JSON.stringify(Array.isArray(body.agenda) ? body.agenda : []),
           JSON.stringify(Array.isArray(body.actionItems) ? body.actionItems : []),
-          body.clientVisible !== false, session.userId, session.role ?? null,
+          // client_visible er produsent-styrt: en klient kan ikke skjule et møte
+          // (og dermed heller ikke opprette et internt/skjult møte). Klient-rolle
+          // tvinges alltid til client_visible = TRUE.
+          isClientRole(session.role) ? true : body.clientVisible !== false,
+          session.userId, session.role ?? null,
         ],
       );
 
@@ -236,13 +240,18 @@ export function registerRoleRoomMeetingsRoutes(app: Express, deps: Deps): void {
       if (Array.isArray(body.participants)) push('participants', JSON.stringify(body.participants), '::jsonb');
       if (Array.isArray(body.agenda)) push('agenda', JSON.stringify(body.agenda), '::jsonb');
       if (Array.isArray(body.actionItems)) push('action_items', JSON.stringify(body.actionItems), '::jsonb');
-      if (typeof body.clientVisible === 'boolean') push('client_visible', body.clientVisible);
+      // Kun produsent-side kan styre synlighet — en klient kan ikke skjule/vise møter.
+      if (typeof body.clientVisible === 'boolean' && !isClientRole(session.role)) push('client_visible', body.clientVisible);
       if (sets.length === 0) { res.status(400).json({ error: 'ingen_endringer' }); return; }
       sets.push('updated_at = NOW()');
       vals.push(id); vals.push(projectId);
+      // Klient-rolle får kun endre møter den faktisk har innsyn i (client_visible=TRUE),
+      // speiler GET-filteret. Uten dette kunne en klient som gjetter/kjenner et internt
+      // møtes UUID PATCHe det og få hele raden (notes/agenda/deltakere) tilbake via RETURNING *.
+      const clientVisibilityGuard = isClientRole(session.role) ? ' AND client_visible = TRUE' : '';
       const result = await pool.query(
         `UPDATE role_room_meetings SET ${sets.join(', ')}
-          WHERE id = $${vals.length - 1} AND project_id = $${vals.length} RETURNING *`,
+          WHERE id = $${vals.length - 1} AND project_id = $${vals.length}${clientVisibilityGuard} RETURNING *`,
         vals,
       );
       if (result.rowCount === 0) { res.status(404).json({ error: 'fant_ikke_møte' }); return; }
@@ -257,8 +266,11 @@ export function registerRoleRoomMeetingsRoutes(app: Express, deps: Deps): void {
     try {
       const session = await authorize(req, res);
       if (!session) return;
+      // Klient-rolle kan kun slette møter den har innsyn i (client_visible=TRUE) —
+      // hindrer at en klient sletter interne produsent-møter den ikke skal se.
+      const clientVisibilityGuard = isClientRole(session.role) ? ' AND client_visible = TRUE' : '';
       const result = await pool.query(
-        `DELETE FROM role_room_meetings WHERE id = $1 AND project_id = $2 RETURNING id`,
+        `DELETE FROM role_room_meetings WHERE id = $1 AND project_id = $2${clientVisibilityGuard} RETURNING id`,
         [String(req.params.id).trim(), String(req.params.projectId).trim()],
       );
       if (result.rowCount === 0) { res.status(404).json({ error: 'fant_ikke_møte' }); return; }

@@ -151,7 +151,7 @@ export const ContentProducerWorkflowStepper = ({
         const tooltipTitle = approvalHint ?? step.description;
 
         const stateColor = isActive
-          ? '#b86bff'
+          ? 'var(--role-accent, #b86bff)'
           : isCompleted
             ? '#4ade80'
             : 'rgba(255,255,255,0.45)';
@@ -200,7 +200,7 @@ export const ContentProducerWorkflowStepper = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     bgcolor: isActive
-                      ? '#b86bff'
+                      ? 'var(--role-accent, #b86bff)'
                       : isCompleted
                         ? 'rgba(34,197,94,0.18)'
                         : 'rgba(255,255,255,0.06)',

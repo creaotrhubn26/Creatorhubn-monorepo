@@ -82,7 +82,17 @@ if [ -d "migrations" ]; then
           # var passert. Da mister vi delvis-progress (skjedde 2026-06-18
           # — mig 0285 skapte organizations + brakk på linje 230 →
           # outer-TX rullet ALT tilbake → 286+ så ingen organizations).
-          if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
+          # lock_timeout=30s: hvis en migrasjon venter på en tabell-lås (f.eks.
+          # holdt av live app-trafikk) feiler den raskt i stedet for å HENGE
+          # hele migrate-runen på ubestemt tid — den som spawnes fra
+          # /api/admin-room/migrations/run mot en LEVENDE instans (2026-07-26:
+          # migrate.sh gjorde Render-instansen uresponsiv i 30+ min; psql var
+          # alt i imaget, så det var ikke apt-install men en lås-vent).
+          # statement_timeout=10min: rundhåndet backstop mot en løpsk setning.
+          # En migrasjon som treffer disse feiler → logges + hoppes over + IKKE
+          # sporet → kan kjøres på nytt. Overstyres av en migrasjon som selv
+          # SET-er timeouts. PGOPTIONS gjelder kun denne tilkoblingen.
+          if PGOPTIONS='-c lock_timeout=30000 -c statement_timeout=600000' psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
             # Record successful migration
             psql "$DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             echo "  ✅ $base_name applied successfully"

@@ -452,8 +452,11 @@ export default function SubscriptionSelectionFlow({
   const publicPlans = plans.filter((plan) => plan.isPublic !== false);
   const isPrototypePlan = (plan: SubscriptionPlan | null | undefined) =>
     plan?.id === 'prototype';
+  // Business rule: no free/self-serve account. Only paid plans are selectable in
+  // the public subscription flow; the free "prototype" plan is provisioned solely
+  // through the admin NDA invite flow, never self-served here.
   const selfServePlans = publicPlans.filter(
-    (plan) => !plan.contactSalesOnly && (plan.price > 0 || isPrototypePlan(plan)),
+    (plan) => !plan.contactSalesOnly && plan.price > 0,
   );
   const enterprisePlan =
     publicPlans.find((plan) => plan.contactSalesOnly) || null;
@@ -480,7 +483,7 @@ export default function SubscriptionSelectionFlow({
     if (
       matchedPlan &&
       !matchedPlan.contactSalesOnly &&
-      (matchedPlan.price > 0 || isPrototypePlan(matchedPlan))
+      matchedPlan.price > 0
     ) {
       setSelectedPlan(matchedPlan);
     }

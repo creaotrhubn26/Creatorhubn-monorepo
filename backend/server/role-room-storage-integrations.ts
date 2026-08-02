@@ -81,10 +81,17 @@ export async function moveStoryboardImageToB2(
     image_data: string | null;
     b2_file_id: string | null;
   }>(
+    // BOLA-gate: scope the lookup to the caller's OWN storyboards
+    // (created_by = userId — the same predicate migrateAllStoryboardImagesForUser
+    // uses). Without it, any authenticated user could pass another tenant's
+    // storyboardId and (a) exfiltrate its image_data into their OWN bucket and
+    // (b) NULL out the victim's image_data + repoint b2_file_id — a cross-tenant
+    // read+destruction IDOR. The migration moves the image into the caller's
+    // personal 1 GB quota, so creator-only is the correct (and existing) semantic.
     `SELECT id, project_id, scene_id, title, image_data, b2_file_id
      FROM casting_storyboards
-     WHERE id = $1::uuid`,
-    [opts.storyboardId],
+     WHERE id = $1::uuid AND created_by = $2`,
+    [opts.storyboardId, opts.userId],
   );
   const row = r.rows[0];
   if (!row) return { ok: false, reason: "not_found" };
@@ -111,8 +118,8 @@ export async function moveStoryboardImageToB2(
   await pool.query(
     `UPDATE casting_storyboards
        SET b2_file_id = $1::uuid, image_data = NULL, updated_at = NOW()
-     WHERE id = $2::uuid`,
-    [upload.file.id, row.id],
+     WHERE id = $2::uuid AND created_by = $3`,
+    [upload.file.id, row.id, opts.userId],
   );
 
   return { ok: true, alreadyMoved: false, fileId: upload.file.id, freedBytes };

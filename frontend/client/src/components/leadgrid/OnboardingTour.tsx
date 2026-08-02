@@ -138,7 +138,7 @@ export function OnboardingTour() {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" alignItems="center" spacing={1} mb={1.5}>
                 <Chip size="small" label={`${curIdx + 1}/${totalSteps}`}
-                      sx={{ bgcolor: "rgba(167,139,250,0.20)", color: "#a78bfa",
+                      sx={{ bgcolor: "rgba(167,139,250,0.20)", color: "var(--lgl-accent, #a78bfa)",
                             fontWeight: 600 }} />
                 <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.5)" }}>
                   Leadgrid-onboarding
@@ -147,7 +147,7 @@ export function OnboardingTour() {
               <LinearProgress variant="determinate" value={progressPct}
                               sx={{ mb: 2, height: 3, borderRadius: 2,
                                     bgcolor: "rgba(255,255,255,0.08)",
-                                    "& .MuiLinearProgress-bar": { bgcolor: "#a78bfa" } }} />
+                                    "& .MuiLinearProgress-bar": { bgcolor: "var(--lgl-accent, #a78bfa)" } }} />
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
                 {cur.title}
               </Typography>
@@ -161,7 +161,7 @@ export function OnboardingTour() {
                           if (cur.cta_href) window.open(cur.cta_href, "_blank");
                           advance();
                         }}
-                        sx={{ bgcolor: "#a78bfa", color: "#0a0512", fontWeight: 700,
+                        sx={{ bgcolor: "var(--lgl-accent, #a78bfa)", color: "#0a0512", fontWeight: 700,
                               flex: 1, "&:hover": { bgcolor: "#9171e6" } }}>
                   {cur.cta}
                 </Button>

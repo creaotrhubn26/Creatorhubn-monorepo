@@ -357,13 +357,8 @@ export default function BecomeMentorDialog({
                   onClick={() => {
                     onSuccess?.();
                     onClose();
-                    // Navigate to Academy Dashboard
-                    const currentPath = window.location.pathname;
-                    if (currentPath.includes('/dashboard')) {
-                      window.dispatchEvent(new CustomEvent('navigate-to-academy'));
-                    } else {
-                      window.location.href = '/dashboard?tab=academy';
-                    }
+                    // Academy har egen flate nå (/academy-dashboard).
+                    window.location.href = '/academy-dashboard';
                   }}
                   sx={{ textTransform: 'none', py: 1.5 }}
                 >

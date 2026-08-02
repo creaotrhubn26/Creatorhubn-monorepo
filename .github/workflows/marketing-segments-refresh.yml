@@ -1,0 +1,45 @@
+name: Marketing segments — weekly audience refresh
+
+# Re-uploader medlemmer til alle synkroniserte ad-audiences (Google/Meta/LinkedIn)
+# så de holdes ferske når segmentene endrer seg. Treffer den EKSISTERENDE
+# audiencen (ingen nye opprettes). Token-gated via MARKETING_SEGMENTS_CRON_TOKEN
+# med fallback på det delte GEO_VISIBILITY_CRON_TOKEN — ingen nytt secret påkrevd.
+
+on:
+  schedule:
+    # Søndager 04:00 UTC — segmenter (Tier-1/ICP) endrer seg sakte, ukentlig holder
+    - cron: '0 4 * * 0'
+  workflow_dispatch: # manuell trigger for testing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketing-segments-refresh
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /api/admin-room/marketing-segments/cron/refresh
+        env:
+          CRON_TOKEN: ${{ secrets.MARKETING_SEGMENTS_CRON_TOKEN || secrets.GEO_VISIBILITY_CRON_TOKEN }}
+        run: |
+          if [ -z "$CRON_TOKEN" ]; then
+            echo "::error::Verken MARKETING_SEGMENTS_CRON_TOKEN eller GEO_VISIBILITY_CRON_TOKEN er satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TOKEN" \
+            "$BACKEND_URL/api/admin-room/marketing-segments/cron/refresh")
+          CODE=$(echo "$RES" | tail -n1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "$BODY"
+          [ "$CODE" = "200" ] || { echo "::error::Refresh-endepunktet svarte $CODE"; exit 1; }

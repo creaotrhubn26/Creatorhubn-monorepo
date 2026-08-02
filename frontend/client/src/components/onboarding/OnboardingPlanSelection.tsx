@@ -60,7 +60,7 @@ export function OnboardingPlanSelection({
       case 'enterprise':
         return <Star sx={{ color: '#ffd700' }} />;
       case 'professional':
-        return <TrendingUp sx={{ color: '#ff8c00' }} />;
+        return <TrendingUp sx={{ color: 'var(--ws-accent, #ff8c00)' }} />;
       default:
         return <CheckCircle sx={{ color: '#4caf50' }} />;
     }

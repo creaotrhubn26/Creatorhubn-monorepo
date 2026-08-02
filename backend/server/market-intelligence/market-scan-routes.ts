@@ -100,7 +100,7 @@ export function registerMarketScanRoutes({
       return res.status(201).json({ scan });
     } catch (err) {
       console.error("[market-scan] create failed", err);
-      return res.status(500).json({ error: "create_failed", detail: String(err) });
+      return res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 
@@ -117,7 +117,7 @@ export function registerMarketScanRoutes({
       });
       return res.json({ scans });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      return res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -128,7 +128,7 @@ export function registerMarketScanRoutes({
       if (!scan) return res.status(404).json({ error: "not_found" });
       return res.json({ scan });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -140,7 +140,7 @@ export function registerMarketScanRoutes({
       return res.json(result);
     } catch (err) {
       console.error("[market-scan] run failed", err);
-      return res.status(500).json({ error: "run_failed", detail: String(err) });
+      return res.status(500).json({ error: "run_failed", detail: "internal_error" });
     }
   });
 
@@ -150,7 +150,7 @@ export function registerMarketScanRoutes({
       const competitors = await getScanCompetitors(pool, req.params.id);
       return res.json({ competitors });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -160,7 +160,7 @@ export function registerMarketScanRoutes({
       const stages = await getScanFunnelStages(pool, req.params.id);
       return res.json({ funnelStages: stages });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -170,7 +170,7 @@ export function registerMarketScanRoutes({
       const techniques = await getScanTechniques(pool, req.params.id);
       return res.json({ techniques });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -180,7 +180,7 @@ export function registerMarketScanRoutes({
       const techStack = await getScanTechStack(pool, req.params.id);
       return res.json({ techStack });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -190,7 +190,7 @@ export function registerMarketScanRoutes({
       const opportunities = await getScanOpportunities(pool, req.params.id);
       return res.json({ opportunities });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 }

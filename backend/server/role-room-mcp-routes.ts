@@ -72,9 +72,19 @@ export function createRoleRoomMcpRouter(pool: Pool): ExpressRouter {
     }
     if (method === "ping") { res.json(rpcOk(id, {})); return; }
 
-    // Alt annet krever en gyldig rri_-nøkkel.
+    // Alt annet krever en gyldig rri_-nøkkel ELLER OAuth-token.
     const auth = await authenticateMcpKey(pool, extractApiKey(req));
-    if (!auth.ok) { res.json(rpcErr(id, auth.status === 401 ? -32001 : -32003, auth.message, { code: auth.code })); return; }
+    if (!auth.ok) {
+      // OAuth-oppdagelse: 401 + WWW-Authenticate → klienter finner autoriserings-
+      // serveren via protected-resource-metadataen (RFC 9728 / MCP-auth-spec).
+      if (auth.status === 401) {
+        const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0] || req.protocol || "https";
+        const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "www.theroleroom.com";
+        res.setHeader("WWW-Authenticate", `Bearer resource_metadata="${proto}://${host}/.well-known/oauth-protected-resource"`);
+        res.status(401);
+      }
+      res.json(rpcErr(id, auth.status === 401 ? -32001 : -32003, auth.message, { code: auth.code })); return;
+    }
     const user = auth.user;
     if (rateLimited(user.apiKeyId, user.rateLimitPerMinute, nowMs)) {
       res.json(rpcErr(id, -32029, "For mange forespørsler.", { retryAfterSeconds: 60 })); return;

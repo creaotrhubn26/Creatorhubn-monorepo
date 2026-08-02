@@ -16,7 +16,7 @@ export type FrameVariant = 'iphone' | 'ipad' | 'ipad_landscape' | 'macbook';
 export interface FrameSpec {
   src: string;
   aspect: number; // frameW / frameH
-  /** Skjerm-rektangel, relativt til hele frame-PNG-en (0..1). */
+  /** Skjerm-rektangel (bounding-box av skjermflaten), relativt til frame-PNG (0..1). */
   screen: { x: number; y: number; w: number; h: number };
   /** Skjerm-hjørneradius som andel av frame-bredde. */
   radius: number;
@@ -26,7 +26,10 @@ export interface FrameSpec {
 //   iphone  1086x1448  screen 248,86 588x1274
 //   ipad    1086x1448  screen 130,114 822x1220
 //   ipad-L  1448x1086  screen 114,134 1220x820  (ipad rotert 90° CCW)
-//   macbook 1586x992   screen 258,22 1070x714   (HELE laptopen, ingen beskjæring)
+//   macbook 1586x992   display-hull piksel-detektert: hjørner TL(259,30) TR(1324,30)
+//     BR(1323,759) BL(262,759) → rect 259,30 1064x729. (Skjermen er ~rektangulær:
+//     topp-bredde 1065 vs bunn 1061 = 0,4% keystone, neglisjerbart. Før var rekt
+//     for høyt oppe (8px inn i notch-kanten) + 23px for kort i bunn → svart glipe.)
 export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
   iphone: {
     src: iphoneFrame, aspect: 1086 / 1448,
@@ -44,8 +47,11 @@ export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
     radius: 20 / 1448,
   },
   macbook: {
+    // Presis kant-fit av display-hullet i macbook.png: TL(256,20) TR(1329,20)
+    // BR(1325,759) BL(260,759) → rect 256,20 1073x739. Skjermen er ~rektangulær
+    // (0,4% keystone, neglisjerbart) så flatt innhold fyller den eksakt.
     src: macbookFrame, aspect: 1586 / 992,
-    screen: { x: 258 / 1586, y: 22 / 992, w: 1070 / 1586, h: 714 / 992 },
+    screen: { x: 256 / 1586, y: 20 / 992, w: 1073 / 1586, h: 739 / 992 },
     radius: 6 / 1586,
   },
 };

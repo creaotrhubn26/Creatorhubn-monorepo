@@ -443,6 +443,22 @@ export interface RoleRoomAgentProducerBootstrapResult {
     kpis?: string[] | null;
     rationale?: string | null;
   } | null;
+  /** Site-audit (doc 14 F1): hva kundens nettsted allerede har av
+   *  analytics/GEO — observasjonene adTech-grunnfestingen bygget på.
+   *  «unknown» betyr ikke observerbart utenfra, ikke fraværende. */
+  siteSetupAudit?: {
+    url: string;
+    fetchedAt: string;
+    techStack?: { key: string; label: string; category: string; evidence: string[] } | null;
+    capabilities: Array<{
+      key: string;
+      label: string;
+      status: 'implemented' | 'partial' | 'missing' | 'unknown';
+      details: string;
+      recommendation: string | null;
+    }>;
+    limitations: string[];
+  } | null;
   merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: {
     cohereRerankUsed: boolean;

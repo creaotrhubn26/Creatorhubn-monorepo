@@ -23,18 +23,39 @@ struct ImageAnalysis: Sendable, Equatable {
     /// Skin reading, nil when no face was detected.
     var skin: SkinReading?
 
+    /// Fokus/skarphet — Laplacian-energi. Fanger uskarpt fokus i kamera.
+    var sharpness: SharpnessReading?
+
     struct SkinReading: Sendable, Equatable {
         var sampleColor: CGColor   // average skin RGB
         /// Classification of the dominant cast on the face. `.neutral`
         /// means we're inside the professional skin-tone range.
         var cast: Cast
 
-        enum Cast: String, Sendable, CaseIterable {
+        enum Cast: String, Sendable, CaseIterable, Codable, Hashable {
             case neutral, tooWarm, tooCool, tooGreen, tooMagenta
         }
     }
 
-    static let empty = ImageAnalysis(red: [], green: [], blue: [], highlightClipping: 0, shadowClipping: 0, skin: nil)
+    struct SharpnessReading: Sendable, Equatable {
+        var value: Double   // 0…1 normalisert (for søylen)
+        var status: Status
+        enum Status: String, Sendable, CaseIterable { case soft, ok, sharp }
+    }
+
+    /// Klassifiser Laplacian-energi → skarphets-status. Ren + testbar.
+    /// Tersklene er empiriske (preview-JPEG-skala) og kan finjusteres på ekte
+    /// enhet; feiler mot `.ok`/`.sharp` (ingen falsk «soft»-advarsel).
+    static func classifySharpness(energy: Double) -> SharpnessReading {
+        let softBelow = 0.0009
+        let sharpAbove = 0.0030
+        let status: SharpnessReading.Status =
+            energy < softBelow ? .soft : (energy >= sharpAbove ? .sharp : .ok)
+        let value = min(1.0, max(0.0, energy / (sharpAbove * 1.4)))
+        return SharpnessReading(value: value, status: status)
+    }
+
+    static let empty = ImageAnalysis(red: [], green: [], blue: [], highlightClipping: 0, shadowClipping: 0, skin: nil, sharpness: nil)
 }
 
 /// Background worker that produces `ImageAnalysis` from preview files.
@@ -42,20 +63,40 @@ struct ImageAnalysis: Sendable, Equatable {
 /// instance, cancels superseded calls, and caches the most recent result
 /// so a view reappearing doesn't re-run the pipeline unnecessarily.
 actor ImageAnalyser {
+    // #8: LRU med tak — en heldags-økt med tusenvis av previews vokste ellers
+    // ubegrenset. `order` = URL-er, MRU sist; eldste kastes over `maxEntries`.
     private var cache: [URL: ImageAnalysis] = [:]
+    private var order: [URL] = []
+    private let maxEntries = 200
 
     func analyze(imageURL: URL) async -> ImageAnalysis? {
-        if let cached = cache[imageURL] { return cached }
+        if let cached = cache[imageURL] { touch(imageURL); return cached }
         let result = await Task.detached(priority: .userInitiated) {
             Self.run(imageURL: imageURL)
         }.value
-        if let result { cache[imageURL] = result }
+        if let result {
+            cache[imageURL] = result
+            touch(imageURL)
+            while cache.count > maxEntries, let oldest = order.first {
+                order.removeFirst()
+                cache.removeValue(forKey: oldest)
+            }
+        }
         return result
+    }
+
+    private func touch(_ url: URL) {
+        if let idx = order.firstIndex(of: url) { order.remove(at: idx) }
+        order.append(url)
     }
 
     func invalidate(imageURL: URL) {
         cache.removeValue(forKey: imageURL)
+        if let idx = order.firstIndex(of: imageURL) { order.remove(at: idx) }
     }
+
+    // #8: delt CIContext (var opprettet per run — dyrt).
+    nonisolated static let sharedContext = CIContext(options: [.useSoftwareRenderer: false])
 
     nonisolated private static func run(imageURL: URL) -> ImageAnalysis? {
         guard let data = try? Data(contentsOf: imageURL),
@@ -63,11 +104,13 @@ actor ImageAnalyser {
         else { return nil }
         let extent = ciImage.extent
         guard extent.width > 0, extent.height > 0 else { return nil }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        let ctx = sharedContext
 
         let histogram = computeHistogram(ciImage: ciImage, extent: extent, ctx: ctx)
         let clipping = computeClipping(ciImage: ciImage, extent: extent, ctx: ctx)
         let skin = computeSkin(ciImage: ciImage, extent: extent, ctx: ctx)
+        let sharpness = computeSharpness(ciImage: ciImage, extent: extent, ctx: ctx)
+            .map { ImageAnalysis.classifySharpness(energy: $0) }
 
         return ImageAnalysis(
             red: histogram.r,
@@ -75,8 +118,44 @@ actor ImageAnalyser {
             blue: histogram.b,
             highlightClipping: clipping.highlight,
             shadowClipping: clipping.shadow,
-            skin: skin
+            skin: skin,
+            sharpness: sharpness
         )
+    }
+
+    // MARK: - Sharpness (fokus)
+
+    /// Laplacian-energi (variance-of-Laplacian-proxy): gråtone → Laplacian-
+    /// konvolusjon → kvadrer (energi) → gjennomsnitt. Høyere = skarpere.
+    /// Rendres i float for å bevare små magnituder.
+    nonisolated private static func computeSharpness(
+        ciImage: CIImage, extent: CGRect, ctx: CIContext
+    ) -> Double? {
+        guard let mono = CIFilter(name: "CIPhotoEffectMono") else { return nil }
+        mono.setValue(ciImage, forKey: kCIInputImageKey)
+        guard let gray = mono.outputImage else { return nil }
+
+        guard let conv = CIFilter(name: "CIConvolution3X3") else { return nil }
+        conv.setValue(gray, forKey: kCIInputImageKey)
+        conv.setValue(CIVector(values: [0, 1, 0, 1, -4, 1, 0, 1, 0], count: 9), forKey: "inputWeights")
+        conv.setValue(0.0, forKey: "inputBias")
+        guard let edges = conv.outputImage else { return nil }
+
+        // Kvadrer (edges * edges) → alltid positiv energi.
+        guard let mult = CIFilter(name: "CIMultiplyCompositing") else { return nil }
+        mult.setValue(edges, forKey: kCIInputImageKey)
+        mult.setValue(edges, forKey: kCIInputBackgroundImageKey)
+        guard let energyImg = mult.outputImage else { return nil }
+
+        guard let avg = CIFilter(name: "CIAreaAverage") else { return nil }
+        avg.setValue(energyImg, forKey: kCIInputImageKey)
+        avg.setValue(CIVector(cgRect: extent), forKey: "inputExtent")
+        guard let out = avg.outputImage else { return nil }
+
+        var buf = [Float](repeating: 0, count: 4)
+        ctx.render(out, toBitmap: &buf, rowBytes: 4 * MemoryLayout<Float>.size,
+                   bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+        return Double(buf[0])   // gjennomsnittlig luminans-energi
     }
 
     // MARK: - Histogram
@@ -182,16 +261,18 @@ actor ImageAnalyser {
         filter.setValue(ciImage, forKey: kCIInputImageKey)
         filter.setValue(CIVector(cgRect: extent), forKey: "inputExtent")
         guard let output = filter.outputImage else { return 0 }
-        var buffer = [UInt8](repeating: 0, count: 4)
+        // Float-readback (som histogrammet) — klipp-fraksjonen er ofte < 1/255, så
+        // en UInt8-readback kvantiserte den til 0 (0,4 % oppløsning).
+        var buffer = [Float](repeating: 0, count: 4)
         ctx.render(
             output,
             toBitmap: &buffer,
-            rowBytes: 4,
+            rowBytes: 4 * MemoryLayout<Float>.size,
             bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
+            format: .RGBAf,
             colorSpace: nil
         )
-        return (Double(buffer[0]) + Double(buffer[1]) + Double(buffer[2])) / 3.0 / 255.0
+        return (Double(buffer[0]) + Double(buffer[1]) + Double(buffer[2])) / 3.0
     }
 
     // MARK: - Skin tone

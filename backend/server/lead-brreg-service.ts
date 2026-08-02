@@ -22,6 +22,7 @@
  */
 
 import type { Pool } from "pg";
+import { fetchIprProfile, type IprProfile } from "./lead-ip-service.js";
 
 const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
 const FETCH_TIMEOUT_MS = 10_000;
@@ -62,11 +63,31 @@ interface BrregRolesResponse {
   }>;
 }
 
+/** Nøkkeltall fra Regnskapsregisteret (åpent API) — samme tall proff.no viser. */
+export interface CompanyFinancials {
+  year: number;
+  currency: string;
+  revenue: number | null; // sum driftsinntekter
+  operatingResult: number | null;
+  resultBeforeTax: number | null;
+  netResult: number | null; // årsresultat
+  equity: number | null;
+  totalAssets: number | null; // sum egenkapital og gjeld
+  /** Avledet: egenkapital/totalkapital (soliditet), 0–1. */
+  equityRatio: number | null;
+  /** Avledet: driftsresultat/driftsinntekter (lønnsomhet), kan være negativ. */
+  operatingMargin: number | null;
+}
+
 export interface EnrichmentResult {
   found: boolean;
   orgNr?: string;
   source: "brreg";
   fetchedAt: string;
+  /** true = koblet automatisk via navnesøk (nattlig jobb) — UI viser «bekreft». */
+  autoLinked?: boolean;
+  /** Navnet BRREG-treffet hadde — så brukeren kan vurdere koblingen. */
+  matchedName?: string;
   company?: {
     name: string;
     orgNr: string;
@@ -88,6 +109,10 @@ export interface EnrichmentResult {
     role: string;
     name: string;
   }>;
+  /** null = hentet men ikke funnet (f.eks. ENK leverer ikke årsregnskap). */
+  financials?: CompanyFinancials | null;
+  /** Patentstyret: varemerker/patenter/design. null = ingen registrerte rettigheter. */
+  ip?: IprProfile | null;
 }
 
 async function fetchWithTimeout(url: string): Promise<Response> {
@@ -106,12 +131,86 @@ function fullName(p?: { fornavn?: string; etternavn?: string; mellomnavn?: strin
 }
 
 /** Finn org-nr ved fritekst-søk. Returner første treff (best match). */
-async function findOrgNumberByName(name: string): Promise<string | null> {
+async function findOrgNumberByName(name: string): Promise<{ orgNr: string; navn: string } | null> {
   const url = `${BRREG_API}/enheter?navn=${encodeURIComponent(name)}&size=3`;
   const r = await fetchWithTimeout(url);
   if (!r.ok) return null;
   const body = await r.json() as { _embedded?: { enheter?: BrregUnit[] } };
-  return body._embedded?.enheter?.[0]?.organisasjonsnummer ?? null;
+  const hit = body._embedded?.enheter?.[0];
+  return hit?.organisasjonsnummer ? { orgNr: hit.organisasjonsnummer, navn: hit.navn ?? "" } : null;
+}
+
+/**
+ * Org.nr fra fritekst (visittkort-OCR): 9 sifre m/ gyldig mod11-
+ * kontrollsiffer. Kort har ofte org.nr trykket — det er den sikreste
+ * koblingen som finnes, sikrere enn ethvert navnesøk.
+ */
+export function extractOrgNrFromText(text: string): string | null {
+  const candidates = text.match(/\b\d{3}[ .]?\d{3}[ .]?\d{3}\b/g) ?? [];
+  for (const raw of candidates) {
+    const digits = raw.replace(/[^\d]/g, "");
+    if (digits.length !== 9) continue;
+    const weights = [3, 2, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((acc, w, i) => acc + w * Number(digits[i]), 0);
+    const remainder = sum % 11;
+    const control = remainder === 0 ? 0 : 11 - remainder;
+    if (control !== 10 && control === Number(digits[8])) return digits;
+  }
+  return null;
+}
+
+/**
+ * Resolv org.nr for et skannet visittkort (iPad #182 → berikelse):
+ *   1. Gyldig org.nr i OCR-teksten → bruk det (sikrest).
+ *   2. Ellers: BRREG-navnesøk på FIRMANAVNET (aldri personnavnet) med
+ *      samme match-vakt som nattjobben — vagt treff kobles aldri
+ *      automatisk, det rapporteres som forslag i stedet.
+ */
+export async function resolveOrgNrForCard(input: {
+  company: string | null;
+  rawText: string | null;
+}): Promise<
+  | { status: "linked"; orgNr: string; via: "ocr_orgnr" | "name_match"; matchedName: string | null }
+  | { status: "suggestion"; orgNr: string; matchedName: string }
+  | { status: "no_match" }
+> {
+  const fromText = input.rawText ? extractOrgNrFromText(input.rawText) : null;
+  if (fromText) {
+    const unit = await getCompanyByOrgNr(fromText).catch(() => null);
+    if (unit) return { status: "linked", orgNr: fromText, via: "ocr_orgnr", matchedName: unit.navn ?? null };
+    // Org.nr besto mod11 men finnes ikke i registeret — ikke koble.
+  }
+  const company = input.company?.trim();
+  if (!company || company.length < 3) return { status: "no_match" };
+  const hit = await findOrgNumberByName(company).catch(() => null);
+  if (!hit) return { status: "no_match" };
+  if (namesMatchForAutoLink(company, hit.navn)) {
+    return { status: "linked", orgNr: hit.orgNr, via: "name_match", matchedName: hit.navn };
+  }
+  return { status: "suggestion", orgNr: hit.orgNr, matchedName: hit.navn };
+}
+
+/**
+ * Match-vakt for AUTOMATISK kobling: normaliserte navn (uten org-form-
+ * suffiks) må inneholde hverandre. «Foto Hansen» ↔ «FOTO HANSEN AS» er
+ * ok; «Hansen» ↔ «Hansen Bygg og Anlegg AS» er det ikke (for kort/vagt).
+ */
+export function namesMatchForAutoLink(leadName: string, brregName: string): boolean {
+  const norm = (x: string) =>
+    x.toLowerCase()
+      .replace(/(as|asa|ans|da|enk|sa|ba)/g, " ")
+      .replace(/[^a-z0-9æøå]+/g, " ")
+      .trim();
+  const a = norm(leadName);
+  const b = norm(brregName);
+  if (a.length < 5 || b.length === 0) return false;
+  if (a === b) return true;
+  // Containment godtas kun for navn med substans (≥2 ord eller ≥10 tegn):
+  // «hansen» ⊂ «hansen bygg og anlegg» er for vagt til auto-kobling.
+  const substantial = (x: string) => x.split(" ").length >= 2 || x.length >= 10;
+  if (b.includes(a) && substantial(a)) return true;
+  if (a.includes(b) && substantial(b)) return true;
+  return false;
 }
 
 /** Hent firma-detaljer på org-nr. */
@@ -143,12 +242,85 @@ async function getCompanyRoles(orgNr: string): Promise<EnrichmentResult["contact
   }
 }
 
+interface RegnskapEntry {
+  regnskapsperiode?: { tilDato?: string };
+  valuta?: string;
+  resultatregnskapResultat?: {
+    aarsresultat?: number;
+    ordinaertResultatFoerSkattekostnad?: number;
+    driftsresultat?: {
+      driftsresultat?: number;
+      driftsinntekter?: { sumDriftsinntekter?: number };
+    };
+  };
+  egenkapitalGjeld?: {
+    sumEgenkapitalGjeld?: number;
+    egenkapital?: { sumEgenkapital?: number };
+  };
+}
+
+/** Ren mapping (enhetstestet) — Regnskapsregisterets struktur → nøkkeltall. */
+export function mapRegnskapEntry(entry: RegnskapEntry): CompanyFinancials | null {
+  const til = entry.regnskapsperiode?.tilDato;
+  const year = til ? Number(til.slice(0, 4)) : NaN;
+  if (!Number.isFinite(year)) return null;
+  const rr = entry.resultatregnskapResultat;
+  const revenue = rr?.driftsresultat?.driftsinntekter?.sumDriftsinntekter ?? null;
+  const operatingResult = rr?.driftsresultat?.driftsresultat ?? null;
+  const equity = entry.egenkapitalGjeld?.egenkapital?.sumEgenkapital ?? null;
+  const totalAssets = entry.egenkapitalGjeld?.sumEgenkapitalGjeld ?? null;
+  return {
+    year,
+    currency: entry.valuta ?? "NOK",
+    revenue,
+    operatingResult,
+    resultBeforeTax: rr?.ordinaertResultatFoerSkattekostnad ?? null,
+    netResult: rr?.aarsresultat ?? null,
+    equity,
+    totalAssets,
+    // Avledede nøkkeltall beregnes KUN når begge ledd finnes — aldri 0-default
+    equityRatio:
+      equity !== null && totalAssets !== null && totalAssets > 0
+        ? Math.round((equity / totalAssets) * 1000) / 1000
+        : null,
+    operatingMargin:
+      operatingResult !== null && revenue !== null && revenue > 0
+        ? Math.round((operatingResult / revenue) * 1000) / 1000
+        : null,
+  };
+}
+
+/**
+ * Siste innleverte årsregnskap fra Regnskapsregisteret. null er et ÆRLIG
+ * svar: ENK leverer ikke årsregnskap, nystartede har ikke levert ennå.
+ */
+async function getCompanyFinancials(orgNr: string): Promise<CompanyFinancials | null> {
+  try {
+    const r = await fetchWithTimeout(
+      `https://data.brreg.no/regnskapsregisteret/regnskap/${orgNr}`,
+    );
+    if (!r.ok) return null;
+    const body = (await r.json()) as RegnskapEntry[];
+    if (!Array.isArray(body) || body.length === 0) return null;
+    // API-et returnerer nyeste først; velg entry med høyest år for sikkerhets skyld
+    const mapped = body
+      .map(mapRegnskapEntry)
+      .filter((x): x is CompanyFinancials => x !== null)
+      .sort((a, b) => b.year - a.year);
+    return mapped[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function enrichLeadWithBrreg(
   pool: Pool,
   args: {
     leadId: string;
     workspaceOwnerUserId: string;
     forceRefresh?: boolean;
+    /** Nattlig jobb: krever navne-match-vakt og merker resultatet autoLinked. */
+    autoMode?: boolean;
   },
 ): Promise<EnrichmentResult> {
   // 1. Hent lead m/ scope
@@ -168,8 +340,30 @@ export async function enrichLeadWithBrreg(
 
   // 2. Finn org-nr (cached eller søk)
   let orgNr = lead.enrichment_org_nr;
+  let autoLinked = false;
+  let matchedName: string | undefined;
   if (!orgNr) {
-    orgNr = await findOrgNumberByName(lead.name);
+    const hit = await findOrgNumberByName(lead.name);
+    if (hit && args.autoMode && !namesMatchForAutoLink(lead.name, hit.navn)) {
+      // Match-vakten sier nei: aldri koble automatisk på vagt navnetreff.
+      const result: EnrichmentResult = {
+        found: false,
+        source: "brreg",
+        fetchedAt: new Date().toISOString(),
+        matchedName: hit.navn,
+      };
+      await pool.query(
+        `UPDATE crm_customers SET enrichment_data = $3::jsonb, enriched_at = NOW()
+          WHERE id = $1 AND owner_user_id = $2`,
+        [lead.id, args.workspaceOwnerUserId, JSON.stringify(result)],
+      );
+      return result;
+    }
+    orgNr = hit?.orgNr ?? null;
+    if (orgNr && args.autoMode) {
+      autoLinked = true;
+      matchedName = hit!.navn;
+    }
     if (!orgNr) {
       const result: EnrichmentResult = {
         found: false,
@@ -188,10 +382,12 @@ export async function enrichLeadWithBrreg(
     }
   }
 
-  // 3. Detaljer + roller parallelt
-  const [company, contacts] = await Promise.all([
+  // 3. Detaljer + roller + regnskap + IP parallelt
+  const [company, contacts, financials, ip] = await Promise.all([
     getCompanyByOrgNr(orgNr),
     getCompanyRoles(orgNr),
+    getCompanyFinancials(orgNr),
+    fetchIprProfile(orgNr, lead.name),
   ]);
   if (!company) {
     throw new Error("brreg_detail_fetch_failed");
@@ -203,6 +399,7 @@ export async function enrichLeadWithBrreg(
     orgNr,
     source: "brreg",
     fetchedAt: new Date().toISOString(),
+    ...(autoLinked ? { autoLinked: true, matchedName } : {}),
     company: {
       name: company.navn,
       orgNr: company.organisasjonsnummer,
@@ -226,6 +423,8 @@ export async function enrichLeadWithBrreg(
         : "active",
     },
     contacts,
+    financials,
+    ip,
   };
 
   // 4. Persistere

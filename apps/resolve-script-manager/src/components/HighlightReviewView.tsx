@@ -82,6 +82,13 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
   const historyRef = useRef<HistoryEntry[]>([]);
   const historyIndexRef = useRef<number>(-1);
 
+  // Live playhead-tid for det fokuserte klippet (rapportert opp fra
+  // ShotCard) — brukt av "split ved playhead" (#204). null før avspilling.
+  const focusedPlayheadRef = useRef<number | null>(null);
+  const reportFocusedTime = useCallback((sec: number) => {
+    focusedPlayheadRef.current = sec;
+  }, []);
+
   const setPicks = useCallback(
     (
       updater: ReviewState[] | ((prev: ReviewState[]) => ReviewState[]),
@@ -90,9 +97,14 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
       setPicksRaw((prev) => {
         const next = typeof updater === "function" ? (updater as (p: ReviewState[]) => ReviewState[])(prev) : updater;
         if (historyDescription) {
-          // Push new entry, drop redo branch
-          const newHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
-          newHistory.push({ picks: prev, description: historyDescription });
+          // Standard undo/redo: history[pointer] er ALLTID gjeldende tilstand.
+          // Sørg for at start-tilstanden ligger på history[0] første gang, trunker
+          // redo-grenen, og push den NYE tilstanden (ikke pre-endrings-snapshotet —
+          // det gjorde redo ubrukelig fordi post-endrings-tilstanden aldri ble lagret).
+          let base = historyRef.current;
+          if (base.length === 0) { base = [{ picks: prev, description: "start" }]; historyIndexRef.current = 0; }
+          const newHistory = base.slice(0, historyIndexRef.current + 1);
+          newHistory.push({ picks: next, description: historyDescription });
           if (newHistory.length > HISTORY_DEPTH) newHistory.shift();
           historyRef.current = newHistory;
           historyIndexRef.current = newHistory.length - 1;
@@ -104,22 +116,16 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
   );
 
   const undo = useCallback(() => {
-    if (historyIndexRef.current < 0) return;
-    const entry = historyRef.current[historyIndexRef.current];
-    if (!entry) return;
+    // history[0] = start-tilstand → kan ikke angre forbi den.
+    if (historyIndexRef.current <= 0) return;
     historyIndexRef.current -= 1;
-    setPicksRaw(entry.picks);
+    setPicksRaw(historyRef.current[historyIndexRef.current].picks);
   }, []);
 
   const redo = useCallback(() => {
-    const nextIdx = historyIndexRef.current + 1;
-    if (nextIdx >= historyRef.current.length) return;
-    // Redo restores the picks state stored "above" the change pointer.
-    // Simplest model: history stores undo-targets, so redo just re-applies
-    // the current picks-snapshot one step ahead. We approximate by jumping
-    // to the next state and popping into picksRaw without rewriting history.
-    historyIndexRef.current = nextIdx;
-    setPicksRaw(historyRef.current[nextIdx].picks);
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current += 1;
+    setPicksRaw(historyRef.current[historyIndexRef.current].picks);
   }, []);
 
   // Load picks payload from cache file
@@ -202,18 +208,22 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
     setPicks((prev) => prev.map((p) => ({ ...p, approved: false })), "skip all");
   }, [setPicks]);
 
-  // Split focused pick at half-way between its current start/end (#204)
+  // Split focused pick at the current playhead if it falls inside the pick,
+  // else fall back to the midpoint (#204)
   const splitFocused = useCallback(() => {
     const target = visiblePicks[focusedIndex];
     if (!target) return;
-    const mid = (target.startSec + target.endSec) / 2;
-    if (mid - target.startSec < 0.5 || target.endSec - mid < 0.5) return; // too short to split
+    const playhead = focusedPlayheadRef.current;
+    const usesPlayhead = playhead != null
+      && playhead > target.startSec && playhead < target.endSec;
+    const cut = usesPlayhead ? playhead : (target.startSec + target.endSec) / 2;
+    if (cut - target.startSec < 0.5 || target.endSec - cut < 0.5) return; // too short to split
     setPicks((prev) => {
       const targetIdx = prev.findIndex((p) => p.index === target.index);
       if (targetIdx < 0) return prev;
       const maxIdx = Math.max(...prev.map((p) => p.index));
-      const left = { ...target, endSec: mid, durationSec: mid - target.startSec };
-      const right = { ...target, index: maxIdx + 1, startSec: mid, durationSec: target.endSec - mid };
+      const left = { ...target, endSec: cut, durationSec: cut - target.startSec };
+      const right = { ...target, index: maxIdx + 1, startSec: cut, durationSec: target.endSec - cut };
       return [...prev.slice(0, targetIdx), left, right, ...prev.slice(targetIdx + 1)];
     }, "split pick");
   }, [visiblePicks, focusedIndex, setPicks]);
@@ -456,7 +466,8 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
               pick={p}
               displayIndex={displayIdx}
               isFocused={displayIdx === focusedIndex}
-              onFocus={() => setFocusedIndex(displayIdx)}
+              onFocus={() => { focusedPlayheadRef.current = null; setFocusedIndex(displayIdx); }}
+              onTime={displayIdx === focusedIndex ? reportFocusedTime : undefined}
               onChange={(patch, desc) => updatePick(p.index, patch, desc)}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move";
@@ -494,6 +505,7 @@ function ShotCard({
   onDragStart,
   onDragOver,
   onDrop,
+  onTime,
   disabled,
 }: {
   sourceSrc: string;
@@ -507,6 +519,7 @@ function ShotCard({
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  onTime?: (sec: number) => void;
   disabled: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -519,10 +532,11 @@ function ShotCard({
       if (v.currentTime >= pick.endSec) {
         v.currentTime = pick.startSec;
       }
+      onTime?.(v.currentTime);
     };
     v.addEventListener("timeupdate", onTimeUpdate);
     return () => { v.removeEventListener("timeupdate", onTimeUpdate); };
-  }, [pick.startSec, pick.endSec]);
+  }, [pick.startSec, pick.endSec, onTime]);
 
   // Space-key toggle dispatched from global handler
   useEffect(() => {

@@ -43,11 +43,13 @@ import {
   type ProfessionMode,
 } from '../config/professionMode';
 import authSessionService from '../services/authSessionService';
+import { FeideLoginButton } from '../education/FeideLoginButton';
 import { googleWorkspaceApi } from '../services/castingApiService';
 import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
 import { parseTalentPortalIntentFromWindow } from '../utils/talentPortal';
 import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 import { ROLE_ROOM_EDUCATION_PATH, getRoleRoomReturnPath, isRoleRoomStandaloneRuntime } from '../utils/runtime';
+import { useRoleRoomBrand } from '../hooks/useRoleRoomBrand';
 
 /* ─────────────────────────── types ────────────────────────────── */
 
@@ -1187,7 +1189,7 @@ function DanceInvitePasteEntry(): React.ReactElement {
         variant="contained"
         onClick={submit}
         sx={{
-          bgcolor: '#8b5cf6',
+          bgcolor: 'var(--role-violet, #8b5cf6)',
           '&:hover': { bgcolor: '#4c1d95' },
           textTransform: 'none',
           fontWeight: 600,
@@ -1783,11 +1785,13 @@ interface ProfessionPickerMeta {
 
 const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
   production:       { label: 'Film/video',       glyph: '🎬', accent: '#60a5fa' },
-  photographer:     { label: 'Fotograf',         glyph: '📷', accent: '#22d3ee' },
+  photographer:     { label: 'Fotograf',         glyph: '📷', accent: 'var(--role-cyan, #22d3ee)' },
   content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#a855f7' },
   content_creator:  { label: 'Innholdsskaper',   glyph: '⚡', accent: '#f59e0b' },
   dance_studio:     { label: 'Dansestudio',      glyph: '🎓', accent: '#8b5cf6', beta: true },
   dance_freelance:  { label: 'Dans — frilans',   glyph: '💫', accent: '#8b5cf6', beta: true },
+  education:        { label: 'Utdanningsinstitusjon', glyph: '🏫', accent: '#8b5cf6', beta: true },
+  student:          { label: 'Student', glyph: '🎓', accent: '#8b5cf6', beta: true },
 };
 
 // Landing-velgeren viser kun profesjoner som IKKE allerede dekkes av
@@ -1813,6 +1817,10 @@ export default function LoginDialog({
 }: LoginDialogProps) {
   const isMobile = useMediaQuery('(max-width:639px)');
   const isFullScreen = useMediaQuery('(max-width:479px)');
+  // CreatorHub Design: selv-brand login-dialogen (--role-cyan m.fl.) fra theroleroom-tokens, så
+  // cyan-aksenten retinter også når dialogen vises på landingssiden (der casting-shellet ikke er
+  // montert). Ingen override → vars uset → literalene (#22d3ee) gjelder → identisk.
+  useRoleRoomBrand();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -6397,6 +6405,8 @@ export default function LoginDialog({
               >
                 {isLandingPage ? 'Google' : 'Fortsett med Google'}
               </Button>
+              {/* Feide (institusjons-innlogging) — skjuler seg selv hvis ikke konfigurert */}
+              <FeideLoginButton compact={isLandingPage} />
               {/* LinkedIn */}
               {isLandingPage && (
                 <Button
@@ -6495,7 +6505,7 @@ export default function LoginDialog({
         PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
       >
         <Box sx={{ p: 3 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: '#22d3ee' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: 'var(--role-cyan, #22d3ee)' }}>
             To-faktor-bekreftelse
           </Typography>
           <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.72)', mb: 2 }}>
@@ -6527,7 +6537,7 @@ export default function LoginDialog({
               border: '1px solid rgba(148,163,184,0.3)',
               borderRadius: '8px',
               outline: 'none',
-              '&:focus': { borderColor: '#22d3ee' },
+              '&:focus': { borderColor: 'var(--role-cyan, #22d3ee)' },
             }}
           />
           {twoFactorError ? (
@@ -6551,7 +6561,7 @@ export default function LoginDialog({
                 textTransform: 'none',
                 fontWeight: 700,
                 flex: 2,
-                bgcolor: '#22d3ee',
+                bgcolor: 'var(--role-cyan, #22d3ee)',
                 color: '#0b1226',
                 '&:hover': { bgcolor: '#06b6d4' },
               }}

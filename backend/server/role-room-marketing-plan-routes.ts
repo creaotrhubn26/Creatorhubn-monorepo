@@ -78,6 +78,7 @@ import {
 import { listInstagramConnections } from "./role-room-instagram-oauth.js";
 import { loadFeedPlan, saveFeedPlan } from "./role-room-feed-plan.js";
 import { buildChannelScorecard } from "./role-room-marketing-scorecard.js";
+import { aiRateLimit } from "./ai-rate-limiter.js";
 
 interface AdminSession {
   userId: string;
@@ -102,6 +103,68 @@ export function setupRoleRoomMarketingPlanRoutes(
 ): void {
   const { app, pool, requireAdminSession, isCompatAdminFeatureEnabled } = deps;
 
+  // Per-caller throttle on the generative endpoints (bearer-token keyed).
+  // Admin-gated, but caps unbounded Claude/DALL-E spend from an admin loop
+  // or a compromised admin session.
+  const genLimit = aiRateLimit({ windowMs: 60_000, max: 12, label: "Marketing-plan AI" });
+  const imageLimit = aiRateLimit({ windowMs: 60_000, max: 5, label: "Marketing-plan bilde-generering" });
+
+  // Sikkerhet (IDOR): en markedsplan tilhører ett prosjekt. requireAdminSession
+  // beviser KUN at kalleren er innlogget som admin — ikke at de har noe med
+  // DETTE prosjektet å gjøre. Tilgang til en plan gis derfor til plan-eier
+  // ELLER et aktivt prosjekt-medlem (produsent-team eller klient-reviewer) —
+  // nøyaktig samme grense som resolvePostEditor bruker for post-redigering.
+  // Uten dette kan en vilkårlig innlogget admin lese/endre andre produsenters
+  // planer ved å gjette/iterere projectId/planId.
+  const userIsProjectMember = async (projectId: string, userId: string): Promise<boolean> => {
+    try {
+      const r = await pool.query(
+        `SELECT 1 FROM casting_user_roles
+          WHERE project_id = $1 AND user_id = $2 AND deactivated_at IS NULL
+          LIMIT 1`,
+        [projectId, userId],
+      );
+      return Boolean(r.rows[0]);
+    } catch {
+      return false;
+    }
+  };
+
+  // Sikkerhet (IDOR/BOLA): eier ELLER aktivt prosjekt-medlem. Brukes av de
+  // PROSJEKT-nøklede endepunktene (generate, scorecard) som må autorisere FØR
+  // de leser/skriver prosjekt-data, og der det ennå ikke finnes en plan-rad å
+  // utlede eierskap fra (userIsProjectMember dekker kun medlemskap, ikke eier).
+  const userCanAccessProject = async (projectId: string, userId: string): Promise<boolean> => {
+    if (!projectId || !userId) return false;
+    try {
+      const owner = await pool.query(
+        `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2 LIMIT 1`,
+        [projectId, userId],
+      );
+      if (owner.rows[0]) return true;
+      return await userIsProjectMember(projectId, userId);
+    } catch {
+      return false;
+    }
+  };
+
+  // Hent (project_id, owner_user_id) for en plan i én spørring. Brukes av de
+  // plan-id-nøklede endepunktene for eierskaps-/medlemskaps-sjekk.
+  const fetchPlanMeta = async (
+    planId: string,
+  ): Promise<{ projectId: string; ownerUserId: string } | null> => {
+    try {
+      const r = await pool.query<{ project_id: string; owner_user_id: string }>(
+        `SELECT project_id, owner_user_id FROM role_room_marketing_plans WHERE id = $1`,
+        [planId],
+      );
+      const row = r.rows[0];
+      return row ? { projectId: row.project_id, ownerUserId: row.owner_user_id } : null;
+    } catch {
+      return null;
+    }
+  };
+
   app.post("/api/role-room/marketing-plan/readiness", async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
@@ -116,7 +179,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     return res.json({ success: true, readiness });
   });
 
-  app.post("/api/role-room/marketing-plan/generate", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/generate", genLimit, async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
@@ -128,6 +191,14 @@ export function setupRoleRoomMarketingPlanRoutes(
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
     if (!projectId) {
       return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    // Sikkerhet (BOLA): projectId kommer fra body. Uten denne gaten kunne enhver
+    // produsent-sesjon oppgi et fremmed prosjekt-UUID og (a) lese offerets forrige
+    // aktive plan + KPI-snapshots inn i previousPlanKpiContext og (b) persistere en
+    // ny plan festet til offerets prosjekt (som via /activate kan skygge offerets
+    // aktive-plan-slot). Krev eier/medlem FØR vi leser eller skriver prosjekt-data.
+    if (!(await userCanAccessProject(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
     }
     if (!body.bootstrap || typeof body.bootstrap !== "object") {
       return res.status(400).json({ success: false, error: "bootstrap er påkrevd." });
@@ -251,6 +322,13 @@ export function setupRoleRoomMarketingPlanRoutes(
       return res.status(400).json({ success: false, error: "projectId er påkrevd." });
     }
     const plan = await fetchActiveMarketingPlan(pool, projectId);
+    // Sikkerhet (IDOR): fetchActiveMarketingPlan scoper kun på project_id — ikke
+    // eier. Er kalleren hverken eier eller prosjekt-medlem, nekt. (plan === null
+    // lekker ingen data, så da slipper vi sjekken.)
+    if (plan && plan.ownerUserId !== session.userId
+        && !(await userIsProjectMember(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
+    }
     return res.json({ success: true, plan });
   });
 
@@ -260,6 +338,17 @@ export function setupRoleRoomMarketingPlanRoutes(
     const planId = String(req.params.planId || "").trim();
     if (!planId) {
       return res.status(400).json({ success: false, error: "planId er påkrevd." });
+    }
+    // Sikkerhet (IDOR): listPlanPosts scoper kun på plan_id — ikke eier.
+    // Verifiser at kalleren eier planen eller er prosjekt-medlem før vi
+    // returnerer post-innhold (hooks, script, captions, klient-notater).
+    const planMeta = await fetchPlanMeta(planId);
+    if (!planMeta) {
+      return res.status(404).json({ success: false, error: "Fant ikke planen." });
+    }
+    if (planMeta.ownerUserId !== session.userId
+        && !(await userIsProjectMember(planMeta.projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne planen." });
     }
     // ?since=ISO returnerer kun rader med updated_at > since.
     // Brukes av polling-loopen i MarketingPlanWorkspace for delta-
@@ -271,7 +360,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     return res.json({ success: true, posts, serverTime });
   });
 
-  app.post("/api/role-room/marketing-plan/:planId/generate-posts", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/:planId/generate-posts", genLimit, async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
@@ -368,6 +457,20 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!projectId || postIds.length === 0 || !primaryPlatform) {
       return res.status(400).json({ success: false, error: "projectId, postIds og primaryPlatform er påkrevd." });
     }
+    // Sikkerhet (IDOR): bulkUpdatePlanPostsPlatform scoper kun UPDATE-en på
+    // project_id fra body — den verifiserer aldri at kalleren har noe med
+    // prosjektet å gjøre. Uten denne sjekken kunne en vilkårlig admin endre
+    // primary_platform på en annen produsents poster ved å oppgi deres
+    // projectId + postIds. Poster er redigerbare for eier + prosjekt-medlem
+    // (samme grense som post-PATCH via resolvePostEditor).
+    const ownsPlanOnProject = await pool.query(
+      `SELECT 1 FROM role_room_marketing_plans
+        WHERE project_id = $1 AND owner_user_id = $2 LIMIT 1`,
+      [projectId, session.userId],
+    );
+    if (!ownsPlanOnProject.rows[0] && !(await userIsProjectMember(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
+    }
     try {
       const updated = await bulkUpdatePlanPostsPlatform(pool, { projectId, postIds, primaryPlatform });
       return res.json({ success: true, updated });
@@ -387,6 +490,18 @@ export function setupRoleRoomMarketingPlanRoutes(
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
     if (!planId || !projectId) {
       return res.status(400).json({ success: false, error: "planId og projectId er påkrevd." });
+    }
+    // Sikkerhet (IDOR): activateMarketingPlan scoper kun på (id, project_id) —
+    // ikke eier. Uten denne sjekken kunne en vilkårlig admin aktivere en annen
+    // produsents draft-plan og trigge 30-post Claude-generering på deres regning
+    // + en versjons-snapshot. Plan-livssyklus er eier-styrt (likt /:planId/pillars
+    // og /generate-posts).
+    const activateMeta = await fetchPlanMeta(planId);
+    if (!activateMeta || activateMeta.projectId !== projectId) {
+      return res.status(404).json({ success: false, error: "Fant ikke planen." });
+    }
+    if (activateMeta.ownerUserId !== session.userId) {
+      return res.status(403).json({ success: false, error: "Du eier ikke planen." });
     }
     const ok = await activateMarketingPlan(pool, planId, projectId);
     if (!ok) {
@@ -476,6 +591,13 @@ export function setupRoleRoomMarketingPlanRoutes(
     }
     if (!plan || plan.id !== planId) {
       return res.status(404).json({ success: false, error: "Fant ingen plan å dele (sjekk projectId/planId)." });
+    }
+    // Sikkerhet (IDOR): fetchActiveMarketingPlan scoper kun på project_id.
+    // Uten eier-sjekk kunne en vilkårlig admin minte en signert 24t offentlig
+    // share-link som eksponerer en annen produsents komplette plan. Å dele
+    // planen er en eier-handling (likt de andre plan-livssyklus-endepunktene).
+    if (plan.ownerUserId !== session.userId) {
+      return res.status(403).json({ success: false, error: "Du eier ikke planen." });
     }
 
     const ttlMs = 24 * 60 * 60 * 1000;  // alltid 24t for plan-preview
@@ -604,7 +726,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   //      hvis du vil bytte til Imagen uten kodeendring).
   //   2. Ellers fall tilbake til direkte OpenAI med OPENAI_API_KEY.
   //   3. Hvis ingen av delene er satt → 503.
-  app.post("/api/role-room/marketing-plan/posts/:postId/thumbnail", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/thumbnail", imageLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
@@ -841,7 +963,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // spørsmål, negativ) basert på post-teksten. Bruker Haiku siden det
   // er små payloads. Returnerer ikke persistert — UI viser dem som
   // copy-til-utklippstavle-templates.
-  app.post("/api/role-room/marketing-plan/posts/:postId/reply-templates", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/reply-templates", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
@@ -916,7 +1038,7 @@ Returner KUN JSON: { "positive": "svar på rosende kommentar", "question": "svar
   // søsken-post med samme pillarId/dayOffset/format/platform, men hook
   // + script + caption regenerert med temperature=0.9. UI markerer
   // varianter med sortOrder = orig+0.5 så de havner like under originalen.
-  app.post("/api/role-room/marketing-plan/posts/:postId/variant", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/variant", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
@@ -1244,6 +1366,14 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    // Sikkerhet (IDOR): scorecard er prosjekt-scoped og leser research-versjonens
+    // marketingSetup (forretningsmodell, geo, kanaler, CTA, ad-tech) FØR en plan
+    // finnes. Den gamle gaten (plan.ownerUserId !== session.userId) hoppet over når
+    // plan === null → et offer med research men uten aktiv plan lekket. Krev eier/
+    // medlem opp front slik at read-en aldri skjer for en fremmed.
+    if (!(await userCanAccessProject(projectId, session.userId))) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
+    }
 
     const sinceDays = Number(req.query.sinceDays) > 0 ? Number(req.query.sinceDays) : 30;
     try {
@@ -1272,10 +1402,10 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         .map((c) => ({ name: c.name, priority: c.priority ?? null }));
 
       // Actual performance from the active plan's KPI snapshots (if any).
+      // Prosjekt-tilgang er allerede verifisert opp front (userCanAccessProject);
+      // planen er scoped til samme projectId, så ingen ekstra eier-sjekk her (den
+      // gamle 403-grenen 403'et dessuten legitime medlemmer som ikke eide planen).
       const plan = await fetchActiveMarketingPlan(pool, projectId);
-      if (plan && plan.ownerUserId && plan.ownerUserId !== session.userId) {
-        return res.status(403).json({ success: false, error: "Du eier ikke prosjektets plan." });
-      }
 
       let platformAggregates: ReturnType<typeof aggregateByPlatform> = [];
       let pillarAggregates: ReturnType<typeof aggregateByPillar> = [];
@@ -1359,7 +1489,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // Item #157 — regenerér én post med valgfri prompt-hint
   // ("gjør den mer ironisk", "kort den ned til 50 ord", etc.).
   // Bruker Claude Haiku for hastighet (single-post er liten payload).
-  app.post("/api/role-room/marketing-plan/posts/:postId/regenerate", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/regenerate", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();

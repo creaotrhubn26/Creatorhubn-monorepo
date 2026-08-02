@@ -446,7 +446,7 @@ export function registerLeadgridIndustriesRoutes(deps: Deps): void {
         );
         res.json({ memberIndustries: result.map(mapMemberIndustry) });
       } catch (err) {
-        res.status(400).json({ error: "replace_failed", detail: (err as Error).message });
+        res.status(400).json({ error: "replace_failed", detail: "internal_error" });
       }
     },
   );
@@ -508,7 +508,7 @@ export function registerLeadgridIndustriesRoutes(deps: Deps): void {
         );
         res.json({ memberIndustries: result.map(mapMemberIndustry) });
       } catch (err) {
-        res.status(400).json({ error: "replace_failed", detail: (err as Error).message });
+        res.status(400).json({ error: "replace_failed", detail: "internal_error" });
       }
     },
   );

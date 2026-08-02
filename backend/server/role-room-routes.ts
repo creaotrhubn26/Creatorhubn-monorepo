@@ -137,6 +137,7 @@ import {
   normalizeUrl,
 } from './role-room-website-analyzer.js';
 import { generateWeekPlan } from './role-room-content-strategist.js';
+import { runBrandScan } from './brand-kit-service.js';
 import { getBestTimesForProject } from './role-room-best-time.js';
 import { applyDataDrivenPostTimes } from './role-room-best-time-to-post.js';
 import {
@@ -939,9 +940,24 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
   // Search Console — clicks/impressions/CTR/position per query.
   'https://www.googleapis.com/auth/webmasters.readonly',
+  // ── Oppsett-scopes (doc 14, OAuth-fasen) ───────────────────────────
+  // GA4 Admin API — opprette property/stream, sette retention, key events.
+  'https://www.googleapis.com/auth/analytics.edit',
+  // Search Console skrive: melde inn sitemaps programmatisk.
+  'https://www.googleapis.com/auth/webmasters',
+  // Site Verification API — verifisere domener (metatag/fil) for GSC.
+  'https://www.googleapis.com/auth/siteverification',
   // YouTube Analytics — channel + video performance metrics.
   'https://www.googleapis.com/auth/yt-analytics.readonly',
   'https://www.googleapis.com/auth/yt-analytics-monetary.readonly',
+] as const;
+// «Sign in with Google» skal KUN identifisere brukeren — ikke be om de tunge
+// Workspace/YouTube-scopene (Google avviser bl.a. yt-analytics-monetary sammen
+// med andre). De tunge scopene bes om separat ved mode='link' (koble Workspace).
+const ROLE_ROOM_GOOGLE_LOGIN_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
 ] as const;
 const ROLE_ROOM_LINKEDIN_SCOPES = [
   'openid',
@@ -1580,7 +1596,7 @@ function readRoleRoomGoogleUpstreamErrorMessage(error: unknown): string | null {
 
 function sendRoleRoomGoogleError(res: Response, error: unknown, fallbackMessage: string) {
   if (isRoleRoomGoogleAuthError(error)) {
-    res.status(error.statusCode).json({ error: error.message, reconnectRequired: true });
+    res.status(error.statusCode).json({ error: "internal_error", reconnectRequired: true });
     return;
   }
 
@@ -1732,6 +1748,15 @@ function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
         ...defaultDevOrigins,
         DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN,
         'https://www.theroleroom.com',
+        'https://theroleroom.com',
+        // Førsteparts CreatorHub-flater som hoster Role Room admin/integrasjons-
+        // UI (bl.a. LTI-plattform-registrering i AdminDashboard). Uten disse
+        // ble kreditert cross-origin-kall fra admin-panelet mot /api/role-room/*
+        // avvist (LTI-plattformregistrering feilet). Speiler den globale
+        // KNOWN_ORIGINS-listen for CreatorHub-vertene.
+        'https://admin.creatorhubn.com',
+        'https://creatorhubn.com',
+        'https://www.creatorhubn.com',
       ].filter((entry): entry is string => Boolean(readStringValue(entry))),
     ),
   );
@@ -1768,7 +1793,18 @@ function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
       return callback(null, { ...baseOptions, origin: true });
     }
 
-    callback(new Error(`Origin ${origin} blocked by CORS_ALLOW_ORIGINS policy`));
+    // Ukjent origin: IKKE kast. Et kast her gjør at cors kaller next(err) →
+    // Express' error-handler → 500 for HELE /api/role-room — inkludert
+    // LTI- og Feide-subrouterne som mountes ETTER denne routeren (de nås
+    // aldri, fordi denne router.use(cors(...)) matcher alle sub-paths og
+    // kaster først). LMS-launch (saLTIre/Canvas) og enhver annen tredjeparts-
+    // origin er per definisjon utenfor allowlist-en, så dette 500-et blokkerte
+    // all LTI-launch. Svar i stedet med ikke-kreditert CORS: `origin:false`
+    // gir `Access-Control-Allow-Origin: *` UTEN credentials-header, så
+    // browseren blokkerer fortsatt cross-origin *kreditert* lesing (uendret
+    // sikkerhet), mens top-level LTI-navigasjon (som ikke er CORS-underlagt)
+    // nå slipper gjennom til handleren i stedet for å feile med 500.
+    callback(null, { ...baseOptions, origin: false, credentials: false });
   };
 }
 
@@ -1974,7 +2010,7 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
         [keyHash]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(403).json({ error: 'Ugyldig eller utløpt API-nøkkel' });
         return;
       }
@@ -2006,6 +2042,18 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 function getUserId(req: Request): string {
   const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
   return apiKeyReq.apiKeyUser?.userId ?? 'anonymous';
+}
+
+/**
+ * Server-trusted role for entitlement decisions. Resolved by `apiKeyAuth`
+ * from the authenticated session (or, only when dev-bypass is enabled, from
+ * the dev headers). NEVER re-read the raw `x-user-role` header for gating —
+ * doing so lets any caller send `x-user-role: admin` and hit the privileged
+ * `checkAgentEntitlement` bypass, skipping the paywall and trial caps.
+ */
+function getSessionRole(req: Request): string | undefined {
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+  return apiKeyReq.apiKeyUser?.role ?? undefined;
 }
 
 function requireScope(req: Request, scope: string): boolean {
@@ -2771,7 +2819,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1`,
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return {};
       }
       return readJsonObject(result.rows[0]?.metadata);
@@ -8970,7 +9018,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         apiKeyEnforced: true,
       });
     } catch (err) {
-      res.status(500).json({ status: 'error', message: String(err) });
+      res.status(500).json({ status: 'error', message: "internal_error" });
     }
   });
 
@@ -8987,7 +9035,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         message: 'API-nøkkel verifisert. Tilkobling vellykket.',
       });
     } catch (err) {
-      res.status(500).json({ status: 'error', message: String(err) });
+      res.status(500).json({ status: 'error', message: "internal_error" });
     }
   });
 
@@ -9108,10 +9156,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
 
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
+      // Login = kun minimale identitets-scopes (unngår Googles «scopes cannot be
+      // requested together»-avvisning); link = full Workspace-scope-sett.
+      const isLoginMode = mode === 'login';
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
-        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
-        include_granted_scopes: true,
+        scope: isLoginMode ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES] : [...ROLE_ROOM_GOOGLE_SCOPES],
+        include_granted_scopes: !isLoginMode,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),
@@ -11735,13 +11786,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.delete('/api-keys/:keyId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
-      await pool.query(
-        `UPDATE role_room_api_keys SET is_active = FALSE WHERE id = $1`,
-        [req.params.keyId]
+      const isAdmin = requireScope(req, 'admin');
+      const result = await pool.query(
+        `UPDATE role_room_api_keys SET is_active = FALSE
+           WHERE id = $1 AND ($2::boolean OR user_id = $3)`,
+        [req.params.keyId, isAdmin, getUserId(req)]
       );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -12010,11 +12067,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
              NULLIF(cp.created_by, '')
            ) AS created_by_label
          FROM casting_projects cp
+         LEFT JOIN casting_user_roles cur ON cp.id = cur.project_id AND cur.user_id = $2
          LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
-         WHERE cp.id = $1`,
-        [req.params.id]
+         WHERE cp.id = $1 AND ($3::boolean OR cp.created_by = $2 OR cur.user_id IS NOT NULL)`,
+        [req.params.id, getUserId(req), requireScope(req, 'admin')]
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -12681,6 +12739,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    if (!(await ensureProjectAccess(req.params.id))) {
+      res.status(404).json({ error: 'Prosjekt ikke funnet' });
+      return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.id, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere prosjektet' });
+        return;
+      }
+    }
     const body = readRecordValue(req.body) ?? {};
     const { name, description, status, genre, projectType } = body;
     const budget = readNumberValue(body.budget);
@@ -12745,6 +12814,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til roller' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_user_roles WHERE project_id = $1 ORDER BY created_at',
         [req.params.projectId]
@@ -12759,6 +12834,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å endre roller i prosjektet' });
+        return;
+      }
     }
     const { userId, email, role, permissions } = req.body as {
       userId: string;
@@ -12796,6 +12878,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.delete('/projects/:projectId/roles/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å endre roller for prosjektet' });
+        return;
+      }
       await pool.query(
         'DELETE FROM casting_user_roles WHERE project_id = $1 AND user_id = $2',
         [req.params.projectId, req.params.userId]
@@ -13203,7 +13290,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke innbokselementet' });
         return;
       }
@@ -13331,7 +13418,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (notificationCheck.rowCount === 0) {
+      if (!notificationCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke varselet' });
         return;
       }
@@ -13718,7 +13805,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -13840,7 +13927,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -14894,7 +14981,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -14990,7 +15077,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT id, title FROM role_room_client_reviews WHERE id = $1 AND project_id = $2`,
         [reviewId, projectId],
       );
-      if (reviewCheck.rowCount === 0) {
+      if (!reviewCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -15060,7 +15147,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (reviewResult.rowCount === 0) {
+      if (!reviewResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -15562,7 +15649,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           WHERE id = $1 AND project_id = $2`,
         [commentId, projectId],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Kommentar ikke funnet' });
         return;
       }
@@ -16249,7 +16336,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [materialId, projectId],
       );
-      if (existingMaterialResult.rowCount === 0) {
+      if (!existingMaterialResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke klientmateriale' });
         return;
       }
@@ -16747,7 +16834,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -16832,7 +16919,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -16865,7 +16952,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestRow.secret_id, projectId],
       );
-      if (secretResult.rowCount === 0) {
+      if (!secretResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke secret' });
         return;
       }
@@ -16974,6 +17061,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til casting-roller' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_roles WHERE project_id = $1 ORDER BY created_at',
         [req.params.projectId]
@@ -16988,6 +17081,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+        return;
+      }
     }
     const { name, description, ageRange, gender, roleType, requirements } = req.body as Record<string, unknown>;
     const id = makeId();
@@ -17021,6 +17121,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til kandidatlisten' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_candidates WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -17035,6 +17141,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler skrivetilgang til dette prosjektet' });
+        return;
+      }
     }
     const { name, email, phone, agency, notes } = req.body as Record<string, unknown>;
     const id = makeId();
@@ -17061,6 +17174,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til crewlisten' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_crew WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -17075,6 +17194,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Skrive-tilgang til dette prosjektet kreves' });
+        return;
+      }
     }
     const body = req.body as Record<string, unknown>;
     const { name, role, email, phone, department, rate } = body;
@@ -17145,6 +17271,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til lokasjoner' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_locations WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -17167,6 +17299,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!projectId || !name) {
       res.status(400).json({ error: 'project_id og name er påkrevd' });
       return;
+    }
+
+    {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+        return;
+      }
     }
 
     const id = makeId();
@@ -17214,7 +17354,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return;
     }
     try {
-      await pool.query('DELETE FROM casting_locations WHERE id = $1', [req.params.locationId]);
+      const locRes = await pool.query<{ project_id: string }>(
+        'SELECT project_id FROM casting_locations WHERE id = $1 LIMIT 1',
+        [req.params.locationId],
+      );
+      const projectId = locRes.rows[0]?.project_id;
+      if (!projectId) {
+        res.json({ ok: true }); // idempotent: nothing to delete
+        return;
+      }
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Ingen tilgang til dette prosjektet' });
+        return;
+      }
+      await pool.query(
+        'DELETE FROM casting_locations WHERE id = $1 AND project_id = $2',
+        [req.params.locationId, projectId],
+      );
       res.json({ ok: true });
     } catch (err) {
       console.error('Delete location error:', err);
@@ -17342,6 +17499,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           },
         });
         return;
+      }
+
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+          return;
+        }
       }
 
       // ── Build dynamic WHERE conditions ──────────────────────
@@ -17497,6 +17662,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
     const {
       candidateId, roleId, sceneId, locationId, date, startTime, endTime,
       type, notes, location, status = 'scheduled',
@@ -17528,6 +17700,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
     }
     const {
       candidateId, roleId, sceneId, locationId, date, startTime, endTime,
@@ -17565,6 +17744,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
     const body = req.body as Record<string, unknown>;
     const allowed = ['status', 'notes', 'date', 'start_time', 'end_time', 'location', 'candidate_id', 'role_id'];
     const setClause = Object.keys(body)
@@ -17594,6 +17780,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
     try {
       const result = await pool.query(
         'DELETE FROM casting_schedules WHERE id = $1 AND project_id = $2',
@@ -17617,6 +17810,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
     }
     const { ids } = req.body as { ids?: string[] };
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -17644,8 +17844,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
-    const { userId, favorite } = req.body as { userId?: string; favorite?: boolean };
-    if (!userId) { res.status(400).json({ error: 'userId påkrevd' }); return; }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
+    // Favoritt er per-bruker: bind til innlogget kaller, ikke klient-oppgitt userId.
+    const { favorite } = req.body as { favorite?: boolean };
+    const userId = getUserId(req);
+    if (!userId || userId === 'anonymous') { res.status(400).json({ error: 'Innlogging kreves' }); return; }
     try {
       if (favorite) {
         await pool.query(
@@ -17680,6 +17889,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!hasProjectAccess) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ success: false, error: 'Mangler tilgang til produksjonskalenderen' });
+        return;
+      }
     }
     if (!(await ensureRoleRoomCalendarEventsTable())) {
       res.status(500).json({ success: false, error: 'Kalenderlager ikke tilgjengelig' });
@@ -17752,6 +17968,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!projectId || !(await ensureProjectAccess(projectId))) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ success: false, error: 'Skrivetilgang til prosjektet kreves' });
+        return;
+      }
     }
 
     const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -17863,6 +18086,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
         return;
       }
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ success: false, error: 'Skrivetilgang til prosjektet kreves' });
+          return;
+        }
+      }
 
       const updates: string[] = [];
       const values: unknown[] = [eventId];
@@ -17968,6 +18198,20 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     const { eventId } = req.params;
     try {
+      const existing = await pool.query(
+        `SELECT project_id FROM role_room_calendar_events WHERE id = $1 LIMIT 1`,
+        [eventId],
+      );
+      if ((existing.rowCount ?? 0) === 0) {
+        res.status(404).json({ success: false, error: 'Kalenderhendelse ikke funnet' });
+        return;
+      }
+      const projectId = String(existing.rows[0].project_id);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ success: false, error: 'Skrivetilgang til prosjektet kreves' });
+        return;
+      }
       const result = await pool.query(
         `DELETE FROM role_room_calendar_events WHERE id = $1`,
         [eventId],
@@ -17994,7 +18238,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     const payload = req.body as ProjectSyncPayload;
-    const { creatorhubProjectId, projectName, projectType, description, eventDate, budget, userId } = payload;
+    const { creatorhubProjectId, projectName, projectType, description, eventDate, budget } = payload;
+    // Eierskap avledes fra sesjonen, ikke body — ellers kan en kaller seede
+    // director-roller for vilkårlige bruker-id-er / kapre andres synk.
+    const ownerId = getUserId(req);
 
     if (!creatorhubProjectId || !projectName) {
       res.status(400).json({ error: 'creatorhubProjectId og projectName er påkrevd' });
@@ -18013,6 +18260,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (existing.rowCount && existing.rowCount > 0) {
         // Update existing
         castingProjectId = existing.rows[0].id;
+        const roleRecord = await getProjectRoleRecord(castingProjectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler skrivetilgang til prosjektet' });
+          return;
+        }
         await pool.query(
           `UPDATE casting_projects SET name = $1, description = $2, project_type = $3, updated_at = NOW()
            WHERE id = $4`,
@@ -18024,7 +18276,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await pool.query(
           `INSERT INTO casting_projects (id, name, description, status, created_by, project_type, start_date, budget, creatorhub_project_id)
            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)`,
-          [castingProjectId, projectName, description ?? null, userId, projectType ?? null, eventDate ?? null, budget ?? null, creatorhubProjectId]
+          [castingProjectId, projectName, description ?? null, ownerId, projectType ?? null, eventDate ?? null, budget ?? null, creatorhubProjectId]
         );
 
         // Auto-assign creator as director
@@ -18032,7 +18284,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           `INSERT INTO casting_user_roles (id, project_id, user_id, role, permissions)
            VALUES ($1, $2, $3, 'director', $4)
            ON CONFLICT (project_id, user_id) DO NOTHING`,
-          [makeId(), castingProjectId, userId, JSON.stringify(buildProjectRolePermissions('director'))]
+          [makeId(), castingProjectId, ownerId, JSON.stringify(buildProjectRolePermissions('director'))]
         );
       }
 
@@ -18040,7 +18292,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       await pool.query(
         `INSERT INTO casting_project_sync (creatorhub_project_id, casting_project_id, sync_direction, sync_status, sync_data, synced_at)
          VALUES ($1, $2, $3, 'completed', $4, NOW())`,
-        [creatorhubProjectId, castingProjectId, 'creatorhub_to_roleroom' as SyncDirection, JSON.stringify({ projectName, projectType, userId })]
+        [creatorhubProjectId, castingProjectId, 'creatorhub_to_roleroom' as SyncDirection, JSON.stringify({ projectName, projectType, userId: ownerId })]
       );
 
       res.json({
@@ -18058,11 +18310,26 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/sync/status/:creatorhubProjectId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      const identifiers = getUserIdentifiers(req);
+      if (identifiers.length === 0) {
+        res.status(403).json({ error: 'Ingen tilgang' });
+        return;
+      }
       const result = await pool.query(
-        `SELECT * FROM casting_project_sync 
-         WHERE creatorhub_project_id = $1 
-         ORDER BY created_at DESC LIMIT 10`,
-        [req.params.creatorhubProjectId]
+        `SELECT s.* FROM casting_project_sync s
+           JOIN casting_projects p ON p.id = s.casting_project_id
+          WHERE s.creatorhub_project_id = $1
+            AND (
+              p.created_by = ANY($2::text[])
+              OR EXISTS (
+                SELECT 1 FROM casting_user_roles r
+                 WHERE r.project_id = p.id
+                   AND r.user_id = ANY($2::text[])
+                   AND (r.expires_at IS NULL OR r.expires_at > NOW())
+              )
+            )
+          ORDER BY s.created_at DESC LIMIT 10`,
+        [req.params.creatorhubProjectId, identifiers]
       );
       res.json(result.rows);
     } catch (err) {
@@ -18082,8 +18349,21 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       role?: string;
     };
 
-    if (!userId || !profession) {
-      res.status(400).json({ error: 'userId og profession er påkrevd' });
+    if (!profession) {
+      res.status(400).json({ error: 'profession er påkrevd' });
+      return;
+    }
+
+    // Bind identitet til innlogget sesjon. Kun admin kan registrere rolle på
+    // vegne av en annen bruker eller overstyre rollen; ellers avledes rollen
+    // strengt fra profession-kartet, og bruker-id fra sesjonen (ikke body).
+    const sessionUserId = getUserId(req);
+    const isAdmin = requireScope(req, 'admin');
+    const targetUserId = (isAdmin && typeof userId === 'string' && userId.trim() && userId !== 'current-user')
+      ? userId
+      : sessionUserId;
+    if (!targetUserId || targetUserId === 'anonymous') {
+      res.status(400).json({ error: 'Innlogging kreves' });
       return;
     }
 
@@ -18097,7 +18377,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       admin: 'director',
     };
 
-    const mappedRole = role ?? roleMapping[profession] ?? 'reader';
+    const mappedRole = (isAdmin && role) ? role : (roleMapping[profession] ?? 'reader');
 
     try {
       // Store the user's role mapping for future project assignments
@@ -18105,12 +18385,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by)
          VALUES ($1, '__global__', $2, $3, $4, $5, 'onboarding')
          ON CONFLICT (project_id, user_id) DO UPDATE SET role = $4, permissions = $5, email = $3, updated_at = NOW()`,
-        [makeId(), userId, email ?? null, mappedRole, JSON.stringify(buildProjectRolePermissions(mappedRole))]
+        [makeId(), targetUserId, email ?? null, mappedRole, JSON.stringify(buildProjectRolePermissions(mappedRole))]
       );
 
       res.json({
         success: true,
-        userId,
+        userId: targetUserId,
         roleRoomRole: mappedRole,
         profession,
         message: `Rolle '${mappedRole}' registrert i Role Room`,
@@ -20266,6 +20546,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
       return;
     }
+    const sessionRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, sessionRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
+      return;
+    }
 
     const parsed = liveSetSessionSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -20303,6 +20588,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     if (!(await ensureProjectAccess(projectId))) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      return;
+    }
+
+    const batchRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, batchRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
       return;
     }
 
@@ -20535,6 +20826,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return;
     }
 
+    const eventsRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, eventsRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
+      return;
+    }
+
     const sinceRaw = typeof req.query.since === 'string' ? req.query.since : '';
     const sinceTs = sinceRaw ? Date.parse(sinceRaw) : NaN;
     const events = await getLiveSetEventsV2(projectId);
@@ -20557,6 +20854,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     if (!(await ensureProjectAccess(projectId))) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      return;
+    }
+
+    const ackRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, ackRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
       return;
     }
 
@@ -20730,7 +21033,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         return;
       }
-      res.status(502).json({ success: false, error: error instanceof Error ? error.message : 'Weather upstream failed' });
+      res.status(502).json({ success: false, error: error instanceof Error ? "internal_error" : 'Weather upstream failed' });
     }
   });
 
@@ -20821,6 +21124,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const statusRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, statusRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     const status = (await getLiveStatus(projectId, did)) ?? {
       currentScene: null, currentShot: null, currentTake: 1,
       isRolling: false, lastAction: '', lastActionTime: new Date().toISOString(),
@@ -20831,15 +21136,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // POST /api/liveset/:projectId/roll
   router.post('/liveset/:projectId/roll', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, sceneId, shotId, userId } = req.body as Record<string, string>;
+    const { shootingDayId, sceneId, shotId } = req.body as Record<string, string>;
     if (!shootingDayId || !sceneId || !shotId) return res.status(400).json({ error: 'shootingDayId, sceneId, shotId required' });
+    const rollRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, rollRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const rollActor = getUserId(req);
     const k = storeKey(projectId, shootingDayId);
     const prev = (await getLiveStatus(projectId, shootingDayId)) ?? {};
     const next = { ...prev, currentScene: sceneId, currentShot: shotId, isRolling: true,
       lastAction: 'ROLLING', lastActionTime: new Date().toISOString() };
     liveStatusStore.set(k, next);
     await compatStoreSet(livesetStatusDbKey(projectId, shootingDayId), next);
-    await appendAudit(projectId, shootingDayId, 'roll', { sceneId, shotId }, userId ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'roll', { sceneId, shotId }, rollActor);
     res.json(next);
   });
 
@@ -20847,8 +21155,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.post('/liveset/:projectId/cut', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, status, notes, cameraId, camera, lens, fps, iso, ndFilter,
-            nextTake, loggedBy } = req.body as Record<string, string | number>;
+            nextTake } = req.body as Record<string, string | number>;
     if (!shootingDayId || !status) return res.status(400).json({ error: 'shootingDayId, status required' });
+    const cutRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, cutRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const cutActor = getUserId(req);
     const k = storeKey(projectId, String(shootingDayId));
     const prev = ((await getLiveStatus(projectId, String(shootingDayId))) ?? { currentScene: null, currentShot: null, currentTake: 1 }) as Record<string, unknown>;
     const take: TakeRow = {
@@ -20866,7 +21177,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       iso:        iso     ? Number(iso)     : undefined,
       ndFilter:   ndFilter ? String(ndFilter): undefined,
       notes:      notes   ? String(notes)   : undefined,
-      loggedBy:   loggedBy ? String(loggedBy): undefined,
+      loggedBy:   cutActor,
       loggedAt:   new Date().toISOString(),
     };
     const takes = await getLiveTakes(projectId, String(shootingDayId));
@@ -20878,15 +21189,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       lastAction: `CUT - ${String(status).toUpperCase()}`, lastActionTime: new Date().toISOString() };
     liveStatusStore.set(k, nextStatus);
     await compatStoreSet(livesetStatusDbKey(projectId, String(shootingDayId)), nextStatus);
-    await appendAudit(projectId, String(shootingDayId), 'cut', take, String(loggedBy ?? 'unknown'));
+    await appendAudit(projectId, String(shootingDayId), 'cut', take, cutActor);
     res.json(take);
   });
 
   // POST /api/liveset/:projectId/circle
   router.post('/liveset/:projectId/circle', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, takeId, userId } = req.body as Record<string, string>;
+    const { shootingDayId, takeId } = req.body as Record<string, string>;
     if (!shootingDayId || !takeId) return res.status(400).json({ error: 'shootingDayId, takeId required' });
+    const circleRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, circleRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     const k = storeKey(projectId, shootingDayId);
     const takes = await getLiveTakes(projectId, shootingDayId);
     const take = takes.find(t => t.id === takeId);
@@ -20894,7 +21207,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     take.status = 'circle';
     takesStore.set(k, takes);
     await compatStoreSet(livesetTakesDbKey(projectId, shootingDayId), takes);
-    await appendAudit(projectId, shootingDayId, 'circle_take', { takeId }, userId ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'circle_take', { takeId }, getUserId(req));
     res.json(take);
   });
 
@@ -20903,14 +21216,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const takesRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, takesRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     res.json(await getLiveTakes(projectId, did));
   });
 
   // POST /api/liveset/:projectId/notes
   router.post('/liveset/:projectId/notes', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, sceneId, shotId, takeId, type, note, createdBy } = req.body as Record<string, string>;
+    const { shootingDayId, sceneId, shotId, takeId, type, note } = req.body as Record<string, string>;
     if (!shootingDayId || !sceneId || !note) return res.status(400).json({ error: 'shootingDayId, sceneId, note required' });
+    const noteRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, noteRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const noteActor = getUserId(req);
     const k = storeKey(projectId, shootingDayId);
     const entry: NoteRow = {
       id: `note-${Date.now()}`,
@@ -20918,13 +21236,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       type:       type ?? 'general',
       note,
       timestamp:  new Date().toISOString(),
-      createdBy:  createdBy ?? 'unknown',
+      createdBy:  noteActor,
     };
     const notes = await getLiveNotes(projectId, shootingDayId);
     notes.push(entry);
     notesStore.set(k, notes);
     await compatStoreSet(livesetNotesDbKey(projectId, shootingDayId), notes);
-    await appendAudit(projectId, shootingDayId, 'add_note', entry, createdBy ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'add_note', entry, noteActor);
     res.json(entry);
   });
 
@@ -20933,22 +21251,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const notesReadRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, notesReadRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     res.json(await getLiveNotes(projectId, did));
   });
 
   // POST /api/liveset/:projectId/setup-complete
   router.post('/liveset/:projectId/setup-complete', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, sceneId, shotId, userId } = req.body as Record<string, string>;
+    const { shootingDayId, sceneId, shotId } = req.body as Record<string, string>;
     if (!shootingDayId) return res.status(400).json({ error: 'shootingDayId required' });
+    const setupRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, setupRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const setupActor = getUserId(req);
     const k = storeKey(projectId, shootingDayId);
     const prev = (await getLiveStatus(projectId, shootingDayId)) ?? {};
     const next = { ...prev, currentTake: 1, isRolling: false,
-      lastAction: `SETUP COMPLETE — ${sceneId}/${shotId} — av ${userId}`,
+      lastAction: `SETUP COMPLETE — ${sceneId}/${shotId} — av ${setupActor}`,
       lastActionTime: new Date().toISOString() };
     liveStatusStore.set(k, next);
     await compatStoreSet(livesetStatusDbKey(projectId, shootingDayId), next);
-    await appendAudit(projectId, shootingDayId, 'setup_complete', { sceneId, shotId }, userId ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'setup_complete', { sceneId, shotId }, setupActor);
     res.json({ ok: true });
   });
 
@@ -20957,6 +21280,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const auditRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, auditRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     res.json(await getLiveAudit(projectId, did));
   });
 
@@ -21125,12 +21450,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects/:projectId/memory-card-control', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekortkontroll' });
+          return;
+        }
+      }
       const result = await pool.query<{ settings: unknown }>(
         'SELECT settings FROM casting_projects WHERE id = $1',
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21160,6 +21492,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekortkontroll' });
+          return;
+        }
+      }
       const body = req.body as Record<string, unknown>;
       const nextState = sanitizeMemoryCardControlState(body.state ?? body);
 
@@ -21168,7 +21507,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21205,12 +21544,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects/:projectId/memory-card-control/report', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekort-rapport' });
+          return;
+        }
+      }
       const result = await pool.query<{ settings: unknown }>(
         'SELECT settings FROM casting_projects WHERE id = $1',
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21237,6 +21583,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.post('/projects/:projectId/memory-card-control/qr-label', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekortkontroll' });
+          return;
+        }
+      }
       const body = req.body as Record<string, unknown>;
       const requestedEntryId = typeof body.entryId === 'string' ? body.entryId : '';
 
@@ -21341,6 +21694,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects/:projectId/equipment', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      const equipListRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, equipListRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       const rows = await db2
         .select()
         .from(castingEquipment)
@@ -21362,6 +21717,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const body = req.body as Record<string, unknown>;
       const { project_id, name } = body as { project_id?: string; name?: string };
       if (!project_id || !name) return res.status(400).json({ error: 'project_id and name required' });
+      const equipCreateRole = await getProjectRoleRecord(project_id, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, equipCreateRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       const [row] = await db2
         .insert(castingEquipment)
         .values({
@@ -21401,6 +21758,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.put('/equipment/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const [equipTarget] = await db2.select({ projectId: castingEquipment.projectId }).from(castingEquipment).where(eq(castingEquipment.id, id));
+      if (!equipTarget) return res.status(404).json({ error: 'Equipment not found' });
+      const equipUpdRole = await getProjectRoleRecord(equipTarget.projectId ?? '', getUserIdentifiers(req));
+      if (!canWriteProducerData(req, equipUpdRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       const body = req.body as Record<string, unknown>;
       const patch: Record<string, unknown> = {};
       const FIELDS: Record<string, string> = {
@@ -21434,6 +21795,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.delete('/equipment/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const [equipDelTarget] = await db2.select({ projectId: castingEquipment.projectId }).from(castingEquipment).where(eq(castingEquipment.id, id));
+      if (!equipDelTarget) return res.json({ ok: true });
+      const equipDelRole = await getProjectRoleRecord(equipDelTarget.projectId ?? '', getUserIdentifiers(req));
+      if (!canWriteProducerData(req, equipDelRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       await db2.delete(castingEquipment).where(eq(castingEquipment.id, id));
       res.json({ ok: true });
     } catch (e) {
@@ -21911,6 +22276,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canReadProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
           return res.status(400).json({ error: 'invalid processor' });
@@ -21918,7 +22289,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const record = await getAiConsent(pool, req.params.projectId, processor);
         res.json({ consent: record });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load AI consent', detail: "internal_error" });
       }
     },
   );
@@ -21929,6 +22300,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canWriteProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const { scope, processor, note, excludedEntityIds, includedEntityIds } = req.body ?? {};
         if (!VALID_SCOPES.includes(scope)) {
           return res.status(400).json({ error: 'invalid scope' });
@@ -21947,7 +22324,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.status(201).json({ consent: record });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to grant AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to grant AI consent', detail: "internal_error" });
       }
     },
   );
@@ -21957,6 +22334,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canWriteProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
           return res.status(400).json({ error: 'invalid processor' });
@@ -21964,7 +22347,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await revokeAiConsent(pool, req.params.projectId, processor);
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to revoke AI consent', detail: "internal_error" });
       }
     },
   );
@@ -21974,6 +22357,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canWriteProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
           return res.status(400).json({ error: 'invalid processor' });
@@ -21986,7 +22375,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!updated) return res.status(404).json({ error: 'no active consent' });
         res.json({ consent: updated });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to update entity lists', detail: String(error) });
+        res.status(500).json({ error: 'Failed to update entity lists', detail: "internal_error" });
       }
     },
   );
@@ -21994,6 +22383,39 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Role Room Agent (Claude) — protected endpoint that runs every call
   // through consent → pseudonymize → audit. Scope defaults to 'brief_only'
   // but the caller can request more via the body.
+  // Produsent-nåbar brand-scan (agentens run_brand_scan-verktøy treffer denne).
+  // Skiller seg fra den admin-guardede /api/role-room/brand-kit/:id/scan ved å
+  // bruke prosjekt-tilgang (canReadProducerData) i stedet for requireAdmin.
+  router.post(
+    '/projects/:projectId/brand-scan',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const brandScanRole = await getProjectRoleRecord(
+          req.params.projectId,
+          getUserIdentifiers(req),
+        );
+        if (!canReadProducerData(req, brandScanRole)) {
+          return res
+            .status(403)
+            .json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+        if (!url) return res.status(400).json({ error: 'url_required' });
+        const kit = await runBrandScan(pool, {
+          projectId: req.params.projectId,
+          workspaceOwnerUserId: userId,
+          url,
+        });
+        return res.json({ brandKit: kit });
+      } catch (err) {
+        console.error('[brand-scan producer] failed', err);
+        return res.status(500).json({ error: 'brand_scan_failed' });
+      }
+    },
+  );
+
   router.post(
     '/projects/:projectId/agent/query',
     apiKeyAuth(pool, activeSessions),
@@ -22024,6 +22446,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(400).json({ error: 'invalid requiredScope' });
         }
 
+        const agentQueryRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, agentQueryRole)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+
         try {
           checkAgentRateLimit(userId, req.params.projectId);
         } catch (rlError) {
@@ -22043,7 +22470,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           pool,
           projectId: req.params.projectId,
           userId,
-          userRole: readRoleRoomDevUserRole(req),
+          userRole: getSessionRole(req),
           action: action as RoleRoomAgentAction,
           userMessage: userMessage.trim(),
           requiredScope,
@@ -22055,7 +22482,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json(response);
       } catch (error) {
         if (error instanceof RoleRoomAgentDisabledError) {
-          return res.status(503).json({ error: 'agent_disabled', detail: error.message });
+          return res.status(503).json({ error: 'agent_disabled', detail: "internal_error" });
         }
         if (error instanceof RoleRoomAgentEntitlementError) {
           return res.status(402).json({
@@ -22065,11 +22492,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           });
         }
         if (error instanceof RoleRoomAiConsentError) {
-          return res.status(403).json({ error: error.code, detail: error.message });
+          return res.status(403).json({ error: error.code, detail: "internal_error" });
         }
         res.status(500).json({
           error: 'agent_failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: "internal_error",
         });
       }
     },
@@ -22084,10 +22511,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        await handleAgentStream(pool, req, res, userId, readRoleRoomDevUserRole(req));
+        const agentStreamRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, agentStreamRole)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        await handleAgentStream(pool, req, res, userId, getSessionRole(req));
       } catch (error) {
         if (!res.headersSent) {
-          res.status(500).json({ error: 'stream_failed', detail: String(error) });
+          res.status(500).json({ error: 'stream_failed', detail: "internal_error" });
         } else {
           res.end();
         }
@@ -22104,6 +22535,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
+        const toolResultRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, toolResultRole)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
         const { toolName, toolUseId, status, errorMessage } = req.body ?? {};
         if (typeof toolName !== 'string' || toolName.trim().length === 0) {
           return res.status(400).json({ error: 'toolName required' });
@@ -22129,7 +22564,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'tool_result_log_failed', detail: String(error) });
+        res.status(500).json({ error: 'tool_result_log_failed', detail: "internal_error" });
       }
     },
   );
@@ -22371,6 +22806,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const userId = getUserId(req);
         const {
           partnerOrgnr,
@@ -22431,6 +22869,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const userId = getUserId(req);
         const { replySummary, replyFullText, sentiment, repliedAt, autoDetectedMessageId } = req.body ?? {};
         if (typeof replySummary !== 'string' || replySummary.trim().length === 0) {
@@ -22471,6 +22912,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const lookbackDays = typeof req.body?.lookbackDays === 'number' ? req.body.lookbackDays : undefined;
         const result = await pollPartnerReplies(pool, { lookbackDays });
         if (!result.ok) {
@@ -22491,6 +22935,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const partnerOrgnr = typeof req.query.partnerOrgnr === 'string'
           ? req.query.partnerOrgnr.trim()
           : null;
@@ -22515,6 +22962,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const partnerOrgnr = typeof req.query.partnerOrgnr === 'string'
           ? req.query.partnerOrgnr.trim()
           : null;
@@ -22549,7 +22999,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ threads });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list threads', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list threads', detail: "internal_error" });
       }
     },
   );
@@ -22564,7 +23014,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!data) return res.status(404).json({ error: 'Not found' });
         res.json({ thread: data.thread, messages: data.messages });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load thread', detail: "internal_error" });
       }
     },
   );
@@ -22583,7 +23033,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!ok) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to rename thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to rename thread', detail: "internal_error" });
       }
     },
   );
@@ -22598,7 +23048,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!ok) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to archive thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to archive thread', detail: "internal_error" });
       }
     },
   );
@@ -22613,11 +23063,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         const config = getEntitlementConfig();
         res.json({ entitlement, config });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load entitlement', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load entitlement', detail: "internal_error" });
       }
     },
   );
@@ -22632,10 +23082,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!result.ok) {
           return res.status(409).json({ error: result.error });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         res.status(201).json({ trialEndsAt: result.trialEndsAt, entitlement });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to start trial', detail: String(error) });
+        res.status(500).json({ error: 'Failed to start trial', detail: "internal_error" });
       }
     },
   );
@@ -22696,7 +23146,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
         res.json({ status: 'ok', url: session.url, id: session.id });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to create checkout', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create checkout', detail: "internal_error" });
       }
     },
   );
@@ -22723,7 +23173,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to grant', detail: String(error) });
+        res.status(500).json({ error: 'Failed to grant', detail: "internal_error" });
       }
     },
   );
@@ -22743,7 +23193,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await revokeEntitlement(pool, userId, typeof reason === 'string' ? reason : 'admin_revoke');
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke', detail: String(error) });
+        res.status(500).json({ error: 'Failed to revoke', detail: "internal_error" });
       }
     },
   );
@@ -22760,7 +23210,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await listEntitlements(pool, { limit });
         res.json({ entitlements: rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list', detail: "internal_error" });
       }
     },
   );
@@ -22779,7 +23229,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const overview = await getAiGovernanceOverview(pool);
         res.json(overview);
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load overview', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load overview', detail: "internal_error" });
       }
     },
   );
@@ -22797,7 +23247,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const consents = await getConsentList(pool, { includeRevoked, limit });
         res.json({ consents });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load consents', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load consents', detail: "internal_error" });
       }
     },
   );
@@ -22816,7 +23266,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await getAuditTrail(pool, { limit, projectId, status });
         res.json({ rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load audit trail', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load audit trail', detail: "internal_error" });
       }
     },
   );
@@ -22833,7 +23283,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await listAiCallsForUser(pool, userId, { projectId, limit });
         res.json({ interactions: rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load AI interactions', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load AI interactions', detail: "internal_error" });
       }
     },
   );
@@ -22947,9 +23397,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ accounts });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: "internal_error" });
       }
     },
   );
@@ -23031,9 +23481,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create Meta campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create Meta campaign', detail: "internal_error" });
       }
     },
   );
@@ -23079,9 +23529,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ adSet: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create ad set', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create ad set', detail: "internal_error" });
       }
     },
   );
@@ -23110,9 +23560,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ ad: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create ad', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create ad', detail: "internal_error" });
       }
     },
   );
@@ -23139,9 +23589,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to pause campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to pause campaign', detail: "internal_error" });
       }
     },
   );
@@ -23174,12 +23624,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof BudgetExceededError) {
-          return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+          return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
         }
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to resume campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to resume campaign', detail: "internal_error" });
       }
     },
   );
@@ -23206,9 +23656,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end campaign', detail: "internal_error" });
       }
     },
   );
@@ -23243,9 +23693,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ customers });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list Google customers', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list Google customers', detail: "internal_error" });
       }
     },
   );
@@ -23299,9 +23749,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to send MCC invite', detail: String(error) });
+        res.status(500).json({ error: 'Failed to send MCC invite', detail: "internal_error" });
       }
     },
   );
@@ -23326,9 +23776,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ links });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list MCC links', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list MCC links', detail: "internal_error" });
       }
     },
   );
@@ -23360,9 +23810,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ clientCustomerId: customerId, link });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to check MCC link status', detail: String(error) });
+        res.status(500).json({ error: 'Failed to check MCC link status', detail: "internal_error" });
       }
     },
   );
@@ -23403,9 +23853,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row, budgetResourceName: created.budgetResourceName });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create Google campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create Google campaign', detail: "internal_error" });
       }
     },
   );
@@ -23438,12 +23888,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           res.json({ campaign: updated });
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+            return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
           }
           if (error instanceof GoogleAdsApiError) {
-            return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+            return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
           }
-          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: String(error) });
+          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: "internal_error" });
         }
       },
     );
@@ -23470,9 +23920,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end Google campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end Google campaign', detail: "internal_error" });
       }
     },
   );
@@ -23496,7 +23946,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           .filter((a) => a.assetType === 'ad_account');
         res.json({ accounts });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: "internal_error" });
       }
     },
   );
@@ -23514,7 +23964,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const groups = await listLinkedInCampaignGroups(auth.accessToken, accountUrn, auth.apiVersion);
         res.json({ groups });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: "internal_error" });
       }
     },
   );
@@ -23556,9 +24006,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row });
       } catch (error) {
         if (error instanceof LinkedInAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: "internal_error" });
       }
     },
   );
@@ -23588,12 +24038,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           res.json({ campaign: updated });
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+            return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
           }
           if (error instanceof LinkedInAdsApiError) {
-            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
           }
-          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: String(error) });
+          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: "internal_error" });
         }
       },
     );
@@ -23617,9 +24067,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof LinkedInAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: "internal_error" });
       }
     },
   );
@@ -23641,7 +24091,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const campaigns = await listCampaignsForUser(pool, userId, { projectId, platform, status });
         res.json({ campaigns });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list campaigns', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list campaigns', detail: "internal_error" });
       }
     },
   );
@@ -23677,9 +24127,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ sync: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: "internal_error" });
       }
     },
   );
@@ -23716,7 +24166,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
         res.json({ sync: result });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: "internal_error" });
       }
     },
   );
@@ -23746,7 +24196,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           totalClientCostExVatNok: summary.totalSpendNok + summary.totalFeeNok,
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load spend summary', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load spend summary', detail: "internal_error" });
       }
     },
   );
@@ -23771,7 +24221,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const results = buildChannelResults(rows);
         res.json({ period, ...results });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load channel results', detail: "internal_error" });
       }
     },
   );
@@ -23800,7 +24250,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }));
         res.json({ period, campaigns: campaignsWithRoas });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load campaign results', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load campaign results', detail: "internal_error" });
       }
     },
   );
@@ -23870,7 +24320,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           })),
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load comments', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load comments', detail: "internal_error" });
       }
     },
   );
@@ -24003,7 +24453,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           },
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to save comment', detail: String(error) });
+        res.status(500).json({ error: 'Failed to save comment', detail: "internal_error" });
       }
     },
   );
@@ -24036,7 +24486,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to resolve', detail: String(error) });
+        res.status(500).json({ error: 'Failed to resolve', detail: "internal_error" });
       }
     },
   );
@@ -24069,7 +24519,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           generatedWithModel: persisted.generatedWithModel,
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load recommendations', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load recommendations', detail: "internal_error" });
       }
     },
   );
@@ -24090,7 +24540,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!projectId || typeof projectId !== 'string') {
           return res.status(400).json({ error: 'projectId_required' });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
@@ -24103,7 +24553,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.json({ period, ...summary });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to generate recommendations', detail: String(error) });
+        res.status(500).json({ error: 'Failed to generate recommendations', detail: "internal_error" });
       }
     },
   );
@@ -24154,7 +24604,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
 
         // AI-generering teller mot agent-kvoten (samme som marketing-plan).
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
@@ -24195,7 +24645,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.json({ creative });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to generate ad creatives', detail: String(error) });
+        res.status(500).json({ error: 'Failed to generate ad creatives', detail: "internal_error" });
       }
     },
   );
@@ -24238,7 +24688,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const autoPauseOnCap = budget?.autoPauseOnCap ?? false;
         res.json({ period, status, pacing, autoPauseOnCap, canEdit: await isClientForProject(req, projectId) });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load budget', detail: "internal_error" });
       }
     },
   );
@@ -24265,7 +24715,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const bestTimes = platform ? results.filter((r) => r.platform === platform) : results;
         res.json({ bestTimes });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to compute best time to post', detail: String(error) });
+        res.status(500).json({ error: 'Failed to compute best time to post', detail: "internal_error" });
       }
     },
   );
@@ -24294,7 +24744,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json(result);
       } catch (error) {
-        res.status(500).json({ error: 'Failed to send client update', detail: String(error) });
+        res.status(500).json({ error: 'Failed to send client update', detail: "internal_error" });
       }
     },
   );
@@ -24314,7 +24764,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const updates = await listClientUpdates(pool, ctx.projectId);
         res.json({ updates });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list client updates', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list client updates', detail: "internal_error" });
       }
     },
   );
@@ -24338,7 +24788,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const budget = await setBudget(pool, projectId, period, maxSpendNok, identifiers[0] ?? 'klient');
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to set budget', detail: String(error) });
+        res.status(500).json({ error: 'Failed to set budget', detail: "internal_error" });
       }
     },
   );
@@ -24364,7 +24814,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const budget = await setAutoPauseOnCap(pool, projectId, period, enabled, identifiers[0] ?? 'klient');
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to set auto-pause', detail: String(error) });
+        res.status(500).json({ error: 'Failed to set auto-pause', detail: "internal_error" });
       }
     },
   );
@@ -24393,7 +24843,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!budget) return res.status(404).json({ error: 'budget_not_set', detail: 'Kunden må sette et budsjett først.' });
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to request overage', detail: String(error) });
+        res.status(500).json({ error: 'Failed to request overage', detail: "internal_error" });
       }
     },
   );
@@ -24418,7 +24868,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!budget) return res.status(404).json({ error: 'budget_not_set' });
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to approve overage', detail: String(error) });
+        res.status(500).json({ error: 'Failed to approve overage', detail: "internal_error" });
       }
     },
   );
@@ -24446,7 +24896,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           })),
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list ads connections', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list ads connections', detail: "internal_error" });
       }
     },
   );
@@ -24531,7 +24981,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           platforms: { meta, linkedin },
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load granted assets', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load granted assets', detail: "internal_error" });
       }
     },
   );
@@ -24573,7 +25023,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!authorizationUrl) return res.status(400).json({ error: 'unsupported_platform' });
         res.json({ success: true, authorizationUrl, stateId, scopes: ADS_OAUTH_SCOPES[typedPlatform] });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to start ads OAuth', detail: String(error) });
+        res.status(500).json({ error: 'Failed to start ads OAuth', detail: "internal_error" });
       }
     },
   );
@@ -24618,7 +25068,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const base = state.browserOrigin ?? '';
         res.redirect(`${base}${state.returnPath}?adsOauthStatus=connected&platform=${platform}`);
       } catch (error) {
-        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: String(error) });
+        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: "internal_error" });
       }
     },
   );
@@ -24728,7 +25178,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { url, weekStarting, skipClaude, projectId: bestTimeProjectId } = req.body ?? {};
+        const { url, weekStarting, skipClaude, focus, projectId: bestTimeProjectId } = req.body ?? {};
         if (!url || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -24766,8 +25216,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           analysisId = inserted.rows[0].id;
         }
 
-        // 2) Strategist
-        const plan = await generateWeekPlan(brandProfile, weekStarting);
+        // 2) Strategist (valgfritt kampanje-fokus fra katalog-produkt)
+        const plan = await generateWeekPlan(brandProfile, weekStarting, {
+          focus: typeof focus === 'string' ? focus : undefined,
+        });
         await applyBestTimeOverride(pool, plan, bestTimeProjectId);
 
         // 3) Generator (DB transaction inside)

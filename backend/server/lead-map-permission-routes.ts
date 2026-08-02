@@ -127,7 +127,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ permissions: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "catalog_failed", detail: String(err) });
+        return res.status(500).json({ error: "catalog_failed", detail: "internal_error" });
       }
     },
   );
@@ -149,7 +149,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
         }
         return res.json({ defaults: byRole });
       } catch (err) {
-        return res.status(500).json({ error: "defaults_failed", detail: String(err) });
+        return res.status(500).json({ error: "defaults_failed", detail: "internal_error" });
       }
     },
   );
@@ -209,7 +209,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
           overrides: ovrRes.rows,
         });
       } catch (err) {
-        return res.status(500).json({ error: "permissions_failed", detail: String(err) });
+        return res.status(500).json({ error: "permissions_failed", detail: "internal_error" });
       }
     },
   );
@@ -240,7 +240,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
       `SELECT 1 FROM permissions WHERE key = $1`,
       [body.permission_key],
     );
-    if (exists.rowCount === 0) {
+    if (!exists.rows.length) {
       res.status(400).json({ error: "ukjent_permission_key" });
       return;
     }
@@ -290,7 +290,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
       );
       res.json({ ok: true, effect });
     } catch (err) {
-      res.status(500).json({ error: "override_failed", detail: String(err) });
+      res.status(500).json({ error: "override_failed", detail: "internal_error" });
     }
   }
 
@@ -331,7 +331,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "reset_failed", detail: String(err) });
+        return res.status(500).json({ error: "reset_failed", detail: "internal_error" });
       }
     },
   );
@@ -361,7 +361,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ entries: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "audit_failed", detail: String(err) });
+        return res.status(500).json({ error: "audit_failed", detail: "internal_error" });
       }
     },
   );

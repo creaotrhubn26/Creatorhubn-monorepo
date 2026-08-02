@@ -13,6 +13,7 @@
  * Quota: 1 GiB free-tier per bruker. Quota-overskridelse returnerer HTTP 507.
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import multer from "multer";
@@ -47,6 +48,28 @@ const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per fil (hard cap separat 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    // Explicit allowlist — image/* prefix intentionally excluded to block
+    // image/svg+xml (SVG can contain <script> → stored XSS when served inline).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+      "video/mpeg", "video/ogg",
+      "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
+      "audio/webm", "audio/aac", "audio/x-m4a", "audio/m4a",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "text/plain",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
 });
 
 function getUserIdFromRequest(
@@ -87,7 +110,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(stats);
     } catch (err) {
       console.error("[storage/stats]", err);
-      res.status(500).json({ error: "stats_failed", detail: String(err) });
+      res.status(500).json({ error: "stats_failed", detail: "internal_error" });
     }
   });
 
@@ -116,7 +139,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ files });
     } catch (err) {
       console.error("[storage/files]", err);
-      res.status(500).json({ error: "list_failed", detail: String(err) });
+      res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -133,7 +156,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ projects });
     } catch (err) {
       console.error("[storage/per-project]", err);
-      res.status(500).json({ error: "per_project_failed", detail: String(err) });
+      res.status(500).json({ error: "per_project_failed", detail: "internal_error" });
     }
   });
 
@@ -158,7 +181,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ files });
     } catch (err) {
       console.error("[storage/entity-files]", err);
-      res.status(500).json({ error: "entity_files_failed", detail: String(err) });
+      res.status(500).json({ error: "entity_files_failed", detail: "internal_error" });
     }
   });
 
@@ -233,7 +256,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ file: result.file });
     } catch (err) {
       console.error("[storage/upload]", err);
-      res.status(500).json({ error: "upload_failed", detail: String(err) });
+      res.status(500).json({ error: "upload_failed", detail: "internal_error" });
     }
   });
 
@@ -256,7 +279,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.redirect(302, r.url);
     } catch (err) {
       console.error("[storage/download]", err);
-      res.status(500).json({ error: "download_failed", detail: String(err) });
+      res.status(500).json({ error: "download_failed", detail: "internal_error" });
     }
   });
 
@@ -270,7 +293,9 @@ export function registerRoleRoomUserStorageRoutes(
     const cronToken = req.headers['x-cron-trigger-token'] as string | undefined;
     const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
       || process.env.CRON_TRIGGER_TOKEN;
-    const tokenValid = expectedToken && cronToken && cronToken === expectedToken;
+    const tokenValid = !!expectedToken && !!cronToken
+      && Buffer.byteLength(cronToken) === Buffer.byteLength(expectedToken)
+      && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
     if (!tokenValid) {
       res.status(401).json({ error: "krever_cron_token" });
       return;
@@ -376,7 +401,7 @@ export function registerRoleRoomUserStorageRoutes(
 
       res.json({ ok: true, results });
     } catch (err) {
-      res.status(500).json({ error: "migration_failed", detail: String(err), results });
+      res.status(500).json({ error: "migration_failed", detail: "internal_error", results });
     }
   });
 
@@ -390,7 +415,9 @@ export function registerRoleRoomUserStorageRoutes(
     const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
       || process.env.CRON_TRIGGER_TOKEN;
 
-    const tokenValid = expectedToken && cronToken && cronToken === expectedToken;
+    const tokenValid = !!expectedToken && !!cronToken
+      && Buffer.byteLength(cronToken) === Buffer.byteLength(expectedToken)
+      && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
     if (!tokenValid) {
       const viewerId = getUserIdFromRequest(req, activeSessions);
       if (!viewerId) {
@@ -413,7 +440,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(result);
     } catch (err) {
       console.error("[storage/cleanup]", err);
-      res.status(500).json({ error: "cleanup_failed", detail: String(err) });
+      res.status(500).json({ error: "cleanup_failed", detail: "internal_error" });
     }
   });
 
@@ -437,7 +464,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(r);
     } catch (err) {
       console.error("[storage/storyboards/move-to-b2]", err);
-      res.status(500).json({ error: "move_failed", detail: String(err) });
+      res.status(500).json({ error: "move_failed", detail: "internal_error" });
     }
   });
 
@@ -455,7 +482,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(summary);
     } catch (err) {
       console.error("[storage/storyboards/migrate-all]", err);
-      res.status(500).json({ error: "migrate_all_failed", detail: String(err) });
+      res.status(500).json({ error: "migrate_all_failed", detail: "internal_error" });
     }
   });
 
@@ -475,7 +502,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ ok: true, freedBytes: r.freedBytes });
     } catch (err) {
       console.error("[storage/delete]", err);
-      res.status(500).json({ error: "delete_failed", detail: String(err) });
+      res.status(500).json({ error: "delete_failed", detail: "internal_error" });
     }
   });
 }

@@ -16,8 +16,37 @@
  */
 
 import type express from "express";
+import { canAccessProject } from "./project-team-routes";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Eierskaps-sjekk for et bryllup: eier (user_id), tildelt fotograf
+// (photographer_id) eller team-tilgang til koblet prosjekt. Speiler
+// prod-predikatet i websocket-chat/plan-B-rutene, så ingen legitim bruker
+// blokkeres. Uten dette lekker wedding_id-only-spørringene under aggregat-
+// data (venue-antall, by, dato) for et vilkårlig bryllup til enhver innlogget.
+async function callerOwnsWedding(
+  pool: any,
+  weddingId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!userId || !weddingId) return false;
+  try {
+    const r = await pool.query(
+      `SELECT user_id, photographer_id, project_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const row = r.rows[0];
+    if (!row) return false;
+    if (row.user_id && String(row.user_id) === userId) return true;
+    if (row.photographer_id && String(row.photographer_id) === userId) return true;
+    if (row.project_id && (await canAccessProject(pool, userId, String(row.project_id)))) return true;
+    return false;
+  } catch (e) {
+    console.error("[walkthrough] callerOwnsWedding error:", e);
+    return false;
+  }
+}
 
 export interface WeddingWalkthroughRoutesDeps {
   app: express.Application;
@@ -126,7 +155,7 @@ async function checkVenuesInCatalog(pool: any, weddingId: string): Promise<Check
     `SELECT label, address FROM wedding_locations WHERE wedding_id = $1`,
     [weddingId],
   );
-  if (locs.rowCount === 0) {
+  if (!locs.rows.length) {
     return {
       key: "venues_in_catalog",
       label: "Venue-info kjent",
@@ -266,7 +295,7 @@ async function checkMileageReady(pool: any, weddingId: string, photographerId: s
        WHERE wedding_id = $1 AND photographer_id = $2 LIMIT 1`,
     [weddingId, photographerId],
   );
-  if (r.rowCount === 0) {
+  if (!r.rows.length) {
     return {
       key: "mileage_ready",
       label: "Kjøregodtgjørelse beregnet",
@@ -285,7 +314,7 @@ async function checkVehicleRegistered(pool: any, photographerId: string): Promis
        WHERE user_id = $1 AND is_primary = TRUE LIMIT 1`,
     [photographerId],
   );
-  if (r.rowCount === 0) {
+  if (!r.rows.length) {
     return {
       key: "vehicle_registered",
       label: "Bil registrert",
@@ -480,6 +509,9 @@ export function setupWeddingWalkthroughRoutes(deps: WeddingWalkthroughRoutesDeps
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
       const weddingId = req.params.weddingId;
+      if (!(await callerOwnsWedding(pool, weddingId, uid))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
 
       const [
         venuesAddr,
@@ -561,6 +593,9 @@ export function setupWeddingWalkthroughRoutes(deps: WeddingWalkthroughRoutesDeps
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, uid))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const status = String(req.body?.status || "done");
       if (!["pending", "done", "na"].includes(status)) {
         return res.status(400).json({ error: "Ugyldig status" });

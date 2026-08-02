@@ -118,6 +118,7 @@ import { CommunityDMProvider } from './CommunityDMProvider';
 
 // Import new components and hooks
 import { OnboardingErrorBoundary } from './OnboardingErrorBoundary';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { OnboardingStep } from './OnboardingStep';
 import { CommunityHighlightsSidebar } from './CommunityHighlightsSidebar';
 import { CommunityLandingFallback } from './CommunityLandingFallback';
@@ -128,6 +129,7 @@ import { useOnboardingAnalytics } from './hooks/useOnboardingAnalytics';
 import { useStepValidation } from './hooks/useStepValidation';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
+import { useCommunityLocale } from './communityLocale';
 
 interface OnboardingStep {
   id: string;
@@ -200,6 +202,7 @@ function CommunityLandingPageComponent({
   onSkip,
 }: CommunityLandingPageProps) {
   const { getProfessionDisplayName } = useDynamicProfessions();
+  const { tt } = useCommunityLocale();
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(true);
   const [onboardingConfig, setOnboardingConfig] = useState<OnboardingConfig | null>(null);
@@ -483,8 +486,9 @@ function CommunityLandingPageComponent({
               },
             }}
           >
-            Exit Preview
+            {tt('Avslutt forhåndsvisning', 'Exit Preview')}
           </Button>
+          <ErrorBoundary componentName="community-preview-page">
           <Suspense fallback={
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
               <CircularProgress sx={{ color: '#f59e0b' }} />
@@ -492,6 +496,7 @@ function CommunityLandingPageComponent({
           }>
             <CommunityPage userId={userId || 'preview-user'} profession={profession || 'photographer'} />
           </Suspense>
+          </ErrorBoundary>
         </Box>
       </CommunityDMProvider>
     );
@@ -535,7 +540,7 @@ function CommunityLandingPageComponent({
             variant="body1"
             sx={{ mt: 2, textAlign: 'center', color: COMMUNITY_TEXT_MUTED }}
           >
-            Laster velkomstopplevelse...
+            {tt('Laster velkomstopplevelse...', 'Loading welcome experience...')}
           </Typography>
         </Box>
       </Box>
@@ -635,7 +640,7 @@ function CommunityLandingPageComponent({
                     },
                   }}
                 >
-                  Logg inn
+                  {tt('Logg inn', 'Log in')}
                 </Button>
               )}
               <Button
@@ -657,7 +662,7 @@ function CommunityLandingPageComponent({
                   },
                 }}
               >
-                Hopp over
+                {tt('Hopp over', 'Skip')}
               </Button>
             </Stack>
           </Box>
@@ -705,11 +710,11 @@ function CommunityLandingPageComponent({
                       color: COMMUNITY_TEXT_PRIMARY,
                     }}
                   >
-                    Fremdrift
+                    {tt('Fremdrift', 'Progress')}
                   </Typography>
                 </Box>
                 <Chip
-                  label={`${completedSteps.size} / ${onboardingConfig.steps.length} fullført`}
+                  label={`${completedSteps.size} / ${onboardingConfig.steps.length} ${tt('fullført', 'completed')}`}
                   sx={{
                     bgcolor: 'rgba(255, 140, 0, 0.14)',
                     color: COMMUNITY_ACCENT,
@@ -771,14 +776,14 @@ function CommunityLandingPageComponent({
               >
                 <Box>
                   <Typography variant="h5" sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700 }}>
-                    Sett opp din community-profil
+                    {tt('Sett opp din community-profil', 'Set up your community profile')}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 0.7, color: COMMUNITY_TEXT_MUTED, maxWidth: 620 }}>
-                    Velg interesser og ønsket første handling. Disse valgene brukes til å prioritere hjemflaten når du kommer inn i community som {getProfessionDisplayName(profession)}.
+                    {tt('Velg interesser og ønsket første handling. Disse valgene brukes til å prioritere hjemflaten når du kommer inn i community som ', 'Choose interests and your desired first action. These choices are used to prioritize your home surface when you enter the community as ')}{getProfessionDisplayName(profession)}.
                   </Typography>
 
                   <Typography variant="subtitle2" sx={{ mt: 2.2, mb: 1, color: COMMUNITY_TEXT_PRIMARY }}>
-                    Hva vil du se mer av?
+                    {tt('Hva vil du se mer av?', 'What would you like to see more of?')}
                   </Typography>
                   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                     {ONBOARDING_INTEREST_OPTIONS.map((interest) => {
@@ -814,7 +819,7 @@ function CommunityLandingPageComponent({
                   </Stack>
 
                   <Typography variant="subtitle2" sx={{ mt: 2.2, mb: 1, color: COMMUNITY_TEXT_PRIMARY }}>
-                    Hva er viktigst for deg nå?
+                    {tt('Hva er viktigst for deg nå?', 'What matters most to you now?')}
                   </Typography>
                   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                     {ONBOARDING_GOAL_OPTIONS.map((goal) => {
@@ -855,10 +860,10 @@ function CommunityLandingPageComponent({
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700 }}>
-                    Første handling i community
+                    {tt('Første handling i community', 'First action in the community')}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 0.6, color: COMMUNITY_TEXT_MUTED }}>
-                    Velg én ting vi skal hjelpe deg i gang med på hjemskjermen.
+                    {tt('Velg én ting vi skal hjelpe deg i gang med på hjemskjermen.', 'Choose one thing we should help you get started with on the home screen.')}
                   </Typography>
                   <Stack spacing={1} sx={{ mt: 2 }}>
                     {ONBOARDING_FIRST_ACTIONS.map((action) => {
@@ -894,7 +899,7 @@ function CommunityLandingPageComponent({
                     }}
                   >
                     <Typography variant="caption" sx={{ color: COMMUNITY_TEXT_MUTED }}>
-                      Profilen din styrer hvilke kort, spørsmål og Academy-koblinger som løftes frem først på hjemflaten.
+                      {tt('Profilen din styrer hvilke kort, spørsmål og Academy-koblinger som løftes frem først på hjemflaten.', 'Your profile controls which cards, questions and Academy links are surfaced first on your home surface.')}
                     </Typography>
                   </Box>
                 </Box>
@@ -948,7 +953,7 @@ function CommunityLandingPageComponent({
                         mb: 0.5,
                       }}
                     >
-                      Velkomsthilsen
+                      {tt('Velkomsthilsen', 'Welcome message')}
                     </Typography>
                     <Typography
                       variant="body2"
@@ -957,7 +962,7 @@ function CommunityLandingPageComponent({
                         fontSize: '0.95rem',
                       }}
                     >
-                      Se denne korte videoen for å komme i gang
+                      {tt('Se denne korte videoen for å komme i gang', 'Watch this short video to get started')}
                     </Typography>
                   </Box>
                 </Box>
@@ -992,13 +997,13 @@ function CommunityLandingPageComponent({
                   variant="h5"
                   sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700, mb: 1 }}
                 >
-                  Slik kommer du i gang
+                  {tt('Slik kommer du i gang', 'How to get started')}
                 </Typography>
                 <Typography
                   variant="body2"
                   sx={{ color: COMMUNITY_TEXT_MUTED, mb: 3 }}
                 >
-                  Følg stegene i rekkefølge for å åpne community med samme arbeidsflyt som i Academy.
+                  {tt('Følg stegene i rekkefølge for å åpne community med samme arbeidsflyt som i Academy.', 'Follow the steps in order to open the community with the same workflow as in Academy.')}
                 </Typography>
                 <Stepper
                   activeStep={activeStep}
@@ -1139,8 +1144,8 @@ function CommunityLandingPageComponent({
             }}
           >
             <PublicSocialLinks
-              label="Sosiale medier"
-              body="Følg CreatorHub for community-nyheter, nye initiativer og oppdateringer fra økosystemet."
+              label={tt('Sosiale medier', 'Social media')}
+              body={tt('Følg CreatorHub for community-nyheter, nye initiativer og oppdateringer fra økosystemet.', 'Follow CreatorHub for community news, new initiatives and updates from the ecosystem.')}
               links={creatorhubSocialLinks}
               tone="creatorhub"
             />

@@ -170,7 +170,7 @@ export function registerPlanRoutes({ app, pool, activeSessions }: Deps): void {
       res.json({ url: checkoutSession.url });
     } catch (e: any) {
       console.error("[plan upgrade]", e);
-      res.status(500).json({ error: e.message ?? "Stripe-feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

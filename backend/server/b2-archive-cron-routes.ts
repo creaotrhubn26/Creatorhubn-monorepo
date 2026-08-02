@@ -37,7 +37,7 @@ function checkCronSecret(req: express.Request, res: express.Response): boolean {
     res.status(503).json({ error: "ADMIN_ROOM_CRON_SECRET ikke satt på server" });
     return false;
   }
-  if (typeof provided !== "string" || provided.trim() !== secret.trim()) {
+  if (typeof provided !== "string" || provided.trim().length !== secret.trim().length || !require("crypto").timingSafeEqual(Buffer.from(provided.trim()), Buffer.from(secret.trim()))) {
     res.status(401).json({ error: "unauthorized" });
     return false;
   }
@@ -93,7 +93,7 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
       return res.json({ archived: true, snapshots: archived });
     } catch (err) {
       console.error("[b2-archive-cron] business-plan error", err);
-      return res.status(500).json({ error: (err as Error).message });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -105,7 +105,7 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
       // Henter queries + siste resultat per query (samme aggregering som
       // /api/admin-room/ai-citation/dashboard, men uten å gå via HTTP).
       const queriesResult = await pool.query(
-        `SELECT * FROM role_room_ai_citation_queries ORDER BY created_at DESC`,
+        `SELECT * FROM role_room_ai_citation_queries ORDER BY created_at DESC LIMIT 1000`,
       );
       const resultsResult = await pool.query(
         `SELECT DISTINCT ON (query_id) *
@@ -142,7 +142,7 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
       });
     } catch (err) {
       console.error("[b2-archive-cron] ai-citation error", err);
-      return res.status(500).json({ error: (err as Error).message });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 }

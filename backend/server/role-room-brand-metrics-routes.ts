@@ -236,7 +236,7 @@ export function setupBrandMetricsRoutes(deps: SetupBrandMetricsDeps): void {
       const result = await captureSelfBrandMetrics(pool, 'manual');
       res.json(result);
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -266,7 +266,7 @@ export function setupBrandMetricsRoutes(deps: SetupBrandMetricsDeps): void {
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

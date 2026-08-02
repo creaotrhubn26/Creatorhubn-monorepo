@@ -9,7 +9,7 @@
  * prosjektet via /api/projects/:id/audio-room, og åpner så full-skjerm-
  * opplevelsen på /audio-review/:audioRoomId?ws=:projectId (med tilbake-lenke).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, IconButton, Dialog, DialogContent, Divider } from '@mui/material';
 import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
@@ -20,7 +20,9 @@ import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
+import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
@@ -31,6 +33,7 @@ const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor
 
 const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
+  const { hasTeamAccess } = useTeamAccess(); // band/samarbeid er Enterprise-gated
   const [, navigate] = useLocation();
   const [roomId, setRoomId] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
@@ -86,9 +89,16 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     finally { setRelBusy(false); }
   };
 
+  // Ref så 7s-pollen (satt opp i [projectId,isReal]-effekten før roomId er løst)
+  // alltid leser GJELDENDE roomId — ellers stale-closure: pollen fikk aldri med
+  // ?audioRoomId= og live markører/bounces sluttet å oppdatere.
+  const roomIdRef = useRef<string | null>(null);
+  useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
   const loadPt = () => {
     if (!isReal) return;
-    const q = roomId ? `?audioRoomId=${encodeURIComponent(roomId)}` : '';
+    if (typeof document !== 'undefined' && document.hidden) return; // ikke poll i bakgrunnsfane
+    const rid = roomIdRef.current;
+    const q = rid ? `?audioRoomId=${encodeURIComponent(rid)}` : '';
     apiRequest(`/api/protools/web/status${q}`).then((r: any) => setPt(r || null)).catch(() => {});
   };
   const makePtCode = async () => {
@@ -106,7 +116,16 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
   const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
-  const copyInvite = (url: string) => { const full = url.startsWith('http') ? url : window.location.origin + url; navigator.clipboard?.writeText(full).then(() => { setCopied(url); setTimeout(() => setCopied(null), 1800); }).catch(() => {}); };
+  const copyInvite = (url: string) => {
+    const full = url.startsWith('http') ? url : window.location.origin + url;
+    // Guard: navigator.clipboard er undefined i usikker kontekst / eldre Safari —
+    // `?.writeText(...).then` ville kastet en synkron TypeError uten .catch.
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(full).then(() => { setCopied(url); setTimeout(() => setCopied(null), 1800); }).catch(() => {});
+      }
+    } catch { /* clipboard utilgjengelig */ }
+  };
   const submitInvite = async () => {
     if (!invite?.name?.trim() || saving) return; setSaving(true);
     try {
@@ -232,7 +251,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {roomId && (
         <WsCard sx={{ mt: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-            <Typography sx={{ fontSize: 15 }}>🚀</Typography>
+            {wsIcon('RocketLaunch', { fontSize: 16, color: ws.accent })}
             <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Utgivelse</Typography>
             <Box sx={{ flex: 1 }} />
             {release && validation && (
@@ -290,7 +309,9 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </WsCard>
       )}
 
-      {/* Band-roster — medlemmer (auto-synket fra EaseVerse-collaborators) + invitér */}
+      {/* Band-roster — medlemmer (auto-synket fra EaseVerse-collaborators) + invitér.
+          Team/samarbeid er en Enterprise-funksjon → skjult for individuelle. */}
+      {hasTeamAccess && (
       <WsCard sx={{ mt: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
           <GroupAdd sx={{ fontSize: 18, color: ws.accent }} />
@@ -337,11 +358,12 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         )}
       </WsCard>
+      )}
 
       {/* Pro Tools Companion — native desktop-agent som synker markører + bounces hit */}
       <WsCard sx={{ mt: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-          <Typography sx={{ fontSize: 15 }}>🎛️</Typography>
+          {wsIcon('Equalizer', { fontSize: 16, color: ws.accent })}
           <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Pro Tools Companion</Typography>
           <Box sx={{ flex: 1 }} />
           {pt?.paired ? <WsTag label="Tilkoblet" tone="green" /> : <WsTag label="Ikke koblet" tone="neutral" />}
@@ -394,7 +416,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Stack spacing={0.5}>
                   {pt.bounces.slice(0, 4).map((b: any) => (
                     <Stack key={b.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.75, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
-                      <Typography sx={{ fontSize: 13 }}>🎚️</Typography>
+                      {wsIcon('Tune', { fontSize: 15, color: ws.textDim })}
                       <Typography sx={{ fontSize: 12, flex: 1, minWidth: 0 }} noWrap>{b.file_name || 'Bounce'}</Typography>
                       {b.review_version_id && <WsTag label="→ versjon" tone="green" />}
                     </Stack>
@@ -411,7 +433,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* EaseVerse-tracks — koble en låt fra EaseVerse inn i Sound Room (toveis-synk) */}
       <WsCard sx={{ mt: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-          <Typography sx={{ fontSize: 14 }}>🎵</Typography>
+          {wsIcon('MusicNote', { fontSize: 15, color: ws.textDim })}
           <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>EaseVerse-tracks</Typography>
           <Box sx={{ flex: 1 }} />
           {ev?.linkedTrackId && <WsTag label="Koblet" tone="green" />}

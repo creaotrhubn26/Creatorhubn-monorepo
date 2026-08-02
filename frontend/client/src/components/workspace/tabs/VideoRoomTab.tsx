@@ -16,6 +16,7 @@ import EditNote from '@mui/icons-material/EditNote';
 import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, WsModal } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
@@ -163,7 +164,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       )}
 
       {current && (
-        <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
           {/* Venstre: spiller + versjoner + stepper */}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <WsCard pad={0} sx={{ overflow: 'hidden', mb: 2 }}>
@@ -230,7 +231,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Box>
 
           {/* Høyre: kommentar-skinne */}
-          <Box sx={{ width: 340, flexShrink: 0 }}>
+          <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
             <WsCard sx={{ p: 0, overflow: 'hidden' }}>
               <Box sx={{ p: 1.5, borderBottom: `1px solid ${ws.borderSoft}` }}>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 700, mb: 1 }}>Kommentarer</Typography>
@@ -240,7 +241,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   ))}
                 </Stack>
               </Box>
-              <Stack sx={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
+              <Stack sx={{ maxHeight: 'calc(100dvh - 320px)', overflowY: 'auto' }}>
                 {shown.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, p: 2, textAlign: 'center' }}>Ingen kommentarer. Klikk på tidslinjen i spilleren for å legge til på et tidspunkt.</Typography>}
                 {shown.map((c: any) => {
                   const resolved = c.status === 'resolved' || c.status === 'done';
@@ -272,7 +273,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Button variant="outlined" startIcon={<EditNote />} disabled sx={{ color: ws.textDim, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Be om endringer</Button>
           {aiCfg?.enabled && aiCfg?.whitelisted && <Button variant="outlined" startIcon={<AutoAwesome />} onClick={openRe} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>Restyle / Relight</Button>}
           <Button variant="outlined" startIcon={<CloudUpload />} onClick={() => setAddOpen(true)} sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Last opp ny versjon</Button>
-          <Button variant="contained" startIcon={<CheckCircle />} onClick={approve} disabled={current.status === 'approved'} sx={{ bgcolor: ws.green, color: '#06281c', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#2bbf8a' } }}>{current.status === 'approved' ? 'Godkjent' : 'Godkjenn video'}</Button>
+          <Button variant="contained" startIcon={<CheckCircle />} onClick={approve} disabled={current.status === 'approved'} sx={{ bgcolor: ws.green, color: ws.bg, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.green, filter: 'brightness(0.92)' } }}>{current.status === 'approved' ? 'Godkjent' : 'Godkjenn video'}</Button>
         </Stack>
       )}
 
@@ -304,7 +305,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ) : !aiCfg?.consent?.consented ? (
           <Stack spacing={2}>
             <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>{wsIcon('WarningAmber', { fontSize: 15 })}Samtykke kreves</Typography>
               <Typography sx={{ fontSize: 12.5, color: ws.text }}>Restyle sender videoen til en tredjeparts AI (SwitchX / Beeble) som kan behandle data utenfor EØS.</Typography>
             </Box>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>

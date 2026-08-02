@@ -8,6 +8,7 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
@@ -324,35 +325,107 @@ export default function ProducerEconomyPanel({
             {title}
           </Typography>
         </Stack>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          <Chip size="small" label={`Estimert ${Math.round(totals.estimate)} NOK`} sx={{ bgcolor: 'rgba(52,211,153,0.16)', color: '#86efac' }} />
-          <Chip size="small" label={`Godkjent ${Math.round(totals.approved)} NOK`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#7dd3fc' }} />
-          <Chip size="small" label={`Faktisk ${Math.round(totals.actual)} NOK`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />
-          <Chip
-            size="small"
-            label={`Avvik ${Math.round(variance)} NOK`}
-            sx={{
-              bgcolor: variance >= 0 ? 'rgba(74,222,128,0.16)' : 'rgba(248,113,113,0.16)',
-              color: variance >= 0 ? '#86efac' : '#fca5a5',
-            }}
-          />
-        </Stack>
       </Stack>
+
+      {/* Sammendrags-band: budsjettets tre stadier (estimert → godkjent →
+          faktisk) med tydelig hierarki og forbruksbar, i stedet for en
+          kram chip-rekke. Leses på ett blikk før linjene under. */}
+      {(() => {
+        const utilPct = totals.approved > 0
+          ? Math.min(100, (totals.actual / totals.approved) * 100)
+          : 0;
+        const overApproved = totals.actual > totals.approved && totals.approved > 0;
+        const variancePct = totals.approved > 0
+          ? ((totals.actual - totals.approved) / totals.approved) * 100
+          : null;
+        const stat = (label: string, value: number, fg: string, sub?: string) => (
+          <Box sx={{ flex: 1, minWidth: 120 }}>
+            <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {label}
+            </Typography>
+            <Typography sx={{ color: fg, fontWeight: 800, fontSize: '1.35rem', lineHeight: 1.15, fontVariantNumeric: 'tabular-nums' }}>
+              {formatCurrency(value)}
+            </Typography>
+            {sub ? (
+              <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.68rem' }}>{sub}</Typography>
+            ) : null}
+          </Box>
+        );
+        return (
+          <Box
+            sx={{
+              p: { xs: 1.2, md: 1.5 },
+              borderRadius: 2,
+              border: '1px solid rgba(148,163,184,0.18)',
+              bgcolor: 'rgba(2,6,23,0.45)',
+            }}
+          >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} divider={<Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(148,163,184,0.14)', display: { xs: 'none', sm: 'block' } }} />}>
+              {stat('Estimert', totals.estimate, '#86efac')}
+              {stat('Godkjent', totals.approved, 'var(--role-cyan, #7dd3fc)')}
+              {stat('Faktisk', totals.actual, overApproved ? '#fca5a5' : '#fde68a')}
+              <Box sx={{ flex: 1, minWidth: 120 }}>
+                <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Avvik mot godkjent
+                </Typography>
+                <Typography sx={{ color: variance >= 0 ? '#86efac' : '#fca5a5', fontWeight: 800, fontSize: '1.35rem', lineHeight: 1.15, fontVariantNumeric: 'tabular-nums' }}>
+                  {`${variance >= 0 ? '+' : ''}${formatCurrency(variance)}`}
+                </Typography>
+                <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.68rem' }}>
+                  {variancePct === null ? 'ingen godkjent ramme ennå' : `${variancePct > 0 ? '+' : ''}${variancePct.toFixed(1)} % ${variance >= 0 ? 'under rammen' : 'over rammen'}`}
+                </Typography>
+              </Box>
+            </Stack>
+            {totals.approved > 0 ? (
+              <Box sx={{ mt: 1.2 }}>
+                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.4 }}>
+                  <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.7rem' }}>
+                    Forbruk av godkjent budsjett
+                  </Typography>
+                  <Typography sx={{ color: overApproved ? '#fca5a5' : '#cbd5e1', fontSize: '0.7rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                    {`${Math.round((totals.actual / totals.approved) * 100)} %`}
+                  </Typography>
+                </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={utilPct}
+                  sx={{
+                    height: 7,
+                    borderRadius: 4,
+                    bgcolor: 'rgba(148,163,184,0.16)',
+                    '& .MuiLinearProgress-bar': {
+                      borderRadius: 4,
+                      bgcolor: overApproved ? '#f87171' : utilPct > 85 ? '#fbbf24' : '#34d399',
+                    },
+                  }}
+                />
+              </Box>
+            ) : null}
+          </Box>
+        );
+      })()}
 
       {showBudgetReviewAction && (
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button
             variant="contained"
+            size="large"
             onClick={onSendBudgetReview}
             sx={{
               textTransform: 'none',
-              fontWeight: 700,
-              bgcolor: '#fbbf24',
-              color: '#111827',
-              '&:hover': { bgcolor: '#f59e0b' },
+              fontWeight: 800,
+              fontSize: '1.02rem',
+              px: 2.6,
+              py: 1.1,
+              minHeight: 52,
+              borderRadius: 2.5,
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+              color: '#fff',
+              boxShadow: '0 8px 24px rgba(139,92,246,0.35)',
+              '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
             }}
           >
-            Send budsjett til klient
+            Send budsjett til kunden
           </Button>
         </Stack>
       )}
@@ -400,11 +473,11 @@ export default function ProducerEconomyPanel({
             InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
           />
           <Button
-            variant="contained"
+            variant="outlined"
             startIcon={<AddIcon />}
             onClick={() => { void handleCreate(); }}
             disabled={loading || !category.trim() || !itemName.trim()}
-            sx={{ bgcolor: '#fbbf24', color: '#111827', fontWeight: 700, textTransform: 'none', minWidth: 140 }}
+            sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.4)', fontWeight: 700, textTransform: 'none', minWidth: 140, '&:hover': { borderColor: 'rgba(148,163,184,0.7)', background: 'rgba(148,163,184,0.08)' } }}
           >
             Legg til linje
           </Button>

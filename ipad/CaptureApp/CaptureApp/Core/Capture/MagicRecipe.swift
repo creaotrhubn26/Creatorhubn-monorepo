@@ -130,6 +130,24 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// frames; landscape/aviation/vehicle presets enable it.
     var autoStraighten: Bool = false
 
+    /// Apple scene auto-enhance (`CIImage.autoAdjustmentFilters` med `.enhance`).
+    /// Gir en ren, farge-nøytral baseline for RÅ/kamera-JPEG-fangst før recipe-
+    /// justeringene legges på. Men på ALLEREDE ferdig-gradede/leverte bilder
+    /// dobbelt-prosesserer den (over-metter, re-kontrasterer, flytter farge) og
+    /// bør slås AV. Default true (bevarer fangst-oppførsel); korrigerende
+    /// finishing-presets (f.eks. ``wedding``) setter false.
+    var autoEnhance: Bool = true
+
+    /// Hud-tone-guard-styrke (0…1). Forankrer hudens rødhet (Lab a*) mot den
+    /// etnisitets-invariante ~10–11 uten å røre L*/b* — fikser både grønn/gjørmete
+    /// (sør-asiatisk/mørk hud i blandet lys) og oransje (lys hud i varmt lys).
+    /// Se ``SkinToneGuardFilter``. Default 0 (av).
+    var skinGuard: Double = 0
+
+    /// Film-korn-styrke (0…1). Dempet organisk korn som soft-light-finish — en
+    /// av de mest taktile «film»-tellene. Se ``FilmGrainFilter``. Default 0.
+    var filmGrain: Double = 0
+
     /// **Phase 7C** — Manual horizon angle, in radians. Range
     /// effectively ±0.2618 (±15°) — beyond that the straighten tool
     /// stops; use the regular crop+rotate UI for dutch tilts. Used as
@@ -210,8 +228,68 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         warmth: 0.10, skinHighFreq: 0.15, skinLowFreq: 0.30, shadowLift: 0.20,
         contrast: 0.05, saturation: 0.05,
         highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0,
-        eyeSharpen: 0.30, eyeCatchlight: 0.20,
+        eyeSharpen: 0.30, eyeCatchlight: 0.20, skinGuard: 0.5,
         teethWhiten: 0.20, skinUnify: 0.30
+    )
+
+    /// **Bryllup / varmt lys** — KORRIGERENDE reportasje-grade for tungsten- og
+    /// mikset venue-lys, kalibrert mot bransjestandard for bryllupsredigering
+    /// (Lightroom-workflow fra profesjonelle bryllupsfotografer):
+    ///   • temp mot blå (`warmth -0.35`) — nøytraliser oransjestikket i stedet
+    ///     for å ADDERE varme (den vanligste nybegynnerfeilen på tungsten-lys)
+    ///   • høylys-gjenoppretting `0.42` (LR «Highlights −10…−40») — hent tilbake
+    ///     utbrente detaljer i kjoler/vindus-/spotlys
+    ///   • skyggeløft `0.22` (LR «Shadows +10…+35») for den store dynamikken
+    ///   • kontrast `0.12` (LR «Contrast 0…+15») — mild, ikke knivskarp
+    ///   • `vibrance 0.18` (LR «+10…+25») som BESKYTTER hud, kombinert med
+    ///     `saturation -0.08` (LR «−5…+5») som demper den oransje hud-over-
+    ///     metningen — bransjekonsensus: vibrance > saturation for hud
+    ///   • lett hud-frekvensseparasjon (høyfrekvent detalj bevart, lavfrekvent
+    ///     tone ≤0.5 = «natural retouch», aldri plast)
+    /// **Auto-enhance AV** — bildet skal graderes bevisst, ikke re-prosesseres
+    /// av Apples scene-auto-enhance (det doble-prosesserer ferdige/leverte JPEG-er).
+    static let wedding = MagicRecipe(
+        warmth: -0.35, skinHighFreq: 0.12, skinLowFreq: 0.18, shadowLift: 0.22,
+        contrast: 0.12, saturation: -0.08,
+        highlightRecovery: 0.42, vibrance: 0.18, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.22, eyeCatchlight: 0.15, autoEnhance: false, skinGuard: 0.7,
+        teethWhiten: 0.15, skinUnify: 0.22
+    )
+
+    /// **Portra Clean** — den rene standard-bryllups/portrett-looken, kalibrert
+    /// mot Kodak Portra 400 (bransje-referanse): svakt varm (+~200K), myk
+    /// høylys-skulder, skygge-løft til varm grå, DEMPET metning m/ vibrance som
+    /// beskytter hud (film-standard: vibrance > saturation), fint korn. Hud-guard
+    /// på så «kremaktige» høylys ikke tipper til oransje.
+    static let portraClean = MagicRecipe(
+        warmth: 0.15, skinHighFreq: 0.10, skinLowFreq: 0.15, shadowLift: 0.28,
+        contrast: 0.08, saturation: -0.08,
+        highlightRecovery: 0.35, vibrance: 0.12, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.22, eyeCatchlight: 0.15, skinGuard: 0.6, filmGrain: 0.12,
+        teethWhiten: 0.15, skinUnify: 0.20
+    )
+
+    /// **Reception Warm** — tungsten/innendørs fest: KORRIGER hvitbalanse mot
+    /// nøytral først (håndteres av grunn-render + hud-guard), behold en dus varm
+    /// stemning, men beskytt høylys (levende lys/practicals) og TEM oransje hud
+    /// hardt. Auto-enhance av (ferdige/leverte bilder). Litt mer korn (dim fest).
+    static let receptionWarm = MagicRecipe(
+        warmth: -0.05, skinHighFreq: 0.10, skinLowFreq: 0.18, shadowLift: 0.22,
+        contrast: 0.12, saturation: -0.10,
+        highlightRecovery: 0.55, vibrance: 0.10, texture: 0.05, dehaze: 0,
+        eyeSharpen: 0.20, eyeCatchlight: 0.15, autoEnhance: false, skinGuard: 0.8, filmGrain: 0.16,
+        teethWhiten: 0.15, skinUnify: 0.25
+    )
+
+    /// **Bright & Airy (Fuji 400H)** — lys/luftig fine-art: sterkt skygge-løft
+    /// (pastell), flat/lav kontrast, dempede pasteller (høyere metnings-demping),
+    /// kjølig-nøytral. Kalibrert mot Fuji Pro 400H (lys-og-luftig-linjen).
+    static let brightAiry = MagicRecipe(
+        warmth: -0.10, skinHighFreq: 0.08, skinLowFreq: 0.12, shadowLift: 0.38,
+        contrast: -0.05, saturation: -0.14,
+        highlightRecovery: 0.40, vibrance: 0.05, texture: 0.03, dehaze: 0,
+        eyeSharpen: 0.18, eyeCatchlight: 0.12, skinGuard: 0.5, filmGrain: 0.18,
+        teethWhiten: 0.12, skinUnify: 0.20
     )
 
     /// Aviation: dehaze is the canonical primary tool for aviation
@@ -403,6 +481,12 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if skinUnify >= 0.05 {
             chips.append("Skin Unify +\(Int((skinUnify * 100).rounded()))%")
         }
+        if skinGuard >= 0.05 {
+            chips.append("Skin Guard +\(Int((skinGuard * 100).rounded()))%")
+        }
+        if filmGrain >= 0.05 {
+            chips.append("Film Grain +\(Int((filmGrain * 100).rounded()))%")
+        }
         if subjectType != .none {
             chips.append("Type: \(subjectType.rawValue.capitalized)")
         }
@@ -416,6 +500,10 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             && dehaze == 0 && eyeSharpen == 0 && eyeCatchlight == 0
             && !autoStraighten && straightenAngle == 0
             && teethWhiten == 0 && subjectType == .none && skinUnify == 0
+            // skinGuard/filmGrain manglet → en recipe med KUN én av dem ble regnet
+            // nøytral, og RAWExportPipeline merget inn Picture Style-baselinen selv
+            // om fotografen hadde rørt en slider (mot den dokumenterte regelen).
+            && skinGuard == 0 && filmGrain == 0
     }
 
     // MARK: - Codable (forward-compat decode)
@@ -441,6 +529,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         eyeSharpen = try c.decodeIfPresent(Double.self, forKey: .eyeSharpen) ?? 0
         eyeCatchlight = try c.decodeIfPresent(Double.self, forKey: .eyeCatchlight) ?? 0
         autoStraighten = try c.decodeIfPresent(Bool.self, forKey: .autoStraighten) ?? false
+        autoEnhance = try c.decodeIfPresent(Bool.self, forKey: .autoEnhance) ?? true
+        skinGuard = try c.decodeIfPresent(Double.self, forKey: .skinGuard) ?? 0
+        filmGrain = try c.decodeIfPresent(Double.self, forKey: .filmGrain) ?? 0
         straightenAngle = try c.decodeIfPresent(Double.self, forKey: .straightenAngle) ?? 0
         teethWhiten = try c.decodeIfPresent(Double.self, forKey: .teethWhiten) ?? 0
         subjectType = try c.decodeIfPresent(SubjectType.self, forKey: .subjectType) ?? .none
@@ -465,6 +556,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         eyeSharpen: Double = 0,
         eyeCatchlight: Double = 0,
         autoStraighten: Bool = false,
+        autoEnhance: Bool = true,
+        skinGuard: Double = 0,
+        filmGrain: Double = 0,
         straightenAngle: Double = 0,
         teethWhiten: Double = 0,
         subjectType: SubjectType = .none,
@@ -484,6 +578,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.eyeSharpen = eyeSharpen
         self.eyeCatchlight = eyeCatchlight
         self.autoStraighten = autoStraighten
+        self.autoEnhance = autoEnhance
+        self.skinGuard = skinGuard
+        self.filmGrain = filmGrain
         self.straightenAngle = straightenAngle
         self.teethWhiten = teethWhiten
         self.subjectType = subjectType
@@ -494,7 +591,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
         case eyeSharpen, eyeCatchlight
-        case autoStraighten, straightenAngle
+        case autoStraighten, autoEnhance, skinGuard, filmGrain, straightenAngle
         case teethWhiten, subjectType, skinUnify
     }
 }

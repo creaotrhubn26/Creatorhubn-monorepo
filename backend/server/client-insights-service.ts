@@ -33,9 +33,10 @@ import {
   fetchTiktokAdsMetrics,
   type TiktokAdsMetrics,
 } from "./client-tiktok-suite.js";
+import { externalFetch } from "./external-api.js";
 
 const GA4_DATA_BASE = "https://analyticsdata.googleapis.com/v1beta";
-const ADS_API_BASE = "https://googleads.googleapis.com/v18";
+const ADS_API_BASE = "https://googleads.googleapis.com/v23"; // v18 pensjonert (404) per 19.07.2026
 const GSC_BASE = "https://www.googleapis.com/webmasters/v3";
 
 async function token(pool: Pool, producerUserId: string): Promise<string | null> {
@@ -83,7 +84,7 @@ async function fetchGa4Metrics(
   if (!access) return null;
 
   // Hovedmetrikker
-  const mainR = await fetch(`${GA4_DATA_BASE}/properties/${propertyId}:runReport`, {
+  const mainR = await externalFetch(`${GA4_DATA_BASE}/properties/${propertyId}:runReport`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -104,7 +105,7 @@ async function fetchGa4Metrics(
   const num = (i: number) => Number(vals[i]?.value ?? 0);
 
   // Trafikk per kanal
-  const channelR = await fetch(`${GA4_DATA_BASE}/properties/${propertyId}:runReport`, {
+  const channelR = await externalFetch(`${GA4_DATA_BASE}/properties/${propertyId}:runReport`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -123,7 +124,7 @@ async function fetchGa4Metrics(
   }));
 
   // Daglig trend
-  const trendR = await fetch(`${GA4_DATA_BASE}/properties/${propertyId}:runReport`, {
+  const trendR = await externalFetch(`${GA4_DATA_BASE}/properties/${propertyId}:runReport`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -200,7 +201,7 @@ async function fetchAdsMetrics(
       FROM customer
      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
   `;
-  const mainR = await fetch(`${ADS_API_BASE}/customers/${cleanCust}/googleAds:search`, {
+  const mainR = await externalFetch(`${ADS_API_BASE}/customers/${cleanCust}/googleAds:search`, {
     method: "POST",
     headers,
     body: JSON.stringify({ query: mainQuery }),
@@ -224,7 +225,7 @@ async function fetchAdsMetrics(
      ORDER BY metrics.cost_micros DESC
      LIMIT 5
   `;
-  const campaignR = await fetch(`${ADS_API_BASE}/customers/${cleanCust}/googleAds:search`, {
+  const campaignR = await externalFetch(`${ADS_API_BASE}/customers/${cleanCust}/googleAds:search`, {
     method: "POST",
     headers,
     body: JSON.stringify({ query: campaignQuery }),
@@ -244,7 +245,7 @@ async function fetchAdsMetrics(
      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
      ORDER BY segments.date
   `;
-  const trendR = await fetch(`${ADS_API_BASE}/customers/${cleanCust}/googleAds:search`, {
+  const trendR = await externalFetch(`${ADS_API_BASE}/customers/${cleanCust}/googleAds:search`, {
     method: "POST",
     headers,
     body: JSON.stringify({ query: trendQuery }),
@@ -298,7 +299,7 @@ async function fetchGscMetrics(
   if (!access) return null;
 
   // Totaler + daglig trend (én request med date-dimension, så aggregerer vi)
-  const dailyR = await fetch(`${GSC_BASE}/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
+  const dailyR = await externalFetch(`${GSC_BASE}/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -317,7 +318,7 @@ async function fetchGscMetrics(
   const dailyTrend = dailyRows.map((r) => ({ date: r.keys[0], clicks: r.clicks, impressions: r.impressions }));
 
   // Top queries
-  const queryR = await fetch(`${GSC_BASE}/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
+  const queryR = await externalFetch(`${GSC_BASE}/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -336,7 +337,7 @@ async function fetchGscMetrics(
   }));
 
   // Top pages
-  const pageR = await fetch(`${GSC_BASE}/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
+  const pageR = await externalFetch(`${GSC_BASE}/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
     body: JSON.stringify({

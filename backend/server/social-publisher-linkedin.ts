@@ -119,6 +119,37 @@ async function loadLinkedInConnection(
   }
 }
 
+/**
+ * Verifiserings-broen: levende sjekk av tilkoblingen FØR publisering —
+ * kaller LinkedIn /v2/userinfo med tokenet og returnerer identiteten
+ * brukeren faktisk vil publisere som. Utløpt/trukket token → ærlig
+ * 'reconnect_required' i stedet for en feilet publisering.
+ */
+export async function verifyLinkedInIdentity(
+  pool: Pool,
+  userId: string,
+): Promise<
+  | { ok: true; name: string | null; memberId: string; scopes: string[] }
+  | { ok: false; reason: 'not_connected' | 'reconnect_required' | 'verify_failed' }
+> {
+  const conn = await loadLinkedInConnection(pool, userId);
+  if (!conn) return { ok: false, reason: 'not_connected' };
+  try {
+    const resp = await fetch('https://api.linkedin.com/v2/userinfo', {
+      headers: { Authorization: `Bearer ${conn.accessToken}` },
+    });
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, reason: 'reconnect_required' };
+    }
+    if (!resp.ok) return { ok: false, reason: 'verify_failed' };
+    const body = (await resp.json()) as { name?: string; given_name?: string; family_name?: string };
+    const name = body.name ?? [body.given_name, body.family_name].filter(Boolean).join(' ') ?? null;
+    return { ok: true, name: name || null, memberId: conn.memberId, scopes: conn.scopes };
+  } catch {
+    return { ok: false, reason: 'verify_failed' };
+  }
+}
+
 export interface LinkedInManagedCompany {
   urn: string; // urn:li:organization:12345
   id: string;

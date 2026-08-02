@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import React, { lazy, Suspense, useEffect } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, CircularProgress, Container, Typography } from '@mui/material';
 
 import { useSuperAdminGate, SUPER_ADMIN_OWNER_EMAIL } from './useSuperAdminGate';
@@ -80,6 +81,7 @@ const SuperAdminAdminRoomShell: React.FC = () => {
   }
 
   return (
+    <ErrorBoundary componentName="superadmin-admin-room-shell">
     <Suspense
       fallback={
         <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#050816' }}>
@@ -89,6 +91,7 @@ const SuperAdminAdminRoomShell: React.FC = () => {
     >
       <AdminRoom />
     </Suspense>
+    </ErrorBoundary>
   );
 };
 

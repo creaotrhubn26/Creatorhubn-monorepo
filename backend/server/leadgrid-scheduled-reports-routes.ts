@@ -20,9 +20,12 @@
  * Beregner next_send_at basert på frequency + day_of_week/month + time_of_day.
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
+import { buildInfographicUrl, emailImgTag } from "./infographic-share.js";
+import { renderInfographicToBuffer } from "./infographic-render.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -38,7 +41,8 @@ function getSession(req: Request, sessions: Map<string, SessionData>): SessionDa
 
 function isCronAuthorized(req: Request): boolean {
   const t = req.headers["x-cron-trigger-token"] as string | undefined;
-  return !!t && !!CRON_TOKEN && t === CRON_TOKEN;
+  if (!t || !CRON_TOKEN || t.length !== CRON_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(CRON_TOKEN));
 }
 
 async function getOrgId(pool: Pool, userId: string): Promise<string | null> {
@@ -280,8 +284,26 @@ async function getOrgBranding(pool: Pool, orgId: string) {
 
 /** Render PDF KPI-rapport til Buffer (samme template som /export-summary). */
 async function renderSummaryPdfToBuffer(
-  summary: SummaryData, branding: any, periodLabel: string,
+  pool: Pool, summary: SummaryData, branding: any, periodLabel: string,
 ): Promise<Buffer> {
+  // Merkevaret KPI-infographic som visuell topp-banner (best-effort — feiler den, hoppes den
+  // over og PDF-en genereres uansett). Samme render-motor som render.png, gir PNG-buffer.
+  let infoPng: Buffer | null = null;
+  try {
+    infoPng = await renderInfographicToBuffer(pool, {
+      tpl: "kpi-grid", ws: "leadgrid", accent: branding.primary_color,
+      data: {
+        label: "Salgs-rapport",
+        cards: [
+          { value: summary.won_count, label: "Vunnet" },
+          { value: summary.lost_count, label: "Tapt" },
+          { value: `${(Number(summary.total_won_oere) / 100).toLocaleString("no-NO")} kr`, label: "Sum vunnet" },
+          { value: `${Math.round((summary.win_rate || 0) * 100)} %`, label: "Win-rate" },
+        ],
+      },
+      width: 1200, height: 520,
+    });
+  } catch { /* infographic er valgfri pynt */ }
   return await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: "A4" });
     const chunks: Buffer[] = [];
@@ -299,6 +321,10 @@ async function renderSummaryPdfToBuffer(
        .moveTo(50, 150).lineTo(545, 150).stroke();
 
     let y = 170;
+    if (infoPng) {
+      // Visuell topp-banner (samme KPI-er som en polert grafikk); tekst-kortene under gir presise, selekterbare tall.
+      try { doc.image(infoPng, 50, y, { width: 495 }); y += Math.round((495 * 520) / 1200) + 14; } catch { /* hopp over banneret */ }
+    }
     const kpis = [
       { label: "Vunnet", value: summary.won_count, color: "#16a34a" },
       { label: "Tapt", value: summary.lost_count, color: "#dc2626" },
@@ -431,6 +457,23 @@ function buildReportEmailHtml(opts: {
   wonCount: string; lostCount: string; totalWonKr: string; winRatePct: string;
   filename: string;
 }): string {
+  // Merkevaret KPI-infographic (kpi-grid) generert fra rapport-tallene via delings-primitiven.
+  // Vises som visuell banner øverst; KPI-tabellen under er tekst-fallback (e-post-bilder blokkeres ofte).
+  const backendBase = (process.env.BACKEND_BASE_URL || "https://creatorhub-backend-rtbl.onrender.com").replace(/\/+$/, "");
+  const infoUrl = buildInfographicUrl({
+    base: backendBase, tpl: "kpi-grid", ws: "leadgrid", accent: opts.primaryColor,
+    data: {
+      label: "Ukens salgs-rapport",
+      cards: [
+        { value: opts.wonCount, label: "Vunnet" },
+        { value: opts.lostCount, label: "Tapt" },
+        { value: opts.totalWonKr, label: "Sum vunnet" },
+        { value: opts.winRatePct, label: "Win-rate" },
+      ],
+    },
+    w: 1200, h: 720,
+  });
+  const infoImg = emailImgTag(infoUrl, { width: 552, alt: `Salgs-rapport: ${opts.wonCount} vunnet · ${opts.winRatePct} win-rate` });
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f8;
 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f4f4f8;">
@@ -450,6 +493,9 @@ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
         ${opts.orgName}
       </h1>
       <div style="color:#888;font-size:12px;margin-top:4px;">${opts.periodLabel}</div>
+    </td></tr>
+    <tr><td style="padding:16px 24px 0 24px;">
+      ${infoImg}
     </td></tr>
     <tr><td style="padding:16px 24px;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -754,7 +800,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
           if (sub.report_type === "summary" || sub.report_type === "both") {
             summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter);
-            const pdf = await renderSummaryPdfToBuffer(summary, branding, periodLabel);
+            const pdf = await renderSummaryPdfToBuffer(pool, summary, branding, periodLabel);
             attachments.push({
               filename: `salgs-rapport-${datedSuffix}.pdf`,
               content: pdf,
@@ -871,7 +917,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
       res.json({ ok: true, duration_ms: Date.now() - start, ...results });
     } catch (e: any) {
       console.error("[scheduled-reports/run]", e);
-      res.status(500).json({ error: e?.message ?? "run_failed" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

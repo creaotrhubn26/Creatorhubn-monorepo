@@ -145,7 +145,7 @@ export function createDanceBillingRouter(
     try {
       res.status(201).json({ success: true, data: await svc.createPlan(pool, parsed.data) });
     } catch (err) {
-      res.status(400).json({ error: 'create_failed', detail: String(err) });
+      res.status(400).json({ error: 'create_failed', detail: "internal_error" });
     }
   });
 
@@ -162,7 +162,7 @@ export function createDanceBillingRouter(
       const ok = await svc.deletePlan(pool, req.params.slug);
       res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
     } catch (err) {
-      res.status(409).json({ error: 'conflict', detail: String(err) });
+      res.status(409).json({ error: 'conflict', detail: "internal_error" });
     }
   });
 

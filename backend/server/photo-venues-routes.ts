@@ -325,7 +325,7 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
         `SELECT * FROM photo_venues WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
         [req.params.slug],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!r.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       res.json({ venue: rowToVenue(r.rows[0]) });
     } catch (err) {
       console.error("GET /api/photo-venues/:slug:", err);
@@ -435,7 +435,7 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
         `SELECT * FROM photo_venue_contributions WHERE id = $1 AND status = 'pending' LIMIT 1`,
         [req.params.id],
       );
-      if (cr.rowCount === 0) return res.status(404).json({ error: "Bidrag finnes ikke eller er ikke pending" });
+      if (!cr.rows.length) return res.status(404).json({ error: "Bidrag finnes ikke eller er ikke pending" });
       const contribution = cr.rows[0];
       const proposed = contribution.proposed_data || {};
 
@@ -449,12 +449,17 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, "")
           .slice(0, 60) || "venue";
-        // Sikre unik slug
+        // Sikre unik slug. photo_venues.slug har UNIQUE-constraint — det
+        // er den egentlige garantien. Pre-sjekken velger bare et pent
+        // startsuffiks; ved samtidig godkjenning av to bidrag med samme
+        // navn fanger vi unique-violation (23505) på INSERT og prøver
+        // neste suffiks, ellers ville taperen av racet få en 500.
         let slug = baseSlug;
-        for (let i = 2; i < 100; i++) {
+        let suffix = 2;
+        for (; suffix < 100; suffix++) {
           const exists = await pool.query(`SELECT 1 FROM photo_venues WHERE slug = $1`, [slug]);
-          if (exists.rowCount === 0) break;
-          slug = `${baseSlug}-${i}`;
+          if (!exists.rows.length) break;
+          slug = `${baseSlug}-${suffix}`;
         }
 
         const cols = ["slug"];
@@ -470,10 +475,27 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
         vals.push(new Date(), reviewerId);
         placeholders.push(`$${vals.length - 1}`, `$${vals.length}`);
 
-        const ins = await pool.query(
-          `INSERT INTO photo_venues (${cols.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`,
-          vals,
-        );
+        // Retry-on-conflict: kun slug (vals[0]) er UNIQUE i photo_venues,
+        // så en 23505 her betyr slug-kollisjon → bump suffiks og prøv igjen.
+        let ins: any = null;
+        for (let tries = 0; tries < 100; tries++) {
+          try {
+            ins = await pool.query(
+              `INSERT INTO photo_venues (${cols.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`,
+              vals,
+            );
+            break;
+          } catch (e: any) {
+            if (e?.code === "23505" && tries < 99) {
+              vals[0] = `${baseSlug}-${suffix++}`;
+              continue;
+            }
+            throw e;
+          }
+        }
+        if (!ins) {
+          return res.status(409).json({ error: "Kunne ikke generere unik slug" });
+        }
         await pool.query(
           `UPDATE photo_venue_contributions SET
              status = 'approved', admin_note = $1, reviewed_by = $2, reviewed_at = NOW(),

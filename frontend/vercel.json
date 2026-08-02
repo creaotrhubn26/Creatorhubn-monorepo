@@ -98,6 +98,146 @@
       "destination": "https://creatorhub-backend-rtbl.onrender.com/api/theroleroom-sitemap.xml"
     },
     {
+      "source": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        }
+      ],
+      "destination": "/leadgrid-robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        }
+      ],
+      "destination": "/leadgrid-sitemap.xml"
+    },
+    {
+      "source": "/akademi",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/akademi.html"
+    },
+    {
+      "source": "/akademi/samarbeid-salg-marked",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/akademi-samarbeid-salg-marked.html"
+    },
+    {
+      "source": "/akademi/velge-crm-feltsalg",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/akademi-velge-crm-feltsalg.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/landing.html"
+    },
+    {
+      "source": "/priser",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/priser.html"
+    },
+    {
+      "source": "/skaffe-leads-guide",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/skaffe-leads-guide.html"
+    },
+    {
+      "source": "/feltsalg-for-salgsteam",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/feltsalg-for-salgsteam.html"
+    },
+    {
+      "source": "/personvern",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/leadgrid/personvern.html"
+    },
+    {
       "source": "/cdn/(.*)",
       "destination": "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/$1"
     },
@@ -134,6 +274,505 @@
         }
       ],
       "destination": "/theroleroom-llms.txt"
+    },
+    {
+      "source": "/llms.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        }
+      ],
+      "destination": "/leadgrid-llms.txt"
+    },
+    {
+      "source": "/llms.txt",
+      "destination": "/creatorhubn-llms.txt"
+    },
+    {
+      "source": "/casting-svindel-tegn",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/casting-svindel-tegn.html"
+    },
+    {
+      "source": "/barn-samtykke-film",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/barn-samtykke-film.html"
+    },
+    {
+      "source": "/bak-castingen",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/bak-castingen.html"
+    },
+    {
+      "source": "/vart-syn",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/vart-syn.html"
+    },
+    {
+      "source": "/selvtape-tips",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/selvtape-tips.html"
+    },
+    {
+      "source": "/operativsystem",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/operativsystem.html"
+    },
+    {
+      "source": "/norsk-casting-ordliste",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/norsk-casting-ordliste.html"
+    },
+    {
+      "source": "/arbeidstilsynet-guide-produksjon",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/arbeidstilsynet-guide-produksjon.html"
+    },
+    {
+      "source": "/sentimental-value-effekten",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/sentimental-value-effekten.html"
+    },
+    {
+      "source": "/crew-i-norge-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/crew-i-norge-2026.html"
+    },
+    {
+      "source": "/innspillingsdag-koordinering",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/innspillingsdag-koordinering.html"
+    },
+    {
+      "source": "/intimacy-coordinator-norge",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/intimacy-coordinator-norge.html"
+    },
+    {
+      "source": "/kamera-folk-verktoy-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/kamera-folk-verktoy-2026.html"
+    },
+    {
+      "source": "/etterproduksjon-norge-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/etterproduksjon-norge-2026.html"
+    },
+    {
+      "source": "/produksjons-os",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/produksjons-os.html"
+    },
+    {
+      "source": "/innholdsprodusent-norge",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/innholdsprodusent-norge.html"
+    },
+    {
+      "source": "/dansestudio-norge",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/dansestudio-norge.html"
+    },
+    {
+      "source": "/verktoy-for-filmutdanninger",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/verktoy-for-filmutdanninger.html"
+    },
+    {
+      "source": "/norsk-casting-prosess",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(GPTBot|ChatGPT-User|OAI-SearchBot|Googlebot|Google-Extended|bingbot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Perplexity-User|CCBot|cohere-ai|Bytespider|Applebot-Extended|DuckAssistBot|meta-externalagent|Amazonbot|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|WhatsApp|TelegramBot).*"
+        }
+      ],
+      "destination": "/geo/norsk-casting-prosess.html"
+    },
+    {
+      "source": "/casting-svindel-tegn",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/barn-samtykke-film",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/bak-castingen",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/vart-syn",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/selvtape-tips",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/operativsystem",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/norsk-casting-ordliste",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/arbeidstilsynet-guide-produksjon",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/sentimental-value-effekten",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/crew-i-norge-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/innspillingsdag-koordinering",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/intimacy-coordinator-norge",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/kamera-folk-verktoy-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/etterproduksjon-norge-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/produksjons-os",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/innholdsprodusent-norge",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/dansestudio-norge",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/verktoy-for-filmutdanninger",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/norsk-casting-prosess",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/casting-rapport-2026",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
     },
     {
       "source": "/en",
@@ -276,36 +915,6 @@
       "destination": "/theroleroom.html"
     },
     {
-      "source": "/casting-svindel-tegn",
-      "has": [
-        {
-          "type": "host",
-          "value": "(www\\.)?theroleroom\\.com"
-        }
-      ],
-      "destination": "/theroleroom.html"
-    },
-    {
-      "source": "/barn-samtykke-film",
-      "has": [
-        {
-          "type": "host",
-          "value": "(www\\.)?theroleroom\\.com"
-        }
-      ],
-      "destination": "/theroleroom.html"
-    },
-    {
-      "source": "/casting-rapport-2026",
-      "has": [
-        {
-          "type": "host",
-          "value": "(www\\.)?theroleroom\\.com"
-        }
-      ],
-      "destination": "/theroleroom.html"
-    },
-    {
       "source": "/brief",
       "has": [
         {
@@ -392,6 +1001,19 @@
     {
       "source": "/api/showcase/cdn/(.*)",
       "destination": "https://showcase-cdn.creatorhubn.workers.dev/api/showcase/cdn/$1"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "https://creatorhub-backend-rtbl.onrender.com/.well-known/oauth-protected-resource"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server",
+      "destination": "https://creatorhub-backend-rtbl.onrender.com/.well-known/oauth-authorization-server"
+    },
+    {
+      "source": "/favicon.ico",
+      "has": [{ "type": "host", "value": "(www\\.)?theroleroom\\.com" }],
+      "destination": "/theroleroom-app-icon-1024.png"
     },
     {
       "source": "/api/(.*)",

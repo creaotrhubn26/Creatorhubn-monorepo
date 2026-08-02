@@ -1,8 +1,10 @@
 import * as React from 'react';
-import { Switch, Route, useLocation } from 'wouter';
+import { Switch, Route, useLocation, Redirect } from 'wouter';
 import { queryClient } from './lib/queryClient';
 import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from "@/hooks/useAuth";
+import { useElementEdits, detectDesignWorkspace } from "@/components/workspace/elementEdits";
+import WorkspaceDesignOverlay from "@/components/workspace/WorkspaceDesignOverlay";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 // Type definition for the current user response from /api/auth/current-user
 interface CurrentUser {
@@ -43,6 +45,7 @@ import { ScrollRestoration } from '@/components/ScrollRestoration';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
 import NotFound from '@/pages/not-found';
 import EmailDesignerPage from '@/pages/EmailDesignerPage';
+import ResumeThumbPage from '@/pages/ResumeThumbPage';
 // import GoogleOAuthSetupPage from '@/pages/GoogleOAuthSetupPage'; // File deleted
 import AdminPage from '@/pages/AdminPage';
 import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
@@ -88,6 +91,7 @@ import WeddingTimelineClientPage from '@/pages/wedding-timeline-client';
 import WeddingTimelineClientResponsive from '@/pages/WeddingTimelineClientResponsive';
 import EvendiTimelineAdmin from '@/components/wedding/WeddingTimelineAdmin';
 import PricingPage from '@/pages/PricingPage';
+import PublicPricingPage from '@/pages/public-pricing';
 import ContractSigningPage from '@/pages/ContractSigningPage';
 // import MillionDollarMeetingSystem from '@/pages/million-dollar-meeting-system'; // File deleted
 // import MeetingWorkspaceSimple from '@/pages/meeting-workspace-simple'; // File deleted
@@ -96,6 +100,9 @@ import BusinessBrandingPage from '@/pages/BusinessBrandingPage';
 import AdminInviteSystem from '@/pages/admin-invite-system';
 import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
 import AcceptPrototypeTesterInvite from '@/pages/AcceptPrototypeTesterInvite';
+import ClaimStudentAccess from '@/pages/ClaimStudentAccess';
+import ClaimCensorAccess from '@/pages/ClaimCensorAccess';
+import CensorView from '@/pages/CensorView';
 import TesterStatusBanner from '@/components/tester/TesterStatusBanner';
 import GoogleSSOErrorBanner from '@/components/auth/GoogleSSOErrorBanner';
 import EnterpriseOfferModal from '@/components/tester/EnterpriseOfferModal';
@@ -188,6 +195,8 @@ import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
+import DataDeletion from '@/pages/data-deletion';
+import CookiePolicy from '@/pages/cookie-policy';
 import ClientWorkspaceShell from '@/components/role-room/components/client-workspace/ClientWorkspaceShell';
 import PublicCV from '@/pages/public-cv';
 import NextRoleLanding from '@/pages/nextrole-landing';
@@ -212,6 +221,7 @@ import PortalPage from '@/pages/portal';
 import PhotographerProjectUpload from '@/pages/photographer-project-upload';
 import PhotographerEquipment from '@/pages/photographer-equipment';
 import PhotographerSettings from '@/pages/photographer-settings';
+import MinProfil from '@/pages/MinProfil';
 import WeddingAccessPage from '@/pages/wedding-access';
 import WeddingClientFormPage from '@/pages/wedding-client-form';
 import ContactFormPublic from '@/pages/contact-form-public';
@@ -229,6 +239,7 @@ const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 const AdminWorkspacePage = React.lazy(() => import('./pages/AdminWorkspace'));
 const TeamWorkspacePage = React.lazy(() => import('./components/workspace/TeamWorkspacePage'));
+const WorkspaceHome = React.lazy(() => import('./components/workspace/WorkspaceHome'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
@@ -238,8 +249,13 @@ const PartnerApplicationForm = React.lazy(() => import('@/components/universal/e
 const PartnerPortalPage = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerPortalPage'));
 const PartnerTerms = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerTerms'));
 const PartnerLanding = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerLanding'));
+const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/universal/editing-marketplace/EditingVendorWorkspace'));
+import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
+const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
+const ChatGuidePage = React.lazy(() => import('@/pages/chat-guide'));
+const ChatActionsGuidePage = React.lazy(() => import('@/pages/chat-actions-guide'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -335,10 +351,23 @@ const createAcademyRouteWrapper = (
       );
     }
 
+    // Modul-boundary per Academy-rute: en krasj i ett studio blanker ikke hele
+    // SPA-en, den faller tilbake til feilkortet mens resten av appen lever. Keyet
+    // på pathname → navigasjon (også param-bytte innen samme rute) remonterer
+    // boundaryen og gir auto-recovery uten full reload. Se app-router-boundaryen.
+    const academyComponentName =
+      (Component as any).displayName || (Component as any).name || 'AcademyRoute';
+
     return (
       <AcademyDesignProvider>
         <AcademyProvider>
-          {gatedContent}
+          <ErrorBoundary
+            key={pathname}
+            componentName={`academy:${academyComponentName}`}
+            context={{ pathname, accessMode }}
+          >
+            {gatedContent}
+          </ErrorBoundary>
         </AcademyProvider>
       </AcademyDesignProvider>
     );
@@ -407,6 +436,37 @@ const StoryArcStudioRouteWrapper = () => (
   </SettingsProvider>
 );
 
+// Workspace-flatene (prosjektvelger + per-prosjekt Team Workspace) rendrer
+// barn som kaller useRealTime()/useSettings() (ProjectCreationWithMemoryCards,
+// ProjectCommentsPanel m.fl.). Uten disse providerne kaster useRealTime og hele
+// /workspace-ruten krasjer. Komponentene har egen mørk ThemeProvider, så vi
+// legger IKKE på AppThemeProvider her (unngår å overstyre workspace-temaet).
+const WorkspaceHomeRouteWrapper = () => (
+  <SettingsProvider>
+    <RealTimeProvider>
+      <WorkspaceHome />
+    </RealTimeProvider>
+  </SettingsProvider>
+);
+
+const TeamWorkspaceRouteWrapper = () => (
+  <SettingsProvider>
+    <RealTimeProvider>
+      <ErrorBoundary componentName="team-workspace-route">
+        <React.Suspense
+          fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+              <CircularProgress />
+            </Box>
+          }
+        >
+          <TeamWorkspacePage />
+        </React.Suspense>
+      </ErrorBoundary>
+    </RealTimeProvider>
+  </SettingsProvider>
+);
+
 // Community Landing Page Wrapper - gets userId and profession from hooks
 const CommunityLandingPageWrapper = () => {
   try {
@@ -446,10 +506,41 @@ const CommunityLandingPageWrapper = () => {
   }
 };
 
+// Admin-only guard for the visual-editor-enhanced/evendi routes — these were
+// previously registered with no auth wrapper at all, reachable by anyone.
+const VisualEditorEnhancedGuard = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading, isAuthenticated, isAdmin } = useAuth();
+  if (isLoading) return null;
+  if (!isAuthenticated || !user?.id || !isAdmin) {
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login';
+    }
+    return null;
+  }
+  return <>{children}</>;
+};
+
 // Smart Dynamic Dashboard Route Component
 const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) => {
   const { getUserProfession } = useDynamicProfessions();
-  
+  const { user: authUser } = useAuth();
+
+  // Editing-vendors (magic-link-partnere) skal ALLTID inn i vendor-workspacen,
+  // ALDRI den generiske UniversalDashboard (photographer/vendor-chrome).
+  if ((authUser?.role as string | undefined) === 'editing_vendor' && authUser?.id) {
+    return (
+      <ErrorBoundary componentName="editing-vendor-workspace">
+        <React.Suspense fallback={null}>
+          <div style={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', padding: '24px 16px' }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+              <EditingVendorWorkspaceShell userId={authUser.id} />
+            </div>
+          </div>
+        </React.Suspense>
+      </ErrorBoundary>
+    );
+  }
+
   // Authentication disabled - use mock data
   const currentUser = {
     email: 'admin@local.dev',
@@ -550,6 +641,19 @@ function syncAppFavicon(location: string) {
 
 function App() {
   const [location] = useLocation();
+  // Rute-gruppe = første path-segment (/admin-room/deck/x → 'admin-room'). Brukes
+  // som key på den globale error-boundaryen: navigasjon MELLOM flater remounter
+  // boundaryen → auto-reset etter en krasj, mens param-/fane-bytte INNEN samme
+  // flate beholder gruppen (ingen remount, tung state bevares). Se boundary under.
+  const routeGroup = location.split('/')[1] || 'root';
+  // CreatorHub Design (per-element-lag): GLOBALT mount — hele CreatorHub-appen (og Leadgrid-appen
+  // på dens host) får per-element-editoren. Runtime-hooken anvender lagrede edits for alle; ?design=1
+  // åpner live-editoren. Singleton-vakten i overlayet hindrer dobling mot per-side-mount.
+  const designWs = React.useMemo(() => detectDesignWorkspace(), []);
+  useElementEdits(designWs);
+  const [designMode, setDesignMode] = React.useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
 
   React.useEffect(() => {
     const isAcademyRoute = /^\/academy(?:$|[/-])/.test(location);
@@ -598,6 +702,8 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {designMode && <WorkspaceDesignOverlay workspace={designWs} targetFile="frontend/client/src/App.tsx" onClose={() => setDesignMode(false)} />}
+      <ImpersonationBanner />
       <DemoModeProvider>
         <UniversalSessionProvider>
           <ClientSessionProvider>
@@ -629,34 +735,21 @@ function App() {
                     #426 gjorde). Denne fanger enhver ufanget feil og viser en
                     recovery-fallback + rapporterer til Sentry. Prinsipp: fail
                     safe, aldri fail blank. Modul-boundaries under isolerer
-                    enkeltseksjoner slik at resten av skallet overlever. */}
-                <ErrorBoundary componentName="app-router">
+                    enkeltseksjoner slik at resten av skallet overlever.
+                    key={routeGroup}: uten key nullstilles boundaryen ALDRI, så en
+                    rute-krasj låser fallbacken selv når brukeren navigerer til en
+                    frisk flate («Prøv igjen» re-rendrer bare den samme krasjede
+                    ruten). Key-et på rute-gruppen remounter den ved navigasjon
+                    mellom flater → ekte recovery uten full reload. */}
+                <ErrorBoundary key={routeGroup} componentName={`app-router:${routeGroup}`}>
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
+                  {/* Workspace-hjem (prosjektvelger) — hovedflate ved innlogging */}
+                  <Route path="/workspace" component={WorkspaceHomeRouteWrapper} />
                   {/* Per-prosjekt Team Workspace (dark) */}
-                  <Route path="/workspace/:projectId/:tab">
-                    {(params: { projectId: string; tab: string }) => (
-                      <React.Suspense fallback={
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-                          <CircularProgress />
-                        </Box>
-                      }>
-                        <TeamWorkspacePage />
-                      </React.Suspense>
-                    )}
-                  </Route>
-                  <Route path="/workspace/:projectId">
-                    {(params: { projectId: string }) => (
-                      <React.Suspense fallback={
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-                          <CircularProgress />
-                        </Box>
-                      }>
-                        <TeamWorkspacePage />
-                      </React.Suspense>
-                    )}
-                  </Route>
+                  <Route path="/workspace/:projectId/:tab" component={TeamWorkspaceRouteWrapper} />
+                  <Route path="/workspace/:projectId" component={TeamWorkspaceRouteWrapper} />
                   {/* Dans tester-invite landing */}
                   <Route path="/lead-map/accept">
                     {() => {
@@ -727,6 +820,13 @@ function App() {
                   )} />
                   <Route path="/showcase-amazon-demo" component={() => <ShowcaseAmazonDesign />} />
                   <Route path="/demo/animatic" component={DemoAnimaticPage} />
+                  {/* Skjult, offentlig thumbnail-rute: rendrer den ekte CV-mal-komponenten
+                      med eksempel-data for headless PNG-generering (galleri-previewImage). */}
+                  <Route path="/_thumb/resume/:id">
+                    {(params: { id: string }) => (
+                      <ResumeThumbPage id={params.id} scheme={new URLSearchParams(window.location.search).get('scheme')} />
+                    )}
+                  </Route>
                   <Route path="/integration-test" component={IntegrationTest} />
                   <Route path="/email-designer" component={EmailDesignerPage} />
                   {/* <Route path="/google-oauth-setup" component={GoogleOAuthSetupPage} /> */}
@@ -735,31 +835,37 @@ function App() {
                   <Route path="/meta-page-inspector" component={MetaPagePublicMetadataInspector} />
                   <Route path="/admin" component={AdminDashboardWrapper} />
                   <Route path="/admin-room">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <AdminRoomPage />
-                    </React.Suspense>
+                    <ErrorBoundary componentName="admin-room">
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <AdminRoomPage />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </Route>
                   <Route path="/admin-workspace">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <AdminWorkspacePage />
-                    </React.Suspense>
+                    <ErrorBoundary componentName="admin-workspace">
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <AdminWorkspacePage />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </Route>
                   <Route path="/admin-room/deck/:deckId">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <DeckEditorPage />
-                    </React.Suspense>
+                    <ErrorBoundary componentName="deck-editor">
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <DeckEditorPage />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </Route>
                   <Route path="/verification-demo" component={VerificationSystemDashboard as React.ComponentType<any>} />
                   <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard as React.ComponentType<any>} />
@@ -833,6 +939,9 @@ function App() {
                   <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
+                  <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />
+                  <Route path="/guide/chat" component={ChatGuidePage as React.ComponentType<any>} />
+                  <Route path="/guide/actions" component={ChatActionsGuidePage as React.ComponentType<any>} />
                   <Route path="/audio-review/:projectId" component={AudioShowcasePage as React.ComponentType<any>} />
                   <Route path="/audio-review" component={AudioShowcasePage as React.ComponentType<any>} />
                   <Route
@@ -889,7 +998,11 @@ function App() {
                   />
                   <Route path="/settings" component={() => <SmartDashboardRoute />} />
                   <Route path="/smart-meeting-notes" component={SmartMeetingNotesPage} />
-                  <Route path="/resume-builder" component={ResumeBuilder} />
+                  <Route path="/resume-builder">
+                    <ErrorBoundary componentName="resume-builder">
+                      <ResumeBuilder />
+                    </ErrorBoundary>
+                  </Route>
                   <Route path="/cv/:slug" component={PublicCV as React.ComponentType<any>} />
                   <Route path="/nextrole" component={NextRoleLanding as React.ComponentType<any>} />
                   <Route path="/for-byraer" component={AgencyLandingPage as React.ComponentType<any>} />
@@ -921,9 +1034,13 @@ function App() {
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/creatorhub-innovasjon" component={CreatorhubInnovationPage as React.ComponentType<any>} />
                   <Route path="/google-verification-demo" component={GoogleVerificationDemoPage as React.ComponentType<any>} />
-                  <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
+                  <Route path="/pricing" component={PublicPricingPage as React.ComponentType<any>} />
+                  <Route path="/admin/pricing-calculator" component={() => <VisualEditorEnhancedGuard><PricingPage /></VisualEditorEnhancedGuard>} />
                   <Route path="/privacy-policy" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/terms-and-conditions" component={TermsAndConditions as React.ComponentType<any>} />
+                  <Route path="/data-deletion" component={DataDeletion as React.ComponentType<any>} />
+                  <Route path="/cookie-policy" component={CookiePolicy as React.ComponentType<any>} />
+                  <Route path="/gdpr-rettigheter" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
@@ -947,7 +1064,9 @@ function App() {
                     path="/wedding-timeline/:timelineId/:accessCode"
                     component={WeddingTimelineClientResponsive}
                   />
-                  <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
+                  {/* Workspace er hovedflaten — den gamle UniversalDashboard-ruten
+                      redirecter dit. (Vendor beholder /fotograf.) */}
+                  <Route path="/dashboard" component={() => <Redirect to="/workspace" />} />
                   <Route path="/crm" component={CrmStandalone as React.ComponentType<any>} />
                   <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route
@@ -960,9 +1079,13 @@ function App() {
                   <Route path="/accounting/receipts" component={ReceiptsManager as React.ComponentType<any>} />
                   {/* <Route path="/meeting-workspace" component={MeetingWorkspaceSimple as React.ComponentType<any>} /> */}
                   <Route path="/business-branding" component={BusinessBrandingPage} />
+                  <Route path="/profil" component={MinProfil as React.ComponentType<any>} />
                   <Route path="/contracts/:contractId" component={ContractView} />
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
                   <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
+                  <Route path="/role-room/student/claim" component={ClaimStudentAccess} />
+                  <Route path="/role-room/censor/claim" component={ClaimCensorAccess} />
+                  <Route path="/role-room/censor" component={CensorView} />
                   <Route path="/link" component={PostAgentLinkPage} />
                   <Route path="/post-agent/mockup-studio" component={MockupVideoStudioPage} />
                   <Route path="/prototype-tester/accept-invite" component={AcceptPrototypeTesterInvite} />
@@ -1007,9 +1130,9 @@ function App() {
                   <Route path="/vendor-dashboard/:vendorType/:vendorName" component={({ params }) => <UniversalVendorDashboard vendorType={params.vendorType} vendorName={params.vendorName} userId="current-user" />} />
                   <Route path="/visual-editor-advanced" component={VisualEditorWithPageSelection as React.ComponentType<any>} />
                   <Route path="/visual-editor-unified" component={() => <CreatorhubVisualEditorRefactored />} />
-                  <Route path="/visual-editor-enhanced" component={() => <EnhancedVisualEditorPage />} />
-                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <EnhancedVisualEditorPage projectId={params.projectId} />} />
-                  <Route path="/evendi" component={() => <EventiOnePager />} />
+                  <Route path="/visual-editor-enhanced" component={() => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage /></VisualEditorEnhancedGuard>} />
+                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage projectId={params.projectId} /></VisualEditorEnhancedGuard>} />
+                  <Route path="/evendi" component={() => <VisualEditorEnhancedGuard><EventiOnePager /></VisualEditorEnhancedGuard>} />
                   
                   {/* Unified Dashboard Routes */}
                   <Route path="/templates" component={() => <TemplateDashboard onTemplatesClick={() => {}} onCategoriesClick={() => {}} onSearchClick={() => {}} onPreviewClick={() => {}} />} />

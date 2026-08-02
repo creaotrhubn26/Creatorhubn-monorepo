@@ -73,6 +73,8 @@ export const RoleRoomTesterInviteDialog = ({
 }: RoleRoomTesterInviteDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [profession, setProfession] = useState('');
+  const [company, setCompany] = useState('');
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [personalMessage, setPersonalMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -82,6 +84,8 @@ export const RoleRoomTesterInviteDialog = ({
   const reset = () => {
     setName('');
     setEmail('');
+    setProfession('');
+    setCompany('');
     setSelectedAreas([]);
     setPersonalMessage('');
     setError(null);
@@ -119,6 +123,8 @@ export const RoleRoomTesterInviteDialog = ({
         body: JSON.stringify({
           email: email.trim(),
           name: name.trim(),
+          profession: profession.trim() || undefined,
+          company: company.trim() || undefined,
           testingAreas: selectedAreas,
           personalMessage: personalMessage.trim() || undefined,
           ndaVersion: '1.0',
@@ -236,6 +242,30 @@ export const RoleRoomTesterInviteDialog = ({
               InputProps={{ sx: { color: '#fff' } }}
               InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
             />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Profesjon (valgfri)"
+                value={profession}
+                onChange={(e) => setProfession(e.target.value)}
+                fullWidth
+                size="small"
+                helperText="Forhåndsutfyller testerens profil"
+                InputProps={{ sx: { color: '#fff' } }}
+                InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
+                FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.4)' } }}
+              />
+              <TextField
+                label="Bedrift (valgfri)"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                fullWidth
+                size="small"
+                helperText="Bekreftes senere via Brønnøysund"
+                InputProps={{ sx: { color: '#fff' } }}
+                InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
+                FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.4)' } }}
+              />
+            </Stack>
             <Box>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', display: 'block', mb: 1 }}>
                 Områder å teste (velg minst ett)

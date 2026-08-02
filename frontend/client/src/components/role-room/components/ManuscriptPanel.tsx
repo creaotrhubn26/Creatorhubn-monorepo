@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 
 // DEV-only debug-logging — autosave-meldinger og data-snapshot går
 // IKKE til prod-konsol (støy + privacy: klient-script lekker ikke).
@@ -20,6 +21,7 @@ import {
   DialogActions,
   Tabs,
   Tab,
+  Avatar,
   Card,
   CardContent,
   Chip,
@@ -1996,11 +1998,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   }, [selectedManuscript?.pageCount]);
 
   const characterList = useMemo(() => {
-    // Extract unique characters from dialogue
+    // Karakterer «hentes fra dialog OG scenedata» (jf. UI-teksten). Tidligere
+    // leste denne KUN dialogueLines — så fanen var tom når parsingen hadde lagret
+    // scener (med scene.characters) men ikke dialoglinjer. Slå sammen begge kilder.
     const characters = new Set<string>();
-    dialogueLines.forEach(line => characters.add(line.characterName));
-    return Array.from(characters).sort();
-  }, [dialogueLines]);
+    dialogueLines.forEach(line => { if (line.characterName?.trim()) characters.add(line.characterName.trim()); });
+    scenes.forEach(scene => (scene.characters || []).forEach(c => { if (c && String(c).trim()) characters.add(String(c).trim()); }));
+    return Array.from(characters).filter(Boolean).sort();
+  }, [dialogueLines, scenes]);
 
   const sceneStats = useMemo(() => {
     const intScenes = scenes.filter(s => s.intExt === 'INT').length;
@@ -3398,6 +3403,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                           scene={selectedScene}
                           onSceneUpdate={handleSceneUpdateFromStoryboard}
                           renderScriptEditor={({ content, onChange }) => (
+                            <ErrorBoundary componentName="manuscript-script-editor-split">
                             <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
                               <LazyScreenplayEditorWithNavigator
                                 editorKey={`${selectedManuscript.id}-production-split`}
@@ -3434,6 +3440,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                 showLineNumbers={false}
                               />
                             </React.Suspense>
+                            </ErrorBoundary>
                           )}
                           renderStoryboard={({ scene, onUpdate, activeFrameIndex, onFrameSelect }) => (
                             <StoryboardIntegrationView
@@ -4598,9 +4605,22 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     // Count scene headings
     const sceneHeadings = content.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/gim)?.length || 0;
     
-    // Count characters (uppercase lines followed by dialogue)
-    const characterMatches = content.match(/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/gm) || [];
-    const uniqueCharacters = [...new Set(characterMatches.map(c => c.replace(/\s*\(.*\)$/, '').trim()))];
+    // Karakter = ALL-CAPS-linje som FAKTISK er fulgt av dialog (Fountain-regelen).
+    // Ekskluder sceneoverskrifter (INT./EXT.) og overganger (KLIPP TIL SVART.,
+    // CUT TO:, FADE OUT, …) — ellers ble f.eks. «KLIPP TIL SVART.» talt som karakter.
+    const CHAR_LINE = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/;
+    const isHeadingLine = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l);
+    const isTransitionLine = (l: string) =>
+      /:\s*$/.test(l) || /\b(CUT TO|FADE|DISSOLVE|SMASH CUT|MATCH CUT|JUMP CUT|KLIPP|TONER UT|OVERTONING|SVART)\b/i.test(l);
+    const scriptLines = content.split('\n');
+    const foundCharacters: string[] = [];
+    for (let li = 0; li < scriptLines.length; li++) {
+      const line = scriptLines[li].trim();
+      if (!line || !CHAR_LINE.test(line) || isHeadingLine(line) || isTransitionLine(line)) continue;
+      if (!(scriptLines[li + 1] || '').trim()) continue; // må følges av en dialog-linje
+      foundCharacters.push(line.replace(/\s*\(.*\)$/, '').trim());
+    }
+    const uniqueCharacters = [...new Set(foundCharacters)];
     
     return { words, characters, lines, pages, estimatedMinutes, sceneHeadings, uniqueCharacters };
   }, [editorContent]);
@@ -4760,6 +4780,7 @@ Anna går raskt gjennom regnet.
               {isMobile ? `Parser (${contentStats.sceneHeadings})` : `Parser til Scener (${contentStats.sceneHeadings})`}
             </Button>
           )}
+          <ErrorBoundary componentName="manuscript-pdf-export">
           <React.Suspense fallback={<CircularProgress size={isMobile ? 16 : 20} />}>
             <LazyScreenplayPDFExport
               content={manuscript.content}
@@ -4767,6 +4788,7 @@ Anna går raskt gjennom regnet.
               author={manuscript.author}
             />
           </React.Suspense>
+          </ErrorBoundary>
           <Button
             variant="text"
             size={responsive.buttonSize}
@@ -4778,6 +4800,7 @@ Anna går raskt gjennom regnet.
         </Stack>
       </Stack>
       
+      <ErrorBoundary componentName="manuscript-screenplay-editor" key={manuscript.id}>
       <React.Suspense fallback={
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
           <CircularProgress size={is4K ? 48 : isDesktop ? 40 : 32} />
@@ -4819,6 +4842,7 @@ Anna går raskt gjennom regnet.
             onSceneSelect={handleSceneSelect}
           />
       </React.Suspense>
+      </ErrorBoundary>
 
       <Dialog
         open={Boolean(selectedRoleMention?.role)}
@@ -5752,6 +5776,24 @@ const CharactersTab: React.FC<{
     }
   };
 
+  // Avatar for parsede karakterer (ingen foto): formidler IDENTITET (deterministisk
+  // farge + initialer per navn) og ROLLE-viktighet (ring-farge etter rolle).
+  const characterInitials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '?';
+  const characterColor = (name: string) => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    return `hsl(${h}, 52%, 45%)`;
+  };
+  const roleRingColor = (role: string) =>
+    role === 'lead' ? 'error.main' : role === 'supporting' ? 'primary.main' : 'grey.500';
+  // Ekte portrett-avatar (DiceBear «lorelei» — håndtegnet svart-blekk), deterministisk
+  // per navn med pastell-bakgrunn så hver karakter blir distinkt. Faller tilbake til
+  // initialer hvis bildet ikke lastes.
+  const characterAvatarUrl = (name: string) =>
+    `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(name)}` +
+    `&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c4f5d0&radius=50`;
+
   return (
     <Box>
       <Stack 
@@ -5836,14 +5878,32 @@ const CharactersTab: React.FC<{
               >
                 <CardContent sx={{ p: isMobile ? 1.5 : 2 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box>
-                      <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>{character.name}</Typography>
-                      {character.alias && (
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                          aka {character.alias}
-                        </Typography>
-                      )}
-                    </Box>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <Avatar
+                        src={characterAvatarUrl(character.name)}
+                        alt={character.name}
+                        sx={{
+                          bgcolor: characterColor(character.name),
+                          color: '#fff',
+                          width: isMobile ? 34 : 40,
+                          height: isMobile ? 34 : 40,
+                          fontSize: isMobile ? 13 : 15,
+                          fontWeight: 700,
+                          border: 2,
+                          borderColor: roleRingColor(character.role || 'minor'),
+                        }}
+                      >
+                        {characterInitials(character.name)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>{character.name}</Typography>
+                        {character.alias && (
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
+                            aka {character.alias}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
                     <Chip 
                       label={getRoleLabel(character.role || 'minor')} 
                       color={getRoleColor(character.role || 'minor')}

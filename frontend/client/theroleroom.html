@@ -507,10 +507,12 @@
       return trimmedValue;
     }
 
-    var GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
+    var GOOGLE_TAG_MANAGER_ID = 'GTM-KC38RPNZ';
     var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = 'GTM-TNWTVHSP';
     var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
     var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
+    // Meta Pixel — annonsemåling/remarketing; gates på MARKEDSFØRINGS-samtykke.
+    var ROLE_ROOM_META_PIXEL_ID = '1254983913516214';
 
     window.__creatorhubAnalyticsConfig = {
       site: 'role-room',
@@ -558,6 +560,10 @@
       return !!(consentSettings && consentSettings.analytics);
     }
 
+    function hasMarketingConsent(consentSettings) {
+      return !!(consentSettings && consentSettings.marketing);
+    }
+
     (function initRoleRoomGoogleTag() {
       var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       var isOnline = navigator.onLine !== false;
@@ -568,6 +574,8 @@
       var hasSentInitialPageView = false;
       var hasRequestedClarityScript = false;
       var hasLoadedClarityScript = false;
+      var hasRequestedMetaPixel = false;
+      var hasLoadedMetaPixel = false;
       var storedConsent = readStoredConsent();
 
       window.gtag('consent', 'default', buildConsentPayload(storedConsent));
@@ -643,6 +651,36 @@
         return true;
       }
 
+      function ensureMetaPixelLoaded(consentSettings) {
+        // Meta Pixel — kun ved markedsførings-samtykke (annonseformål).
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasMarketingConsent(consentSettings) ||
+          !ROLE_ROOM_META_PIXEL_ID
+        ) {
+          return false;
+        }
+        if (hasLoadedMetaPixel || hasRequestedMetaPixel) {
+          return true;
+        }
+        hasRequestedMetaPixel = true;
+        (function (f, b, e, v, n, t, s) {
+          if (f.fbq) return;
+          n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+          if (!f._fbq) f._fbq = n;
+          n.push = n; n.loaded = true; n.version = '2.0'; n.queue = [];
+          t = b.createElement(e); t.async = true; t.src = v;
+          t.onload = function () { hasLoadedMetaPixel = true; };
+          t.onerror = function () { hasRequestedMetaPixel = false; };
+          s = b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t, s);
+        })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+        window.fbq('init', ROLE_ROOM_META_PIXEL_ID);
+        window.fbq('track', 'PageView');
+        return true;
+      }
+
       function ensureAnalyticsLoaded(consentSettings) {
         if (
           isLocalhost ||
@@ -687,12 +725,14 @@
           ensureAnalyticsLoaded(consentSettings);
           ensureClarityLoaded(consentSettings);
         }
+        ensureMetaPixelLoaded(consentSettings);
         return true;
       };
       window.__creatorhubLoadAnalytics = function (consentSettings) {
         var resolvedConsent = consentSettings || readStoredConsent();
         ensureTagManagerLoaded(resolvedConsent);
         ensureClarityLoaded(resolvedConsent);
+        ensureMetaPixelLoaded(resolvedConsent);
         return ensureAnalyticsLoaded(resolvedConsent);
       };
 
@@ -704,6 +744,10 @@
         ensureTagManagerLoaded(storedConsent);
         ensureAnalyticsLoaded(storedConsent);
         ensureClarityLoaded(storedConsent);
+      }
+
+      if (hasMarketingConsent(storedConsent)) {
+        ensureMetaPixelLoaded(storedConsent);
       }
     })();
   </script>

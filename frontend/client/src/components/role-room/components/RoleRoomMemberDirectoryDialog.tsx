@@ -12,12 +12,24 @@ import {
 } from '@mui/material';
 import {
   ArrowBack, Close, Email, Language, LinkedIn, Instagram,
-  LocationOn, OpenInNew, Person, Search,
+  LocationOn, OpenInNew, Person, Search, WorkOutline,
+  CheckCircle, FormatQuote, Verified,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type {
-  MemberListItem, RoleRoomMemberProfile,
+  MemberListItem, RoleRoomMemberProfile, SharedProject, AvailabilityStatus,
+  AvailabilityEntry,
 } from '../services/roleRoomMemberProfileService';
+import { focalToObjectPosition } from '../utils/avatarFocalPoint';
+import { categoryForEquipment } from '../utils/equipmentCatalog';
+import { EquipmentCategoryIcon } from './EquipmentCategoryIcon';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
+
+const AVAILABILITY_META: Record<AvailabilityStatus, { label: string; color: 'success' | 'warning' | 'default' }> = {
+  available: { label: 'Tilgjengelig for oppdrag', color: 'success' },
+  busy: { label: 'Delvis opptatt', color: 'warning' },
+  unavailable: { label: 'Ikke tilgjengelig nå', color: 'default' },
+};
 
 export interface RoleRoomMemberDirectoryDialogProps {
   open: boolean;
@@ -189,6 +201,8 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
     >
       <Avatar
         src={member.profileImageUrl ?? undefined}
+        imgProps={{ style: { objectPosition: focalToObjectPosition(
+          member.profileImageFocalX, member.profileImageFocalY) } }}
         sx={{ width: 48, height: 48, bgcolor: '#6366f1', flexShrink: 0 }}
       >
         {member.displayName?.[0] ?? <Person />}
@@ -205,6 +219,8 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
         {member.professions.length > 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {member.professions.slice(0, 3).join(' · ')}
+            {typeof member.yearsExperience === 'number' && member.yearsExperience > 0
+              && ` · ${member.yearsExperience} års erfaring`}
           </Typography>
         )}
         {(member.locationCity || member.locationCountry) && (
@@ -225,6 +241,8 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
 
 function PublicProfileView({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<RoleRoomMemberProfile | null>(null);
+  const [sharedProjects, setSharedProjects] = useState<SharedProject[]>([]);
+  const [availability, setAvailability] = useState<AvailabilityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -233,8 +251,13 @@ function PublicProfileView({ userId }: { userId: string }) {
     void (async () => {
       setLoading(true); setError(null);
       try {
-        const p = await roleRoomMemberProfileService.getPublicProfile(userId);
-        if (!cancelled) setProfile(p);
+        const { profile: p, sharedProjects: sp } =
+          await roleRoomMemberProfileService.getPublicProfileWithProjects(userId);
+        if (!cancelled) { setProfile(p); setSharedProjects(sp); }
+        // Kalender hentes separat (best-effort — feiler stille).
+        const avail = await roleRoomMemberProfileService
+          .getMemberAvailability(userId).catch(() => []);
+        if (!cancelled) setAvailability(avail);
       } catch (err) {
         if (!cancelled) setError(String(err));
       } finally {
@@ -271,6 +294,8 @@ function PublicProfileView({ userId }: { userId: string }) {
       <Box sx={{ px: 3, pt: 0, pb: 3 }}>
         <Avatar
           src={profile.profileImageUrl ?? undefined}
+          imgProps={{ style: { objectPosition: focalToObjectPosition(
+            profile.profileImageFocalX, profile.profileImageFocalY) } }}
           sx={{
             width: 100, height: 100, mt: -6, mb: 1.5,
             bgcolor: '#6366f1', fontSize: 32,
@@ -298,10 +323,36 @@ function PublicProfileView({ userId }: { userId: string }) {
         )}
 
         {profile.professions.length > 0 && (
-          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: 2 }}>
+          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: profile.yearsExperience ? 1 : 2 }}>
             {profile.professions.map((p) => (
               <Chip key={p} label={p} color="primary" size="small"
                     sx={{ fontWeight: 600 }} />
+            ))}
+          </Stack>
+        )}
+
+        {typeof profile.yearsExperience === 'number' && profile.yearsExperience > 0 && (
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: 'text.secondary', mb: 2 }}>
+            <WorkOutline sx={{ fontSize: 16 }} />
+            <Typography variant="body2">
+              {profile.yearsExperience} års erfaring
+            </Typography>
+          </Stack>
+        )}
+
+        {(profile.availabilityStatus || profile.workPreferences?.length > 0) && (
+          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: 2 }}>
+            {profile.availabilityStatus && AVAILABILITY_META[profile.availabilityStatus] && (
+              <Chip
+                icon={<CheckCircle sx={{ fontSize: 16 }} />}
+                label={AVAILABILITY_META[profile.availabilityStatus].label}
+                color={AVAILABILITY_META[profile.availabilityStatus].color}
+                size="small"
+                sx={{ fontWeight: 600 }}
+              />
+            )}
+            {profile.workPreferences?.map((w) => (
+              <Chip key={w} label={w} size="small" variant="outlined" />
             ))}
           </Stack>
         )}
@@ -323,10 +374,159 @@ function PublicProfileView({ userId }: { userId: string }) {
           </Box>
         )}
 
+        {profile.expertiseAreas?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Fagområder</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+              {profile.expertiseAreas.map((a) => (
+                <Chip key={a} label={a} size="small" color="secondary" variant="outlined" />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.equipment?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Utstyr</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+              {profile.equipment.map((e) => (
+                <Chip
+                  key={e}
+                  size="small"
+                  variant="outlined"
+                  icon={<EquipmentCategoryIcon category={categoryForEquipment(e)} sx={{ fontSize: 15 }} />}
+                  label={e}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.certifications?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Sertifiseringer & lisenser</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+              {profile.certifications.map((c) => (
+                <Chip key={c} size="small" icon={<Verified sx={{ fontSize: 15 }} />} label={c} />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
         {profile.languages.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="overline" color="text.secondary">Språk</Typography>
             <Typography variant="body2">{profile.languages.join(' · ')}</Typography>
+          </Box>
+        )}
+
+        {profile.earlierProjects?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">
+              Tidligere prosjekter
+            </Typography>
+            <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+              {profile.earlierProjects.map((proj, i) => (
+                <Stack key={i} direction="row" spacing={1} alignItems="center"
+                       sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(0,0,0,0.03)' }}>
+                  <WorkOutline sx={{ fontSize: 18, color: 'text.secondary', flexShrink: 0 }} />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                      {proj.title}
+                    </Typography>
+                    {(proj.role || proj.year) && (
+                      <Typography variant="caption" color="text.secondary">
+                        {[proj.role, proj.year].filter(Boolean).join(' · ')}
+                      </Typography>
+                    )}
+                  </Box>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.portfolioItems?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">
+              Portfolio / arbeidsprøver
+            </Typography>
+            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+              {profile.portfolioItems.map((item, i) => (
+                <LinkRow
+                  key={i}
+                  icon={<OpenInNew fontSize="small" />}
+                  href={item.url}
+                  label={item.title || item.url}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {profile.memberReferences?.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">Referanser</Typography>
+            <Stack spacing={1} sx={{ mt: 0.5 }}>
+              {profile.memberReferences.map((ref, i) => (
+                <Box key={i} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(0,0,0,0.03)' }}>
+                  <Stack direction="row" spacing={0.75} alignItems="flex-start">
+                    <FormatQuote sx={{ fontSize: 18, color: 'text.disabled', flexShrink: 0, mt: 0.25 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      {ref.quote && (
+                        <Typography variant="body2" sx={{ fontStyle: 'italic', mb: 0.5 }}>
+                          {ref.quote}
+                        </Typography>
+                      )}
+                      {(ref.name || ref.role) && (
+                        <Typography variant="caption" color="text.secondary">
+                          {[ref.name, ref.role].filter(Boolean).join(' · ')}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {sharedProjects.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary">
+              Felles prosjekter ({sharedProjects.length})
+            </Typography>
+            <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+              {sharedProjects.map((proj) => (
+                <Stack key={proj.id} direction="row" spacing={1} alignItems="center"
+                       sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(139,92,246,0.06)' }}>
+                  <WorkOutline sx={{ fontSize: 18, color: 'rgba(139,92,246,0.8)', flexShrink: 0 }} />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                      {proj.name}
+                    </Typography>
+                    {proj.status && (
+                      <Typography variant="caption" color="text.secondary">
+                        {proj.status}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Chip label={proj.role} size="small"
+                        color={proj.role === 'Leder' ? 'primary' : 'default'}
+                        variant={proj.role === 'Leder' ? 'filled' : 'outlined'}
+                        sx={{ flexShrink: 0 }} />
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {availability.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Tilgjengelighet
+            </Typography>
+            <AvailabilityCalendar entries={availability} months={2} />
           </Box>
         )}
 

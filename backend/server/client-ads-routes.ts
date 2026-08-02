@@ -126,6 +126,46 @@ import {
 } from "./role-room-ads-oauth.js";
 import crypto from "node:crypto";
 
+// Role Room-casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`),
+// mens `client_ads_configs.client_project_id` er en UUID-kolonne. Brukes til å
+// kort-slutte UUID-castede spørringer for ikke-UUID-prosjektid-er (unngår
+// «invalid input syntax for type uuid» → 500).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function _adsOauthStateKey(): string {
+  return process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.AUTH_SECRET || "";
+}
+function _signAdsOauthState(payload: string): string {
+  return crypto.createHmac("sha256", _adsOauthStateKey()).update(payload).digest("hex").slice(0, 16);
+}
+function _buildAdsOauthState(userId: string, configId: string): string {
+  // Fail closed: with an empty HMAC key the signed state is trivially forgeable
+  // (an attacker computes HMAC("", payload) themselves), enabling ad-account
+  // linking CSRF. Refuse to mint a state rather than emit an insecure one.
+  if (!_adsOauthStateKey()) {
+    throw new Error("ads_oauth_state_secret_missing");
+  }
+  const nonce = crypto.randomBytes(12).toString("hex");
+  const payload = `${userId}|${configId}|${nonce}`;
+  const sig = _signAdsOauthState(payload);
+  return `${payload}|${sig}`;
+}
+function _verifyAdsOauthState(state: string): { userId: string; configId: string } | null {
+  // Fail closed: never accept a state when the signing key is absent — otherwise
+  // a forged HMAC over an empty key would validate.
+  if (!_adsOauthStateKey()) return null;
+  const parts = state.split("|");
+  if (parts.length !== 4) return null;
+  const [userId, configId, nonce, sig] = parts;
+  const payload = `${userId}|${configId}|${nonce}`;
+  const expected = _signAdsOauthState(payload);
+  const a = Buffer.from(sig ?? "");
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return { userId, configId };
+}
+
 interface SessionLike {
   userId: string;
   email?: string;
@@ -149,6 +189,33 @@ const TRIGGER_TYPES = new Set([
 
 export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   const { app, pool, getActiveSession } = deps;
+
+  // IDOR-vakt for config-id-baserte endepunkter: last configens
+  // client_project_id og bekreft at brukeren tilhører prosjektet
+  // (produsent/team) eller er klienten med aktiv portal-sesjon.
+  // Returnerer true kun ved bekreftet tilgang; false → kall 404 (ikke lekk eksistens).
+  async function callerCanAccessConfig(
+    configId: string,
+    session: SessionLike,
+  ): Promise<boolean> {
+    if (!configId) return false;
+    let projectId: string | null = null;
+    try {
+      const r = await pool.query(
+        `SELECT client_project_id::text AS pid FROM client_ads_configs WHERE id = $1::uuid`,
+        [configId],
+      );
+      if (!r.rowCount) return false;
+      projectId = r.rows[0].pid;
+    } catch {
+      return false;
+    }
+    if (!projectId) return false;
+    return canAccessProjectAds(pool, projectId, {
+      userId: session.userId,
+      email: session.email ?? null,
+    });
+  }
 
   // ── POST /api/admin-room/agent/ads/analyze ──────────────────────
   app.post("/api/admin-room/agent/ads/analyze", async (req, res) => {
@@ -194,6 +261,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.status(400).json({
         error: "client_project_id, client_name, client_website_url og actions er påkrevd",
       });
+    }
+    // `client_project_id` er en UUID-kolonne. En slug (f.eks. casting-prosjekt-
+    // ID `medside-…`) kaster «invalid input syntax for type uuid» i INSERTen
+    // ($1::uuid) → 500. Returner heller en tydelig 400 for ikke-UUID.
+    if (!UUID_RE.test(clientProjectId)) {
+      return res.status(400).json({ error: "client_project_id må være en gyldig UUID" });
     }
 
     try {
@@ -252,7 +325,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, configId });
     } catch (err) {
       console.error("[client-ads/configs POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre config", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre config", detail: "internal_error" });
     }
   });
 
@@ -527,7 +600,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[sync-to-google] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -565,6 +638,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : null;
+
+    // IDOR-vakt: prosjekt-filteret må bekreftes mot brukerens tilgang, ellers
+    // kan hvem som helst hente pending ads-strategi + fee for et vilkårlig prosjekt.
+    if (projectId && !(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
+      return res.status(403).json({ error: "forbidden_project" });
+    }
 
     try {
       const cfgs = projectId
@@ -674,6 +753,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
+    // Kun prosjektets klient/team/produsent kan avgjøre godkjenning — ellers
+    // kan en vilkårlig innlogget bruker forfalske klientens beslutning.
+    if (!(await callerCanAccessConfig(req.params.configId, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
+
     try {
       const upd = await pool.query(
         `UPDATE client_ads_configs
@@ -714,6 +799,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { feedback?: string };
     const feedback = body.feedback?.trim().slice(0, 4000) || null;
+
+    if (!(await callerCanAccessConfig(req.params.configId, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
 
     try {
       const upd = await pool.query(
@@ -814,7 +903,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[ga4-provision] failed", err);
-      return res.status(500).json({ error: "GA4-provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "GA4-provision feilet", detail: "internal_error" });
     }
   });
 
@@ -884,7 +973,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ step: "verify", success: true, siteUrl });
     } catch (err) {
       console.error("[gsc-verify] failed", err);
-      return res.status(500).json({ error: "GSC-verify feilet", detail: String(err) });
+      return res.status(500).json({ error: "GSC-verify feilet", detail: "internal_error" });
     }
   });
 
@@ -958,7 +1047,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[gsc-sitemap] failed", err);
-      return res.status(500).json({ error: "GSC-sitemap-submit feilet", detail: String(err) });
+      return res.status(500).json({ error: "GSC-sitemap-submit feilet", detail: "internal_error" });
     }
   });
 
@@ -988,7 +1077,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Diagnose feilet", detail: String(err) });
+      return res.status(500).json({ error: "Diagnose feilet", detail: "internal_error" });
     }
   });
 
@@ -1014,7 +1103,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
-    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const state = _buildAdsOauthState(session.userId, configId);
     const authUrl = buildAdsAuthUrl("linkedin", { clientId: creds.clientId, redirectUri, state });
     if (!authUrl) return res.status(503).json({ error: "Klarte ikke å bygge LinkedIn-auth-URL" });
     return res.json({ authUrl });
@@ -1026,8 +1115,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const state = typeof req.query.state === "string" ? req.query.state : null;
     if (!code || !state) return res.status(400).send("Missing code/state");
 
-    const [userId, configId] = state.split(".");
-    if (!userId) return res.status(400).send("Invalid state");
+    const stateParts = _verifyAdsOauthState(state);
+    if (!stateParts) return res.status(400).send("Invalid or tampered state");
+    const { userId, configId } = stateParts;
 
     const creds = adsOauthClientCreds("linkedin");
     if (!creds) return res.status(503).send("LinkedIn creds mangler");
@@ -1051,7 +1141,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.redirect(`/role-room/agent/ads?oauth_success=linkedin${cfgParam}`);
     } catch (err) {
       console.error("[linkedin-oauth] callback failed", err);
-      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent(String(err).slice(0, 80))}`);
+      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent("internal_error".slice(0, 80))}`);
     }
   });
 
@@ -1115,7 +1205,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[linkedin-provision] failed", err);
-      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "Provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1186,7 +1276,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, created, failed });
     } catch (err) {
       console.error("[linkedin-sync] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1275,7 +1365,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[meta-provision] failed", err);
-      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "Provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1346,7 +1436,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, created, failed });
     } catch (err) {
       console.error("[meta-sync] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1362,7 +1452,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? ""}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/tiktok/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
-    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const state = _buildAdsOauthState(session.userId, configId);
     const authUrl = buildTiktokAuthUrl({ state, redirectUri });
     if (!authUrl) return res.status(503).json({ error: "TIKTOK_BUSINESS_APP_ID/SECRET ikke satt." });
     return res.json({ authUrl });
@@ -1373,8 +1463,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const state = typeof req.query.state === "string" ? req.query.state : null;
     if (!authCode || !state) return res.status(400).send("Missing auth_code/state");
 
-    const [userId, configId] = state.split(".");
-    if (!userId) return res.status(400).send("Invalid state");
+    const stateParts = _verifyAdsOauthState(state);
+    if (!stateParts) return res.status(400).send("Invalid or tampered state");
+    const { userId, configId } = stateParts;
 
     try {
       const tokenResult = await exchangeTiktokAuthCode(authCode);
@@ -1406,7 +1497,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.redirect(`/role-room/agent/ads?oauth_success=tiktok${cfgParam}`);
     } catch (err) {
       console.error("[tiktok-oauth] callback failed", err);
-      return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_${encodeURIComponent(String(err).slice(0, 80))}`);
+      return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_${encodeURIComponent("internal_error".slice(0, 80))}`);
     }
   });
 
@@ -1483,7 +1574,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, pixelCode, pixelName, baseCode });
     } catch (err) {
       console.error("[tiktok-provision] failed", err);
-      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "Provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1534,7 +1625,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, created, failed: [] });
     } catch (err) {
       console.error("[tiktok-sync] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1606,7 +1697,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(insights);
     } catch (err) {
       console.error("[insights] failed", err);
-      return res.status(500).json({ error: "Insights-henting feilet", detail: String(err) });
+      return res.status(500).json({ error: "Insights-henting feilet", detail: "internal_error" });
     }
   });
 
@@ -1685,7 +1776,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ target, prompts });
     } catch (err) {
       console.error("[ai-prompts] failed", err);
-      return res.status(500).json({ error: "Prompt-generering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Prompt-generering feilet", detail: "internal_error" });
     }
   });
 
@@ -1707,7 +1798,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json({ siteUrl, sitemaps: r.sitemaps });
     } catch (err) {
-      return res.status(500).json({ error: "Status-hent feilet", detail: String(err) });
+      return res.status(500).json({ error: "Status-hent feilet", detail: "internal_error" });
     }
   });
 
@@ -1771,7 +1862,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[gtm-provision] failed", err);
-      return res.status(500).json({ error: "GTM-provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "GTM-provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1837,7 +1928,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[gtm-import] failed", err);
-      return res.status(500).json({ error: "GTM-import feilet", detail: String(err) });
+      return res.status(500).json({ error: "GTM-import feilet", detail: "internal_error" });
     }
   });
 
@@ -1874,7 +1965,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       console.error("[tiktok-sync-leads] failed", err);
-      return res.status(500).json({ error: "Lead-sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Lead-sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1898,7 +1989,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       );
       return res.json({ leads: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente leads", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente leads", detail: "internal_error" });
     }
   });
 
@@ -1945,7 +2036,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       console.error("[tiktok-create-audience] failed", err);
-      return res.status(500).json({ error: "Audience-opprettelse feilet", detail: String(err) });
+      return res.status(500).json({ error: "Audience-opprettelse feilet", detail: "internal_error" });
     }
   });
 
@@ -1980,7 +2071,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ ...r, days, startDate: fmt(start), endDate: fmt(end) });
     } catch (err) {
       console.error("[tiktok-attribution] failed", err);
-      return res.status(500).json({ error: "Attribution-henting feilet", detail: String(err) });
+      return res.status(500).json({ error: "Attribution-henting feilet", detail: "internal_error" });
     }
   });
 
@@ -2029,7 +2120,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       console.error("[tiktok-crm-event] failed", err);
-      return res.status(500).json({ error: "CRM-event-sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "CRM-event-sync feilet", detail: "internal_error" });
     }
   });
 
@@ -2066,7 +2157,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       for (const row of summary.rows) counts[row.delivery_status] = row.n;
       return res.json({ events: r.rows, summary: counts });
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente events", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente events", detail: "internal_error" });
     }
   });
 
@@ -2080,6 +2171,16 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : "";
     if (!projectId) return res.status(400).json({ error: "clientProjectId påkrevd" });
+    if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
+      return res.status(403).json({ error: "forbidden_project" });
+    }
+    // `client_ads_configs.client_project_id` er en UUID-kolonne, men Role Room-
+    // casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`). En
+    // slug kan aldri matche en UUID-nøkkel, så `$1::uuid`-castet kastet «invalid
+    // input syntax for type uuid» → 500. Kort-slutt til tom liste for ikke-UUID.
+    if (!UUID_RE.test(projectId)) {
+      return res.json({ configs: [] });
+    }
     try {
       const r = await pool.query(
         `SELECT id::text, tiktok_pixel_id, tiktok_advertiser_id,
@@ -2093,7 +2194,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       );
       return res.json({ configs: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente klient-configs", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente klient-configs", detail: "internal_error" });
     }
   });
 
@@ -2138,7 +2239,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Smart Video-generering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Smart Video-generering feilet", detail: "internal_error" });
     }
   });
 
@@ -2211,7 +2312,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Plugin-install feilet", detail: String(err) });
+      return res.status(500).json({ error: "Plugin-install feilet", detail: "internal_error" });
     }
   });
 
@@ -2243,11 +2344,14 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.get("/api/role-room/ads-configs/:id/permissions", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     try {
       const state = await getScopePermissionsState(pool, req.params.id);
       return res.json(state);
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente tillatelser", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente tillatelser", detail: "internal_error" });
     }
   });
 
@@ -2261,6 +2365,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       acceptedByEmail?: string;
     };
     if (!body.permissions) return res.status(400).json({ error: "permissions påkrevd" });
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
 
     const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
       || req.socket?.remoteAddress
@@ -2281,7 +2388,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(400).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke lagre tillatelser", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke lagre tillatelser", detail: "internal_error" });
     }
   });
 
@@ -2289,6 +2396,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { reason?: string };
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     try {
       const r = await revokeScopePermissions(pool, {
         configId: req.params.id,
@@ -2298,7 +2408,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(400).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke trekke tilbake", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke trekke tilbake", detail: "internal_error" });
     }
   });
 
@@ -2344,7 +2454,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Meta-audience-opprettelse feilet", detail: String(err) });
+      return res.status(500).json({ error: "Meta-audience-opprettelse feilet", detail: "internal_error" });
     }
   });
 
@@ -2380,7 +2490,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "LinkedIn-audience-opprettelse feilet", detail: String(err) });
+      return res.status(500).json({ error: "LinkedIn-audience-opprettelse feilet", detail: "internal_error" });
     }
   });
 
@@ -2426,7 +2536,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Google Customer Match feilet", detail: String(err) });
+      return res.status(500).json({ error: "Google Customer Match feilet", detail: "internal_error" });
     }
   });
 
@@ -2487,7 +2597,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Meta CAPI feilet", detail: String(err) });
+      return res.status(500).json({ error: "Meta CAPI feilet", detail: "internal_error" });
     }
   });
 
@@ -2543,7 +2653,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "LinkedIn CAPI feilet", detail: String(err) });
+      return res.status(500).json({ error: "LinkedIn CAPI feilet", detail: "internal_error" });
     }
   });
 
@@ -2603,7 +2713,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Google offline-konvertering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Google offline-konvertering feilet", detail: "internal_error" });
     }
   });
 
@@ -2636,6 +2746,11 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.status(400).json({ error: "ugyldig_method" });
     }
 
+    // Payloaden kan inneholde proxy-token (delt hemmelighet for /track) — IDOR-vakt.
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
+
     try {
       const payload = await buildDeploymentPayload(pool, {
         configId: req.params.id,
@@ -2646,7 +2761,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if ("error" in payload) return res.status(404).json(payload);
       return res.json(payload);
     } catch (err) {
-      return res.status(500).json({ error: "deployment_payload_failed", detail: String(err) });
+      return res.status(500).json({ error: "deployment_payload_failed", detail: "internal_error" });
     }
   });
 
@@ -2661,11 +2776,15 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.status(400).json({ error: "mangler_eller_ugyldig_method" });
     }
 
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
+
     try {
       const r = await markDeploymentApplied(pool, { configId: req.params.id, method });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "mark_deployed_failed", detail: String(err) });
+      return res.status(500).json({ error: "mark_deployed_failed", detail: "internal_error" });
     }
   });
 
@@ -2675,11 +2794,15 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
+
     try {
       const r = await validateDeployment(pool, req.params.id);
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "validate_failed", detail: String(err) });
+      return res.status(500).json({ error: "validate_failed", detail: "internal_error" });
     }
   });
 
@@ -2692,12 +2815,16 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
+
     try {
       const summary = await buildDiagnosticsSummary(pool, req.params.id);
       if (!summary) return res.status(404).json({ error: "config_not_found" });
       return res.json(summary);
     } catch (err) {
-      return res.status(500).json({ error: "diagnostics_failed", detail: String(err) });
+      return res.status(500).json({ error: "diagnostics_failed", detail: "internal_error" });
     }
   });
 
@@ -2739,7 +2866,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       }
       return res.json({ ok: true, eventId: r.eventId, deduplicated: r.deduplicated });
     } catch (err) {
-      return res.status(500).json({ error: "track_failed", detail: String(err) });
+      return res.status(500).json({ error: "track_failed", detail: "internal_error" });
     }
   });
 }

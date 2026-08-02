@@ -170,6 +170,7 @@ actor CCAPIAdapter: IngestAdapter {
                     apertureValue: payload.apertureValue,
                     shutterSpeed: payload.shutterSpeed,
                     isoValue: payload.isoValue,
+                    exposureCompensation: payload.exposureCompensation,
                     lensName: payload.lensName,
                     freeSpaceBytes: payload.freeSpaceBytes,
                     totalContentsCount: payload.totalContentsCount
@@ -207,6 +208,10 @@ actor CCAPIAdapter: IngestAdapter {
         let descriptor = AssetDescriptor(
             id: assetId,
             originalFilename: url.lastPathComponent,
+            // Discovery-tid som FALLBACK — den ekte opptakstiden (EXIF
+            // DateTimeOriginal) settes når previewen lander (CameraSession →
+            // updateCaptureTime). Polling-rekkefølge ≠ opptaksrekkefølge, så denne
+            // brukes bare til den er oppløst.
             captureTime: Date(),
             mime: Self.mimeType(for: url.pathExtension),
             sizeBytes: nil,
@@ -267,52 +272,62 @@ actor CCAPIAdapter: IngestAdapter {
         }
     }
 
+    /// Antall forsøk + eksponentiell backoff (0.5 s → 1 s) på transiente
+    /// nedlastingsfeil før vi gir opp. WiFi-tethering dropper pakker; ett
+    /// enkelt-feil skal ikke miste bildet permanent.
+    private static let maxDownloadAttempts = 3
+
     private func performDownload(_ item: Pending) async {
         let destination = downloadDirectory
             .appendingPathComponent("\(item.assetId.uuidString)-\(item.kind.rawValue)")
-        do {
-            // TODO: support HTTP Range-based resume when spec is verified.
-            let sourceURL = Self.downloadURL(for: item)
-            let (data, totalBytes) = try await client.downloadContent(
-                contentURL: sourceURL,
-                range: nil,
-            )
-            try data.write(to: destination, options: .atomic)
-            let checksum = Self.sha256Hex(data)
-            continuation.yield(
-                .downloadCompleted(
-                    assetId: item.assetId,
-                    kind: item.kind,
-                    fileURL: destination,
-                    checksumSha256: checksum,
-                ),
-            )
-            if totalBytes > 0 {
+        var lastError = "ukjent"
+        for attempt in 1...Self.maxDownloadAttempts {
+            if Task.isCancelled { return }
+            do {
+                // TODO: support HTTP Range-based resume when spec is verified.
+                let sourceURL = Self.downloadURL(for: item)
+                let (data, totalBytes) = try await client.downloadContent(
+                    contentURL: sourceURL,
+                    range: nil,
+                )
+                try data.write(to: destination, options: .atomic)
+                let checksum = Self.sha256Hex(data)
                 continuation.yield(
-                    .downloadProgress(
+                    .downloadCompleted(
                         assetId: item.assetId,
-                        bytesDownloaded: Int64(data.count),
-                        totalBytes: totalBytes,
+                        kind: item.kind,
+                        fileURL: destination,
+                        checksumSha256: checksum,
                     ),
                 )
+                if totalBytes > 0 {
+                    continuation.yield(
+                        .downloadProgress(
+                            assetId: item.assetId,
+                            bytesDownloaded: Int64(data.count),
+                            totalBytes: totalBytes,
+                        ),
+                    )
+                }
+                return
+            } catch let ccapi as CCAPIError {
+                lastError = String(describing: ccapi)
+            } catch {
+                lastError = String(describing: error)
             }
-        } catch let ccapi as CCAPIError {
-            continuation.yield(
-                .downloadFailed(
-                    assetId: item.assetId,
-                    kind: item.kind,
-                    error: .transportFailed(String(describing: ccapi)),
-                ),
-            )
-        } catch {
-            continuation.yield(
-                .downloadFailed(
-                    assetId: item.assetId,
-                    kind: item.kind,
-                    error: .transportFailed(String(describing: error)),
-                ),
-            )
+            // Backoff før neste forsøk (ikke etter siste).
+            if attempt < Self.maxDownloadAttempts {
+                let seconds = 0.5 * pow(2.0, Double(attempt - 1))   // 0.5, 1.0
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            }
         }
+        continuation.yield(
+            .downloadFailed(
+                assetId: item.assetId,
+                kind: item.kind,
+                error: .transportFailed(lastError),
+            ),
+        )
     }
 
     // MARK: - Helpers

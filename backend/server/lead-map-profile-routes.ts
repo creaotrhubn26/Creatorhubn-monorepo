@@ -156,7 +156,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         }
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "heartbeat_failed", detail: String(err) });
+        return res.status(500).json({ error: "heartbeat_failed", detail: "internal_error" });
       }
     },
   );
@@ -186,7 +186,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "consent_failed", detail: String(err) });
+        return res.status(500).json({ error: "consent_failed", detail: "internal_error" });
       }
     },
   );
@@ -212,7 +212,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "revoke_failed", detail: String(err) });
+        return res.status(500).json({ error: "revoke_failed", detail: "internal_error" });
       }
     },
   );
@@ -238,7 +238,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
           revokedAt: row?.revoked_at ?? null,
         });
       } catch (err) {
-        return res.status(500).json({ error: "consent_status_failed", detail: String(err) });
+        return res.status(500).json({ error: "consent_status_failed", detail: "internal_error" });
       }
     },
   );
@@ -257,7 +257,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
           WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
         [req.params.id, session.userId],
       );
-      if (memRes.rowCount === 0) {
+      if (!memRes.rows.length) {
         return res.status(403).json({ error: "ikke_medlem" });
       }
       try {
@@ -298,7 +298,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ locations: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "locations_failed", detail: String(err) });
+        return res.status(500).json({ error: "locations_failed", detail: "internal_error" });
       }
     },
   );
@@ -337,7 +337,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
           ownerOnlyFields: ["org_number", "logo_url"],
         });
       } catch (err) {
-        return res.status(500).json({ error: "profile_failed", detail: String(err) });
+        return res.status(500).json({ error: "profile_failed", detail: "internal_error" });
       }
     },
   );
@@ -394,7 +394,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true, updated: sets.length });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -444,7 +444,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ profiles: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "profiles_failed", detail: String(err) });
+        return res.status(500).json({ error: "profiles_failed", detail: "internal_error" });
       }
     },
   );
@@ -473,7 +473,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         const canEdit = ADMIN_LIKE.has(role) || session.userId === req.params.userId;
         return res.json({ profile: r.rows[0], canEdit });
       } catch (err) {
-        return res.status(500).json({ error: "profile_failed", detail: String(err) });
+        return res.status(500).json({ error: "profile_failed", detail: "internal_error" });
       }
     },
   );
@@ -522,7 +522,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true, updated: sets.length });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -554,7 +554,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
           canCreate: SALES_LEAD.has(role),
         });
       } catch (err) {
-        return res.status(500).json({ error: "teams_failed", detail: String(err) });
+        return res.status(500).json({ error: "teams_failed", detail: "internal_error" });
       }
     },
   );
@@ -603,7 +603,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         }
         return res.json({ ok: true, teamId: r.rows[0].id });
       } catch (err) {
-        return res.status(500).json({ error: "create_failed", detail: String(err) });
+        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
@@ -645,7 +645,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true, updated: sets.length });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -667,7 +667,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );
@@ -698,7 +698,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "team_assign_failed", detail: String(err) });
+        return res.status(500).json({ error: "team_assign_failed", detail: "internal_error" });
       }
     },
   );

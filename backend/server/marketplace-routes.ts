@@ -103,9 +103,17 @@ export function setupMarketplaceRoutes(deps: MarketplaceRoutesDeps): void {
   });
 
   app.post("/api/marketplace/apps/:appId/reviews", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    // Sikkerhet (broken-auth / identitetsforfalskning): requireUserSession
+    // beviser KUN innlogging. Tidligere ble forfatter-identiteten (userId +
+    // userName) tatt rått fra req.body, så enhver innlogget bruker kunne poste
+    // anmeldelser i et vilkårlig offers navn/konto-id — impersonasjon +
+    // rykte-manipulasjon, og spraying av mange ulike userId-er blåste opp
+    // /stats (activeUsers/reviewCount). Forfatteren utledes nå fra sesjonen;
+    // body.userId/body.userName ignoreres.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const { appId } = req.params;
-    const { userId, userName, rating, title, comment } = req.body || {};
+    const { rating, title, comment } = req.body || {};
 
     const numericRating = Number(rating);
     if (!numericRating || numericRating < 1 || numericRating > 5) {
@@ -125,8 +133,10 @@ export function setupMarketplaceRoutes(deps: MarketplaceRoutesDeps): void {
         .values({
           id: crypto.randomUUID(),
           productId: appId,
-          userId: userId || "anonymous",
-          userName: userName || "Anonymous",
+          userId: session.userId,
+          userName:
+            (typeof session.name === "string" && session.name.trim()) ||
+            "Anonymous",
           rating: Math.round(numericRating),
           title: trimmedTitle || null,
           comment: trimmedComment || null,

@@ -31,7 +31,7 @@ export async function runAutonomousDemo(
     elevenKey?: string;
     elevenVoiceId?: string;
   } = {},
-): Promise<{ path: string; qa: Array<SceneGrade | null>; scriptQa: ScriptGrade | null }> {
+): Promise<{ path: string; qa: Array<SceneGrade | null>; scriptQa: ScriptGrade | null; warnings: string[] }> {
   const { voice, onProgress = () => {}, onScene, onShots, finalize, elevenKey, elevenVoiceId } = opts;
   const scenes = project.scenes;
   if (!scenes.length) throw new Error('Ingen scener — generér demoen først.');
@@ -83,7 +83,14 @@ export async function runAutonomousDemo(
     if (!a) a = await synthesizeTts(project.id, scenes[i].id, text, voice).catch(() => null);
     audio.push(a);
   }
-  // Dvel-tid per scene = narration-lengde (+ litt pust), min 1,5 s
+  // Scener med manus men uten voiceover (alle TTS-nivåer feilet) → varsle, ikke stille.
+  const ttsFailed = scenes
+    .map((s, i) => ((s.narration || '').trim() && !audio[i] ? i + 1 : 0))
+    .filter((n) => n > 0);
+  const warnings: string[] = [];
+  if (ttsFailed.length) warnings.push(`Voiceover feilet for scene ${ttsFailed.join(', ')} — de ble tatt opp uten tale (sjekk ElevenLabs-nøkkel/tilkobling).`);
+  // Dvel-tid per scene = narration-lengde (+ litt pust), min 1,5 s. LET, ikke const:
+  // svake scener får lengre dvel før forsøk 2 (ekte endring mellom opptak).
   const dwellsMs = scenes.map((s, i) =>
     Math.max(1500, Math.round((audio[i]?.durationSec ?? Math.max(2, s.duration || 3)) * 1000) + 600));
 
@@ -129,9 +136,15 @@ export async function runAutonomousDemo(
       if (!frame) { qa.push(null); continue; }
       qa.push(await gradeSceneFrame({ screenshot: frame, narration: scenes[i].narration, action: scenes[i].requiredAction, title: scenes[i].title }).catch(() => null));
     }
-    const failed = qa.filter((g) => g && !g.ok).length;
-    if (failed === 0) break;
-    if (attempt < MAX_ATTEMPTS) onProgress(`${failed} scene(r) ikke bra nok — tar opp på nytt…`, 72);
+    const failedIdx = qa.map((g, i) => (g && !g.ok ? i : -1)).filter((i) => i >= 0);
+    if (failedIdx.length === 0) break;
+    if (attempt < MAX_ATTEMPTS) {
+      // EKTE forbedring før neste opptak: gi de svake scenene mer tid til å laste/
+      // sette seg (de fleste QA-feil skyldes at siden/handlingen ikke var ferdig da
+      // rammen ble tatt) — ellers ville forsøk 2 blitt byte-identisk med forsøk 1.
+      failedIdx.forEach((i) => { dwellsMs[i] = Math.round(dwellsMs[i] * 1.5) + 800; });
+      onProgress(`${failedIdx.length} scene(r) ikke bra nok — gir dem mer tid og tar opp på nytt…`, 72);
+    }
   }
 
   // 4) Synk voiceover til videoen + mux
@@ -146,5 +159,5 @@ export async function runAutonomousDemo(
   }
   const out = await muxDemoVideo(project.id, videoPath, segments, project.name || 'demo', finalize);
   onProgress('Ferdig!', 100);
-  return { path: out, qa, scriptQa };
+  return { path: out, qa, scriptQa, warnings };
 }

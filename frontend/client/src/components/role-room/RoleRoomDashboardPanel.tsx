@@ -39,6 +39,7 @@ import { roleRoomProjectTabConfigService } from './services/roleRoomProjectTabCo
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
 import RoleRoomOnboardingDialog from './components/RoleRoomOnboardingDialog';
 import { roleRoomMemberProfileService } from './services/roleRoomMemberProfileService';
+import { focalToObjectPosition } from './utils/avatarFocalPoint';
 import RoleRoomMobileBriefWizard from './components/mobile-brief/RoleRoomMobileBriefWizard';
 import RoleRoomMobilePlannerView from './components/mobile-planner/RoleRoomMobilePlannerView';
 import RoleRoomMobileShootingDayView from './components/production-mobile/RoleRoomMobileShootingDayView';
@@ -50,6 +51,8 @@ import GrantedAssetsCard from './components/producer/GrantedAssetsCard';
 import ClientEconomyPanel from './components/producer/ClientEconomyPanel';
 import AdminRoom from '../../pages/AdminRoom';
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
+import { useRoleRoomBrand } from './hooks/useRoleRoomBrand';
+import { executeSetupAgentTool } from './services/roleRoomSetupToolExecutor';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
 import { roleRoomAnalytics } from './services/roleRoomAnalytics';
@@ -115,7 +118,7 @@ import {
   Paid as PaidIcon,
   Instagram as InstagramIcon,
 } from '@mui/icons-material';
-import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
+import { getActiveProfessionMode, isDanceMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
 import { PostAgentErrorBoundary } from './components/PostAgentErrorBoundary';
@@ -327,6 +330,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingMinimized, setOnboardingMinimized] = useState(false);
   const [memberProfileImageUrl, setMemberProfileImageUrl] = useState<string | null>(null);
+  // Fokuspunkt (object-position) for header-avataren, satt i onboarding.
+  const [memberAvatarObjectPosition, setMemberAvatarObjectPosition] = useState<string>('50% 50%');
   useEffect(() => {
     if (!auth.user?.id) return;
     if (onboardingMinimized) return;
@@ -340,6 +345,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         if (cancelled) return;
         if (status.requiresOnboarding) setOnboardingOpen(true);
         if (profile?.profileImageUrl) setMemberProfileImageUrl(profile.profileImageUrl);
+        setMemberAvatarObjectPosition(
+          focalToObjectPosition(profile?.profileImageFocalX, profile?.profileImageFocalY),
+        );
       } catch (err) {
         console.warn('Onboarding status check failed:', err);
       }
@@ -367,6 +375,31 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     'admin-room': { label: 'Admin Room', Icon: AutoFixHighIcon, highlight: true },
   };
   const isAdminUser = auth.user?.role === 'admin' || auth.user?.role === 'super_admin';
+
+  // Provisjonerings-kobling: en provisjonert utdanningsinstitusjon har
+  // users.profession='education_institution' men intet lagret modus-valg. Hent
+  // profesjonen én gang på boot → aktiver riktig workspace-modus (broen rører
+  // KUN education → null risiko for andre). Hopper over hvis modus alt er valgt.
+  const professionSyncRanRef = useRef(false);
+  useEffect(() => {
+    if (professionSyncRanRef.current) return;
+    if (typeof window === 'undefined') return;
+    if (hasStoredProfessionMode()) return; // eksplisitt/tidligere valg vinner
+    if (!auth.user) return; // kun innloggede
+    professionSyncRanRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      const profession = await roleRoomMemberProfileService.getMyProfession();
+      if (cancelled) return;
+      // Setter modus KUN hvis den faktisk endret seg → last inn i riktig
+      // workspace (samme reload-mønster som mode-switcheren).
+      if (applyProfessionModeFromRole(profession)) {
+        window.location.reload();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auth.user]);
+
   const activeProfessionMode = getActiveProfessionMode();
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [roleRoomAgentSnapshot, setRoleRoomAgentSnapshot] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
@@ -466,12 +499,33 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   // Påvirker top-Tabs, iPad side-rail og telefon-bottom-nav likt.
   const userPrimaryRole = currentUserProjectRoles[0]?.role ?? null;
   const platformEffectiveTabs = useEffectiveTabsForRole(userPrimaryRole);
+  // CreatorHub Design (Fase B-paritet 3/3): design-tokens `nav`-overstyring KOMPONERT med det
+  // rolle-baserte tab-systemet — rekkefølge/sett eies av useRoleNavConfig; her legges KUN
+  // label + hidden oppå (orthogonalt). Ingen override → uendret label/synlighet → identisk.
+  const { nav: navRoomOv } = useRoleRoomBrand();
+  const tabLabel = useCallback(
+    (v: SubTabValue): string => navRoomOv[v]?.label || TAB_DEFS[v]?.label || v,
+    // TAB_DEFS er stabil (definert i render); navRoomOv endres kun ved token-hent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navRoomOv],
+  );
 
   // Project-spesifikk overstyring: team-leder kan styre hvilke tabs viewer
   // ser på dette prosjektet. Hvis tabValues=null → bruk platform-defaults.
   const [projectTabOverride, setProjectTabOverride] = useState<string[] | null>(null);
   useEffect(() => {
     if (!selectedProjectId) { setProjectTabOverride(null); return; }
+    // Klient-portalen (?portal=client) autentiserer med invitasjons-Bearer-token,
+    // ikke cookie-sesjonen dette endepunktet krever (getUserIdFromRequest). my-tabs
+    // er dessuten en medlems-konfigurasjon uten mening for klienter — de bruker
+    // uansett plattform-defaults. Hopp over kallet for å unngå støyende 401-er.
+    let isClientPortal = false;
+    if (typeof window !== 'undefined') {
+      try {
+        isClientPortal = new URLSearchParams(window.location.search).get('portal') === 'client';
+      } catch { /* ignorer */ }
+    }
+    if (isClientPortal) { setProjectTabOverride(null); return; }
     let cancelled = false;
     void (async () => {
       try {
@@ -488,13 +542,14 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   }, [selectedProjectId]);
 
   const effectiveTabs = useMemo(() => {
-    if (projectTabOverride && projectTabOverride.length > 0) {
-      return projectTabOverride.filter((t): t is SubTabValue =>
-        platformEffectiveTabs.includes(t as SubTabValue) || true,
-      ) as SubTabValue[];
-    }
-    return platformEffectiveTabs;
-  }, [projectTabOverride, platformEffectiveTabs]);
+    const base = (projectTabOverride && projectTabOverride.length > 0)
+      ? (projectTabOverride.filter((t): t is SubTabValue =>
+          platformEffectiveTabs.includes(t as SubTabValue) || true,
+        ) as SubTabValue[])
+      : platformEffectiveTabs;
+    // Design-tokens `nav`-overstyring: skjul flater admin har markert (orthogonalt til rolle-sett).
+    return base.filter((v) => !navRoomOv[v]?.hidden);
+  }, [projectTabOverride, platformEffectiveTabs, navRoomOv]);
 
   const canUsePublishing = useMemo(() => {
     const publishingRoles: UserRole['role'][] = [
@@ -737,7 +792,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               }}
             >
               {memberProfileImageUrl ? (
-                <Avatar src={memberProfileImageUrl} sx={{ width: 28, height: 28 }} />
+                <Avatar src={memberProfileImageUrl} sx={{ width: 28, height: 28 }}
+                        imgProps={{ style: { objectPosition: memberAvatarObjectPosition } }} />
               ) : profileInitials ? (
                 <Avatar sx={{ width: 28, height: 28, bgcolor: 'transparent', fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>
                   {profileInitials}
@@ -776,8 +832,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           : undefined,
       }}
     >
-      {/* Leadgrid onboarding-tour — floating card i nedre høyre */}
-      <OnboardingTour />
+      {/* NB: en Leadgrid `<OnboardingTour />` sto her uten import → udefinert
+          komponent (fanget av ErrorBoundary, viste aldri). Fjernet — en Leadgrid-
+          tour hører uansett ikke hjemme i Role Room-dashbordet. */}
       {/* Produsentens flytende chat-boble — Meldinger + Action + rom-chat
           (intern vs delt) i hele dashbordet, ikke bare via klient-preview.
           canUseInternal=true siden dette er produsentens eget arbeidsrom. */}
@@ -922,7 +979,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               aria-label="Åpne profil"
             >
               {memberProfileImageUrl ? (
-                <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }} />
+                <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }}
+                        imgProps={{ style: { objectPosition: memberAvatarObjectPosition } }} />
               ) : profileInitials ? (
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366f1', fontSize: '0.85rem', fontWeight: 700 }}>
                   {profileInitials}
@@ -1091,7 +1149,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     })
                     .map((v) => ({
                       value: v,
-                      label: TAB_DEFS[v].label,
+                      label: tabLabel(v),
                       Icon: TAB_DEFS[v].Icon,
                       highlight: TAB_DEFS[v].highlight,
                     }))}
@@ -1198,7 +1256,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                       <Tab
                         key={v}
                         value={v}
-                        label={def.label}
+                        label={tabLabel(v)}
                         icon={<TabIconComp fontSize="small" />}
                         iconPosition="start"
                         sx={def.highlight ? { minHeight: 48, color: '#a78bfa' } : { minHeight: 48 }}
@@ -1362,7 +1420,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 borderRadius: 1,
                 border: '1px solid',
                 borderColor: 'divider',
-                bgcolor: 'background.default',
+                bgcolor: 'var(--role-chrome-bg, #121212)',
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: 1.5,
@@ -1421,7 +1479,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         });
         const items: BottomNavItem[] = allowed.map((v) => ({
           value: v,
-          label: TAB_DEFS[v].label,
+          label: tabLabel(v),
           Icon: TAB_DEFS[v].Icon,
         }));
         const primaryItems = items.slice(0, 4);
@@ -1503,6 +1561,21 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
       }
 
       try {
+        // Oppsett-verktøyene (doc 14 F1–F6) deler executor med
+        // Research-fanens knapper — null = ikke et oppsett-verktøy.
+        const setupResult = await executeSetupAgentTool(
+          { name: tool.name, input: (tool.input ?? {}) as Record<string, unknown> },
+          projectId,
+        );
+        if (setupResult !== null) {
+          void logAgentToolResult({
+            projectId,
+            toolName: tool.name,
+            toolUseId: tool.id,
+            status: 'ok',
+          });
+          return setupResult;
+        }
         switch (tool.name) {
           case 'draft_review_request': {
             const input = validation.data as {

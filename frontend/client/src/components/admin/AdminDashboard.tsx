@@ -44,6 +44,7 @@ import {
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Assessment,
+  MonitorHeart,
   Settings,
   People,
   Dashboard as DashboardIcon,
@@ -51,6 +52,7 @@ import {
   Storage,
   Business,
   AttachMoney,
+  Language,
   TrendingUp,
   History,
   ManageAccounts,
@@ -106,9 +108,12 @@ import {
   queryClient,
 } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
+import LeadgridAdminSection from './LeadgridAdminSection';
 import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import EditingPartnersAdminPanel from './EditingPartnersAdminPanel';
+import WorkspacePreviewPanel from './WorkspacePreviewPanel';
+import DebugToolPanel from './DebugToolPanel';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import AdminCommunicationPanel from './AdminCommunicationPanel';
@@ -126,12 +131,14 @@ import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
 import GenerativeAiAdminPanel from './GenerativeAiAdminPanel';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
+import CreatorHubDesignShell from './visual-editor/CreatorHubDesignShell';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
 import InboundAlertsPanel from './InboundAlertsPanel';
 import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
+import LtiPlatformsPanel from './LtiPlatformsPanel';
 import CreatorhubVisualEditorRefactored from './CreatorhubVisualEditorRefactored';
 import CustomerProjectsPanel from './CustomerProjectsPanel';
 import SystemHealthPanel from './SystemHealthPanel';
@@ -149,6 +156,7 @@ import ProfessionTypeManager from './ProfessionTypeManager';
 import ComprehensiveProtocolManager from './ComprehensiveProtocolManager';
 import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
 import CentralizedMonitoringConsole from './CentralizedMonitoringConsole';
+import ControlCenterPanel from './ControlCenterPanel';
 import AdminDashboardIntegrationTest from './AdminDashboardIntegrationTest';
 import PaymentSystemsIntegrationTest from './PaymentSystemsIntegrationTest';
 import EditingPaymentTestPanel from './EditingPaymentTestPanel';
@@ -1394,20 +1402,25 @@ export default function AdminDashboard({
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
+    { id: 'leadgrid', label: 'Leadgrid', icon: Language },
     { id: 'user-costs', label: 'Bruker-kostnader', icon: AttachMoney },
     { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
     { id: 'generative-ai', label: 'Generativ AI', icon: Psychology },
     { id: 'design-tokens', label: 'Design-tokens', icon: Palette },
+    { id: 'creatorhub-design', label: 'CreatorHub Design', icon: Palette },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
     { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
     { id: 'vendor-types', label: 'Leverandørtyper', icon: Business },
     { id: 'editing-partners', label: 'Redigeringspartnere', icon: Business },
+    { id: 'workspace-preview', label: 'Workspaces', icon: Business },
+    { id: 'debug-tool', label: 'Debug', icon: Business },
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
+    { id: 'control-center', label: 'Control Center', icon: MonitorHeart },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
     { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
@@ -1447,13 +1460,13 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'profession-types'].includes(tab.id),
+        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'workspace-preview', 'debug-tool', 'profession-types'].includes(tab.id),
       ),
     },
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['creatorhub-design', 'control-center', 'integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -1484,9 +1497,13 @@ export default function AdminDashboard({
     'tidum-tilganger': 'Behandle Tidum-forespørsler, knytt dem til virksomheter og hold tilgangssynken samlet i CreatorHub.',
     'vendor-types': 'Vedlikehold leverandørtyper og tilbudsstruktur.',
     'editing-partners': 'Godkjenn redigerings-søknader; sett prototype-tester (0 % i en periode) vs. vanlig kunde (partner-fee). Filtrer på type.',
+    'workspace-preview': 'Forhåndsvis hver profesjons workspace-grensesnitt (foto/video/produsent/vendor) for å inspisere layout/flyt. «Vis som ekte bruker» kommer i Del 2.',
+    'debug-tool': 'Diagnose-verktøy: sjekk hvorfor en bruker har (eller ikke har) tilgang (identitet/godkjenning/compliance/magic-link/routing) + system-helse (PayPal/Stripe/e-post/DB/migrasjoner).',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
+    'creatorhub-design': 'Administrer produkt-flatene som data — merkevare, navigasjon, tekst, maler og konnektorer per workspace (CreatorHub / The Role Room / Leadgrid).',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
+    'control-center': 'Drift-cockpit: feilrate, aktive hendelser (Sentry + backend) med kvitter/tildel/lukk, og logg — samlet på ett sted.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
     protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
     'secrets-rotation': 'Spor når Stripe-/Cloudflare-/Render-nøkler ble rotert sist; varsel ved forfall.',
@@ -3555,6 +3572,8 @@ export default function AdminDashboard({
             initialSection={priceManagementSection}
           />
         );
+      case 'leadgrid':
+        return <LeadgridAdminSection />;
       case 'user-costs':
         return <UserCostOverviewPanel />;
       case 'secrets-rotation':
@@ -3579,6 +3598,8 @@ export default function AdminDashboard({
         return <GenerativeAiAdminPanel />;
       case 'design-tokens':
         return <AdminDesignTokensPanel />;
+      case 'creatorhub-design':
+        return <CreatorHubDesignShell />;
       case 'reports':
         return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':
@@ -3608,17 +3629,24 @@ export default function AdminDashboard({
         );
       case 'editing-partners':
         return <EditingPartnersAdminPanel />;
+      case 'workspace-preview':
+        return <WorkspacePreviewPanel />;
+      case 'debug-tool':
+        return <DebugToolPanel />;
       case 'profession-types':
         return <ProfessionTypeManager />;
       case 'integrasjoner':
         return (
           <Box sx={{ display: 'grid', gap: 3 }}>
             <IntegrationsManagementPanel {...sharedPanelProps} />
+            <LtiPlatformsPanel />
             <OAuthScopeChecker />
           </Box>
         );
       case 'feature-management':
         return <FeatureManagement {...sharedPanelProps} />;
+      case 'control-center':
+        return <ControlCenterPanel />;
       case 'centralized-monitoring':
         return <CentralizedMonitoringConsole {...sharedPanelProps} />;
       case 'protokollstyring':
@@ -4234,16 +4262,24 @@ export default function AdminDashboard({
             </Box>
           )}
 
-          <AdminErrorBoundary
-            key={currentTab.id}
-            fallback={
-              <Alert severity="error">
-                Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
-              </Alert>
-            }
-          >
-            {renderCurrentTabContent()}
-          </AdminErrorBoundary>
+          {/* Shell-nivå dark-tema: sikrer at ALLE faner arver admin-mørkt tema
+              (hvit tekst på #0a0f1a) selv om det enkelte panelet ikke wrapper
+              seg selv i adminDarkTheme. Uten dette arver uwrappede paneler
+              app-ens lyse creatorHubTheme → mørk tekst på mørk bakgrunn =
+              usynlig. Paneler som allerede wrapper seg dobbelt-wrapper trygt
+              (indre ThemeProvider vinner). */}
+          <AdminSectionThemeProvider theme={adminDarkTheme}>
+            <AdminErrorBoundary
+              key={currentTab.id}
+              fallback={
+                <Alert severity="error">
+                  Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
+                </Alert>
+              }
+            >
+              {renderCurrentTabContent()}
+            </AdminErrorBoundary>
+          </AdminSectionThemeProvider>
         </Container>
       </Box>
 

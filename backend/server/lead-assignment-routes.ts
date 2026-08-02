@@ -84,6 +84,30 @@ async function logAssignment(pool: Pool, params: {
   ).catch((e) => console.warn("[lead-assignment] log-insert feilet", e));
 }
 
+// Cross-tenant guard for by-:id kunde-handlere. mig 320 denormaliserte
+// crm_customers.organization_id (backfill fra owner_user_id via
+// leadgrid-backfill-cron). Returnerer true når kunden tilhører innloggerens
+// org — eller er en legacy-rad uten org satt ennå (backfill kan henge etter).
+// Kunder i ANNEN org → false → handleren svarer 404 (blokkerer enumerering).
+// Rolle-gatene over verifiserer bare HVEM som tildeler + at MOTTAKER er i egen
+// org; UTEN denne sjekken kunne en org-A-leder sende en org-B-kunde-UUID og
+// overskrive/lese tildelingen på tvers av tenants.
+async function customerInOrg(
+  pool: Pool, customerId: string, orgId: string | null,
+): Promise<boolean> {
+  try {
+    const r = await pool.query<{ organization_id: string | null }>(
+      `SELECT organization_id::text FROM crm_customers WHERE id = $1::uuid`,
+      [customerId],
+    );
+    if (!r.rows[0]) return false;
+    const co = r.rows[0].organization_id;
+    return co === null || co === orgId;
+  } catch {
+    return false;
+  }
+}
+
 export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps): void {
 
   // ============================================================
@@ -170,6 +194,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // ville ellers gitt uhåndtert async → HENG (samme mønster som
     // my-notifications/assignment-status; Notification-QA 2026-07-06).
     try {
+    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers).
+    if (!(await customerInOrg(pool, req.params.id, orgId))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     // Verifiser at brukeren er teamleder i samme org
     const verify = await pool.query<{ role: string }>(
       `SELECT role FROM organization_members
@@ -258,6 +286,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
 
     // Ytre try/catch (se assign-team-leader) — kastende query → 500, ikke heng.
     try {
+    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers).
+    if (!(await customerInOrg(pool, req.params.id, orgId))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     // Verifiser at brukeren er rep i samme org
     const verify = await pool.query<{ role: string }>(
       `SELECT role FROM organization_members
@@ -355,6 +387,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // («could not determine data type») og hele handleren manglet try/catch
     // → HENG på HVER unassign (Notification-QA 2026-07-07).
     try {
+    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers).
+    if (!(await customerInOrg(pool, req.params.id, orgId))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     const prev = await pool.query<{
       assigned_user_id: string | null;
       assigned_team_leader_id: string | null;
@@ -423,6 +459,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // Defensiv try/catch (Notification-QA 2026-07-08): malformet :id-uuid
     // eller DB-feil skal gi 500, ikke uhåndtert async → heng.
     try {
+      // Cross-tenant: skop loggen til innloggerens org — uten dette kunne
+      // enhver innlogget bruker lese HVEM som tildelte HVEM (navn) for en
+      // vilkårlig lead-UUID i en annen tenant.
+      const { orgId } = await getUserRole(pool, s.userId);
       const r = await pool.query(
         `SELECT l.id::text, l.from_user_id, l.to_user_id, l.assigned_by_user_id,
                 l.reason, l.assigned_at::text, l.meta,
@@ -433,9 +473,9 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
            LEFT JOIN users fr  ON fr.id = l.from_user_id
            LEFT JOIN users to_ ON to_.id = l.to_user_id
            LEFT JOIN users by_ ON by_.id = l.assigned_by_user_id
-          WHERE l.lead_id = $1
+          WHERE l.lead_id = $1 AND l.organization_id::text = $2
           ORDER BY l.assigned_at DESC LIMIT 50`,
-        [req.params.id],
+        [req.params.id, orgId],
       );
       res.json({ history: r.rows });
     } catch (e) {
@@ -515,7 +555,13 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
     try {
-    const { orgRole } = await getUserRole(pool, s.userId);
+    const { orgRole, orgId } = await getUserRole(pool, s.userId);
+
+    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers) — ellers
+    // kunne view-log/opened-at settes på en vilkårlig annen-tenant-kunde.
+    if (!(await customerInOrg(pool, req.params.id, orgId))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
 
     const isTeamLeader = TEAM_LEADER_ROLES.includes(orgRole ?? "");
     const isRep = REP_ROLES.includes(orgRole ?? "");
@@ -763,6 +809,13 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // svarte Express aldri → HENG. Cast users.id::uuid + try/catch
     // (Notification-QA 2026-07-06).
     try {
+      // Cross-tenant: kunden må tilhøre innloggerens org — uten dette lekket
+      // denne handleren tildelt teamleder/rep sitt navn, avatar OG live
+      // presence (current_route) for en vilkårlig annen-tenant-kunde.
+      const { orgId } = await getUserRole(pool, s.userId);
+      if (!(await customerInOrg(pool, req.params.id, orgId))) {
+        return res.status(404).json({ error: "Ikke funnet" });
+      }
       const r = await pool.query(
         `SELECT c.id::text,
                 c.assigned_team_leader_id, c.assigned_user_id,

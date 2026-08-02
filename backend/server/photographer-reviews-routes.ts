@@ -141,7 +141,12 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
 
       // Best-effort CRM-kobling: logg omtalen som aktivitet på matchende kunde
       // (matcher på e-post). Feiler stille — skal aldri blokkere innsending.
-      if (clientEmail) {
+      // KUN når omtalen er verifisert via gyldig galleri-token: da er
+      // clientEmail autoritativ (fra galleri-raden). Uten token er både
+      // photographerId og clientEmail fritt spoofbare i body → en anonym
+      // innsender kunne ellers injisere falske «review»-aktiviteter i en
+      // vilkårlig fotografs CRM ved å gjette en kjent kunde-e-post.
+      if (verified && clientEmail) {
         try {
           const cust = await pool.query(
             `SELECT id FROM crm_customers

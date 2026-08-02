@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Stack, Typography, Button, Chip, TextField, CircularProgress, IconButton } from '@mui/material';
 import Star from '@mui/icons-material/Star';
 import StarBorder from '@mui/icons-material/StarBorder';
+import WarningAmber from '@mui/icons-material/WarningAmber';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import Brush from '@mui/icons-material/Brush';
 import Block from '@mui/icons-material/Block';
@@ -21,13 +22,14 @@ import { ws } from '../workspaceTheme';
 import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
 import Movie from '@mui/icons-material/Movie';
 import { WsCard, WsTag, WsModal } from '../ui';
+import { wsIcon } from '../crewIcons';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 
 const STATUS_META: any = {
-  approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: '✓' },
-  needs_edit: { label: 'Trenger redigering', tone: 'amber', dot: ws.amber, icon: '✎' },
-  rejected: { label: 'Avvist', tone: 'red', dot: ws.red, icon: '✕' },
-  flagged: { label: 'Flagget', tone: 'accent', dot: ws.accent, icon: '★' },
+  approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: 'Check' },
+  needs_edit: { label: 'Trenger redigering', tone: 'amber', dot: ws.amber, icon: 'EditOutlined' },
+  rejected: { label: 'Avvist', tone: 'red', dot: ws.red, icon: 'Close' },
+  flagged: { label: 'Flagget', tone: 'accent', dot: ws.accent, icon: 'Star' },
 };
 
 const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
@@ -151,12 +153,14 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [animDuration, setAnimDuration] = useState(5);
   const [animJob, setAnimJob] = useState<any | null>(null);
   const [animBusy, setAnimBusy] = useState(false);
-  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setSuggestions([]); setAnimOpen(true); };
+  // Video-leverandør: Seedance 2.0 (fal, standard) vs Higgsfield DoP (kinematisk).
+  const [videoModel, setVideoModel] = useState<'seedance' | 'higgsfield'>('seedance');
+  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setVideoModel('seedance'); setSuggestions([]); setAnimOpen(true); };
   const startAnimate = async () => {
     if (!sel?.id || !animPrompt.trim() || animBusy) return;
     setAnimBusy(true); setAnimJob({ status: 'queued' });
     try {
-      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-to-video`, { method: 'POST', body: { assetId: sel.id, prompt: animPrompt.trim(), duration: animDuration } });
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-to-video`, { method: 'POST', body: { assetId: sel.id, prompt: animPrompt.trim(), duration: animDuration, model: videoModel === 'higgsfield' ? 'higgsfield' : 'seedance-2-i2v' } });
       if (!r?.jobId) throw new Error('Kunne ikke starte');
       // Video tar minutter — poll tålmodig (~4 min), ellers fortsetter i bakgrunnen.
       for (let i = 0; i < 48; i++) {
@@ -197,11 +201,11 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   );
 
   const STAT_CARDS = [
-    { icon: '🖼️', label: 'Totalt bilder', value: stats.total || 0, sub: '100%' },
-    { icon: '⏳', label: 'Til godkjenning', value: stats.pending || 0, sub: stats.total ? `${Math.round((stats.pending || 0) / stats.total * 100)}%` : '', tone: ws.amber },
-    { icon: '✓', label: 'Godkjent', value: stats.approved || 0, sub: stats.total ? `${Math.round((stats.approved || 0) / stats.total * 100)}%` : '', tone: ws.green },
-    { icon: '✎', label: 'Trenger redigering', value: stats.needsEdit || 0, sub: stats.total ? `${Math.round((stats.needsEdit || 0) / stats.total * 100)}%` : '', tone: ws.red },
-    { icon: '💬', label: 'Kommentarer', value: stats.comments || 0, sub: 'Totalt', tone: ws.blue },
+    { icon: 'Image', label: 'Totalt bilder', value: stats.total || 0, sub: '100%' },
+    { icon: 'HourglassEmpty', label: 'Til godkjenning', value: stats.pending || 0, sub: stats.total ? `${Math.round((stats.pending || 0) / stats.total * 100)}%` : '', tone: ws.amber },
+    { icon: 'CheckCircleOutline', label: 'Godkjent', value: stats.approved || 0, sub: stats.total ? `${Math.round((stats.approved || 0) / stats.total * 100)}%` : '', tone: ws.green },
+    { icon: 'EditOutlined', label: 'Trenger redigering', value: stats.needsEdit || 0, sub: stats.total ? `${Math.round((stats.needsEdit || 0) / stats.total * 100)}%` : '', tone: ws.red },
+    { icon: 'ChatBubbleOutline', label: 'Kommentarer', value: stats.comments || 0, sub: 'Totalt', tone: ws.blue },
   ];
 
   return (
@@ -220,7 +224,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {STAT_CARDS.map((c) => (
           <WsCard key={c.label} sx={{ flex: 1, minWidth: 150 }} pad={1.5}>
             <Stack direction="row" spacing={1.25} alignItems="center">
-              <Typography sx={{ fontSize: 18 }}>{c.icon}</Typography>
+              {wsIcon(c.icon, { fontSize: 20, color: c.tone || ws.textDim })}
               <Box>
                 <Typography sx={{ fontSize: 11, color: ws.textDim }}>{c.label}</Typography>
                 <Stack direction="row" spacing={0.75} alignItems="baseline">
@@ -233,7 +237,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ))}
       </Stack>
 
-      <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
         {/* Venstre: viser + filmstrip + stadier */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {/* Bildeviser */}
@@ -288,8 +292,8 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 const sm = STATUS_META[a.reviewStatus] || null;
                 return (
                   <Box key={a.id} onClick={() => { setSelId(a.id); setBaPos(50); }} sx={{ position: 'relative', width: 96, height: 72, flexShrink: 0, borderRadius: 1.5, overflow: 'hidden', cursor: 'pointer', border: `2px solid ${a.id === sel?.id ? ws.accent : 'transparent'}`, background: a.thumbUrl ? `center/cover no-repeat url(${a.thumbUrl})` : ws.panelAlt }}>
-                    {sm && <Box sx={{ position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%', bgcolor: sm.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{sm.icon}</Box>}
-                    {a.rating > 0 && <Box sx={{ position: 'absolute', bottom: 2, left: 4, fontSize: 9, color: ws.amber, fontWeight: 700 }}>{'★'.repeat(a.rating)}</Box>}
+                    {sm && <Box sx={{ position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%', bgcolor: sm.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{wsIcon(sm.icon, { fontSize: 11, color: '#fff' })}</Box>}
+                    {a.rating > 0 && <Box sx={{ position: 'absolute', bottom: 2, left: 4, display: 'inline-flex', color: ws.amber }}>{Array.from({ length: a.rating }).map((_, si) => <Star key={si} sx={{ fontSize: 10 }} />)}</Box>}
                   </Box>
                 );
               })}
@@ -315,7 +319,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Box>
 
         {/* Høyre: kommentarer + bildeinfo */}
-        <Box sx={{ width: 340, flexShrink: 0 }}>
+        <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
           <WsCard sx={{ mb: 2, p: 0, overflow: 'hidden' }}>
             <Box sx={{ p: 1.5, borderBottom: `1px solid ${ws.borderSoft}` }}>
               <Typography sx={{ fontSize: 13.5, fontWeight: 700, mb: 1 }}>Kommentarer</Typography>
@@ -380,7 +384,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {!aiCfg?.consent?.consented ? (
           <Stack spacing={2}>
             <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}><WarningAmber sx={{ fontSize: 15 }} /> Samtykke kreves</Typography>
               <Typography sx={{ fontSize: 12.5, color: ws.text }}>AI-redigering sender kundens bilde til en tredjeparts AI-modell (Google Nano Banana 2) som kan behandle data utenfor EØS. Bekreft at du har grunnlag for dette per prosjekt før du fortsetter.</Typography>
             </Box>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
@@ -448,7 +452,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {!aiCfg?.consent?.consented ? (
           <Stack spacing={2}>
             <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}><WarningAmber sx={{ fontSize: 15 }} /> Samtykke kreves</Typography>
               <Typography sx={{ fontSize: 12.5, color: ws.text }}>AI-video sender bildet til en tredjeparts AI-modell (Seedance 2.0 / ByteDance) som kan behandle data utenfor EØS.</Typography>
             </Box>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
@@ -483,6 +487,14 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             {suggestions.length > 0 && <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
               {suggestions.map((q) => <Box key={q} onClick={() => setAnimPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
             </Stack>}
+            {aiCfg?.higgsfieldConfigured && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography sx={{ fontSize: 12, color: ws.textDim }}>Motor:</Typography>
+                {([['seedance', 'Seedance 2.0'], ['higgsfield', 'Higgsfield DoP']] as const).map(([v, lbl]) => (
+                  <Box key={v} onClick={() => setVideoModel(v)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: videoModel === v ? 700 : 500, color: videoModel === v ? ws.accentContrast : ws.textDim, bgcolor: videoModel === v ? ws.accent : 'rgba(255,255,255,0.05)' }}>{lbl}</Box>
+                ))}
+              </Stack>
+            )}
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontSize: 12, color: ws.textDim }}>Lengde:</Typography>
               {[4, 5, 8, 10].map((d) => <Box key={d} onClick={() => setAnimDuration(d)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: animDuration === d ? 700 : 500, color: animDuration === d ? ws.accentContrast : ws.textDim, bgcolor: animDuration === d ? ws.accent : 'rgba(255,255,255,0.05)' }}>{d}s</Box>)}

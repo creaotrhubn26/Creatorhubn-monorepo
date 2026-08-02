@@ -72,7 +72,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
           unreadCount: unreadRes.rows[0]?.n ?? 0,
         });
       } catch (err) {
-        return res.status(500).json({ error: "feed_failed", detail: String(err) });
+        return res.status(500).json({ error: "feed_failed", detail: "internal_error" });
       }
     },
   );
@@ -92,7 +92,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "mark_read_failed", detail: String(err) });
+        return res.status(500).json({ error: "mark_read_failed", detail: "internal_error" });
       }
     },
   );
@@ -112,7 +112,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         );
         return res.json({ ok: true, updated: r.rowCount });
       } catch (err) {
-        return res.status(500).json({ error: "mark_all_failed", detail: String(err) });
+        return res.status(500).json({ error: "mark_all_failed", detail: "internal_error" });
       }
     },
   );
@@ -148,7 +148,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         });
         return res.json({ preferences });
       } catch (err) {
-        return res.status(500).json({ error: "prefs_failed", detail: String(err) });
+        return res.status(500).json({ error: "prefs_failed", detail: "internal_error" });
       }
     },
   );
@@ -196,7 +196,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "save_pref_failed", detail: String(err) });
+        return res.status(500).json({ error: "save_pref_failed", detail: "internal_error" });
       }
     },
   );
@@ -246,7 +246,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "save_token_failed", detail: String(err) });
+        return res.status(500).json({ error: "save_token_failed", detail: "internal_error" });
       }
     },
   );
@@ -266,7 +266,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "deregister_failed", detail: String(err) });
+        return res.status(500).json({ error: "deregister_failed", detail: "internal_error" });
       }
     },
   );
@@ -291,7 +291,7 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         });
         return res.json(result);
       } catch (err) {
-        return res.status(500).json({ error: "approaching_failed", detail: String(err) });
+        return res.status(500).json({ error: "approaching_failed", detail: "internal_error" });
       }
     },
   );

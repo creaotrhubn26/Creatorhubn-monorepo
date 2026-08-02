@@ -17,8 +17,18 @@ import { composeEmail } from "./email-design-system";
 import { sendTransactionalEmail } from "./transactional-email-service";
 import { mintPortalToken, revokeVendorPortalTokens } from "./editing-partner-portal-service";
 import { paypalHealthCheck, paypalTestPayout } from "./editing-payments-service";
+import { buildComplianceSummary, type ComplianceProfile } from "./editing-compliance";
 
 type SessionData = { userId: string; role?: string; email?: string };
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 const PORTAL_BASE = process.env.CREATORHUB_PUBLIC_URL || "https://creatorhubn.com";
 
@@ -240,7 +250,11 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
   app.post("/api/cron/prototype-feedback-reminders", async (req, res) => {
     const cronToken = req.headers["x-cron-trigger-token"] as string | undefined;
     const expected = process.env.CRON_TRIGGER_TOKEN;
-    const viaToken = expected && cronToken && cronToken === expected;
+    const viaToken =
+      !!expected &&
+      !!cronToken &&
+      Buffer.byteLength(cronToken) === Buffer.byteLength(expected) &&
+      crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
     if (!viaToken) {
       const sess = await requireSuperAdmin(req, res, pool, activeSessions);
       if (!sess) return;
@@ -273,7 +287,7 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
           await sendTransactionalEmail({
             to: row.email,
             subject: "Påminnelse: gi tilbakemelding som prototype-tester",
-            html: `<p>Hei ${row.vendor_name || ""},</p><p>${intro}</p>`
+            html: `<p>Hei ${escapeHtml(row.vendor_name || "")},</p><p>${intro}</p>`
               + `<p>Som prototype-tester har du <strong>0 % plattformgebyr</strong> — avtalen forutsetter at du `
               + `hjelper oss å forbedre systemet med jevnlig tilbakemelding. Logg inn og bruk «Gi tilbakemelding» `
               + `i partner-arbeidsområdet.</p><p><a href="${workspaceUrl}">Åpne partner-arbeidsområdet</a></p>`,
@@ -301,17 +315,34 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     if (!s) return;
     try {
       const r = await pool.query(
-        `SELECT p.user_id, p.vendor_name, p.country, p.is_foreign, p.approval_status,
-                p.partner_type, p.prototype_until, p.platform_fee_bps,
-                p.rating, p.review_count, p.quality_flagged, p.approved_at,
-                u.email
+        `SELECT p.*, u.email,
+                (SELECT t.created_at  FROM editing_partner_portal_tokens t WHERE t.vendor_user_id = p.user_id ORDER BY t.created_at DESC LIMIT 1) AS last_link_sent_at,
+                (SELECT t.consumed_at FROM editing_partner_portal_tokens t WHERE t.vendor_user_id = p.user_id ORDER BY t.created_at DESC LIMIT 1) AS last_link_used_at
            FROM vendor_onboarding_profiles p
            LEFT JOIN users u ON u.id = p.user_id
           WHERE p.vendor_type = 'editing'
           ORDER BY p.approved_at DESC NULLS LAST, p.created_at DESC
           LIMIT 300`,
       );
-      res.json({ vendors: r.rows });
+      // Beregn compliance-status per vendor → admin ser hvem som er godkjent men IKKE cleared.
+      const vendors = r.rows.map((row) => {
+        const summary = buildComplianceSummary(row as ComplianceProfile);
+        return {
+          user_id: row.user_id, vendor_name: row.vendor_name, email: row.email,
+          country: row.country, is_foreign: row.is_foreign, approval_status: row.approval_status,
+          partner_type: row.partner_type, prototype_until: row.prototype_until, platform_fee_bps: row.platform_fee_bps,
+          rating: row.rating, review_count: row.review_count, quality_flagged: row.quality_flagged, approved_at: row.approved_at,
+          // Compliance-synlighet:
+          cleared: summary.cleared,
+          verificationPercent: summary.verificationPercent,
+          missing: summary.missing,
+          complianceComplete: summary.cleared,
+          // Magic-link-status: sist sendt + om den er åpnet/brukt (consumed).
+          lastLinkSentAt: row.last_link_sent_at,
+          lastLinkUsedAt: row.last_link_used_at,
+        };
+      });
+      res.json({ vendors });
     } catch (err) {
       console.error("[editing-vendors:list]", err);
       res.status(500).json({ error: "kunne_ikke_hente" });
@@ -327,7 +358,13 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         : req.body?.partnerType === "prototype" ? "prototype" : null;
       let prototypeUntil: string | null = null;
       if (partnerType === "prototype") {
-        if (req.body?.prototypeUntil) prototypeUntil = new Date(req.body.prototypeUntil).toISOString();
+        if (req.body?.prototypeUntil) {
+          const rawDate = new Date(req.body.prototypeUntil);
+          if (Number.isNaN(rawDate.getTime())) {
+            return res.status(400).json({ error: "Ugyldig dato for prototypeUntil" });
+          }
+          prototypeUntil = rawDate.toISOString();
+        }
         else if (Number.isFinite(Number(req.body?.prototypeMonths)) && Number(req.body.prototypeMonths) > 0) {
           const d = new Date(); d.setMonth(d.getMonth() + Number(req.body.prototypeMonths)); prototypeUntil = d.toISOString();
         }
@@ -469,7 +506,13 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         : req.body?.partnerType === "prototype" ? "prototype" : null;
       let prototypeUntil: string | null = null;
       if (partnerType === "prototype") {
-        if (req.body?.prototypeUntil) prototypeUntil = new Date(req.body.prototypeUntil).toISOString();
+        if (req.body?.prototypeUntil) {
+          const rawDate = new Date(req.body.prototypeUntil);
+          if (Number.isNaN(rawDate.getTime())) {
+            return res.status(400).json({ error: "Ugyldig dato for prototypeUntil" });
+          }
+          prototypeUntil = rawDate.toISOString();
+        }
         else if (Number.isFinite(Number(req.body?.prototypeMonths)) && Number(req.body.prototypeMonths) > 0) {
           const d = new Date(); d.setMonth(d.getMonth() + Number(req.body.prototypeMonths)); prototypeUntil = d.toISOString();
         }

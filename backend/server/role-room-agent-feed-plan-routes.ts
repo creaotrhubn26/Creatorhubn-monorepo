@@ -570,7 +570,15 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     }
   });
 
-  app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res, next) => {
+    // `/:projectId/approval-policy` er en egen, mildere-gatet rute registrert
+    // lenger ned. Express matcher denne generiske `:platform`-ruten først (samme
+    // to-segments-form), så uten dette fall-through-et ble approval-policy tolket
+    // som platform="approval-policy" → 400 + admin-gate for klient-flaten. Slipp
+    // den videre til riktig handler.
+    if (req.params.platform === "approval-policy") {
+      return next();
+    }
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({
@@ -608,7 +616,11 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     });
   });
 
-  app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res, next) => {
+    // Se GET-ruten over: slipp `/approval-policy` videre til sin egen PUT-rute.
+    if (req.params.platform === "approval-policy") {
+      return next();
+    }
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({
@@ -863,6 +875,27 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       return res.status(403).json({
         success: false,
         error: "Bare kunden kan endre godkjenningspolicyen.",
+      });
+    }
+    // §5.1 BOLA-gate: the `client_reviewer` session role is self-selectable at
+    // login (auth-routes derives it from the caller-supplied requestedRole), so
+    // role ALONE is not authorization. The actor must be the client OF THIS
+    // project — verified against casting_user_roles by proven identity (user_id
+    // or the session's authenticated email). Without this, any logged-in user
+    // could flip requireClientApproval on any project and bypass §5.1.
+    const clientOnProject = await pool.query(
+      `SELECT 1 FROM casting_user_roles
+        WHERE project_id = $1
+          AND role IN ('client', 'client_reviewer')
+          AND deactivated_at IS NULL
+          AND (user_id = $2 OR (email IS NOT NULL AND lower(email) = lower($3)))
+        LIMIT 1`,
+      [projectId, session.userId, session.email ?? ""],
+    );
+    if (clientOnProject.rowCount === 0) {
+      return res.status(403).json({
+        success: false,
+        error: "Du er ikke registrert som kunde på dette prosjektet.",
       });
     }
     const body = (req.body || {}) as Record<string, unknown>;

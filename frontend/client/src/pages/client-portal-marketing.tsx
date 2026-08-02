@@ -17,6 +17,9 @@ import ClientPortalRequestsSection from '@/components/role-room/client-portal/Cl
 import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
 import PostCommentLayer from '@/components/role-room/components/PostCommentLayer';
 import PostVideoPreview from '@/components/role-room/components/PostVideoPreview';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 import {
   Alert,
   Box,
@@ -141,6 +144,7 @@ export default function ClientPortalMarketingPage({ token: tokenProp }: { token?
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const cmsHeroBlocks = useCmsBlocks('clientportal');
   // Deep-link via ?request=<id> — leses fra window.location ved mount
   // (wouter useSearch er ikke i bruk her). Highlight + auto-expand i
   // ClientPortalRequestsSection bruker denne id-en.
@@ -238,6 +242,9 @@ export default function ClientPortalMarketingPage({ token: tokenProp }: { token?
       <Box sx={{ minHeight: '100vh', bgcolor: '#0b1220', color: '#e2e8f0', p: 3 }}>
         <Container maxWidth="md">
           <Stack spacing={3} sx={{ py: 4 }}>
+            {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+              <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+            ) : null}
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="h5" sx={{ color: '#f8fafc', fontWeight: 800, mb: 1 }}>
                 Markedsplanen er under utforming
@@ -261,6 +268,9 @@ export default function ClientPortalMarketingPage({ token: tokenProp }: { token?
       <HeroHeader data={data} />
       <Container maxWidth="lg" sx={{ mt: 3 }}>
         <Stack spacing={3}>
+          {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+            <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+          ) : null}
           <ClientPortalRegisterCard token={token} />
           {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />

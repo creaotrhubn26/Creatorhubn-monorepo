@@ -221,7 +221,7 @@ export function SettingsModal({ onClose }: Props) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 540, maxHeight: "85vh" }}>
-        <h2>Settings</h2>
+        <h2>Innstillinger</h2>
         <div className="desc">
           Brukerinnstillinger som påvirker default-valg i Cull, Audio og Color.
         </div>
@@ -229,7 +229,7 @@ export function SettingsModal({ onClose }: Props) {
         {/* USER PREFERENCES */}
         <div className="settings-section">
           <div className="field">
-            <label>Default delivery target</label>
+            <label>Standard leveringsmål</label>
             <select
               value={settings.defaultDeliveryTarget}
               onChange={(e) => update("defaultDeliveryTarget", e.target.value)}
@@ -243,7 +243,7 @@ export function SettingsModal({ onClose }: Props) {
             <div className="settings-help">Foretrukket loudness-mål når Audio QC Report kjøres.</div>
           </div>
           <div className="field">
-            <label>Default output folder</label>
+            <label>Standard utmappe</label>
             <input
               type="text"
               placeholder="~/Documents/Resolve Reports"
@@ -306,7 +306,7 @@ export function SettingsModal({ onClose }: Props) {
           </div>
           <div className="settings-help" style={{ marginTop: 4 }}>
             Estimat basert på faktiske antall Vision-kall (Haiku ≈ $0.0003/bilde, Sonnet ≈ $0.003/bilde).
-            Sist tilbakestilt: {new Date(usage.resetAt).toLocaleDateString()}.
+            Sist tilbakestilt: {new Date(usage.resetAt).toLocaleDateString('nb-NO')}.
           </div>
           <button className="small ghost" onClick={resetUsage} style={{ marginTop: 6, alignSelf: "flex-start" }}>
             Reset counters
@@ -334,8 +334,12 @@ export function SettingsModal({ onClose }: Props) {
               <button
                 className="small"
                 onClick={() => {
-                  update("RR_BEARER_TOKEN", "");
-                  setSettings((s) => ({ ...s, RR_BEARER_TOKEN: "" }));
+                  // Logg ut må persisteres umiddelbart — ellers ligger tokenet
+                  // igjen i localStorage/env til brukeren evt. trykker Lagre.
+                  const cleared = { ...settings, RR_BEARER_TOKEN: "" };
+                  setSettings(cleared);
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(cleared));
+                  void updateAppSettings(settingsToEnvVars(cleared));
                 }}
               >
                 Logg ut

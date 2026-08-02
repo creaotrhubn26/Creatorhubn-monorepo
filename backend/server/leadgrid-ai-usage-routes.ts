@@ -87,7 +87,7 @@ export function registerLeadgridAIUsageRoutes(deps: Deps): void {
         total_cost_usd: grand.cost,
       });
     } catch (err) {
-      res.status(500).json({ error: "summary_failed", detail: String(err) });
+      res.status(500).json({ error: "summary_failed", detail: "internal_error" });
     }
   });
 
@@ -110,7 +110,7 @@ export function registerLeadgridAIUsageRoutes(deps: Deps): void {
       );
       res.json({ organization_id: orgId, history: r.rows });
     } catch (err) {
-      res.status(500).json({ error: "history_failed", detail: String(err) });
+      res.status(500).json({ error: "history_failed", detail: "internal_error" });
     }
   });
 }

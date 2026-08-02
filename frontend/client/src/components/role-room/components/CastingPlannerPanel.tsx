@@ -3,11 +3,11 @@ import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, star
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
-import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck } from '../config/professionMode';
+import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
@@ -158,6 +158,16 @@ import {
 } from '../services/castingApiService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
+import { roleRoomProjectTabConfigService } from '../services/roleRoomProjectTabConfigService';
+import { ProjectTabAccessDialog } from './ProjectTabAccessDialog';
+import {
+  presetForRole,
+  hasRolePreset,
+  visibleTabKeys as accessVisibleTabKeys,
+  manageableTabKeys as accessManageableTabKeys,
+  TAB_INDEX_TO_KEY,
+} from '../models/studioAccessModel';
+import type { TabAccessMap } from '../models/studioAccessModel';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
@@ -231,6 +241,8 @@ const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ def
 
 // Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
+const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
+const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -244,6 +256,7 @@ const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
 const AdsManagementPanel = lazy(() => retryDynamicImport(() => import('./producer/AdsManagementPanel'), 'AdsManagementPanel'));
+const ProducerBudgetTabs = lazy(() => retryDynamicImport(() => import('./producer/ProducerBudgetTabs'), 'ProducerBudgetTabs'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -312,6 +325,7 @@ import {
   type CastingRoleSelftape,
 } from '../services/roleRoomSelfTapesService';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -709,10 +723,35 @@ export function CastingPlannerPanel({
   // mode and avoids spinning up production data fetches we don't need.
   const __activeProfessionMode = getActiveProfessionModeForDance();
   if (isDanceModeCheck(__activeProfessionMode)) {
+    // Lokal ErrorBoundary (./ErrorBoundary) tar children/fallback, ikke componentName. CH-ARCH-003.
     return (
+      <ErrorBoundary>
       <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster dans-modus…</Box>}>
         <DanceWorkspace />
       </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Utdanningsinstitusjon-modus — samme parallell-workspace-mønster som dans:
+  // render EducationWorkspace og avslutt før produksjons-hooks/state kjører.
+  if (isEducationModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster utdannings-modus…</Box>}>
+        <EducationWorkspace />
+      </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Student-modus — «Min side» (foreløpig super-admin-preview), samme
+  // parallell-workspace-mønster som dans/utdanning.
+  if (isStudentModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster student-modus…</Box>}>
+        <StudentWorkspace />
+      </Suspense>
+      </ErrorBoundary>
     );
   }
 
@@ -773,7 +812,6 @@ export function CastingPlannerPanel({
     base = Math.max(useCompactHeaderLayout ? TOUCH_TARGET_SIZE : 38, base);
     return base;
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
-  const MOBILE_TOUCH_TARGET_SIZE = 48;
   const safeHeaderActionButtonSizePx = isMobile
     ? Math.max(navActionButtonSizePx, MOBILE_TOUCH_TARGET_SIZE)
     : navActionButtonSizePx;
@@ -975,7 +1013,7 @@ export function CastingPlannerPanel({
     },
     videographer: {
       name: branding.tokens.labels.professionVideographerName,
-      color: '#8b5cf6',
+      color: 'var(--role-violet, #8b5cf6)',
       icon: VideocamIcon,
       terminology: {
         project: branding.tokens.labels.termVideoProject,
@@ -1202,6 +1240,11 @@ type RoleRoomProjectWorkspaceState = {
   const [quickContactIds, setQuickContactIds] = useState<Set<string>>(new Set());
   const [quickContactsLoaded, setQuickContactsLoaded] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<Awaited<ReturnType<typeof castingAuthService.getUserRole>> | null>(null);
+  // RBAC: effektivt tilgangskart (fane-nøkkel → nivå) for innlogget bruker på
+  // dette prosjektet. null mens det lastes → ingen begrensning (bakover-kompat).
+  const [effectiveTabAccess, setEffectiveTabAccess] = useState<TabAccessMap | null>(null);
+  const [tilgangerDialogOpen, setTilgangerDialogOpen] = useState(false);
+  const [tilgangerProjectId, setTilgangerProjectId] = useState<string | null>(null);
   
   // Permissions state for role-based tab visibility
   const [permissions, setPermissions] = useState<{
@@ -1431,12 +1474,29 @@ type RoleRoomProjectWorkspaceState = {
   const selectionGoogleStatusRequestRef = useRef(0);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
   const lastProducerMediaFocusRef = useRef<ClientPortalWorkspaceFocus | null>(null);
+  // Stabil identitet: en ny inline-callback her hver render får ProducerMedia-
+  // Panels emit-effekt (som har callbacken i dep-listen) til å re-fyre hver
+  // parent-render og pushe identisk fokus opp igjen → render-løkke i klient-
+  // portalen. useCallback bryter det. Den funksjonelle guarden returnerer
+  // samme referanse ved uendret fokus så React hopper over re-render.
+  const handleProducerMediaFocusChange = useCallback((focus: ClientPortalWorkspaceFocus) => {
+    setProducerMediaFocus((previous) => (
+      previous?.workspace === focus.workspace
+      && previous?.sectionId === focus.sectionId
+      && previous?.pageId === focus.pageId
+      && previous?.artifactId === focus.artifactId
+        ? previous
+        : focus
+    ));
+  }, []);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
     setTeamDashboardOpenSignal((current) => current + 1);
     setStoryArcView('shot-list');
-    setActiveTab(STORY_ARC_TAB_INDEX);
+    // #426-vakt: klikk-handler som mounter den lazy Story-Arc-fanen — byttet må
+    // være en transition, ellers suspender fanen under synkron input → #426.
+    startTransition(() => setActiveTab(STORY_ARC_TAB_INDEX));
   }, []);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
@@ -1545,6 +1605,23 @@ type RoleRoomProjectWorkspaceState = {
     // Hold React-state synket så useBeforeUnloadIfDirty re-evaluerer.
     setHasAnyUnsavedChanges(Object.keys(unsavedProjectSwitchStateRef.current).length > 0);
   }, []);
+
+  // Stabile onUnsavedStateChange-handlere per kilde. Inline-varianter ga ny
+  // identitet hver render; siden barna (ProducerMediaPanel/StoryboardTabView/
+  // ManuscriptPanel) har callbacken i dep-listen til en useEffect, rev den
+  // effekten seg ned + kjørte på nytt hver parent-render (kalte setter to
+  // ganger per render). Ingen løkke i dag (setUnsavedProjectSwitchSource er
+  // stabil + idempotent), men unødvendig churn — stabil identitet fjerner den
+  // for alle konsumenter samtidig.
+  const handleProjectRoomUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+  const handleStoryLogicUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+  const handleManuscriptUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
 
   useBeforeUnloadIfDirty({
     isDirty: hasAnyUnsavedChanges,
@@ -1815,7 +1892,13 @@ type RoleRoomProjectWorkspaceState = {
         flushSync(() => setActiveTab(nextTab));
         return;
       }
-      setActiveTab(nextTab);
+      // #426-vakt: nesten alle faner er lazy() (kodesplittet). Setter vi
+      // activeTab synkront (fra <Tabs onChange>, ⌘K-paletten, dyplenker),
+      // suspender den nye fanen midt i en synkron input-oppdatering → React
+      // #426, som blanker HELE workspacet. startTransition markerer byttet som
+      // ikke-hastende så Suspense får vise fallback trygt. (Live-Set-exit over
+      // beholder flushSync — det MÅ committe synkront ifm. fullskjerm-exit.)
+      startTransition(() => setActiveTab(nextTab));
     };
 
     if (tabIndex === SHOT_LIST_TAB_INDEX) {
@@ -1873,10 +1956,11 @@ type RoleRoomProjectWorkspaceState = {
     focus?: Omit<ProducerWorkflowFocusPayload, 'projectId' | 'panel'>,
   ) => {
     if (isContentProducerMode) {
-      if (tabIndex === PRODUCER_MEDIA_TAB_INDEX) {
-        openContentProducerPlannerSurface('project_room');
-        return;
-      }
+      // NB: media/prosjektrom rutes IKKE herfra — det har sin egen dedikerte
+      // `navigateToProducerMediaWorkspace` (ClientPortalWorkspaceFocus, ikke
+      // ProducerWorkflowFocusPayload). Denne funksjonen kalles kun med
+      // ECONOMY/REVIEWS/TIMELINE (verifisert alle kall-steder), så en
+      // PRODUCER_MEDIA_TAB_INDEX-gren her var død kode — fjernet.
       if (tabIndex === PRODUCER_REVIEWS_TAB_INDEX) {
         openContentProducerPlannerSurface('approval', {
           focusPanel: 'reviews',
@@ -3362,18 +3446,35 @@ type RoleRoomProjectWorkspaceState = {
       // ETTER seed-effekten og overskriver lastRealProjectId med null fra
       // siste lagrede tom-state. Daniels TROLL-deep-link havnet i tom-state
       // selv om URL var korrekt og DB hadde 8 roller/8 kandidater klar.
+      // 2026-07-19: OG omvendt — når URL-en HAR ?project=, skal den vinne
+      // over stored (reprodusert: navigasjon til ?project=medside ble
+      // kastet til sist lagrede prosjekt). Prioritet: URL > stored > null.
+      const urlProjectParam = sp.get('project');
       const existing = persistedWorkspaceStateRef.current;
       persistedWorkspaceStateRef.current = {
         ...stored,
-        lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
-        projectId: stored.projectId ?? existing?.projectId ?? null,
+        lastRealProjectId: urlProjectParam ?? stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
+        projectId: urlProjectParam ?? stored.projectId ?? existing?.projectId ?? null,
       };
-      setStoryArcView(stored.storyArcView);
-      setStoryArcFocus(stored.storyArcFocus ?? null);
-      setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      // 2026-07-19: Eksplisitte URL-params VINNER over lagret tilstand.
+      // Før overstyrte restore både ?tab= og ?surface= — en delelenke til
+      // tab=producer-media landet i sist lagrede fane (tidslinje) i stedet.
+      // Lagret tilstand fyller kun dimensjonene URL-en ikke spesifiserer.
+      const urlHasTab = !!sp.get('tab');
+      const urlHasSurface = !!sp.get('surface');
+      const urlHasView = !!sp.get('view');
+      if (!urlHasView) {
+        setStoryArcView(stored.storyArcView);
+        setStoryArcFocus(stored.storyArcFocus ?? null);
+      }
+      if (!urlHasSurface) {
+        setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      }
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
       setContentProducerResumeTarget(stored.contentProducerResumeTarget ?? null);
-      setActiveTab(stored.activeTab);
+      if (!urlHasTab) {
+        setActiveTab(stored.activeTab);
+      }
     };
 
     void hydrateWorkspaceState();
@@ -4032,7 +4133,7 @@ type RoleRoomProjectWorkspaceState = {
     { color: '#14b8a6', icon: SelectionTabIcon },
     { color: '#4caf50', icon: LocationIcon },
     { color: '#9c27b0', icon: CalendarIcon },
-    { color: '#00d4ff', icon: GroupsIcon },
+    { color: 'var(--role-cyan, #00d4ff)', icon: GroupsIcon },
     { color: '#9333ea', icon: EquipmentIcon },
     { color: '#ef4444', icon: VideocamIcon },
     { color: '#60a5fa', icon: PermMediaIcon },
@@ -4041,6 +4142,62 @@ type RoleRoomProjectWorkspaceState = {
     { color: '#c084fc', icon: FactCheckIcon },
     { color: '#fbbf24', icon: ImportExportIcon },
   ], [professionConfig?.color]);
+  // ── RBAC: hent effektivt tilgangskart for prosjektet ────────────────
+  // Lederen delegerer tilgang pr. rolle/bruker via "Tilganger"-dialogen. my-tabs
+  // returnerer en overstyring (tabAccess) hvis satt, ellers null → vi bruker
+  // rollens preset fra studioAccessModel. null-tilstand = ingen begrensning.
+  // Avled effektiv tilgang fra my-tabs-svaret. Sikkerhetsventil: gating slår kun
+  // inn ved (a) eksplisitt overstyring fra lederen, eller (b) en gjenkjent rolle
+  // med preset. Ukjent/legacy rolle → null (ingen begrensning) så vi aldri låser
+  // ute eksisterende medlemmer.
+  const deriveEffectiveAccess = useCallback(
+    (res: Awaited<ReturnType<typeof roleRoomProjectTabConfigService.getMyTabs>>): TabAccessMap | null => {
+      if (res.tabAccess) return res.tabAccess;
+      if (res.role === 'leder') return null;
+      if (hasRolePreset(res.role)) return presetForRole(res.role);
+      return null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const pid = currentProject?.id ?? null;
+    if (!pid) { setEffectiveTabAccess(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await roleRoomProjectTabConfigService.getMyTabs(pid);
+        if (!cancelled) setEffectiveTabAccess(deriveEffectiveAccess(res));
+      } catch {
+        if (!cancelled) setEffectiveTabAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentProject?.id, deriveEffectiveAccess]);
+
+  const rbacManageableTabKeys = useMemo(
+    () => accessManageableTabKeys(effectiveTabAccess),
+    [effectiveTabAccess],
+  );
+  const rbacAccessibleTabKeys = useMemo(
+    () => accessVisibleTabKeys(effectiveTabAccess),
+    [effectiveTabAccess],
+  );
+
+  /** Kan innlogget bruker skrive i denne fanen? (null-tilgang = ja, bakover-kompat) */
+  const canManageTab = useCallback((tabIndex: number): boolean => {
+    if (!effectiveTabAccess) return true;
+    const key = TAB_INDEX_TO_KEY[tabIndex];
+    if (!key) return true;
+    return rbacManageableTabKeys.has(key);
+  }, [effectiveTabAccess, rbacManageableTabKeys]);
+
+  const isViewerLeaderOf = useCallback((p: CastingProject | null): boolean => {
+    const uid = getUserId();
+    if (!uid || !p) return false;
+    return [p.ownerId, p.createdBy].some((c) => c != null && String(c) === String(uid));
+  }, [getUserId]);
+
   const visibleTabValues = useMemo<number[]>(() => {
     if (isExternalClientPortalMode) {
       return [
@@ -4071,7 +4228,7 @@ type RoleRoomProjectWorkspaceState = {
       return reviewerTabs;
     }
 
-    return [
+    const baseTabs = [
       0,
       STORY_ARC_TAB_INDEX,
       STORYBOARD_TAB_INDEX,
@@ -4091,7 +4248,21 @@ type RoleRoomProjectWorkspaceState = {
       PRODUCER_EXPORT_TAB_INDEX,
       LIVE_SET_TAB_INDEX,
     ];
-  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode]);
+
+    // RBAC-filter: hvis lederen har delegert tilgang (eller rollen har et
+    // preset), skjul faner brukeren ikke har Se/Administrere på. Oversikt (0)
+    // holdes alltid synlig som landingsflate. Ingen effektiv tilgang lastet →
+    // vis alt (bakover-kompat).
+    if (effectiveTabAccess) {
+      return baseTabs.filter((idx) => {
+        if (idx === 0) return true;
+        const key = TAB_INDEX_TO_KEY[idx];
+        if (!key) return true;
+        return rbacAccessibleTabKeys.has(key);
+      });
+    }
+    return baseTabs;
+  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode, effectiveTabAccess, rbacAccessibleTabKeys]);
 
   useEffect(() => {
     if (!visibleTabValues.includes(activeTab)) {
@@ -4728,8 +4899,14 @@ type RoleRoomProjectWorkspaceState = {
     };
   }, [currentProject, isContentProducerDemoProject, isContentProducerMode, permissionsLoading]);
 
-  const roleDialogAccentColor = '#b86bff';
-  const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
+  const roleDialogAccentColor = 'var(--role-accent, #b86bff)';
+  // MUI alpha() runs decomposeColor() which cannot parse a CSS var() string and
+  // throws (minified error #9) — that crash white-screened the casting app. Derive
+  // translucent variants with CSS-native color-mix instead, which keeps the
+  // admin-rethemeable --role-accent variable live rather than baking in a hex.
+  const accentMix = (ratio: number): string =>
+    `color-mix(in srgb, var(--role-accent, #b86bff) ${Math.round(ratio * 100)}%, transparent)`;
+  const roleDialogAccentSoftColor = accentMix(0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
   const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();
   const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
@@ -8368,8 +8545,8 @@ type RoleRoomProjectWorkspaceState = {
                   flexShrink: 0,
                   p: 0,
                   '&:hover, &:active': {
-                    borderColor: '#00d4ff',
-                    color: '#00d4ff',
+                    borderColor: 'var(--role-cyan, #00d4ff)',
+                    color: 'var(--role-cyan, #00d4ff)',
                     bgcolor: 'rgba(0, 212, 255, 0.1)',
                   },
                 }}
@@ -8582,7 +8759,7 @@ type RoleRoomProjectWorkspaceState = {
                           width: useDenseDesktopHeader ? 8 : 10,
                           height: useDenseDesktopHeader ? 8 : 10,
                           borderRadius: '50%',
-                          bgcolor: headerActiveProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
+                          bgcolor: headerActiveProject ? 'var(--role-cyan, #22d3ee)' : 'rgba(255,255,255,0.22)',
                           border: headerActiveProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
                           boxShadow: headerActiveProject ? '0 0 12px rgba(34,211,238,0.45)' : 'none',
                           flexShrink: 0,
@@ -8680,7 +8857,7 @@ type RoleRoomProjectWorkspaceState = {
                       bgcolor: 'rgba(255,255,255,0.04)',
                       flexShrink: 0,
                       '&:hover': {
-                        color: '#7dd3fc',
+                        color: 'var(--role-cyan, #7dd3fc)',
                         bgcolor: 'rgba(96,165,250,0.12)',
                         borderColor: 'rgba(96,165,250,0.24)',
                       },
@@ -8752,7 +8929,7 @@ type RoleRoomProjectWorkspaceState = {
                       left: '8%',
                       right: '8%',
                       height: '3px',
-                      backgroundColor: '#00d4ff',
+                      backgroundColor: 'var(--role-cyan, #00d4ff)',
                       borderRadius: '3px 3px 0 0',
                       boxShadow: '0 0 10px rgba(0, 212, 255, 0.4)',
                     } : {},
@@ -8768,7 +8945,7 @@ type RoleRoomProjectWorkspaceState = {
                       boxShadow: `0 0 10px ${pinnedAccentColor}55`,
                     } : {},
                     '&:hover': {
-                      borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.16)',
+                      borderColor: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.16)',
                       background: isActive
                         ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.22) 0%, rgba(0, 180, 230, 0.16) 100%)'
                         : 'rgba(255,255,255,0.04)',
@@ -8790,7 +8967,7 @@ type RoleRoomProjectWorkspaceState = {
                           width: { xs: 10, sm: 12 },
                           height: { xs: 10, sm: 12 },
                           borderRadius: '50%',
-                          bgcolor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                          bgcolor: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.2)',
                           border: isActive ? '2px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
                           boxShadow: isActive ? '0 0 12px rgba(0, 212, 255, 0.45)' : 'none',
                           flexShrink: 0,
@@ -8900,7 +9077,7 @@ type RoleRoomProjectWorkspaceState = {
                       sx={{
                         color: isActive ? 'rgba(255,255,255,0.68)' : 'rgba(255,255,255,0.34)',
                         '&:hover, &:active': {
-                          color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.88)',
+                          color: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.88)',
                           bgcolor: isActive ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.08)',
                         },
                         width: safeHeaderProjectActionSizePx,
@@ -9007,7 +9184,8 @@ type RoleRoomProjectWorkspaceState = {
                 // på dashboard og kan navigere fritt (Admin Room etc).
                 setCurrentProject(null);
                 setCurrentProjectId(null);
-                setActiveTab(0);
+                // #426-vakt: fane 0 (Dashboard) er lazy — bytt via transition.
+                startTransition(() => setActiveTab(0));
                 if (typeof window !== 'undefined') {
                   try {
                     window.history.replaceState({}, document.title, window.location.pathname);
@@ -9042,7 +9220,7 @@ type RoleRoomProjectWorkspaceState = {
                   }}
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
-                  <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  <EditIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
                   Rediger prosjekt
                 </MenuItem>
                 {projectQuickActionsProject && !isTemplateProject(projectQuickActionsProject) && !isProtectedDemoProject(projectQuickActionsProject) ? (
@@ -9063,6 +9241,20 @@ type RoleRoomProjectWorkspaceState = {
                       <ArchiveIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
                     )}
                     {isArchivedWorkspaceProject(projectQuickActionsProject) ? 'Gjenopprett prosjekt' : 'Arkiver prosjekt'}
+                  </MenuItem>
+                ) : null}
+                {projectQuickActionsProject && isViewerLeaderOf(projectQuickActionsProject) ? (
+                  <MenuItem
+                    onClick={() => {
+                      if (!projectQuickActionsProject) return;
+                      setTilgangerProjectId(projectQuickActionsProject.id);
+                      setTilgangerDialogOpen(true);
+                      handleCloseProjectQuickActions();
+                    }}
+                    sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                  >
+                    <GroupsIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
+                    Tilganger
                   </MenuItem>
                 ) : null}
                 <MenuItem
@@ -9177,7 +9369,7 @@ type RoleRoomProjectWorkspaceState = {
                     bgcolor: 'rgba(255,255,255,0.03)',
                     p: 0,
                     '&:hover': {
-                      color: '#7dd3fc',
+                      color: 'var(--role-cyan, #7dd3fc)',
                       bgcolor: 'rgba(96,165,250,0.12)',
                       borderColor: 'rgba(96,165,250,0.22)',
                     },
@@ -9224,7 +9416,7 @@ type RoleRoomProjectWorkspaceState = {
                         aria-label={branding.tokens.labels.manageUsersLabel}
                         title={branding.tokens.labels.manageUsersLabel}
                         sx={{
-                          color: '#8b5cf6',
+                          color: 'var(--role-violet, #8b5cf6)',
                           width: safeHeaderActionButtonSizePx,
                           height: safeHeaderActionButtonSizePx,
                           p: 0,
@@ -9273,7 +9465,7 @@ type RoleRoomProjectWorkspaceState = {
               aria-label={branding.tokens.labels.loginLabel}
               title={branding.tokens.labels.loginLabel}
               sx={{
-                color: '#8b5cf6',
+                color: 'var(--role-violet, #8b5cf6)',
                 flexShrink: 0,
                 width: safeHeaderActionButtonSizePx,
                 height: safeHeaderActionButtonSizePx,
@@ -9823,7 +10015,7 @@ type RoleRoomProjectWorkspaceState = {
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#bae6fd' : '#7dd3fc',
+                          color: isSelected ? '#bae6fd' : 'var(--role-cyan, #7dd3fc)',
                           fontWeight: 800,
                         }}
                       >
@@ -9986,6 +10178,20 @@ type RoleRoomProjectWorkspaceState = {
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
+        {currentProject && displayedActiveTab !== 0 && !canManageTab(displayedActiveTab) ? (
+          <Box
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75,
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              bgcolor: 'rgba(56,189,248,0.08)',
+            }}
+          >
+            <VisibilityIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />
+            <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>
+              Skrivebeskyttet — du har «Se»-tilgang til denne fanen. Kontakt prosjektlederen for å administrere.
+            </Typography>
+          </Box>
+        ) : null}
         <ProjectProvider key={currentProject?.id ?? 'no-project'}>
           {producerProjectSwitchPending ? (
             <Box
@@ -10008,13 +10214,18 @@ type RoleRoomProjectWorkspaceState = {
           ) : null}
           {projectsLoading ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-              <CircularProgress size={40} sx={{ color: '#8b5cf6' }} />
+              <CircularProgress size={40} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
               <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
                 {branding.tokens.labels.loadingLabel || 'Loading...'}
               </Typography>
             </Box>
           ) : (
-          <ErrorBoundary>
+          // key={displayedActiveTab}: tab-baren ligger UTENFOR denne boundaryen,
+          // så uten key ville en krasj i én fane låse fallbacken selv når brukeren
+          // klikker en annen fane (activeTab endres, men hasError står igjen). Å
+          // key-e på aktiv fane remounter boundaryen ved fane-bytte → auto-reset,
+          // så en krasj isoleres til dén fanen. (Samme mønster som DanceWorkspace.)
+          <ErrorBoundary key={displayedActiveTab}>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
           {!currentProject && projects.length === 0 ? (
@@ -10129,7 +10340,7 @@ type RoleRoomProjectWorkspaceState = {
                     startTransition(() => setCandidateViewMode('list'));
                   }}
                   aria-label={branding.tokens.labels.listViewLabel}
-                  sx={{ color: candidateViewMode === 'list' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
+                  sx={{ color: candidateViewMode === 'list' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
                   <ViewListIcon sx={{ fontSize: 20 }} />
                 </IconButton>
@@ -10139,14 +10350,14 @@ type RoleRoomProjectWorkspaceState = {
                     startTransition(() => setCandidateViewMode('kanban'));
                   }}
                   aria-label={branding.tokens.labels.kanbanViewLabel}
-                  sx={{ color: candidateViewMode === 'kanban' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
+                  sx={{ color: candidateViewMode === 'kanban' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
                   <GroupIcon sx={{ fontSize: 20 }} />
                 </IconButton>
               </Box>
             </Box>
             {candidateViewMode === 'kanban' ? (
-              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: '#00d4ff' }} /></Box>}>
+              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /></Box>}>
                 <KanbanPanel
                   key={currentProject?.id ?? 'no-project'}
                   project={currentProject}
@@ -10169,8 +10380,8 @@ type RoleRoomProjectWorkspaceState = {
                   display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
                   bgcolor: 'rgba(0,212,255,0.1)', borderRadius: 1, border: '1px dashed rgba(0,212,255,0.4)',
                 }}>
-                  <SwapHorizIcon sx={{ fontSize: 18, color: '#00d4ff' }} />
-                  <Typography variant="body2" sx={{ color: '#00d4ff', fontSize: '0.8rem' }}>
+                  <SwapHorizIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #00d4ff)' }} />
+                  <Typography variant="body2" sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: '0.8rem' }}>
                     {branding.tokens.labels.draggingCandidateLabel.replace('{name}', draggedCandidate.name)}
                   </Typography>
                   <Button size="small" onClick={() => setDraggedCandidate(null)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: '0.75rem' }}>
@@ -10422,7 +10633,7 @@ type RoleRoomProjectWorkspaceState = {
                     label="CASTING BOARD"
                     sx={{
                       bgcolor: 'rgba(14,116,144,0.24)',
-                      color: '#7dd3fc',
+                      color: 'var(--role-cyan, #7dd3fc)',
                       border: '1px solid rgba(125,211,252,0.46)',
                       fontWeight: 700,
                     }}
@@ -10963,7 +11174,7 @@ type RoleRoomProjectWorkspaceState = {
                                             ? '#6ee7b7'
                                             : phase === 'callbacks'
                                               ? '#d8b4fe'
-                                              : '#7dd3fc',
+                                              : 'var(--role-cyan, #7dd3fc)',
                                         border: '1px solid rgba(148,163,184,0.32)',
                                       }}
                                     />
@@ -10999,7 +11210,7 @@ type RoleRoomProjectWorkspaceState = {
                                           fontSize: '0.6rem',
                                           fontWeight: 700,
                                           bgcolor: 'rgba(14,165,233,0.2)',
-                                          color: '#7dd3fc',
+                                          color: 'var(--role-cyan, #7dd3fc)',
                                           border: '1px solid rgba(56,189,248,0.44)',
                                         }}
                                       />
@@ -11073,7 +11284,7 @@ type RoleRoomProjectWorkspaceState = {
                                         ? '#6ee7b7'
                                         : selectedSelectionSummary.phase === 'callbacks'
                                           ? '#d8b4fe'
-                                          : '#7dd3fc',
+                                          : 'var(--role-cyan, #7dd3fc)',
                                     border: '1px solid rgba(148,163,184,0.3)',
                                   }}
                                 />
@@ -11112,7 +11323,7 @@ type RoleRoomProjectWorkspaceState = {
                                     fontSize: '0.61rem',
                                     fontWeight: 700,
                                     bgcolor: 'rgba(14,165,233,0.2)',
-                                    color: '#7dd3fc',
+                                    color: 'var(--role-cyan, #7dd3fc)',
                                     border: '1px solid rgba(56,189,248,0.44)',
                                   }}
                                 />
@@ -11193,7 +11404,7 @@ type RoleRoomProjectWorkspaceState = {
                                     Vurderingssignal
                                   </Typography>
                                   {([
-                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, '#22d3ee'],
+                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, 'var(--role-cyan, #22d3ee)'],
                                     ['Kjemi', selectedSelectionSignals.chemistry, '#c084fc'],
                                     ['Tilgjengelighet', selectedSelectionSignals.availability, '#4ade80'],
                                     ['Risiko', selectedSelectionSignals.risk, '#fb7185'],
@@ -11257,7 +11468,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Box>
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(2,6,23,0.6)', p: 0.7, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem' }}>
+                                <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.69rem' }}>
                                   Utvelgelsesnotater
                                 </Typography>
                                 <Box
@@ -11406,7 +11617,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Box>
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(3,37,65,0.3)', p: 0.7 }}>
-                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
+                                <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
                                   Anbefalt neste steg
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(186,230,253,0.92)', fontSize: '0.69rem', lineHeight: 1.35 }}>
@@ -11920,6 +12131,7 @@ type RoleRoomProjectWorkspaceState = {
                         id: member.id,
                         name: member.name,
                         role: resolvedRole?.trim() || 'Crew-medlem',
+                        email: (member as { contactInfo?: { email?: string } }).contactInfo?.email,
                       };
                     })}
                     locations={(currentProject.locations || []).map((location) => ({
@@ -12231,7 +12443,7 @@ type RoleRoomProjectWorkspaceState = {
                         mb: 2,
                       }}
                     >
-                      <ShotListIcon sx={{ fontSize: 38, color: '#7dd3fc' }} />
+                      <ShotListIcon sx={{ fontSize: 38, color: 'var(--role-cyan, #7dd3fc)' }} />
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
                       {profession ? getTerm('shotList') : branding.tokens.labels.shotList}
@@ -12785,19 +12997,8 @@ type RoleRoomProjectWorkspaceState = {
                         initialSectionId={producerMediaFocus?.sectionId}
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
-                        onWorkspaceFocusChange={(focus) => {
-                          setProducerMediaFocus((previous) => (
-                            previous?.workspace === focus.workspace
-                            && previous?.sectionId === focus.sectionId
-                            && previous?.pageId === focus.pageId
-                            && previous?.artifactId === focus.artifactId
-                              ? previous
-                              : focus
-                          ));
-                        }}
-                        onUnsavedStateChange={(hasUnsaved, reason) => {
-                          setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
-                        }}
+                        onWorkspaceFocusChange={handleProducerMediaFocusChange}
+                        onUnsavedStateChange={handleProjectRoomUnsavedChange}
                         onProjectUpdated={async (updatedProject) => {
                           setCurrentProject(updatedProject);
                           await loadProjects();
@@ -13009,7 +13210,7 @@ type RoleRoomProjectWorkspaceState = {
                   {branding.tokens.labels.storyArcBackLabel}
                 </Button>
                 <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-                <StoryLogicIcon sx={{ color: '#8b5cf6' }} />
+                <StoryLogicIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff' }}>
                   {branding.tokens.labels.storyLogicHeader}
                 </Typography>
@@ -13021,9 +13222,7 @@ type RoleRoomProjectWorkspaceState = {
                     key={currentProject?.id ?? 'no-project'}
                     projectId={currentProject?.id}
                     onSave={handleStoryLogicSave}
-                    onUnsavedStateChange={(hasUnsaved, reason) => {
-                      setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
-                    }}
+                    onUnsavedStateChange={handleStoryLogicUnsavedChange}
                     onNavigateToStoryWriter={() => {
                       if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
                       startTransition(() => setStoryArcView('story-writer'));
@@ -13123,9 +13322,7 @@ type RoleRoomProjectWorkspaceState = {
                       }}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
-                      onUnsavedStateChange={(hasUnsaved, reason) => {
-                        setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
-                      }}
+                      onUnsavedStateChange={handleManuscriptUnsavedChange}
                       onSendToApproval={() => {
                         if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
                         if (isContentProducerMode) {
@@ -13303,19 +13500,8 @@ type RoleRoomProjectWorkspaceState = {
                       : undefined
                   )
                 }
-                onWorkspaceFocusChange={(focus) => {
-                  setProducerMediaFocus((previous) => (
-                    previous?.workspace === focus.workspace
-                    && previous?.sectionId === focus.sectionId
-                    && previous?.pageId === focus.pageId
-                    && previous?.artifactId === focus.artifactId
-                      ? previous
-                      : focus
-                  ));
-                }}
-                onUnsavedStateChange={(hasUnsaved, reason) => {
-                  setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
-                }}
+                onWorkspaceFocusChange={handleProducerMediaFocusChange}
+                onUnsavedStateChange={handleProjectRoomUnsavedChange}
                 onProjectUpdated={async (updatedProject) => {
                   setCurrentProject(updatedProject);
                   await loadProjects();
@@ -13399,11 +13585,16 @@ type RoleRoomProjectWorkspaceState = {
             </Box>
           ) : (
             <>
-              {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
-                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til.
-                  KUN for innholdsprodusent-modus eller klient-review (per Daniels krav:
-                  produksjonsteam-økonomi handler om budsjett-pakker, ikke ads-fakturering). */}
-              {(isContentProducerMode || isClientReviewerMode) && (
+              {/* Produksjonsbudsjett vs. markedsføringsbudsjett i to topp-faner
+                  (Daniels krav): produksjon = fase-linjer/bemanning/avtaler,
+                  markedsføring = §5.3 ads-økonomi (annonsekostnad + 20 % påslag,
+                  budsjett-tak, godkjenningspolicy) + kampanje-styring. Markedsføring
+                  vises KUN i innholdsprodusent-/klient-review-modus; i
+                  produksjonsteam-modus faller ProducerBudgetTabs tilbake til ren
+                  produksjonsvisning uten fane-rad. */}
+            <Suspense fallback={null}>
+            <ProducerBudgetTabs
+              marketing={(isContentProducerMode || isClientReviewerMode) ? (
                 <>
                   <Suspense fallback={null}>
                     <ClientEconomyPanel
@@ -13413,14 +13604,15 @@ type RoleRoomProjectWorkspaceState = {
                   </Suspense>
                   {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
                   {!isClientReviewerMode && (
-                    <Box sx={{ mb: 2 }}>
+                    <Box sx={{ mt: 2 }}>
                       <Suspense fallback={null}>
                         <AdsManagementPanel projectId={currentProject.id} />
                       </Suspense>
                     </Box>
                   )}
                 </>
-              )}
+              ) : null}
+              production={(
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
               projectId={currentProject.id}
@@ -13468,6 +13660,9 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+              )}
+            />
+            </Suspense>
             </>
           )}
         </TabPanel>
@@ -13806,10 +14001,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -14391,10 +14586,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -15077,10 +15272,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -15508,7 +15703,7 @@ type RoleRoomProjectWorkspaceState = {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             <Badge color="error" badgeContent={producerInboxUnreadCount} invisible={producerInboxUnreadCount === 0}>
-              <InboxIcon sx={{ color: '#7dd3fc' }} />
+              <InboxIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
             </Badge>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 850, lineHeight: 1.15 }}>
@@ -15769,10 +15964,10 @@ type RoleRoomProjectWorkspaceState = {
                 px: 1.2,
                 bgcolor: 'rgba(0,212,255,0.14)',
                 border: '1px solid rgba(0,212,255,0.38)',
-                color: '#7dd3fc',
+                color: 'var(--role-cyan, #7dd3fc)',
                 '&:hover': {
                   bgcolor: 'rgba(0,212,255,0.22)',
-                  borderColor: '#22d3ee',
+                  borderColor: 'var(--role-cyan, #22d3ee)',
                 },
               }}
             >
@@ -15812,7 +16007,7 @@ type RoleRoomProjectWorkspaceState = {
                   bgcolor: 'rgba(255,255,255,0.03)',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.14)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
-                  '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #22d3ee)' },
                 },
                 '& .MuiInputBase-input::placeholder': {
                   color: 'rgba(255,255,255,0.58)',
@@ -16227,7 +16422,7 @@ type RoleRoomProjectWorkspaceState = {
                               height: 22,
                               maxWidth: 132,
                               bgcolor: isActive ? 'rgba(0,212,255,0.18)' : 'rgba(255,255,255,0.06)',
-                              color: isActive ? '#7dd3fc' : 'rgba(255,255,255,0.72)',
+                              color: isActive ? 'var(--role-cyan, #7dd3fc)' : 'rgba(255,255,255,0.72)',
                               border: isActive ? '1px solid rgba(0,212,255,0.28)' : '1px solid rgba(255,255,255,0.08)',
                               fontSize: '0.66rem',
                               fontWeight: 700,
@@ -16377,7 +16572,7 @@ type RoleRoomProjectWorkspaceState = {
                                 width: 10, 
                                 height: 10, 
                                 borderRadius: '50%', 
-                                bgcolor: isActive ? '#00d4ff' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
+                                bgcolor: isActive ? 'var(--role-cyan, #00d4ff)' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
                                 boxShadow: isActive ? '0 0 10px rgba(0,212,255,0.4)' : 'none',
                                 flexShrink: 0,
                               }} />
@@ -16541,7 +16736,7 @@ type RoleRoomProjectWorkspaceState = {
                                 textTransform: 'none',
                                 minHeight: 28,
                                 px: 1,
-                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : '#7dd3fc',
+                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : 'var(--role-cyan, #7dd3fc)',
                                 border: isProtectedDemo && !canMutateProtectedDemoData
                                   ? '1px solid rgba(244,114,182,0.32)'
                                   : '1px solid rgba(125,211,252,0.32)',
@@ -16735,7 +16930,7 @@ type RoleRoomProjectWorkspaceState = {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <KeyboardIcon sx={{ color: '#7dd3fc', fontSize: 21 }} />
+            <KeyboardIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 21 }} />
             <Typography sx={{ fontWeight: 700, fontSize: { xs: '0.96rem', sm: '1.02rem' } }}>
               Utvelgelse-snarveier
             </Typography>
@@ -16915,12 +17110,12 @@ type RoleRoomProjectWorkspaceState = {
                 border: '1.5px solid rgba(0, 212, 255, 0.4)',
                 alignSelf: 'flex-start',
               }}>
-                <Folder sx={{ color: '#00d4ff', fontSize: { xs: '0.875rem', sm: '1rem' } }} />
+                <Folder sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '0.875rem', sm: '1rem' } }} />
                 <Box>
                   <Typography variant="caption" sx={{
                     fontWeight: 700,
                     fontSize: '0.65rem',
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     display: 'block',
@@ -16931,7 +17126,7 @@ type RoleRoomProjectWorkspaceState = {
                   <Typography variant="caption" sx={{
                     fontWeight: 700,
                     fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     fontFamily: 'monospace',
                     letterSpacing: '0.3px',
                     display: 'block',
@@ -16994,7 +17189,7 @@ type RoleRoomProjectWorkspaceState = {
                     color: 'rgba(226,232,240,0.68)',
                     fontWeight: 800,
                   },
-                  '& .Mui-selected': { color: '#7dd3fc' },
+                  '& .Mui-selected': { color: 'var(--role-cyan, #7dd3fc)' },
                   '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
                 }}
               >
@@ -17046,7 +17241,7 @@ type RoleRoomProjectWorkspaceState = {
                     bgcolor: '#38bdf8',
                     color: '#082f49',
                     whiteSpace: 'nowrap',
-                    '&:hover': { bgcolor: '#7dd3fc' },
+                    '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
                   }}
                 >
                   Opprett nytt
@@ -17144,7 +17339,7 @@ type RoleRoomProjectWorkspaceState = {
                           <Typography sx={{ color: '#fff', fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                             {project.name}
                           </Typography>
-                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: '#7dd3fc', fontWeight: 800 }} /> : null}
+                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #7dd3fc)', fontWeight: 800 }} /> : null}
                         </Box>
                         <Typography sx={{ mt: 0.45, color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {[project.clientName, `Rolle: ${roleLabel}`, `Tilgang: ${accessLabel}`].filter(Boolean).join(' • ')}
@@ -17547,7 +17742,7 @@ type RoleRoomProjectWorkspaceState = {
             disabled={projectCopySubmitting || !projectCopyDialog?.name.trim()}
             variant="contained"
             startIcon={projectCopySubmitting ? <CircularProgress size={16} /> : <ContentCopyIcon />}
-            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#7dd3fc' } }}
+            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' } }}
           >
             Lag kopi
           </Button>
@@ -17827,6 +18022,24 @@ type RoleRoomProjectWorkspaceState = {
         viewerLabel={adminUser?.display_name || adminUser?.email || 'Produksjon'}
         onClose={() => setSelftapePreview(null)}
       />
+
+      {/* RBAC: lederens "Tilganger"-delegering (Skjult/Se/Administrere pr. fane) */}
+      {tilgangerDialogOpen && tilgangerProjectId ? (
+        <ProjectTabAccessDialog
+          open={tilgangerDialogOpen}
+          projectId={tilgangerProjectId}
+          onClose={() => {
+            setTilgangerDialogOpen(false);
+            // Oppdater egen tilgang i tilfelle lederen endret sin egen rad.
+            const pid = currentProject?.id ?? null;
+            if (pid) {
+              void roleRoomProjectTabConfigService.getMyTabs(pid)
+                .then((res) => setEffectiveTabAccess(deriveEffectiveAccess(res)))
+                .catch(() => { /* behold eksisterende */ });
+            }
+          }}
+        />
+      ) : null}
     </>
     </ErrorBoundary>
   );

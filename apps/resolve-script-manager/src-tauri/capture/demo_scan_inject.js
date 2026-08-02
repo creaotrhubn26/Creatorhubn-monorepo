@@ -98,20 +98,51 @@
   function toHex(rgb) { function h(n) { return ('0' + Math.round(n).toString(16)).slice(-2); } return '#' + h(rgb.r) + h(rgb.g) + h(rgb.b); }
   function extractBranding() {
     var brandName = metaContent('meta[property="og:site_name"]') || metaContent('meta[name="application-name"]') || (document.title || '').split(/[|–—\-]/)[0].trim();
-    var logoUrl = '';
+    // Samle FLERE logo-kandidater (header-logo, apple-touch-icon, og:image,
+    // favicon, [class*=logo]-bilder) → studioet kan la brukeren velge.
+    var cands = [], candSeen = {};
+    function addCand(href) { if (!href) return; try { var u = new URL(href, location.href).href; if (!candSeen[u]) { candSeen[u] = 1; cands.push(u); } } catch (e) { /* */ } }
+    var logoImgs = document.querySelectorAll('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i], a[href="/"] img, [id*="logo" i] img');
+    for (var li = 0; li < logoImgs.length && cands.length < 8; li++) { if (logoImgs[li].src) addCand(logoImgs[li].src); }
     var icons = ['link[rel="apple-touch-icon"]', 'link[rel="apple-touch-icon-precomposed"]', 'meta[property="og:image"]', 'link[rel="icon"]', 'link[rel="shortcut icon"]'];
     for (var i = 0; i < icons.length; i++) {
       var el = document.querySelector(icons[i]);
-      if (el) { var href = el.getAttribute('href') || el.getAttribute('content'); if (href) { try { logoUrl = new URL(href, location.href).href; break; } catch (e) { /* */ } } }
+      if (el) { addCand(el.getAttribute('href') || el.getAttribute('content')); }
     }
-    if (!logoUrl) { var img = document.querySelector('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i]'); if (img && img.src) logoUrl = img.src; }
+    var logoUrl = cands[0] || '';
+    var logoCandidates = cands.slice(0, 6);
     var palette = [], seen = {};
     function add(c) { var rgb = parseColor(c); if (rgb && vivid(rgb)) { var hex = toHex(rgb); if (!seen[hex]) { seen[hex] = 1; palette.push(hex); } } }
     var theme = metaContent('meta[name="theme-color"]');
     if (theme && /^#?[0-9a-fA-F]{3,8}$/.test(theme)) { var th = theme[0] === '#' ? theme : '#' + theme; seen[th] = 1; palette.push(th); }
     var nodes = deepQueryAll('button,a[class*="btn" i],[class*="button" i],[class*="cta" i],header');
     for (var j = 0; j < nodes.length && palette.length < 8; j++) { try { var cs = getComputedStyle(nodes[j]); add(cs.backgroundColor); add(cs.color); } catch (e) { /* */ } }
-    return { brandName: brandName || '', logoUrl: logoUrl || '', brandColor: palette[0] || '', palette: palette.slice(0, 6) };
+    // Fonter: font-family fra overskrifter + brødtekst (hopp over generiske
+    // system-stacks) → studioet viser hvilke fonter siden bruker.
+    var fonts = [], fseen = {};
+    function cleanFontName(first) {
+      // Next.js/next-font genererer «__Inter_f367f3» og «__Inter_Fallback_f367f3».
+      // Trekk ut ekte navn («Inter»); dropp Fallback-aliaser.
+      var m = first.match(/^__([A-Za-z0-9]+?)(_Fallback)?_[0-9a-f]{4,}$/);
+      if (m) return m[2] ? '' : m[1].replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+      return first;
+    }
+    function addFont(ff) {
+      if (!ff) return;
+      var raw = String(ff).split(',')[0].replace(/["']/g, '').trim();
+      if (!raw) return;
+      var first = cleanFontName(raw);
+      if (!first) return;
+      if (/^(inherit|initial|unset|system-ui|-apple-system|blinkmacsystemfont|sans-serif|serif|monospace|ui-sans-serif|ui-serif|ui-monospace|cursive)$/i.test(first)) return;
+      var kf = first.toLowerCase();
+      if (!fseen[kf]) { fseen[kf] = 1; fonts.push(first); }
+    }
+    try {
+      var heads = document.querySelectorAll('h1,h2,h3');
+      for (var hf = 0; hf < heads.length && fonts.length < 4; hf++) addFont(getComputedStyle(heads[hf]).fontFamily);
+      if (document.body) addFont(getComputedStyle(document.body).fontFamily);
+    } catch (e) { /* */ }
+    return { brandName: brandName || '', logoUrl: logoUrl || '', logoCandidates: logoCandidates, brandColor: palette[0] || '', palette: palette.slice(0, 6), fonts: fonts.slice(0, 4) };
   }
 
   // Bredt utvalg av interaktive/innholds-elementer (inkl. klikkbare div-er,
@@ -255,6 +286,13 @@
     if (out.length > 150) out = out.slice(0, 150);
     var pageText = '';
     try { pageText = (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1600); } catch (e) { /* */ }
+    // PII-maskering av INNSAMLET tekst før den sendes til Claude (symmetrisk med
+    // skjermbilde-maskeringen) — e-post/tlf i pageText + element-labels sladdes.
+    try {
+      var mt = (window.__demoPii && window.__demoPii.maskText) ? window.__demoPii.maskText : function (s) { return s; };
+      pageText = mt(pageText);
+      for (var mi = 0; mi < out.length; mi++) { if (out[mi] && typeof out[mi].label === 'string') out[mi].label = mt(out[mi].label); }
+    } catch (e) { /* */ }
     var branding = {};
     try { branding = extractBranding(); } catch (e) { /* */ }
     invoke('demo_scan_result', {

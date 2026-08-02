@@ -231,10 +231,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       setMultiAspectExporting(false);
     }
   };
-  // Project-id for persistence av lower-thirds. Hentes via tilstand
-  // som settes når user åpner agent fra HomeView; for nå fallback til
-  // hardkodet test-id slik at button funker uten Role Room-context.
-  const projectIdForStudio = "test-project-default";
+  // Project-id for persistence av lower-thirds/kommentarer. Utledes fra
+  // source-video-stien (samme konvensjon som CreativeEditorView) slik at
+  // hvert reelt prosjekt får sin egen bøtte i stedet for å dele én
+  // hardkodet test-id. Faller kun tilbake til placeholder hvis ingen
+  // source-path finnes.
+  const projectIdForStudio =
+    sourcePath?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "")
+    || "test-project-default";
 
   // Poll for thread-count + unread mentions hver 15 sek (etter
   // projectIdForStudio er deklarert)
@@ -363,7 +367,8 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         messages: nextHistory,
         maxTokens: 800,
       });
-      setChatMessages(prev => [...prev, userMsg, { role: "assistant", content: reply }]);
+      // userMsg ble allerede lagt til over — append KUN assistant-svaret
+      setChatMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       setChatError((err as Error).message);
       setChatMessages(prev => prev.slice(0, -1)); // rull tilbake user-melding
@@ -1243,21 +1248,20 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
             </button>
           </div>
 
-          <button onClick={() => alert(`Auto-pilot for ${CFG.name} kommer i V2`)}
-                  disabled
-                  style={{
-                    padding: "9px 12px",
-                    background: "rgba(110,63,199,0.20)",
-                    border: "1px solid rgba(110,63,199,0.40)",
-                    color: "#fff", borderRadius: 6,
-                    cursor: "not-allowed", fontSize: 11.5, fontWeight: 600,
-                    opacity: 0.7,
+          {/* Auto-pilot er ikke tilgjengelig i denne bygget. Vis et diskret
+              «kommer snart»-hint i stedet for en permanent disablet knapp som
+              ser klikkbar ut. */}
+          <div style={{
+                    padding: "8px 12px",
+                    color: "var(--text-3, #a89cb8)",
+                    fontSize: 10.5, fontWeight: 500,
+                    opacity: 0.8,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     gap: 6,
                   }}>
-            <PlayArrowIcon sx={{ fontSize: 14 }} />
-            Start Auto-pilot (V2)
-          </button>
+            <PlayArrowIcon sx={{ fontSize: 13 }} />
+            Auto-pilot kommer i en senere versjon
+          </div>
         </div>
       </div>
 
@@ -1390,11 +1394,10 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         onClose={() => setCollaborationOpen(false)}
         projectId={projectIdForStudio}
         agentKind={config.kind}
-        currentTimeSec={0 /* TODO: wire fra video-player */}
-        onJumpToTime={(sec) => {
-          console.log("[collab] jump to:", sec);
-          // V2: actually jump editor playback til denne tiden
-        }}
+        /* Tids-forankring er ikke wiret til en video-player enda. Vi dropper
+           currentTimeSec/onJumpToTime bevisst, slik at sidebaren ikke tilbyr en
+           «Forankre ved 0:00»-kontroll som alltid lagrer 0:00, eller en
+           «Hopp til tid»-knapp som ikke gjør noe. Kommentarer (tekst) virker som før. */
       />
 
       {/* Marketing-preview upload — send proxy-render til klient-portal */}

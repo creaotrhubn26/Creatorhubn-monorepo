@@ -228,6 +228,26 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
     let scouted: Bool?
     let isCompleted: Bool?
     let capturedAssetId: String?
+    /// Backend asset-id → thumbnail via `/api/capture/assets/:id/preview`.
+    let capturedAssetBackendId: String?
+    /// Hvem som tok shotet (team-attribusjon, «Ferdig · Ole»). Optional +
+    /// bakoverkompatibel — nil når backend ikke sender feltet.
+    let completedBy: String?
+
+    // Eksplisitt init (Decodable synth beholdes) — `capturedAssetBackendId`
+    // defaultes så eksisterende kall-steder (demo/tester) ikke må endres.
+    init(id: String, scene: String, description: String? = nil, estimatedDuration: Int? = nil,
+         priority: String? = nil, shotType: String? = nil, locationName: String? = nil,
+         notes: String? = nil, scouted: Bool? = nil, isCompleted: Bool? = nil,
+         capturedAssetId: String? = nil, capturedAssetBackendId: String? = nil,
+         completedBy: String? = nil) {
+        self.id = id; self.scene = scene; self.description = description
+        self.estimatedDuration = estimatedDuration; self.priority = priority
+        self.shotType = shotType; self.locationName = locationName; self.notes = notes
+        self.scouted = scouted; self.isCompleted = isCompleted
+        self.capturedAssetId = capturedAssetId; self.capturedAssetBackendId = capturedAssetBackendId
+        self.completedBy = completedBy
+    }
 }
 
 struct BackendProjectDetail: Decodable, Sendable, Identifiable {
@@ -411,6 +431,11 @@ struct BackendDeliverToShowcaseRequest: Encodable, Sendable {
     let clientName: String
     let clientEmail: String
     let projectTitle: String?
+    // Samme-dags levering: auto-send «bildene klare»-e-post. emailBody er
+    // valgfri FM-skrevet (on-device) kropp; backend har en standard mal.
+    var sendEmail: Bool = false
+    var emailBody: String?
+    var photographerName: String?
 }
 
 struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
@@ -419,6 +444,7 @@ struct BackendDeliverToShowcaseResponse: Decodable, Sendable {
     let shareUrl: String
     let uploadedImageCount: Int
     let reusedExisting: Bool
+    var emailSent: Bool?
 }
 
 // MARK: - Client tokens (Deliver flow)

@@ -83,7 +83,7 @@ export function registerMarketingWorkflowRoutes({
         console.error("[mi-workflow] create-campaign failed", err);
         return res
           .status(500)
-          .json({ error: "create_campaign_failed", detail: String(err) });
+          .json({ error: "create_campaign_failed", detail: "internal_error" });
       }
     },
   );
@@ -107,7 +107,7 @@ export function registerMarketingWorkflowRoutes({
         console.error("[mi-workflow] create-content-pack failed", err);
         return res
           .status(500)
-          .json({ error: "create_content_pack_failed", detail: String(err) });
+          .json({ error: "create_content_pack_failed", detail: "internal_error" });
       }
     },
   );
@@ -130,7 +130,7 @@ export function registerMarketingWorkflowRoutes({
         console.error("[mi-workflow] create-funnel-map failed", err);
         return res
           .status(500)
-          .json({ error: "create_funnel_map_failed", detail: String(err) });
+          .json({ error: "create_funnel_map_failed", detail: "internal_error" });
       }
     },
   );
@@ -154,7 +154,7 @@ export function registerMarketingWorkflowRoutes({
         console.error("[mi-workflow] send-to-agent failed", err);
         return res
           .status(500)
-          .json({ error: "send_to_agent_failed", detail: String(err) });
+          .json({ error: "send_to_agent_failed", detail: "internal_error" });
       }
     },
   );
@@ -177,7 +177,7 @@ export function registerMarketingWorkflowRoutes({
       });
       return res.json({ workflows });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      return res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -188,7 +188,7 @@ export function registerMarketingWorkflowRoutes({
       if (!workflow) return res.status(404).json({ error: "not_found" });
       return res.json({ workflow });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 }

@@ -113,7 +113,7 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
                   display: 'inline-block',
                   width: '2px',
                   height: '0.85em',
-                  bgcolor: '#8b5cf6',
+                  bgcolor: 'var(--role-violet, #8b5cf6)',
                   ml: '2px',
                   verticalAlign: 'middle',
                   opacity: cursorVisible ? 1 : 0,
@@ -159,7 +159,7 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
                 },
               }}
             >
-              <Box sx={{ color: '#8b5cf6', mb: 2 }}>{f.icon}</Box>
+              <Box sx={{ color: 'var(--role-violet, #8b5cf6)', mb: 2 }}>{f.icon}</Box>
               <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '1.05rem', mb: 1 }}>
                 {f.title}
               </Typography>

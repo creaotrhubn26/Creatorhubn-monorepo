@@ -10,6 +10,13 @@ export interface LegacySettingEntry {
 export interface SettingsRoutesDeps {
   app: express.Application;
   requireUserSession: (req: any, res: any) => any;
+  /**
+   * Passiv sesjons-oppslag (svarer IKKE med 401). Brukes for å binde
+   * settings-nøkkelen til den innloggede brukeren i stedet for en
+   * klient-oppgitt `user_id`, som ellers lot enhver innlogget bruker
+   * lese/skrive/slette en annen brukers innstillinger (IDOR / over-posting).
+   */
+  getActiveSessionFromRequest?: (req: any) => { userId?: string } | null | undefined;
   readQueryString: (value: unknown, fallback: string) => string;
   legacySettingsStore: Map<string, LegacySettingEntry>;
   legacySettingKey: (
@@ -34,6 +41,7 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
   const {
     app,
     requireUserSession,
+    getActiveSessionFromRequest,
     readQueryString,
     legacySettingsStore,
     legacySettingKey,
@@ -44,8 +52,18 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
     compatStoreListByPrefix,
   } = deps;
 
+  // Bind alltid innstillings-nøkkelen til den innloggede brukeren når en
+  // sesjon finnes; fall bare tilbake til klient-oppgitt id for uinnlogget
+  // legacy-trafikk (default-user-bøtta). Dette hindrer at bruker A leser/
+  // skriver/sletter bruker B sine innstillinger ved å oppgi `user_id=B`.
+  const resolveSettingsUserId = (req: any, clientSupplied: unknown): string => {
+    const sessionUserId = getActiveSessionFromRequest?.(req)?.userId;
+    if (sessionUserId) return sessionUserId;
+    return readQueryString(clientSupplied, "default-user");
+  };
+
   app.get("/api/settings", async (req, res) => {
-    const userId = readQueryString(req.query.user_id, "default-user");
+    const userId = resolveSettingsUserId(req, req.query.user_id);
     const namespace = readQueryString(req.query.namespace, "");
     const projectId =
       typeof req.query.project_id === "string"
@@ -72,9 +90,9 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
 
   app.put("/api/settings", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    const userId = readQueryString(
+    const userId = resolveSettingsUserId(
+      req,
       req.body?.userId ?? req.body?.user_id,
-      "default-user",
     );
     const namespace = readQueryString(req.body?.namespace, "");
     const projectId =
@@ -106,7 +124,7 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
 
   app.delete("/api/settings", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    const userId = readQueryString(req.query.user_id, "default-user");
+    const userId = resolveSettingsUserId(req, req.query.user_id);
     const namespace = readQueryString(req.query.namespace, "");
     const projectId =
       typeof req.query.project_id === "string"
@@ -127,7 +145,7 @@ export function setupSettingsRoutes(deps: SettingsRoutesDeps): void {
   });
 
   app.get("/api/settings/list", async (req, res) => {
-    const userId = readQueryString(req.query.user_id, "default-user");
+    const userId = resolveSettingsUserId(req, req.query.user_id);
     const namespacePrefix = readQueryString(req.query.namespace_prefix, "");
     const hasProjectIdFilter = typeof req.query.project_id === "string";
     const projectId = hasProjectIdFilter

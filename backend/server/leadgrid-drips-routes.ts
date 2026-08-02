@@ -18,6 +18,7 @@
  * onboard fullføres (trigger_event='first_auto_onboard').
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
@@ -38,7 +39,7 @@ const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com
 
 function isCronAuthorized(req: Request, activeSessions: Map<string, SessionData>): boolean {
   const headerToken = req.headers["x-cron-trigger-token"] as string | undefined;
-  if (headerToken && CRON_TOKEN && headerToken === CRON_TOKEN) return true;
+  if (headerToken && CRON_TOKEN && headerToken.length === CRON_TOKEN.length && crypto.timingSafeEqual(Buffer.from(headerToken), Buffer.from(CRON_TOKEN))) return true;
   // Alternativ: admin-session
   const auth = req.headers.authorization;
   const token = auth?.startsWith("Bearer ") ? auth.substring(7)
@@ -257,7 +258,7 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
       res.json({ ok: true, duration_ms: Date.now() - start, ...results });
     } catch (e: any) {
       console.error("[drips run]", e);
-      res.status(500).json({ error: e.message ?? "Drip-run feilet" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -367,7 +368,7 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
       res.json({ ok: true, duration_ms: Date.now() - start, ...results });
     } catch (e: any) {
       console.error("[plan-grace expire]", e);
-      res.status(500).json({ error: e.message ?? "Grace-expire feilet" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

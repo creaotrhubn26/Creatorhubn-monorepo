@@ -216,9 +216,13 @@ final class MagicPipeline {
         //    red-eye. These analyse the scene, so they give us a clean
         //    colour-neutral baseline before we apply subject-specific
         //    recipe adjustments on top.
+        // Auto-enhance gates på recipe: for RÅ/kamera-JPEG-fangst gir det en ren
+        // baseline, men på ferdig-gradede/leverte bilder dobbelt-prosesserer det
+        // (over-metter + flytter farge). Rødøye-korreksjon beholdes uansett —
+        // den er korrigerende, ikke stilistisk.
         var current = straightened
         let autoFilters = straightened.autoAdjustmentFilters(options: [
-            .enhance: true,
+            .enhance: effectiveRecipe.autoEnhance,
             .redEye: true
         ])
         for filter in autoFilters {
@@ -239,22 +243,15 @@ final class MagicPipeline {
             if let out = f.outputImage { current = out }
         }
 
-        if effectiveRecipe.shadowLift > 0 || effectiveRecipe.highlightRecovery > 0 {
-            // CIHighlightShadowAdjust handles both axes in one pass.
-            // **Audit fix 2026-05-04**: per Apple Core Image Filter
-            // Reference, `inputHighlightAmount` is range [0, 1] = "by
-            // how much to dampen highlights": 0 = no dampening (no
-            // recovery), 1 = max dampening (full recovery). Default
-            // is 1 so the filter does something out-of-the-box, but
-            // *identity* (image unchanged) is at 0. Pre-audit code
-            // used `-recipe.highlightRecovery` which Core Image
-            // clamped to 0 → no dampening → the slider was DEAD at
-            // every value. Sky/glaze highlights never recovered.
-            // Fixed: pass the slider directly so 0 = identity, 1 = max.
+        if effectiveRecipe.shadowLift > 0 {
+            // Kun skygge-løft her. Høylys-gjenoppretting flyttet til en SEN
+            // CIToneCurve (se nedenfor) for å MATCHE RAWExportPipeline (leveransen)
+            // — før brukte previewen CIHighlightShadowAdjust.inputHighlightAmount
+            // tidlig, som ga en annen høylys-rulloff enn det leverte RAW-bildet.
             let f = CIFilter(name: "CIHighlightShadowAdjust")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(effectiveRecipe.shadowLift, forKey: "inputShadowAmount")
-            f.setValue(effectiveRecipe.highlightRecovery, forKey: "inputHighlightAmount")
+            f.setValue(0.0, forKey: "inputHighlightAmount")   // 0 = identitet (ingen høylys-endring her)
             if let out = f.outputImage { current = out }
         }
 
@@ -354,6 +351,24 @@ final class MagicPipeline {
             }
         }
 
+        // Høylys-gjenoppretting via CIToneCurve — SAMME filter, kurve OG posisjon
+        // som RAWExportPipeline.applyToneAdjustments (leveransen), så samme slider
+        // gir samme høylys-rulloff i preview og levert bilde. Kjøres etter tone/
+        // hud-frekvens (som i RAW), før ansikts-kjeden. Kurven bøyer kun topp-15 %
+        // ned; knekk ved 65 % (ARRI/Reinhard-shoulder), klipper til 0.92·(1−0.08r).
+        if effectiveRecipe.highlightRecovery > 0 {
+            let r = effectiveRecipe.highlightRecovery
+            if let tc = CIFilter(name: "CIToneCurve") {
+                tc.setValue(current, forKey: kCIInputImageKey)
+                tc.setValue(CIVector(x: 0, y: 0), forKey: "inputPoint0")
+                tc.setValue(CIVector(x: 0.50, y: 0.50), forKey: "inputPoint1")
+                tc.setValue(CIVector(x: 0.65, y: 0.65), forKey: "inputPoint2")
+                tc.setValue(CIVector(x: 0.85, y: 0.85 - 0.07 * r), forKey: "inputPoint3")
+                tc.setValue(CIVector(x: 1.00, y: 0.92 - 0.08 * r), forKey: "inputPoint4")
+                if let out = tc.outputImage { current = out }
+            }
+        }
+
         // Phase 7B — eye-region sharpen + catch-light boost. Detection
         // sees the fully-toned image so the masked filters apply on top
         // of all upstream adjustments. No-op when no faces detected.
@@ -364,6 +379,10 @@ final class MagicPipeline {
 
         // Phase 7F — face↔body skin-tone unify.
         current = SkinToneUnifyFilter.apply(recipe: effectiveRecipe, to: current)
+        // Hud-tone-guard — forankrer a* mot ~11 (grønn/oransje-guard).
+        current = SkinToneGuardFilter.apply(recipe: effectiveRecipe, to: current)
+        // Film-korn-finish.
+        current = FilmGrainFilter.apply(recipe: effectiveRecipe, to: current)
 
         guard !Task.isCancelled,
               let cgImage = ColorManagement.renderCGImage(

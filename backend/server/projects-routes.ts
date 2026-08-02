@@ -9,7 +9,6 @@ export interface ProjectsRoutesDeps {
   app: express.Application;
   pool: Pool;
   mapProjectRow: (r: any) => any;
-  getUserIdFromAuth: (req: any) => string | null;
   compatResolveUserId: (req: any) => string;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
   buildGalleryShareUrl: (accessToken: string) => string;
@@ -54,12 +53,14 @@ export interface ProjectsRoutesDeps {
   upsertShotListForProject: (...args: any[]) => Promise<any>;
 }
 
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   const {
     app,
     pool,
     mapProjectRow,
-    getUserIdFromAuth,
     compatResolveUserId,
     compatStoreSet,
     buildGalleryShareUrl,
@@ -85,13 +86,18 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   app.get("/api/projects", async (req, res) => {
     try {
-      const authUserId = readString(getUserIdFromAuth(req));
+      const resolvedId = compatResolveUserId(req);
+      const authUserId = isUuid(resolvedId) ? resolvedId : null;
       const queryUserId = readString(req.query.userId);
       const profession = readString(req.query.profession);
       const status = readString(req.query.status);
       const customerId =
         readString(req.query.customerId) || readString(req.query.clientId);
-      const requestedUserId = queryUserId || authUserId;
+      // query.userId er IKKE en tilgangs-vektor. Honorer den KUN når den er lik
+      // den autentiserte brukeren — ellers kunne hvem som helst hente en annen
+      // brukers prosjekt-liste via ?userId=<offer> (BOLA).
+      const requestedUserId =
+        queryUserId && queryUserId === authUserId ? queryUserId : authUserId;
       const isLocalDevelopmentWorkspaceUserId = (
         value: string | null | undefined,
       ): boolean =>
@@ -128,9 +134,14 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         params.push(scopedUserId);
       }
 
-      if (filters.length > 0) {
-        query += ` WHERE ${filters.join(" AND ")}`;
+      // Kjør ALDRI en ufiltrert SELECT * — det ville dumpet ALLE brukeres
+      // prosjekter til en uautentisert kaller. Ingen legitim kaller treffer
+      // dette endepunktet helt uten filter.
+      if (filters.length === 0) {
+        return res.json([]);
       }
+
+      query += ` WHERE ${filters.join(" AND ")}`;
 
       query += " ORDER BY created_at DESC";
 
@@ -151,7 +162,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         "SELECT * FROM legacy.projects WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
       const project = mapProjectRow(result.rows[0]);
@@ -183,13 +194,13 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   // so one photographer can't browse another's client activity.
   app.get("/api/projects/:id/change-log", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
       const owns = await pool.query(
         "SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2 LIMIT 1",
         [req.params.id, userId],
       );
-      if (owns.rowCount === 0) {
+      if (!owns.rows.length) {
         // Returning 404 instead of 403 so callers can't enumerate
         // projects by probing ids.
         return res.status(404).json({ error: "not_found" });
@@ -275,8 +286,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   app.post("/api/drive/batches", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
 
       const body = req.body ?? {};
       const projectId =
@@ -336,8 +347,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   app.get("/api/drive/batches/:id", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
       const snapshot = await fetchDriveUploadBatch(pool, userId, req.params.id);
       if (!snapshot) {
         // 404 — we don't distinguish "your batch doesn't exist" from
@@ -354,7 +365,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   // POST /api/projects — create new project
   app.post("/api/projects", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
+      const userId = compatResolveUserId(req);
       const data = req.body;
 
       // Build the project name
@@ -442,24 +453,28 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         `🎬 Nytt prosjekt opprettet: "${projectName}" (${projectId}) av ${userId}${customerId ? ` for kunde ${customerId}` : ""}`,
       );
 
-      // If created from CRM customer, link project back to customer
+      // If created from CRM customer, link project back to customer.
+      // Eier-scope owner_user_id: customerId er caller-oppgitt — uten filter
+      // kunne man om-lenke en annen brukers CRM-kunde til sitt eget prosjekt.
       if (customerId) {
         await pool
           .query(
-            `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2`,
-            [projectId, customerId],
+            `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2 AND owner_user_id = $3`,
+            [projectId, customerId, userId],
           )
           .catch((err: any) =>
             console.error("Failed to link project to CRM customer:", err.message),
           );
       }
 
-      // If this project came from a submission, update submission status
+      // If this project came from a submission, update submission status.
+      // Eier-scope vendor_id: submissionId er caller-oppgitt — uten filter
+      // kunne man markere en annen fotografs forespørsel som «booked» (IDOR).
       if (data.submissionId) {
         await pool
           .query(
-            `UPDATE client_submissions SET status = 'booked', updated_at = NOW() WHERE id = $1`,
-            [data.submissionId],
+            `UPDATE client_submissions SET status = 'booked', updated_at = NOW() WHERE id = $1 AND vendor_id = $2`,
+            [data.submissionId, userId],
           )
           .catch(() => {});
       }
@@ -473,6 +488,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // PUT /api/projects/:id — update project
   app.put("/api/projects/:id", async (req, res) => {
+    const _putCallerId = compatResolveUserId(req);
+    if (!isUuid(_putCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const data = req.body;
@@ -557,7 +574,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         recordAnalyticsEvent('project.status_changed', {
           entityType: 'project',
           entityId: String(id),
-          actorUserId: typeof getUserIdFromAuth === 'function' ? readString(getUserIdFromAuth(req)) ?? null : null,
+          actorUserId: compatResolveUserId(req),
           metadata: {
             oldStatus: oldStatus ?? null,
             newStatus,
@@ -578,7 +595,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
                LIMIT 50`,
               [String(id)],
             );
-            if (linked.rowCount === 0) return;
+            if (!linked.rows.length) return;
             // Photographer name for the From-line. Best-effort lookup —
             // falls back to "CreatorHub".
             let photographerName: string | null = null;
@@ -632,9 +649,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // DELETE /api/projects/:id — delete project
   app.delete("/api/projects/:id", async (req, res) => {
+    const _callerId = compatResolveUserId(req);
+    if (!isUuid(_callerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const result = await pool.query(
-        "DELETE FROM legacy.projects WHERE id = $1 RETURNING id",
+        "DELETE FROM legacy.projects WHERE id = $1 AND created_by = $2 RETURNING id",
         [req.params.id],
       );
       if (result.rowCount === 0) {
@@ -655,7 +674,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         "SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1",
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) return null;
+      if (!result.rowCount || !result.rows.length) return null;
       const raw = result.rows[0]?.metadata;
       if (!raw) return {};
       if (typeof raw === "object") return raw as Record<string, unknown>;
@@ -758,6 +777,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.delete(
     "/api/projects/:projectId/collaborators/:collaboratorId",
     async (req, res) => {
+      const _cid = compatResolveUserId(req);
+      if (!isUuid(_cid)) return res.status(401).json({ error: "unauthorized" });
       const { projectId, collaboratorId } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.collaborators = state.collaborators.filter(
@@ -777,6 +798,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.put(
     "/api/projects/:projectId/collaborators/:collaboratorId/permissions",
     async (req, res) => {
+      const callerId = compatResolveUserId(req);
+      if (!isUuid(callerId)) return res.status(401).json({ error: "unauthorized" });
       const { projectId, collaboratorId } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.collaborators = state.collaborators.map((collaborator) => {
@@ -883,6 +906,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   const ensureProjectFileStorageDirectory = async (
     projectId: string,
   ): Promise<string> => {
+    if (!isUuid(projectId)) throw new Error("invalid_project_id");
     const projectDirectory = path.join(PROJECT_FILE_STORAGE_ROOT, projectId);
     await fs.mkdir(projectDirectory, { recursive: true });
     return projectDirectory;
@@ -909,6 +933,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       if (!(await requireProjectFileProject(res, projectId))) {
         return;
       }
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+      const owns = await pool.query(
+        `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, userId],
+      );
+      if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
       if (!req.file) {
         return res.status(400).json({ error: "file is required" });
       }
@@ -964,6 +998,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const metadata = await compatReadProjectMetadata(projectId);
     const state = await loadCompatProjectState(projectId);
     if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
@@ -982,6 +1026,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const metadata = await compatReadProjectMetadata(projectId);
     const state = await loadCompatProjectState(projectId);
     if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
@@ -1033,6 +1087,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const state = await loadCompatProjectState(projectId);
     if (!state.files.some((file) => file.id === fileId)) {
       return res.status(404).json({ error: "project_file_not_found" });
@@ -1053,6 +1117,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const state = await loadCompatProjectState(projectId);
     const fileRecord = state.files.find((file) => file.id === fileId);
     if (!fileRecord) {
@@ -1076,6 +1150,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const state = await loadCompatProjectState(projectId);
     if (!state.files.some((file) => file.id === fileId)) {
       return res.status(404).json({ error: "project_file_not_found" });
@@ -1129,6 +1213,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/comments/:commentId", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId, commentId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.comments = state.comments.map((comment) =>
@@ -1143,6 +1228,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.delete("/api/projects/:projectId/comments/:commentId", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId, commentId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.comments = state.comments.filter((comment) => comment.id !== commentId);
@@ -1158,10 +1244,12 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/integrations", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     const payload = req.body && typeof req.body === "object" ? req.body : {};
     for (const [key, value] of Object.entries(payload)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
       state.integrations[key] = {
         ...(state.integrations[key] || {}),
         enabled: Boolean(value),
@@ -1181,6 +1269,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post(
     "/api/projects/:projectId/integrations/:integrationType",
     async (req, res) => {
+      if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
       const { projectId, integrationType } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.integrations[integrationType] = {
@@ -1243,6 +1332,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/permissions", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.permissions = {
@@ -1295,6 +1385,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/compliance", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.compliance = {
@@ -1472,8 +1563,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post("/api/projects/:projectId/shot-list", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) {
         return res.status(401).json({ error: "unauthorized" });
       }
       const shots = Array.isArray(req.body?.shots) ? req.body.shots : [];
@@ -1502,8 +1593,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post("/api/projects/:projectId/capture-session", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) {
         return res.status(401).json({ error: "unauthorized" });
       }
       const name = typeof req.body?.name === "string" ? req.body.name : undefined;

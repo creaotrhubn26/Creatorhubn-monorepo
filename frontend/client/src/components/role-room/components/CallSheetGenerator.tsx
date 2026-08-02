@@ -66,6 +66,8 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 
 // ============================================
 // INTERFACES
@@ -446,6 +448,11 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   const [castingCrew, setCastingCrew] = useState<CrewMember[]>([]);
   const [castingLocations, setCastingLocations] = useState<Location[]>([]);
 
+  // Tilgjengelighet fra crew-medlemmenes egne kalendere (samme delte kilde som
+  // Crew Management) — så vi kan varsle om noen på dagens crew har markert seg
+  // opptatt akkurat denne innspillingsdagen.
+  const { availabilityByUser, emailToUser } = useProjectMemberAvailability(projectId);
+
   // Demo data for TROLL production
   const [callSheet, setCallSheet] = useState<CallSheetData>({
     id: `cs-${Date.now()}`,
@@ -558,6 +565,45 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     notes: '',
   });
 
+  // Kalender-konflikt pr. crew-e-post for innspillingsdagen: slår crew-raden
+  // (via e-post) opp mot medlemmets egen tilgjengelighet, og flagger dager der
+  // de har markert seg 'unavailable' (opptatt) eller 'hold' (tentativ).
+  const crewConflictByEmail = useMemo(() => {
+    const out = new Map<string, 'unavailable' | 'hold'>();
+    const day = callSheet.date;
+    if (!day) return out;
+    for (const member of callSheet.crew) {
+      const em = (member.email || '').toLowerCase().trim();
+      if (!em) continue;
+      const userId = emailToUser.get(em);
+      if (!userId) continue;
+      const overlay = availabilityByUser.get(userId);
+      const cell = overlay?.cells.find((c) => c.date === day);
+      if (cell?.availability === 'unavailable') out.set(em, 'unavailable');
+      else if (cell?.availability === 'hold') out.set(em, 'hold');
+    }
+    return out;
+  }, [callSheet.date, callSheet.crew, availabilityByUser, emailToUser]);
+
+  // Kandidat-tilgjengelighet (produsent-satt på kandidat-kortet) → flagg på cast.
+  // Kandidater har ingen medlemskonto; cellene ligger inline på kandidaten. Cast
+  // matches mot kandidat via navn (skuespillernavn = kandidatens navn).
+  const castConflictByName = useMemo(() => {
+    const out = new Map<string, 'unavailable' | 'hold'>();
+    const day = callSheet.date;
+    if (!day) return out;
+    for (const candidate of castingCandidates) {
+      const nm = (candidate.name || '').toLowerCase().trim();
+      if (!nm) continue;
+      const cells = candidate.availabilityCells;
+      if (!Array.isArray(cells)) continue;
+      const cell = cells.find((c) => c.date === day);
+      if (cell?.availability === 'unavailable') out.set(nm, 'unavailable');
+      else if (cell?.availability === 'hold') out.set(nm, 'hold');
+    }
+    return out;
+  }, [callSheet.date, castingCandidates]);
+
   // Load data from casting service (background, non-blocking)
   useEffect(() => {
     const loadCastingData = async () => {
@@ -629,7 +675,9 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     try {
       const response = await fetch('/api/role-room/call-sheets/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Endepunktet er session-gated (requireUserSession) — uten Bearer-token
+        // ga «Send til crew» 401 og e-posten ble aldri sendt.
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({
           projectId,
           subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,
@@ -1486,8 +1534,37 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                       >
                         {member.name}
                       </Typography>
+                      {(() => {
+                        const conflict = castConflictByName.get((member.name || '').toLowerCase().trim());
+                        if (!conflict) return null;
+                        const isBusy = conflict === 'unavailable';
+                        return (
+                          <Tooltip
+                            title={isBusy
+                              ? 'Produsent har markert kandidaten som opptatt denne dagen'
+                              : 'Produsent har markert kandidaten som tentativ denne dagen'}
+                            arrow
+                          >
+                            <Chip
+                              size="small"
+                              icon={<WarningIcon sx={{ fontSize: 12 }} />}
+                              label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+                              sx={{
+                                mt: 0.5,
+                                height: 18,
+                                fontSize: responsive.fontSize.tiny,
+                                fontWeight: 700,
+                                color: isBusy ? '#b91c1c' : '#b45309',
+                                bgcolor: isBusy ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)',
+                                border: `1px solid ${isBusy ? '#ef4444' : '#f59e0b'}`,
+                                '& .MuiChip-icon': { color: isBusy ? '#b91c1c' : '#b45309' },
+                              }}
+                            />
+                          </Tooltip>
+                        );
+                      })()}
                     </Box>
-                    <Chip 
+                    <Chip
                       label={`Sc. ${member.scenes.join(', ')}`}
                       size="small"
                       sx={{ 
@@ -1624,6 +1701,37 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                   >
                     Call: {member.callTime}
                   </Typography>
+                  {(() => {
+                    const conflict = member.email
+                      ? crewConflictByEmail.get(member.email.toLowerCase().trim())
+                      : undefined;
+                    if (!conflict) return null;
+                    const isBusy = conflict === 'unavailable';
+                    return (
+                      <Tooltip
+                        title={isBusy
+                          ? 'Medlemmet har markert seg opptatt denne dagen i sin egen kalender'
+                          : 'Medlemmet har markert dagen som tentativ i sin egen kalender'}
+                        arrow
+                      >
+                        <Chip
+                          size="small"
+                          icon={<WarningIcon sx={{ fontSize: 12 }} />}
+                          label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+                          sx={{
+                            mt: 0.5,
+                            height: 18,
+                            fontSize: responsive.fontSize.tiny,
+                            fontWeight: 700,
+                            color: isBusy ? '#b91c1c' : '#b45309',
+                            bgcolor: isBusy ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)',
+                            border: `1px solid ${isBusy ? '#ef4444' : '#f59e0b'}`,
+                            '& .MuiChip-icon': { color: isBusy ? '#b91c1c' : '#b45309' },
+                          }}
+                        />
+                      </Tooltip>
+                    );
+                  })()}
                 </Paper>
               </Grid>
             ))}

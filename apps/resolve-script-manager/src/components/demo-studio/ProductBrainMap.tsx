@@ -11,8 +11,8 @@ import {
 } from './demoStudioModel';
 
 const C = {
-  panel: '#ffffff', cream: '#faf7f2', line: '#ece7df', lineStrong: '#ddd6cc',
-  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#3a2f2a',
+  panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee', lineStrong: '#d8d2e2',
+  ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8', accent: '#8b5cf6', dark: '#241d42',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -69,8 +69,11 @@ export function ProductBrainMap({ brain }: { brain: ProductBrain }) {
 
   return (
     <div>
+      {/* Ytre scroll-boks: nodene ligger i et fast W×H-koordinatrom, så på smale
+          skjermer scroller vi horisontalt i stedet for å klippe bort nodene. */}
+      <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
       <div ref={wrap} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
-        style={{ position: 'relative', width: '100%', maxWidth: W, height: H, overflow: 'hidden', border: `1px solid ${C.line}`, borderRadius: 12, background: `radial-gradient(${C.cream} 1px, transparent 1px) 0 0 / 22px 22px, ${C.panel}`, touchAction: 'none', userSelect: 'none' }}>
+        style={{ position: 'relative', width: W, height: H, overflow: 'hidden', border: `1px solid ${C.line}`, borderRadius: 12, background: `radial-gradient(${C.cream} 1px, transparent 1px) 0 0 / 22px 22px, ${C.panel}`, touchAction: 'none', userSelect: 'none' }}>
         {/* Kanter fra produkt til hver node */}
         <svg width={W} height={H} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
           {placed.filter((p) => p.node).map((p) => (
@@ -101,6 +104,7 @@ export function ProductBrainMap({ brain }: { brain: ProductBrain }) {
             </div>
           );
         })}
+      </div>
       </div>
       {/* Tegnforklaring */}
       <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: C.inkSoft, flexWrap: 'wrap' }}>

@@ -19,6 +19,7 @@ try {
 }
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import {
+  isLeadgridDedicatedHost,
   isRoleRoomDedicatedHost,
   isRoleRoomStandalonePathname,
 } from './components/role-room/utils/runtime';
@@ -44,6 +45,20 @@ const ADMIN_ROUTE_PATTERN = /^\/(?:admin|visual-cms-admin|equipment-admin|photo-
 const ROLE_ROOM_SHARED_APP_ROUTE_PATTERN = /^\/(?:privacy-policy|terms-and-conditions)\/?$/;
 const LOCALHOST_HOSTNAME_SET = new Set(['localhost', '127.0.0.1']);
 
+// Admin-dedikerte hoster: hele appen på denne hosten booter admin-shell'en
+// (Control Center + øvrige drift-flater) direkte fra roten — samme mønster som
+// theroleroom.com/leadgrid.no. Krever fortsatt admin/super_admin-auth i
+// admin-entry, så subdomenet er bare en inngang, ikke en tilgangsgate i seg selv.
+const ADMIN_DEDICATED_HOSTS = new Set(['admin.creatorhubn.com']);
+const isAdminDedicatedHost = (hostname: string | null | undefined): boolean =>
+  typeof hostname === 'string' && ADMIN_DEDICATED_HOSTS.has(hostname.trim().toLowerCase());
+
+// Skjult thumbnail-rute: rendres med en MINIMAL, backend-fri bootstrap (thumb-entry),
+// så headless PNG-generering av CV-maler ikke krever session/auth/backend.
+const THUMB_ROUTE_PATTERN = /^\/_thumb(?:\/.*)?$/;
+const shouldUseThumbBootstrap = (pathname: string): boolean =>
+  THUMB_ROUTE_PATTERN.test(pathname);
+
 const shouldUseVisualEditorBootstrap = (pathname: string): boolean =>
   VISUAL_EDITOR_ROUTE_PATTERN.test(pathname);
 
@@ -67,10 +82,18 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
   if (LOCALHOST_HOSTNAME_SET.has(hostname)) {
     return isRoleRoomStandalonePathname(pathname, locationLike);
   }
-  return isRoleRoomDedicatedHost(hostname);
+  // Leadgrid-dedikerte hoster (leadgrid.no) bruker samme bootstrap —
+  // casting-main eier Leadgrid-sidene og aliaser rene stier per host.
+  return isRoleRoomDedicatedHost(hostname) || isLeadgridDedicatedHost(hostname);
 };
 
 const resolveRootComponent = async (): Promise<React.ComponentType> => {
+  // Thumbnail-ruten FØRST — minimal, backend-fri bootstrap (vinner på alle hoster).
+  if (shouldUseThumbBootstrap(window.location.pathname)) {
+    const module = await import('./thumb-entry');
+    return module.default;
+  }
+
   if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
     const module = await import('./components/role-room/casting-main');
     return module.default;
@@ -81,7 +104,12 @@ const resolveRootComponent = async (): Promise<React.ComponentType> => {
     return module.default;
   }
 
-  if (shouldUseAdminBootstrap(window.location.pathname)) {
+  // admin.creatorhubn.com booter admin-shell'en fra roten (host-basert), i
+  // tillegg til de path-baserte /admin-rutene på hovedhosten.
+  if (
+    isAdminDedicatedHost(window.location.hostname) ||
+    shouldUseAdminBootstrap(window.location.pathname)
+  ) {
     const module = await import('./admin-entry');
     return module.default;
   }
@@ -138,11 +166,13 @@ console.log('[main.tsx] React:', typeof React);
 console.log('[main.tsx] ReactDOM:', typeof ReactDOM);
 console.log(
   '[main.tsx] Bootstrap mode:',
-  shouldUseRoleRoomDedicatedHostBootstrap(window.location)
+  shouldUseThumbBootstrap(window.location.pathname)
+    ? 'thumb'
+    : shouldUseRoleRoomDedicatedHostBootstrap(window.location)
     ? 'role-room-host'
     : shouldUseVisualEditorBootstrap(window.location.pathname)
     ? 'visual-editor'
-    : shouldUseAdminBootstrap(window.location.pathname)
+    : isAdminDedicatedHost(window.location.hostname) || shouldUseAdminBootstrap(window.location.pathname)
       ? 'admin'
       : 'app',
 );

@@ -143,6 +143,64 @@ final class RedigeringRawPipelineTests: XCTestCase {
                           "reflection/highlight recovery had no measurable effect")
     }
 
+    /// RAW-CACHE (#1) — `renderPreview` gjenbruker ett cachet CIRAWFilter per
+    /// asset. To renders med SAMME recipe MÅ gi identisk utdata (idempotent
+    /// gjenbruk: ingen akkumulert warmth/shadow/NR fra `+=` på et delt filter),
+    /// og en recipe-endring MÅ fortsatt slå gjennom (filteret er ikke «frosset»).
+    func testCachedRawFilterIsIdempotentAndResponsive() throws {
+        guard let url = Bundle(for: Self.self).url(forResource: "_MG_9300", withExtension: "CR2") else {
+            throw XCTSkip("CR2 fixture not bundled")
+        }
+        RedigeringPipeline.clearBaseCache()
+        let path = url.path
+        // Første render bygger cachen; andre GJENBRUKER filteret.
+        guard let a = RedigeringPipeline.renderPreview(rawPath: path, jpegPath: nil, recipe: .product, exposureEV: 0),
+              let b = RedigeringPipeline.renderPreview(rawPath: path, jpegPath: nil, recipe: .product, exposureEV: 0),
+              let cgA = a.cgImage, let cgB = b.cgImage
+        else { return XCTFail("cachet render ga ingen bilde") }
+        XCTAssertEqual(Self.meanLuma(cgA), Self.meanLuma(cgB), accuracy: 0.001,
+                       "gjenbrukt CIRAWFilter akkumulerte state (ikke idempotent)")
+
+        // Responsiv: shadowLift (pre-demosaic på filteret) skal løfte skygger →
+        // høyere mean luma, selv på det gjenbrukte filteret.
+        var lifted = MagicRecipe.product; lifted.shadowLift = 1.0
+        guard let c = RedigeringPipeline.renderPreview(rawPath: path, jpegPath: nil, recipe: lifted, exposureEV: 0),
+              let cgC = c.cgImage
+        else { return XCTFail("shadowLift-render ga ingen bilde") }
+        XCTAssertGreaterThan(Self.meanLuma(cgC), Self.meanLuma(cgA),
+                             "shadowLift slo ikke gjennom på gjenbrukt filter")
+
+        // Tilbake til nøytral på DET SAMME gjenbrukte filteret → identisk med
+        // aller første render (beviser at shadowLift ble nullstilt, ikke klistret).
+        guard let d = RedigeringPipeline.renderPreview(rawPath: path, jpegPath: nil, recipe: .product, exposureEV: 0),
+              let cgD = d.cgImage
+        else { return XCTFail("retur-render ga ingen bilde") }
+        XCTAssertEqual(Self.meanLuma(cgA), Self.meanLuma(cgD), accuracy: 0.001,
+                       "properties ble ikke nullstilt ved gjenbruk (shadowLift hang igjen)")
+    }
+
+    /// EV I RAW (#2) — eksponering påføres nå NATIVT på `CIRAWFilter.exposure`
+    /// (pre-demosaic, scene-lineært) i stedet for en post-develop 8-bit-justering.
+    /// +EV lysner, −EV mørkner, OG det er idempotent på det gjenbrukte filteret
+    /// (retur til EV 0 = identisk med første EV-0-render → `exposure` nullstilt).
+    func testNativeExposureInRawBrightensDarkensAndResets() throws {
+        guard let url = Bundle(for: Self.self).url(forResource: "_MG_9300", withExtension: "CR2") else {
+            throw XCTSkip("CR2 fixture not bundled")
+        }
+        RedigeringPipeline.clearBaseCache()
+        let path = url.path
+        func luma(_ ev: Double) throws -> Double {
+            let img = try XCTUnwrap(RedigeringPipeline.renderPreview(
+                rawPath: path, jpegPath: nil, recipe: .neutral, exposureEV: ev))
+            return Self.meanLuma(try XCTUnwrap(img.cgImage))
+        }
+        let base = try luma(0)
+        XCTAssertGreaterThan(try luma(1.5), base, "native +EV lysnet ikke")
+        XCTAssertLessThan(try luma(-1.5), base, "native −EV mørknet ikke")
+        // Retur til EV 0 på det gjenbrukte filteret → identisk med første render.
+        XCTAssertEqual(try luma(0), base, accuracy: 0.001, "exposure ble ikke nullstilt ved gjenbruk")
+    }
+
     // MARK: - Helpers
 
     /// Mean luma over a downsampled grid — cheap proxy for "the image changed".

@@ -173,11 +173,19 @@ export function createDanceVideoRouter(
   const clipUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 200 * 1024 * 1024 }, // 200MB cap (browser-side transcoding er V1.1)
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("video/")) cb(null, true);
+      else cb(new Error("Kun videofiler er tillatt") as any, false);
+    },
   });
 
   const voiceUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 30 * 1024 * 1024 }, // 30MB cap for voice notes
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("audio/")) cb(null, true);
+      else cb(new Error("Kun lydfiler er tillatt") as any, false);
+    },
   });
 
   // ─── Clip CRUD ────────────────────────────────────────────────────────
@@ -454,7 +462,7 @@ export function createDanceVideoRouter(
       `SELECT clip_id FROM dance_video_annotation WHERE owner_user_id = $1 AND id = $2`,
       [userId, idParsed.data],
     );
-    if (before.rowCount === 0) {
+    if (!before.rows.length) {
       res.status(404).json({ error: 'not_found' });
       return;
     }

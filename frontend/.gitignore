@@ -17,6 +17,7 @@ node_modules/
 .env.local
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 
 # Logs
@@ -53,3 +54,4 @@ client/src/assets/_L9A8606.ppm
 
 # Demo-opptak (genererte screenshots)
 demo-artifacts/
+/client/dist-geo

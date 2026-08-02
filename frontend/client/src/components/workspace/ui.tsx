@@ -28,6 +28,34 @@ export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: numbe
   </Box>
 );
 
+/**
+ * Feiltilstand for primær-lasting: vises når hovedspørringen til en fane feiler
+ * (nettverk/500), i stedet for en misvisende tom-tilstand. «Prøv igjen» kaller
+ * onRetry. Locale-nøytral — teksten sendes inn (fanen har allerede makeT).
+ */
+export const WsErrorState: React.FC<{ message: string; retryLabel?: string; onRetry?: () => void; sx?: any }> = ({ message, retryLabel = 'Prøv igjen', onRetry, sx }) => (
+  <Box sx={{
+    bgcolor: ws.panel, border: `1px solid ${ws.redSoft}`, borderRadius: `${ws.radius}px`,
+    p: 3, textAlign: 'center', ...sx,
+  }}>
+    <Typography sx={{ fontSize: 13.5, color: ws.textDim, mb: onRetry ? 1.5 : 0 }}>{message}</Typography>
+    {onRetry && (
+      <Box
+        component="button"
+        onClick={onRetry}
+        sx={{
+          font: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+          bgcolor: 'transparent', color: ws.accent, border: `1px solid ${ws.accentBorder}`,
+          borderRadius: `${ws.radiusSm}px`, px: 2, py: 0.75,
+          '&:hover': { bgcolor: ws.accentSoft },
+        }}
+      >
+        {retryLabel}
+      </Box>
+    )}
+  </Box>
+);
+
 export const WsSectionTitle: React.FC<{ icon?: React.ReactNode; title: string; action?: React.ReactNode; sx?: any }> = ({ icon, title, action, sx }) => (
   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5, ...sx }}>
     <Stack direction="row" alignItems="center" spacing={1}>
@@ -69,15 +97,15 @@ export const WsBar: React.FC<{ value: number; color?: string; height?: number }>
 );
 
 /** Liten status-pille (Ferdig/Pågår/Planlagt/Kritisk osv.) */
-export const WsTag: React.FC<{ label: string; tone?: 'green' | 'amber' | 'red' | 'blue' | 'accent' | 'neutral' }> = ({ label, tone = 'neutral' }) => {
+export const WsTag: React.FC<{ label: string; icon?: React.ReactNode; tone?: 'green' | 'amber' | 'red' | 'blue' | 'accent' | 'neutral' }> = ({ label, icon, tone = 'neutral' }) => {
   const map: any = {
     green: [ws.green, ws.greenSoft], amber: [ws.amber, ws.amberSoft], red: [ws.red, ws.redSoft],
     blue: [ws.blue, ws.blueSoft], accent: [ws.accent, ws.accentSoft], neutral: [ws.textDim, 'rgba(255,255,255,0.06)'],
   };
   const [c, bg] = map[tone] || map.neutral;
   return (
-    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', px: 1, py: 0.25, borderRadius: 1, bgcolor: bg, color: c, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
-      {label}
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, px: 1, py: 0.25, borderRadius: 1, bgcolor: bg, color: c, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', '& svg': { fontSize: 13 } }}>
+      {icon}{label}
     </Box>
   );
 };
@@ -91,7 +119,9 @@ export const WsStat: React.FC<{ icon?: React.ReactNode; label: string; value: Re
       )}
       <Box sx={{ minWidth: 0 }}>
         <Typography sx={{ fontSize: 12, color: ws.textDim }}>{label}</Typography>
-        <Typography sx={{ fontSize: 22, fontWeight: 800, color: ws.text, lineHeight: 1.1 }}>{value}</Typography>
+        {/* component="div": `value` er ofte en <Typography> (=<p>) selv — et
+            <p> inne i et <p> er ugyldig HTML (validateDOMNesting-advarsel). */}
+        <Typography component="div" sx={{ fontSize: 22, fontWeight: 800, color: ws.text, lineHeight: 1.1 }}>{value}</Typography>
         {sub && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{sub}</Typography>}
       </Box>
     </Stack>
@@ -150,7 +180,11 @@ export const WsImageGrid: React.FC<{
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Synk når bilder lastes asynkront (f.eks. fra B2 via useProjectImages).
-  React.useEffect(() => { setItems(images); }, [images]);
+  // NB: dep-en må være en STABIL signatur, ikke selve array-referansen — ellers
+  // looper effekten (default `images=[]` og inline-mappede props gir ny referanse
+  // hver render → «Maximum update depth exceeded»).
+  const imagesSig = images.map((im) => `${im.id}:${im.url}`).join('|');
+  React.useEffect(() => { setItems(images); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [imagesSig]);
 
   const pick = () => inputRef.current?.click();
   const handleFiles = async (files: FileList | null) => {

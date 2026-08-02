@@ -182,7 +182,7 @@ export function createCastingProductionRouter(
       );
       res.json({ props: result.rows.map(mapPropRow) });
     } catch (err) {
-      res.status(500).json({ error: 'Kunne ikke hente props', detail: String(err) });
+      res.status(500).json({ error: 'Kunne ikke hente props', detail: "internal_error" });
     }
   });
 
@@ -211,7 +211,7 @@ export function createCastingProductionRouter(
       );
       res.status(201).json({ prop: mapPropRow(result.rows[0]) });
     } catch (err) {
-      res.status(500).json({ error: 'Kunne ikke lagre prop', detail: String(err) });
+      res.status(500).json({ error: 'Kunne ikke lagre prop', detail: "internal_error" });
     }
   });
 
@@ -228,7 +228,7 @@ export function createCastingProductionRouter(
       if (result.rowCount === 0) { res.status(404).json({ error: 'Prop ikke funnet' }); return; }
       res.json({ ok: true });
     } catch (err) {
-      res.status(500).json({ error: 'Kunne ikke slette prop', detail: String(err) });
+      res.status(500).json({ error: 'Kunne ikke slette prop', detail: "internal_error" });
     }
   });
 
@@ -243,7 +243,7 @@ export function createCastingProductionRouter(
       );
       res.json({ productionDays: result.rows.map(mapDayRow) });
     } catch (err) {
-      res.status(500).json({ error: 'Kunne ikke hente produksjonsdager', detail: String(err) });
+      res.status(500).json({ error: 'Kunne ikke hente produksjonsdager', detail: "internal_error" });
     }
   });
 
@@ -279,7 +279,7 @@ export function createCastingProductionRouter(
       );
       res.status(201).json({ productionDay: mapDayRow(result.rows[0]) });
     } catch (err) {
-      res.status(500).json({ error: 'Kunne ikke lagre produksjonsdag', detail: String(err) });
+      res.status(500).json({ error: 'Kunne ikke lagre produksjonsdag', detail: "internal_error" });
     }
   });
 
@@ -296,7 +296,7 @@ export function createCastingProductionRouter(
       if (result.rowCount === 0) { res.status(404).json({ error: 'Produksjonsdag ikke funnet' }); return; }
       res.json({ ok: true });
     } catch (err) {
-      res.status(500).json({ error: 'Kunne ikke slette produksjonsdag', detail: String(err) });
+      res.status(500).json({ error: 'Kunne ikke slette produksjonsdag', detail: "internal_error" });
     }
   });
 

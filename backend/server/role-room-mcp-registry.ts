@@ -16,6 +16,13 @@
 import type { Pool } from "pg";
 import { hasScope } from "./role-room-integrations-v1-routes.js";
 import { mcpCanAccessProject } from "./role-room-mcp-auth.js";
+import { newEntityId } from "./_shared-ids.js";
+// Gjenbruker den herdede, consent-gatede talent-søk-motoren (IKKE reimplementert):
+// buildSearchSql håndhever aktivt samtykke (HAVING bool_or basic/full_profile),
+// maskByScopes maskerer PII etter delte scopes. PII-kritisk → deles 1:1 med UI.
+import {
+  fetchAgencyForUser, parseFilters, buildSearchSql, maskByScopes,
+} from "./role-room-agency-search-routes.js";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
@@ -141,6 +148,31 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
         `SELECT id, title, role_name, location_name, date, start_time, end_time, status
            FROM auditions WHERE project_id = $1 ORDER BY date DESC NULLS LAST LIMIT 200`, [projectId]);
       return { auditions: r.rows };
+    },
+  },
+  {
+    name: "rr_whoami",
+    description: "Diagnostikk: hvilken bruker/konto tilkoblingen er autentisert som (userId), hvilke scopes, og en oversikt over hva økta har tilgang til (antall prosjekter man eier/er medlem av, utdannings-kull, egen talent-profil). Nyttig for å bekrefte at handshaken traff riktig konto.",
+    scope: "projects.read", modes: "*", projectScoped: false,
+    inputSchema: OBJ({}),
+    handler: async (pool, ctx) => {
+      const [proj, coh, tal] = await Promise.all([
+        pool.query(
+          `SELECT count(DISTINCT p.id)::int AS n FROM casting_projects p
+             LEFT JOIN casting_user_roles r ON r.project_id = p.id AND r.user_id = $1 AND r.deactivated_at IS NULL
+            WHERE p.created_by = $1 OR r.user_id IS NOT NULL`, [ctx.userId]),
+        pool.query(`SELECT count(*)::int AS n FROM role_room_education_cohorts WHERE owner_user_id = $1`, [ctx.userId]),
+        pool.query(`SELECT EXISTS(SELECT 1 FROM talents WHERE owner_user_id = $1) AS has`, [ctx.userId]),
+      ]);
+      return {
+        userId: ctx.userId,
+        scopes: ctx.scopes,
+        access: {
+          projects: proj.rows[0].n,
+          educationCohorts: coh.rows[0].n,
+          hasTalentProfile: tal.rows[0].has === true,
+        },
+      };
     },
   },
   {
@@ -586,6 +618,153 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
          VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,'draft',$6,'{"source":"mcp","draft":true}'::jsonb) RETURNING id`,
         [projectId, entryType, title, externalUrl, phase, ctx.userId]);
       return { ok: true, id: ins.rows[0].id, status: "draft", note: "Upublisert utkast — bekreftes i Role Room-UI." };
+    },
+  },
+
+  // ── Syntese / agent-vennlig ──────────────────────────────────────────────
+  {
+    name: "rr_project_summary",
+    description: "Aggregert status for ett prosjekt i ett kall: roller (totalt/tildelt), antall kandidater og crew, neste opptaksdag, budsjett (sum estimat/godkjent/faktisk), og antall åpne klient-godkjenninger. Ideelt for «gi meg statusen på X».",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const [proj, roles, cands, crew, nextDay, budget, reviews] = await Promise.all([
+        pool.query(`SELECT name, status, project_type FROM casting_projects WHERE id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS total, count(assigned_candidate_id)::int AS assigned FROM casting_roles WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS n FROM casting_candidates WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS n FROM casting_user_roles WHERE project_id = $1 AND deactivated_at IS NULL`, [projectId]),
+        pool.query(`SELECT min(date) AS d FROM casting_production_days WHERE project_id = $1 AND date >= CURRENT_DATE`, [projectId]),
+        pool.query(`SELECT coalesce(sum(estimate),0) AS estimate, coalesce(sum(approved),0) AS approved, coalesce(sum(actual),0) AS actual FROM role_room_budget_items WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT count(*)::int AS n FROM role_room_client_reviews WHERE project_id = $1 AND status = 'pending'`, [projectId]),
+      ]);
+      const p = proj.rows[0] ?? {};
+      const r = roles.rows[0] ?? { total: 0, assigned: 0 };
+      const b = budget.rows[0] ?? {};
+      return {
+        project: { id: projectId, name: p.name, status: p.status, type: p.project_type },
+        roles: { total: r.total, assigned: r.assigned, unassigned: r.total - r.assigned },
+        candidates: cands.rows[0].n,
+        crew: crew.rows[0].n,
+        nextProductionDay: nextDay.rows[0].d ?? null,
+        budget: { estimate: Number(b.estimate ?? 0), approved: Number(b.approved ?? 0), actual: Number(b.actual ?? 0) },
+        openClientReviews: reviews.rows[0].n,
+      };
+    },
+  },
+
+  // ── Dypere lese-detalj ───────────────────────────────────────────────────
+  {
+    name: "rr_get_candidate",
+    description: "Hent detaljer om én kandidat/medvirkende på et prosjekt (navn, kontakt, byrå, status, rating, notater, tildelte roller, samtykke-status).",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id"), candidateId: STR("Kandidatens id") }, ["projectId", "candidateId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const candidateId = typeof args.candidateId === "string" ? args.candidateId.trim() : "";
+      if (!candidateId) throw new McpToolError(-32602, "candidateId er påkrevd.");
+      const r = await pool.query(
+        `SELECT id, name, email, phone, agency, status, rating, notes, assigned_roles, consent_status, updated_at
+           FROM casting_candidates WHERE id = $1 AND project_id = $2 LIMIT 1`, [candidateId, projectId]);
+      if (Number(r.rowCount ?? 0) === 0) throw new McpToolError(-32004, "Kandidaten finnes ikke i dette prosjektet.");
+      return { candidate: r.rows[0] };
+    },
+  },
+  {
+    name: "rr_list_equipment_bookings",
+    description: "List utstyrsreservasjoner på et prosjekt (utstyr, fra/til-dato, status, antall). Dekker Utstyr-bookinger.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjektets id") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const r = await pool.query(
+        `SELECT b.id, b.equipment_id, e.name AS equipment_name, b.start_date, b.end_date, b.status, b.quantity
+           FROM equipment_bookings b LEFT JOIN casting_equipment e ON e.id = b.equipment_id
+          WHERE b.project_id = $1 ORDER BY b.start_date NULLS LAST LIMIT 300`, [projectId]);
+      return { bookings: r.rows };
+    },
+  },
+
+  // ── Utkast (utdanning) ───────────────────────────────────────────────────
+  {
+    name: "rr_draft_assignment",
+    description: "Opprett en UTKASTS-oppgave i utdannings-workspacet (status=draft — faglærer publiserer i UI). Valgfritt knyttet til et eid kull. Krever projects.write.",
+    scope: "projects.write", modes: ["education"], projectScoped: false, mutates: true,
+    inputSchema: OBJ({
+      title: STR("Oppgavens tittel"),
+      brief: STR("Valgfri oppgavetekst/brief"),
+      cohortId: STR("Valgfritt: knytt til et eid kull"),
+      dueAt: STR("Valgfri frist (ISO-dato)"),
+    }, ["title"]),
+    handler: async (pool, ctx, args) => {
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const cohortId = typeof args.cohortId === "string" && args.cohortId.trim() ? args.cohortId.trim() : null;
+      if (cohortId) {
+        const owns = await pool.query(`SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`, [cohortId, ctx.userId]);
+        if (Number(owns.rowCount ?? 0) === 0) throw new McpToolError(-32004, "Ingen tilgang til dette kullet.");
+      }
+      const brief = typeof args.brief === "string" ? args.brief.trim() : null;
+      const dueAt = typeof args.dueAt === "string" && args.dueAt.trim() ? args.dueAt.trim() : null;
+      const id = newEntityId("assignment");
+      await pool.query(
+        `INSERT INTO role_room_education_assignments (id, owner_user_id, cohort_id, title, brief, due_at, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'draft')`,
+        [id, ctx.userId, cohortId, title, brief, dueAt]);
+      return { ok: true, id, status: "draft", note: "Upublisert oppgave-utkast — publiseres i utdannings-workspacet." };
+    },
+  },
+
+  // ── Talents (byrå-marketplace, samtykke-gated PII) ──────────────────────────
+  {
+    name: "rr_search_talents",
+    description:
+      "Søk i The Role Room Talents-registeret (byrå-representerte skuespillere/utøvere). KREVER at nøkkelens bruker tilhører et byrå. Returnerer KUN talenter som har gitt DITT byrå aktivt samtykke, og hvert felt er maskert etter hvilke scopes talentet har delt (samtykke-transparens, GDPR). Filtre: fritekst, sted, kjønn, spillalder, språk, ferdigheter, dialekter, tilgjengelighet, selftape, representasjon.",
+    scope: "projects.read", modes: PROD_MODES, projectScoped: false,
+    inputSchema: OBJ({
+      q: STR("Fritekstsøk (navn, bio, ferdigheter)"),
+      location: STR("Sted/by"),
+      gender: STR("Kjønn"),
+      ageMin: { type: "number", description: "Min spillalder" },
+      ageMax: { type: "number", description: "Maks spillalder" },
+      languages: { type: "array", items: { type: "string" }, description: "Språk (må matche alle oppgitte)" },
+      skills: { type: "array", items: { type: "string" }, description: "Ferdigheter" },
+      dialects: { type: "array", items: { type: "string" }, description: "Dialekter" },
+      availability: STR("Tilgjengelighetsstatus (f.eks. available)"),
+      hasSelftape: { type: "boolean", description: "Kun talenter med selftape/showreel" },
+      representation: STR("Representasjonsstatus"),
+      limit: { type: "number", description: "Maks antall (default 50, maks 200)" },
+    }),
+    handler: async (pool, ctx, args) => {
+      // Talent-søk er byrå-scopet, ikke prosjekt-scopet. Løs nøkkelens byrå;
+      // ingen byrå → tydelig feil (verktøyet er kun for representerende byråer).
+      const agency = await fetchAgencyForUser(pool, ctx.userId);
+      if (!agency) {
+        throw new McpToolError(-32004,
+          "Talent-søk krever en byrå-konto i The Role Room Talents — nøkkelens bruker tilhører ikke et byrå.");
+      }
+      // Reflekter MCP-argumentene til query-formatet parseFilters forventer,
+      // så vi arver ÉN kanonisk filter-parser (arrays, tall, defaults).
+      const filters = parseFilters({
+        q: args.q, location: args.location, gender: args.gender,
+        age_min: args.ageMin, age_max: args.ageMax,
+        languages: args.languages, skills: args.skills, dialects: args.dialects,
+        availability: args.availability,
+        has_selftape: args.hasSelftape === true ? "true" : undefined,
+        representation: args.representation, limit: args.limit,
+      });
+      // demo=false → ekte data. buildSearchSql = consent-gaten; maskByScopes =
+      // PII-maskeringen. Begge gjenbrukt 1:1 fra UI-søket (ikke reimplementert).
+      const { sql, params } = buildSearchSql(agency.type, agency.id, filters, false);
+      const result = await pool.query(sql, params);
+      const talents = result.rows.map(maskByScopes);
+      return {
+        agency: { name: agency.name, type: agency.type },
+        count: talents.length,
+        filters,
+        talents,
+        note: "Kun talenter med aktivt samtykke til ditt byrå; felt maskert etter delte scopes.",
+      };
     },
   },
 ];

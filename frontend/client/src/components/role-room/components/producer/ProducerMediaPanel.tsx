@@ -100,6 +100,7 @@ import {
   type ProducerTimelineItem,
 } from '../../services/producerWorkflowService';
 import roleRoomAgentService, {
+  roleRoomAgentDefaultHeaders,
   type RoleRoomAgentAccess,
   type RoleRoomAgentBrandColor,
   type RoleRoomAgentProducerBootstrapResult,
@@ -845,7 +846,7 @@ const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform,
   google: {
     primaryLabel: 'Google Workspace',
     primaryHref: '',
-    primaryDescription: 'Drive, Kalender og Meet brukes automatisk som del av prosjektflyten.',
+    primaryDescription: 'Én Google-kobling dekker både prosjektflyten (Drive, Kalender, Meet) og agentens analytics-oppsett (GA4, Search Console, Site Verification).',
   },
   meta: {
     primaryLabel: 'Åpne Meta Business',
@@ -2010,6 +2011,13 @@ export default function ProducerMediaPanel({
   const savedPlanningSnapshotRef = useRef<string>('');
   const mobileWorkspaceDraftHydratedRef = useRef(false);
   const appliedInitialWorkspaceFocusKeyRef = useRef<string>('');
+  // Verdibasert idempotens-vakt mot en render-løkke i klient-portalen:
+  // activeSection/activePage er memo-er hvis identitet endres når
+  // workspaceSections rebygges, så URL-sync-effekten kan re-fyre uten at den
+  // *semantiske* verdien har endret seg. (Emit-effektens tilsvarende guard
+  // ligger nå på main som `lastReportedWorkspaceFocusRef`.) Denne ref-en sørger
+  // for at vi bare skriver URL når faktisk innhold endres.
+  const lastWrittenClientPortalUrlRef = useRef<string | null>(null);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
 
@@ -2089,13 +2097,28 @@ export default function ProducerMediaPanel({
     mobileWorkspaceDraftHydratedRef.current = false;
   }, [projectId]);
 
+  // onWorkspaceFocusChange er en inline-callback hos forelderen (ny identitet
+  // hver render), så denne effekten fyrer på HVER parent-render — ikke bare
+  // ved reelle fokus-endringer. Med to monterte instanser (planner-project_room
+  // + producer-media-tabpanelet) på hver sin side ping-ponget fokuset A→B→A i
+  // render-hastighet: forelderen sendte fokus tilbake ned som initialPageId,
+  // begge re-anvendte, og hele arbeidsflaten ristet (mount/unmount-løkke).
+  // Ref-guarden gjør rapporten idempotent: samme fokus rapporteres aldri to
+  // ganger, så kjeden dør ut ved første konvergens.
+  const lastReportedWorkspaceFocusRef = useRef('');
   useEffect(() => {
-    onWorkspaceFocusChange?.({
+    const focus = {
       workspace: toClientPortalWorkspace(activeWorkspace),
       sectionId: activeSection?.id,
       pageId: activePage?.id,
       artifactId: focusedArtifactId ?? undefined,
-    });
+    };
+    const focusKey = `${focus.workspace ?? ''}|${focus.sectionId ?? ''}|${focus.pageId ?? ''}|${focus.artifactId ?? ''}`;
+    if (lastReportedWorkspaceFocusRef.current === focusKey) {
+      return;
+    }
+    lastReportedWorkspaceFocusRef.current = focusKey;
+    onWorkspaceFocusChange?.(focus);
   }, [activePage?.id, activeSection?.id, activeWorkspace, focusedArtifactId, onWorkspaceFocusChange]);
   const strategySnapshot = useMemo(
     () => getProducerStrategySnapshot(planningDraft),
@@ -2589,6 +2612,18 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     let cancelled = false;
 
+    // Klient-portalen autentiserer med invitasjons-Bearer-token, ikke en
+    // medlems-sesjon. `GET /api/casting/manuscripts` krever medlems-sesjon
+    // (requireUserSession) og svarer 401 for klienter. Manuskript er dessuten
+    // et produsent-/medlems-konsept som ikke vises i klient-flaten — så vi
+    // hopper over lasten helt og unngår støyende 401-er.
+    if (isClientPortalView || isClientReviewerMode) {
+      setManuscripts([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const loadManuscripts = async () => {
       try {
         const nextManuscripts = await manuscriptService.getManuscripts(projectId);
@@ -2608,7 +2643,7 @@ export default function ProducerMediaPanel({
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, isClientPortalView, isClientReviewerMode]);
 
   const loadLinkedInAccessStatus = useCallback(async () => {
     const requestId = ++linkedInAccessRequestRef.current;
@@ -2638,6 +2673,107 @@ export default function ProducerMediaPanel({
     }
     void loadLinkedInAccessStatus();
   }, [activeWorkspace, loadLinkedInAccessStatus, showWorkspaceOperations]);
+
+  // Koblingsstatus for Kontotilgang (eierskap + verifisert Meta) — samme
+  // binding-først-logikk som agentens GA4/GSC-oppsett bygger på.
+  // Chip-støy-grepet fra vault-gjennomgangen: sekundær-info (delt med /
+  // 2FA / utløp) ligger bak en detalj-toggle per kort — én tydelig
+  // status synlig, resten ett klikk unna.
+  const [expandedAccessDetails, setExpandedAccessDetails] = useState<Record<string, boolean>>({});
+  // Kontokortene er kompakte som standard: header m/ status leses på ett
+  // blikk, redigeringsdelen (metode/status, felter, notater, sikker deling,
+  // 2FA) foldes ut per kort. Før sto alle fem kortene fullt utfoldet
+  // samtidig — en vegg av felter uten lesbar samlet status.
+  const [expandedAccountCards, setExpandedAccountCards] = useState<Record<string, boolean>>({});
+  // Enkel/Avansert for Kontotilgang: Enkel (standard) skjuler proff-
+  // maskineriet (tier/risiko-nivåene) så en ikke-proff bare ser koble-
+  // handlingen og grunnfeltene. Klient-review er ALLTID enkel — kunden
+  // skal aldri møte risiko-taksonomien.
+  const [accountAccessAdvanced, setAccountAccessAdvanced] = useState(false);
+  const accountAccessShowAdvanced = accountAccessAdvanced && !isClientReviewerMode;
+  const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
+    google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
+    meta: { connected: boolean; verified: boolean; name: string | null };
+    manages?: {
+      ga4PropertyId: string | null;
+      ga4MeasurementId: string | null;
+      gscSites: string[];
+      gscError: 'needs_reauth' | 'unavailable' | null;
+      youtubeChannels: string[];
+      metaPages: string[];
+      igUsername: string | null;
+      facebookPageName: string | null;
+    };
+  } | null>(null);
+  const loadAgentConnectionStatus = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const r = await fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+        credentials: 'include',
+        headers: roleRoomAgentDefaultHeaders(),
+      });
+      const body = await r.json();
+      if (body?.success) {
+        setAgentConnectionStatus({ google: body.google, meta: body.meta, manages: body.manages ?? undefined });
+      }
+    } catch {
+      // Stille — statusen er berikelse, ikke blokkerende.
+    }
+  }, [projectId]);
+  useEffect(() => {
+    if (activeWorkspace !== 'accounts') return;
+    void loadAgentConnectionStatus();
+  }, [activeWorkspace, loadAgentConnectionStatus]);
+  // «Koble til Google»-knappen på Google-kortet: starter OAuth i eget
+  // vindu (mode 'link' = kobler innlogget produsent). Samtykket skjer hos
+  // Google; når vinduet lukkes re-leses koblingsstatusen.
+  const [googleOauthStarting, setGoogleOauthStarting] = useState(false);
+  const handleStartGoogleOauthLink = useCallback(async () => {
+    setGoogleOauthStarting(true);
+    try {
+      const r = await fetch('/api/role-room/google/oauth/start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({
+          mode: 'link',
+          projectId,
+          browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+          returnPath: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined,
+        }),
+      });
+      const body = await r.json();
+      if (body?.authorizationUrl && typeof window !== 'undefined') {
+        const popup = window.open(body.authorizationUrl, '_blank', 'width=620,height=760');
+        const poll = window.setInterval(() => {
+          if (!popup || popup.closed) {
+            window.clearInterval(poll);
+            void loadAgentConnectionStatus();
+          }
+        }, 1200);
+      } else {
+        setError(body?.error ?? 'Kunne ikke starte Google-koblingen.');
+      }
+    } catch {
+      setError('Kunne ikke starte Google-koblingen.');
+    } finally {
+      setGoogleOauthStarting(false);
+    }
+  }, [loadAgentConnectionStatus, projectId]);
+  // Felles popup-åpner for GET-baserte OAuth-starter (Meta/LinkedIn):
+  // samme vindu-størrelse som Google-flyten, og koblingsstatusen re-leses
+  // når popupen lukkes — konsistent opplevelse på tvers av kortene.
+  const openOauthPopupAndRefresh = useCallback((url: string) => {
+    if (typeof window === 'undefined') return;
+    const popup = window.open(url, '_blank', 'width=620,height=760');
+    const poll = window.setInterval(() => {
+      if (!popup || popup.closed) {
+        window.clearInterval(poll);
+        void loadAgentConnectionStatus();
+        void loadLinkedInAccessStatus();
+      }
+    }, 1200);
+  }, [loadAgentConnectionStatus, loadLinkedInAccessStatus]);
 
   useEffect(() => () => {
     linkedInAccessRequestRef.current += 1;
@@ -2712,6 +2848,16 @@ export default function ProducerMediaPanel({
     if (currentUrl === nextUrl) {
       return;
     }
+    // Ekstra vakt: hvis vi allerede har skrevet nøyaktig denne URL-en, ikke
+    // skriv igjen. Beskytter mot en flom av replaceState hvis buildClientPortal-
+    // Url og bar-URL-en aldri blir helt like (f.eks. path-normalisering) mens
+    // effekten re-fyrer pga. memo-identitets-churn. En replaceState-flom
+    // trigger analytics-bibliotekenes history-patch → «Throttling navigation»
+    // + synlig URL-risting.
+    if (lastWrittenClientPortalUrlRef.current === nextUrl) {
+      return;
+    }
+    lastWrittenClientPortalUrlRef.current = nextUrl;
     window.history.replaceState({}, '', nextUrl);
   }, [activePage, activeSection, activeWorkspace, focusedArtifactId, isClientPortalView, projectId]);
 
@@ -3135,10 +3281,13 @@ export default function ProducerMediaPanel({
         updatedAt: now,
       };
 
-      const savedIntake = await producerWorkflowService.updateClientIntake(projectId, nextIntake);
-      await persistPlanningDraft(nextPlanning, nextProject);
-
-      const existingStoryLogic = await storyLogicService.getStoryLogic(projectId);
+      // Tre uavhengige rundturer i parallell (intake-skriv, planning-skriv,
+      // story-logic-les) — «Lagrer…» gikk fra 4 sekvensielle til 2 bølger.
+      const [savedIntake, , existingStoryLogic] = await Promise.all([
+        producerWorkflowService.updateClientIntake(projectId, nextIntake),
+        persistPlanningDraft(nextPlanning, nextProject),
+        storyLogicService.getStoryLogic(projectId),
+      ]);
       const existingStoryLogicRecord = asRecord(existingStoryLogic);
       const storyLogicDraftRecord = asRecord(result.storyLogicDraft);
       const existingLocks = asRecord(existingStoryLogicRecord.locks);
@@ -3597,11 +3746,35 @@ export default function ProducerMediaPanel({
   }, [persistPlanningDraft, planningDraft]);
 
   const handleConfirmAccountAccessConnected = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    // Meta kan VERIFISERES (Graph /me på prosjektets kobling) — gjør det i
+    // stedet for selvattestering. Øvrige plattformer mangler verifiserings-
+    // API her og beholder manuell bekreftelse (ærlig begrensning).
+    if (platform === 'meta' && projectId) {
+      try {
+        const r = await fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+          credentials: 'include',
+          headers: roleRoomAgentDefaultHeaders(),
+        });
+        const body = await r.json().catch(() => null);
+        if (!body?.meta?.verified) {
+          setAccessVaultError(
+            body?.meta?.connected
+              ? 'Meta-koblingen finnes, men svarer ikke (utløpt token?) — koble til på nytt før bekreftelse.'
+              : 'Fant ingen fungerende Meta-kobling på prosjektet — fullfør invite/OAuth-flyten først.',
+          );
+          return;
+        }
+        setAgentConnectionStatus((cur) => (cur ? { ...cur, meta: body.meta } : cur));
+      } catch {
+        setAccessVaultError('Kunne ikke verifisere Meta-koblingen akkurat nå — prøv igjen.');
+        return;
+      }
+    }
     await persistAccountAccessEntry(platform, (entry) => ({
       ...entry,
       status: 'connected',
     }));
-  }, [persistAccountAccessEntry]);
+  }, [persistAccountAccessEntry, projectId]);
 
   const handleSaveAccessVaultSecret = useCallback(async (
     entry: ProducerProjectPlanning['accountAccess']['entries'][number],
@@ -4661,10 +4834,10 @@ export default function ProducerMediaPanel({
   const missingLogicFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(contentLogicDraft.objective)) {
-      items.push({ id: 'logic-objective', label: 'Content Logic-mål mangler' });
+      items.push({ id: 'logic-objective', label: 'Innholdsplan-mål mangler' });
     }
     if (!hasText(contentLogicDraft.audience)) {
-      items.push({ id: 'logic-audience', label: 'Content Logic-målgruppe mangler' });
+      items.push({ id: 'logic-audience', label: 'Innholdsplan-målgruppe mangler' });
     }
     if (!hasText(contentLogicDraft.hook)) {
       items.push({ id: 'logic-hook', label: 'Hook mangler' });
@@ -4821,7 +4994,7 @@ export default function ProducerMediaPanel({
     },
     {
       key: 'logic' as const,
-      label: 'Content Logic',
+      label: 'Innholdsplan',
       description: 'Mål, krok og handling slik produsenten planlegger videre.',
       status: briefStepProgress.logic.ready === briefStepProgress.logic.total
         ? 'Klar'
@@ -4915,7 +5088,7 @@ export default function ProducerMediaPanel({
         contentLogicDraft.objective,
         contentLogicDraft.hook,
         contentLogicDraft.callToAction,
-        'Content Logic er ikke fylt ut ennå.',
+        'Innholdsplan er ikke fylt ut ennå.',
       );
     }
     if (activeBriefStep === 'foundation') {
@@ -6864,7 +7037,7 @@ export default function ProducerMediaPanel({
               {
                 id: 'materials-calendar',
                 title: `${linkedCalendarMaterialCount} koblet til kalender`,
-                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til publiseringspunkter eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
+                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til innlegg som skal ut eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
               },
               {
                 id: 'materials-shotlist',
@@ -9150,7 +9323,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Content Logic
+                        Innholdsplan
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
                         Samme struktur som produsenten bruker videre i planlegging og levering. Klienten beskriver målet, kroken og handlingen direkte her.
@@ -9163,7 +9336,7 @@ export default function ProducerMediaPanel({
                               hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Content Logic mål"
+                              label="Innholdsplan mål"
                               value={contentLogicDraft.objective}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9187,7 +9360,7 @@ export default function ProducerMediaPanel({
                               hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Content Logic målgruppe"
+                              label="Innholdsplan målgruppe"
                               value={contentLogicDraft.audience}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9535,7 +9708,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Content Logic videreføring
+                        Innholdsplan videreføring
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
                         Her konkretiseres hva som beviser budskapet og hvordan innholdet skal fordeles på flater.
@@ -12369,6 +12542,64 @@ export default function ProducerMediaPanel({
               ) : null}
 
               {accountAccessVaultTab === 'accounts' ? (
+              <>
+              <Stack
+                direction="row"
+                spacing={0.55}
+                flexWrap="wrap"
+                useFlexGap
+                alignItems="center"
+                sx={{ mb: 0.9 }}
+              >
+                {([
+                  ['connected', 'koblet', 'rgba(34,197,94,0.16)', '#bbf7d0'],
+                  ['invite_sent', 'invite sendt', 'rgba(56,189,248,0.16)', '#dbeafe'],
+                  ['client_action', 'venter på klient', 'rgba(245,158,11,0.18)', '#fde68a'],
+                  ['not_started', 'ikke startet', 'rgba(148,163,184,0.16)', '#e2e8f0'],
+                ] as const).map(([statusKey, label, bg, fg]) => {
+                  const count = effectiveAccountEntries.filter((e) => e.platform !== 'google' && e.status === statusKey).length;
+                  if (count === 0) return null;
+                  return (
+                    <Chip
+                      key={statusKey}
+                      size="small"
+                      label={`${count} ${label}`}
+                      sx={{ bgcolor: bg, color: fg, fontWeight: 700 }}
+                    />
+                  );
+                })}
+                {effectiveAccountEntries.some((e) => !e.expiresAt) ? (
+                  <Chip
+                    size="small"
+                    label={`${effectiveAccountEntries.filter((e) => !e.expiresAt).length} uten utløpsdato`}
+                    sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                  />
+                ) : null}
+                <Box sx={{ flex: 1 }} />
+                {!isClientReviewerMode && canEditClientInput ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setAccountAccessAdvanced((v) => !v)}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28, color: accountAccessAdvanced ? '#c084fc' : 'rgba(148,163,184,0.8)' }}
+                  >
+                    {accountAccessAdvanced ? 'Avansert ✓' : 'Vis avansert'}
+                  </Button>
+                ) : null}
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    const anyOpen = effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]);
+                    setExpandedAccountCards(anyOpen
+                      ? {}
+                      : Object.fromEntries(effectiveAccountEntries.map((e) => [e.platform, true])));
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28 }}
+                >
+                  {effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]) ? 'Lukk alle' : 'Åpne alle'}
+                </Button>
+              </Stack>
               <Box
                 sx={{
                   display: 'grid',
@@ -12383,7 +12614,13 @@ export default function ProducerMediaPanel({
                   const isLinkedInEntry = entry.platform === 'linkedin';
                   const linkedAccountReview = accountAccessReviewByPlatform.get(entry.platform) ?? null;
                   const platformFlow = ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG[entry.platform];
-                  const googleConnectionDetail = '';
+                  const googleConnectionDetail = isGoogleEntry && agentConnectionStatus
+                    ? (agentConnectionStatus.google.connected
+                      ? (agentConnectionStatus.google.source === 'project'
+                        ? `Prosjektets kobling: ${agentConnectionStatus.google.email ?? 'ukjent konto'} — klient-eid oppsett (GA4/GSC lander her).`
+                        : `Din Google-konto (${agentConnectionStatus.google.email ?? 'ukjent'}) — oppsett lander hos deg. Koble klientens konto på prosjektet for klient-eierskap.`)
+                      : 'Ingen Google-kobling på prosjektet ennå — GA4-/Search Console-oppsettet i agenten krever den.')
+                    : '';
                   const linkedInConnectionDetail = isLinkedInEntry
                     ? readFirstNonEmptyString(
                       linkedInAccessStatus?.connection?.linkedInName && linkedInAccessStatus?.connection?.linkedInEmail
@@ -12451,6 +12688,13 @@ export default function ProducerMediaPanel({
                               label={isRequired ? 'Nødvendig i dette prosjektet' : 'Valgfri plattform'}
                               sx={{ bgcolor: isRequired ? 'rgba(20,184,166,0.16)' : 'rgba(148,163,184,0.1)', color: isRequired ? '#ccfbf1' : '#cbd5e1' }}
                             />
+                            {!entry.expiresAt && !expandedAccountCards[entry.platform] ? (
+                              <Chip
+                                size="small"
+                                label="Ingen utløp satt"
+                                sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                              />
+                            ) : null}
                             {isLinkedInEntry && linkedInAccessStatus?.state === 'connected' ? (
                               <Chip
                                 size="small"
@@ -12480,9 +12724,101 @@ export default function ProducerMediaPanel({
                               'Ingen sikker tilgang definert ennå.',
                             )}
                           </Typography>
+                          {(() => {
+                            // «Styrer»-raden: de konkrete ressursene koblingen
+                            // faktisk rår over (GA4-ID, GSC-siter, @IG-konto,
+                            // sider, kanaler) — «koblet» alene sier ingenting.
+                            const m = agentConnectionStatus?.manages;
+                            if (!m) return null;
+                            const styrer: string[] = [];
+                            if (isGoogleEntry) {
+                              if (m.ga4MeasurementId) styrer.push(`GA4: ${m.ga4MeasurementId}`);
+                              else if (m.ga4PropertyId) styrer.push(`GA4-property: ${m.ga4PropertyId}`);
+                              m.gscSites.slice(0, 3).forEach((s) => styrer.push(
+                                `Search Console: ${s.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')}`,
+                              ));
+                              if (m.gscError === 'needs_reauth') styrer.push('Search Console: krever ny innlogging');
+                            }
+                            if (entry.platform === 'meta') {
+                              if (m.igUsername) styrer.push(`Instagram: @${m.igUsername}`);
+                              if (m.facebookPageName) styrer.push(`Facebook-side: ${m.facebookPageName}`);
+                              m.metaPages.filter((p) => p !== m.facebookPageName).slice(0, 3)
+                                .forEach((p) => styrer.push(`Side: ${p}`));
+                            }
+                            if (entry.platform === 'youtube') {
+                              m.youtubeChannels.slice(0, 3).forEach((c) => styrer.push(`Kanal: ${c}`));
+                            }
+                            if (styrer.length === 0) return null;
+                            return (
+                              <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap sx={{ mt: 0.55 }}>
+                                <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.7rem', fontWeight: 700, alignSelf: 'center' }}>
+                                  Styrer:
+                                </Typography>
+                                {styrer.map((label) => (
+                                  <Chip
+                                    key={label}
+                                    size="small"
+                                    label={label}
+                                    sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#dbeafe', fontSize: '0.68rem', height: 20 }}
+                                  />
+                                ))}
+                              </Stack>
+                            );
+                          })()}
                         </Box>
-                        {isLinkedInEntry ? (
-                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                        {isGoogleEntry ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.google.connected ? (
+                              <Chip
+                                size="small"
+                                label={`Koblet: ${agentConnectionStatus.google.email ?? 'ukjent konto'}`}
+                                sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.google.connected ? 'outlined' : 'contained'}
+                                onClick={() => { void handleStartGoogleOauthLink(); }}
+                                disabled={googleOauthStarting}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {googleOauthStarting
+                                  ? 'Starter...'
+                                  : agentConnectionStatus?.google.connected
+                                    ? 'Koble til på nytt'
+                                    : 'Koble til Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : entry.platform === 'meta' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.meta.connected ? (
+                              <Chip
+                                size="small"
+                                label={agentConnectionStatus.meta.verified
+                                  ? `Koblet: ${agentConnectionStatus.manages?.igUsername ? `@${agentConnectionStatus.manages.igUsername}` : agentConnectionStatus.meta.name ?? 'verifisert'}`
+                                  : 'Koblet (ikke verifisert)'}
+                                sx={{
+                                  bgcolor: agentConnectionStatus.meta.verified ? 'rgba(34,197,94,0.16)' : 'rgba(245,158,11,0.18)',
+                                  color: agentConnectionStatus.meta.verified ? '#bbf7d0' : '#fde68a',
+                                  fontWeight: 700,
+                                }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.meta.connected ? 'outlined' : 'contained'}
+                                onClick={() => openOauthPopupAndRefresh(`/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`)}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {agentConnectionStatus?.meta.connected ? 'Koble til på nytt' : 'Koble til Meta'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : isLinkedInEntry ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
                             <Tooltip title="Oppdater LinkedIn-status">
                               <span>
                                 <IconButton
@@ -12507,22 +12843,59 @@ export default function ProducerMediaPanel({
                                 size="small"
                                 variant={linkedInAccessStatus?.state === 'connected' ? 'outlined' : 'contained'}
                                 onClick={() => {
-                                  if (linkedInAccessStatus?.state !== 'connected') {
-                                    void handleStartLinkedInAccountLink();
-                                  }
+                                  void handleStartLinkedInAccountLink();
                                 }}
                                 disabled={linkedInAccessActionKey === 'connect' || linkedInAccessStatus?.configured === false}
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
                                 {linkedInAccessStatus?.configured === false
                                   ? 'LinkedIn ikke konfigurert'
-                                  : linkedInAccessStatus?.state === 'connected'
-                                    ? 'LinkedIn aktivert'
-                                    : linkedInAccessActionKey === 'connect'
-                                      ? 'Starter...'
-                                      : 'Aktiver LinkedIn'}
+                                  : linkedInAccessActionKey === 'connect'
+                                    ? 'Starter...'
+                                    : linkedInAccessStatus?.state === 'connected'
+                                      ? 'Koble til på nytt'
+                                      : 'Koble til LinkedIn'}
                               </Button>
                             ) : null}
+                          </Stack>
+                        ) : entry.platform === 'youtube' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.google.connected ? (
+                              <Chip
+                                size="small"
+                                label="Bruker Google-koblingen"
+                                sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.google.connected ? 'outlined' : 'contained'}
+                                onClick={() => { void handleStartGoogleOauthLink(); }}
+                                disabled={googleOauthStarting}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {googleOauthStarting
+                                  ? 'Starter...'
+                                  : agentConnectionStatus?.google.connected
+                                    ? 'Koble til på nytt'
+                                    : 'Koble til Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : entry.platform === 'tiktok' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              component="a"
+                              href="https://business.tiktok.com"
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                            >
+                              Åpne TikTok Business Center
+                            </Button>
                           </Stack>
                         ) : linkedAccountReview ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
@@ -12538,6 +12911,26 @@ export default function ProducerMediaPanel({
                           </Stack>
                         ) : null}
                       </Stack>
+
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="text"
+                        onClick={() => setExpandedAccountCards((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          fontSize: '0.76rem',
+                          minHeight: 30,
+                          mb: expandedAccountCards[entry.platform] ? 0.6 : 0,
+                          justifyContent: 'flex-start',
+                          color: 'rgba(165,243,252,0.85)',
+                        }}
+                      >
+                        {expandedAccountCards[entry.platform] ? '▾ Skjul redigering' : '▸ Rediger tilgang og detaljer'}
+                      </Button>
+                      <Collapse in={Boolean(expandedAccountCards[entry.platform])} unmountOnExit>
+                      <Box>
 
                       {!isGoogleEntry ? (
                         <>
@@ -12696,22 +13089,43 @@ export default function ProducerMediaPanel({
                         </>
                       ) : null}
 
-                      <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
-                        <Chip
+                      <Stack direction="row" spacing={0.55} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
+                        {!entry.expiresAt ? (
+                          <Chip
+                            size="small"
+                            label="Ingen utløp satt"
+                            sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                          />
+                        ) : null}
+                        <Button
                           size="small"
-                          label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={entry.expiresAt ? `Utløper ${formatTimestamp(entry.expiresAt)}` : 'Ingen utløp satt'}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
+                          variant="text"
+                          onClick={() => setExpandedAccessDetails((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 28, fontSize: '0.74rem' }}
+                        >
+                          {expandedAccessDetails[entry.platform] ? 'Skjul detaljer' : 'Detaljer'}
+                        </Button>
+                        {expandedAccessDetails[entry.platform] ? (
+                          <>
+                            <Chip
+                              size="small"
+                              label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
+                              sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                            />
+                            <Chip
+                              size="small"
+                              label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
+                              sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                            />
+                            {entry.expiresAt ? (
+                              <Chip
+                                size="small"
+                                label={`Utløper ${formatTimestamp(entry.expiresAt)}`}
+                                sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                              />
+                            ) : null}
+                          </>
+                        ) : null}
                       </Stack>
 
                       <Box
@@ -12772,20 +13186,37 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                           helperText="For eksempel Klienteier, Innholdsprodusent, Editor, SoMe-ansvarlig."
                         />
-                        <TextField
-                          label="Utløper"
-                          type="datetime-local"
-                          value={toDateTimeLocalValue(entry.expiresAt)}
-                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
-                            ...current,
-                            expiresAt: fromDateTimeLocalValue(event.target.value),
-                          }))}
-                          fullWidth
-                          disabled={!canEditClientInput}
-                          InputLabelProps={{ shrink: true }}
-                        />
+                        <Box>
+                          <TextField
+                            label="Utløper"
+                            type="datetime-local"
+                            value={toDateTimeLocalValue(entry.expiresAt)}
+                            onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                              ...current,
+                              expiresAt: fromDateTimeLocalValue(event.target.value),
+                            }))}
+                            fullWidth
+                            disabled={!canEditClientInput}
+                            InputLabelProps={{ shrink: true }}
+                            helperText={entry.expiresAt ? undefined : 'Evigvarende delegert tilgang er risikoen vaulten skal fjerne.'}
+                          />
+                          {!entry.expiresAt && canEditClientInput ? (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+                              }))}
+                              sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', mt: 0.25 }}
+                            >
+                              Sett 90 dager (anbefalt)
+                            </Button>
+                          ) : null}
+                        </Box>
                       </Box>
 
+                      {accountAccessShowAdvanced && (
                       <Stack
                         direction={{ xs: 'column', md: 'row' }}
                         spacing={0.7}
@@ -12866,6 +13297,7 @@ export default function ProducerMediaPanel({
                           <ToggleButton value="high" disabled={!canEditClientInput}>Høy</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
+                      )}
 
                       <TextField
                         label="Notater"
@@ -13053,10 +13485,13 @@ export default function ProducerMediaPanel({
                           <ToggleButton value="unknown" disabled={!canEditClientInput}>Ikke bekreftet</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
+                      </Box>
+                      </Collapse>
                     </Box>
                   );
                 })}
               </Box>
+              </>
               ) : null}
 
               {accountAccessVaultTab === 'accounts' ? (
@@ -13253,7 +13688,7 @@ export default function ProducerMediaPanel({
                                   void handleRevealAccessVaultSecret(request);
                                 }}
                                 disabled={Boolean(accessVaultActionKey)}
-                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
                               >
                                 {accessVaultActionKey === `${request.id}:reveal` ? 'Åpner...' : 'Åpne én gang'}
                               </Button>
@@ -13528,7 +13963,7 @@ export default function ProducerMediaPanel({
                                     void handleSaveAccessVaultSecret(entry);
                                   }}
                                   disabled={Boolean(accessVaultActionKey)}
-                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
                                 >
                                   {accessVaultActionKey === `${entry.platform}:save` ? 'Lagrer sikkert...' : 'Lagre sikkert'}
                                 </Button>
@@ -16639,6 +17074,18 @@ export default function ProducerMediaPanel({
         notice={roleRoomAgentNotice}
         onGenerate={handleGenerateRoleRoomAgent}
         onApply={handleApplyRoleRoomAgent}
+        onOpenAccountAccess={() => {
+          setRoleRoomAgentDialogOpen(false);
+          const sectionWithAccounts = workspaceSections.find(
+            (section) => flattenProducerWorkspacePages(section).some((page) => page.surface === 'accounts'),
+          );
+          if (!sectionWithAccounts) return;
+          const accountsPage = flattenProducerWorkspacePages(sectionWithAccounts).find(
+            (page) => page.surface === 'accounts',
+          );
+          setActiveSectionId(sectionWithAccounts.id);
+          if (accountsPage) setActivePageId(accountsPage.id);
+        }}
         onCreateProject={handleCreateProjectFromRoleRoomAgent}
         progressStages={researchProgress.stages}
         progressStatus={researchProgress.status}

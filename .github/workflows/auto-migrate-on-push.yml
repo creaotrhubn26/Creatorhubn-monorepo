@@ -1,22 +1,23 @@
 name: Auto-migrate Neon-DB ved migrations-endring
 
-# Trigger ./migrate.sh på prod-backend hver gang en ny migration-fil
-# pushes til main. Backend-endpointet er token-gated via MIGRATE_TRIGGER_TOKEN
-# (GitHub secret) — krever ikke admin-login.
+# Appliserer SQL-migrasjoner mot prod-Neon via /api/admin-room/migrations/run
+# (token-gated m/ MIGRATE_TRIGGER_TOKEN). migrate.sh er idempotent (sporet i
+# `_migrations_applied`), fortsetter-på-feil per fil, og hopper over drizzle-push
+# på Render (SQL er autoritativt).
 #
-# Workflowen er idempotent — hvis ingen nye migrasjoner finnes (alle er allerede
-# applied), skipper migrate.sh dem og returnerer exit 0.
+# 🔑 DEPLOY-RACE LØST: den gamle push-triggeren fyrte SAMTIDIG som Render-
+# autoDeployen → curl-en traff backenden midt i rolloveren → 502 + løsrevet
+# migrate.sh drept av SIGTERM. NÅ venter workflowen først til /api/version
+# rapporterer at NØYAKTIG denne commit-en er utplassert og stabil, FØR den
+# trigger migrate. Da kjører migrate.sh mot en stabil instans.
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - 'backend/migrations/**.sql'
+      - 'backend/migrations/**'
   workflow_dispatch:
-    # Manuell trigger fra `gh workflow run` eller GitHub-UI.
-    # Brukes når du må re-kjøre migrate uten å pushe (f.eks. hvis en
-    # tidligere auto-run feilet stille — se [[auto-migrate-fire-and-forget]]).
+    # Manuell nødluke (kjør migrate mot gjeldende main uten en migrations-endring).
 
 permissions:
   contents: read
@@ -25,55 +26,87 @@ concurrency:
   group: auto-migrate-prod
   cancel-in-progress: false
 
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
 jobs:
   trigger-migrate:
-    name: Trigger migrate.sh på Render-backend
+    name: Applisér migrasjoner mot Render-backend
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - name: List endrede migration-filer
+      - name: Vent til commit er deployet + stabil (unngår 502 i deploy-rollover)
         run: |
-          echo "Triggered av commit $GITHUB_SHA"
-          echo "Sender POST til /api/admin-room/migrations/run"
+          echo "Venter til $GITHUB_SHA er live på $BACKEND_URL …"
+          for i in $(seq 1 60); do   # opptil 60 × 15s = 15 min
+            DEPLOYED=$(curl -s -m 10 "$BACKEND_URL/api/version" | python3 -c "import sys,json;print(json.load(sys.stdin).get('commit') or '')" 2>/dev/null || echo "")
+            echo "  [$i] deployet commit: ${DEPLOYED:-<ukjent>}"
+            if [ -n "$DEPLOYED" ] && { [ "$DEPLOYED" = "$GITHUB_SHA" ] || [ "${GITHUB_SHA#$DEPLOYED}" != "$GITHUB_SHA" ] || [ "${DEPLOYED#$GITHUB_SHA}" != "$DEPLOYED" ]; }; then
+              echo "✅ Riktig commit er deployet."
+              # Ekstra buffer så deploy-rolloveren er helt ferdig.
+              sleep 15
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::Tidsavbrudd — så ikke $GITHUB_SHA på /api/version. Fortsetter likevel (migrate er idempotent)."
 
       - name: Trigger migrate.sh
         env:
           MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
-          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
         run: |
           if [ -z "$MIGRATE_TRIGGER_TOKEN" ]; then
             echo "::error::MIGRATE_TRIGGER_TOKEN secret er ikke satt"
             exit 1
           fi
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
+          # Fire-and-confirm: /run spawner migrate.sh detached og svarer 202
+          # raskt. MEN hvis instansen hikker mens migrate kjører kan 202-svaret
+          # gå tapt — DERFOR kort -m 30 + IKKE-fatal på timeout (uten -m hang
+          # jobben i 30 min). Status-pollingen under er autoritativ.
+          set +e
+          HTTP_CODE=$(curl -s -o /tmp/run_body.txt -m 30 -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
             -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" \
             -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
             -d '{}' \
             "$BACKEND_URL/api/admin-room/migrations/run")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          echo "HTTP $HTTP_CODE"
-          echo "Body: $BODY"
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            if [ "$HTTP_CODE" = "409" ]; then
-              echo "::warning::En migrate-run pågår allerede. Hopper over."
-              exit 0
-            fi
-            echo "::error::Migrate-trigger feilet (HTTP $HTTP_CODE)"
+          CURL_EXIT=$?
+          set -e
+          echo "curl-exit=$CURL_EXIT HTTP=${HTTP_CODE:-<ingen>}"
+          echo "Body: $(cat /tmp/run_body.txt 2>/dev/null)"
+          if [ "$CURL_EXIT" = "28" ] || [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ]; then
+            echo "::warning::Trigger-respons uteble (timeout/tapt). migrate.sh er sannsynligvis startet — går til status-polling."
+          elif [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "409" ]; then
+            echo "Migrate trigget (eller pågår alt). Poller status."
+          else
+            echo "::error::Migrate-trigger avvist (HTTP $HTTP_CODE) — sjekk at MIGRATE_TRIGGER_TOKEN-secret matcher backend-env."
             exit 1
           fi
 
-      - name: Poll status til ferdig (maks 10 min)
+      - name: Poll status til ferdig (token-auth, maks 10 min)
         env:
-          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
           MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
         run: |
-          # /status er admin-gated, men vi har ikke session-token i CI.
-          # Vi venter 90 sek statisk så backend rekker å starte og fullføre
-          # de fleste migrasjoner. Detaljert logging er tilgjengelig i Admin
-          # Room → RR Økonomi → Database-migrasjoner → "Vis logg".
-          echo "Venter 90 sek på at migrate.sh fullfører…"
-          sleep 90
-          echo "Migrate-run kan ses i Admin Room → RR Økonomi → Database-migrasjoner"
+          # pendingCount er autoritativt (DB: migrations/*.sql minus
+          # _migrations_applied) og overlever en evt. instans-restart som
+          # nullstiller in-memory status. Suksess = ingen pending igjen.
+          for i in $(seq 1 40); do   # opptil 40 × 15s = 10 min
+            STATUS_JSON=$(curl -s -m 10 -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status" || echo '{}')
+            STATUS=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+            PENDING=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('pendingCount',''))" 2>/dev/null || echo "")
+            echo "  [$i] status=$STATUS pending=$PENDING"
+            if [ "$STATUS" = "failed" ]; then
+              echo "Detaljer: $STATUS_JSON"
+              echo "::error::Migrate-run FEILET. Se Admin Room → Database-migrasjoner → Vis logg."
+              exit 1
+            fi
+            # Ferdig når ingen migrasjoner er pending (autoritativt fra DB).
+            if [ "$PENDING" = "0" ] && [ "$STATUS" != "running" ]; then
+              echo "✅ Migrate ferdig — ingen pending migrasjoner igjen (status=$STATUS)."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::Tidsavbrudd på status-polling. Sjekk Admin Room → Database-migrasjoner → Vis logg."
+          # Ikke feil jobben på timeout alene — migrate kan fortsatt være i gang.

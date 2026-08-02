@@ -30,8 +30,18 @@ export function setupProjectsOutliersRoutes(
   });
 
   app.get("/api/projects/:projectId/timeline", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { projectId } = req.params;
+      const owned = await pool.query(
+        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, session.userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       const result = await pool.query(
         `SELECT * FROM project_milestones WHERE project_id = $1 ORDER BY COALESCE(due_date, scheduled_date, created_at) ASC`,
         [projectId],
@@ -45,14 +55,19 @@ export function setupProjectsOutliersRoutes(
 
   // POST /api/projects/:projectId/milestones — Create a milestone/timeline event
   app.post("/api/projects/:projectId/milestones", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { projectId } = req.params;
-      const userId =
-        req.headers["x-user-id"] ||
-        req.headers["authorization"]?.toString().replace("Bearer ", "") ||
-        req.body?.userId ||
-        "";
+      const owned = await pool.query(
+        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, session.userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
+      const userId = session.userId;
       const {
         title,
         description,
@@ -99,9 +114,18 @@ export function setupProjectsOutliersRoutes(
 
   // PUT /api/projects/:projectId/timeline/:eventId — Update timeline event
   app.put("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { projectId, eventId } = req.params;
+      const owned = await pool.query(
+        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, session.userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       const {
         title,
         description,
@@ -176,9 +200,18 @@ export function setupProjectsOutliersRoutes(
 
   // DELETE /api/projects/:projectId/timeline/:eventId — Delete timeline event
   app.delete("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { projectId, eventId } = req.params;
+      const owned = await pool.query(
+        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, session.userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       await pool.query(
         "DELETE FROM project_milestones WHERE id = $1 AND project_id = $2",
         [eventId, projectId],
@@ -208,7 +241,7 @@ export function setupProjectsOutliersRoutes(
         const mapped = milestones.rows.map((row: any, index: number) => {
           const notes =
             row.internal_notes && typeof row.internal_notes === "string"
-              ? JSON.parse(row.internal_notes)
+              ? (() => { try { return JSON.parse(row.internal_notes); } catch { return {}; } })()
               : row.internal_notes || {};
           return {
             id: row.id,
@@ -317,14 +350,19 @@ export function setupProjectsOutliersRoutes(
 
   // POST /api/projects/:projectId/worklog — Create worklog entry
   app.post("/api/projects/:projectId/worklog", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { projectId } = req.params;
-      const userId =
-        req.headers["x-user-id"] ||
-        req.headers["authorization"]?.toString().replace("Bearer ", "") ||
-        req.body?.userId ||
-        "";
+      const owned = await pool.query(
+        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, session.userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
+      const userId = session.userId;
       const {
         title,
         description,

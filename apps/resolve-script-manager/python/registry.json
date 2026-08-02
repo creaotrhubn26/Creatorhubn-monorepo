@@ -59,90 +59,6 @@
   ],
   "scripts": [
     {
-      "id": "find_person",
-      "name": "Finn person (referansebilde → klipp + bilder)",
-      "category": "vision",
-      "scriptPath": "scripts/vision/find_person.py",
-      "description": "«Mer av X i filmen»: register (referansebilder → SFace-embedding, lokalt/gratis), search (skanner klipp m/ tidspunkt + brukt/ubrukt + skjermtid-estimat, og fotomappen — svarer: N ubrukte klipp + M bilder har personen, i dag ~Xs skjermtid). Embeddings caches i indeksen (fingerprint-voktet) — andre søk er øyeblikkelige. Treff er bevis, fravær er ikke motbevis.",
-      "requiredInputs": [],
-      "resolvePageDependency": null,
-      "riskLevel": "low",
-      "status": "ready",
-      "dryRunSupported": true,
-      "requiresProject": true,
-      "requiresTimeline": false
-    },
-    {
-      "id": "generate_broll",
-      "name": "Generer b-roll (Higgsfield Seedance) — forankret i eget footage",
-      "category": "media",
-      "scriptPath": "scripts/media/generate_broll.py",
-      "description": "Når hull-analysen trenger b-roll UBRUKT ikke har: Seedance 2.0 genererer atmosfære-insert forankret i EKTE frame fra klippet på anchorTc (samme lys/look), «no people» som default — importeres i GENERERT-bin klar for vanlig innsetting. plan: kostnadsestimat + kreditt-status uten kost. generate: KOSTER kreditter (~60 for 5s 1080p).",
-      "requiredInputs": [],
-      "resolvePageDependency": null,
-      "riskLevel": "medium",
-      "status": "ready",
-      "dryRunSupported": true,
-      "requiresProject": true,
-      "requiresTimeline": false
-    },
-    {
-      "id": "export_diff",
-      "name": "Eksport-diff + tilbakemeldings-sjekk (er eksporten i synk?)",
-      "category": "qc",
-      "scriptPath": "scripts/qc/export_diff.py",
-      "description": "diff: er den eksporterte fila utdatert vs timelinen? Tre bevislag — handlingslogg etter eksport-tidsstempel (indeksen), varighet/format (ffprobe), kutt-sammenligning (scene-deteksjon vs timelinens synlige kutt, heuristisk m/ avvikssoner). feedback: brudeparets punkter (én per linje) vurderes mot bevisene → forbedret-i-eksporten / forbedret-IKKE-i-eksporten (re-eksport trengs) / mangler — alltid med bevis.",
-      "requiredInputs": [],
-      "resolvePageDependency": null,
-      "riskLevel": "low",
-      "status": "ready",
-      "dryRunSupported": true,
-      "requiresProject": true,
-      "requiresTimeline": true
-    },
-    {
-      "id": "selects_builder",
-      "name": "Selects & rough cut (begrunnet EDL fra transkript)",
-      "category": "timeline",
-      "scriptPath": "scripts/timeline/selects_builder.py",
-      "description": "select: Claude velger sterke uttalelser fra transkriptet (brief + mål-lengde), hopper over repetisjoner, foreslår strammere formulering — hvert pick m/ FULL kontrakt: sourceClip/sourceIn/sourceOut (kilde-TC bevart), timelineIn/Out, transcriptExcerpt, selectionReason, confidence, alternativeCandidate (annen vinkel samme øyeblikk) + b-roll-kandidater fra UBRUKT. edl: CMX3600 + CSV. build: NY timeline av utvalget (master røres aldri).",
-      "requiredInputs": [],
-      "resolvePageDependency": null,
-      "riskLevel": "medium",
-      "status": "ready",
-      "dryRunSupported": true,
-      "requiresProject": true,
-      "requiresTimeline": true
-    },
-    {
-      "id": "build_project_index",
-      "name": "Prosjektindeks (stabile ID-er, fingerprints, analyse-cache)",
-      "category": "project",
-      "scriptPath": "scripts/project/build_project_index.py",
-      "description": "build: indekserer alle klipp (GetUniqueId + innholds-fingerprint + kamera-metadata), timelines (uid + tc-range), markører og transkript → SQLite per prosjekt-GUID m/ schema- og Resolve-versjon. status: meta + tellinger. verify: stikkprøve-refingerprinting avslører endrede/borte filer. Brukes som cache av vision-analysen.",
-      "requiredInputs": [],
-      "resolvePageDependency": null,
-      "riskLevel": "low",
-      "status": "ready",
-      "dryRunSupported": true,
-      "requiresProject": true,
-      "requiresTimeline": false
-    },
-    {
-      "id": "record_action",
-      "name": "Indeks-sidecar: før handling (intern)",
-      "category": "project",
-      "scriptPath": "scripts/project/record_action.py",
-      "description": "Intern sidecar: fører utførte handlinger + rollback-referanser inn i prosjektindeksens actions/rollbacks-tabeller. Kalles fire-and-forget fra panelets main-prosess etter ekte kjøringer. Trenger ikke Resolve (åpner DB på GUID).",
-      "requiredInputs": [],
-      "resolvePageDependency": null,
-      "riskLevel": "low",
-      "status": "ready",
-      "dryRunSupported": true,
-      "requiresProject": false,
-      "requiresTimeline": false
-    },
-    {
       "id": "connect_to_resolve",
       "name": "Connect to Resolve",
       "category": "project",
@@ -3563,6 +3479,150 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "place_overlay",
+      "name": "Place Infographic Overlay (alfa → timeline)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/place_overlay.py",
+      "description": "Legger transparente infographic-overlays (ProRes 4444 m/alfa, rendret fra Infographic Studio sine HTML-maler) på overlay-spor (V2/V3) i den åpne timelinen, ved tidspunktet de skal dukke opp i videoen (atSec). Resolve-siden av studio→Resolve-pipelinen.",
+      "requiredInputs": [
+        {
+          "key": "overlays",
+          "label": "Overlays (JSON: path, atSec, durationSec, track)",
+          "type": "json",
+          "required": true
+        },
+        {
+          "key": "fps",
+          "label": "FPS (default fra timeline)",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "stabilize_clip",
+      "name": "Stabilize clip (tiered)",
+      "category": "video",
+      "scriptPath": "scripts/video/stabilize_clip.py",
+      "description": "Stabiliser et klipp/segment. Auto-velger beste tilgjengelige metode: Gyroflow (hvis kamera-gyrodata + CLI finnes) → ffmpeg vid.stab 2-pass → ffmpeg deshake (alltid tilgjengelig). Ingen gimbal/gyro påkrevd for ffmpeg-nivåene. Med placeInResolve importeres det stabiliserte klippet rett på gjeldende Resolve-timeline (Resolve's egen stabilisator er ikke eksponert i API-et). Output: <input>_stabilized.mp4.",
+      "requiredInputs": [
+        {
+          "key": "videoPath",
+          "label": "Video",
+          "type": "file",
+          "required": true
+        },
+        {
+          "key": "strength",
+          "label": "Styrke 0..1 (default 0.5)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "placeInResolve",
+          "label": "Legg stabilisert klipp på Resolve-timeline",
+          "type": "boolean",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "find_person",
+      "name": "Finn person (referansebilde → klipp + bilder)",
+      "category": "vision",
+      "scriptPath": "scripts/vision/find_person.py",
+      "description": "«Mer av X i filmen»: register (referansebilder → SFace-embedding, lokalt/gratis), search (skanner klipp m/ tidspunkt + brukt/ubrukt + skjermtid-estimat, og fotomappen — svarer: N ubrukte klipp + M bilder har personen, i dag ~Xs skjermtid). Embeddings caches i indeksen (fingerprint-voktet) — andre søk er øyeblikkelige. Treff er bevis, fravær er ikke motbevis.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "generate_broll",
+      "name": "Generer b-roll (Higgsfield Seedance) — forankret i eget footage",
+      "category": "media",
+      "scriptPath": "scripts/media/generate_broll.py",
+      "description": "Når hull-analysen trenger b-roll UBRUKT ikke har: Seedance 2.0 genererer atmosfære-insert forankret i EKTE frame fra klippet på anchorTc (samme lys/look), «no people» som default — importeres i GENERERT-bin klar for vanlig innsetting. plan: kostnadsestimat + kreditt-status uten kost. generate: KOSTER kreditter (~60 for 5s 1080p).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "export_diff",
+      "name": "Eksport-diff + tilbakemeldings-sjekk (er eksporten i synk?)",
+      "category": "qc",
+      "scriptPath": "scripts/qc/export_diff.py",
+      "description": "diff: er den eksporterte fila utdatert vs timelinen? Tre bevislag — handlingslogg etter eksport-tidsstempel (indeksen), varighet/format (ffprobe), kutt-sammenligning (scene-deteksjon vs timelinens synlige kutt, heuristisk m/ avvikssoner). feedback: brudeparets punkter (én per linje) vurderes mot bevisene → forbedret-i-eksporten / forbedret-IKKE-i-eksporten (re-eksport trengs) / mangler — alltid med bevis.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "selects_builder",
+      "name": "Selects & rough cut (begrunnet EDL fra transkript)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/selects_builder.py",
+      "description": "select: Claude velger sterke uttalelser fra transkriptet (brief + mål-lengde), hopper over repetisjoner, foreslår strammere formulering — hvert pick m/ FULL kontrakt: sourceClip/sourceIn/sourceOut (kilde-TC bevart), timelineIn/Out, transcriptExcerpt, selectionReason, confidence, alternativeCandidate (annen vinkel samme øyeblikk) + b-roll-kandidater fra UBRUKT. edl: CMX3600 + CSV. build: NY timeline av utvalget (master røres aldri).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "build_project_index",
+      "name": "Prosjektindeks (stabile ID-er, fingerprints, analyse-cache)",
+      "category": "project",
+      "scriptPath": "scripts/project/build_project_index.py",
+      "description": "build: indekserer alle klipp (GetUniqueId + innholds-fingerprint + kamera-metadata), timelines (uid + tc-range), markører og transkript → SQLite per prosjekt-GUID m/ schema- og Resolve-versjon. status: meta + tellinger. verify: stikkprøve-refingerprinting avslører endrede/borte filer. Brukes som cache av vision-analysen.",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
+      "id": "record_action",
+      "name": "Indeks-sidecar: før handling (intern)",
+      "category": "project",
+      "scriptPath": "scripts/project/record_action.py",
+      "description": "Intern sidecar: fører utførte handlinger + rollback-referanser inn i prosjektindeksens actions/rollbacks-tabeller. Kalles fire-and-forget fra panelets main-prosess etter ekte kjøringer. Trenger ikke Resolve (åpner DB på GUID).",
+      "requiredInputs": [],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
     },
     {
       "id": "categorize_unused_clips",

@@ -29,6 +29,7 @@ import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LeadMapMemberPins from './LeadMapMemberPins';
+import OutreachComposerDialog from '@/components/leadgrid/OutreachComposerDialog';
 import { usePermissions } from './usePermissions';
 import LeadMapViewAsBanner from './LeadMapViewAsBanner';
 import { formatDistance, estimateDriveMinutes } from './lead-map-distance';
@@ -635,9 +636,31 @@ export default function LeadMapPanel() {
       isInLiquidation: boolean;
       status: 'active' | 'in_liquidation' | 'bankrupt';
     };
+    autoLinked?: boolean;
+    matchedName?: string;
     contacts?: Array<{ role: string; name: string }>;
+    financials?: {
+      year: number;
+      currency: string;
+      revenue: number | null;
+      operatingResult: number | null;
+      resultBeforeTax: number | null;
+      netResult: number | null;
+      equity: number | null;
+      totalAssets: number | null;
+      equityRatio: number | null;
+      operatingMargin: number | null;
+    } | null;
+    ip?: {
+      matchedBy: 'orgnr' | 'name';
+      trademarks: number;
+      patents: number;
+      designs: number;
+      recentTrademarks: Array<{ text: string; status: string | null; statusDate: string | null; caseUrl: string | null }>;
+    } | null;
   };
   const [enrichmentByLeadId, setEnrichmentByLeadId] = useState<Record<string, Enrichment | null>>({});
+  const [outreachFor, setOutreachFor] = useState<{ id: string; name: string } | null>(null);
   const [enrichingLeadId, setEnrichingLeadId] = useState<string | null>(null);
 
   // Counter-campaign (Lead Map → Marketing Cockpit-bro)
@@ -3391,6 +3414,11 @@ export default function LeadMapPanel() {
                         >
                           {isLoading ? 'Henter …' : 'Hent fra BRREG'}
                         </Button>
+                        <Button size="small" variant="text"
+                          onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
+                          sx={{ color: '#c084fc', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}>
+                          Skriv outreach
+                        </Button>
                       </Stack>
                     </Box>
                   );
@@ -3415,6 +3443,11 @@ export default function LeadMapPanel() {
                           sx={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}
                         >
                           Sjekk på nytt
+                        </Button>
+                        <Button size="small" variant="text"
+                          onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
+                          sx={{ color: '#c084fc', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}>
+                          Outreach
                         </Button>
                       </Stack>
                     </Box>
@@ -3454,6 +3487,11 @@ export default function LeadMapPanel() {
                           }}
                         />
                       </Stack>
+                      <Button size="small" variant="text"
+                        onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
+                        sx={{ color: '#c084fc', fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}>
+                        ✒ Skriv outreach
+                      </Button>
                       <Tooltip title="Oppdater fra BRREG">
                         <IconButton
                           size="small"
@@ -3505,6 +3543,88 @@ export default function LeadMapPanel() {
                         </Box>
                       )}
                     </Stack>
+                    {enrichment.financials && (
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
+                          Regnskap {enrichment.financials.year} ({enrichment.financials.currency}) — Regnskapsregisteret
+                        </Typography>
+                        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                          {([
+                            ['Omsetning', enrichment.financials.revenue, 'kr'],
+                            ['Driftsres.', enrichment.financials.operatingResult, 'kr'],
+                            ['Årsresultat', enrichment.financials.netResult, 'kr'],
+                            ['Egenkapital', enrichment.financials.equity, 'kr'],
+                          ] as Array<[string, number | null, string]>).map(([label, value]) => (
+                            value != null && (
+                              <Box key={label}>
+                                <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  {label}
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: palette.textPrimary }}>
+                                  {new Intl.NumberFormat('nb-NO', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}
+                                </Typography>
+                              </Box>
+                            )
+                          ))}
+                          {enrichment.financials.equityRatio != null && (
+                            <Box>
+                              <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                Soliditet
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: palette.textPrimary }}>
+                                {Math.round(enrichment.financials.equityRatio * 100)} %
+                              </Typography>
+                            </Box>
+                          )}
+                          {enrichment.financials.operatingMargin != null && (
+                            <Box>
+                              <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                Driftsmargin
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: enrichment.financials.operatingMargin < 0 ? '#f87171' : palette.textPrimary }}>
+                                {Math.round(enrichment.financials.operatingMargin * 100)} %
+                              </Typography>
+                            </Box>
+                          )}
+                        </Stack>
+                      </Box>
+                    )}
+                    {enrichment.financials === null && enrichment.found && (
+                      <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, mt: 1 }}>
+                        Ingen årsregnskap i Regnskapsregisteret (ENK leverer ikke, eller første regnskap er ikke levert ennå).
+                      </Typography>
+                    )}
+                    {enrichment.autoLinked && (
+                      <Typography sx={{ fontSize: '0.68rem', color: '#f59e0b', mt: 0.6, fontWeight: 700 }}>
+                        ⚠ Automatisk koblet til «{enrichment.matchedName}» via navnesøk — bekreft at det er riktig selskap (Oppdater-knappen re-kjører med koblingen).
+                      </Typography>
+                    )}
+                    {enrichment.ip && (
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
+                          Immaterielle rettigheter — Patentstyret{enrichment.ip.matchedBy === 'name' ? ' (navnesøk — kan inneholde navnebrødre)' : ''}
+                        </Typography>
+                        <Stack direction="row" spacing={2}>
+                          {([['Varemerker', enrichment.ip.trademarks], ['Patenter', enrichment.ip.patents], ['Design', enrichment.ip.designs]] as Array<[string, number]>).map(([label, value]) => (
+                            value > 0 && (
+                              <Box key={label}>
+                                <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  {label}
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.96rem', fontWeight: 800, color: palette.textPrimary }}>
+                                  {value}
+                                </Typography>
+                              </Box>
+                            )
+                          ))}
+                        </Stack>
+                        {enrichment.ip.recentTrademarks.length > 0 && (
+                          <Typography sx={{ fontSize: '0.7rem', color: palette.textSecondary, mt: 0.6 }}>
+                            Siste: {enrichment.ip.recentTrademarks.slice(0, 2).map((t) => `«${t.text}» (${t.status ?? '?'}${t.statusDate ? ', ' + t.statusDate : ''})`).join(' · ')}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
                     {enrichment.contacts && enrichment.contacts.length > 0 && (
                       <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
                         <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
@@ -5758,6 +5878,14 @@ export default function LeadMapPanel() {
           )}
         </Box>
       </CardContent>
+      {outreachFor && (
+        <OutreachComposerDialog
+          open
+          onClose={() => setOutreachFor(null)}
+          leadId={outreachFor.id}
+          leadName={outreachFor.name}
+        />
+      )}
     </Card>
   );
 }

@@ -1057,7 +1057,24 @@ actor APIClient {
 
     // MARK: - Visittkort-skanner (PR #642)
 
-    func createLeadFromCard(extracted: ExtractedBusinessCard) async throws {
+    /// BRREG-koblingen backend gjorde i skann-øyeblikket (PR #1564):
+    /// «linked» = org.nr sikkert koblet (berikelse kjører i bakgrunnen),
+    /// «suggestion» = vagt navnetreff — lagt som forslag i notes.
+    struct FromCardBrregLink: Decodable {
+        let status: String
+        let orgNr: String
+        let matchedName: String?
+        let via: String?
+    }
+
+    struct FromCardResponse: Decodable {
+        let ok: Bool
+        let id: String
+        let brreg: FromCardBrregLink?
+    }
+
+    @discardableResult
+    func createLeadFromCard(extracted: ExtractedBusinessCard) async throws -> FromCardResponse {
         var body: [String: Any] = ["name": extracted.name]
         if !extracted.company.isEmpty { body["company"] = extracted.company }
         if !extracted.title.isEmpty { body["title"] = extracted.title }
@@ -1065,7 +1082,7 @@ actor APIClient {
         if !extracted.phone.isEmpty { body["phone"] = extracted.phone }
         if !extracted.website.isEmpty { body["website"] = extracted.website }
         if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
-        try await post("/api/admin-room/lead-map/leads/from-card", body: body)
+        return try await post("/api/admin-room/lead-map/leads/from-card", body: body)
     }
 
     // MARK: - Drop-pin lead-create (PR feat/leadmap-ipad-center-fab-droppin)
@@ -3066,21 +3083,112 @@ extension APIClient {
     }
 
     // -- Outreach-templates ----------------------------------------
+    //
+    // Multi-produkt-paritet (PR #827): alle endepunkter under
+    // /api/admin-room/business-plan, /api/admin-room/outreach-templates og
+    // /api/admin-room/industry-targets godtar `?product=role_room|leadgrid`.
+    // Default `.leadgrid` siden iPad-en primært er et Leadgrid-verktøy.
 
-    func fetchOutreachTemplates(segment: String? = nil, language: String? = nil) async throws -> OutreachTemplatesResponse {
-        var qs: [String] = []
+    func fetchOutreachTemplates(
+        product: AdminProductKey = .leadgrid,
+        segment: String? = nil,
+        language: String? = nil,
+    ) async throws -> OutreachTemplatesResponse {
+        var qs: [String] = ["product=\(product.rawValue)"]
         if let segment { qs.append("segment=\(segment)") }
         if let language { qs.append("language=\(language)") }
-        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        let q = "?" + qs.joined(separator: "&")
         return try await get("/api/admin-room/outreach-templates\(q)")
     }
 
-    func personalizeOutreachTemplate(templateId: String, leadId: String) async throws -> [String: String] {
+    func personalizeOutreachTemplate(
+        templateId: String,
+        leadId: String,
+        product: AdminProductKey = .leadgrid,
+    ) async throws -> [String: String] {
         try await post(
             "/api/admin-room/outreach-templates/personalize",
-            body: ["template_id": templateId, "lead_id": leadId],
+            body: [
+                "template_id": templateId,
+                "lead_id": leadId,
+                "product": product.rawValue,
+            ],
         )
     }
+
+    // -- Business-plan (les-only på iPad) --------------------------
+    //
+    // Editor lever på web; iPad LESER kun for å vise siste-oppdatert-chip
+    // + sammendrag i super-admin-flate. PATCH/POST /generate er bevisst
+    // ikke wired (kommer i senere PR med native rich-text-editor).
+
+    func fetchBusinessPlan(
+        product: AdminProductKey = .leadgrid,
+    ) async throws -> BusinessPlanResponse {
+        try await get(
+            "/api/admin-room/business-plan?product=\(product.rawValue)",
+        )
+    }
+
+    // -- Industry-targets (les-only på iPad) -----------------------
+    //
+    // Speiler outreach-targets-katalogen. Per PR #827 har
+    // role_room_industry_targets fått product_key + indeks så vi kan
+    // filtrere per produkt. Backend GET-endepunktet godtar
+    // `?product=role_room|leadgrid`.
+
+    func fetchIndustryTargets(
+        product: AdminProductKey = .leadgrid,
+    ) async throws -> IndustryTargetsResponse {
+        try await get(
+            "/api/admin-room/industry-targets?product=\(product.rawValue)",
+        )
+    }
+}
+
+// MARK: - Multi-produkt admin-room response-modeller (PR #827)
+
+/// Forretningsplan-respons fra GET /api/admin-room/business-plan.
+/// `plan` er null hvis ingen rad finnes for (user_id, product_key).
+struct BusinessPlanResponse: Codable, Sendable {
+    /// Full plan-rad — vi dekoder ikke alle 35 tekstfeltene her siden
+    /// iPad bare leser. Hvis vi senere trenger detaljer, utvid med
+    /// eksplisitte felt eller bruk en `[String: AnyCodable]`-mapper.
+    let plan: BusinessPlanSummary?
+    let productKey: String?
+}
+
+/// Tynn summary av admin_business_plan-raden — bare det iPad bruker.
+struct BusinessPlanSummary: Codable, Sendable {
+    let id: String?
+    let userId: String?
+    let productKey: String?
+    let execSummary: String?
+    let updatedAt: String?
+    let updatedBy: String?
+}
+
+/// Industry-targets-respons fra GET /api/admin-room/industry-targets.
+struct IndustryTargetsResponse: Codable, Sendable {
+    let items: [IndustryTarget]?
+    let targets: [IndustryTarget]?
+
+    /// Backend kan returnere enten `items` eller `targets`; gi caller én
+    /// samlet liste å iterere over.
+    var allTargets: [IndustryTarget] {
+        items ?? targets ?? []
+    }
+}
+
+struct IndustryTarget: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let fullName: String?
+    let roleTitle: String?
+    let company: String?
+    let segment: String?
+    let city: String?
+    let notes: String?
+    let productKey: String?
 }
 
 // MARK: - Fase 25: Ad-tech-stack (Google/Meta/LinkedIn/TikTok + GTM/GA4/GSC)

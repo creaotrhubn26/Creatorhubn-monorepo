@@ -85,7 +85,7 @@ function SettingDropdown<T>({
           fontFamily: 'monospace',
           appearance: 'none',
           cursor: 'pointer',
-          '&:focus': { outline: 'none', borderColor: '#8b5cf6' },
+          '&:focus': { outline: 'none', borderColor: 'var(--role-violet, #8b5cf6)' },
         }}
       >
         {options.map((opt) => (

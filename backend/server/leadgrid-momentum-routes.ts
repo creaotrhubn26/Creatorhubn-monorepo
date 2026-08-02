@@ -85,7 +85,7 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
       res.json({ momentum });
     } catch (err) {
       console.error("[momentum/today] feilet", err);
-      res.status(500).json({ error: "compute_failed", detail: String(err) });
+      res.status(500).json({ error: "compute_failed", detail: "internal_error" });
     }
   });
 
@@ -106,7 +106,7 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
       res.json({ goal });
     } catch (err) {
       console.error("[momentum/goal:get] feilet", err);
-      res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -142,7 +142,7 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
       res.json({ goal });
     } catch (err) {
       console.error("[momentum/goal:post] feilet", err);
-      res.status(500).json({ error: "save_failed", detail: String(err) });
+      res.status(500).json({ error: "save_failed", detail: "internal_error" });
     }
   });
 
@@ -212,7 +212,7 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
       });
     } catch (err) {
       console.error("[momentum/trend] feilet", err);
-      res.status(500).json({ error: "trend_failed", detail: String(err) });
+      res.status(500).json({ error: "trend_failed", detail: "internal_error" });
     }
   });
 }

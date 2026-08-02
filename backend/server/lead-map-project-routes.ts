@@ -108,7 +108,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
           })),
         });
       } catch (err) {
-        return res.status(500).json({ error: "projects_failed", detail: String(err) });
+        return res.status(500).json({ error: "projects_failed", detail: "internal_error" });
       }
     },
   );
@@ -241,7 +241,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
           competitorCount: compCount.rows[0]?.n ?? 0,
         });
       } catch (err) {
-        return res.status(500).json({ error: "summary_failed", detail: String(err) });
+        return res.status(500).json({ error: "summary_failed", detail: "internal_error" });
       }
     },
   );
@@ -265,7 +265,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
         if (r.rowCount === 0) return res.status(404).json({ error: "lead_not_found" });
         return res.json({ ok: true, projectId: r.rows[0].project_id });
       } catch (err) {
-        return res.status(500).json({ error: "assign_failed", detail: String(err) });
+        return res.status(500).json({ error: "assign_failed", detail: "internal_error" });
       }
     },
   );
@@ -295,7 +295,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
         );
         return res.json({ ok: true, updated: r.rowCount ?? 0 });
       } catch (err) {
-        return res.status(500).json({ error: "bulk_assign_failed", detail: String(err) });
+        return res.status(500).json({ error: "bulk_assign_failed", detail: "internal_error" });
       }
     },
   );

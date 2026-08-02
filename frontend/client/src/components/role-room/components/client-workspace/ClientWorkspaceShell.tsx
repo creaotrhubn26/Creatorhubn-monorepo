@@ -14,9 +14,14 @@
  * ?preview=true (vises da med banner "Du ser dette som klient").
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, startTransition, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { getMyAccess, acceptInvite, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
+import BlockRenderer from '../../cms/BlockRenderer';
+import { useCmsBlocks } from '../../cms/useCmsBlocks';
+import { useRoleRoomBrand } from '../../hooks/useRoleRoomBrand';
+import { DEFAULT_LOCALE } from '../../cms/blockSchema';
 import {
   Alert,
   Box,
@@ -94,6 +99,11 @@ export default function ClientWorkspaceShell({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeTab, setActiveTab] = useState<TabValue>(getInitialTab);
+  const cmsHeroBlocks = useCmsBlocks('clientworkspace');
+  // CreatorHub Design: token-driv Role Room-merkevaren (cyan-familien) på producer/client-flatene.
+  // Returnerer nav/copy-overstyringer (Fase B-paritet): fane-label/skjul/rekkefølge + strenger.
+  const { nav: navOv, copy: copyOv } = useRoleRoomBrand();
+  const tr = (key: string, fallback: string) => (typeof copyOv[key] === 'string' && copyOv[key] ? copyOv[key] : fallback);
 
   // ?preview=true → produsent ser sin egen klient-flate
   const isPreviewMode = useMemo(() => {
@@ -115,9 +125,21 @@ export default function ClientWorkspaceShell({
   const TAB_AREA: Partial<Record<TabValue, AssistantArea>> = {
     economy: 'economy', brief: 'brief', meetings: 'meetings', merkevare: 'materials', plan: 'plan',
   };
+  // Nav-overstyring (Fase B-paritet): label (nav→copy→literal), skjul, rekkefølge. Ingen override →
+  // uendret literal/rekkefølge. Rekkefølge default = original indeks (stabil), admin kan flytte.
+  const effectiveTabs = useMemo(() => TABS
+    .map((t, i) => ({ ...t, label: navOv[t.value]?.label || tr(`tab.${t.value}`, t.label), order: navOv[t.value]?.order ?? i }))
+    .filter((t) => !navOv[t.value]?.hidden)
+    .sort((a, b) => a.order - b.order),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [navOv, copyOv]);
 
   const handleTabChange = (_e: React.SyntheticEvent, next: TabValue) => {
-    setActiveTab(next);
+    // #426-vakt: hver fane er en lazy() (kodesplittet) komponent. Setter vi
+    // activeTab synkront, suspender den nye fanen midt i en synkron input-
+    // oppdatering → React #426, som blanker HELE klientportalen. startTransition
+    // markerer byttet som ikke-hastende så Suspense får vise fallback trygt.
+    startTransition(() => setActiveTab(next));
     // Behold tab i URL så reload + deep-link funker
     const url = new URL(window.location.href);
     url.searchParams.set('tab', next);
@@ -136,10 +158,10 @@ export default function ClientWorkspaceShell({
     <Box
       sx={{
         minHeight: '100vh',
-        bgcolor: 'rgba(7,13,26,0.96)',
+        bgcolor: 'var(--role-chrome-bg, rgba(7,13,26,0.96))',
         background:
-          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(168,85,247,0.10) 0%, transparent 35%), #07101e',
-        color: '#e2e8f0',
+          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(168,85,247,0.10) 0%, transparent 35%), var(--role-chrome-bg, #07101e)',
+        color: 'var(--role-chrome-text, #e2e8f0)',
       }}
     >
       {/* Preview-banner — produsent som ser klient-flate */}
@@ -193,8 +215,8 @@ export default function ClientWorkspaceShell({
       {/* Header — logo + prosjekt + bruker-avatar */}
       <Box
         sx={{
-          borderBottom: '1px solid rgba(148,163,184,0.16)',
-          bgcolor: 'rgba(15,23,42,0.55)',
+          borderBottom: '1px solid var(--role-chrome-border, rgba(148,163,184,0.16))',
+          bgcolor: 'var(--role-chrome-panel, rgba(15,23,42,0.55))',
           backdropFilter: 'blur(8px)',
         }}
       >
@@ -207,16 +229,22 @@ export default function ClientWorkspaceShell({
               sx={{ width: 36, height: 36, borderRadius: 1.5 }}
             />
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#e2e8f0' }} noWrap>
-                The Role Room
+              <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--role-chrome-text, #e2e8f0)' }} noWrap>
+                {tr('header.title', 'The Role Room')}
               </Typography>
               <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }} noWrap>
-                Klient-flate · {projectId}
+                {tr('header.subtitle', 'Klient-flate')} · {projectId}
               </Typography>
             </Box>
           </Stack>
         </Container>
       </Box>
+
+      {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+        <Container maxWidth="lg" sx={{ pt: 2 }}>
+          <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+        </Container>
+      ) : null}
 
       {/* Tab-navigasjon — sticky under header */}
       <Box
@@ -224,8 +252,8 @@ export default function ClientWorkspaceShell({
           position: 'sticky',
           top: 0,
           zIndex: 10,
-          borderBottom: '1px solid rgba(148,163,184,0.16)',
-          bgcolor: 'rgba(15,23,42,0.92)',
+          borderBottom: '1px solid var(--role-chrome-border, rgba(148,163,184,0.16))',
+          bgcolor: 'var(--role-chrome-panel, rgba(15,23,42,0.92))',
           backdropFilter: 'blur(12px)',
         }}
       >
@@ -246,11 +274,11 @@ export default function ClientWorkspaceShell({
                 minHeight: 56,
                 textTransform: 'none',
               },
-              '& .MuiTab-root.Mui-selected': { color: '#22d3ee' },
-              '& .MuiTabs-indicator': { backgroundColor: '#22d3ee', height: 3 },
+              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)', height: 3 },
             }}
           >
-            {TABS
+            {effectiveTabs
               .filter((t) => !t.producerOnly || isPreviewMode)
               .filter((t) => {
                 if (!isAssistant) return true;
@@ -266,10 +294,25 @@ export default function ClientWorkspaceShell({
 
       {/* Tab-innhold */}
       <Container maxWidth="lg" sx={{ py: { xs: 1.5, sm: 2.5 } }}>
+        {/* Modul-boundary per fane (keyed på activeTab → nullstilles ved bytte).
+            Kaster én lazy-fane under render, isoleres krasjen til dét panelet i
+            stedet for å blanke hele klientportalen; bytt fane for å komme videre. */}
+        <ErrorBoundary
+          key={activeTab}
+          componentName={`client-tab:${activeTab}`}
+          context={{ tab: activeTab }}
+          fallback={
+            <Stack alignItems="center" justifyContent="center" spacing={1} sx={{ py: 6, textAlign: 'center' }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Denne fanen kunne ikke vises akkurat nå. Prøv en annen fane, eller last siden på nytt.
+              </Typography>
+            </Stack>
+          }
+        >
         <Suspense
           fallback={
             <Stack direction="row" alignItems="center" justifyContent="center" sx={{ py: 6 }}>
-              <CircularProgress size={28} sx={{ color: '#22d3ee' }} />
+              <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             </Stack>
           }
         >
@@ -288,13 +331,16 @@ export default function ClientWorkspaceShell({
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
           {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
         </Suspense>
+        </ErrorBoundary>
       </Container>
 
       {/* Flytende chat-boble — tilgjengelig på alle faner unntatt selve Meldinger-fanen. */}
       {activeTab !== 'messages' ? (
+        <ErrorBoundary componentName="client-workspace-chat-bubble">
         <Suspense fallback={null}>
           <RoleRoomChatBubble projectId={projectId} canUseInternal={isPreviewMode} onOpenFullTab={() => setActiveTab('messages')} />
         </Suspense>
+        </ErrorBoundary>
       ) : null}
     </Box>
   );

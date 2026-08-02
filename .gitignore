@@ -55,7 +55,7 @@ weights/
 *.sqlite
 backups/
 backups_temp/
-workspace/
+/workspace/
 plugins/
 blender/
 python_ml_service/venv/
@@ -86,9 +86,16 @@ docs/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
 !docs/role-room/tiktok-setup.md
 !docs/PRICING.md
+!docs/ARKITEKTUR-OVERSIKT.md
 !docs/AGENCY_GO_TO_MARKET.md
 !docs/security/
 !docs/security/*.md
+!docs/cto-audit/
+!docs/cto-audit/*.md
+!docs/integration-audit/
+!docs/integration-audit/*.md
+!docs/integration-audit/geo-baselines/
+!docs/integration-audit/geo-baselines/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
 !docs/leadgrid/
@@ -210,3 +217,4 @@ ipad/LeadMapApp/LeadMapWidget/Generated
 # Local-only RAW fixtures for Redigering testing (not committed)
 ipad/CaptureApp/CaptureApp/Resources/_MG_9300.CR2
 ipad/CaptureApp/CaptureAppTests/Resources/_MG_9300.CR2
+ipad/LeadMapApp/qa-galleri/

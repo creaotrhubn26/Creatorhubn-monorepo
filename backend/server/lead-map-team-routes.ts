@@ -196,7 +196,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ members: r.rows.map(rowToMember) });
       } catch (err) {
-        return res.status(500).json({ error: "members_failed", detail: String(err) });
+        return res.status(500).json({ error: "members_failed", detail: "internal_error" });
       }
     },
   );
@@ -242,7 +242,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           })),
         });
       } catch (err) {
-        return res.status(500).json({ error: "invitations_failed", detail: String(err) });
+        return res.status(500).json({ error: "invitations_failed", detail: "internal_error" });
       }
     },
   );
@@ -343,7 +343,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           emailReason: emailResult.sent ? null : emailResult.reason,
         });
       } catch (err) {
-        return res.status(500).json({ error: "invite_failed", detail: String(err) });
+        return res.status(500).json({ error: "invite_failed", detail: "internal_error" });
       }
     },
   );
@@ -365,7 +365,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "cancel_failed", detail: String(err) });
+        return res.status(500).json({ error: "cancel_failed", detail: "internal_error" });
       }
     },
   );
@@ -400,7 +400,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "remove_failed", detail: String(err) });
+        return res.status(500).json({ error: "remove_failed", detail: "internal_error" });
       }
     },
   );
@@ -427,7 +427,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -466,7 +466,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           expiresAt: row.expires_at,
         });
       } catch (err) {
-        return res.status(500).json({ error: "preview_failed", detail: String(err) });
+        return res.status(500).json({ error: "preview_failed", detail: "internal_error" });
       }
     },
   );
@@ -514,7 +514,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ ok: true, projectId: inv.project_id, role: inv.role });
       } catch (err) {
-        return res.status(500).json({ error: "accept_failed", detail: String(err) });
+        return res.status(500).json({ error: "accept_failed", detail: "internal_error" });
       }
     },
   );

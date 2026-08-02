@@ -169,7 +169,7 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
   if (loading && requests.length === 0) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
-        <CircularProgress size={28} sx={{ color: '#22d3ee' }} />
+        <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
       </Box>
     );
   }
@@ -371,7 +371,7 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
                           sx={{
                             textTransform: 'none',
                             fontWeight: 700,
-                            bgcolor: '#22d3ee',
+                            bgcolor: 'var(--role-cyan, #22d3ee)',
                             color: '#0b1226',
                             '&:hover': { bgcolor: '#06b6d4' },
                           }}

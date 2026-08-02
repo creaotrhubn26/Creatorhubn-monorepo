@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
+import { applyProfessionModeFromRole } from '../config/professionMode';
 
 export type AdminUser = {
   id: number | string;
@@ -175,6 +176,41 @@ export const authSessionService = {
     if (hydratePromise) return hydratePromise;
 
     hydratePromise = (async () => {
+      // Feide/redirect-innlogging: ?rr_session=<token> i URL → adopter sesjonen
+      // (backend har alt mintet den; vi henter brukeren og lagrer lokalt).
+      try {
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const rrToken = params.get('rr_session');
+          if (rrToken) {
+            params.delete('rr_session');
+            const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+            window.history.replaceState({}, '', clean);
+            try {
+              const res = await fetch('/api/auth/user', { headers: { Authorization: `Bearer ${rrToken}` } });
+              if (res.ok) {
+                const data = (await res.json()) as { user?: { id: string | number; email?: string; name?: string; role?: string } | null };
+                const u = data.user;
+                if (u?.id != null) {
+                  await persistSession({
+                    adminUser: { id: u.id, email: u.email ?? '', role: u.role ?? 'user', display_name: u.name ?? u.email ?? '', name: u.name },
+                    currentUserId: String(u.id),
+                    sessionToken: rrToken,
+                    selectedProfession: 'education',
+                    lastUpdated: new Date().toISOString(),
+                  });
+                  const adopted = readStoredSession();
+                  if (adopted) sessionCache = adopted;
+                  applyProfessionModeFromRole('education');
+                  hydrated = true;
+                  return sessionCache;
+                }
+              }
+            } catch { /* fall through til vanlig hydrering */ }
+          }
+        }
+      } catch { /* ignore — URL/history utilgjengelig */ }
+
       const cached = readStoredSession();
       if (cached) {
         if (shouldDiscardTokenlessStandaloneSession(cached)) {
@@ -189,6 +225,10 @@ export const authSessionService = {
         sessionCache = cached;
         updateWindowUserId(cached.currentUserId || (cached.adminUser?.id ? String(cached.adminUser.id) : null));
         persistTokenMirror(cached.sessionToken);
+        // Ved re-hydrering (retur-besøk / provisjonert innlogging): rout til
+        // utdannings-workspacet fra lagret profession hvis ingen eksplisitt
+        // modus alt er valgt.
+        applyProfessionModeFromRole(cached.selectedProfession);
         hydrated = true;
         return cached;
       }
@@ -246,6 +286,10 @@ export const authSessionService = {
       lastUpdated: new Date().toISOString(),
     };
     await persistSession(next);
+    // Bro profession → ProfessionMode: en provisjonert utdanningsinstitusjon
+    // (selectedProfession='education') routes til utdannings-workspacet uten
+    // manuelt modus-valg. Rører kun education (annet → no-op).
+    applyProfessionModeFromRole(roleId);
   },
 
   async updateRoleContext(update: RoleContextUpdate): Promise<void> {

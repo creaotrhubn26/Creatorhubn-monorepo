@@ -269,8 +269,8 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
         })
       });
 
-      if (response.success && Array.isArray(response.keywords)) {
-        const mappedKeywords = response.keywords
+      if (response.success && Array.isArray(response.suggestions)) {
+        const mappedKeywords = response.suggestions
           .filter(isRecord)
           .map((kw: Record<string, unknown>): KeywordData => {
             const trendValues: unknown[] = Array.isArray(kw.trends) ? kw.trends : [];
@@ -304,7 +304,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
 
     try {
       setError(null);
-      const response = await apiRequest('/api/seo/competitors/analyze', {
+      const response = await apiRequest('/api/seo/competitor/analyze', {
         method: 'POST',
         body: JSON.stringify({
           domain,
@@ -360,7 +360,12 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
         throw new Error(startResponse.error || 'Failed to start crawl');
       }
 
-      const crawlId = startResponse.crawlId;
+      // Backend field is `jobId`, not `crawlId` (backend/server/admin-marketing-seo-routes.ts).
+      // Note: the status/results polling endpoints below are not implemented
+      // server-side yet — POST /api/seo/crawl is an intentional stub pending
+      // a real crawl-provider integration, so this will still fail after
+      // starting a crawl until those routes exist.
+      const crawlId = startResponse.jobId;
 
       // Poll for crawl progress
       const pollProgress = async () => {

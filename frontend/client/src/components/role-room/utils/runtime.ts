@@ -9,6 +9,21 @@ const ROLE_ROOM_DEDICATED_HOSTS = new Set([
   '127.0.0.1',
 ]);
 
+// Leadgrid-dedikerte hoster (leadgrid.no koblet 2026-07-10) — bootstrapper
+// casting-main og aliaser rene stier ('/priser' → '/leadgrid/priser').
+const LEADGRID_DEDICATED_HOSTS = new Set([
+  'leadgrid.no',
+  'www.leadgrid.no',
+  'leadgrid.theroleroom.com',
+]);
+
+export function isLeadgridDedicatedHost(hostname: string | null | undefined): boolean {
+  if (typeof hostname !== 'string') {
+    return false;
+  }
+  return LEADGRID_DEDICATED_HOSTS.has(hostname.trim().toLowerCase());
+}
+
 export function isRoleRoomDedicatedHost(hostname: string | null | undefined): boolean {
   if (typeof hostname !== 'string') {
     return false;

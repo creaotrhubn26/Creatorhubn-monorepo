@@ -6,6 +6,7 @@ import { createRequire } from "module";
 import * as schema from "../migrations/schema.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
 import { recordProjectChange } from "./project-change-log.js";
+import { updateAssetLabels } from "./capture-assets-service.js";
 import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
@@ -333,10 +334,31 @@ export function setupClientGalleryRoutes(
         console.warn('[client-gallery] profession/branding lookup failed', lookupErr);
       }
 
+      // «Nye bilder»-signal til viewer-banneret: bilder lagt til ETTER at
+      // galleriet ble opprettet (så første levering ikke maser) og innen siste
+      // 7 dager (så gamle re-leveringer ikke nager for alltid). Tidsbasert
+      // approksimasjon — ingen per-klient «sett»-sporing.
+      let recentlyAddedCount = 0;
+      try {
+        const rc = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM client_gallery_images
+             WHERE gallery_id = $1
+               AND created_at > $2::timestamptz + INTERVAL '2 minutes'
+               AND created_at > NOW() - INTERVAL '7 days'`,
+          [gallery.id, gallery.createdAt],
+        );
+        recentlyAddedCount = rc.rows[0]?.n ?? 0;
+      } catch (err) {
+        console.warn('[client-gallery] recentlyAddedCount failed', err);
+      }
+
       return res.json({
         id: gallery.id,
         clientName: gallery.clientName,
-        clientEmail: gallery.clientEmail,
+        recentlyAddedCount,
+        // Ikke lek klientens e-post til en passord-beskyttet lenke FØR passordet
+        // er tastet — access-tokenet alene skal ikke avsløre klient-PII.
+        clientEmail: requiresPassword ? null : gallery.clientEmail,
         projectTitle: gallery.projectTitle,
         status: gallery.status,
         createdAt: gallery.createdAt,
@@ -928,6 +950,23 @@ export function setupClientGalleryRoutes(
         } catch (err) {
           console.warn("[client-gallery] broadcast asset.hearted failed", err);
         }
+        // Klient-samarbeidende culling: et hjerte i galleriet auto-flagger det
+        // koblede capture-asset som keeper (flaggedForClient) — så fotografens
+        // pick-filter + samme-dags levering plukker det opp uten manuelt steg.
+        try {
+          const imgRow = await pool.query(
+            `SELECT image_metadata FROM client_gallery_images WHERE id = $1 LIMIT 1`,
+            [imageId],
+          );
+          const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
+          if (captureAssetId) {
+            await updateAssetLabels(db, gallery.photographerId, String(captureAssetId), {
+              flaggedForClient: hearted,
+            });
+          }
+        } catch (err) {
+          console.warn("[client-gallery] flaggedForClient sync failed", err);
+        }
         if (gallery.projectId) {
           try {
             await recordProjectChange(pool, {
@@ -1133,7 +1172,7 @@ export function setupClientGalleryRoutes(
           `SELECT id FROM video_timecode_comments WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
           [parentIdRaw, access.gallery.id],
         );
-        if (p.rowCount === 0) return res.status(400).json({ error: "invalid_parent" });
+        if (!p.rows.length) return res.status(400).json({ error: "invalid_parent" });
         parentId = parentIdRaw;
       }
       const inserted = await pool.query(
@@ -1557,24 +1596,27 @@ export function setupClientGalleryRoutes(
       const feePercent = Number(process.env.PHOTO_PURCHASE_PLATFORM_FEE_PERCENT || "0");
       const platformFeeAmount = feePercent > 0 ? Math.round(amount * (feePercent / 100)) : 0;
 
-      const intent = await stripe.paymentIntents.create({
-        amount,
-        currency: pricing.currency.toLowerCase(),
-        receipt_email: effectiveEmail,
-        // Destination charge → pengene går til fotografens Connect-konto.
-        transfer_data: { destination: photographerStripeAccountId },
-        ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
-        // Metadata feeds the webhook handler — without galleryId it
-        // can't associate the success event with the right row.
-        metadata: {
-          galleryId: gallery.id,
-          clientEmail: effectiveEmail,
-          extraImages: String(pricing.extraImages),
-          accessToken: accessToken.slice(0, 32), // truncated for log readability
+      const intent = await stripe.paymentIntents.create(
+        {
+          amount,
+          currency: pricing.currency.toLowerCase(),
+          receipt_email: effectiveEmail,
+          // Destination charge → pengene går til fotografens Connect-konto.
+          transfer_data: { destination: photographerStripeAccountId },
+          ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
+          // Metadata feeds the webhook handler — without galleryId it
+          // can't associate the success event with the right row.
+          metadata: {
+            galleryId: gallery.id,
+            clientEmail: effectiveEmail,
+            extraImages: String(pricing.extraImages),
+            accessToken: accessToken.slice(0, 32), // truncated for log readability
+          },
+          description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
+          automatic_payment_methods: { enabled: true },
         },
-        description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
-        automatic_payment_methods: { enabled: true },
-      });
+        { idempotencyKey: `gallery-pay:${gallery.id}:${effectiveEmail}:${amount}:${pricing.extraImages}` },
+      );
 
       // Insert pending payment row. Webhook flips status to 'succeeded'
       // and stamps download_token on confirmation.
@@ -2177,9 +2219,11 @@ export function setupClientGalleryRoutes(
         });
       }
 
-      const clientEmail = typeof req.body?.clientEmail === 'string'
-        ? req.body.clientEmail.trim()
-        : gallery.clientEmail;
+      // Nedlastings-kvoten telles PER klient-e-post. Hvis vi stolte på en
+      // body-oppgitt e-post kunne en klient rotere e-post og nulle kvoten
+      // (ubegrenset gratis nedlasting forbi contracted limit). Bind alltid
+      // til galleriets registrerte klient-e-post.
+      const clientEmail = String(gallery.clientEmail || '').trim();
 
       // Slice 9X.11 — count-gate mot contractedImages. Tell HVOR MANGE
       // UNIKE bilder denne klienten allerede har lastet ned, og blokker
@@ -2230,7 +2274,7 @@ export function setupClientGalleryRoutes(
            LIMIT 1`,
           [gallery.id, clientEmail],
         );
-        if (paid.rowCount === 0) {
+        if (!paid.rows.length) {
           return res.status(402).json({
             error: "payment_required",
             pricing,

@@ -16,6 +16,7 @@
  * Auth: x-cron-trigger-token (samme som drips + grace + reverification)
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { computeDailyOverage } from "./partner-api-rate-limiter.js";
@@ -36,7 +37,8 @@ const STRIPE_KEY = process.env.CREATORHUB_STRIPE_SECRET_KEY
 
 function isCronAuthorized(req: Request): boolean {
   const t = req.headers["x-cron-trigger-token"] as string | undefined;
-  return !!t && !!CRON_TOKEN && t === CRON_TOKEN;
+  if (!t || !CRON_TOKEN || t.length !== CRON_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(CRON_TOKEN));
 }
 
 interface UnbilledOverage {
@@ -151,7 +153,7 @@ export function registerLeadgridOverageBillingRoutes({
       });
     } catch (e: any) {
       console.error("[overage-billing]", e);
-      res.status(500).json({ error: e.message ?? "Feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

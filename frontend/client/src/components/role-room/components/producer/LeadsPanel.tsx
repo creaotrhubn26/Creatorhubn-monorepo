@@ -103,7 +103,7 @@ export default function LeadsPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['leads-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {
@@ -414,7 +414,7 @@ export default function LeadsPanel() {
                       size="small" label={`Alle (${counts.alle})`} clickable
                       onClick={() => setSegmentFilter('alle')}
                       variant={segmentFilter === 'alle' ? 'filled' : 'outlined'}
-                      sx={{ fontWeight: 700, bgcolor: segmentFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: segmentFilter === 'alle' ? '#22d3ee' : 'rgba(226,232,240,0.7)' }}
+                      sx={{ fontWeight: 700, bgcolor: segmentFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: segmentFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
                     />
                     {SEGMENTS.map((s) => (
                       <Chip
@@ -485,7 +485,7 @@ export default function LeadsPanel() {
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2,1fr)', sm: 'repeat(4,1fr)', md: 'repeat(7,1fr)' }, gap: 1 }}>
                       {[
                         { label: 'Brukt på annonser', value: kr(summary?.spendKr ?? 0), color: '#e2e8f0' },
-                        { label: 'Leads inn', value: String(summary?.totalLeads ?? 0), color: '#22d3ee' },
+                        { label: 'Leads inn', value: String(summary?.totalLeads ?? 0), color: 'var(--role-cyan, #22d3ee)' },
                         { label: 'Pris per lead', value: kr(summary?.costPerLeadKr ?? 0), color: '#e2e8f0' },
                         { label: 'Svarte', value: String(summary?.answered ?? 0), color: '#38bdf8' },
                         { label: 'Booket møte', value: String(summary?.booked ?? 0), color: '#a78bfa' },

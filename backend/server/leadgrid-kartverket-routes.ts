@@ -347,6 +347,73 @@ export function registerLeadgridKartverketRoutes(deps: {
   );
 }
 
+// ─── Dørsalg-modus: husstandsadresser (2026-07-18) ──────────────────
+// Kartverkets adresse-API (gratis, alle adresser i Norge m/ koordinat).
+// VIKTIG design-regel fra Daniel: dørsalg-modusen er en EGEN modus som
+// aldri blandes med bedrifts-leads — dette er en ren proxy uten lagring;
+// husstandsadresser skrives ALDRI til crm_customers. Sone-filtrering
+// (tettsted/territorium) gjøres on-device m/ TerritoryGeo.
+export function registerLeadgridAdresseRoutes(deps: {
+  app: Express;
+  requireUserSession: (req: Request, res: Response) => { userId: string } | null;
+}) {
+  const { app, requireUserSession } = deps;
+
+  // GET /api/leadgrid/kartverket/adresser/punkt?lat&lon&radius&side
+  // Punktsøk: alle adresser innen radius (maks 2000 m), paginert.
+  app.get("/api/leadgrid/kartverket/adresser/punkt", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const radius = Math.min(2000, Math.max(50, Number(req.query.radius) || 500));
+    const side = Math.max(0, Number(req.query.side) || 0);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)
+        || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return res.status(400).json({ error: "ugyldig_koordinat" });
+    }
+    const key = `adr:${lat.toFixed(4)}:${lon.toFixed(4)}:${radius}:${side}`;
+    const cached = cacheGet(key);
+    if (cached) return res.json(cached);
+    try {
+      const upstream = await fetch(
+        "https://ws.geonorge.no/adresser/v1/punktsok" +
+        `?lat=${lat}&lon=${lon}&radius=${radius}` +
+        `&treffPerSide=1000&side=${side}&asciiKompatibel=true`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!upstream.ok) {
+        return res.status(502).json({ error: "kartverket_utilgjengelig" });
+      }
+      const data = (await upstream.json()) as {
+        metadata?: { totaltAntallTreff?: number };
+        adresser?: Array<{
+          adressetekst?: string;
+          postnummer?: string;
+          poststed?: string;
+          representasjonspunkt?: { lat?: number; lon?: number };
+        }>;
+      };
+      const body = {
+        total: data.metadata?.totaltAntallTreff ?? 0,
+        side,
+        adresser: (data.adresser ?? []).map((a) => ({
+          adressetekst: a.adressetekst ?? "",
+          postnummer: a.postnummer ?? "",
+          poststed: a.poststed ?? "",
+          lat: a.representasjonspunkt?.lat ?? null,
+          lon: a.representasjonspunkt?.lon ?? null,
+        })).filter((a) => a.lat != null && a.lon != null),
+      };
+      cacheSet(key, body);
+      return res.json(body);
+    } catch (err) {
+      console.warn("[kartverket-adresser] punktsok feilet:", (err as Error).message);
+      return res.status(500).json({ error: "adressesok_feilet" });
+    }
+  });
+}
+
 // ─── util ──────────────────────────────────────────────────────────
 function haversineMeters(
   lat1: number,

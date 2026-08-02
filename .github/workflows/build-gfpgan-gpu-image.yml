@@ -30,7 +30,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build + push
+      # One image serves both transports: uvicorn (HTTP Pod/CPU default CMD) and
+      # the RunPod serverless handler (rp_handler.py, selected via the
+      # endpoint's dockerStartCmd override). runpod SDK is in requirements-gpu.
+      - name: Build + push (GPU image — HTTP runner + serverless handler)
         uses: docker/build-push-action@v6
         with:
           context: backend/gfpgan-runner

@@ -32,9 +32,9 @@ import {
 } from './demoStudioModel';
 
 const C = {
-  bg: '#f3efe9', panel: '#ffffff', cream: '#faf7f2', creamActive: '#f3ece2',
-  line: '#ece7df', lineStrong: '#ddd6cc', ink: '#1d1b19', inkSoft: '#6b6358',
-  inkFaint: '#9a9186', accent: '#ef8a5d', dark: '#3a2f2a', green: '#4a9d6b',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', creamActive: '#efeaf7',
+  line: '#e7e2ee', lineStrong: '#d8d2e2', ink: '#1e1b2e', inkSoft: '#6b6480',
+  inkFaint: '#9a94a8', accent: '#8b5cf6', dark: '#241d42', green: '#22c55e',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, background: '#fff', borderRadius: 9, padding: '8px 13px', fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 };
@@ -130,6 +130,9 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
 
   const draftOnePager = async () => {
     if (!aiReady) return onOpenSignIn();
+    // Feltet er kontrollert state → nettleser-undo virker ikke. Bekreft før vi
+    // overskriver brukerens egen tekst med AI-utkastet.
+    if (onePager.trim() && !window.confirm('Du har allerede tekst i one-pageren. Erstatte den med et AI-utkast? Dette kan ikke angres.')) return;
     setBusy('draft'); setMsg('AI skriver et one-pager-utkast fra siden…');
     try {
       const { elements, siteContext, branding, pagesScanned } = await scanContext({ vision: true });

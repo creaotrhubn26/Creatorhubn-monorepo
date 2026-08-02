@@ -169,7 +169,7 @@ export default function RoleRoomAgentConnectionsBar({
         id: 'tiktok',
         label: tiktokProfile.displayName ?? tiktokProfile.username ?? 'TikTok',
         shortLabel: 'TT',
-        color: '#22d3ee',
+        color: 'var(--role-cyan, #22d3ee)',
         status: 'connected',
         username: tiktokProfile.username ?? null,
         profilePictureUrl: tiktokProfile.avatarUrl ?? null,
@@ -178,7 +178,7 @@ export default function RoleRoomAgentConnectionsBar({
         id: 'tiktok',
         label: 'TikTok',
         shortLabel: 'TT',
-        color: '#22d3ee',
+        color: 'var(--role-cyan, #22d3ee)',
         status: 'available',
         hint: 'Video til kreators TikTok-inbox',
       };

@@ -19,6 +19,12 @@ enum AssetState: String, Sendable, Codable, CaseIterable {
         self == .verified || self == .failedPermanent
     }
 
+    /// Bildet er lastet opp + lagret i skyen (B2/backup). Driver «Sikret»-
+    /// statusen på shot-oppdaterings-kortet i teamchatten.
+    var isBackedUp: Bool {
+        self == .syncComplete || self == .verified
+    }
+
     var hasPreview: Bool {
         switch self {
         case .anticipated, .previewPending:

@@ -43,6 +43,7 @@ import {
 import { QUERY_KEYS } from '../../lib/queryKeys';
 import { useToast } from '../../hooks/use-toast';
 import { AdminButton, AdminEmpty, useIsMobile } from './design-system';
+import DOMPurify from 'dompurify';
 
 type SortBy = 'recent' | 'popular' | 'name';
 type CategoryValue =
@@ -308,7 +309,7 @@ export default function EmailTemplateLibrary({
           lineHeight: template.globalStyles.lineHeight ?? 1.6,
           borderRadius: 1,
         }}
-        dangerouslySetInnerHTML={{ __html: previewHtml }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
       />
     );
   };

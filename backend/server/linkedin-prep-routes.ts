@@ -7,6 +7,7 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { timingSafeEqual } from "node:crypto";
 
 import { pollLeadFormsDue } from "./linkedin-leadsync-service.js";
 import {
@@ -40,14 +41,13 @@ export function setupLinkedInPrepRoutes(deps: LinkedInPrepRoutesDeps): void {
     const tokenHeader = req.headers["x-cron-trigger-token"];
     const presentedToken = typeof tokenHeader === "string" ? tokenHeader.trim() : "";
     const expectedToken = (process.env.CRON_TRIGGER_TOKEN ?? "").trim();
-    if (presentedToken && expectedToken && presentedToken === expectedToken) {
-      return { source: "cron" };
-    }
     if (presentedToken && !expectedToken) {
       res.status(503).json({ error: "CRON_TRIGGER_TOKEN er ikke konfigurert på serveren" });
       return null;
     }
-    if (presentedToken && expectedToken && presentedToken !== expectedToken) {
+    if (presentedToken && expectedToken) {
+      const a = Buffer.from(presentedToken); const b = Buffer.from(expectedToken);
+      if (a.length === b.length && timingSafeEqual(a, b)) return { source: "cron" };
       res.status(401).json({ error: "Ugyldig cron-trigger-token" });
       return null;
     }

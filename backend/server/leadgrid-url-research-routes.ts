@@ -963,7 +963,7 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         console.error("[leadgrid-url-research] start failed", err);
         return res
           .status(500)
-          .json({ error: "start_failed", detail: (err as Error).message });
+          .json({ error: "start_failed", detail: "internal_error" });
       }
     },
   );
@@ -1023,7 +1023,7 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         console.error("[leadgrid-url-research] run failed", err);
         return res
           .status(500)
-          .json({ error: "run_failed", detail: (err as Error).message });
+          .json({ error: "run_failed", detail: "internal_error" });
       }
     },
   );
@@ -1065,7 +1065,7 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         } catch (err) {
           return res
             .status(500)
-            .json({ error: "delete_failed", detail: (err as Error).message });
+            .json({ error: "delete_failed", detail: "internal_error" });
         }
       }
 
@@ -1085,7 +1085,7 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         console.error("[leadgrid-url-research] commit failed", err);
         return res
           .status(500)
-          .json({ error: "commit_failed", detail: (err as Error).message });
+          .json({ error: "commit_failed", detail: "internal_error" });
       }
     },
   );

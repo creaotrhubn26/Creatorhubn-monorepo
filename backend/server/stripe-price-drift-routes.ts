@@ -247,7 +247,7 @@ export function registerStripePriceDriftRoutes(
         res.json({ success: true, report });
       } catch (err: any) {
         console.error('[stripe-drift admin] failed:', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -268,7 +268,7 @@ export function registerStripePriceDriftRoutes(
         res.json({ success: true, data: result.rows });
       } catch (err: any) {
         if (err?.code === '42P01') return res.json({ success: true, data: [] });
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );

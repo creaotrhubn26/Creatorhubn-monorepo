@@ -32,11 +32,52 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
   const audioCtx = React.useRef<AudioContext | null>(null);
   const osc = React.useRef<{ o: OscillatorNode; g: GainNode } | null>(null);
   const [drone, setDrone] = React.useState(false);
+  const [completeError, setCompleteError] = React.useState(false);
+  const mediaRef = React.useRef<HTMLAudioElement | null>(null);
 
   const load = React.useCallback(() => apiRequest(`/api/audio-review-shared/${token}/warmup`).then((d: any) => setRoutines(d.routines || [])).catch(() => setRoutines([])), [token]);
   React.useEffect(() => { if (token) load(); }, [token, load]);
 
+  // Vennlige norske etiketter for steg-typen (chip-en). Rå EaseVerse-kategorier
+  // som «Breath»/«Visualization» skal ikke vises til et norsk bandmedlem.
+  const typeLabel = (t?: string): string => {
+    const s = String(t || '').toLowerCase();
+    if (s === 'custom_mindful_music') return 'Musikk fra produsenten';
+    if (s === 'custom_mindful_voice') return 'Guidet voice-over';
+    if (/breath|pust/.test(s)) return 'Pust';
+    if (/vocal|vokal|sang/.test(s)) return 'Vokal';
+    if (/body|kropp/.test(s)) return 'Kropp';
+    if (/mindful/.test(s)) return 'Mindfulness';
+    if (/visual/.test(s)) return 'Visualisering';
+    if (/affirm/.test(s)) return 'Affirmasjon';
+    return t || '';
+  };
+
   const step = active?.steps?.[stepIdx];
+
+  // Pustemønster fra steget (satt av produsenten i byggeren). Animasjonen og
+  // fase-teksten («Pust inn / Hold / Pust ut») synkes til inhale/hold/exhale/
+  // holdAfter i sekunder; uten mønster faller vi tilbake til rolig 8s-puls.
+  const br = React.useMemo(() => {
+    const b = step?.breathing;
+    if (!b || !(Number(b.inhale) > 0) || !(Number(b.exhale) > 0)) return null;
+    return { inhale: Number(b.inhale), hold: Math.max(0, Number(b.hold) || 0), exhale: Number(b.exhale), holdAfter: Math.max(0, Number(b.holdAfter) || 0) };
+  }, [step]);
+  const brTotal = br ? br.inhale + br.hold + br.exhale + br.holdAfter : 0;
+  const brAnim = React.useMemo(() => {
+    if (!br || brTotal <= 0) return null;
+    const pct = (s: number) => `${((s / brTotal) * 100).toFixed(2)}%`;
+    const name = `wbr${String(brTotal).replace('.', '_')}i${String(br.inhale).replace('.', '_')}h${String(br.hold).replace('.', '_')}e${String(br.exhale).replace('.', '_')}`;
+    const frames: Record<string, any> = { '0%': { transform: 'scale(0.7)' }, [pct(br.inhale)]: { transform: 'scale(1.05)' } };
+    if (br.hold > 0) frames[pct(br.inhale + br.hold)] = { transform: 'scale(1.05)' };
+    frames[pct(br.inhale + br.hold + br.exhale)] = { transform: 'scale(0.7)' };
+    frames['100%'] = { transform: 'scale(0.7)' };
+    return { name, frames, duration: brTotal };
+  }, [br, brTotal]);
+  const elapsed = Math.max(0, (step?.durationSec || 60) - remaining);
+  const inCycle = brTotal > 0 ? elapsed % brTotal : 0;
+  const brPhase = !br ? '' : inCycle < br.inhale ? 'Pust inn' : inCycle < br.inhale + br.hold ? 'Hold' : inCycle < br.inhale + br.hold + br.exhale ? 'Pust ut' : 'Hold';
+
   // Nedtelling
   React.useEffect(() => {
     if (!playing || !step) return;
@@ -45,6 +86,22 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
   }, [playing, stepIdx, active]); // eslint-disable-line
 
   const stopDrone = () => { if (osc.current) { try { osc.current.o.stop(); } catch { /* */ } osc.current = null; } setDrone(false); };
+
+  // Rydd Web Audio ved unmount — ellers kan referansetonen leve videre etter
+  // at delingssiden er forlatt (oscillatoren ligger utenfor React-treet).
+  React.useEffect(() => () => {
+    if (osc.current) { try { osc.current.o.stop(); } catch { /* */ } osc.current = null; }
+    if (audioCtx.current) { try { void audioCtx.current.close(); } catch { /* */ } audioCtx.current = null; }
+  }, []);
+
+  // Produsentens opplastede lyd skal følge samme play/pause som resten av
+  // steget: app-Pause pauser lyden, og native pause fryser nedtellingen.
+  React.useEffect(() => {
+    const a = mediaRef.current; if (!a) return;
+    if (playing) { void a.play().catch(() => { /* autoplay-policy — medlemmet har alt trykket Start */ }); }
+    else if (!a.paused) a.pause();
+  }, [playing, stepIdx, active]);
+
   const toggleDrone = () => {
     if (drone) { stopDrone(); return; }
     const f = keyToFreq(musicalKey); if (!f) return;
@@ -54,11 +111,21 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
     osc.current = { o, g }; setDrone(true);
   };
 
-  const startRoutine = (r: any) => { setActive(r); setStepIdx(0); setRemaining(r.steps?.[0]?.durationSec || 60); setPlaying(true); };
+  const startRoutine = (r: any) => { const safe = { ...r, steps: (r.steps || []).filter((x: any) => x && typeof x === 'object') }; if (safe.steps.length === 0) return; setActive(safe); setStepIdx(0); setRemaining(safe.steps[0]?.durationSec || 60); setPlaying(true); };
   const next = () => { stopDrone(); setStepIdx((i) => { const ni = i + 1; if (active && ni < active.steps.length) { setRemaining(active.steps[ni].durationSec || 60); return ni; } setPlaying(false); return i; }); };
   const isLast = active && stepIdx >= (active.steps.length - 1);
-  const finish = async () => { stopDrone(); try { await apiRequest(`/api/audio-review-shared/${token}/warmup/${active.id}/complete`, { method: 'POST', body: {} }); } catch { /* */ } setActive(null); setPlaying(false); await load(); };
-  const close = () => { stopDrone(); setActive(null); setPlaying(false); };
+  const finish = async () => {
+    stopDrone();
+    try {
+      await apiRequest(`/api/audio-review-shared/${token}/warmup/${active.id}/complete`, { method: 'POST', body: {} });
+      setActive(null); setPlaying(false); await load();
+    } catch {
+      // Ikke lukk dialogen på feil — da ville medlemmet trodd fullføringen var
+      // registrert. Vis en feilmelding så de kan prøve igjen.
+      setCompleteError(true);
+    }
+  };
+  const close = () => { stopDrone(); setActive(null); setPlaying(false); setCompleteError(false); };
 
   if (routines.length === 0) return null;
 
@@ -66,6 +133,7 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
     <Box sx={{ bgcolor: 'rgba(255,107,53,0.07)', border: '1px solid rgba(255,107,53,0.3)', borderRadius: '16px', p: 2, mb: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
         <SelfImprovement sx={{ color: ACCENT }} /><Typography sx={{ fontWeight: 700, flex: 1 }}>Anbefalt før opptak</Typography>
+        <Typography component="a" href="/guide/oppvarming" target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', color: MUTED, textDecorationColor: 'rgba(245,242,234,0.3)', '&:hover': { color: ACCENT } }}>Hvordan funker det?</Typography>
       </Stack>
       <Stack spacing={1}>
         {routines.map((r) => (
@@ -75,7 +143,7 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
                 <Typography sx={{ fontSize: '0.86rem', fontWeight: 700 }} noWrap>{r.title}</Typography>
                 {r.completed && <CheckCircle sx={{ fontSize: 15, color: GREEN }} />}
               </Stack>
-              <Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{(r.steps || []).length} steg · ~{Math.round((r.steps || []).reduce((a: number, s: any) => a + (s.durationSec || 0), 0) / 60) || 1} min</Typography>
+              <Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{(r.steps || []).length} steg · ~{Math.round((r.steps || []).reduce((a: number, s: any) => a + (s?.durationSec || 0), 0) / 60) || 1} min</Typography>
               {r.note && <Typography sx={{ fontSize: '0.7rem', color: ACCENT, fontStyle: 'italic', mt: 0.25 }}>«{r.note}»</Typography>}
             </Box>
             <Button onClick={() => startRoutine(r)} startIcon={<PlayArrow />} size="small" variant={r.completed ? 'text' : 'contained'} sx={{ bgcolor: r.completed ? 'transparent' : ACCENT, color: r.completed ? ACCENT : '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', whiteSpace: 'nowrap' }}>{r.completed ? 'Kjør igjen' : 'Start'}</Button>
@@ -84,30 +152,38 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
       </Stack>
 
       {/* Guidet flyt */}
-      <Dialog open={!!active} onClose={close} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '16px' } }}>
+      <Dialog open={!!active} onClose={close} fullWidth maxWidth="xs" aria-labelledby="warmup-step-title" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '16px' } }}>
         <DialogContent sx={{ textAlign: 'center', py: 3 }}>
           {active && step && (
             <Stack spacing={2} alignItems="center">
               <Stack direction="row" sx={{ width: '100%' }} alignItems="center">
                 <Typography sx={{ fontSize: '0.7rem', color: FAINT, flex: 1, textAlign: 'left' }}>Steg {stepIdx + 1} / {active.steps.length}</Typography>
-                <IconButton size="small" onClick={close} sx={{ color: MUTED }}><Close fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={close} aria-label="Avslutt oppvarming" sx={{ color: MUTED }}><Close fontSize="small" /></IconButton>
               </Stack>
-              <Chip label={step.type} size="small" sx={{ bgcolor: 'rgba(255,107,53,0.14)', color: ACCENT, textTransform: 'capitalize' }} />
-              <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>{step.title}</Typography>
-              {/* Pust-/fokus-sirkel som puster, eller nedtellingsring */}
+              <Chip label={typeLabel(step.type)} size="small" sx={{ bgcolor: 'rgba(255,107,53,0.14)', color: ACCENT }} />
+              <Typography id="warmup-step-title" sx={{ fontWeight: 800, fontSize: '1.15rem' }}>{step.title}</Typography>
+              {/* Pust-/fokus-sirkel som puster, eller nedtellingsring.
+                  key={stepIdx} remounter sirkelen ved stegbytte, så animasjonen
+                  restarter i takt med fase-teksten selv når mønsteret er likt. */}
               <Box sx={{ position: 'relative', width: 160, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Box sx={{
+                <Box key={stepIdx} sx={{
                   width: 130, height: 130, borderRadius: '50%', border: `3px solid ${ACCENT}`,
-                  bgcolor: 'rgba(255,107,53,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  animation: playing && /breath|mindful/i.test(step.type) ? 'wbreathe 8s ease-in-out infinite' : 'none',
+                  bgcolor: 'rgba(255,107,53,0.12)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  animation: brAnim
+                    ? `${brAnim.name} ${brAnim.duration}s ease-in-out infinite`
+                    : /breath|mindful/i.test(step.type) ? 'wbreathe 8s ease-in-out infinite' : 'none',
+                  animationPlayState: playing ? 'running' : 'paused',
+                  ...(brAnim ? { [`@keyframes ${brAnim.name}`]: brAnim.frames } : {}),
                   '@keyframes wbreathe': { '0%,100%': { transform: 'scale(0.7)' }, '50%': { transform: 'scale(1.05)' } },
+                  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                 }}>
                   <Typography sx={{ fontSize: '1.6rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</Typography>
+                  {brAnim && <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: ACCENT, letterSpacing: 0.4 }}>{playing ? brPhase : 'Pause'}</Typography>}
                 </Box>
               </Box>
               {step.instruction && <Typography sx={{ fontSize: '0.82rem', color: MUTED, lineHeight: 1.5 }}>{step.instruction}</Typography>}
-              {/* Egen oppvarmings-lyd fra produsenten */}
-              {step.audioUrl && <Box component="audio" src={step.audioUrl} controls autoPlay sx={{ width: '100%', height: 36 }} />}
+              {/* Egen oppvarmings-lyd fra produsenten — synk med playing-state */}
+              {step.audioUrl && <Box component="audio" ref={mediaRef} src={step.audioUrl} controls autoPlay onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} sx={{ width: '100%', height: 36 }} />}
               {/* Referansetone for vokal-steg */}
               {keyToFreq(musicalKey) && /vocal|vokal|breath|articul/i.test(step.type) && (
                 <Button onClick={toggleDrone} startIcon={<MusicNote />} size="small" sx={{ color: drone ? ACCENT : MUTED, textTransform: 'none' }}>{drone ? 'Stopp referansetone' : `Referansetone (${musicalKey})`}</Button>
@@ -118,6 +194,7 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
                   ? <Button onClick={finish} startIcon={<CheckCircle />} variant="contained" sx={{ bgcolor: GREEN, color: '#082b16', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Fullfør</Button>
                   : <Button onClick={next} startIcon={<SkipNext />} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Neste</Button>}
               </Stack>
+              {completeError && <Typography role="alert" sx={{ fontSize: '0.78rem', color: '#ff8a6b' }}>Kunne ikke registrere fullføringen. Sjekk nettet og trykk Fullfør igjen.</Typography>}
               <LinearProgress variant="determinate" value={((stepIdx) / active.steps.length) * 100} sx={{ width: '100%', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: ACCENT } }} />
             </Stack>
           )}

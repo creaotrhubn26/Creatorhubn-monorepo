@@ -25,7 +25,9 @@ export type MarketingPageKey =
   | 'etterproduksjon-norge-2026'
   | 'produksjons-os'
   | 'innholdsprodusent-norge'
-  | 'dansestudio-norge';
+  | 'dansestudio-norge'
+  | 'verktoy-for-filmutdanninger'
+  | 'norsk-casting-prosess';
 
 export type MarketingPillar = 'trust' | 'compliance' | 'data' | 'behind-the-cast' | 'founder' | 'education';
 
@@ -475,6 +477,46 @@ Dansestudio-vertikalen i The Role Room samler:
 Frilans-danser: 149 kr/mnd. Studio: 149 – 2 490 kr/mnd etter størrelse.
 
 Hele vertikalen: https://theroleroom.com/dansestudio-norge`,
+  },
+  {
+    key: 'verktoy-for-filmutdanninger',
+    path: '/verktoy-for-filmutdanninger',
+    title: 'Verktøy for film- og TV-utdanninger — bransjeverktøy i undervisningen | The Role Room',
+    description:
+      'Guide for norske film-, TV- og medieutdanninger som vurderer produksjonsverktøy: casting, selvtape, manus, crew-koordinering og call-sheets. Gratis for studentene, GDPR/DPA for institusjonen.',
+    pillar: 'education',
+    published: true,
+    linkedinDraft: `Studenter som lærer på verktøyene bransjen bruker, går rett inn i jobb.
+
+Likevel underviser mange norske film- og TV-utdanninger fortsatt med Excel, WeTransfer og e-posttråder — mens bransjen jobber i profesjonelle produksjonsplattformer.
+
+The Role Rooms partner-tilgang for utdanningsinstitusjoner:
+- Gratis for studentene gjennom hele studietiden
+- Casting, selvtape, manus, storyboard, crew og call-sheets — samme flyt som ekte produksjoner
+- GDPR: data i EU/EØS + databehandler-avtale med institusjonen
+- Veileder-innsyn på tvers av studentprosjekter
+- AML-støtte når studenter caster mindreårige
+
+Guiden: https://theroleroom.com/verktoy-for-filmutdanninger`,
+  },
+  {
+    key: 'norsk-casting-prosess',
+    path: '/norsk-casting-prosess',
+    title: 'Slik jobber norske produksjonsselskaper med casting | The Role Room',
+    description:
+      'Castingprosessen i norsk film-, TV- og reklameproduksjon i fem steg: utlysning, skuespillerdatabase, selvtape-runder, callbacks og kontrakt — med GDPR-krav og verktøykostnader.',
+    pillar: 'education',
+    published: true,
+    linkedinDraft: `Hvordan caster norske produksjonsselskaper i 2026?
+
+Fem steg — og de fleste gjør fortsatt 3 av dem i e-post og Excel:
+1. Rollebeskrivelse og utlysning
+2. Skuespillerdatabase (GDPR!)
+3. Selvtape-runde (ikke WeTransfer)
+4. Callbacks med felles pipeline
+5. Kontrakt + samtykke med spor
+
+Hele workflowen: https://theroleroom.com/norsk-casting-prosess`,
   },
 ];
 

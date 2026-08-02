@@ -21,6 +21,9 @@ import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { FramedDevice } from './FramedDevice';
 import { type FrameVariant } from './deviceFrames';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
+import { BrollComposer } from './BrollComposer';
+import { CinematicSuggestions } from './CinematicSuggestions';
+import { generateBrollClip, estimateBrollCredits } from '../../api';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
@@ -30,10 +33,10 @@ import {
 
 const C = {
   // Mørk app-chrome + lyst editor-workspace (fra mockup).
-  navBg: '#1c1a18', navText: '#cbc6bf', navActive: '#2a2724', navActiveText: '#fff',
-  bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd', lineStrong: '#ddd6cc',
-  ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186', accent: '#ef8a5d',
-  dark: '#2f2a26', green: '#4a9d6b', preview: '#23201d',
+  navBg: '#17141f', navText: '#c9c4d6', navActive: '#2a2340', navActiveText: '#fff',
+  bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee', lineStrong: '#d8d2e2',
+  ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8', accent: '#8b5cf6',
+  dark: '#241d42', green: '#22c55e', preview: '#23201d',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -64,8 +67,29 @@ function fmt(sec: number) {
 }
 
 export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = {}) {
-  const { project, selectedSceneId, selectScene, updateScene, addScene, setProjectField, saveStatus } = useDemoStudio();
+  const { project, selectedSceneId, selectScene, updateScene, addScene, setProjectField, saveStatus, ensureProductBrain } = useDemoStudio();
   const scenes = project?.scenes ?? [];
+  const [showBroll, setShowBroll] = useState(false);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [genBusy, setGenBusy] = useState<string | null>(null);
+
+  // Generér klippet for en pending broll-scene (fra AI-regi) direkte fra kortet.
+  const genBrollScene = async (scene: DemoScene) => {
+    if (!project || genBusy || !scene.brollPrompt) return;
+    setGenBusy(scene.id);
+    updateScene(scene.id, { status: 'recording' });
+    try {
+      const path = await generateBrollClip({
+        projectId: project.id, sceneId: scene.id, prompt: scene.brollPrompt,
+        startImage: null, durationSec: scene.duration || 6, resolution: '1080p', noPeople: false,
+      });
+      updateScene(scene.id, { recordingPath: path, status: 'done' });
+    } catch {
+      updateScene(scene.id, { status: 'retake' });
+    } finally {
+      setGenBusy(null);
+    }
+  };
   const selected = scenes.find((s) => s.id === selectedSceneId) ?? scenes[0];
   const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'General', language: 'Norsk', length: 'medium' as ScriptLength };
   const render = project?.render ?? defaultRenderOptions();
@@ -97,12 +121,28 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   const sceneShot = (): string | null =>
     pickShot(project?.scanShots, (selected?.startScrollPct ?? 0) / 100);
 
+  // Bygg produkt-forståelsen (Product Brain) på nytt — nødvendig etter innlogging /
+  // nye app-opptak (så vision ser det ekte, innloggede produktet), og for at
+  // forbedret logikk skal tre i kraft på et prosjekt som allerede har en hjerne.
+  const onRefreshBrain = async () => {
+    if (!project) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setAiError(null); setAiBusy('brain');
+    try {
+      const ctx = await ensureProductBrain({ force: true });
+      if (!ctx) setAiError('Kunne ikke lese produktet — sjekk URL/tilkobling.');
+    } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
+  };
+
   const onGenerate = async () => {
     if (!project || !selected) return;
     if (!aiReady) { setShowSignIn(true); return; }
     setAiError(null); setAiBusy('generate');
     try {
-      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, screenshot: selected.thumbnailDataUrl || sceneShot() || undefined });
+      // Dyp produkt-forståelse (flersides Product Brain, cachet) — så manuset
+      // forankres i hva produktet FAKTISK er, ikke bare forsidens første avsnitt.
+      const siteContext = await ensureProductBrain();
+      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, siteContext, screenshot: selected.thumbnailDataUrl || sceneShot() || undefined });
       updateScene(selected.id, {
         narration: g.narration, visualInstruction: g.visualInstruction,
         requiredAction: g.requiredAction, overlayText: g.overlayText, status: 'in_progress',
@@ -154,7 +194,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
+    <div style={{ display: 'flex', width: '100%', height: '100%', minHeight: 0, fontFamily: C.font, fontSize: 13, color: C.ink, background: C.bg }}>
       {/* ── Left nav (mørk) ── */}
       <div style={{ width: 210, background: C.navBg, color: C.navText, display: 'flex', flexDirection: 'column', flexShrink: 0, padding: '14px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 16px' }}>
@@ -210,6 +250,10 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           </button>
           <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onImprove('clarify')}>
             ✎ {aiBusy && aiBusy !== 'generate' ? 'Forbedrer…' : 'AI Improve'}
+          </button>
+          <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onRefreshBrain()}
+            title="Bygg produkt-forståelsen på nytt fra sidene + de FANGEDE app-skjermene (gjør dette etter innlogging / nye opptak).">
+            ↻ {aiBusy === 'brain' ? 'Leser produktet…' : 'Oppdater produkt-forståelse'}
           </button>
           <span style={{ fontSize: 12, color: saveStatus === 'error' ? '#dc2626' : saveStatus === 'saved_partial' ? '#f59e0b' : C.green, fontWeight: 600, whiteSpace: 'nowrap' }}
             title={saveStatus === 'error' ? 'localStorage er full — siste endringer er ikke persistert' : saveStatus === 'saved_partial' ? 'Lagret uten skjermbilder (lite lagringsplass)' : 'Endringer lagres automatisk'}>
@@ -296,15 +340,15 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                       onChange={(e) => updateScene(selected.id, { requiredAction: e.target.value })} />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}><Lab>Validation</Lab>
+                    <div style={{ flex: 1, minWidth: 0 }}><Lab>Validering</Lab>
                       <input style={{ ...inp, width: '100%', marginTop: 4 }} value={selected.validationRule ?? ''} placeholder="Vent til modal åpnes"
                         onChange={(e) => updateScene(selected.id, { validationRule: e.target.value })} />
                     </div>
-                    <div><Lab>Fallback</Lab>
+                    <div><Lab>Reserveløsning</Lab>
                       <select style={{ ...miniSel, minWidth: 150, display: 'block', marginTop: 4 }} value={selected.fallback ?? 'retake'}
                         onChange={(e) => updateScene(selected.id, { fallback: e.target.value as 'retake' | 'manual' | 'skip' })}>
-                        <option value="retake">Retake scene</option>
-                        <option value="manual">Mark manually done</option>
+                        <option value="retake">Ta scenen på nytt</option>
+                        <option value="manual">Merk manuelt som ferdig</option>
                         <option value="skip">Hopp over scenen</option>
                       </select>
                     </div>
@@ -366,7 +410,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             </div>
             {/* Teleprompter preview-kort */}
             <div style={{ background: C.preview, borderRadius: 12, padding: 18, color: '#f2ede6', marginBottom: 18 }}>
-              <span style={{ fontSize: 11, background: '#3a342e', borderRadius: 6, padding: '3px 8px', color: '#cbc6bf' }}>Scene {selected.index + 1} of {scenes.length}</span>
+              <span style={{ fontSize: 11, background: '#3a342e', borderRadius: 6, padding: '3px 8px', color: '#c9c4d6' }}>Scene {selected.index + 1} of {scenes.length}</span>
               <div style={{ height: 1, background: '#3a342e', margin: '14px 0' }} />
               <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, lineHeight: 1.35, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto' }}>
                 {selected.narration || 'Skriv narration for å se teleprompter-preview…'}
@@ -374,7 +418,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ display: 'flex', gap: 5, marginTop: 16 }}>
                 {scenes.map((s, i) => <span key={s.id} style={{ width: i === selected.index ? 16 : 6, height: 6, borderRadius: 3, background: i === selected.index ? C.accent : '#4a443d' }} />)}
               </div>
-              <div style={{ fontSize: 11, color: '#9a9186', marginTop: 12 }}>≈ {readingTime}s lesetid</div>
+              <div style={{ fontSize: 11, color: '#9a94a8', marginTop: 12 }}>≈ {readingTime}s lesetid</div>
             </div>
 
             {/* AI Assistant */}
@@ -435,8 +479,19 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                 <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
                 <div style={{ flex: 1 }} />
+                {s.source === 'broll' && <span title="AI-generert kinematisk footage" style={{ color: C.accent, fontSize: 12 }}>✦</span>}
               </div>
-              <div style={{ height: 56, borderRadius: 7, background: C.cream, marginBottom: 8 }} />
+              {s.source === 'broll' && !s.recordingPath ? (
+                <div onClick={(e) => { e.stopPropagation(); void genBrollScene(s); }}
+                  title={s.brollPrompt || ''}
+                  style={{ height: 56, borderRadius: 7, border: `1px dashed ${C.accent}`, background: C.cream, marginBottom: 8, display: 'grid', placeItems: 'center', cursor: genBusy ? 'default' : 'pointer', color: C.accent, fontSize: 11, fontWeight: 700, textAlign: 'center', padding: 4 }}>
+                  {genBusy === s.id ? 'Genererer…' : `✦ Generér (~${estimateBrollCredits('1080p', s.duration || 6)} kr)`}
+                </div>
+              ) : (
+                <div style={{ height: 56, borderRadius: 7, background: s.source === 'broll' ? '#1e1b2e' : C.cream, marginBottom: 8, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 10.5, fontWeight: 700 }}>
+                  {s.source === 'broll' ? '✦ Klipp klart' : ''}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
                 <span style={{ color: C.inkSoft }}>{SCENE_STATUS_LABELS[s.status]}</span>
@@ -448,8 +503,18 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             style={{ minWidth: 110, borderRadius: 10, border: `1px dashed ${C.lineStrong}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft }}>
             <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>⊕</div><div style={{ fontSize: 11 }}>Add Scene</div></div>
           </div>
+          <div onClick={() => setShowBroll(true)} title="AI-generert kinematisk footage (krok, kontekst, outro)"
+            style={{ minWidth: 110, borderRadius: 10, border: `1px dashed ${C.accent}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.accent, background: C.cream }}>
+            <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>✦</div><div style={{ fontSize: 11 }}>Kinematisk scene</div></div>
+          </div>
+          <div onClick={() => setShowSuggest(true)} title="La regissøren foreslå hvor kinematisk footage styrker demoen"
+            style={{ minWidth: 110, borderRadius: 10, border: `1px dashed ${C.accent}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.accent, background: C.cream }}>
+            <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20 }}>✦</div><div style={{ fontSize: 11 }}>AI-regi</div></div>
+          </div>
         </div>
       </div>
+      {showBroll && <BrollComposer C={C} onClose={() => setShowBroll(false)} />}
+      {showSuggest && <CinematicSuggestions C={C} onClose={() => setShowSuggest(false)} />}
       {showSignIn && (
         <RoleRoomSignInDialog onClose={() => setShowSignIn(false)} onSignedIn={() => { setAiReady(true); setShowSignIn(false); }} />
       )}

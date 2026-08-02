@@ -458,13 +458,21 @@ export async function getUserFileDownloadUrl(
   const config = getAdminB2Client();
   if (!config) return { ok: false, reason: 'b2_not_configured' };
 
+  // display_name is stored raw (the original upload filename); strip quotes and
+  // control chars so it cannot break out of / inject into the Content-Disposition
+  // header B2 echoes back on download.
+  const safeDisposition = row.display_name
+    .replace(/[\r\n"\\]/g, "")
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .slice(0, 200) || "download";
+
   try {
     const url = await getSignedUrl(
       config.client,
       new GetObjectCommand({
         Bucket: config.bucket,
         Key: row.b2_key,
-        ResponseContentDisposition: `attachment; filename="${row.display_name}"`,
+        ResponseContentDisposition: `attachment; filename="${safeDisposition}"`,
       }),
       { expiresIn: opts.expiresInSeconds ?? 300 },
     );

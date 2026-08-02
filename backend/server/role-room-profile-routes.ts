@@ -42,9 +42,9 @@ interface RoleRoomProfileDeps {
 const DEFAULT_ONBOARDING_CONFIG = {
   welcomeMessage: 'Velkommen til The Role Room. La oss bygge profilen din slik at andre medlemmer kan finne deg og du kan vise hva du gjør.',
   professionsOptions: [
-    'Fotograf', 'Videograf', 'Editor', 'Colorist', 'Sound Designer',
-    'Producer', 'Director', 'DOP', 'Skuespiller', 'Modell',
-    'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
+    'Prosjektleder', 'Produsent', 'Regissør', 'Fotograf', 'Videograf', 'Editor',
+    'Colorist', 'Sound Designer', 'Producer', 'Director', 'DOP', 'Skuespiller',
+    'Modell', 'Brudefotograf', 'Bryllups-editor', 'Dancer', 'Choreograph',
     'Makeup-artist', 'Stylist', 'Annet',
   ],
   skillsOptions: [
@@ -71,7 +71,7 @@ const DEFAULT_ONBOARDING_CONFIG = {
     displayName: true,
     professions: true,
     bio: false,
-    profileImage: false,
+    profileImage: true,
   },
 };
 
@@ -110,6 +110,51 @@ async function ensureConfigTable(pool: Pool): Promise<boolean> {
        ON CONFLICT (id) DO NOTHING`,
       [JSON.stringify(DEFAULT_ONBOARDING_CONFIG)],
     );
+    // En allerede seedet rad oppdateres ALDRI av INSERT ... DO NOTHING, så nye
+    // standard-profesjoner (Prosjektleder/Produsent/Regissør) ville aldri dukket
+    // opp i produksjon. Union inn manglende standardroller FORAN, uten å røre
+    // admin-tilpassede felter eller admin-tillegg.
+    try {
+      const { rows } = await pool.query(
+        `SELECT config FROM role_room_onboarding_config WHERE id = 1`,
+      );
+      const cfg = rows[0]?.config as
+        | { professionsOptions?: unknown; requiredFields?: Record<string, unknown> }
+        | undefined;
+      if (cfg) {
+        let changed = false;
+        if (Array.isArray(cfg.professionsOptions)) {
+          const existing = cfg.professionsOptions as string[];
+          const missing = DEFAULT_ONBOARDING_CONFIG.professionsOptions.filter(
+            (p) => !existing.includes(p),
+          );
+          if (missing.length > 0) {
+            (cfg as { professionsOptions: string[] }).professionsOptions = [
+              ...missing,
+              ...existing,
+            ];
+            changed = true;
+          }
+        }
+        // Avatar er nå et fast krav (produktbeslutning). Håndhev i en allerede
+        // seedet rad som fortsatt har profileImage:false fra gammel default.
+        if (cfg.requiredFields && cfg.requiredFields.profileImage !== true) {
+          cfg.requiredFields.profileImage = true;
+          changed = true;
+        }
+        if (changed) {
+          await pool.query(
+            `UPDATE role_room_onboarding_config SET config = $1::jsonb WHERE id = 1`,
+            [JSON.stringify(cfg)],
+          );
+        }
+      }
+    } catch (mergeErr) {
+      console.warn(
+        "[rr-profile] profession-options merge skipped:",
+        (mergeErr as any)?.message || mergeErr,
+      );
+    }
     configTableEnsured = true;
     return true;
   } catch (err) {
@@ -128,6 +173,8 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         bio TEXT,
         professions JSONB NOT NULL DEFAULT '[]'::jsonb,
         company_name VARCHAR(255),
+        organization_number VARCHAR(16),
+        business_address VARCHAR(500),
         location_city VARCHAR(120),
         location_country VARCHAR(120),
         website VARCHAR(500),
@@ -136,6 +183,17 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         skills JSONB NOT NULL DEFAULT '[]'::jsonb,
         languages JSONB NOT NULL DEFAULT '[]'::jsonb,
         profile_image_url VARCHAR(500),
+        profile_image_focal_x SMALLINT,
+        profile_image_focal_y SMALLINT,
+        years_experience SMALLINT,
+        earlier_projects JSONB NOT NULL DEFAULT '[]'::jsonb,
+        portfolio_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        availability_status VARCHAR(32),
+        work_preferences JSONB NOT NULL DEFAULT '[]'::jsonb,
+        equipment JSONB NOT NULL DEFAULT '[]'::jsonb,
+        certifications JSONB NOT NULL DEFAULT '[]'::jsonb,
+        member_references JSONB NOT NULL DEFAULT '[]'::jsonb,
+        expertise_areas JSONB NOT NULL DEFAULT '[]'::jsonb,
         banner_image_url VARCHAR(500),
         visibility VARCHAR(32) NOT NULL DEFAULT 'connections',
         onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -149,7 +207,41 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
       CREATE INDEX IF NOT EXISTS idx_rr_member_profiles_onboarding
         ON role_room_member_profiles(onboarding_completed)
         WHERE onboarding_completed = FALSE;
+
+      CREATE TABLE IF NOT EXISTS role_room_member_availability (
+        id BIGSERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'available',
+        note VARCHAR(200),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_rr_availability_user
+        ON role_room_member_availability(user_id, start_date);
     `);
+    // Firma-felter (org.nr + forretningsadresse) fylles fra Brønnøysund-oppslag
+    // i onboarding — samme mønster som hovedflyten. ALTER for eksisterende tabell.
+    for (const col of [
+      `organization_number VARCHAR(16)`,
+      `business_address VARCHAR(500)`,
+      `profile_image_focal_x SMALLINT`,
+      `profile_image_focal_y SMALLINT`,
+      `years_experience SMALLINT`,
+      `earlier_projects JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `portfolio_items JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `availability_status VARCHAR(32)`,
+      `work_preferences JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `equipment JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `certifications JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `member_references JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `expertise_areas JSONB NOT NULL DEFAULT '[]'::jsonb`,
+    ]) {
+      await pool
+        .query(`ALTER TABLE role_room_member_profiles ADD COLUMN IF NOT EXISTS ${col}`)
+        .catch(() => undefined);
+    }
     tableEnsured = true;
     return true;
   } catch (err) {
@@ -197,6 +289,8 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     bio: row.bio,
     professions: row.professions,
     companyName: row.company_name,
+    organizationNumber: row.organization_number,
+    businessAddress: row.business_address,
     locationCity: row.location_city,
     locationCountry: row.location_country,
     website: row.website,
@@ -205,6 +299,17 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     skills: row.skills,
     languages: row.languages,
     profileImageUrl: row.profile_image_url,
+    profileImageFocalX: row.profile_image_focal_x,
+    profileImageFocalY: row.profile_image_focal_y,
+    yearsExperience: row.years_experience,
+    earlierProjects: row.earlier_projects ?? [],
+    portfolioItems: row.portfolio_items ?? [],
+    availabilityStatus: row.availability_status,
+    workPreferences: row.work_preferences ?? [],
+    equipment: row.equipment ?? [],
+    certifications: row.certifications ?? [],
+    memberReferences: row.member_references ?? [],
+    expertiseAreas: row.expertise_areas ?? [],
     bannerImageUrl: row.banner_image_url,
     visibility: row.visibility,
     onboardingCompleted: row.onboarding_completed,
@@ -215,9 +320,13 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 const ALLOWED_PROFILE_FIELDS: Array<keyof typeof FIELD_TO_COLUMN> = [
-  "displayName", "bio", "professions", "companyName", "locationCity",
+  "displayName", "bio", "professions", "companyName", "organizationNumber",
+  "businessAddress", "locationCity",
   "locationCountry", "website", "socialLinks", "showreelUrl", "skills",
-  "languages", "visibility",
+  "languages", "visibility", "profileImageFocalX", "profileImageFocalY",
+  "yearsExperience", "earlierProjects", "portfolioItems", "availabilityStatus",
+  "workPreferences", "equipment", "certifications", "memberReferences",
+  "expertiseAreas",
 ];
 
 const FIELD_TO_COLUMN = {
@@ -225,6 +334,19 @@ const FIELD_TO_COLUMN = {
   bio: "bio",
   professions: "professions",
   companyName: "company_name",
+  organizationNumber: "organization_number",
+  businessAddress: "business_address",
+  profileImageFocalX: "profile_image_focal_x",
+  profileImageFocalY: "profile_image_focal_y",
+  yearsExperience: "years_experience",
+  earlierProjects: "earlier_projects",
+  portfolioItems: "portfolio_items",
+  availabilityStatus: "availability_status",
+  workPreferences: "work_preferences",
+  equipment: "equipment",
+  certifications: "certifications",
+  memberReferences: "member_references",
+  expertiseAreas: "expertise_areas",
   locationCity: "location_city",
   locationCountry: "location_country",
   website: "website",
@@ -236,8 +358,138 @@ const FIELD_TO_COLUMN = {
 } as const;
 
 const JSONB_FIELDS = new Set<keyof typeof FIELD_TO_COLUMN>([
-  "professions", "socialLinks", "skills", "languages",
+  "professions", "socialLinks", "skills", "languages", "earlierProjects",
+  "portfolioItems", "workPreferences", "equipment", "certifications",
+  "memberReferences", "expertiseAreas",
 ]);
+
+const AVAILABILITY_STATUSES = new Set(["available", "busy", "unavailable"]);
+
+/** Saniter en enkel streng-liste (utstyr, sertifiseringer, arbeidspreferanser). */
+function sanitizeStringArray(val: unknown, maxItems: number, maxLen: number): string[] {
+  if (!Array.isArray(val)) return [];
+  return val
+    .map((x) => (typeof x === "string" ? x.trim().slice(0, maxLen) : ""))
+    .filter((x) => x.length > 0)
+    .slice(0, maxItems);
+}
+
+/** Saniter portfolio-oppføringer ({title,url}). */
+function sanitizePortfolioItems(val: unknown): Array<{ title: string; url: string }> {
+  if (!Array.isArray(val)) return [];
+  const s = (x: unknown, max: number): string =>
+    (typeof x === "string" ? x : "").trim().slice(0, max);
+  return val
+    .slice(0, 12)
+    .map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { title: s(o.title, 160), url: s(o.url, 500) };
+    })
+    .filter((e) => e.url.length > 0);
+}
+
+/** Saniter referanser/attester ({name,role,quote}). */
+function sanitizeReferences(val: unknown): Array<{ name: string; role: string; quote: string }> {
+  if (!Array.isArray(val)) return [];
+  const s = (x: unknown, max: number): string =>
+    (typeof x === "string" ? x : "").trim().slice(0, max);
+  return val
+    .slice(0, 12)
+    .map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { name: s(o.name, 120), role: s(o.role, 120), quote: s(o.quote, 500) };
+    })
+    .filter((e) => e.name.length > 0 || e.quote.length > 0);
+}
+
+/**
+ * Saniter tidligere-prosjekt-historikk (bruker-redigert CV-liste). Kapper
+ * antall og feltlengder slik at vi ikke lagrer vilkårlig/enorm JSON.
+ */
+function sanitizeEarlierProjects(val: unknown): Array<{ title: string; role: string; year: string }> {
+  if (!Array.isArray(val)) return [];
+  const s = (x: unknown, max: number): string =>
+    (typeof x === "string" ? x : "").trim().slice(0, max);
+  return val
+    .slice(0, 30)
+    .map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { title: s(o.title, 160), role: s(o.role, 80), year: s(o.year, 12) };
+    })
+    .filter((e) => e.title.length > 0);
+}
+
+const AVAILABILITY_ENTRY_STATUSES = new Set(["available", "busy", "tentative"]);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Saniter tilgjengelighets-oppføringer for kalenderen. Hver oppføring er et
+ * dato-intervall med status (ledig/opptatt/tentativ) + valgfritt notat.
+ * Kapper antall + feltlengder og forkaster ugyldige datoer.
+ */
+function sanitizeAvailabilityEntries(
+  val: unknown,
+): Array<{ startDate: string; endDate: string; status: string; note: string }> {
+  if (!Array.isArray(val)) return [];
+  const out: Array<{ startDate: string; endDate: string; status: string; note: string }> = [];
+  for (const e of val.slice(0, 400)) {
+    const o = (e ?? {}) as Record<string, unknown>;
+    const start = typeof o.startDate === "string" ? o.startDate.slice(0, 10) : "";
+    const endRaw = typeof o.endDate === "string" ? o.endDate.slice(0, 10) : start;
+    const end = endRaw || start;
+    if (!ISO_DATE_RE.test(start) || !ISO_DATE_RE.test(end)) continue;
+    // Normaliser slik at end aldri er før start.
+    const [s0, e0] = start <= end ? [start, end] : [end, start];
+    const status = typeof o.status === "string" && AVAILABILITY_ENTRY_STATUSES.has(o.status)
+      ? o.status
+      : "available";
+    const note = typeof o.note === "string" ? o.note.trim().slice(0, 200) : "";
+    out.push({ startDate: s0, endDate: e0, status, note });
+  }
+  return out;
+}
+
+/**
+ * Forhåndsutfyll-data hentet fra en Role Room tester-invitasjon (matchet på
+ * brukerens e-post). Bæres KUN innenfor role_room-flaten — aldri fra `users`-
+ * konto-provisjonering. Best-effort: alle feil svelges → tom seed.
+ */
+async function seedFromTesterInvite(
+  pool: Pool,
+  userId: string,
+): Promise<{ displayName: string | null; professions: string[]; companyName: string | null }> {
+  const empty = { displayName: null, professions: [] as string[], companyName: null };
+  try {
+    const userRes = await pool.query(
+      `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    const email = userRes.rows[0]?.email;
+    if (!email || typeof email !== "string") return empty;
+
+    const inviteRes = await pool.query(
+      `SELECT name, member_profession, member_company
+         FROM role_room_tester_invites
+        WHERE LOWER(email) = LOWER($1)
+        ORDER BY (status = 'accepted') DESC, created_at DESC
+        LIMIT 1`,
+      [email],
+    );
+    const inv = inviteRes.rows[0];
+    if (!inv) return empty;
+    return {
+      displayName: typeof inv.name === "string" && inv.name.trim() ? inv.name.trim() : null,
+      professions: inv.member_profession ? [String(inv.member_profession)] : [],
+      companyName:
+        typeof inv.member_company === "string" && inv.member_company.trim()
+          ? inv.member_company.trim()
+          : null,
+    };
+  } catch (err) {
+    console.warn("[rr-profile] seedFromTesterInvite skipped:", (err as any)?.message || err);
+    return empty;
+  }
+}
 
 // ─── Public registration ─────────────────────────────────────────────────
 
@@ -261,11 +513,22 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         [userId],
       );
       if (rows.length === 0) {
-        // Auto-create empty profile på første call
+        // Auto-create profil på første call. Forhåndsutfyll navn/profesjon/firma
+        // fra en tester-invitasjon (matchet på e-post) — samme «bekreft, ikke
+        // fyll på nytt»-mønster som hovedflyten. Brukeren bekrefter + fyller ut
+        // resten av firma-infoen (org.nr/adresse via Brønnøysund) i onboarding.
+        const seed = await seedFromTesterInvite(pool, userId);
         await pool.query(
-          `INSERT INTO role_room_member_profiles (user_id) VALUES ($1)
+          `INSERT INTO role_room_member_profiles
+             (user_id, display_name, professions, company_name)
+           VALUES ($1, $2, $3::jsonb, $4)
            ON CONFLICT (user_id) DO NOTHING`,
-          [userId],
+          [
+            userId,
+            seed.displayName,
+            JSON.stringify(seed.professions),
+            seed.companyName,
+          ],
         );
         const fresh = await pool.query(
           `SELECT * FROM role_room_member_profiles WHERE user_id = $1 LIMIT 1`,
@@ -283,6 +546,26 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
     }
   });
 
+  // Lettvekts-oppslag av `users.profession` for den innloggede brukeren.
+  // Brukes av klienten til å auto-route en provisjonert utdanningsinstitusjon
+  // (profession='education_institution') til utdannings-workspacet via
+  // professionMode.applyProfessionModeFromRole. `/profile/me` returnerer member-
+  // profilen (professions[]-array), IKKE users.profession — derfor eget endepunkt.
+  app.get("/api/role-room/me/profession", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res, activeSessions);
+    if (!userId) return;
+    try {
+      const { rows } = await pool.query<{ profession: string | null }>(
+        `SELECT profession FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      res.json({ profession: rows[0]?.profession ?? null });
+    } catch (err) {
+      console.warn("[rr-profile] GET /me/profession degraded:", (err as any)?.message || err);
+      res.json({ profession: null });
+    }
+  });
+
   // ── PATCH /api/role-room/profile/me ──
   app.patch("/api/role-room/profile/me", async (req: Request, res: Response) => {
     const userId = requireUser(req, res, activeSessions);
@@ -297,7 +580,24 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       if (field in body) {
         const val = body[field];
         const col = FIELD_TO_COLUMN[field];
-        if (JSONB_FIELDS.has(field)) {
+        if (field === "earlierProjects") {
+          updates.push({ col, value: JSON.stringify(sanitizeEarlierProjects(val)) });
+        } else if (field === "portfolioItems") {
+          updates.push({ col, value: JSON.stringify(sanitizePortfolioItems(val)) });
+        } else if (field === "memberReferences") {
+          updates.push({ col, value: JSON.stringify(sanitizeReferences(val)) });
+        } else if (field === "equipment") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 40, 120)) });
+        } else if (field === "certifications") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 20, 120)) });
+        } else if (field === "workPreferences") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 12, 40)) });
+        } else if (field === "expertiseAreas") {
+          updates.push({ col, value: JSON.stringify(sanitizeStringArray(val, 24, 60)) });
+        } else if (field === "availabilityStatus") {
+          const v = typeof val === "string" ? val.trim() : "";
+          updates.push({ col, value: AVAILABILITY_STATUSES.has(v) ? v : null });
+        } else if (JSONB_FIELDS.has(field)) {
           updates.push({ col, value: JSON.stringify(val ?? (Array.isArray(val) ? [] : {})) });
         } else {
           updates.push({ col, value: typeof val === "string" ? val.trim() : val });
@@ -551,7 +851,8 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       const { rows } = await pool.query(
         `SELECT p.user_id, p.display_name, p.bio, p.professions, p.skills,
                 p.company_name, p.location_city, p.location_country,
-                p.profile_image_url, p.visibility, p.updated_at, u.email
+                p.profile_image_url, p.profile_image_focal_x, p.profile_image_focal_y,
+                p.years_experience, p.visibility, p.updated_at, u.email
            FROM role_room_member_profiles p
            JOIN users u ON u.id = p.user_id
           WHERE ${where.join(" AND ")}
@@ -562,6 +863,7 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
 
       const members = rows.map((row) => ({
         userId: row.user_id,
+        email: row.email ?? null,
         displayName: row.display_name,
         bio: row.bio,
         professions: row.professions ?? [],
@@ -570,6 +872,9 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         locationCity: row.location_city,
         locationCountry: row.location_country,
         profileImageUrl: row.profile_image_url,
+        profileImageFocalX: row.profile_image_focal_x,
+        profileImageFocalY: row.profile_image_focal_y,
+        yearsExperience: row.years_experience,
         visibility: row.visibility,
       }));
 
@@ -619,10 +924,164 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       delete (profile as Record<string, unknown>).onboardingCompleted;
       delete (profile as Record<string, unknown>).onboardingCompletedAt;
       delete (profile as Record<string, unknown>).onboardingProgress;
-      res.json({ profile });
+
+      // Felles prosjekter: prosjekter DER både betrakter og medlem deltar,
+      // slik at man ser hvilket team / hvilke prosjekter de er med på.
+      // Kun scoped til betrakters egne prosjekter (samme som katalog-scopet).
+      let sharedProjects: Array<{ id: string; name: string; status: string | null; role: string }> = [];
+      if (viewerId) {
+        try {
+          const { rows: proj } = await pool.query(
+            `WITH viewer_projects AS (
+               SELECT id FROM casting_projects WHERE created_by = $1
+               UNION
+               SELECT project_id FROM casting_user_roles WHERE user_id = $1
+             ),
+             target_projects AS (
+               SELECT id AS project_id, 'Leder'::text AS role
+                 FROM casting_projects WHERE created_by = $2
+               UNION
+               SELECT project_id, COALESCE(NULLIF(role, ''), 'Medlem') AS role
+                 FROM casting_user_roles WHERE user_id = $2
+             )
+             SELECT DISTINCT ON (cp.id) cp.id, cp.name, cp.status, tp.role
+               FROM target_projects tp
+               JOIN casting_projects cp ON cp.id = tp.project_id
+              WHERE tp.project_id IN (SELECT id FROM viewer_projects)
+              ORDER BY cp.id, (tp.role = 'Leder') DESC
+              LIMIT 25`,
+            [viewerId, targetUserId],
+          );
+          sharedProjects = proj.map((r) => ({
+            id: r.id,
+            name: r.name || "Uten navn",
+            status: r.status ?? null,
+            role: r.role || "Medlem",
+          }));
+        } catch (projErr) {
+          // Schema-drift skal ikke bryte profil-visningen.
+          console.warn("[rr-profile] sharedProjects degraded:", (projErr as any)?.message || projErr);
+        }
+      }
+
+      res.json({ profile, sharedProjects });
     } catch (err) {
       console.error("[rr-profile] GET /:userId failed:", err);
       res.status(500).json({ error: "intern_feil" });
+    }
+  });
+
+  // ─── Tilgjengelighets-kalender ───────────────────────────────────────
+  // Medlemmet maler datoer ledig/opptatt/tentativ i en branded kalender.
+  // Lagres som dato-intervaller i role_room_member_availability. Bulk-replace
+  // (hele settet erstattes) holder klient/server enkelt og idempotent.
+
+  const availabilityRowToDto = (r: Record<string, unknown>) => ({
+    id: String(r.id),
+    // node-postgres gir DATE som Date-objekt; normaliser til YYYY-MM-DD.
+    startDate: r.start_date instanceof Date
+      ? (r.start_date as Date).toISOString().slice(0, 10)
+      : String(r.start_date).slice(0, 10),
+    endDate: r.end_date instanceof Date
+      ? (r.end_date as Date).toISOString().slice(0, 10)
+      : String(r.end_date).slice(0, 10),
+    status: String(r.status || "available"),
+    note: typeof r.note === "string" ? r.note : "",
+  });
+
+  // ── GET min egen kalender ──
+  app.get("/api/role-room/profile/me/availability", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res, activeSessions);
+    if (!userId) return;
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, start_date, end_date, status, note
+           FROM role_room_member_availability
+          WHERE user_id = $1
+          ORDER BY start_date ASC`,
+        [userId],
+      );
+      res.json({ availability: rows.map(availabilityRowToDto) });
+    } catch (err) {
+      console.warn("[rr-profile] GET /me/availability degraded:", (err as any)?.message || err);
+      res.json({ availability: [] });
+    }
+  });
+
+  // ── PUT min egen kalender (bulk-replace) ──
+  app.put("/api/role-room/profile/me/availability", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res, activeSessions);
+    if (!userId) return;
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+    const entries = sanitizeAvailabilityEntries((req.body ?? {}).availability);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM role_room_member_availability WHERE user_id = $1`,
+        [userId],
+      );
+      for (const e of entries) {
+        await client.query(
+          `INSERT INTO role_room_member_availability
+             (user_id, start_date, end_date, status, note)
+           VALUES ($1, $2::date, $3::date, $4, $5)`,
+          [userId, e.startDate, e.endDate, e.status, e.note || null],
+        );
+      }
+      await client.query("COMMIT");
+      const { rows } = await client.query(
+        `SELECT id, start_date, end_date, status, note
+           FROM role_room_member_availability
+          WHERE user_id = $1 ORDER BY start_date ASC`,
+        [userId],
+      );
+      res.json({ availability: rows.map(availabilityRowToDto) });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[rr-profile] PUT /me/availability failed:", err);
+      res.status(500).json({ error: "intern_feil" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ── GET annet medlems kalender (respekterer visibility) ──
+  app.get("/api/role-room/profile/:userId/availability", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    const targetUserId = req.params.userId;
+    if (!targetUserId) { res.status(400).json({ error: "userId_mangler" }); return; }
+    if (!(await ensureProfileTable(pool))) {
+      res.status(503).json({ error: "tabell_ikke_klar" }); return;
+    }
+    try {
+      const { rows: pr } = await pool.query(
+        `SELECT visibility FROM role_room_member_profiles WHERE user_id = $1`,
+        [targetUserId],
+      );
+      if (pr.length === 0) { res.status(404).json({ error: "ikke_funnet" }); return; }
+      const visibility = pr[0].visibility || "connections";
+      if (visibility === "private" && viewerId !== targetUserId) {
+        res.status(403).json({ error: "privat_profil" }); return;
+      }
+      if (visibility === "connections" && !viewerId) {
+        res.status(401).json({ error: "krever_innlogging" }); return;
+      }
+      const { rows } = await pool.query(
+        `SELECT id, start_date, end_date, status, note
+           FROM role_room_member_availability
+          WHERE user_id = $1 ORDER BY start_date ASC`,
+        [targetUserId],
+      );
+      res.json({ availability: rows.map(availabilityRowToDto) });
+    } catch (err) {
+      console.warn("[rr-profile] GET /:userId/availability degraded:", (err as any)?.message || err);
+      res.json({ availability: [] });
     }
   });
 

@@ -28,8 +28,13 @@ import {
 } from 'express';
 import type { Pool } from 'pg';
 import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
+import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
+import { enqueueCampaignPosts } from './post-agent-campaign-enqueue.js';
+import { fetchUpdateManifest } from './post-agent-update-manifest.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
+import { falSubmit, falPoll, falOutputUrl, falConfigured, GEN_MODELS } from './generative-media.js';
+import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
 import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
 import { presignRoleRoomB2Download } from './b2-archive-helper.js';
@@ -176,6 +181,8 @@ function generatePairingCode(): string {
   return `${pick(3)}-${pick(3)}`;
 }
 
+const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function createPostAgentRouter(
   pool: Pool,
   activeSessions?: Map<string, SessionData>,
@@ -198,6 +205,29 @@ export function createPostAgentRouter(
       userId: (req as AuthedRequest).userId,
       anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     });
+  });
+
+  // ---- Robust updater-manifest (PUBLIC — updateren sender ingen bearer) ----
+
+  router.get('/update/:key', async (req: Request, res: Response) => {
+    const result = await fetchUpdateManifest(req.params.key);
+    if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
+    res.type('application/json').setHeader('Cache-Control', 'public, max-age=120').send(result.body);
+  });
+
+  // ---- Kampanje-regissør → sosial-køen ----
+
+  router.post('/campaign/enqueue', postAgentAuth, async (req: Request, res: Response) => {
+    try {
+      const orgId = await resolveOrgIdForUser(pool, (req as AuthedRequest).userId);
+      if (!ORG_UUID_RE.test(orgId)) { res.status(409).json({ error: 'ingen_organisasjon' }); return; }
+      const result = await enqueueCampaignPosts(pool, orgId, req.body);
+      if (result.created === 0) { res.status(422).json({ error: 'ingen_gyldige_poster', ...result }); return; }
+      res.json(result); // { created, skipped } — postene ligger som draft i køen for godkjenning
+    } catch (err) {
+      console.error('[post-agent] campaign enqueue failed', err);
+      res.status(500).json({ error: 'enqueue_failed' });
+    }
   });
 
   // ---- Pairing flow ----
@@ -644,8 +674,21 @@ Tidspunkt: ${new Date().toISOString()}
    * Body: { prompt, options?: { width?, height?, image_size? } }
    * Returns: { image_url, model, seed? }
    */
-  router.post('/ai/generate-image', postAgentAuth, async (req: Request, res: Response) => {
+  router.post('/ai/generate-image', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 20, label: 'post-agent-image-gen' }),
+    async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    // Entitlement-gate (som /anthropic/messages) — dette kaller betalt FAL flux-pro.
+    // Uten den kunne enhver PARET (men ikke-abonnert) konto generere ubegrenset →
+    // wallet-DoS. Admin/abonnement/team-seat kreves, ellers 402.
+    {
+      const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+      const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+      if (!entitlement.allowed && !(await userHasActiveTeamSeat(pool, userId))) {
+        res.status(402).json({ error: 'subscription_required', detail: entitlement.reason });
+        return;
+      }
+    }
     const body = (req.body ?? {}) as {
       prompt?: string;
       options?: {
@@ -726,6 +769,8 @@ Tidspunkt: ${new Date().toISOString()}
            VALUES ($1, $2, $3, $4)`,
           [userId, prompt, firstImage.url, data.seed ?? null],
         );
+        // Retention (personvern): ikke lagre bruker-prompts på ubestemt tid.
+        await pool.query(`DELETE FROM post_agent_ai_image_log WHERE created_at < NOW() - INTERVAL '90 days'`).catch(() => {});
       } catch (logErr) {
         console.warn('[post-agent ai/generate-image] log insert failed:', (logErr as Error).message);
       }
@@ -744,6 +789,75 @@ Tidspunkt: ${new Date().toISOString()}
       });
     }
   });
+
+  // ---- AI video (fal Seedance) — serverside provider for Demo Studio broll ----
+  //
+  // Lar Post Agent generere kinematiske klipp UTEN lokal higgsfield-CLI/kreditter:
+  // FAL_KEY bor på serveren. Seedance-modellen er image-to-video, så en start-
+  // ramme (image_url) KREVES — passer med «forankre i produkt-ramme» i klienten.
+  // Kø-basert: submit returnerer en responseUrl klienten poller til COMPLETED.
+  //
+  // POST /ai/generate-video  { prompt, imageUrl, durationSec?, resolution? }
+  //   → 202 { responseUrl }
+  router.post('/ai/generate-video', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 12, label: 'post-agent-video-gen' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const userId = (req as AuthedRequest).userId;
+      // Entitlement-gate (som /ai/generate-image) — dette kaller betalt fal Seedance.
+      {
+        const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+        const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+        if (!entitlement.allowed && !(await userHasActiveTeamSeat(pool, userId))) {
+          res.status(402).json({ error: 'subscription_required', detail: entitlement.reason });
+          return;
+        }
+      }
+      if (!falConfigured()) {
+        res.status(503).json({ error: 'video_provider_not_configured', detail: 'FAL_KEY ikke satt på serveren.' });
+        return;
+      }
+      const body = (req.body ?? {}) as { prompt?: string; imageUrl?: string; durationSec?: number; resolution?: string };
+      const prompt = (body.prompt ?? '').toString().trim();
+      const imageUrl = (body.imageUrl ?? '').toString().trim();
+      if (!prompt) { res.status(400).json({ error: 'prompt_required' }); return; }
+      // Seedance er image-to-video → start-ramme kreves (data-URI eller http-URL).
+      if (!imageUrl) { res.status(400).json({ error: 'image_required', detail: 'fal Seedance er image-to-video — send imageUrl (forankre i en produkt-ramme).' }); return; }
+      const duration = Math.max(4, Math.min(15, Math.round(Number(body.durationSec) || 6)));
+      const resolution = ['480p', '720p', '1080p'].includes(String(body.resolution)) ? String(body.resolution) : '720p';
+      // Seedance v1 Pro i2v — den produksjons-beviste stien (fal-ai/-prefiks).
+      // Speiler ad-film-Python sitt kall {image_url, prompt}; duration er en
+      // enum ("5"/"10") på denne modellen, så vi mapper i stedet for å sende sek.
+      const model = GEN_MODELS['seedance-i2v-pro'];
+      const durEnum = duration <= 7 ? '5' : '10';
+      const sub = await falSubmit(model.falPath, { prompt, image_url: imageUrl, resolution, duration: durEnum });
+      if (sub.error || !sub.responseUrl) {
+        res.status(502).json({ error: 'video_submit_failed', detail: sub.error ?? 'ingen responseUrl' });
+        return;
+      }
+      res.status(202).json({ responseUrl: sub.responseUrl, requestId: sub.requestId ?? null, estCostUsd: duration * (model.costPerSecondUsd ?? 0.1) });
+    });
+
+  // POST /ai/generate-video/poll  { responseUrl }
+  //   → { status } | { status: 'COMPLETED', videoUrl }
+  router.post('/ai/generate-video/poll', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 120, label: 'post-agent-video-poll' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const responseUrl = String((req.body ?? {}).responseUrl ?? '').trim();
+      // Kun fal-kø-URL-er tillates (SSRF-vakt) — ikke poll vilkårlige verter.
+      if (!/^https:\/\/queue\.fal\.run\//.test(responseUrl)) {
+        res.status(400).json({ error: 'invalid_response_url' });
+        return;
+      }
+      const r = await falPoll(responseUrl);
+      if (r.status === 'COMPLETED') {
+        const out = falOutputUrl(r.result);
+        if (!out.url) { res.status(502).json({ error: 'no_video_in_result' }); return; }
+        res.json({ status: 'COMPLETED', videoUrl: out.url });
+        return;
+      }
+      if (r.status === 'ERROR') { res.status(502).json({ error: 'video_poll_failed', detail: r.error }); return; }
+      res.json({ status: r.status });
+    });
 
   // ---- Tekst-til-tale (ElevenLabs) ----
   //
@@ -781,7 +895,7 @@ Tidspunkt: ${new Date().toISOString()}
         res.setHeader('Content-Length', String(buf.length));
         res.send(buf);
       } catch (err) {
-        res.status(500).json({ error: 'tts_provider_error', detail: (err as Error).message });
+        res.status(500).json({ error: 'tts_provider_error', detail: "internal_error" });
       }
     },
   );
@@ -1092,7 +1206,7 @@ Tidspunkt: ${new Date().toISOString()}
 
       res.json({ subscriptions: out, totalMonthlyNok: Math.round(totalMonthlyNok), currency, mixedCurrencies: currencies.size > 1 });
     } catch (err) {
-      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: (err as Error).message });
+      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: "internal_error" });
     }
   });
 
@@ -1133,10 +1247,8 @@ Tidspunkt: ${new Date().toISOString()}
         return;
       }
 
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
-      const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/';
+      const origin = safeAppBaseUrl(req);
+      const returnPath = safeReturnPath(req.body?.returnPath, '/');
 
       const { default: Stripe } = await import('stripe');
       const stripe = new Stripe(secret);
@@ -1147,7 +1259,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url });
     } catch (err) {
       console.error('[post-agent] customer-portal failed:', err);
-      res.status(500).json({ error: 'portal_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'portal_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1180,9 +1292,7 @@ Tidspunkt: ${new Date().toISOString()}
       const email = userRows[0]?.email;
       const existingCustomer = userRows[0]?.stripe_customer_id;
 
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const origin = safeAppBaseUrl(req);
       const successQuery = productionId
         ? `productionId=${encodeURIComponent(productionId)}&checkout=success`
         : 'checkout=success';
@@ -1215,7 +1325,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url, id: session.id });
     } catch (err) {
       console.error('[post-agent] standalone-checkout failed:', err);
-      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'checkout_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1255,14 +1365,15 @@ Tidspunkt: ${new Date().toISOString()}
       });
     } catch (err) {
       console.error('[post-agent] modules/entitlements failed:', err);
-      res.status(500).json({ error: 'entitlements_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'entitlements_failed', detail: "internal_error" });
     }
   });
 
-  // ── Delt lærings-lager (Demo Studio) — hvor interaktive elementer er per
-  // host. GET er åpent (delt kunnskap som komponerer på tvers av brukere);
-  // POST krever auth mot spam. ───────────────────────────────────────────────
-  router.get('/learned-targets', async (req: Request, res: Response) => {
+  // ── Delt lærings-lager (Demo Studio) — hvor interaktive elementer er per host.
+  // Kunnskapen deles på tvers av brukere, men GET krever nå INNLOGGING (userAuth) så
+  // den ikke lekker (bl.a. eksistensen av + struktur til) skannede private/interne
+  // hosts til uautentiserte. POST krever auth mot spam. ───────────────────────────
+  router.get('/learned-targets', userAuth, async (req: Request, res: Response) => {
     const host = String(req.query.host ?? '').trim().toLowerCase();
     if (!host) { res.status(400).json({ error: 'missing_host' }); return; }
     try {
@@ -1285,7 +1396,7 @@ Tidspunkt: ${new Date().toISOString()}
         })),
       });
     } catch (err) {
-      res.status(500).json({ error: 'learned_fetch_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'learned_fetch_failed', detail: "internal_error" });
     }
   });
 
@@ -1317,7 +1428,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       res.json({ ok: true });
     } catch (err) {
-      res.status(500).json({ error: 'learned_save_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'learned_save_failed', detail: "internal_error" });
     }
   });
 
@@ -1343,9 +1454,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       const email = userRows[0]?.email;
       const existingCustomer = userRows[0]?.stripe_customer_id;
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const origin = safeAppBaseUrl(req);
       const def = getModuleDef(moduleKey as PostAgentModule);
 
       const { default: Stripe } = await import('stripe');
@@ -1374,7 +1483,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url, id: session.id });
     } catch (err) {
       console.error('[post-agent] modules/checkout failed:', err);
-      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'checkout_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1402,7 +1511,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url, filename, expiresIn: 300 });
     } catch (err) {
       console.error('[post-agent] modules/download failed:', err);
-      res.status(500).json({ error: 'download_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'download_failed', detail: "internal_error" });
     }
   });
 
@@ -1432,7 +1541,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
     } catch (err) {
-      res.status(500).json({ error: 'subscription_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'subscription_lookup_failed', detail: "internal_error" });
       return;
     }
 
@@ -1696,7 +1805,7 @@ Tidspunkt: ${new Date().toISOString()}
       }
       return true;
     } catch (err) {
-      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'project_lookup_failed', detail: "internal_error" });
       return false;
     }
   }
@@ -1954,18 +2063,18 @@ Spørsmål? Svar på denne eposten.
       const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
   <div style="border-left: 3px solid #a030c0; padding-left: 16px; margin-bottom: 24px;">
     <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Du har fått Post Agent-tilgang</h2>
-    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${escapeHtml(productionName)}</strong></p>
   </div>
 
-  <p>${greeting}</p>
+  <p>${escapeHtml(greeting)}</p>
 
-  <p><strong>${ownerName}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
+  <p><strong>${escapeHtml(ownerName)}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
 
   <p style="margin-top: 24px;"><strong>Slik kommer du i gang:</strong></p>
   <ol style="padding-left: 20px;">
     <li style="margin-bottom: 8px;">Last ned <a href="https://creatorhubn.com/link" style="color: #a030c0; text-decoration: none; font-weight: 600;">Post Agent for Mac</a> (Apple Silicon).</li>
-    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${crewEmail}</code>).</li>
-    <li style="margin-bottom: 8px;">Velg <strong>${productionName}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
+    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${escapeHtml(crewEmail)}</code>).</li>
+    <li style="margin-bottom: 8px;">Velg <strong>${escapeHtml(productionName)}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
   </ol>
 
   <p style="background: #f4eefd; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #4a2e7a;">
@@ -2055,12 +2164,12 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
   <div style="border-left: 3px solid #6e3fc7; padding-left: 16px; margin-bottom: 24px;">
     <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Post Agent-tilgang avsluttet</h2>
-    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${escapeHtml(productionName)}</strong></p>
   </div>
 
-  <p>${greeting}</p>
+  <p>${escapeHtml(greeting)}</p>
 
-  <p><strong>${ownerName}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
+  <p><strong>${escapeHtml(ownerName)}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
 
   <p>Det betyr at AI-cull, scene-detection og andre Post Agent-funksjoner ikke lenger er
   tilgjengelige for dette prosjektet. Lokale klipp og prosjektfiler er upåvirket.</p>
@@ -2154,7 +2263,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         },
       });
     } catch (e) {
-      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: (e as Error).message });
+      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2201,7 +2310,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
           })),
         });
       } catch (e) {
-        res.json({ crew: [], degraded: true, detail: (e as Error).message });
+        res.json({ crew: [], degraded: true, detail: "internal_error" });
       }
     },
   );
@@ -2220,7 +2329,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
            WHERE is_active = true
            GROUP BY project_id
          ) s ON s.project_id = p.id
-         WHERE p.owner_id = $1
+         WHERE p.user_id = $1
          ORDER BY p.event_date DESC NULLS LAST, p.created_at DESC NULLS LAST
          LIMIT 100`,
         [userId],
@@ -2235,7 +2344,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ productions: [], degraded: true, detail: (e as Error).message });
+      res.json({ productions: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2279,7 +2388,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       }
       return true;
     } catch (err) {
-      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'project_lookup_failed', detail: "internal_error" });
       return false;
     }
   }
@@ -2309,7 +2418,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ scenes: [], degraded: true, detail: (e as Error).message });
+      res.json({ scenes: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2350,7 +2459,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
           : null,
       });
     } catch (e) {
-      res.json({ equipment: [], projectSettings: null, degraded: true, detail: (e as Error).message });
+      res.json({ equipment: [], projectSettings: null, degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2395,7 +2504,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: (e as Error).message });
+      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2449,7 +2558,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         );
         res.json({ urls });
       } catch (e) {
-        res.status(500).json({ error: 'download_urls_failed', detail: (e as Error).message });
+        res.status(500).json({ error: 'download_urls_failed', detail: "internal_error" });
       }
     },
   );

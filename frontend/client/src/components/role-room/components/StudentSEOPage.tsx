@@ -556,7 +556,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {config.relatedStudies && config.relatedStudies.length > 0 ? (
           <Box>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-              <SchoolIcon sx={{ color: '#22d3ee' }} />
+              <SchoolIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
               <Typography
                 component="h2"
                 sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.8rem' } }}
@@ -590,7 +590,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     bgcolor: 'rgba(2,6,23,0.34)',
                   }}
                 >
-                  <MovieFilterIcon sx={{ color: '#22d3ee', mt: 0.3, fontSize: 20 }} />
+                  <MovieFilterIcon sx={{ color: 'var(--role-cyan, #22d3ee)', mt: 0.3, fontSize: 20 }} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.95rem' }}>
                       {study.name}
@@ -724,11 +724,25 @@ function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
   const [merged, setMerged] = useState<StudentPageConfig>(defaults);
   const [blocks, setBlocks] = useState<Block[] | null>(null);
 
-  // Server-content (cached, 5-min CDN)
+  // Server-content (cached, 5-min CDN).
+  // NOTE: this fetch+postMessage duplicates what the shared useCmsBlocks.ts
+  // hook does, because this page ALSO supports a lighter partial-field
+  // override (h1/intro/etc merged onto the hardcoded default) in addition to
+  // full block-array override — the shared hook only returns Block[] | null,
+  // so it can't carry partial-field content. Kept as its own implementation,
+  // but aligned to the same hardening as useCmsBlocks.ts: distinguish 404
+  // (expected, silent) from 5xx/network errors (logged), and validate
+  // postMessage origin.
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/cms/pages/${pageKey}`, { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (res.ok) return res.json();
+        if (res.status !== 404) {
+          console.error(`[cms] uventet status ${res.status} for /api/cms/pages/${pageKey}`);
+        }
+        return null;
+      })
       .then((data) => {
         if (cancelled || !data?.success || !data?.page?.content) return;
         const content = data.page.content as Record<string, unknown>;
@@ -738,8 +752,8 @@ function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
         }
         setMerged(mergeOverrides(defaults, content as Partial<StudentPageConfig>));
       })
-      .catch(() => {
-        // Stillegående fallback til defaults — vi viser fortsatt siden.
+      .catch((err) => {
+        console.error(`[cms] nettverksfeil ved henting av /api/cms/pages/${pageKey}:`, err);
       });
     return () => {
       cancelled = true;
@@ -751,6 +765,7 @@ function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (!event.data || typeof event.data !== 'object') return;
       const msg = event.data as { type?: string; pageKey?: string; content?: Record<string, unknown> };
       if (msg.type !== 'roleroom-cms-preview') return;
@@ -765,7 +780,7 @@ function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
     };
     window.addEventListener('message', handler);
     // Annonsér at preview er klar — editoren sender da current state
-    window.parent?.postMessage({ type: 'roleroom-cms-preview-ready', pageKey }, '*');
+    window.parent?.postMessage({ type: 'roleroom-cms-preview-ready', pageKey }, window.location.origin);
     return () => window.removeEventListener('message', handler);
   }, [pageKey, defaults]);
 

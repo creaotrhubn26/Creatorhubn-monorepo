@@ -1,0 +1,66 @@
+name: Control Center canary-monitor
+
+# Proaktiv drift: kjører syntetiske brukerreiser mot prod hvert 10. min for å
+# fange feil FØR brukerne (401-regresjoner, utløpt Stripe-nøkkel, nede-tjenester).
+# Backend-endepunktet gjør selve prøvingen, registrerer utfall og bygger
+# error_log-incident + super_admin-varsel ved feil. Token-gated via
+# CRON_TRIGGER_TOKEN (GitHub secret + Render env) — samme mønster som cockpit-cron.
+#
+# Endepunkt: POST /api/control-center/canary/run
+#
+# NB: workflowen feiler KUN på transport-/auth-feil (401/5xx). Individuelle
+# canary-feil er forventet output og varsles via incident/e-post, ikke her.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # hvert 10. min (GitHub-cron-presisjon ~5–15 min, OK)
+  workflow_dispatch:          # manuell trigger for testing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canary-monitor
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-canaries:
+    name: Kjør canary-journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/control-center/canary/run
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/control-center/canary/run")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          # Sekundær synlighet: antall feilende canaries (ekte varsel går via incident/e-post).
+          FAILED=$(echo "$BODY" | jq -r '.failed // 0' 2>/dev/null || echo 0)
+          if [ "$FAILED" != "0" ] && [ -n "$FAILED" ]; then
+            echo "::warning::$FAILED canary-journey(er) feilet — se Control Center «Hendelser»/e-post."
+          fi
+          echo "::notice::Canary-kjøring ferdig"

@@ -118,7 +118,7 @@ export function registerLeadMapMeProfileRoutes({ app, pool, activeSessions }: De
       );
       res.json({ profile: shapeProfile(r.rows[0]) });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? "Oppdatering feilet" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

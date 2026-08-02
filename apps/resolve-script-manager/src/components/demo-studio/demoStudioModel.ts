@@ -177,6 +177,16 @@ export interface DemoScene {
   verifiedAt?: string;
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
+  /**
+   * Footage-kilde for scenen. 'capture' (default) = ekte opptak (web/Mac/iOS/
+   * simulator). 'broll' = AI-generert kinematisk klipp (Higgsfield/fal Seedance)
+   * — kroken/konteksten/outroen som et skjermopptak ikke kan gi. En broll-scene
+   * lagrer det genererte klippet i recordingPath, så den flyter gjennom nøyaktig
+   * samme eksport (mockupRenderVideo) som en fanget scene — ingen egen rørledning.
+   */
+  source?: 'capture' | 'broll';
+  /** Prompt brukt til å generere broll-klippet (for re-generering + sporbarhet). */
+  brollPrompt?: string;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
    *  capture-screenshot. Når tomt viser kortet en live mini-preview. */
   thumbnailDataUrl?: string;
@@ -233,6 +243,9 @@ export interface DemoBranding {
   brandColor?: string;
   /** Logo (URL eller data:image) vist i guide-headeren. */
   logoUrl?: string;
+  /** Flere logo-kandidater fra skann (header-logo, ikoner, og:image) — lar
+   *  brukeren velge når siden har flere. */
+  logoCandidates?: string[];
   /** White-label: skjul «Powered by»-vannmerke (typisk betalt tier). */
   hidePoweredBy?: boolean;
 }
@@ -305,6 +318,24 @@ export interface DemoProject {
   /** Fase 1b: viewport-screenshots fra scan, per scroll-bånd. Brukes til presis
    *  preview-render (riktig del av siden + hotspot oppå, perfekt align). */
   scanShots?: Array<{ scrollPct: number; dataUrl: string }>;
+  /** Mobil-bredde-screenshots (ekte responsiv layout) fra samme scan. Brukes for
+   *  iPhone/iPad-preview og fallback, så portrett-enheter viser mobil-layouten
+   *  i stedet for en nedskalert desktop-side. */
+  scanShotsMobile?: Array<{ scrollPct: number; dataUrl: string }>;
+  /**
+   * «Product Brain» — dyp produkt-kontekst fra et FLERSIDES skann (forside +
+   * /features + /pricing + /about …), hentet ÉN gang og delt av ALLE AI-
+   * generatorene: manus, AI-regi, b-roll-prompter. Forankrer hele studioet i hva
+   * produktet FAKTISK er (funksjoner, målgruppe, differensiatorer) — ikke bare
+   * forsidens første avsnitt, og aldri gjetting ut fra navnet.
+   */
+  productBrain?: string;
+  /** URL-en Product Brain ble bygget for (invalideres hvis prosjekt-URL endres). */
+  productBrainUrl?: string;
+  /** Om Product Brain inkluderte vision av FAKTISKE app-skjermer (ofte innlogget)
+   *  — ikke bare markedsføringstekst. Lar den oppgraderes marketing-only → dyp
+   *  når brukeren har fanget ekte skjermer fra inne i produktet. */
+  productBrainHasScreens?: boolean;
   /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
    *  required action automatisk. Default 'manual'. */
   continueMode?: 'manual' | 'auto';
@@ -369,7 +400,7 @@ export const ACTION_MATCH_LABELS: Record<ActionMatch, string> = {
   match: 'Match', warning: 'Warning', unverified: 'Ikke verifisert',
 };
 export const ACTION_MATCH_COLORS: Record<ActionMatch, string> = {
-  match: '#10b981', warning: '#f59e0b', unverified: '#9a9186',
+  match: '#10b981', warning: '#f59e0b', unverified: '#9a94a8',
 };
 
 function normalizeSelector(s: string): string {
@@ -427,10 +458,14 @@ export function validateScene(s: DemoScene): { ready: boolean; issues: string[] 
  */
 export interface ExportIssue { index: number; title: string; issue: string }
 export interface ExportReadiness { ready: boolean; blocking: ExportIssue[]; warnings: ExportIssue[] }
-export function exportReadiness(scenes: DemoScene[]): ExportReadiness {
+export function exportReadiness(scenes: DemoScene[], format?: DemoProject['format']): ExportReadiness {
   const blocking: ExportIssue[] = [];
   const warnings: ExportIssue[] = [];
   if (!scenes.length) { blocking.push({ index: -1, title: '', issue: 'Ingen scener i demoen' }); return { ready: false, blocking, warnings }; }
+  // Format-orientering én gang (for per-scene beskjærings-varsel), og om noen
+  // scener i det hele tatt er tatt opp (for å flagge de som utelates av montasjen).
+  const fo = format ? formatOrientation(format) : null;
+  const anyRecorded = scenes.some((s) => s.recordingPath);
   scenes.forEach((s, i) => {
     const title = s.title || `Scene ${i + 1}`;
     if (!s.duration || s.duration <= 0) blocking.push({ index: i, title, issue: 'Ugyldig varighet' });
@@ -439,6 +474,19 @@ export function exportReadiness(scenes: DemoScene[]): ExportReadiness {
     if (s.actionType && s.actionType !== 'wait' && !hasTarget) warnings.push({ index: i, title, issue: 'Handling uten target/hotspot' });
     if (s.actionType && s.actionType !== 'wait' && s.detectedSelector && s.targetSelector && s.detectedSelector !== s.targetSelector) {
       warnings.push({ index: i, title, issue: 'Uverifisert handling (detected ≠ expected)' });
+    }
+    // Orientering vs. eksport-format: en liggende scene i 9:16 (eller stående i
+    // 16:9) beskjæres. 1:1 (square) passer alt → hoppes over.
+    if (fo && fo !== 'square') {
+      const so = sceneOrientation(s);
+      if (so !== 'square' && so !== fo) {
+        warnings.push({ index: i, title, issue: `${so === 'portrait' ? 'Stående' : 'Liggende'} scene i ${format}-format — innholdet beskjæres` });
+      }
+    }
+    // Montasje-eksport bruker kun scener med opptak; en uoppttatt scene faller
+    // stille ut av videoen. Flagg det når NOEN scener er tatt opp (blandet).
+    if (anyRecorded && !s.recordingPath) {
+      warnings.push({ index: i, title, issue: 'Ingen opptak — utelates fra videoen' });
     }
   });
   return { ready: blocking.length === 0, blocking, warnings };
@@ -450,6 +498,37 @@ export const DEVICE_LABELS: Record<DemoDevice, string> = {
 
 export function viewportForDevice(device: DemoDevice): DemoViewport {
   return device === 'macbook' ? 'desktop' : device === 'ipad' ? 'tablet' : 'mobile';
+}
+
+// ── Format ↔ enhets-orientering: fang «filmer bredt, eksporterer smalt» før Export ──
+export type Orientation = 'landscape' | 'portrait' | 'square';
+
+export function formatOrientation(format: DemoProject['format']): Orientation {
+  return format === '16:9' ? 'landscape' : format === '1:1' ? 'square' : 'portrait'; // 9:16, 4:5 → stående
+}
+export function sceneOrientation(scene: Pick<DemoScene, 'device' | 'orientation'>): Orientation {
+  if (scene.device === 'macbook') return 'landscape';
+  if (scene.device === 'iphone') return 'portrait';
+  return scene.orientation ?? 'portrait'; // iPad følger sin egen orientering
+}
+
+export interface FormatMismatch {
+  formatOrientation: Exclude<Orientation, 'square'>;
+  conflicting: number;                 // antall scener i konflikt med formatet
+  total: number;
+  suggestFormat: DemoProject['format']; // format som matcher flertallet av scenene
+}
+
+/** Returner en mismatch hvis noen scener har motsatt orientering av eksport-formatet
+ *  (f.eks. MacBook-scener [liggende] mot 9:16 [stående] → innhold beskjæres). null = ok. */
+export function detectFormatMismatch(scenes: DemoScene[], format: DemoProject['format']): FormatMismatch | null {
+  const fo = formatOrientation(format);
+  if (fo === 'square' || scenes.length === 0) return null; // 1:1 passer alt
+  const conflicting = scenes.filter((s) => sceneOrientation(s) !== fo).length;
+  if (conflicting === 0) return null;
+  const landscape = scenes.filter((s) => sceneOrientation(s) === 'landscape').length;
+  const suggestFormat: DemoProject['format'] = landscape > scenes.length / 2 ? '16:9' : '9:16';
+  return { formatOrientation: fo, conflicting, total: scenes.length, suggestFormat };
 }
 
 /** Enkel, kollisjonssikker-nok id uten eksterne deps (Math.random unngås ikke
@@ -1167,8 +1246,8 @@ export interface DomScanResult {
   elements: ScannedElement[];
   /** JS-rendret synlig tekst (rikere AI-kontekst enn anonym reqwest). */
   pageText?: string;
-  /** Auto-uthentet merkevare fra siden (navn/logo/farger). */
-  branding?: DemoBranding & { palette?: string[] };
+  /** Auto-uthentet merkevare fra siden (navn/logo/farger/fonter). */
+  branding?: DemoBranding & { palette?: string[]; fonts?: string[] };
   /** Fase 1b: viewport-screenshots per scroll-bånd (presis preview-render). */
   shots?: Array<{ scrollPct: number; dataUrl: string }>;
   viewport?: { w: number; h: number };
@@ -1191,6 +1270,19 @@ export function pickShot(
     if (d < bestD) { bestD = d; best = s; }
   }
   return best.dataUrl;
+}
+
+/** Som pickShot, men velger mobil-båndene for portrett-enheter (iPhone/iPad)
+ *  når de finnes — så preview/fallback viser sidens EKTE mobil-layout i stedet
+ *  for en nedskalert desktop-side. Faller tilbake til desktop-shots. */
+export function pickShotForDevice(
+  project: { scanShots?: Array<{ scrollPct: number; dataUrl: string }>; scanShotsMobile?: Array<{ scrollPct: number; dataUrl: string }> } | undefined,
+  device: DemoDevice,
+  scrollPct: number | undefined,
+): string | null {
+  const portrait = device === 'iphone' || device === 'ipad';
+  const shots = portrait && project?.scanShotsMobile?.length ? project.scanShotsMobile : project?.scanShots;
+  return pickShot(shots, scrollPct);
 }
 
 /** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */

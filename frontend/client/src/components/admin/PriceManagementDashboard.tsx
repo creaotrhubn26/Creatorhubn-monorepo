@@ -62,6 +62,7 @@ import {
   StatusChip,
   useIsMobile,
 } from './design-system';
+import DOMPurify from 'dompurify';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -222,6 +223,7 @@ type PriceManagementSection =
   | 'enterprise'
   | 'post-agent'
   | 'lead-map';
+;
 
 interface PriceManagementDashboardProps {
   onMeetingCreate?: (meeting: WorkflowPayload) => void;
@@ -1544,7 +1546,7 @@ export default function PriceManagementDashboard({
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
           <Tab icon={<MoneyIcon />} label="Post Agent" />
           <Tab icon={<MoneyIcon />} label="Lead Map" />
-        </Tabs>
+</Tabs>
       </Box>
 
       <TabPanel value={tabValue} index={0}>
@@ -2501,6 +2503,9 @@ export default function PriceManagementDashboard({
         <LeadMapPricingPanel />
       </TabPanel>
 
+
+
+
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingFeature ? 'Rediger feature' : 'Legg til ny feature'}</DialogTitle>
         <DialogContent>
@@ -2950,7 +2955,7 @@ export default function PriceManagementDashboard({
                 <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>
                   <Box
                     sx={{ color: creatorHubEmailSettings.email.theme.bodyText, lineHeight: 1.9, fontSize: '0.98rem' }}
-                    dangerouslySetInnerHTML={{ __html: editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>' }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>') }}
                   />
                   <Box
                     sx={{

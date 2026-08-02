@@ -26,9 +26,9 @@ import { ttsProxy } from '../../services/claudeProxyService';
 import { translateForVoiceover } from './demoStudioAI';
 
 const C = {
-  navBg: '#1c1a18', bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
-  lineStrong: '#ddd6cc', ink: '#1d1b19', inkSoft: '#6b6358', inkFaint: '#9a9186',
-  accent: '#ef8a5d', dark: '#2f2a26', green: '#4a9d6b', red: '#d9534f',
+  navBg: '#17141f', bg: '#faf8f7', panel: '#ffffff', cream: '#f6f4f9', line: '#e7e2ee',
+  lineStrong: '#d8d2e2', ink: '#1e1b2e', inkSoft: '#6b6480', inkFaint: '#9a94a8',
+  accent: '#8b5cf6', dark: '#241d42', green: '#22c55e', red: '#d9534f',
   font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif',
 };
 
@@ -75,6 +75,9 @@ export function ExportView() {
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [fileMsg, setFileMsg] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  // Lange operasjoner (Playwright-opptak ~1–3 min, Resolve-voiceover) — uten dette
+  // kunne dobbelt-klikk starte parallelle jobber som kolliderte om samme runtime-mappe.
+  const [longOp, setLongOp] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const [publishedId, setPublishedId] = useState<string | null>(null);
   const [views, setViews] = useState<number | null>(null);
@@ -130,7 +133,8 @@ export function ExportView() {
 
   /** Fase 4: kjør demoen i Chromium via Playwright + ta opp deterministisk video. */
   const recordWithPlaywright = async () => {
-    if (!project) return;
+    if (!project || longOp) return;
+    setLongOp(true);
     setFileMsg('Sjekker Playwright…');
     try {
       const st = await playwrightStatus();
@@ -184,6 +188,7 @@ export function ExportView() {
         void openPath(`${st.runtimeDir}/demo-video`).catch(() => {});
       }
     } catch (e) { setFileMsg('Feil ved Playwright-opptak: ' + String(e)); }
+    finally { setLongOp(false); }
   };
 
   const exportGuide = async () => {
@@ -237,9 +242,10 @@ export function ExportView() {
   };
 
   const voiceoverResolve = async () => {
-    if (!project) return;
+    if (!project || longOp) return;
     const narrations = project.scenes.filter((s) => s.narration?.trim()).map((s) => s.narration!.trim());
     if (!narrations.length) { setFileMsg('Ingen manus å lese opp — skriv narration på scenene først.'); return; }
+    setLongOp(true);
     setFileMsg('Oversetter manus → engelsk + genererer voiceover i Resolve…');
     let texts = narrations;
     try { texts = await translateForVoiceover(narrations, 'engelsk'); } catch { /* behold original */ }
@@ -248,6 +254,7 @@ export function ExportView() {
       const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: project.voiceModel || 'Female 1', audioTrack: 7, isStudio: true }, false);
       setFileMsg(sum.succeeded ? '✓ Voiceover generert i Resolve på Fairlight-spor A7' : 'Voiceover-kjøring fullførte ikke — sjekk at Resolve Studio kjører med aktiv timeline.');
     } catch (e) { setFileMsg('Feil ved Resolve-voiceover: ' + String(e)); }
+    finally { setLongOp(false); }
   };
 
   const exportThumbnail = async () => {
@@ -266,7 +273,7 @@ export function ExportView() {
   const scenes = project.scenes;
   const recorded = scenes.filter((s) => s.recordingPath);
   // Integritets-gate (D): blokkér video-eksport ved alvorlige mangler.
-  const readiness = exportReadiness(scenes);
+  const readiness = exportReadiness(scenes, project.format);
   const canExport = recorded.length > 0 && readiness.ready;
 
   /**
@@ -305,7 +312,7 @@ export function ExportView() {
     if (toggles.voiceover && recorded.some((s) => s.narration?.trim())) {
       const vo = await synthesizeVoiceover(recorded);
       if (vo.paths.some(Boolean)) voiceover = vo.paths;
-      if (vo.failed > 0) setFileMsg(`⚠ ${vo.failed} voiceover-spor kunne ikke lages — eksporterer ${vo.paths.some(Boolean) ? 'med de som lyktes' : 'uten voiceover'}.`);
+      if (vo.failed > 0) setFileMsg(`${vo.failed} voiceover-spor kunne ikke lages — eksporterer ${vo.paths.some(Boolean) ? 'med de som lyktes' : 'uten voiceover'}.`);
     }
     // Lytt på fremdrift fra pipelinen. percent er 0–100; result-eventet legger
     // outputPath TOP-LEVEL (ikke i .value).
@@ -380,7 +387,7 @@ export function ExportView() {
               <div key={`b${i}`} style={{ fontSize: 12, color: '#9a2b2b', marginBottom: 2 }}>✕ {b.index >= 0 ? `Scene ${b.index + 1} (${b.title}): ` : ''}{b.issue}</div>
             ))}
             {readiness.warnings.map((w, i) => (
-              <div key={`w${i}`} style={{ fontSize: 12, color: '#8a6516', marginBottom: 2 }}>⚠ {w.index >= 0 ? `Scene ${w.index + 1} (${w.title}): ` : ''}{w.issue}</div>
+              <div key={`w${i}`} style={{ fontSize: 12, color: '#8a6516', marginBottom: 2 }}>△ {w.index >= 0 ? `Scene ${w.index + 1} (${w.title}): ` : ''}{w.issue}</div>
             ))}
             {!readiness.ready && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 6 }}>Video-eksport er deaktivert til de blokkerende punktene er løst. Tekst/bilde-leveranser kan fortsatt lages.</div>}
           </div>
@@ -444,7 +451,7 @@ export function ExportView() {
           </div>
           {new Set(recorded.map((s) => s.device)).size > 1 && (
             <div style={{ marginTop: 8, fontSize: 11.5, color: '#8a6516' }}>
-              ⚠ Scenene har ulike enheter — hele videoen rammes som første scenes enhet ({recorded[0]?.device}). Del opp i flere eksporter for enhets-riktige rammer.
+              △ Scenene har ulike enheter — hele videoen rammes som første scenes enhet ({recorded[0]?.device}). Del opp i flere eksporter for enhets-riktige rammer.
             </div>
           )}
         </Section>
@@ -457,7 +464,7 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportPlaywright()}>Playwright-skript (.mjs)</button>
-            <button style={{ ...outlineBtn }} onClick={() => void recordWithPlaywright()}>Spill inn video (Playwright)</button>
+            <button style={{ ...outlineBtn }} disabled={longOp} onClick={() => void recordWithPlaywright()}>{longOp ? 'Kjører…' : 'Spill inn video (Playwright)'}</button>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, cursor: 'pointer' }} title="Legg opptaket inni en MacBook/iPad/iPhone-ramme (bruker prosjektets enhet)">
               <input type="checkbox" checked={withFrame} onChange={(e) => setWithFrame(e.target.checked)} /> Ta med device-ramme
             </label>
@@ -465,7 +472,7 @@ export function ExportView() {
             <select style={{ ...brandInp }} value={project.voiceModel ?? 'Female 1'} onChange={(e) => setProjectField('voiceModel', e.target.value)} title="Resolve AI-stemme">
               {VOICE_MODELS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
-            <button style={{ ...outlineBtn }} onClick={() => void voiceoverResolve()}>Voiceover i Resolve (AI)</button>
+            <button style={{ ...outlineBtn }} disabled={longOp} onClick={() => void voiceoverResolve()}>{longOp ? 'Kjører…' : 'Voiceover i Resolve (AI)'}</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 11.5, color: C.inkFaint }}>
             .srt fra manus + varigheter · Manus åpnes i print-vindu (lagre som PDF) · Thumbnail i valgt format.
@@ -516,9 +523,32 @@ export function ExportView() {
 
         {/* Eksport-knapp + progress */}
         <div style={{ marginTop: 28, borderTop: `1px solid ${C.line}`, paddingTop: 20 }}>
-          {!canExport && (
+          {recorded.length === 0 && (
             <div style={{ background: '#fdf3e7', border: `1px solid #f0d9b8`, borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#8a6515', marginBottom: 16 }}>
               Ingen scener har opptak ennå. Ta opp scener i <strong>Guided Recorder</strong> først — eksport monterer opptakene til én produktvideo.
+            </div>
+          )}
+          {/* Innholds-QA (D): forklar HVORFOR eksport er blokkert i stedet for en
+              stille deaktivert knapp — og vis ikke-blokkerende advarsler så en
+              gjennomtenkt demo kan rettes før den produseres. */}
+          {readiness.blocking.length > 0 && (
+            <div style={{ background: '#fdecec', border: '1px solid #f0b8b8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#9a2b2b', marginBottom: 6 }}>Kan ikke eksportere — {readiness.blocking.length} blokkerende {readiness.blocking.length === 1 ? 'sak' : 'saker'}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#7a3535', lineHeight: 1.6 }}>
+                {readiness.blocking.map((b, i) => (
+                  <li key={i}>{b.index >= 0 ? `Scene ${b.index + 1}${b.title ? ` (${b.title})` : ''}: ` : ''}{b.issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {readiness.warnings.length > 0 && (
+            <div style={{ background: '#fdf6e7', border: '1px solid #f0dca8', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6515', marginBottom: 6 }}>△ {readiness.warnings.length} advarsel{readiness.warnings.length === 1 ? '' : 'er'} (eksport tillatt)</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#7a6015', lineHeight: 1.6 }}>
+                {readiness.warnings.map((w, i) => (
+                  <li key={i}>{w.index >= 0 ? `Scene ${w.index + 1}${w.title ? ` (${w.title})` : ''}: ` : ''}{w.issue}</li>
+                ))}
+              </ul>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -576,7 +606,7 @@ function fmtDur(sec: number) {
 const card: React.CSSProperties = { border: `2px solid ${C.line}`, borderRadius: 10, padding: '12px 10px', cursor: 'pointer', textAlign: 'center' };
 const pill: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 20, padding: '7px 16px', cursor: 'pointer', fontSize: 13, background: '#fff' };
 const pillActive: React.CSSProperties = { borderColor: C.accent, background: C.cream, fontWeight: 600 };
-const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer', boxShadow: '0 2px 6px rgba(217,106,58,0.32)' };
+const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer', boxShadow: '0 2px 6px rgba(124,58,237,0.32)' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '8px 14px', borderRadius: 8, cursor: 'pointer' };
 const brandInp: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 

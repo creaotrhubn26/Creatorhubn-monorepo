@@ -1,0 +1,627 @@
+/**
+ * marketing-segments-service.ts
+ *
+ * Fase 1 av «målrettet markedsføring»-broen (audience graph): definer et segment
+ * → resolver medlemmer (e-poster) → materialiser til en ad-audience → lagre
+ * koblingen (grafkanten) i marketing_segment_audiences, så den kan refreshes og
+ * attribueres per segment senere.
+ *
+ * MVP-kilde: `role_room_industry_targets` (Tier-1/ICP-CRM med e-post).
+ * Kilden 'leadgrid_leads' (crm_customers) er reservert for fase 2 — de radene er
+ * bedrifter fra kart/Brønnøysund UTEN e-postkolonne, så de kan ikke materialiseres
+ * til Google Customer Match før en kontakt-/e-postkilde finnes. resolve returnerer
+ * tom liste + note for den kilden i stedet for å feile stille.
+ *
+ * Tabellene self-heales lazily (Render har ingen preDeploy-migrasjon).
+ */
+
+import type { Pool } from "pg";
+import {
+  createGoogleCustomerMatchAudience,
+  syncGoogleCustomerMatchMembers,
+} from "./client-google-customer-match.js";
+import { createMetaCustomAudience, syncMetaCustomAudienceMembers } from "./client-meta-suite.js";
+import {
+  createLinkedinMatchedAudience,
+  syncLinkedinMatchedAudienceMembers,
+} from "./client-linkedin-suite.js";
+
+export type MarketingSegmentSource = "industry_targets" | "leadgrid_leads";
+
+export interface MarketingSegmentFilters {
+  tiers?: string[];
+  segments?: string[];
+  statuses?: string[];
+}
+
+export interface MarketingSegment {
+  id: string;
+  userId: string;
+  name: string;
+  source: MarketingSegmentSource;
+  filters: MarketingSegmentFilters;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const VALID_TIERS = new Set(["T1", "T2", "T3"]);
+const VALID_STATUSES = new Set([
+  "cold",
+  "warm",
+  "hot",
+  "contacted",
+  "replied",
+  "meeting",
+  "won",
+  "lost",
+]);
+
+let tablesReady = false;
+export async function ensureTables(pool: Pool): Promise<void> {
+  if (tablesReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS marketing_segments (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL,
+      name        VARCHAR(120) NOT NULL,
+      source      VARCHAR(32) NOT NULL DEFAULT 'industry_targets',
+      filters     JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_marketing_segments_user ON marketing_segments (user_id);
+    CREATE TABLE IF NOT EXISTS marketing_segment_audiences (
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      segment_id            UUID NOT NULL REFERENCES marketing_segments(id) ON DELETE CASCADE,
+      platform              VARCHAR(32) NOT NULL,
+      external_audience_id  TEXT,
+      member_count          INTEGER NOT NULL DEFAULT 0,
+      status                VARCHAR(24) NOT NULL DEFAULT 'pending',
+      last_error            TEXT,
+      last_synced_at        TIMESTAMPTZ,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (segment_id, platform)
+    );
+    CREATE INDEX IF NOT EXISTS idx_marketing_segment_audiences_segment
+      ON marketing_segment_audiences (segment_id);
+    -- Refresh (fase 3): lagre HVOR (konto) + HVEM (OAuth-bruker) audiencen ble
+    -- laget med, så cronen kan re-uploade medlemmer til den EKSISTERENDE audiencen.
+    ALTER TABLE marketing_segment_audiences ADD COLUMN IF NOT EXISTS account_ref TEXT;
+    ALTER TABLE marketing_segment_audiences ADD COLUMN IF NOT EXISTS producer_user_id UUID;
+    -- Attribusjon (fase 4): segment → annonsekampanje-lenke, så ROAS/spend fra
+    -- ads_attribution_daily kan rulles opp per segment.
+    CREATE TABLE IF NOT EXISTS marketing_segment_campaigns (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      segment_id   UUID NOT NULL REFERENCES marketing_segments(id) ON DELETE CASCADE,
+      campaign_id  UUID NOT NULL REFERENCES ads_campaigns(id) ON DELETE CASCADE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (segment_id, campaign_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_marketing_segment_campaigns_segment
+      ON marketing_segment_campaigns (segment_id);
+  `);
+  tablesReady = true;
+}
+
+interface SegmentRow {
+  id: string;
+  user_id: string;
+  name: string;
+  source: string;
+  filters: MarketingSegmentFilters | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToSegment(r: SegmentRow): MarketingSegment {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    name: r.name,
+    source: r.source === "leadgrid_leads" ? "leadgrid_leads" : "industry_targets",
+    filters: r.filters ?? {},
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function listSegments(pool: Pool, userId: string): Promise<MarketingSegment[]> {
+  await ensureTables(pool);
+  const r = await pool.query<SegmentRow>(
+    `SELECT * FROM marketing_segments WHERE user_id = $1 ORDER BY created_at DESC`,
+    [userId],
+  );
+  return r.rows.map(rowToSegment);
+}
+
+export async function getSegment(
+  pool: Pool,
+  userId: string,
+  id: string,
+): Promise<MarketingSegment | null> {
+  await ensureTables(pool);
+  const r = await pool.query<SegmentRow>(
+    `SELECT * FROM marketing_segments WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  return r.rows[0] ? rowToSegment(r.rows[0]) : null;
+}
+
+export async function createSegment(
+  pool: Pool,
+  userId: string,
+  input: { name: string; source?: string; filters?: MarketingSegmentFilters },
+): Promise<MarketingSegment> {
+  await ensureTables(pool);
+  const source = input.source === "leadgrid_leads" ? "leadgrid_leads" : "industry_targets";
+  const r = await pool.query<SegmentRow>(
+    `INSERT INTO marketing_segments (user_id, name, source, filters)
+     VALUES ($1, $2, $3, $4::jsonb) RETURNING *`,
+    [userId, input.name.slice(0, 120), source, JSON.stringify(input.filters ?? {})],
+  );
+  return rowToSegment(r.rows[0]);
+}
+
+export async function deleteSegment(pool: Pool, userId: string, id: string): Promise<boolean> {
+  await ensureTables(pool);
+  const r = await pool.query(`DELETE FROM marketing_segments WHERE id = $1 AND user_id = $2`, [
+    id,
+    userId,
+  ]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export interface SegmentAudienceRow {
+  platform: string;
+  externalAudienceId: string | null;
+  memberCount: number;
+  status: string;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+}
+
+export async function listSegmentAudiences(
+  pool: Pool,
+  segmentId: string,
+): Promise<SegmentAudienceRow[]> {
+  await ensureTables(pool);
+  const r = await pool.query(
+    `SELECT platform, external_audience_id, member_count, status, last_error, last_synced_at
+       FROM marketing_segment_audiences WHERE segment_id = $1`,
+    [segmentId],
+  );
+  return r.rows.map((x) => ({
+    platform: x.platform,
+    externalAudienceId: x.external_audience_id,
+    memberCount: x.member_count,
+    status: x.status,
+    lastError: x.last_error,
+    lastSyncedAt: x.last_synced_at,
+  }));
+}
+
+/** Resolver segment-medlemmer til unike, normaliserte e-poster. */
+export async function resolveSegmentMembers(
+  pool: Pool,
+  segment: MarketingSegment,
+): Promise<{ emails: string[]; total: number; note?: string }> {
+  await ensureTables(pool);
+  if (segment.source !== "industry_targets") {
+    return {
+      emails: [],
+      total: 0,
+      note: "Kilde 'leadgrid_leads' krever en e-postkilde (fase 2) — crm_customers har ingen e-postkolonne.",
+    };
+  }
+
+  const where: string[] = ["user_id = $1", "email IS NOT NULL", "TRIM(email) <> ''"];
+  const params: unknown[] = [segment.userId];
+  const f = segment.filters ?? {};
+
+  const tiers = (f.tiers ?? []).filter((t) => VALID_TIERS.has(t));
+  if (tiers.length) {
+    params.push(tiers);
+    where.push(`tier = ANY($${params.length})`);
+  }
+  const segs = (f.segments ?? []).filter((s) => typeof s === "string" && /^[a-z_]{1,40}$/.test(s));
+  if (segs.length) {
+    params.push(segs);
+    where.push(`segment = ANY($${params.length})`);
+  }
+  const statuses = (f.statuses ?? []).filter((s) => VALID_STATUSES.has(s));
+  if (statuses.length) {
+    params.push(statuses);
+    where.push(`status = ANY($${params.length})`);
+  }
+
+  const r = await pool.query<{ email: string }>(
+    `SELECT DISTINCT LOWER(TRIM(email)) AS email
+       FROM role_room_industry_targets WHERE ${where.join(" AND ")}`,
+    params,
+  );
+  const emails = r.rows.map((x) => x.email).filter((e): e is string => Boolean(e));
+  return { emails, total: emails.length };
+}
+
+export interface MaterializeResult {
+  ok: boolean;
+  platform: string;
+  memberCount: number;
+  externalAudienceId?: string;
+  error?: string;
+  note?: string;
+}
+
+export type MaterializePlatform =
+  | "google_customer_match"
+  | "meta_custom_audience"
+  | "linkedin_matched_audience";
+
+/** Normalisert resultat fra en plattform-push (skjuler ulike felt-navn:
+ *  userListResource / audienceId / segmentUrn). */
+type PushResult =
+  | { ok: true; externalId: string; uploadCount: number }
+  | { ok: false; error: string };
+
+/**
+ * Delt materialiserings-kjerne: resolver medlemmer → pusher til plattformen →
+ * lagrer grafkanten (marketing_segment_audiences). Idempotent per (segment,
+ * plattform). Plattform-spesifikk push injiseres, så hashing/OAuth ligger i de
+ * eksisterende client-*-suite-funksjonene.
+ */
+async function runMaterialize(
+  pool: Pool,
+  segment: MarketingSegment,
+  platform: MaterializePlatform,
+  accountRef: string,
+  producerUserId: string,
+  push: (identifiers: Array<{ email: string }>) => Promise<PushResult>,
+): Promise<MaterializeResult> {
+  await ensureTables(pool);
+
+  const record = async (
+    status: string,
+    memberCount: number,
+    externalId: string | null,
+    error: string | null,
+  ): Promise<void> => {
+    await pool.query(
+      `INSERT INTO marketing_segment_audiences
+         (segment_id, platform, external_audience_id, member_count, status, last_error, last_synced_at, account_ref, producer_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $5 = 'synced' THEN NOW() ELSE NULL END, $7, $8::uuid)
+       ON CONFLICT (segment_id, platform) DO UPDATE SET
+         external_audience_id = COALESCE(EXCLUDED.external_audience_id, marketing_segment_audiences.external_audience_id),
+         member_count = EXCLUDED.member_count,
+         status = EXCLUDED.status,
+         last_error = EXCLUDED.last_error,
+         last_synced_at = CASE WHEN EXCLUDED.status = 'synced' THEN NOW()
+                               ELSE marketing_segment_audiences.last_synced_at END,
+         account_ref = COALESCE(EXCLUDED.account_ref, marketing_segment_audiences.account_ref),
+         producer_user_id = COALESCE(EXCLUDED.producer_user_id, marketing_segment_audiences.producer_user_id)`,
+      [segment.id, platform, externalId, memberCount, status, error, accountRef, producerUserId],
+    );
+  };
+
+  const { emails, note } = await resolveSegmentMembers(pool, segment);
+  if (emails.length === 0) {
+    await record("failed", 0, null, note ?? "Ingen e-poster i segmentet.");
+    return { ok: false, platform, memberCount: 0, error: "no_members", note };
+  }
+
+  const result = await push(emails.map((e) => ({ email: e })));
+  if (!result.ok) {
+    await record("failed", emails.length, null, result.error);
+    return { ok: false, platform, memberCount: emails.length, error: result.error };
+  }
+
+  await record("synced", result.uploadCount, result.externalId, null);
+  return { ok: true, platform, memberCount: result.uploadCount, externalAudienceId: result.externalId };
+}
+
+const desc = (segment: MarketingSegment): string =>
+  `Målrettet markedsføring — segment «${segment.name}»`;
+
+/** Materialiser til Google Customer Match. */
+export async function materializeToGoogleCustomerMatch(
+  pool: Pool,
+  args: { segment: MarketingSegment; customerId: string; producerUserId: string },
+): Promise<MaterializeResult> {
+  const { segment, customerId, producerUserId } = args;
+  return runMaterialize(pool, segment, "google_customer_match", customerId, producerUserId, async (identifiers) => {
+    const r = await createGoogleCustomerMatchAudience(pool, {
+      producerUserId,
+      customerId,
+      name: `Segment: ${segment.name}`,
+      sourceDescription: desc(segment),
+      identifiers,
+    });
+    return r.ok
+      ? { ok: true, externalId: r.userListResource, uploadCount: r.uploadCount }
+      : { ok: false, error: r.error };
+  });
+}
+
+/** Materialiser til Meta Custom Audience (adAccountId = act_XXXXXXXXX). */
+export async function materializeToMetaCustomAudience(
+  pool: Pool,
+  args: { segment: MarketingSegment; adAccountId: string; producerUserId: string },
+): Promise<MaterializeResult> {
+  const { segment, adAccountId, producerUserId } = args;
+  return runMaterialize(pool, segment, "meta_custom_audience", adAccountId, producerUserId, async (identifiers) => {
+    const r = await createMetaCustomAudience(pool, {
+      producerUserId,
+      adAccountId,
+      name: `Segment: ${segment.name}`,
+      sourceDescription: desc(segment),
+      identifiers,
+    });
+    return r.ok
+      ? { ok: true, externalId: r.audienceId, uploadCount: r.uploadCount }
+      : { ok: false, error: r.error };
+  });
+}
+
+/** Materialiser til LinkedIn Matched Audience (adAccountUrn = urn:li:sponsoredAccount:X). */
+export async function materializeToLinkedinMatchedAudience(
+  pool: Pool,
+  args: { segment: MarketingSegment; adAccountUrn: string; producerUserId: string },
+): Promise<MaterializeResult> {
+  const { segment, adAccountUrn, producerUserId } = args;
+  return runMaterialize(pool, segment, "linkedin_matched_audience", adAccountUrn, producerUserId, async (identifiers) => {
+    const r = await createLinkedinMatchedAudience(pool, {
+      producerUserId,
+      adAccountUrn,
+      name: `Segment: ${segment.name}`,
+      sourceDescription: desc(segment),
+      identifiers,
+    });
+    return r.ok
+      ? { ok: true, externalId: r.segmentUrn, uploadCount: r.uploadCount }
+      : { ok: false, error: r.error };
+  });
+}
+
+async function markRefresh(
+  pool: Pool,
+  segmentId: string,
+  platform: string,
+  ok: boolean,
+  memberCount: number,
+  error: string | null,
+): Promise<void> {
+  await pool.query(
+    `UPDATE marketing_segment_audiences
+        SET member_count = $3, status = $4, last_error = $5,
+            last_synced_at = CASE WHEN $4 = 'synced' THEN NOW() ELSE last_synced_at END
+      WHERE segment_id = $1 AND platform = $2`,
+    [segmentId, platform, memberCount, ok ? "synced" : "failed", error],
+  );
+}
+
+/**
+ * Fase 3 — refresh: re-uploader medlemmer til hver EKSISTERENDE synkroniserte
+ * audience (via sync*-funksjonene, som treffer external_audience_id — ingen nye
+ * audiences opprettes). Krever at account_ref + producer_user_id ble lagret ved
+ * materialisering. Kalt av den ukentlige cronen.
+ */
+export async function refreshSyncedAudiences(
+  pool: Pool,
+): Promise<{ processed: number; ok: number; failed: number }> {
+  await ensureTables(pool);
+  const rows = await pool.query<{
+    segment_id: string;
+    platform: string;
+    external_audience_id: string;
+    account_ref: string;
+    producer_user_id: string;
+    user_id: string;
+    name: string;
+    source: string;
+    filters: MarketingSegmentFilters | null;
+  }>(
+    `SELECT a.segment_id, a.platform, a.external_audience_id, a.account_ref, a.producer_user_id,
+            s.user_id, s.name, s.source, s.filters
+       FROM marketing_segment_audiences a
+       JOIN marketing_segments s ON s.id = a.segment_id
+      WHERE a.status = 'synced'
+        AND a.external_audience_id IS NOT NULL
+        AND a.account_ref IS NOT NULL
+        AND a.producer_user_id IS NOT NULL`,
+  );
+
+  let okCount = 0;
+  let failedCount = 0;
+  for (const r of rows.rows) {
+    const segment: MarketingSegment = {
+      id: r.segment_id,
+      userId: r.user_id,
+      name: r.name,
+      source: r.source === "leadgrid_leads" ? "leadgrid_leads" : "industry_targets",
+      filters: r.filters ?? {},
+      createdAt: "",
+      updatedAt: "",
+    };
+    const { emails } = await resolveSegmentMembers(pool, segment);
+    if (emails.length === 0) {
+      failedCount++;
+      await markRefresh(pool, r.segment_id, r.platform, false, 0, "no_members");
+      continue;
+    }
+    const identifiers = emails.map((e) => ({ email: e }));
+
+    let result: { ok: true; uploadCount: number } | { ok: false; error: string };
+    if (r.platform === "google_customer_match") {
+      result = await syncGoogleCustomerMatchMembers(pool, {
+        producerUserId: r.producer_user_id,
+        customerId: r.account_ref,
+        userListResource: r.external_audience_id,
+        identifiers,
+      });
+    } else if (r.platform === "meta_custom_audience") {
+      result = await syncMetaCustomAudienceMembers(pool, {
+        producerUserId: r.producer_user_id,
+        audienceId: r.external_audience_id,
+        identifiers,
+      });
+    } else if (r.platform === "linkedin_matched_audience") {
+      result = await syncLinkedinMatchedAudienceMembers(pool, {
+        producerUserId: r.producer_user_id,
+        segmentUrn: r.external_audience_id,
+        identifiers,
+      });
+    } else {
+      failedCount++;
+      continue;
+    }
+
+    if (result.ok) {
+      okCount++;
+      await markRefresh(pool, r.segment_id, r.platform, true, result.uploadCount, null);
+    } else {
+      failedCount++;
+      await markRefresh(pool, r.segment_id, r.platform, false, emails.length, result.error);
+    }
+  }
+
+  return { processed: rows.rows.length, ok: okCount, failed: failedCount };
+}
+
+// ── Attribusjon per segment (fase 4) ──────────────────────────────────
+
+export interface LinkableCampaign {
+  id: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+  spendNok: number;
+}
+
+export interface SegmentCampaign {
+  campaignId: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+}
+
+export interface SegmentPerformance {
+  campaignCount: number;
+  spendNok: number;
+  convValueNok: number;
+  conversions: number;
+  roas: number | null;
+}
+
+/** Kampanjer som kan kobles til et segment (m/ akkumulert spend for kontekst). */
+export async function listLinkableCampaigns(pool: Pool): Promise<LinkableCampaign[]> {
+  await ensureTables(pool);
+  const r = await pool.query<{
+    id: string;
+    platform: string;
+    external_campaign_id: string | null;
+    goal: string | null;
+    status: string;
+    spend: string | null;
+  }>(
+    `SELECT c.id, c.platform, c.external_campaign_id, c.goal, c.status,
+            COALESCE(SUM(a.spend_nok), 0) AS spend
+       FROM ads_campaigns c
+       LEFT JOIN ads_attribution_daily a ON a.campaign_id = c.id
+      GROUP BY c.id
+      ORDER BY spend DESC NULLS LAST, c.created_at DESC
+      LIMIT 100`,
+  );
+  return r.rows.map((x) => ({
+    id: x.id,
+    platform: x.platform,
+    externalCampaignId: x.external_campaign_id,
+    goal: x.goal,
+    status: x.status,
+    spendNok: Number(x.spend ?? 0),
+  }));
+}
+
+export async function linkCampaign(pool: Pool, segmentId: string, campaignId: string): Promise<void> {
+  await ensureTables(pool);
+  await pool.query(
+    `INSERT INTO marketing_segment_campaigns (segment_id, campaign_id)
+     VALUES ($1, $2) ON CONFLICT (segment_id, campaign_id) DO NOTHING`,
+    [segmentId, campaignId],
+  );
+}
+
+export async function unlinkCampaign(
+  pool: Pool,
+  segmentId: string,
+  campaignId: string,
+): Promise<boolean> {
+  await ensureTables(pool);
+  const r = await pool.query(
+    `DELETE FROM marketing_segment_campaigns WHERE segment_id = $1 AND campaign_id = $2`,
+    [segmentId, campaignId],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+/** Kampanjene som er koblet til et segment. */
+export async function listSegmentCampaigns(
+  pool: Pool,
+  segmentId: string,
+): Promise<SegmentCampaign[]> {
+  await ensureTables(pool);
+  const r = await pool.query<{
+    campaign_id: string;
+    platform: string;
+    external_campaign_id: string | null;
+    goal: string | null;
+    status: string;
+  }>(
+    `SELECT c.id AS campaign_id, c.platform, c.external_campaign_id, c.goal, c.status
+       FROM marketing_segment_campaigns mc
+       JOIN ads_campaigns c ON c.id = mc.campaign_id
+      WHERE mc.segment_id = $1
+      ORDER BY c.created_at DESC`,
+    [segmentId],
+  );
+  return r.rows.map((x) => ({
+    campaignId: x.campaign_id,
+    platform: x.platform,
+    externalCampaignId: x.external_campaign_id,
+    goal: x.goal,
+    status: x.status,
+  }));
+}
+
+/** Ruller spend/konverteringsverdi/ROAS opp til segment-nivå (koblede kampanjer). */
+export async function getSegmentPerformance(
+  pool: Pool,
+  segmentId: string,
+): Promise<SegmentPerformance> {
+  await ensureTables(pool);
+  const r = await pool.query<{
+    campaigns: string;
+    spend: string | null;
+    conv_value: string | null;
+    conversions: string | null;
+  }>(
+    `SELECT COUNT(DISTINCT mc.campaign_id) AS campaigns,
+            COALESCE(SUM(a.spend_nok), 0) AS spend,
+            COALESCE(SUM(a.conversion_value_nok), 0) AS conv_value,
+            COALESCE(SUM(a.conversions), 0) AS conversions
+       FROM marketing_segment_campaigns mc
+       LEFT JOIN ads_attribution_daily a ON a.campaign_id = mc.campaign_id
+      WHERE mc.segment_id = $1`,
+    [segmentId],
+  );
+  const row = r.rows[0];
+  const spendNok = Number(row?.spend ?? 0);
+  const convValueNok = Number(row?.conv_value ?? 0);
+  return {
+    campaignCount: Number(row?.campaigns ?? 0),
+    spendNok,
+    convValueNok,
+    conversions: Number(row?.conversions ?? 0),
+    roas: spendNok > 0 ? Math.round((convValueNok / spendNok) * 100) / 100 : null,
+  };
+}

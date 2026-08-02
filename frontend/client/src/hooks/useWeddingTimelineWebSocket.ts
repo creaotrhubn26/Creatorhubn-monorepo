@@ -33,7 +33,8 @@ export function useWeddingTimelineWebSocket(timelineId?: string, enabled: boolea
                // Use wss for https, ws for http
                const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
                // WebSocket path supports both /ws/wedding-timeline/:timelineId and /ws/wedding-timeline?timelineId=...
-               const wsUrl = `${protocol}//${window.location.host}/ws/wedding-timeline/${timelineId}`;
+               const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+               const wsUrl = `${protocol}//${window.location.host}/ws/wedding-timeline/${timelineId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
 
     try {
       const ws = new WebSocket(wsUrl);

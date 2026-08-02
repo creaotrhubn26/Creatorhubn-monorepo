@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import ConnectedAppsPanel from '../role-room/components/ConnectedAppsPanel';
 import { apiRequest } from '@/lib/queryClient';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
@@ -2390,6 +2391,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 </Box>
               )}
             </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Tilkoblede AI-apper (MCP / «Sign in with The Role Room») */}
+            <ConnectedAppsPanel />
 
             <Divider sx={{ my: 3 }} />
 

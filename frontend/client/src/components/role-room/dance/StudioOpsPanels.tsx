@@ -520,7 +520,7 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
     lift:       { label: 'Lift',       color: danceFlowColors.gold },
     extension:  { label: 'Extension',  color: danceFlowColors.lavender },
     partnering: { label: 'Partnering', color: danceFlowColors.successPrimary },
-    improv:     { label: 'Improv',     color: '#22d3ee' },
+    improv:     { label: 'Improv',     color: 'var(--role-cyan, #22d3ee)' },
     other:      { label: 'Annet',      color: danceFlowColors.textMuted },
   };
   const difLabels: Record<string, string> = {

@@ -198,7 +198,7 @@ export function setupPhotographerProjectsRoutes(
       // Schema-feil eller manglende tabeller skal ikke krasje admin dashboard.
       // Returner tom liste i stedet for 500 — UI viser allerede empty-state.
       console.warn('[photographer-projects] list failed, returning empty:', err);
-      res.json({ projects: [], schemaWarning: err instanceof Error ? err.message : String(err) });
+      res.json({ projects: [] });
     }
   });
 
@@ -409,7 +409,7 @@ export function setupPhotographerProjectsRoutes(
           `SELECT 1 FROM clients WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
           [effectiveClientId, photographerId],
         );
-        if (owned.rowCount === 0) {
+        if (!owned.rows.length) {
           return res.status(403).json({ error: 'client_not_owned' });
         }
       }
@@ -518,11 +518,17 @@ export function setupPhotographerProjectsRoutes(
       // den gamle UPDATEn feilet stille og forespørselen ble liggende som «ny».
       if (newProjectId && submissionId) {
         try {
+          // Eier-scope: submissionId kommer fra request-body. Uten
+          // vendor_id-filter kunne en fotograf markere EN ANNEN fotografs
+          // innkommende forespørsel som konvertert og om-lenke den til sitt
+          // eget prosjekt (cross-tenant write-IDOR — offeret mister leadet
+          // fra «nye»-listen). vendor_id er eier-kolonnen (jf. submissions-
+          // routes' `WHERE id AND vendor_id`); fremmed id → rowCount 0 = no-op.
           await pool.query(
             `UPDATE client_submissions
                 SET project_id = $1, status = 'converted', updated_at = NOW()
-              WHERE id = $2`,
-            [newProjectId, submissionId],
+              WHERE id = $2 AND vendor_id = $3`,
+            [newProjectId, submissionId, photographerId],
           );
         } catch { /* tabellen finnes kanskje ikke i alle env */ }
       }
@@ -653,7 +659,7 @@ export function setupPhotographerProjectsRoutes(
          LIMIT 1`,
         [projectId],
       );
-      if (projectQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projectQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projectQ.rows[0];
 
       const [timeQ, galleryQ] = await Promise.all([
@@ -770,7 +776,7 @@ export function setupPhotographerProjectsRoutes(
           `SELECT 1 FROM clients WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
           [clientId, photographerId],
         );
-        if (owned.rowCount === 0) return res.status(403).json({ error: 'client_not_owned' });
+        if (!owned.rows.length) return res.status(403).json({ error: 'client_not_owned' });
       }
       // Slice 9X.79 — Fang previous status så vi kan trigge bare ved faktisk endring
       let previousStatus: string | null = null;
@@ -905,7 +911,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT hourly_rate FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const defaultRate = Number(owned.rows[0]?.hourly_rate ?? 0);
       const finalRate = Number.isFinite(Number(rate)) ? Number(rate) : defaultRate;
       const billable = Number.isFinite(Number(billableHours)) ? Number(billableHours) : Number(hoursSpent);
@@ -990,7 +996,7 @@ export function setupPhotographerProjectsRoutes(
           LIMIT 1`,
         [session.userId],
       );
-      if (r.rowCount === 0) {
+      if (!r.rows.length) {
         return res.json({
           connected: false,
           serverConfigured: isPowerOfficeConfigured(),
@@ -1098,7 +1104,7 @@ export function setupPhotographerProjectsRoutes(
           WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
         [photographerId],
       );
-      if (intQ.rowCount === 0) {
+      if (!intQ.rows.length) {
         return res.status(412).json({
           error: 'poweroffice_not_connected',
           message: 'Koble til PowerOffice først via /photographer/settings/integrations.',
@@ -1124,7 +1130,7 @@ export function setupPhotographerProjectsRoutes(
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projQ.rows[0];
 
       // Idempotens: hvis allerede fakturert via PO, returner eksisterende.
@@ -1393,7 +1399,7 @@ export function setupPhotographerProjectsRoutes(
           WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projQ.rows[0];
 
       const { createGoogleMeetLink } = await import('./google-meet.js');
@@ -1450,7 +1456,7 @@ export function setupPhotographerProjectsRoutes(
       });
     } catch (err: any) {
       console.error('[photographer-meet] create failed:', err);
-      res.status(500).json({ error: 'meet_create_failed', message: String(err?.message || '').slice(0, 200) });
+      res.status(500).json({ error: 'meet_create_failed' });
     }
   });
 
@@ -1476,7 +1482,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT title, event_date FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const proj = projQ.rows[0];
 
       // Sjekk om det allerede finnes en aktiv capture_session for prosjektet
@@ -1576,7 +1582,7 @@ export function setupPhotographerProjectsRoutes(
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (ctxQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!ctxQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const ctx = ctxQ.rows[0];
 
       if (!ctx.client_id) {
@@ -1717,7 +1723,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
 
       // Best-effort bakgrunns-poll. Debounced så vi ikke hammrer Gmail
       // når frontend auto-refreshes hver 30s. Kjøres etter response.
@@ -1783,7 +1789,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
 
       const { pollProjectGmailReplies } = await import('./chat-gmail-poller.js');
       const result = await pollProjectGmailReplies(pool, { photographerId, projectId });

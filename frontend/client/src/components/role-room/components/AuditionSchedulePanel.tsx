@@ -248,12 +248,12 @@ function AuditionSchedulePanelInner({
 
   const { showSuccess, showError, showInfo } = useToast();
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
-  const roleTabAccent = '#b86bff';
+  const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
   const roleText = '#f3eaff';
   const roleTextMuted = 'rgba(220,205,255,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
@@ -2014,7 +2014,7 @@ function AuditionSchedulePanelInner({
               { icon: <AuditionsIcon />, count: statistics.total, label: 'Totalt', color: roleTabAccent },
               { icon: <CalendarIcon />, count: statistics.scheduled, label: 'Planlagt', color: '#9ca3af' },
               { icon: <AuditionsIcon />, count: statistics.confirmed, label: 'Bekreftet', color: '#10b981' },
-              { icon: <AuditionsIcon />, count: statistics.awaitingCallback, label: 'Callbacks', color: '#22d3ee' },
+              { icon: <AuditionsIcon />, count: statistics.awaitingCallback, label: 'Callbacks', color: 'var(--role-cyan, #22d3ee)' },
               { icon: <StarIcon />, count: statistics.completed, label: 'Fullført', color: '#ffc107' },
             ]}
           />
@@ -2796,13 +2796,13 @@ function AuditionSchedulePanelInner({
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
               displayEmpty
-              startAdornment={<PersonIcon sx={{ fontSize: 18, color: roleFilter !== 'all' ? '#00d4ff' : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
+              startAdornment={<PersonIcon sx={{ fontSize: 18, color: roleFilter !== 'all' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
               aria-label="Filtrer på rolle"
               sx={{
-                color: roleFilter !== 'all' ? '#00d4ff' : '#fff',
+                color: roleFilter !== 'all' ? 'var(--role-cyan, #00d4ff)' : '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: roleFilter !== 'all' ? 'rgba(0,212,255,0.5)' : 'rgba(255,255,255,0.15)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
                 '& .MuiSvgIcon-root:last-child': { color: 'rgba(255,255,255,0.5)' },
               }}
               MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
@@ -3349,7 +3349,7 @@ function AuditionSchedulePanelInner({
                             <Chip
                               label={getRoleName(schedule.roleId)}
                               size="small"
-                              sx={{ bgcolor: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.25)', fontSize: 11, height: 20, maxWidth: 130 }}
+                              sx={{ bgcolor: 'rgba(0,212,255,0.12)', color: 'var(--role-cyan, #00d4ff)', border: '1px solid rgba(0,212,255,0.25)', fontSize: 11, height: 20, maxWidth: 130 }}
                             />
                           </TableCell>
                           {/* Status */}
@@ -3474,7 +3474,7 @@ function AuditionSchedulePanelInner({
                 <Chip
                   label={getRoleName(schedule.roleId)}
                   size="small"
-                  sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)', fontSize: 10, height: 18, maxWidth: 110, flexShrink: 0, display: { xs: 'none', md: 'flex' } }}
+                  sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)', border: '1px solid rgba(0,212,255,0.2)', fontSize: 10, height: 18, maxWidth: 110, flexShrink: 0, display: { xs: 'none', md: 'flex' } }}
                 />
                 {/* Status dot */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
@@ -3779,7 +3779,7 @@ function AuditionSchedulePanelInner({
                           size="small"
                           sx={{
                             bgcolor: 'rgba(139,92,246,0.15)',
-                            color: '#8b5cf6',
+                            color: 'var(--role-violet, #8b5cf6)',
                             height: { xs: 24, md: 28 },
                             fontSize: { xs: '0.7rem', md: '0.75rem' },
                           }}
@@ -3926,7 +3926,7 @@ function AuditionSchedulePanelInner({
                               minWidth: { xs: TOUCH_TARGET_SIZE, md: 48 },
                               minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
                               color: 'rgba(255,255,255,0.87)',
-                              '&:hover': { color: '#00d4ff' },
+                              '&:hover': { color: 'var(--role-cyan, #00d4ff)' },
                               ...focusVisibleStyles,
                             }}
                           >
@@ -4220,7 +4220,7 @@ function AuditionSchedulePanelInner({
                         minWidth: 32,
                         height: 32,
                         px: 1,
-                        bgcolor: safePage === p ? '#b86bff' : 'transparent',
+                        bgcolor: safePage === p ? 'var(--role-accent, #b86bff)' : 'transparent',
                         color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
                         fontWeight: safePage === p ? 700 : 500,
                         '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(184,107,255,0.18)' },

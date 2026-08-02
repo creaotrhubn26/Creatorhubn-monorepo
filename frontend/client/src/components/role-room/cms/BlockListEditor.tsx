@@ -18,11 +18,13 @@ import {
   CardContent,
   Chip,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -60,6 +62,7 @@ import type {
   FeatureListBlock,
   HeroBlock,
   ImageBlock,
+  InfographicBlock,
   RelatedStudiesBlock,
   RichTextBlock,
   UsageExamplesBlock,
@@ -186,7 +189,11 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
             <Stack spacing={1.5}>
               {blocks.map((block, idx) => (
                 <BlockCard
-                  key={block.id}
+                  // Remount ved locale-bytte: TipTap-editoren i RichTextBlockEditor
+                  // initialiserer innhold kun ved mount og re-synker aldri på `value`-
+                  // endringer, så uten locale i key-en ville NO/EN-toggle vist stale
+                  // innhold i WYSIWYG-flaten og risikere å skrive det over riktig locale.
+                  key={`${block.id}-${locale}`}
                   block={applyLocale(block, locale)}
                   index={idx}
                   total={blocks.length}
@@ -343,6 +350,8 @@ function BlockEditor({ block, onUpdate }: { block: Block; onUpdate: (b: Block) =
       return <UsageExamplesEditor block={block} onUpdate={onUpdate} />;
     case 'image':
       return <ImageEditor block={block} onUpdate={onUpdate} />;
+    case 'infographic':
+      return <InfographicEditor block={block} onUpdate={onUpdate} />;
   }
 }
 
@@ -734,6 +743,78 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
           sx={{ ...FIELD_SX, minWidth: 140 }}
         />
       </Stack>
+    </Stack>
+  );
+}
+
+// Maler er DATA: mal-velgeren HENTER lista fra /api/infographics/templates, så nye
+// maler (lagt til via admin) dukker opp UTEN app-deploy. `templateUrl` lagres som
+// mal-id (t.d. «donut») eller «auto». Fallback-lista brukes bare hvis fetch feiler.
+const INFOGRAPHIC_AUTO_OPTION = { label: '✨ Auto (velg mal fra data)', url: 'auto' };
+const INFOGRAPHIC_FALLBACK_TEMPLATES: { label: string; url: string }[] = [
+  { label: 'KPI-kort (tellende tall)', url: 'demo-template' },
+  { label: 'Stat-bar (horisontal)', url: 'stat-bar' },
+  { label: 'Stort tall', url: 'big-number' },
+  { label: 'Donut (prosent / andel)', url: 'donut' },
+  { label: 'Sammenligning (før/etter)', url: 'comparison' },
+  { label: 'Tidslinje (steg)', url: 'timeline' },
+];
+
+function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpdate: (b: InfographicBlock) => void }) {
+  const upd = (patch: Partial<InfographicBlock>) => onUpdate({ ...block, ...patch });
+  const [dataText, setDataText] = React.useState(() => JSON.stringify(block.data ?? {}, null, 2));
+  const [dataErr, setDataErr] = React.useState(false);
+  const [library, setLibrary] = React.useState<{ label: string; url: string }[]>(
+    [INFOGRAPHIC_AUTO_OPTION, ...INFOGRAPHIC_FALLBACK_TEMPLATES],
+  );
+  React.useEffect(() => {
+    let alive = true;
+    fetch('/api/infographics/templates', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.templates?.length) return;
+        setLibrary([INFOGRAPHIC_AUTO_OPTION, ...d.templates.map((t: { id: string; label: string }) => ({ label: t.label, url: t.id }))]);
+      })
+      .catch(() => { /* behold fallback */ });
+    return () => { alive = false; };
+  }, []);
+  const onData = (v: string) => {
+    setDataText(v);
+    try { const parsed = JSON.parse(v || '{}'); setDataErr(false); upd({ data: parsed }); }
+    catch { setDataErr(true); }
+  };
+  const inLibrary = library.some((t) => t.url === block.templateUrl);
+  return (
+    <Stack spacing={1.5}>
+      <TextRow label="Overskrift (valgfri)" value={block.heading ?? ''} onChange={(v) => upd({ heading: v })} />
+      <TextField
+        select
+        label="Velg mal"
+        value={inLibrary ? block.templateUrl : '__custom__'}
+        onChange={(e) => { if (e.target.value !== '__custom__') upd({ templateUrl: e.target.value }); }}
+        size="small" fullWidth sx={FIELD_SX}
+      >
+        {library.map((t) => (
+          <MenuItem key={t.url} value={t.url}>{t.label}</MenuItem>
+        ))}
+        <MenuItem value="__custom__">Egendefinert id / URL …</MenuItem>
+      </TextField>
+      <TextRow label="Mal-id eller URL" value={block.templateUrl ?? ''} onChange={(v) => upd({ templateUrl: v })} />
+      <TextRow label="Data (JSON → window.__CFG__)" value={dataText} onChange={onData} multiline rows={5} />
+      {dataErr && <Typography variant="caption" sx={{ color: '#fca5a5' }}>Ugyldig JSON — endringen lagres ikke før den er gyldig.</Typography>}
+      <TextRow label="Aksentfarge (hex)" value={block.accent ?? ''} onChange={(v) => upd({ accent: v })} />
+      <TextRow label="Autoplay (sekunder, 0 = statisk sluttbilde)" value={String(block.autoplaySec ?? 0)} onChange={(v) => upd({ autoplaySec: parseFloat(v) || 0 })} />
+      <TextRow label="Høyde (px)" value={String(block.height ?? 360)} onChange={(v) => upd({ height: parseInt(v, 10) || 360 })} />
+      <FormControlLabel
+        control={<Switch checked={!!block.serverRender} onChange={(e) => upd({ serverRender: e.target.checked })} disabled={!inLibrary} />}
+        label="Server-render (statisk bilde, SEO-vennlig, ingen klient-JS)"
+        sx={{ '& .MuiFormControlLabel-label': { fontSize: 13 } }}
+      />
+      {block.serverRender && !inLibrary && (
+        <Typography variant="caption" sx={{ color: '#fca5a5' }}>
+          Server-render krever en hostet bibliotek-mal (/embed/…). Egendefinerte URL-er faller tilbake til klient-render.
+        </Typography>
+      )}
     </Stack>
   );
 }

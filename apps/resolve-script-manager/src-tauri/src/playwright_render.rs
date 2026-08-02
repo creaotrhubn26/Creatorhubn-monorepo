@@ -251,24 +251,37 @@ const SHOTS_MJS: &str = r#"import { chromium } from 'playwright';
 import { writeFileSync } from 'node:fs';
 const url = process.argv[2];
 let browser; try { browser = await chromium.launch({ headless: true, channel: 'chrome' }); } catch { browser = await chromium.launch({ headless: true }); }
-const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
-await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
-await page.waitForTimeout(2000);
-for (const t of ['Godta alle','Godta','Aksepter alle','Aksepter','Tillat alle','Jeg forstår','Greit','OK','Accept all','Accept','Allow all','I agree','Got it']) {
-  try { const b = page.getByRole('button', { name: t, exact: false }).first(); if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); break; } } catch {}
+const COOKIE = ['Godta alle','Godta','Aksepter alle','Aksepter','Tillat alle','Jeg forstår','Greit','OK','Accept all','Accept','Allow all','I agree','Got it'];
+// Fang scroll-bånd ved en gitt viewport-bredde. Mobil-bredden gir nettsidens
+// EKTE responsive layout (så iPhone/iPad-preview og fallback ikke viser en
+// nedskalert desktop-side). isMobile=true → touch/mobil user-agent-hint.
+async function grab(width, height, isMobile) {
+  const ctx = await browser.newContext({ viewport: { width, height }, isMobile, deviceScaleFactor: 2 });
+  const page = await ctx.newPage();
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  for (const t of COOKIE) {
+    try { const b = page.getByRole('button', { name: t, exact: false }).first(); if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); break; } } catch {}
+  }
+  const ih = height, max = await page.evaluate(() => Math.max(0, document.body.scrollHeight - innerHeight));
+  const bands = Math.max(1, Math.min(6, Math.ceil((max + ih) / ih)));
+  const out = [];
+  for (let i = 0; i < bands; i++) {
+    const y = bands === 1 ? 0 : Math.round(max * i / (bands - 1));
+    const pct = max > 0 ? y / max : 0;
+    await page.evaluate(yy => window.scrollTo(0, yy), y);
+    await page.waitForTimeout(500);
+    const buf = await page.screenshot({ type: 'jpeg', quality: 72 });
+    out.push({ scrollPct: pct, dataUrl: 'data:image/jpeg;base64,' + buf.toString('base64') });
+  }
+  await ctx.close();
+  return out;
 }
-const ih = 800, max = await page.evaluate(() => Math.max(0, document.body.scrollHeight - innerHeight));
-const bands = Math.max(1, Math.min(6, Math.ceil((max + ih) / ih)));
-const shots = [];
-for (let i = 0; i < bands; i++) {
-  const y = bands === 1 ? 0 : Math.round(max * i / (bands - 1));
-  const pct = max > 0 ? y / max : 0;
-  await page.evaluate(yy => window.scrollTo(0, yy), y);
-  await page.waitForTimeout(500);
-  const buf = await page.screenshot({ type: 'jpeg', quality: 72 });
-  shots.push({ scrollPct: pct, dataUrl: 'data:image/jpeg;base64,' + buf.toString('base64') });
-}
-writeFileSync('shots.json', JSON.stringify({ shots }));
+const shots = await grab(1280, 800, false);
+// Mobil er best-effort: en feil her skal ikke velte desktop-fangsten.
+let shotsMobile = [];
+try { shotsMobile = await grab(390, 844, true); } catch {}
+writeFileSync('shots.json', JSON.stringify({ shots, shotsMobile }));
 await browser.close();
 "#;
 
@@ -295,4 +308,328 @@ pub async fn playwright_capture_shots(app: AppHandle, url: String) -> Result<Val
     }
     let txt = std::fs::read_to_string(&out_file).map_err(|e| format!("Kunne ikke lese shots.json: {e}"))?;
     serde_json::from_str::<Value>(&txt).map_err(|e| format!("Kunne ikke parse shots.json: {e}"))
+}
+
+// ── Infographic Studio: render HTML-mal → transparent PNG-sekvens → ProRes 4444
+//    (alfa). Den genererte .mov-en legges på Resolve-timelinen av place_overlay.
+// scale (arg6) = deviceScaleFactor → oppløsning (2≈1080p, 4≈4K for brede maler).
+// arg7 (frame) = 'WxH' → komponer #wrap inn i et fast sosialt lerret (eksakte
+// utpiksler, deviceScaleFactor 1) | 'native' → malens naturlige størrelse × scale.
+const IG_CAPTURE_MJS: &str = r#"
+import { chromium } from 'playwright';
+const htmlPath = process.argv[2], outDir = process.argv[3];
+const N = parseInt(process.argv[4]||'48'), useChrome = process.argv[5]==='1';
+const scale = parseFloat(process.argv[6]||'2') || 2;
+const frame = process.argv[7]||'native';
+const easing = process.argv[8]||'outcubic';
+function ease(p){var x=Math.max(0,Math.min(1,p));switch(easing){case 'linear':return x;case 'out':return 1-(1-x)*(1-x);case 'inout':return x<0.5?2*x*x:1-Math.pow(-2*x+2,2)/2;default:return 1-Math.pow(1-x,3);}}
+let fit=false, FW=0, FH=0, vpW=1760, vpH=560, dsf=scale;
+const fm = /^(\d+)x(\d+)$/.exec(frame);
+if(fm){ FW=parseInt(fm[1],10); FH=parseInt(fm[2],10); fit=true; vpW=FW; vpH=FH; dsf=1; }
+const b = await chromium.launch(useChrome ? { headless:true, channel:'chrome' } : { headless:true });
+const p = await b.newPage({ viewport:{ width:vpW, height:vpH }, deviceScaleFactor:dsf });
+await p.goto('file://'+htmlPath, { waitUntil:'networkidle', timeout:30000 }).catch(()=>{});
+await p.waitForTimeout(1200);
+let el = await p.$('#wrap'); if(!el) el = await p.$('body');
+if(fit){
+  await p.evaluate((d)=>{
+    const w=document.querySelector('#wrap')||document.body;
+    document.documentElement.style.background='transparent';
+    document.body.style.cssText='margin:0;background:transparent;overflow:hidden;width:'+d.FW+'px;height:'+d.FH+'px;display:grid;place-items:center';
+    w.style.transformOrigin='center center'; w.style.transform='none';
+    const bw=Math.max(1,w.scrollWidth||w.offsetWidth||1), bh=Math.max(1,w.scrollHeight||w.offsetHeight||1);
+    const k=Math.min((d.FW*0.92)/bw,(d.FH*0.92)/bh);
+    w.style.transform='scale('+k.toFixed(4)+')';
+  }, {FW,FH});
+} else {
+  // Native: lås #wrap til sin FULL-progresjon-størrelse (bredest/høyest) FØR
+  // capture-løkka. #wrap er width:max-content, så count-up-tall som endrer
+  // sifferbredde (0 → 1 234) gir ellers frames med ulik px-størrelse, og ffmpeg
+  // avviser sekvensen («Input picture width/height do not match the first
+  // frame») → hele renderen feiler. Å fryse boksen holder alle f###.png like store.
+  await p.evaluate((v)=>window.setProgress && window.setProgress(v), 1);
+  await p.waitForTimeout(80);
+  await p.evaluate(()=>{
+    const w=document.querySelector('#wrap'); if(!w) return;
+    const r=w.getBoundingClientRect();
+    w.style.boxSizing='border-box';
+    w.style.width=Math.ceil(r.width)+'px'; w.style.minWidth=Math.ceil(r.width)+'px';
+    w.style.height=Math.ceil(r.height)+'px'; w.style.minHeight=Math.ceil(r.height)+'px';
+  });
+}
+for (let i=0;i<N;i++){
+  const prog = ease(N>1 ? i/(N-1) : 1);
+  await p.evaluate((v)=>window.setProgress && window.setProgress(v), prog);
+  if(fit) await p.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true, clip:{x:0,y:0,width:FW,height:FH} });
+  else await el.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true });
+}
+console.log('IG_DONE '+N);
+await b.close();
+"#;
+
+/// Sanitér et navn til et trygt filnavn.
+fn ig_safe_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect()
+}
+
+/// Delt frame-capture: skriv HTML + capture-skript, fang `frames` transparente
+/// PNG-er ved `scale` deviceScaleFactor. Returnerer (arbeidsmappe, safe-navn).
+async fn ig_capture_frames(
+    app: &AppHandle,
+    html: &str,
+    name: &str,
+    frames: i64,
+    scale: f64,
+    frame: &str,
+    easing: &str,
+    label: &str,
+) -> Result<(std::path::PathBuf, String), String> {
+    let dir = runtime_dir(app);
+    if !dir.join("node_modules/playwright").exists() {
+        return Err("Playwright ikke installert. Kjør «Sett opp Playwright» først.".into());
+    }
+    let node = find_bin("node");
+    let safe = ig_safe_name(name);
+    let work = dir.join("ig").join(&safe);
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).map_err(|e| format!("kunne ikke lage arbeidsmappe: {e}"))?;
+    let html_file = work.join("template.html");
+    std::fs::write(&html_file, html).map_err(|e| format!("kunne ikke skrive HTML: {e}"))?;
+    let script = dir.join("ig_capture.mjs");
+    std::fs::write(&script, IG_CAPTURE_MJS).map_err(|e| format!("kunne ikke skrive capture-skript: {e}"))?;
+
+    let use_chrome = if system_chrome_present() { "1" } else { "0" };
+    let run_id = Uuid::new_v4().to_string();
+    let mut cmd = Command::new(&node);
+    cmd.arg(&script)
+        .arg(html_file.to_string_lossy().to_string())
+        .arg(work.to_string_lossy().to_string())
+        .arg(frames.to_string())
+        .arg(use_chrome)
+        .arg(format!("{}", scale.clamp(1.0, 6.0)))
+        .arg(if frame.is_empty() { "native" } else { frame })
+        .arg(if easing.is_empty() { "outcubic" } else { easing })
+        .current_dir(&dir);
+    let code = stream_child(app, cmd, &run_id, label).await?;
+    if code != 0 {
+        return Err(format!("frame-capture feilet (exit {code})"));
+    }
+    Ok((work, safe))
+}
+
+/// Bygg en exit-fade-filterstreng (fade ut de siste `exit_sec` sekundene).
+/// `alpha` = true for formater med alfa (fader gjennomsiktig), false for mp4
+/// (fader til svart). Returnerer None hvis ingen fade er ønsket.
+fn ig_fade_vf(exit_sec: f64, duration_sec: f64, alpha: bool) -> Option<String> {
+    if exit_sec <= 0.0 { return None; }
+    let d = exit_sec.min(duration_sec).max(0.05);
+    let st = (duration_sec - d).max(0.0);
+    Some(if alpha {
+        format!("fade=t=out:st={st:.3}:d={d:.3}:alpha=1")
+    } else {
+        format!("fade=t=out:st={st:.3}:d={d:.3}")
+    })
+}
+
+/// Sekunder inngangs-fade tar (speiler ENTRANCE_DUR i frontenden).
+const IG_ENTRANCE_DUR: f64 = 0.5;
+
+/// Fade-INN de første sekundene når scenen har en inngang (ikke 'none').
+fn ig_fade_in_vf(entrance: &str, alpha: bool) -> Option<String> {
+    if entrance.is_empty() || entrance == "none" { return None; }
+    let d = IG_ENTRANCE_DUR;
+    Some(if alpha { format!("fade=t=in:st=0:d={d:.3}:alpha=1") } else { format!("fade=t=in:st=0:d={d:.3}") })
+}
+
+/// Kombiner fade-inn + fade-ut til én -vf-streng (komma-separert).
+fn ig_combine_vf(fin: Option<String>, fout: Option<String>) -> Option<String> {
+    match (fin, fout) {
+        (Some(a), Some(b)) => Some(format!("{a},{b}")),
+        (Some(a), None) => Some(a),
+        (None, b) => b,
+    }
+}
+
+/// Deterministisk innholds-hash for render-caching (ikke krypto — kun cache-
+/// nøkkel). Samme HTML + parametre → samme .mov, så uendrede scener slipper
+/// å re-rendres ved gjentatt «Send to Resolve».
+#[allow(clippy::too_many_arguments)]
+fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f64, frame: &str, easing: &str, entrance: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    html.hash(&mut h);
+    // f64 er ikke Hash — bruk bit-representasjonen.
+    fps.to_bits().hash(&mut h);
+    scale.to_bits().hash(&mut h);
+    exit_sec.to_bits().hash(&mut h);
+    duration_sec.to_bits().hash(&mut h);
+    frame.hash(&mut h);
+    easing.hash(&mut h);
+    entrance.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn ig_out_dir(app: &AppHandle) -> std::path::PathBuf {
+    let d = app
+        .path()
+        .home_dir()
+        .map(|h| h.join("Movies").join("Post Agent Infographics"))
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let _ = std::fs::create_dir_all(&d);
+    d
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn render_infographic(
+    app: AppHandle,
+    html: String,
+    duration_sec: f64,
+    name: String,
+    fps: Option<f64>,
+    scale: Option<f64>,
+    exit_sec: Option<f64>,
+    frame: Option<String>,
+    easing: Option<String>,
+    entrance: Option<String>,
+) -> Result<String, String> {
+    let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
+    let scale = scale.unwrap_or(2.0);
+    let exit = exit_sec.unwrap_or(0.0);
+    let frame = frame.unwrap_or_else(|| "native".into());
+    let easing = easing.unwrap_or_else(|| "outcubic".into());
+    let entrance = entrance.unwrap_or_else(|| "none".into());
+
+    // Render-caching: identisk innhold+parametre → gjenbruk ferdig .mov.
+    let cache_dir = ig_out_dir(&app).join(".cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let cached = cache_dir.join(format!("{}.mov", ig_cache_key(&html, fps, scale, exit, duration_sec, &frame, &easing, &entrance)));
+    if cached.exists() {
+        return Ok(cached.to_string_lossy().to_string());
+    }
+
+    let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 3600.0) as i64;
+    // Reell klipp-lengde etter clamp — fade-timing MÅ bruke denne, ikke det
+    // ukappede duration_sec (ellers havner fade-ut feil for korte/lange klipp).
+    let real_dur = frames as f64 / fps;
+    let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "render_infographic").await?;
+
+    // ProRes 4444 m/alfa → cache-mappe (gjenbrukbar). Skriv FØRST til en .part-fil
+    // og gi den cache-navnet kun ved suksess — en avbrutt/feilet ffmpeg skal ALDRI
+    // legge igjen en korrupt .mov på cache-stien som senere gjenbrukes som gyldig.
+    let ffmpeg = find_bin("ffmpeg");
+    let out_file = cached;
+    let tmp_file = out_file.with_extension("part.mov");
+    let mut args: Vec<String> = vec!["-y".into(), "-framerate".into(), format!("{fps}"),
+        "-i".into(), format!("{}/f%03d.png", work.to_string_lossy())];
+    if let Some(vf) = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(exit_sec.unwrap_or(0.0), real_dur, true)) { args.push("-vf".into()); args.push(vf); }
+    args.extend(["-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(),
+        "-pix_fmt".into(), "yuva444p10le".into(), tmp_file.to_string_lossy().to_string()]);
+    let status = Command::new(&ffmpeg).args(&args).status().await
+        .map_err(|e| format!("ffmpeg-start feilet: {e}"))?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&tmp_file);
+        return Err("ffmpeg klarte ikke å lage ProRes-fil".into());
+    }
+    std::fs::rename(&tmp_file, &out_file).map_err(|e| { let _ = std::fs::remove_file(&tmp_file); format!("kunne ikke ferdigstille cache-fil: {e}") })?;
+    Ok(out_file.to_string_lossy().to_string())
+}
+
+/// Eksporter én infographic til en frittstående fil (utenfor Resolve):
+/// format = "prores" (.mov, alfa) | "mp4" (flat på svart) | "gif" (transparent)
+/// | "apng" (animert PNG, alfa) | "png" (stillbilde ved full progresjon, alfa).
+/// Verifiserte ffmpeg-oppskrifter. Returnerer utfil-sti.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn export_infographic(
+    app: AppHandle,
+    html: String,
+    duration_sec: f64,
+    name: String,
+    format: String,
+    fps: Option<f64>,
+    scale: Option<f64>,
+    exit_sec: Option<f64>,
+    frame: Option<String>,
+    easing: Option<String>,
+    entrance: Option<String>,
+    metadata: Option<String>,
+) -> Result<String, String> {
+    let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
+    let scale = scale.unwrap_or(2.0);
+    let frame = frame.unwrap_or_else(|| "native".into());
+    let easing = easing.unwrap_or_else(|| "outcubic".into());
+    let entrance = entrance.unwrap_or_else(|| "none".into());
+    let metadata = metadata.unwrap_or_default();
+    let is_still = format == "png";
+    let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 3600.0) as i64 };
+    // Reell klipp-lengde etter clamp — fade-timing bruker denne (ikke duration_sec).
+    let real_dur = frames as f64 / fps;
+    let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "export_infographic").await?;
+    let ffmpeg = find_bin("ffmpeg");
+    let out_dir = ig_out_dir(&app);
+    let frames_glob = format!("{}/f%03d.png", work.to_string_lossy());
+    let fr = format!("{fps}");
+    let ex = exit_sec.unwrap_or(0.0);
+    // Inngangs-fade-inn + exit-fade-ut, kombinert. Alfa for alfa-formater, svart for mp4.
+    let fade_alpha = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(ex, real_dur, true));
+    let fade_black = ig_combine_vf(ig_fade_in_vf(&entrance, false), ig_fade_vf(ex, real_dur, false));
+
+    let (out_file, args): (std::path::PathBuf, Vec<String>) = match format.as_str() {
+        "png" => {
+            // Stillbilde ved full progresjon (frame 000, N=1) — bare kopier.
+            let out = out_dir.join(format!("{safe}.png"));
+            std::fs::copy(work.join("f000.png"), &out).map_err(|e| format!("kunne ikke lagre PNG: {e}"))?;
+            return Ok(out.to_string_lossy().to_string());
+        }
+        "mp4" => {
+            let out = out_dir.join(format!("{safe}.mp4"));
+            let vf = match &fade_black { Some(f) => format!("{f},format=yuv420p"), None => "format=yuv420p".into() };
+            (out.clone(), vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone(),
+                "-vf".into(), vf, "-c:v".into(), "libx264".into(), "-crf".into(), "18".into(),
+                "-movflags".into(), "+faststart".into(), out.to_string_lossy().to_string()])
+        }
+        "gif" => {
+            let out = out_dir.join(format!("{safe}.gif"));
+            let pre = match &fade_alpha { Some(f) => format!("{f},"), None => "".into() };
+            (out.clone(), vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone(),
+                "-vf".into(), format!("{pre}split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128"),
+                out.to_string_lossy().to_string()])
+        }
+        "apng" => {
+            let out = out_dir.join(format!("{safe}.apng.png"));
+            let mut a = vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone()];
+            if let Some(f) = &fade_alpha { a.push("-vf".into()); a.push(f.clone()); }
+            a.extend(["-f".into(), "apng".into(), "-plays".into(), "0".into(), out.to_string_lossy().to_string()]);
+            (out.clone(), a)
+        }
+        _ => {
+            // prores (default) — .mov m/alfa
+            let out = out_dir.join(format!("{safe}.mov"));
+            let mut a = vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone()];
+            if let Some(f) = &fade_alpha { a.push("-vf".into()); a.push(f.clone()); }
+            a.extend(["-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(), "-pix_fmt".into(), "yuva444p10le".into(),
+                out.to_string_lossy().to_string()]);
+            (out.clone(), a)
+        }
+    };
+    // «Include Metadata»: bygg tittel + verktøy inn i container-en (ffmpeg
+    // -metadata). Settes inn foran utfil-stien (siste arg). Gjelder mp4/mov/gif/
+    // apng — png (stillbilde) returnerte allerede tidligere.
+    let mut args = args;
+    if !metadata.is_empty() {
+        if let Some(out) = args.pop() {
+            args.push("-metadata".into()); args.push(format!("title={metadata}"));
+            args.push("-metadata".into()); args.push("comment=Laget med Post Agent Infographic Studio".into());
+            args.push(out);
+        }
+    }
+    let status = Command::new(&ffmpeg).args(&args).status().await
+        .map_err(|e| format!("ffmpeg-start feilet: {e}"))?;
+    if !status.success() {
+        return Err(format!("ffmpeg klarte ikke å lage {format}-fil"));
+    }
+    Ok(out_file.to_string_lossy().to_string())
 }

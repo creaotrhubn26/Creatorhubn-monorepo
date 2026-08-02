@@ -408,7 +408,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                           : e.platform === 'facebook_page'
                             ? '#93c5fd'
                             : e.platform === 'linkedin'
-                              ? '#7dd3fc'
+                              ? 'var(--role-cyan, #7dd3fc)'
                               : e.platform === 'youtube'
                                 ? '#fca5a5'
                                 : '#cbd5e1',
@@ -554,7 +554,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                           textTransform: 'none',
                           fontSize: '0.74rem',
                           bgcolor: 'rgba(34,211,238,0.18)',
-                          color: '#22d3ee',
+                          color: 'var(--role-cyan, #22d3ee)',
                           boxShadow: 'none',
                           '&:hover': { bgcolor: 'rgba(34,211,238,0.28)', boxShadow: 'none' },
                         }}

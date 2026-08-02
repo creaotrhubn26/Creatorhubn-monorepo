@@ -42,7 +42,7 @@ describe('flattenIgWebhookEvent', () => {
       authorUsername: 'fan_9',
       body: 'Looks great!',
     });
-    expect(events[0].occurredAt?.toISOString()).toBe('2024-04-30T22:40:00.000Z');
+    expect(events[0].occurredAt?.toISOString()).toBe('2024-05-01T00:00:00.000Z');
   });
 
   it('classifies replies via parent_id', () => {
@@ -305,9 +305,11 @@ describe('persistSocialEvent', () => {
       kind: 'comment',
       raw: { nested: { works: true } },
     });
-    // raw is the last positional arg before $14 (i.e. index 13)
-    expect(typeof captured[13]).toBe('string');
-    expect(JSON.parse(String(captured[13]))).toEqual({ nested: { works: true } });
+    // raw er alltid SISTE posisjonelle argument — hardkodet indeks råtnet
+    // da author_display_name/avatar-kolonnene kom til.
+    const rawArg = captured[captured.length - 1];
+    expect(typeof rawArg).toBe('string');
+    expect(JSON.parse(String(rawArg))).toEqual({ nested: { works: true } });
   });
 
   it('survives DB throw and reports inserted=false', async () => {

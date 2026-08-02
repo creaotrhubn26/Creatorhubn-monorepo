@@ -251,7 +251,7 @@ export function registerLeadMapPromotionRoutes({ app, pool, activeSessions }: De
         });
       } catch (err) {
         await client.query("ROLLBACK");
-        return res.status(500).json({ error: "promote_failed", detail: String(err) });
+        return res.status(500).json({ error: "promote_failed", detail: "internal_error" });
       } finally {
         client.release();
       }
@@ -288,7 +288,7 @@ export function registerLeadMapPromotionRoutes({ app, pool, activeSessions }: De
         );
         return res.json({ history: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "history_failed", detail: String(err) });
+        return res.status(500).json({ error: "history_failed", detail: "internal_error" });
       }
     },
   );
@@ -346,7 +346,7 @@ export function registerLeadMapPromotionRoutes({ app, pool, activeSessions }: De
           suggestion: roleTemplate(toRole),
         });
       } catch (err) {
-        return res.status(500).json({ error: "preview_failed", detail: String(err) });
+        return res.status(500).json({ error: "preview_failed", detail: "internal_error" });
       }
     },
   );

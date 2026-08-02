@@ -274,7 +274,7 @@ const TEMPLATE_TYPE_CONFIG: Record<string, {
   },
   callback: {
     icon: <ScheduleIcon sx={{ fontSize: 24 }} />,
-    color: '#8b5cf6',
+    color: 'var(--role-violet, #8b5cf6)',
     bgColor: 'rgba(139, 92, 246, 0.15)',
     label: 'Callback',
   },

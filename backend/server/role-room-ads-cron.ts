@@ -285,7 +285,7 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
   app.post("/api/internal/ads/attribution-tick", async (req, res) => {
     const provided = req.headers["x-cron-secret"];
     const secret = process.env.ADS_CRON_SECRET;
-    if (!secret || provided !== secret) {
+    if (!secret || typeof provided !== 'string' || provided.length !== secret.length || !require('crypto').timingSafeEqual(Buffer.from(provided), Buffer.from(secret))) {
       return res.status(401).json({ error: "unauthorized" });
     }
     try {
@@ -318,7 +318,7 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
       }
       res.json({ ok: true, summary, autoPause, recommendations, mccLinks });
     } catch (error) {
-      res.status(500).json({ error: "ads_attribution_tick_failed", detail: String(error) });
+      res.status(500).json({ error: "ads_attribution_tick_failed" });
     }
   });
 

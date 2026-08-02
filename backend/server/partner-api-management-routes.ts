@@ -101,7 +101,7 @@ export function registerPartnerApiManagementRoutes({ app, pool, activeSessions }
       });
     } catch (e: any) {
       console.error("[api-keys create]", e);
-      res.status(500).json({ error: e.message ?? "Feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -234,7 +234,7 @@ export function registerPartnerApiManagementRoutes({ app, pool, activeSessions }
       });
     } catch (e: any) {
       console.error("[webhook-endpoints create]", e);
-      res.status(500).json({ error: e.message ?? "Feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

@@ -12,7 +12,7 @@ const PrintOrdersModal = React.lazy(() => import('@/components/photographer/Prin
 const PhotographerEquipment = React.lazy(() => import('@/pages/photographer-equipment'));
 const PhotographerSettings = React.lazy(() => import('@/pages/photographer-settings'));
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { apiRequest, queryClient, getAuthHeader } from '@/lib/queryClient';
 import {
   getEvendiBookings,
   getEvendiAnalyticsSummary,
@@ -2528,7 +2528,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const { data: storyArcProjectsData, isLoading: _loadingStoryArc } = useQuery({
     queryKey: ['story-arc-projects', userId],
     queryFn: async () => {
-      const res = await fetch('/api/story-arc/projects', { credentials: 'include' });
+      const res = await fetch('/api/story-arc/projects', { credentials: 'include', headers: await getAuthHeader() });
       if (res.ok) {
         const data = await res.json();
         return data.success ? data.projects.slice(0, 5) : [];
@@ -2854,7 +2854,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       openStoryArcStudioPage();
       return;
     }
-    setTabValue(newValue);
+    // #426-vakt: flere faner (fotograf-projects/clients/profitability/equipment/
+    // settings) er React.lazy. Synkron setTabValue fra <MuiTabs onChange> lar den
+    // nye lazy-fanen suspende midt i en synkron input-oppdatering → React #426.
+    // Per-fane ErrorBoundary (TabPanel) fanger krasjen, men brukeren ser da et
+    // «Noe gikk galt»-blaff. startTransition markerer byttet som ikke-hastende så
+    // Suspense-fallbacken vises jevnt i stedet.
+    React.startTransition(() => setTabValue(newValue));
 }, [availableTabs, openStoryArcStudioPage, setTabValue]);
 
   // Optimized event handlers
@@ -5152,6 +5158,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </IconButton>
                   </DialogTitle>
                   <DialogContent dividers sx={{ p: 0 }}>
+                    <ErrorBoundary componentName="dashboard-quick-modal">
                     <Suspense fallback={
                       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
                         <CircularProgress />
@@ -5163,16 +5170,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       {quickModal === 'equipment' && <PhotographerEquipment />}
                       {quickModal === 'settings' && <PhotographerSettings />}
                     </Suspense>
+                    </ErrorBoundary>
                   </DialogContent>
                 </Dialog>
 
                 {/* Dedikert print-orders-modal (samme mønster som klient-modal): maxWidth="lg", dark-bg */}
+                <ErrorBoundary componentName="dashboard-print-orders-modal">
                 <Suspense fallback={null}>
                   <PrintOrdersModal
                     open={quickModal === 'print-orders'}
                     onClose={() => setQuickModal(null)}
                   />
                 </Suspense>
+                </ErrorBoundary>
               </Box>
             )}
 

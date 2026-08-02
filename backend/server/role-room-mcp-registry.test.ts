@@ -131,3 +131,34 @@ describe("Fase 2 utkast-verktøy (skriver kun upubliserte utkast)", () => {
     expect(out).toMatchObject({ status: "draft", id: "new-id" });
   });
 });
+
+describe("rr_search_talents (byrå-scopet, samtykke-gated PII)", () => {
+  it("er read-only, byrå-scopet (ikke prosjekt-scopet), i produksjons-moduser", () => {
+    const cap = findCapability("rr_search_talents")!;
+    expect(cap.mutates).toBeFalsy();
+    expect(cap.projectScoped).toBe(false);
+    expect(cap.scope).toBe("projects.read");
+    expect(cap.modes).toContain("production");
+  });
+  it("bruker uten byrå → -32004 (fetchAgencyForUser → ingen rad)", async () => {
+    const pool = makePool([{ match: /agency_orgs/, rows: [] }]);
+    await expect(findCapability("rr_search_talents")!.handler(pool, CTX, {})).rejects.toMatchObject({ code: -32004 });
+  });
+  it("byrå-bruker → maskerte, consent-gatede treff (gjenbruker maskByScopes)", async () => {
+    const pool = makePool([
+      { match: /agency_orgs/, rows: [{ id: "ag1", type: "stella_casting", name: "Stella" }] },
+      { match: /talent_consent_registry/, rows: [
+        { id: "t1", granted_scopes: ["basic_profile"], display_name: "Kari", showreel_url: "http://x" },
+      ] },
+    ]);
+    const out = await findCapability("rr_search_talents")!.handler(pool, CTX, { limit: 10 }) as {
+      agency: { name: string }; count: number; talents: Array<Record<string, unknown>>;
+    };
+    expect(out.agency.name).toBe("Stella");
+    expect(out.count).toBe(1);
+    // basic_profile delt → navn eksponert; media_portfolio IKKE delt → showreel maskert bort
+    expect(out.talents[0].display_name).toBe("Kari");
+    expect(out.talents[0].has_showreel).toBeUndefined();
+    expect(out.talents[0].availability_visible).toBe(false);
+  });
+});

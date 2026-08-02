@@ -62,7 +62,7 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['ig-dm-connections'],
     enabled: open,
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
 

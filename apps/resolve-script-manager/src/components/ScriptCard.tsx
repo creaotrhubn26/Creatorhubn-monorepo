@@ -10,9 +10,9 @@ interface Props {
 }
 
 function formatTime(iso: string | undefined): string {
-  if (!iso) return "never";
+  if (!iso) return "aldri";
   const d = new Date(iso);
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `${d.toLocaleDateString('nb-NO')} ${d.toLocaleTimeString('nb-NO', { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 export function ScriptCard({ script, lastRun, busy, onDryRun, onRun }: Props) {

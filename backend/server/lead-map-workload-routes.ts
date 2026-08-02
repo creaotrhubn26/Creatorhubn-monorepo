@@ -149,7 +149,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
           sortedByDistance: lat !== null && lng !== null,
         });
       } catch (err) {
-        return res.status(500).json({ error: "workload_failed", detail: String(err) });
+        return res.status(500).json({ error: "workload_failed", detail: "internal_error" });
       }
     },
   );
@@ -241,7 +241,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
           commissionEarnedNok: Math.round(achievedNok * commissionPct / 100),
         });
       } catch (err) {
-        return res.status(500).json({ error: "quota_failed", detail: String(err) });
+        return res.status(500).json({ error: "quota_failed", detail: "internal_error" });
       }
     },
   );
@@ -305,7 +305,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
         });
         return res.json({ ok: true, fromUserId, toUserId: body.user_id });
       } catch (err) {
-        return res.status(500).json({ error: "assign_failed", detail: String(err) });
+        return res.status(500).json({ error: "assign_failed", detail: "internal_error" });
       }
     },
   );
@@ -337,7 +337,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "release_failed", detail: String(err) });
+        return res.status(500).json({ error: "release_failed", detail: "internal_error" });
       }
     },
   );
@@ -463,7 +463,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
           assignments,
         });
       } catch (err) {
-        return res.status(500).json({ error: "auto_assign_failed", detail: String(err) });
+        return res.status(500).json({ error: "auto_assign_failed", detail: "internal_error" });
       }
     },
   );
@@ -522,7 +522,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "quota_save_failed", detail: String(err) });
+        return res.status(500).json({ error: "quota_save_failed", detail: "internal_error" });
       }
     },
   );

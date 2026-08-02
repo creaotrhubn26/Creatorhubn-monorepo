@@ -17,8 +17,9 @@ import {
   ensureFreshAdsToken,
   getAdsOauthConnection,
 } from "./role-room-ads-oauth.js";
+import { externalFetch } from "./external-api.js";
 
-const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v18";
+const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v23"; // v18 pensjonert (404) per 19.07.2026
 
 function googleHash(value: string): string {
   return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
@@ -75,7 +76,7 @@ export async function createGoogleCustomerMatchAudience(
       },
     }],
   };
-  const listR = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/userLists:mutate`, {
+  const listR = await externalFetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/userLists:mutate`, {
     method: "POST",
     headers: adsHeaders(access),
     body: JSON.stringify(userListBody),
@@ -89,7 +90,7 @@ export async function createGoogleCustomerMatchAudience(
   if (!userListResource) return { ok: false, error: "Manglende resourceName" };
 
   // 2) Opprett offline-user-data-job
-  const jobR = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/offlineUserDataJobs:create`, {
+  const jobR = await externalFetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/offlineUserDataJobs:create`, {
     method: "POST",
     headers: adsHeaders(access),
     body: JSON.stringify({
@@ -119,7 +120,7 @@ export async function createGoogleCustomerMatchAudience(
   // Google tillater max 100 000 ops per request — batch i 10 000-er for sikkerhet
   for (let i = 0; i < operations.length; i += 10000) {
     const batch = operations.slice(i, i + 10000);
-    await fetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:addOperations`, {
+    await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:addOperations`, {
       method: "POST",
       headers: adsHeaders(access),
       body: JSON.stringify({
@@ -130,7 +131,7 @@ export async function createGoogleCustomerMatchAudience(
   }
 
   // 4) Kjør jobben
-  await fetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:run`, {
+  await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:run`, {
     method: "POST",
     headers: adsHeaders(access),
     body: "{}",
@@ -157,6 +158,67 @@ export async function createGoogleCustomerMatchAudience(
   return { ok: true, userListResource, uploadCount: operations.length };
 }
 
+/**
+ * Refresh: last opp medlemmer til en EKSISTERENDE Customer Match-userList
+ * (offlineUserDataJob mot userListResource) — samme steg 2–4 som create, uten
+ * å opprette en ny liste. Brukt av segment-refresh-cronen.
+ */
+export async function syncGoogleCustomerMatchMembers(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    customerId: string;
+    userListResource: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+  },
+): Promise<{ ok: true; uploadCount: number } | { ok: false; error: string }> {
+  const access = await getAdsAccess(pool, opts.producerUserId);
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
+  if (!access || !developerToken) return { ok: false, error: "not_connected" };
+  const cleanId = opts.customerId.replace(/-/g, "");
+
+  const jobR = await externalFetch(
+    `${GOOGLE_ADS_API_BASE}/customers/${cleanId}/offlineUserDataJobs:create`,
+    {
+      method: "POST",
+      headers: adsHeaders(access),
+      body: JSON.stringify({
+        job: {
+          type: "CUSTOMER_MATCH_USER_LIST",
+          customerMatchUserListMetadata: { userList: opts.userListResource },
+        },
+      }),
+    },
+  );
+  if (!jobR.ok) return { ok: false, error: `offlineUserDataJobs/create HTTP ${jobR.status}` };
+  const jobResource = ((await jobR.json()) as { resourceName?: string }).resourceName;
+  if (!jobResource) return { ok: false, error: "Manglende job resourceName" };
+
+  const operations: any[] = [];
+  for (const id of opts.identifiers) {
+    const userIdentifiers: any[] = [];
+    if (id.email) userIdentifiers.push({ hashedEmail: googleHash(id.email) });
+    if (id.phone) userIdentifiers.push({ hashedPhoneNumber: googleHash(id.phone) });
+    if (userIdentifiers.length > 0) operations.push({ create: { userIdentifiers } });
+  }
+  if (operations.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
+
+  for (let i = 0; i < operations.length; i += 10000) {
+    await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:addOperations`, {
+      method: "POST",
+      headers: adsHeaders(access),
+      body: JSON.stringify({ operations: operations.slice(i, i + 10000), enablePartialFailure: true }),
+    }).catch(() => null);
+  }
+  await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:run`, {
+    method: "POST",
+    headers: adsHeaders(access),
+    body: "{}",
+  }).catch(() => null);
+
+  return { ok: true, uploadCount: operations.length };
+}
+
 export async function listGoogleCustomerMatchAudiences(
   pool: Pool,
   opts: { producerUserId: string; customerId: string },
@@ -174,7 +236,7 @@ export async function listGoogleCustomerMatchAudiences(
      LIMIT 50
   `;
 
-  const r = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/googleAds:search`, {
+  const r = await externalFetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/googleAds:search`, {
     method: "POST",
     headers: adsHeaders(access),
     body: JSON.stringify({ query: gaql }),
@@ -288,7 +350,7 @@ export async function sendGoogleOfflineConversion(
     conversion.userIdentifiers = userIdentifiers;
   }
 
-  const r = await fetch(
+  const r = await externalFetch(
     `${GOOGLE_ADS_API_BASE}/customers/${cleanId}:uploadClickConversions`,
     {
       method: "POST",

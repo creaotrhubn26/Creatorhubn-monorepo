@@ -1,6 +1,9 @@
 import { Box, Container, Stack, Typography, Chip } from '@mui/material';
 import GavelIcon from '@mui/icons-material/Gavel';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Arbeidstilsynet-guide for produksjon — Pillar 4 Compliance & Legal-utvidelse.
@@ -70,6 +73,12 @@ const FAQ: Array<{ q: string; a: string }> = [
 ];
 
 export function ArbeidstilsynetGuidePage() {
+  const cmsBlocks = useCmsBlocks('arbeidstilsynet-guide-produksjon');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

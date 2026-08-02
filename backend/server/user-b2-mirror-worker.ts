@@ -256,7 +256,7 @@ async function loadUserCreds(
         LIMIT 1`,
       [userId],
     );
-    if (result.rowCount === 0) return null;
+    if (!result.rows.length) return null;
     return result.rows[0] as UserB2CredsRow;
   } catch (err) {
     if (isUndefinedTableError(err)) {

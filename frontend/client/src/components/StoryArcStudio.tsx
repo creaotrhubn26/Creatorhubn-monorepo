@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useLocation as useWouterLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../hooks/usePushNotifications';
@@ -116,7 +117,7 @@ import CinematographyCompositionOverlay, {
   type CinematographySpiralOrientation,
 } from './timeline/CinematographyCompositionOverlay';
 import { LUTEngine } from '../services/lut-engine';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { startCreatorHubGoogleSso } from '@/lib/creatorhubGoogleAuth';
 import { frameTimer } from '../services/frame-accurate-timer';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -368,6 +369,17 @@ function LazyPanelFallback() {
         Loading panel...
       </Typography>
     </Box>
+  );
+}
+
+// CH-ARCH-003: co-lokaliserer en ErrorBoundary over hver lazy panel/dialog-grense
+// slik at en krasj (React #426 el. feilet chunk-lasting) i ett panel ikke blanker
+// hele Story Arc Studio. Erstatter de tidligere bare <Suspense>-innpakningene.
+function BoundedSuspense({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary componentName="story-arc-lazy-panel">
+      <Suspense fallback={<LazyPanelFallback />}>{children}</Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -1849,7 +1861,7 @@ export default function StoryArcStudio({
   const fetchRecentProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const response = await fetch('/api/story-arc/projects', { credentials: 'include' });
+      const response = await fetch('/api/story-arc/projects', { credentials: 'include', headers: await getAuthHeader() });
       if (response.ok) {
         const data = await response.json();
         if (data.success && Array.isArray(data.projects)) {
@@ -1871,7 +1883,7 @@ export default function StoryArcStudio({
       const response = await fetch('/api/story-arc/onboarding/complete', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type' : 'application/json' },
+        headers: { 'Content-Type' : 'application/json', ...(await getAuthHeader()) },
         body: JSON.stringify({ completed: true }),
       });
       
@@ -2118,8 +2130,8 @@ export default function StoryArcStudio({
       
       console.log('✅ Video exported to project successfully!');
       
-      // Navigate back to dashboard
-      navigate('/dashboard?tab=projects');
+      // Tilbake til prosjektlista (workspace er hovedflaten).
+      navigate('/workspace');
       
     } catch (error) {
       console.error('❌ Error exporting to project:', error);
@@ -2683,10 +2695,12 @@ export default function StoryArcStudio({
         if (!id && externalProjectId) {
           // Ensure mapping + Drive folder ready up-front
           const ensureUrl = `/api/story-arc/by-project/${encodeURIComponent(String(externalProjectId))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`;
-          let res = await fetch(ensureUrl, { method: 'POST', credentials: 'include' });
+          // Bearer-headere (backend krever nå session — endepunktene er IDOR-gated)
+          const authHeaders = await getAuthHeader();
+          let res = await fetch(ensureUrl, { method: 'POST', credentials: 'include', headers: authHeaders });
           if (!res.ok) {
             // fallback to mapping-only GET
-            res = await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(externalProjectId))}`, { credentials: 'include' });
+            res = await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(externalProjectId))}`, { credentials: 'include', headers: authHeaders });
           }
           const json = await res.json().catch(() => ({}));
           if (aborted) return;
@@ -2706,7 +2720,7 @@ export default function StoryArcStudio({
         }
         if (!id) return;
         // Load editor state
-        const res2 = await fetch(`/api/story-arc/${id}/editor-state`, { credentials: 'include' });
+        const res2 = await fetch(`/api/story-arc/${id}/editor-state`, { credentials: 'include', headers: await getAuthHeader() });
         if (!res2.ok) return;
         const json2 = await res2.json();
         if (aborted || !json2?.success || !json2?.editorState) return;
@@ -2785,7 +2799,7 @@ export default function StoryArcStudio({
       try {
         const res = await fetch(`/api/story-arc/${id}/editor-state`, {
           method: 'PUT',
-          headers: { 'Content-Type' : 'application/json' },
+          headers: { 'Content-Type' : 'application/json', ...(await getAuthHeader()) },
           credentials: 'include',
           body: JSON.stringify({ editorState: state }),
         });
@@ -2800,7 +2814,7 @@ export default function StoryArcStudio({
         const pid = projectContext?.projectId;
         if (pid && driveUploadsEnabled) {
           try {
-            await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(pid))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`, { method: 'POST', credentials: 'include' });
+            await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(pid))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`, { method: 'POST', credentials: 'include', headers: await getAuthHeader() });
           } catch (ensureError) {
             console.warn('Drive mapping ensure failed:', ensureError);
           }
@@ -3271,7 +3285,7 @@ export default function StoryArcStudio({
 
         // Check database for onboarding completion
         try {
-          const res = await fetch('/api/story-arc/onboarding/status', { credentials: 'include' });
+          const res = await fetch('/api/story-arc/onboarding/status', { credentials: 'include', headers: await getAuthHeader() });
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.completed === true) {
@@ -6488,7 +6502,7 @@ export default function StoryArcStudio({
       setSaveError(null);
       const res = await fetch(`/api/story-arc/${id}/editor-state`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
         credentials: 'include',
         body: JSON.stringify({ editorState: buildEditorState() }),
       });
@@ -15340,7 +15354,7 @@ export default function StoryArcStudio({
         </Dialog>
 
         {/* Export Dialog - Browser ffmpeg */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <ExportDialog
             open={showExportDialog}
             onClose={closeExportDialog}
@@ -15348,10 +15362,10 @@ export default function StoryArcStudio({
             tracks={tracks}
             storyArc={storyArc ? storyArc : undefined}
           />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* DaVinci Resolve Export Dialog - Professional finishing */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <DaVinciResolveExportDialog
             open={showResolveExportDialog}
             onClose={closeResolveExportDialog}
@@ -15361,25 +15375,25 @@ export default function StoryArcStudio({
             culture={resolveExportSettings.culture}
             projectType={resolveExportSettings.projectType}
           />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* AI Story Generator Dialog - AUTO-CREATE TIMELINE! */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <AIStoryGeneratorDialog {...aiStoryGeneratorDialogProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* ================================================ */}
         {/* ALL PROFESSIONAL FEATURE PANELS */}
         {/* ================================================ */}
         
         {/* Transition Library - 485 transitions! */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <TransitionLibrary {...transitionLibraryProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* Speed Ramp Panel */}
         {speedRampPanelProps.isVisible && (
-          <Suspense fallback={<LazyPanelFallback />}>
+          <BoundedSuspense>
             <SpeedRampPanel
               clipId={speedRampPanelProps.clipId}
               clipDuration={speedRampPanelProps.clipDuration}
@@ -15387,7 +15401,7 @@ export default function StoryArcStudio({
               onKeyframesChange={speedRampPanelProps.onKeyframesChange}
               onPreview={speedRampPanelProps.onPreview}
             />
-          </Suspense>
+          </BoundedSuspense>
         )}
         
         {/* ================================================ */}
@@ -15395,35 +15409,35 @@ export default function StoryArcStudio({
         {/* ================================================ */}
         
         {/* Text Overlay Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <TextOverlayPanel {...textOverlayPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* GPU Filters Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <GPUFiltersPanel {...gpuFiltersPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* Color Grading Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <ColorGradingPanel {...colorGradingPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
 
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <LUTLibrary
             open={showLUTLibraryDialog}
             onClose={closeLUTLibraryDialog}
             onSelectLUT={handleSelectLUT}
           />
-        </Suspense>
+        </BoundedSuspense>
 
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <HLSImportDialog
             open={showHLSImportDialog}
             onClose={closeHLSImportDialog}
             onImport={handleImportStream}
           />
-        </Suspense>
+        </BoundedSuspense>
 
         <StoryArcSceneDetectionDialog
           open={showSceneDetectionDialog}
@@ -15434,13 +15448,13 @@ export default function StoryArcStudio({
         />
 
         {/* Auto-Captions Panel */}
-        <Suspense fallback={<LazyPanelFallback />}>
+        <BoundedSuspense>
           <AutoCaptionsPanel {...autoCaptionsPanelProps} />
-        </Suspense>
+        </BoundedSuspense>
         
         {/* Beat Sync Panel */}
         {beatSyncPanelProps.isVisible && (
-          <Suspense fallback={<LazyPanelFallback />}>
+          <BoundedSuspense>
             <BeatSyncPanel
               open={beatSyncPanelProps.open}
               onClose={beatSyncPanelProps.onClose}
@@ -15448,28 +15462,28 @@ export default function StoryArcStudio({
               clips={beatSyncPanelProps.clips}
               onClipsSnapped={beatSyncPanelProps.onClipsSnapped}
             />
-          </Suspense>
+          </BoundedSuspense>
         )}
         
         {/* Background Removal Panel */}
         {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && selectedClips.size > 0 && (
-          <Suspense fallback={<LazyPanelFallback />}>
+          <BoundedSuspense>
             <BackgroundRemovalPanel
               open={showGPUFiltersPanel && appliedFilters.has('background-removal')}
               onClose={backgroundRemovalPanelProps.onClose}
               clipId={backgroundRemovalPanelProps.clipId}
               onProcessed={backgroundRemovalPanelProps.onProcessed}
             />
-          </Suspense>
+          </BoundedSuspense>
         )}
         
         {/* Motion Tracking Panel */}
         {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && selectedClips.size > 0 && (
           <>
-            <Suspense fallback={<LazyPanelFallback />}>
+            <BoundedSuspense>
               <ObjectSegmentationPanel {...objectSegmentationPanelProps} />
               <MotionTrackingPanel {...motionTrackingPanelProps} />
-            </Suspense>
+            </BoundedSuspense>
           </>
         )}
       </Box>

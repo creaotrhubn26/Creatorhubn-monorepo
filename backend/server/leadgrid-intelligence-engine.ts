@@ -766,7 +766,7 @@ export async function fetchLeadIntelContext(
     [leadId],
   );
 
-  if (r.rowCount === 0 || !r.rows[0]?.lead_data) return null;
+  if (!r.rows.length || !r.rows[0]?.lead_data) return null;
   const row = r.rows[0];
 
   // Bygg weights med fallback til DEFAULT_WEIGHTS per dimension

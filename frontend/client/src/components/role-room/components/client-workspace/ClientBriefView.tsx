@@ -4,6 +4,7 @@
  * allerede har steg + autosave + kommentarer.
  */
 import { lazy, Suspense, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, Button, CircularProgress, Snackbar, Stack, Typography } from '@mui/material';
 import { CloudUploadOutlined as PublishIcon } from '@mui/icons-material';
 import { useClientIntake } from '../../hooks/useClientIntake';
@@ -34,21 +35,23 @@ export default function ClientBriefView({ projectId }: { projectId: string }) {
       </Box>
       {loading ? (
         <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-          <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+          <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         </Stack>
       ) : !published ? (
         <ClientAwaitingPublish noun="briefen" />
       ) : (
         <>
+          <ErrorBoundary componentName="client-brief-view">
           <Suspense
             fallback={
               <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-                <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+                <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
               </Stack>
             }
           >
             <RoleRoomMobileBriefWizard projectId={projectId} />
           </Suspense>
+          </ErrorBoundary>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 0.5 }}>
             <Button
               variant="contained"

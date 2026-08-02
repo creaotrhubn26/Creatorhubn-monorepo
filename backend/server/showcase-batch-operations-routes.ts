@@ -78,22 +78,20 @@ export function setupShowcaseBatchOperationsRoutes(
   } = deps;
 
   app.post("/api/showcase/batch-operations", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const operation = readString(payload.operation) || "";
       const itemIds = readStringArray(payload.itemIds);
-      const userId =
-        readString(payload.userId) ||
-        readString(req.headers["x-user-id"]) ||
-        "system";
+      const userId = session.userId;
       if (!itemIds.length) {
         return res.status(400).json({ error: "Ingen items valgt" });
       }
 
       const snapshot = await pool.query(
-        `SELECT * FROM showcase_items WHERE id = ANY($1)`,
-        [itemIds],
+        `SELECT * FROM showcase_items WHERE id = ANY($1) AND user_id = $2`,
+        [itemIds, userId],
       );
       const undoState: ShowcaseBatchUndoState = {
         id: crypto.randomUUID(),
@@ -104,7 +102,10 @@ export function setupShowcaseBatchOperationsRoutes(
       await compatStoreSet(showcaseBatchUndoKey(userId), undoState);
 
       if (operation === "delete") {
-        await pool.query(`DELETE FROM showcase_items WHERE id = ANY($1)`, [itemIds]);
+        await pool.query(
+          `DELETE FROM showcase_items WHERE id = ANY($1) AND user_id = $2`,
+          [itemIds, userId],
+        );
         return res.json({ success: true, deletedCount: itemIds.length });
       }
 
@@ -135,10 +136,11 @@ export function setupShowcaseBatchOperationsRoutes(
         }
 
         values.push(itemIds);
+        values.push(userId);
         await pool.query(
           `UPDATE showcase_items
               SET ${setClauses.join(", ")}
-            WHERE id = ANY($1)`,
+            WHERE id = ANY($${values.length - 1}) AND user_id = $${values.length}`,
           values,
         );
         return res.json({ success: true, updatedCount: itemIds.length });
@@ -171,12 +173,10 @@ export function setupShowcaseBatchOperationsRoutes(
   });
 
   app.post("/api/showcase/batch-operations/undo", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        readString(req.body?.userId) ||
-        readString(req.headers["x-user-id"]) ||
-        "system";
+      const userId = session.userId;
       const undoState = await compatStoreGet<ShowcaseBatchUndoState>(
         showcaseBatchUndoKey(userId),
       );

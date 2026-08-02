@@ -18,6 +18,15 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { notifyAdmins } from "./admin-notify";
 
@@ -335,9 +344,9 @@ export function registerPartnerApplicationsRoutes({
             to: recipient,
             subject: `Du er invitert som Leadgrid-partner`,
             html: `<p>Hei,</p>
-                   <p>${orgR.rows[0].name} er invitert som <strong>${partnerType}</strong>-partner i Leadgrid.</p>
-                   ${message ? `<blockquote>${message}</blockquote>` : ""}
-                   <p><a href="${acceptUrl}">Klikk her for å se vilkårene og akseptere</a></p>
+                   <p>${escapeHtml(orgR.rows[0].name)} er invitert som <strong>${escapeHtml(partnerType)}</strong>-partner i Leadgrid.</p>
+                   ${message ? `<blockquote>${escapeHtml(message)}</blockquote>` : ""}
+                   <p><a href="${escapeHtml(acceptUrl)}">Klikk her for å se vilkårene og akseptere</a></p>
                    <p>Lenken er gyldig i 14 dager.</p>`,
             text: `${orgR.rows[0].name} er invitert som ${partnerType}-partner. Aksepter: ${acceptUrl}`,
             kind: "partner_invitation",
@@ -494,8 +503,8 @@ export function registerPartnerApplicationsRoutes({
             to: org.contact_email,
             subject: `Velkommen som Leadgrid-partner — ${org.name}`,
             html: `<p>Hei,</p>
-                   <p>Vi har godkjent partnerskaps-søknaden fra <strong>${org.name}</strong>.
-                   Dere er nå offisielt en <strong>${a.partner_type}</strong>-partner.</p>
+                   <p>Vi har godkjent partnerskaps-søknaden fra <strong>${escapeHtml(org.name)}</strong>.
+                   Dere er nå offisielt en <strong>${escapeHtml(a.partner_type)}</strong>-partner.</p>
                    ${benefits.plan_upgraded ? "<p>Plan-oppgraderingen er aktivert automatisk.</p>" : ""}
                    <p>Logoen deres vises nå på <a href="${PUBLIC_BASE}/leadgrid">theroleroom.com/leadgrid</a>.</p>
                    ${apiKeySection}
@@ -553,9 +562,9 @@ export function registerPartnerApplicationsRoutes({
           to: orgR.rows[0].contact_email,
           subject: `Vedrørende din Leadgrid-partner-søknad`,
           html: `<p>Hei,</p>
-                 <p>Etter en gjennomgang av søknaden fra <strong>${orgR.rows[0].name}</strong>
+                 <p>Etter en gjennomgang av søknaden fra <strong>${escapeHtml(orgR.rows[0].name)}</strong>
                  har vi besluttet å ikke gå videre med partnerskapet på dette tidspunktet.</p>
-                 <p><strong>Begrunnelse:</strong> ${reason}</p>
+                 <p><strong>Begrunnelse:</strong> ${escapeHtml(reason)}</p>
                  <p>Dere er selvfølgelig fortsatt velkomne som vanlig Leadgrid-kunde.
                  Ta gjerne kontakt om dere har spørsmål.</p>`,
           text: `Vi har avslått partner-søknaden for ${orgR.rows[0].name}. Begrunnelse: ${reason}`,

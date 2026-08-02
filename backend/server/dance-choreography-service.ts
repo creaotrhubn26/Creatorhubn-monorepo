@@ -385,7 +385,7 @@ export async function replaceSegments(
     `SELECT 1 FROM dance_choreography WHERE id = $1 AND owner_user_id = $2`,
     [choreographyId, ownerUserId],
   );
-  if (exists.rowCount === 0) return null;
+  if (!exists.rows.length) return null;
 
   const client = await pool.connect();
   try {

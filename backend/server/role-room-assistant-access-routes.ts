@@ -240,7 +240,7 @@ export function registerRoleRoomAssistantAccessRoutes(app: Express, deps: Deps):
         `SELECT * FROM role_room_assistant_access WHERE id = $1 AND project_id = $2`,
         [String(req.params.id).trim(), String(req.params.projectId).trim()],
       );
-      if (existing.rowCount === 0) { res.status(404).json({ error: 'fant_ikke' }); return; }
+      if (!existing.rows.length) { res.status(404).json({ error: 'fant_ikke' }); return; }
       const current = existing.rows[0] as Record<string, unknown>;
       const preset = ['editor', 'photographer', 'coordinator', 'custom'].includes(String(body.rolePreset)) ? String(body.rolePreset) : String(current.role_preset);
       // Ved preset-bytte: start fra preset-default; ellers behold gjeldende areas. Så overstyr med eksplisitte felter.

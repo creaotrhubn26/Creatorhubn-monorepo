@@ -2,6 +2,9 @@ import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 type PainPoint = {
   smerte: string;
@@ -34,6 +37,35 @@ const PAINS: PainPoint[] = [
     smerte: 'Forestillinger og events planlegges i Excel + Google Calendar + Messenger-grupper',
     konsekvens: 'Når avlysninger eller forskyvninger skjer må du sende beskjed i 4 kanaler. Halvparten av medlemmene får det ikke med seg.',
     losning: 'Event-dashboard med push-notifikasjoner direkte til medlemmenes Role Room-konto. Avlysninger sendes én gang og når alle.',
+  },
+];
+
+type FaqItem = {
+  q: string;
+  a: string;
+};
+
+/**
+ * FAQ formulert som spørsmålene folk faktisk stiller AI-assistenter
+ * (GEO-baseline 2026-07-10, docs/integration-audit/geo-baselines/) —
+ * rendres både synlig og som FAQPage-schema for AI-sitering.
+ */
+const FAQ: FaqItem[] = [
+  {
+    q: 'Finnes det et system for dansestudioer med audition, ensemble og prøveplan i ett?',
+    a: 'Ja. The Role Rooms dansestudio-vertikal samler audition-håndtering (med video-innsendinger og profil-historikk), ensemble-/medlemsorganisering, prøveplaner med sal-konflikt-sjekk og forestillingsplanlegging i ett system — på norsk, med data lagret i EU/EØS.',
+  },
+  {
+    q: 'Hvordan kjører jeg audition til et dansekompani uten Facebook-grupper og Instagram-DM?',
+    a: 'Opprett en åpen audition i The Role Room: søkere melder seg via én lenke, laster opp video, og du ser alle søknader samlet med kalender-konflikt-sjekk mot eksisterende booking. Ingen jakting i fire kanaler.',
+  },
+  {
+    q: 'Hvordan deler jeg koreografi og formasjoner med danserne før prøven?',
+    a: 'Formasjonsverktøyet lar deg bygge dansenummer visuelt — posisjoner, rolle-bytter og takt-noter — og eksportere til hver danser, så nye dansere kan lære nummeret på egenhånd før de kommer i sal.',
+  },
+  {
+    q: 'Hva koster et administrasjonssystem for dansestudio?',
+    a: 'The Role Room koster fra 149 kr/mnd for frilans-dansere og 149–2 490 kr/mnd for studioer etter størrelse. Internasjonale alternativer (Jackrabbit, DanceStudio-Pro) er priset i USD og mangler norsk språk, norsk fakturering (EHF) og GDPR-avtale tilpasset norske studioer.',
   },
 ];
 
@@ -74,6 +106,12 @@ const FUNCTIONS: FunctionItem[] = [
 ];
 
 export function DansestudioNorgePage() {
+  const cmsBlocks = useCmsBlocks('dansestudio-norge');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"
@@ -137,6 +175,23 @@ export function DansestudioNorgePage() {
               },
             ],
             inLanguage: 'no',
+          }),
+        }}
+      />
+
+      {/* FAQPage schema — GEO: svarer ordrett på spørsmålene folk stiller AI */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            inLanguage: 'no',
+            mainEntity: FAQ.map((f) => ({
+              '@type': 'Question',
+              name: f.q,
+              acceptedAnswer: { '@type': 'Answer', text: f.a },
+            })),
           }),
         }}
       />
@@ -425,6 +480,28 @@ export function DansestudioNorgePage() {
                 Ads + content + klient-samarbeid for frilans-innholdsprodusenter. 495 kr per sete per måned.
               </Typography>
             </Box>
+          </Stack>
+        </Box>
+
+        {/* FAQ — synlig speiling av FAQPage-schemaet (GEO) */}
+        <Box sx={{ mb: 5 }}>
+          <Typography
+            component="h2"
+            sx={{ color: '#fff', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.7rem' }, mb: 2.5 }}
+          >
+            Vanlige spørsmål
+          </Typography>
+          <Stack spacing={2.5}>
+            {FAQ.map((f) => (
+              <Box key={f.q}>
+                <Typography component="h3" sx={{ color: '#34d399', fontWeight: 700, fontSize: '1.05rem', mb: 0.5 }}>
+                  {f.q}
+                </Typography>
+                <Typography sx={{ color: 'rgba(229,231,235,0.85)', fontSize: '0.95rem', lineHeight: 1.65 }}>
+                  {f.a}
+                </Typography>
+              </Box>
+            ))}
           </Stack>
         </Box>
 

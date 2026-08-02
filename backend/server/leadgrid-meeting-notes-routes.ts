@@ -194,7 +194,7 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
         // 202 Accepted = semantisk korrekt: jobben er akseptert, ikke ferdig.
         res.status(202).json({ meeting_note_id: noteId, status: "transcribing" });
       } catch (err) {
-        res.status(500).json({ error: "upload_failed", detail: String(err) });
+        res.status(500).json({ error: "upload_failed", detail: "internal_error" });
       }
     },
   );
@@ -260,7 +260,7 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
 
         res.status(202).json({ meeting_note_id: noteId, status: "analyzing" });
       } catch (err) {
-        res.status(500).json({ error: "create_failed", detail: String(err) });
+        res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
@@ -284,7 +284,7 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
         );
         res.json({ notes: r.rows });
       } catch (err) {
-        res.status(500).json({ error: "list_failed", detail: String(err) });
+        res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -303,13 +303,13 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
              FROM lead_meeting_notes WHERE id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (r.rowCount === 0) {
+        if (!r.rows.length) {
           res.status(404).json({ error: "ikke_funnet" });
           return;
         }
         res.json({ note: r.rows[0] });
       } catch (err) {
-        res.status(500).json({ error: "get_failed", detail: String(err) });
+        res.status(500).json({ error: "get_failed", detail: "internal_error" });
       }
     },
   );
@@ -331,7 +331,7 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
         );
         res.json({ status: "analyzing" });
       } catch (err) {
-        res.status(500).json({ error: "reprocess_failed", detail: String(err) });
+        res.status(500).json({ error: "reprocess_failed", detail: "internal_error" });
       }
     },
   );
@@ -348,7 +348,7 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
         );
         res.json({ ok: true });
       } catch (err) {
-        res.status(500).json({ error: "delete_failed", detail: String(err) });
+        res.status(500).json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );

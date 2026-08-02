@@ -142,7 +142,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
             );
         return res.json({ rules: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "rules_list_failed", detail: String(err) });
+        return res.status(500).json({ error: "rules_list_failed", detail: "internal_error" });
       }
     },
   );
@@ -190,7 +190,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         );
         return res.status(201).json({ rule: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "rule_create_failed", detail: String(err) });
+        return res.status(500).json({ error: "rule_create_failed", detail: "internal_error" });
       }
     },
   );
@@ -227,7 +227,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rowCount === 0) return res.status(404).json({ error: "rule_not_found_or_system" });
         return res.json({ rule: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "rule_update_failed", detail: String(err) });
+        return res.status(500).json({ error: "rule_update_failed", detail: "internal_error" });
       }
     },
   );
@@ -245,7 +245,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rowCount === 0) return res.status(404).json({ error: "rule_not_found_or_system" });
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "rule_delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "rule_delete_failed", detail: "internal_error" });
       }
     },
   );
@@ -266,7 +266,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         );
         return res.json({ runs: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "runs_failed", detail: String(err) });
+        return res.status(500).json({ error: "runs_failed", detail: "internal_error" });
       }
     },
   );
@@ -312,7 +312,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         const matched = evaluateCondition(snap, ruleRes.rows[0].condition as any);
         return res.json({ matched, lead_snapshot: snap });
       } catch (err) {
-        return res.status(500).json({ error: "test_failed", detail: String(err) });
+        return res.status(500).json({ error: "test_failed", detail: "internal_error" });
       }
     },
   );
@@ -331,7 +331,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         );
         return res.json(result);
       } catch (err) {
-        return res.status(500).json({ error: "evaluate_failed", detail: String(err) });
+        return res.status(500).json({ error: "evaluate_failed", detail: "internal_error" });
       }
     },
   );
@@ -367,7 +367,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
         }
         return res.json({ created_count: created.length, ids: created });
       } catch (err) {
-        return res.status(500).json({ error: "seed_failed", detail: String(err) });
+        return res.status(500).json({ error: "seed_failed", detail: "internal_error" });
       }
     },
   );

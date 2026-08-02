@@ -230,7 +230,7 @@ export default function GoogleDriveImagePicker({
                 borderColor: 'rgba(148,163,184,0.22)',
               },
               '& .Mui-focused .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#22d3ee',
+                borderColor: 'var(--role-cyan, #22d3ee)',
               },
             }}
           />
@@ -256,7 +256,7 @@ export default function GoogleDriveImagePicker({
 
           {loading ? (
             <Stack alignItems="center" sx={{ py: 4 }}>
-              <CircularProgress size={28} sx={{ color: '#22d3ee' }} />
+              <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             </Stack>
           ) : files.length === 0 && !notConnected ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.62)', textAlign: 'center', py: 3 }}>
@@ -298,7 +298,7 @@ export default function GoogleDriveImagePicker({
                       borderRadius: 2,
                       overflow: 'hidden',
                       bgcolor: 'rgba(15,23,42,0.7)',
-                      border: `1px solid ${isSelected ? '#22d3ee' : 'rgba(148,163,184,0.16)'}`,
+                      border: `1px solid ${isSelected ? 'var(--role-cyan, #22d3ee)' : 'rgba(148,163,184,0.16)'}`,
                       cursor: isImporting || bulkImporting ? 'wait' : 'pointer',
                       transition: 'transform 0.15s ease, border-color 0.15s ease',
                       boxShadow: isSelected ? '0 6px 18px rgba(34,211,238,0.28)' : 'none',
@@ -306,7 +306,7 @@ export default function GoogleDriveImagePicker({
                         ? undefined
                         : {
                             transform: 'translateY(-1px)',
-                            borderColor: '#22d3ee',
+                            borderColor: 'var(--role-cyan, #22d3ee)',
                             boxShadow: '0 6px 18px rgba(34,211,238,0.18)',
                           },
                     }}
@@ -357,7 +357,7 @@ export default function GoogleDriveImagePicker({
                           position: 'absolute',
                           top: 6,
                           right: 6,
-                          bgcolor: '#22d3ee',
+                          bgcolor: 'var(--role-cyan, #22d3ee)',
                           color: '#082f49',
                           borderRadius: '50%',
                           width: 24,
@@ -410,7 +410,7 @@ export default function GoogleDriveImagePicker({
                           backdropFilter: 'blur(2px)',
                         }}
                       >
-                        <CircularProgress size={22} sx={{ color: '#22d3ee' }} />
+                        <CircularProgress size={22} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
                       </Stack>
                     ) : null}
                   </Box>
@@ -443,7 +443,7 @@ export default function GoogleDriveImagePicker({
             sx={{
               textTransform: 'none',
               fontWeight: 800,
-              bgcolor: '#22d3ee',
+              bgcolor: 'var(--role-cyan, #22d3ee)',
               color: '#082f49',
               '&:hover': { bgcolor: '#06b6d4' },
               '&.Mui-disabled': { bgcolor: 'rgba(34,211,238,0.25)', color: 'rgba(8,47,73,0.6)' },

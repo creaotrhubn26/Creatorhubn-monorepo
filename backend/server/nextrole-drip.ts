@@ -265,8 +265,9 @@ export function setupNextRoleDripRoutes(deps: NextRoleDripDeps): void {
   const { app, pool } = deps;
 
   app.post("/api/internal/next-role/drip-tick", async (req, res) => {
-    const provided = req.headers["x-cron-secret"];
-    if (provided !== process.env.NEXTROLE_CRON_SECRET) {
+    const provided = typeof req.headers["x-cron-secret"] === "string" ? req.headers["x-cron-secret"] : "";
+    const _cronSecret = process.env.NEXTROLE_CRON_SECRET || "";
+    if (!_cronSecret || !provided || provided.length !== _cronSecret.length || !require("crypto").timingSafeEqual(Buffer.from(provided), Buffer.from(_cronSecret))) {
       res.status(401).json({ error: "invalid_cron_secret" });
       return;
     }

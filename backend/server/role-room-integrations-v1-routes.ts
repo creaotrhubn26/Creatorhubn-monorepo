@@ -2022,7 +2022,7 @@ export function createRoleRoomIntegrationsV1Router(pool: Pool): Router {
         pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM casting_schedules WHERE project_id = $1', [projectId]),
       ]);
 
-      if (projectResult.rowCount === 0) {
+      if (!projectResult.rows.length) {
         sendError(res, req, 404, 'project_not_found', 'Project was not found.');
         return;
       }
@@ -2143,7 +2143,7 @@ export function createRoleRoomIntegrationsV1Router(pool: Pool): Router {
         [projectId],
       );
 
-      if (currentResult.rowCount === 0) {
+      if (!currentResult.rows.length) {
         sendError(res, req, 404, 'project_not_found', 'Project was not found.');
         return;
       }

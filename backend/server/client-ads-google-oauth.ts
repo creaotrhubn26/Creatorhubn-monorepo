@@ -32,8 +32,9 @@ import {
   getAdsOauthConnection,
 } from "./role-room-ads-oauth.js";
 import { getClientAdsAccess } from "./client-portal-google-ads-oauth.js";
+import { externalFetch } from "./external-api.js";
 
-const GOOGLE_ADS_API_VERSION = "v18";
+const GOOGLE_ADS_API_VERSION = "v23"; // v17-v19 pensjonert (404) per 19.07.2026
 const GOOGLE_ADS_API_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 
 export interface OauthStartResult {
@@ -255,7 +256,7 @@ export async function createConversionAction(
     }],
   };
 
-  const resp = await fetch(url, {
+  const resp = await externalFetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -409,7 +410,7 @@ async function fetchConversionActionTag(
   if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
 
   try {
-    const resp = await fetch(url, {
+    const resp = await externalFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify({ query }),

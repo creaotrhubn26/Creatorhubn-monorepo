@@ -126,13 +126,6 @@ export function MediaPoolSidebar({ refreshTrigger }: Props) {
     <aside className="media-pool-sidebar">
       <div className="media-pool-header">
         <h3>Media Pool</h3>
-        <button
-          className="small ghost"
-          title="Finn ubrukte klipp (kategoriser per bin + resynk)"
-          onClick={() => window.dispatchEvent(new Event("trrpa:open-unused-clips"))}
-        >
-          🧹
-        </button>
         <button className="small ghost" onClick={refresh} disabled={loading} title="Refresh">
           {loading ? "…" : "↻"}
         </button>

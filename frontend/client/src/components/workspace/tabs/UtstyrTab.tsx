@@ -15,8 +15,76 @@ import Close from '@mui/icons-material/Close';
 import PriceCheck from '@mui/icons-material/PriceCheck';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
 import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
+import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Kategori-VERDIENE
+// (sendes til API-et) er uendret — kun visningen oversettes via CAT_EN.
+const T: WsDict = {
+  titleMusic: { no: 'Studio-utstyr', en: 'Studio equipment' },
+  title: { no: 'Utstyr', en: 'Inventory' },
+  subRegister: { no: 'Registrer', en: 'Register' },
+  subItemsMusic: { no: 'utstyr, programvare (DAW) og plugins', en: 'gear, software (DAW) and plugins' },
+  subItems: { no: 'utstyr og programvare', en: 'gear and software' },
+  subRest: { no: ', få markedsverdi automatisk, og hold styr på vedlikehold & firmware.', en: ', get market value automatically, and keep track of maintenance & firmware.' },
+  totalValue: { no: 'Samlet verdi:', en: 'Total value:' },
+  addEquipment: { no: 'Legg til utstyr', en: 'Add equipment' },
+  brandModelRequired: { no: 'Merke og modell er påkrevd.', en: 'Brand and model are required.' },
+  couldNotSave: { no: 'Kunne ikke lagre', en: 'Could not save' },
+  equipLicenses: { no: 'Utstyrs-lisenser', en: 'Equipment licenses' },
+  recurring: { no: 'Løpende:', en: 'Recurring:' },
+  perMonth: { no: 'mnd', en: 'mo' },
+  perYear: { no: 'år', en: 'yr' },
+  renewsIn: { no: 'Fornyes om', en: 'Renews in' },
+  renews: { no: 'Fornyes', en: 'Renews' },
+  renewal: { no: 'fornyelse', en: 'renewal' },
+  renewals: { no: 'fornyelser', en: 'renewals' },
+  within30: { no: 'innen 30 dager.', en: 'within 30 days.' },
+  firmwareAvail: { no: 'Firmware-oppdateringer tilgjengelig', en: 'Firmware updates available' },
+  device: { no: 'Enhet', en: 'Device' },
+  unknown: { no: 'Ukjent', en: 'Unknown' },
+  newVersion: { no: 'ny', en: 'new' },
+  download: { no: 'Last ned', en: 'Download' },
+  important: { no: 'Viktig', en: 'Important' },
+  update: { no: 'Oppdatering', en: 'Update' },
+  emptyTitle: { no: 'Ingen utstyr registrert', en: 'No equipment registered' },
+  add: { no: 'Legg til', en: 'Add' },
+  emptyMusicItems: { no: 'mikrofoner, lydkort, monitorer …', en: 'microphones, audio interfaces, monitors …' },
+  emptyVisualItems: { no: 'kameraer, objektiver, lys …', en: 'cameras, lenses, lights …' },
+  emptyRest: { no: '— så henter vi markedsverdien automatisk.', en: '— and we will fetch the market value automatically.' },
+  reklamasjon: { no: 'Reklamasjon', en: 'Consumer warranty' },
+  garanti: { no: 'Garanti', en: 'Warranty' },
+  receipt: { no: '📄 Kvittering', en: '📄 Receipt' },
+  category: { no: 'Kategori', en: 'Category' },
+  vendor: { no: 'Leverandør', en: 'Vendor' },
+  brand: { no: 'Merke', en: 'Brand' },
+  nameVersion: { no: 'Navn / versjon', en: 'Name / version' },
+  model: { no: 'Modell', en: 'Model' },
+  marketValue: { no: 'Markedsverdi', en: 'Market value' },
+  fetching: { no: 'Henter…', en: 'Fetching…' },
+  getValue: { no: 'Hent verdi', en: 'Get value' },
+  fromCatalog: { no: 'Fra katalog', en: 'From catalog' },
+  aiEstimate: { no: 'AI-estimat', en: 'AI estimate' },
+  confidence: { no: 'sikkerhet', en: 'confidence' },
+  used: { no: 'brukt', en: 'used' },
+  noValue: { no: 'Fant ingen verdi. Fyll inn merke + modell og prøv igjen.', en: 'No value found. Enter brand + model and try again.' },
+  license: { no: 'Lisens', en: 'License' },
+  perpetual: { no: 'Eierlisens', en: 'Perpetual license' },
+  subscription: { no: 'Abonnement', en: 'Subscription' },
+  billing: { no: 'Fakturering', en: 'Billing' },
+  monthly: { no: 'Månedlig', en: 'Monthly' },
+  yearly: { no: 'Årlig', en: 'Yearly' },
+  costKr: { no: 'Kostnad (kr)', en: 'Cost (kr)' },
+  cancel: { no: 'Avbryt', en: 'Cancel' },
+  saving: { no: 'Lagrer…', en: 'Saving…' },
+};
+// Engelske visningsnavn for kategori-verdiene (verdiene lagres uendret).
+const CAT_EN: Record<string, string> = {
+  'Mikrofon': 'Microphone', 'Lydkort / interface': 'Audio interface', 'Studiomonitor': 'Studio monitor', 'Hodetelefoner': 'Headphones', 'MIDI / keyboard': 'MIDI / keyboard', 'Preamp / kompressor': 'Preamp / compressor', 'Instrument': 'Instrument', 'DAW (programvare)': 'DAW (software)', 'Plugin': 'Plugin', 'Virtuelt instrument': 'Virtual instrument', 'Samplepakke / lydbibliotek': 'Sample pack / sound library', 'Kabler / tilbehør': 'Cables / accessories', 'Annet': 'Other',
+  'Kamera': 'Camera', 'Objektiv': 'Lens', 'Blits / lys': 'Flash / lighting', 'Stativ / rigg': 'Tripod / rig', 'Lyd': 'Audio', 'Drone': 'Drone', 'Minnekort / lagring': 'Memory card / storage', 'Redigeringsprogramvare': 'Editing software', 'Plugin / preset': 'Plugin / preset', 'LUT / fargepakke': 'LUT / color pack', 'Skylagring / tjeneste': 'Cloud storage / service', 'Tilbehør': 'Accessories',
+};
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
@@ -39,9 +107,11 @@ const reklamOf = (it: any) => {
 const warrantyOf = (it: any) => specOf(it).warrantyExpiry || it?.warranty_expiry || it?.warrantyExpiry || null;
 const receiptOf = (it: any) => specOf(it).receiptEmailId || null;
 // Kort «N år / N mnd igjen» fra dager-til-utløp.
-const leftLabel = (iso?: string) => {
-  const d = daysUntil(iso); if (d == null) return null; if (d < 0) return 'utløpt';
-  if (d >= 365) return `${Math.floor(d / 365)} år igjen`; if (d >= 60) return `${Math.round(d / 30)} mnd igjen`; return `${d} d igjen`;
+const leftLabel = (iso?: string, locale: 'no' | 'en' = 'no') => {
+  const d = daysUntil(iso); if (d == null) return null; if (d < 0) return locale === 'en' ? 'expired' : 'utløpt';
+  if (d >= 365) return locale === 'en' ? `${Math.floor(d / 365)} yr left` : `${Math.floor(d / 365)} år igjen`;
+  if (d >= 60) return locale === 'en' ? `${Math.round(d / 30)} mo left` : `${Math.round(d / 30)} mnd igjen`;
+  return locale === 'en' ? `${d} d left` : `${d} d igjen`;
 };
 
 const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ profession, userId }) => {
@@ -55,6 +125,11 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   const [val, setVal] = useState<any | null>(null);   // markedsverdi-resultat
   const [valBusy, setValBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Utenlandske partner-vendors får engelsk UI (WsLocaleProvider i TeamWorkspacePage).
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
+  const dl = wsDateLocale(locale);
+  const catLabel = (c?: string) => (locale === 'en' ? (CAT_EN[c] || c) : c);
 
   const load = () => {
     if (!userId) { setLoading(false); return; }
@@ -90,7 +165,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   };
 
   const save = async () => {
-    if (!form.brand.trim() || !form.model.trim() || !userId) { window.alert('Merke og modell er påkrevd.'); return; }
+    if (!form.brand.trim() || !form.model.trim() || !userId) { window.alert(t('brandModelRequired')); return; }
     setSaving(true);
     try {
       await apiRequest(`/api/equipment/inventory`, {
@@ -108,7 +183,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       });
       setOpen(false); setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' }); setVal(null);
       load();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); }
+    } catch (e: any) { window.alert(e?.message || t('couldNotSave')); }
     finally { setSaving(false); }
   };
 
@@ -120,10 +195,10 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
     <Box sx={{ maxWidth: 960, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{music ? 'Studio-utstyr' : 'Utstyr'}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Registrer {music ? 'utstyr, programvare (DAW) og plugins' : 'utstyr og programvare'}, få markedsverdi automatisk, og hold styr på vedlikehold & firmware.{totalValue ? ` Samlet verdi: ${fmtKr(totalValue)}.` : ''}</Typography>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{music ? t('titleMusic') : t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subRegister')} {music ? t('subItemsMusic') : t('subItems')}{t('subRest')}{totalValue ? ` ${t('totalValue')} ${fmtKr(totalValue)}.` : ''}</Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => setOpen(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Legg til utstyr</Button>
+        <Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => setOpen(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('addEquipment')}</Button>
       </Stack>
 
       {/* Programvare & abonnement — Gmail-kvittering-skann + manuell + kostnadsoversikt */}
@@ -138,10 +213,10 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         return (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography sx={{ fontSize: 15 }}>💳</Typography>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Utstyrs-lisenser</Typography>
+              {wsIcon('CreditCard', { fontSize: 16, color: ws.textDim })}
+              <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('equipLicenses')}</Typography>
               <Box sx={{ flex: 1 }} />
-              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Løpende: <b style={{ color: ws.accent }}>{fmtKr(monthly)}/mnd</b> ≈ {fmtKr(monthly * 12)}/år</Typography>
+              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('recurring')} <b style={{ color: ws.accent }}>{fmtKr(monthly)}/{t('perMonth')}</b> ≈ {fmtKr(monthly * 12)}/{t('perYear')}</Typography>
             </Stack>
             <Stack spacing={0.5}>
               {subs.map((it) => {
@@ -149,13 +224,13 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 return (
                   <Stack key={it.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.85, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
                     <Typography sx={{ fontSize: 12.5, fontWeight: 700, flex: 1 }} noWrap>{it.name || `${it.brand} ${it.model}`}</Typography>
-                    <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{fmtKr(Number(s.subscriptionCost))}/{s.billingCycle === 'yearly' ? 'år' : 'mnd'}</Typography>
-                    {s.renewalDate && <WsTag label={d != null && d <= 7 ? `Fornyes om ${d} d` : `Fornyes ${new Date(s.renewalDate).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })}`} tone={d != null && d <= 7 ? 'red' : 'neutral'} />}
+                    <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{fmtKr(Number(s.subscriptionCost))}/{s.billingCycle === 'yearly' ? t('perYear') : t('perMonth')}</Typography>
+                    {s.renewalDate && <WsTag label={d != null && d <= 7 ? `${t('renewsIn')} ${d} d` : `${t('renews')} ${new Date(s.renewalDate).toLocaleDateString(dl, { day: '2-digit', month: 'short' })}`} tone={d != null && d <= 7 ? 'red' : 'neutral'} />}
                   </Stack>
                 );
               })}
             </Stack>
-            {upcoming.length > 0 && <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1 }}>⚠️ {upcoming.length} fornyelse{upcoming.length === 1 ? '' : 'r'} innen 30 dager.</Typography>}
+            {upcoming.length > 0 && <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WarningAmber', { fontSize: 13 })}{upcoming.length} {upcoming.length === 1 ? t('renewal') : t('renewals')} {t('within30')}</Typography>}
           </WsCard>
         );
       })()}
@@ -165,20 +240,20 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         <WsCard sx={{ mb: 2, borderColor: ws.accentBorder }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
             <SystemUpdateAlt sx={{ fontSize: 18, color: ws.accent }} />
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Firmware-oppdateringer tilgjengelig</Typography>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('firmwareAvail')}</Typography>
             <WsTag label={`${firmware.length}`} tone="amber" />
           </Stack>
           <Stack spacing={0.75}>
             {firmware.slice(0, 8).map((f: any, i: number) => {
-              const dev = [f.deviceBrand, f.deviceModel].filter(Boolean).join(' ') || f.deviceName || f.name || f.model || 'Enhet';
+              const dev = [f.deviceBrand, f.deviceModel].filter(Boolean).join(' ') || f.deviceName || f.name || f.model || t('device');
               return (
                 <Stack key={f.id || i} direction="row" alignItems="center" spacing={1.25} sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>{dev}</Typography>
-                    <Typography sx={{ fontSize: 11.5, color: ws.textFaint }} noWrap>{f.currentVersion || 'Ukjent'} → <b style={{ color: ws.accent }}>{f.latestVersion || 'ny'}</b>{f.description ? ` · ${f.description}` : ''}</Typography>
+                    <Typography sx={{ fontSize: 11.5, color: ws.textFaint }} noWrap>{f.currentVersion || t('unknown')} → <b style={{ color: ws.accent }}>{f.latestVersion || t('newVersion')}</b>{f.description ? ` · ${f.description}` : ''}</Typography>
                   </Box>
-                  {f.downloadUrl && <Button size="small" href={f.downloadUrl} target="_blank" rel="noopener" sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}>Last ned</Button>}
-                  <WsTag label={f.priority === 'high' ? 'Viktig' : 'Oppdatering'} tone={f.priority === 'high' ? 'red' : 'amber'} />
+                  {f.downloadUrl && <Button size="small" href={f.downloadUrl} target="_blank" rel="noopener" sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}>{t('download')}</Button>}
+                  <WsTag label={f.priority === 'high' ? t('important') : t('update')} tone={f.priority === 'high' ? 'red' : 'amber'} />
                 </Stack>
               );
             })}
@@ -191,8 +266,8 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         <WsCard>
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <Inventory2 sx={{ fontSize: 36, color: ws.textFaint }} />
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Ingen utstyr registrert</Typography>
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>Legg til {music ? 'mikrofoner, lydkort, monitorer …' : 'kameraer, objektiver, lys …'} — så henter vi markedsverdien automatisk.</Typography>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('emptyTitle')}</Typography>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>{t('add')} {music ? t('emptyMusicItems') : t('emptyVisualItems')} {t('emptyRest')}</Typography>
           </Stack>
         </WsCard>
       ) : (
@@ -205,13 +280,13 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 </Box>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 700 }} noWrap>{it.name || `${it.brand} ${it.model}`}</Typography>
-                  <Typography sx={{ fontSize: 11.5, color: ws.textFaint }} noWrap>{[it.brand, it.category].filter(Boolean).join(' · ')}</Typography>
+                  <Typography sx={{ fontSize: 11.5, color: ws.textFaint }} noWrap>{[it.brand, catLabel(it.category)].filter(Boolean).join(' · ')}</Typography>
                   <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
                     {gearValue(it) > 0 && <WsTag label={`≈ ${fmtKr(gearValue(it))}`} tone="green" />}
                     {it.condition && <WsTag label={it.condition} tone="neutral" />}
-                    {(() => { const rk = reklamOf(it); const l = leftLabel(rk); return rk ? <WsTag label={`Reklamasjon: ${l}`} tone={l === 'utløpt' ? 'neutral' : 'amber'} /> : null; })()}
-                    {(() => { const w = warrantyOf(it); const l = leftLabel(w); return w ? <WsTag label={`Garanti: ${l}`} tone={l === 'utløpt' ? 'neutral' : 'green'} /> : null; })()}
-                    {receiptOf(it) && <WsTag label="📄 Kvittering" tone="neutral" />}
+                    {(() => { const rk = reklamOf(it); const l = leftLabel(rk, locale); return rk ? <WsTag label={`${t('reklamasjon')}: ${l}`} tone={l === 'utløpt' || l === 'expired' ? 'neutral' : 'amber'} /> : null; })()}
+                    {(() => { const w = warrantyOf(it); const l = leftLabel(w, locale); return w ? <WsTag label={`${t('garanti')}: ${l}`} tone={l === 'utløpt' || l === 'expired' ? 'neutral' : 'green'} /> : null; })()}
+                    {receiptOf(it) && <WsTag label={t('receipt')} tone="neutral" />}
                   </Stack>
                 </Box>
               </Stack>
@@ -224,18 +299,18 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth
         PaperProps={{ sx: { bgcolor: ws.panelSolid, backgroundImage: 'none', border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, pt: 2, pb: 0.5 }}>
-          <Typography sx={{ fontSize: 16, fontWeight: 800 }}>Legg til utstyr</Typography>
+          <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{t('addEquipment')}</Typography>
           <IconButton onClick={() => setOpen(false)} sx={{ color: ws.textDim }}><Close /></IconButton>
         </Stack>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <TextField size="small" select label="Kategori" value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); setVal(null); }} fullWidth sx={ti}>
-              {cats.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+            <TextField size="small" select label={t('category')} value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); setVal(null); }} fullWidth sx={ti}>
+              {cats.map((c) => <MenuItem key={c} value={c}>{catLabel(c)}</MenuItem>)}
             </TextField>
             {(() => { const sw = SOFTWARE_CATS.has(form.category); return (
             <Stack direction="row" spacing={1.5}>
-              <TextField size="small" label={sw ? 'Leverandør' : 'Merke'} placeholder={sw ? (music ? 'FabFilter' : 'Adobe') : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
-              <TextField size="small" label={sw ? 'Navn / versjon' : 'Modell'} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              <TextField size="small" label={sw ? t('vendor') : t('brand')} placeholder={sw ? (music ? 'FabFilter' : 'Adobe') : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              <TextField size="small" label={sw ? t('nameVersion') : t('model')} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
             </Stack>
             ); })()}
 
@@ -244,39 +319,39 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
               <Stack direction="row" alignItems="center" justifyContent="space-between">
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <PriceCheck sx={{ color: ws.accent, fontSize: 19 }} />
-                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Markedsverdi</Typography>
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('marketValue')}</Typography>
                 </Stack>
-                <Button size="small" disabled={valBusy || (!form.brand && !form.model)} onClick={fetchValue} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{valBusy ? 'Henter…' : 'Hent verdi'}</Button>
+                <Button size="small" disabled={valBusy || (!form.brand && !form.model)} onClick={fetchValue} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{valBusy ? t('fetching') : t('getValue')}</Button>
               </Stack>
               {val && (val.nok ? (
                 <Box sx={{ mt: 0.75 }}>
                   <Typography sx={{ fontSize: 20, fontWeight: 800, color: ws.accent }}>≈ {fmtKr(val.nok)}</Typography>
                   <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>
-                    {val.source === 'katalog' ? `Fra katalog${val.supplier ? ` (${val.supplier})` : ''}` : `AI-estimat${val.confidence ? ` · ${val.confidence} sikkerhet` : ''}`}
-                    {val.newNok && val.usedNok ? ` · ny ${fmtKr(val.newNok)} / brukt ${fmtKr(val.usedNok)}` : ''}{val.note ? ` · ${val.note}` : ''}
+                    {val.source === 'katalog' ? `${t('fromCatalog')}${val.supplier ? ` (${val.supplier})` : ''}` : `${t('aiEstimate')}${val.confidence ? ` · ${val.confidence} ${t('confidence')}` : ''}`}
+                    {val.newNok && val.usedNok ? ` · ${t('newVersion')} ${fmtKr(val.newNok)} / ${t('used')} ${fmtKr(val.usedNok)}` : ''}{val.note ? ` · ${val.note}` : ''}
                   </Typography>
                 </Box>
-              ) : <Typography sx={{ fontSize: 12, color: ws.textDim, mt: 0.75 }}>Fant ingen verdi. Fyll inn merke + modell og prøv igjen.</Typography>)}
+              ) : <Typography sx={{ fontSize: 12, color: ws.textDim, mt: 0.75 }}>{t('noValue')}</Typography>)}
             </Box>
 
             {/* Lisens / abonnement (kun programvare/plugins) */}
             {SOFTWARE_CATS.has(form.category) && (
               <Box>
-                <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 0.5 }}>Lisens</Typography>
+                <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 0.5 }}>{t('license')}</Typography>
                 <Stack direction="row" spacing={1} sx={{ mb: form.licenseType === 'subscription' ? 1.25 : 0 }}>
-                  {[['perpetual', 'Eierlisens'], ['subscription', 'Abonnement']].map(([v, l]) => (
+                  {[['perpetual', t('perpetual')], ['subscription', t('subscription')]].map(([v, l]) => (
                     <button key={v} onClick={() => setForm({ ...form, licenseType: v })}
                       style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, border: `1px solid ${form.licenseType === v ? ws.accentBorder : ws.border}`, background: form.licenseType === v ? ws.accentSoft : 'transparent', color: form.licenseType === v ? ws.accent : ws.textDim }}>{l}</button>
                   ))}
                 </Stack>
                 {form.licenseType === 'subscription' && (
                   <Stack direction="row" spacing={1.5}>
-                    <TextField size="small" select label="Fakturering" value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })} sx={{ ...ti, width: 130 }}>
-                      <MenuItem value="monthly">Månedlig</MenuItem>
-                      <MenuItem value="yearly">Årlig</MenuItem>
+                    <TextField size="small" select label={t('billing')} value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })} sx={{ ...ti, width: 130 }}>
+                      <MenuItem value="monthly">{t('monthly')}</MenuItem>
+                      <MenuItem value="yearly">{t('yearly')}</MenuItem>
                     </TextField>
-                    <TextField size="small" type="number" label="Kostnad (kr)" value={form.subCost} onChange={(e) => setForm({ ...form, subCost: e.target.value })} fullWidth sx={ti} />
-                    <TextField size="small" type="date" label="Fornyes" InputLabelProps={{ shrink: true }} value={form.renewalDate} onChange={(e) => setForm({ ...form, renewalDate: e.target.value })} sx={{ ...ti, width: 150 }} />
+                    <TextField size="small" type="number" label={t('costKr')} value={form.subCost} onChange={(e) => setForm({ ...form, subCost: e.target.value })} fullWidth sx={ti} />
+                    <TextField size="small" type="date" label={t('renews')} InputLabelProps={{ shrink: true }} value={form.renewalDate} onChange={(e) => setForm({ ...form, renewalDate: e.target.value })} sx={{ ...ti, width: 150 }} />
                   </Stack>
                 )}
               </Box>
@@ -284,8 +359,8 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 2.5, pb: 2 }}>
-          <Button onClick={() => setOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-          <Button onClick={save} disabled={saving || !form.brand.trim() || !form.model.trim()} variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{saving ? 'Lagrer…' : 'Legg til'}</Button>
+          <Button onClick={() => setOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('cancel')}</Button>
+          <Button onClick={save} disabled={saving || !form.brand.trim() || !form.model.trim()} variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{saving ? t('saving') : t('add')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

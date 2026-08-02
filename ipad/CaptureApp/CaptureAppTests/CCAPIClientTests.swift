@@ -57,4 +57,21 @@ final class CCAPIInventoryTests: XCTestCase {
         XCTAssertEqual(response.addedcontents, ["/ccapi/ver120/contents/card1/100CANON/_69A8268.CR3"])
         XCTAssertEqual(response.totalContentsCount, 2113)
     }
+
+    /// P3 (E2): eksponeringskompensasjon dekodes fra `exposure`-diffen (samme
+    /// value-mønster som av/tv/iso).
+    func testPollingResponseDecodesExposureCompensation() throws {
+        let json = #"""
+        {
+          "av": {"value":"f2.8"},
+          "tv": {"value":"1/125"},
+          "iso": {"value":"800"},
+          "exposure": {"value":"+0.3","ability":["-3","0","+0.3","+3"]}
+        }
+        """#.data(using: .utf8)!
+        let response = try JSONDecoder().decode(CCAPIPollingResponse.self, from: json)
+        XCTAssertEqual(response.apertureValue, "f2.8")
+        XCTAssertEqual(response.isoValue, "800")
+        XCTAssertEqual(response.exposureCompensation, "+0.3")
+    }
 }

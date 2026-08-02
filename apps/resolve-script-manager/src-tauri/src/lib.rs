@@ -8,6 +8,7 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod autonomous_demo;
+mod broll;
 mod capture_sources;
 mod demo_capture;
 mod demo_export;
@@ -90,7 +91,7 @@ async fn claude_chat(
         return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY. Logg inn fra Settings.".into());
     }
 
-    let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
+    let model = model.unwrap_or_else(|| "claude-opus-4-8".to_string());
     let max_tokens = max_tokens.unwrap_or(1024);
     let mut body = serde_json::json!({
         "model": model,
@@ -476,6 +477,9 @@ async fn ad_film_regenerate_shot(
     };
 
     let mut cmd = std::process::Command::new(&python_bin);
+    // Hindre .pyc-skriving inn i den signerte bundelen (bryter kode-signaturen
+    // → Gatekeeper «damaged»). Samme grunn som i python::spawn_python.
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
     cmd.arg(&script)
         .arg("--spec")
         .arg(&spec_path)
@@ -902,6 +906,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .manage(CardWatcherState::default())
         .manage(RunningScriptsState::default())
@@ -910,6 +915,21 @@ pub fn run() {
         .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
+            // Tilpass hovedvinduet til skjermen det åpner på + sentrer det. Den faste
+            // størrelsen (1560×980) er HØYERE enn det brukbare området på en 13/14"
+            // innebygd skjerm (≈1512×982 logisk minus menylinje) → bunnen (tidslinje/
+            // transport) havnet UTENFOR skjermen. Klamp til ~94 % bredde / ~90 % høyde
+            // av monitoren (aldri større enn standard, aldri under et brukbart minimum).
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(Some(mon)) = win.current_monitor() {
+                    let scale = mon.scale_factor();
+                    let msize = mon.size().to_logical::<f64>(scale);
+                    let w = 1560.0_f64.min((msize.width * 0.94).max(1000.0));
+                    let h = 980.0_f64.min((msize.height * 0.90).max(680.0));
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    let _ = win.center();
+                }
+            }
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
             match build_menu(&handle) {
@@ -923,7 +943,10 @@ pub fn run() {
             // Forward menu events to frontend as "menu://<id>" events
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().0.as_str();
-                let event_name = format!("menu://{}", id.trim_start_matches("menu_"));
+                // Frontend lytter på bindestrek-navn (menu://check-updates); meny-
+                // id-ene bruker understrek (menu_check_updates) → konverter, ellers
+                // matcher ikke event-navnet og meny-klikk gjør ingenting.
+                let event_name = format!("menu://{}", id.trim_start_matches("menu_").replace('_', "-"));
                 if let Err(err) = app_handle.emit(&event_name, ()) {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
                 }
@@ -1004,12 +1027,15 @@ pub fn run() {
             playwright_render::setup_playwright,
             playwright_render::run_playwright_demo,
             playwright_render::playwright_capture_shots,
+            playwright_render::render_infographic,
+            playwright_render::export_infographic,
             demo_recording::save_demo_recording,
             demo_recording::check_url_embeddable,
             demo_capture::start_demo_capture,
             demo_capture::demo_capture_step,
             demo_capture::demo_capture_done,
             demo_capture::demo_fetch_site_context,
+            demo_capture::fetch_live_data,
             demo_capture::demo_scan_dom,
             demo_capture::demo_scan_result,
             demo_capture::demo_scan_progress,
@@ -1032,6 +1058,18 @@ pub fn run() {
             capture_sources::open_iphone_mirroring,
             capture_sources::start_screen_record,
             capture_sources::stop_screen_record,
+            capture_sources::ios_sim_boot,
+            capture_sources::ios_sim_launch,
+            capture_sources::ios_sim_openurl,
+            capture_sources::ios_sim_list_apps,
+            capture_sources::ios_sim_screenshot,
+            capture_sources::ios_sim_describe,
+            capture_sources::ios_sim_tap,
+            capture_sources::ios_sim_swipe,
+            broll::higgsfield_account_status,
+            broll::generate_broll_clip,
+            broll::generate_broll_clip_fal,
+            broll::generate_presenter_clip,
             autonomous_demo::synthesize_tts,
             autonomous_demo::tts_from_audio,
             autonomous_demo::extract_frame,

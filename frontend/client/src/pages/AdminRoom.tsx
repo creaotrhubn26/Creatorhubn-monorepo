@@ -90,6 +90,7 @@ import {
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
 import ObservabilityPanel from '../components/admin-room/observability/ObservabilityPanel';
+import IntegrationCenterTab from '../components/admin-room/integration-center/IntegrationCenterTab';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
 import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
 import { PlatformStatusWidget } from '../components/role-room/components/admin-room/PlatformStatusWidget';
@@ -103,7 +104,9 @@ import { NewsletterStudioTab } from '../components/admin/content-marketing/Newsl
 import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
+import { MARKETING_PAGES, PILLAR_LABELS } from '../components/admin/content-marketing/marketingPagesConfig';
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
+import InfographicTemplatesTab from '../components/admin/InfographicTemplatesTab';
 import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
 import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
 import { PAGE_TEMPLATES, type TemplateKind } from '../components/role-room/cms/pageTemplates';
@@ -115,7 +118,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'integrations' | 'infographic-templates';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -2431,12 +2434,38 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
     }));
     const landingEntries = [
       { slug: 'home', variant: 'landing', h1: 'The Role Room (forside)', audience: '/' },
-      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal', audience: 'For skuespillere og crew' },
+      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal (hero-seksjon)', audience: 'For skuespillere og crew — kun banner øverst, ikke hele siden' },
+      { slug: 'agencyportal', variant: 'landing', h1: 'Agency-portal (hero-seksjon)', audience: 'For byråer — kun banner øverst, ikke hele siden' },
       { slug: 'utdanningsinstitusjon', variant: 'landing', h1: 'For utdanningsinstitusjoner', audience: 'Skoler og fagmiljø' },
       { slug: 'alternatives', variant: 'competitor', h1: 'Casting-plattform alternativer', audience: 'Indeks-side' },
       { slug: 'presse', variant: 'landing', h1: 'Pressepakke', audience: 'Journalister og partnere' },
+      { slug: 'for-byraer', variant: 'landing', h1: 'For byråer', audience: 'B2B-landingsside' },
+      { slug: 'faq', variant: 'landing', h1: 'Ofte stilte spørsmål', audience: 'Offentlig FAQ' },
+      { slug: 'pitch', variant: 'landing', h1: 'Pitch deck', audience: 'Investorer' },
+      { slug: 'privacy-policy', variant: 'landing', h1: 'Personvernerklæring', audience: 'Juridisk — deles med CreatorHub-varianten av samme URL' },
+      { slug: 'brief', variant: 'landing', h1: 'Norwegian Casting Brief (arkiv-intro)', audience: '/brief — kun toppseksjon over utgave-listen' },
+      { slug: 'clientportal', variant: 'landing', h1: 'Klientportal (banner)', audience: 'Klienter med magic-link — kun banner øverst, ikke hele siden' },
+      { slug: 'clientworkspace', variant: 'landing', h1: 'Klient-workspace (banner)', audience: 'Klienter med prosjekttilgang — kun banner mellom header og faner' },
     ];
-    return [...studentEntries, ...competitorEntries, ...landingEntries];
+    const marketingEntries = MARKETING_PAGES.map((page) => ({
+      slug: page.key,
+      variant: 'landing' as const,
+      h1: page.title,
+      audience: PILLAR_LABELS[page.pillar],
+    }));
+    const creatorHubEntries = [
+      { slug: 'creatorhub-home', variant: 'landing' as const, h1: 'CreatorHub (forside)', audience: 'creatorhubn.com /' },
+      { slug: 'about', variant: 'landing' as const, h1: 'Om CreatorHub', audience: '/about, /about-us' },
+      { slug: 'request-access', variant: 'landing' as const, h1: 'Be om tilgang', audience: '/request-access' },
+      { slug: 'creatorhub-innovasjon', variant: 'landing' as const, h1: 'Tidum / CreatorHub Innovasjon', audience: '/creatorhub-innovasjon' },
+      { slug: 'terms-and-conditions', variant: 'landing' as const, h1: 'Vilkår og betingelser', audience: 'Juridisk — deles med Role Room-varianten av samme URL' },
+      { slug: 'nextrole', variant: 'landing' as const, h1: 'NextRole (salgsside)', audience: '/nextrole' },
+      { slug: 'academy', variant: 'landing' as const, h1: 'Academy (hero-seksjon)', audience: '/academy — kun banner øverst, ikke kurslisten' },
+      { slug: 'pricing', variant: 'landing' as const, h1: 'Priser (offentlig side)', audience: '/pricing — sammenlign planer' },
+      { slug: 'cookie-policy', variant: 'landing' as const, h1: 'Cookie-erklæring', audience: '/cookie-policy — deles med Role Room-varianten av samme URL' },
+      { slug: 'data-deletion', variant: 'landing' as const, h1: 'Sletting av brukerdata', audience: '/data-deletion' },
+    ];
+    return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries, ...creatorHubEntries];
   }, []);
 
   const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);
@@ -2586,7 +2615,10 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   }));
   // Block-CMS state. Når `blocks` er null bruker editoren legacy-skjema-felter.
   const [blocks, setBlocks] = useState<Block[] | null>(null);
-  const [published, setPublished] = useState(true);
+  // Default utkast for nye sider — matcher backend-defaulten i cms-pages-routes.ts
+  // (published=false når raden ikke finnes fra før). Lastes over med faktisk
+  // verdi fra `data.page.published` under hvis en CMS-override allerede finnes.
+  const [published, setPublished] = useState(false);
   const [publishAt, setPublishAt] = useState<string>('');
   const [unpublishAt, setUnpublishAt] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -2609,7 +2641,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
       const previewContent = blocks ? { blocks } : content;
       win.postMessage(
         { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-        '*',
+        window.location.origin,
       );
     });
     return () => cancelAnimationFrame(raf);
@@ -2618,12 +2650,13 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   // Vent til iframe sender "preview-ready" så vi vet at den kan motta postMessage
   useEffect(() => {
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'roleroom-cms-preview-ready' && event.data?.pageKey === slug) {
         previewReadyRef.current = true;
         const previewContent = blocks ? { blocks } : content;
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-          '*',
+          window.location.origin,
         );
       }
     };
@@ -4492,7 +4525,7 @@ function resolveInitialAdminTab(): AdminRoomTab {
     'content-marketing', 'industry-crm', 'role-room-economy',
     'newsletter-studio', 'ai-citation', 'whats-new', 'resend',
     'marketing-cockpit', 'role-room-agent', 'content-calendar',
-    'b2-archive', 'migrations', 'observability',
+    'b2-archive', 'migrations', 'observability', 'integrations',
   ];
   try {
     const fromUrl = new URLSearchParams(window.location.search).get('adminTab');
@@ -4572,6 +4605,7 @@ export default function AdminRoom() {
   else if (tab === 'activity') content = <ActivityLogTab />;
   else if (tab === 'analytics') content = <AnalyticsTab />;
   else if (tab === 'cms') content = <CmsTab />;
+  else if (tab === 'infographic-templates') content = <InfographicTemplatesTab />;
   else if (tab === 'presence') content = <PresenceTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
   else if (tab === 'prototype-testers') content = <PrototypeTestersTab />;
@@ -4584,6 +4618,7 @@ export default function AdminRoom() {
   else if (tab === 'ai-citation') content = <AiCitationTab />;
   else if (tab === 'whats-new') content = <WhatsNewTab />;
   else if (tab === 'observability') content = <ObservabilityPanel />;
+  else if (tab === 'integrations') content = <IntegrationCenterTab />;
   else if (tab === 'resend') content = <ResendStatusTab />;
   else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
@@ -4592,6 +4627,22 @@ export default function AdminRoom() {
   else if (tab === 'migrations') content = <MigrationsTab />;
 
   return (
+    <Box
+      sx={{
+        // AdminRoom er gjennomgående mørk-tema-stylet (hvit header,
+        // gjennomskinnelige mørke paneler, lys tab-tekst), men rendres i
+        // SPA-en på lys body — uten eget lerret ble alt grått og utvasket.
+        // Dette mørke lerretet gir tokens riktig grunn uansett host-tema.
+        minHeight: '100vh',
+        background:
+          'radial-gradient(1100px 700px at 15% -10%, rgba(124,58,237,0.14), transparent 60%), linear-gradient(180deg, #0b1120 0%, #0a0807 100%)',
+        // Body har lys-temaets tekstfarge (#262626); theme-default
+        // Typography (uten color-prop) ARVER den og ble usynlig på mørk
+        // grunn («Min dag», «Vunnet / Tapt»). Lys arvefarge her gir alle
+        // faner lesbar default-tekst; eksplisitte farger vinner fortsatt.
+        color: '#e2e8f0',
+      }}
+    >
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
       <style>{`
         @media print {
@@ -4629,6 +4680,7 @@ export default function AdminRoom() {
           <Tab value="activity" label="Aktivitets-logg" />
           <Tab value="analytics" label="Analytics" />
           <Tab value="cms" label="CMS" />
+          <Tab value="infographic-templates" label="Infografikk-maler" />
           <Tab value="presence" label="Presence" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
           <Tab value="prototype-testers" label="Prototype-testere" />
@@ -4646,9 +4698,11 @@ export default function AdminRoom() {
           <Tab value="content-calendar" label="Content-kalender" />
           <Tab value="b2-archive" label="B2-arkiv" />
           <Tab value="migrations" label="Migrasjoner" />
+          <Tab value="integrations" label="🔌 Integrasjoner" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>
     </Container>
+    </Box>
   );
 }

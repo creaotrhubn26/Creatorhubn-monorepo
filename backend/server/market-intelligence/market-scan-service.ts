@@ -388,6 +388,167 @@ export async function runMarketScan(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Scan-progress / fase-API — kanonisk lesning og oppdatering av
+// polling-feltene (phase/phase_message/leads_created_count/…) som
+// Leadgrid-inngangene bruker. Konsolidert hit fra
+// leadgrid-market-scan-routes.ts (CTO-audit P1, Migration Plan steg 4)
+// så vi ikke har duplisert query-logikk over market_scans.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface ScanProgress {
+  id: string;
+  name: string;
+  phase: string;
+  phase_message: string | null;
+  status: string;
+  total_competitors: number;
+  total_opportunities: number;
+  leads_created_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  region: string | null;
+  industry: string | null;
+  target_audience: string | null;
+  goal: string | null;
+  auto_create_leads: boolean;
+  target_org_id: string | null;
+  created_at: string;
+}
+
+const SCAN_PROGRESS_COLUMNS = `
+  id::text, name, phase, phase_message, status,
+  total_competitors, total_opportunities, leads_created_count,
+  started_at::text, completed_at::text, error_message,
+  region, industry, target_audience, goal,
+  auto_create_leads, target_org_id::text, created_at::text`;
+
+export async function setScanPhase(
+  pool: Pool,
+  scanId: string,
+  phase: string,
+  message?: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE market_scans
+        SET phase = $2, phase_message = $3
+      WHERE id = $1::uuid`,
+    [scanId, phase, message ?? null],
+  );
+}
+
+export async function getScanProgress(
+  pool: Pool,
+  scanId: string,
+): Promise<ScanProgress | null> {
+  const r = await pool.query<ScanProgress>(
+    `SELECT ${SCAN_PROGRESS_COLUMNS} FROM market_scans WHERE id = $1::uuid`,
+    [scanId],
+  );
+  return r.rows[0] ?? null;
+}
+
+export async function listScanProgressForUser(
+  pool: Pool,
+  args: { workspaceOwnerUserId: string; limit?: number },
+): Promise<ScanProgress[]> {
+  const r = await pool.query<ScanProgress>(
+    `SELECT ${SCAN_PROGRESS_COLUMNS}
+       FROM market_scans
+      WHERE workspace_owner_user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [args.workspaceOwnerUserId, args.limit ?? 30],
+  );
+  return r.rows;
+}
+
+export async function markScanFailed(
+  pool: Pool,
+  scanId: string,
+  errorMessage: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE market_scans SET status='failed', error_message=$2
+      WHERE id=$1::uuid`,
+    [scanId, errorMessage.slice(0, 500)],
+  );
+}
+
+export async function setScanRunFlags(
+  pool: Pool,
+  scanId: string,
+  args: { autoCreateLeads: boolean; targetOrgId?: string | null },
+): Promise<void> {
+  await pool.query(
+    `UPDATE market_scans
+        SET auto_create_leads = $2,
+            target_org_id = $3,
+            phase = 'pending'
+      WHERE id = $1::uuid`,
+    [scanId, args.autoCreateLeads, args.targetOrgId ?? null],
+  );
+}
+
+export async function addScanLeadsCreatedCount(
+  pool: Pool,
+  scanId: string,
+  args: { created: number; mode: "set" | "increment" },
+): Promise<void> {
+  await pool.query(
+    args.mode === "set"
+      ? `UPDATE market_scans SET leads_created_count = $2 WHERE id = $1::uuid`
+      : `UPDATE market_scans SET leads_created_count = leads_created_count + $2 WHERE id = $1::uuid`,
+    [scanId, args.created],
+  );
+}
+
+/** Places-berikelsen (lat/lng/rating) lagret på konkurrent-radene. */
+export interface CompetitorPlaceEnrichment {
+  latitude: number | null;
+  longitude: number | null;
+  googlePlaceId: string | null;
+  googleAddress: string | null;
+  googlePhone: string | null;
+  googleRating: number | null;
+}
+
+export async function getScanCompetitorsWithPlaces(
+  pool: Pool,
+  scanId: string,
+): Promise<Array<Competitor & CompetitorPlaceEnrichment>> {
+  const competitors = await getScanCompetitors(pool, scanId);
+  const r = await pool.query<{
+    id: string;
+    latitude: number | null;
+    longitude: number | null;
+    google_place_id: string | null;
+    google_address: string | null;
+    google_phone: string | null;
+    google_rating: number | null;
+  }>(
+    `SELECT id::text, latitude, longitude, google_place_id,
+            google_address, google_phone, google_rating
+       FROM market_scan_competitors
+      WHERE market_scan_id = $1::uuid`,
+    [scanId],
+  );
+  const placeById = new Map(r.rows.map((row) => [row.id, row]));
+  return competitors.map((c) => {
+    const p = placeById.get(c.id);
+    return {
+      ...c,
+      latitude: p?.latitude != null ? Number(p.latitude) : null,
+      longitude: p?.longitude != null ? Number(p.longitude) : null,
+      googlePlaceId: p?.google_place_id ?? null,
+      googleAddress: p?.google_address ?? null,
+      googlePhone: p?.google_phone ?? null,
+      googleRating: p?.google_rating != null ? Number(p.google_rating) : null,
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Read helpers — for routes som bare leser scan-deler
 // ─────────────────────────────────────────────────────────────────────
 

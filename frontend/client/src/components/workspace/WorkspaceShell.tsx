@@ -16,6 +16,7 @@ import {
 import Person from '@mui/icons-material/Person';
 import Palette from '@mui/icons-material/Palette';
 import Lock from '@mui/icons-material/Lock';
+import MenuIcon from '@mui/icons-material/Menu';
 import Logout from '@mui/icons-material/Logout';
 import Dashboard from '@mui/icons-material/Dashboard';
 import AccountTree from '@mui/icons-material/AccountTree';
@@ -47,18 +48,41 @@ import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Settings from '@mui/icons-material/Settings';
 import HexagonOutlined from '@mui/icons-material/HexagonOutlined';
 import Add from '@mui/icons-material/Add';
+import WorkOutline from '@mui/icons-material/WorkOutline';
+import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
+import { useElementEdits } from './elementEdits';
+import { useWsLocale, makeT } from './wsLocale';
+
+// Shell-chrome no/en (utenlandske partner-vendors får engelsk via WsLocaleProvider).
+const SHELL_T = {
+  newProject: { no: 'Nytt prosjekt', en: 'New project' },
+  groupHoved: { no: 'HOVEDMENY', en: 'MAIN MENU' },
+  groupRom: { no: 'SMART ROM', en: 'SMART ROOMS' },
+  groupKlient: { no: 'KUNDEPORTAL', en: 'CLIENT PORTAL' },
+  profileSettings: { no: 'Profil & innstillinger', en: 'Profile & settings' },
+  branding: { no: 'Merkevare', en: 'Branding' },
+  security: { no: 'Sikkerhet', en: 'Security' },
+  logout: { no: 'Logg ut', en: 'Log out' },
+  online: { no: 'online', en: 'online' },
+  clientView: { no: 'Kundevisning', en: 'Client view' },
+  inviteMember: { no: 'Inviter medlem', en: 'Invite member' },
+  teamMembers: { no: 'Team & medlemmer', en: 'Team & members' },
+  openClientView: { no: 'Åpne kundevisning', en: 'Open client view' },
+  agreementsSettings: { no: 'Avtaler & innstillinger', en: 'Agreements & settings' },
+};
 
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
   CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
   Visibility, EventNote, Album, LibraryMusic, School, MoveToInbox, Forum, Inventory2,
+  WorkOutline, EventAvailable,
 };
 
-const GROUP_LABEL: Record<string, string> = {
-  hoved: 'HOVEDMENY',
-  rom: 'SMART ROM',
-  klient: 'KUNDEPORTAL',
+const GROUP_KEY: Record<string, string> = {
+  hoved: 'groupHoved',
+  rom: 'groupRom',
+  klient: 'groupKlient',
 };
 
 export interface WorkspaceProject {
@@ -127,30 +151,100 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
+/**
+ * CreatorHub Design (Nivå 1): avled aksent-familien fra ÉN accent-hex → CSS-variabler.
+ * Ugyldig/manglende hex → tomt objekt (literal-fallbackene i workspaceTheme gjelder → identisk).
+ */
+function wsAccentVars(hex?: string | null): React.CSSProperties {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return {};
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const dark = '#' + [r, g, b].map((x) => Math.round(x * 0.9).toString(16).padStart(2, '0')).join('');
+  return {
+    '--ws-accent': hex,
+    '--ws-accent-hover': dark,
+    '--ws-accent-soft': `rgba(${r},${g},${b},0.14)`,
+    '--ws-accent-border': `rgba(${r},${g},${b},0.42)`,
+  } as React.CSSProperties;
+}
+
+// CreatorHub Design (Fase B): chrome-token-nøkkel → CSS-var (shell-bakgrunn/panel/ramme/tekst).
+const WS_CHROME_VAR: Record<string, string> = {
+  bg: '--ws-bg', bgSidebar: '--ws-bg-sidebar', panel: '--ws-panel', panelSolid: '--ws-panel-solid',
+  panelAlt: '--ws-panel-alt', panelInput: '--ws-panel-input', border: '--ws-border', borderSoft: '--ws-border-soft',
+  text: '--ws-text', textDim: '--ws-text-dim', textFaint: '--ws-text-faint',
+};
+
+/** CreatorHub Design: henter design-tokens (ws=creatorhub) ÉN gang og bruker dem på shell-en:
+ *  - accent → --ws-accent* på :root (document.documentElement, IKKE shell-Box — MUI Menu/Dialog/
+ *    Tooltip rendres via Portal til <body>, utenfor Box-treet; kun :root når portalene også).
+ *  - copy  → returneres for å overstyre t()-tekster (Nivå 2b).
+ *  Endres via CreatorHub Design (PUT), slår inn ved neste last. */
+function useWorkspaceDesign(): { copy: Record<string, string> } {
+  const [copy, setCopy] = React.useState<Record<string, string>>({});
+  React.useEffect(() => {
+    let live = true;
+    fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !d || !d.tokens) return;
+        if (d.tokens.accent) {
+          const vars = wsAccentVars(d.tokens.accent);
+          const root = document.documentElement;
+          Object.keys(vars).forEach((k) => root.style.setProperty(k, String((vars as any)[k])));
+        }
+        if (d.tokens.copy && typeof d.tokens.copy === 'object') setCopy(d.tokens.copy);
+        if (d.tokens.chrome && typeof d.tokens.chrome === 'object') {
+          const root = document.documentElement;
+          Object.keys(d.tokens.chrome).forEach((k) => {
+            const cssVar = WS_CHROME_VAR[k], val = (d.tokens.chrome as any)[k];
+            if (cssVar && typeof val === 'string' && val) root.style.setProperty(cssVar, val);
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  return { copy };
+}
+
 const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
+  const baseT = makeT(SHELL_T, useWsLocale());
+  const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
+  useElementEdits('creatorhub'); // CreatorHub Design (per-element-lag): anvend lagrede stil-edits
+  // t() med copy-overstyring (Nivå 2b): tokens.copy[key] vinner, ellers locale-dict.
+  const t = (k: string) => { const o = copyOv[k]; return typeof o === 'string' && o ? o : baseT(k); };
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
+  const [mobileNav, setMobileNav] = React.useState(false); // sidebar som slide-in på mobil
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (
     <ThemeProvider theme={workspaceDarkTheme}>
       <Box sx={{ display: 'flex', height: '100vh', bgcolor: ws.bg, color: ws.text, overflow: 'hidden' }}>
-        {/* ───────── Venstre nav ───────── */}
+        {/* Mobil-backdrop bak slide-in-nav-en */}
+        <Box onClick={() => setMobileNav(false)} sx={{
+          display: { xs: mobileNav ? 'block' : 'none', md: 'none' },
+          position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 1299,
+        }} />
+        {/* ───────── Venstre nav (statisk på desktop, slide-in overlay < md) ───────── */}
         <Box sx={{
           width: 260, flexShrink: 0, bgcolor: ws.bgSidebar, borderRight: `1px solid ${ws.border}`,
           display: 'flex', flexDirection: 'column',
+          position: { xs: 'fixed', md: 'static' }, top: 0, bottom: 0, left: 0, zIndex: 1300,
+          transform: { xs: mobileNav ? 'translateX(0)' : 'translateX(-100%)', md: 'none' },
+          transition: 'transform .2s ease',
         }}>
           {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
           <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
-            <Box component="img" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
+            <Box component="img" data-edit-id="ws-logo" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
           </Box>
 
           {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
           <Box sx={{ px: 1.5, pb: 1 }}>
-            <Button fullWidth onClick={onNewProject} startIcon={<Add />} variant="contained"
+            <Button fullWidth data-edit-id="ws-new-project" onClick={onNewProject} startIcon={<Add />} variant="contained"
               sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, borderRadius: 999, py: 1, '&:hover': { bgcolor: ws.accentHover } }}>
-              Nytt prosjekt
+              {t('newProject')}
             </Button>
           </Box>
 
@@ -174,12 +268,12 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
               return (
                 <Box key={g} sx={{ mb: 1 }}>
                   <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
-                    {GROUP_LABEL[g]}
+                    {t(GROUP_KEY[g])}
                   </Typography>
                   {items.map((item) => {
                     const dyn = badges?.[item.key];
                     const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
-                    return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => onTab(item.key)} />;
+                    return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => { onTab(item.key); setMobileNav(false); }} />;
                   })}
                 </Box>
               );
@@ -210,12 +304,12 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                 <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{user.email || user.role}</Typography>
               </Box>
               <Divider />
-              <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>Profil & innstillinger</MenuItem>
-              <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>Merkevare</MenuItem>
-              <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>Sikkerhet</MenuItem>
+              <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>{t('profileSettings')}</MenuItem>
+              <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>{t('branding')}</MenuItem>
+              <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>{t('security')}</MenuItem>
               <Divider />
               <MenuItem onClick={() => { setUserMenu(null); onLogout ? onLogout() : (window.location.href = '/login'); }}>
-                <ListItemIcon><Logout fontSize="small" /></ListItemIcon>Logg ut
+                <ListItemIcon><Logout fontSize="small" /></ListItemIcon>{t('logout')}
               </MenuItem>
             </Menu>
           </Box>
@@ -229,6 +323,9 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
           }}>
             <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+              <IconButton onClick={() => setMobileNav(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, color: ws.text, ml: -1 }} aria-label="Åpne meny">
+                <MenuIcon />
+              </IconButton>
               <Typography sx={{ fontSize: 22, fontWeight: 800 }} noWrap>{project.name}</Typography>
               {project.status && (
                 <Chip
@@ -257,7 +354,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             {typeof online === 'number' && (
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mr: 0.5 }}>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: online > 0 ? ws.green : ws.textFaint }} />
-                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} online</Typography>
+                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} {t('online')}</Typography>
               </Stack>
             )}
             <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` } }}>
@@ -271,18 +368,18 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                 <>
                   <Button size="small" startIcon={<Visibility sx={{ fontSize: 16 }} />} onClick={onClientView}
                     sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none' }} variant="outlined">
-                    Kundevisning
+                    {t('clientView')}
                   </Button>
                   <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
                     sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
-                    Inviter medlem
+                    {t('inviteMember')}
                   </Button>
                   <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
                   <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
                     PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Team & medlemmer</MenuItem>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Åpne kundevisning</MenuItem>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Avtaler & innstillinger</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('teamMembers')}</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('openClientView')}</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('agreementsSettings')}</MenuItem>
                   </Menu>
                 </>
               )}

@@ -79,7 +79,7 @@ async function loadConfigAndActions(
      FROM client_ads_configs WHERE id = $1::uuid`,
     [configId],
   );
-  if (c.rowCount === 0) return null;
+  if (!c.rows.length) return null;
   const a = await pool.query<ActionRow>(
     `SELECT id::text, action_name, display_name, google_ads_label, goal_category,
             trigger_type, url_pattern, trigger_config, default_value, currency,

@@ -141,8 +141,89 @@ export function installFrontendErrorReporter(): void {
     });
   });
 
-  // 3) Console.error capture (valgfritt — fanger React-warnings og lignende)
+  // 3) Uventede API-svar (401/403/5xx) som ellers svelges av handled catch-er.
+  installApiFailureReporter();
+
+  // 4) Console.error capture (valgfritt — fanger React-warnings og lignende)
   // Vi gjør dette ikke som standard for å unngå overflod.
+}
+
+// ── API-feil-rapportør ────────────────────────────────────────
+// Klient-portal-401-ene (manuscripts/my-tabs) ble aldri fanget fordi et 401
+// er et *håndtert* HTTP-svar, ikke et kastet unntak — verken window.error
+// eller unhandledrejection ser det. Denne wrapperen patcher fetch og
+// rapporterer same-origin /api/*-svar som «ikke skal feile stille»:
+//   • 401 / 403  → autz-brist (level: warning)
+//   • >= 500     → server-feil (level: error)
+// 404 rapporteres bevisst IKKE — kodebasen bruker 404 til feature-deteksjon
+// (f.eks. markManuscriptApiUnavailable), så det ville skapt støy.
+// Dedup + rate-limit arves fra reportError (fingerprint = metode|path|status).
+let apiReporterInstalled = false;
+
+function resolveRequestUrl(input: RequestInfo | URL): string | null {
+  try {
+    if (typeof input === "string") return input;
+    if (input instanceof URL) return input.href;
+    if (input instanceof Request) return input.url;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function shouldReportApiStatus(status: number): "warning" | "error" | null {
+  if (status >= 500) return "error";
+  if (status === 401 || status === 403) return "warning";
+  return null;
+}
+
+function installApiFailureReporter(): void {
+  if (apiReporterInstalled || typeof window === "undefined" || typeof window.fetch !== "function") {
+    return;
+  }
+  apiReporterInstalled = true;
+
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const response = await originalFetch(input, init);
+    // Aldri kast/blokker fra rapporterings-stien — returner alltid svaret.
+    try {
+      const level = shouldReportApiStatus(response.status);
+      if (!level) return response;
+
+      const rawUrl = resolveRequestUrl(input);
+      if (!rawUrl) return response;
+
+      const url = new URL(rawUrl, window.location.origin);
+      // Kun same-origin API-kall; hopp over selve error-endepunktet (loop-vern).
+      if (url.origin !== window.location.origin) return response;
+      if (!url.pathname.startsWith("/api/")) return response;
+      if (url.pathname === ENDPOINT) return response;
+
+      const method = (
+        init?.method
+        ?? (input instanceof Request ? input.method : undefined)
+        ?? "GET"
+      ).toUpperCase();
+
+      void reportError({
+        message: `API ${response.status} ${method} ${url.pathname}`,
+        errorName: "ApiResponseError",
+        url: url.href,
+        level,
+        meta: {
+          kind: "api-response",
+          status: response.status,
+          method,
+          path: url.pathname,
+        },
+      });
+    } catch {
+      // aldri kast — observability skal ikke kunne knekke app-fetch
+    }
+    return response;
+  };
 }
 
 /** Manuell rapport — for å logge handled errors fra try/catch i komponenter. */

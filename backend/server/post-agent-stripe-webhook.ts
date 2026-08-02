@@ -120,7 +120,7 @@ export function handlePostAgentStripeWebhook({ pool }: PostAgentWebhookDeps) {
       }
     } catch (err) {
       console.error('[post-agent-webhook] signature verification failed:', err);
-      res.status(400).json({ error: 'signature_invalid', detail: (err as Error).message });
+      res.status(400).json({ error: 'signature_invalid', detail: "internal_error" });
       return;
     }
 
@@ -289,7 +289,7 @@ export function handlePostAgentStripeWebhook({ pool }: PostAgentWebhookDeps) {
       res.json({ received: true, event_type: event.type });
     } catch (err) {
       console.error('[post-agent-webhook] handler error:', err);
-      res.status(500).json({ error: 'handler_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'handler_failed', detail: "internal_error" });
     }
   };
 }

@@ -437,7 +437,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
               bgcolor: '#0f1318',
               border: '1px solid #252d3d',
               cursor: 'pointer',
-              '&:hover': { borderColor: '#8b5cf6' },
+              '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)' },
               '&:hover .archive-overlay': { opacity: 1 },
             }}
           >
@@ -532,7 +532,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                 textAlign: 'center',
                 cursor: 'pointer',
                 bgcolor: '#252d3d',
-                '&:hover': { borderColor: '#8b5cf6' },
+                '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)' },
               }}
             >
               <input
@@ -558,7 +558,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                 />
               ) : (
                 <Stack spacing={1} alignItems="center">
-                  <UploadIcon sx={{ fontSize: 32, color: '#8b5cf6' }} />
+                  <UploadIcon sx={{ fontSize: 32, color: 'var(--role-violet, #8b5cf6)' }} />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>
                     Klikk for å velge fil (JPEG/PNG/WebP/HEIC)
                   </Typography>

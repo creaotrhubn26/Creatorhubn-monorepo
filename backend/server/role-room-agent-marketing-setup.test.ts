@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMarketingSetup,
   deriveGeoScope,
+  groundMarketingSetupWithAudit,
 } from './role-room-agent-marketing-setup.js';
 
 describe('deriveGeoScope', () => {
@@ -109,5 +110,44 @@ describe('buildMarketingSetup — channel-priority override (#2)', () => {
     const a = buildMarketingSetup({ businessModel: 'B2C' }, 'local');
     const b = buildMarketingSetup({ businessModel: 'B2C' }, 'local', null);
     expect(a.channels.map((c) => c.name)).toEqual(b.channels.map((c) => c.name));
+  });
+});
+
+describe('groundMarketingSetupWithAudit — F1-grunnfesting (doc 14)', () => {
+  const base = buildMarketingSetup({ businessModel: 'B2C' }, 'local');
+
+  it('null/tom audit endrer ingenting', () => {
+    expect(groundMarketingSetupWithAudit(base, null)).toBe(base);
+    expect(groundMarketingSetupWithAudit(base, [])).toBe(base);
+  });
+
+  it('pixel funnet i initial HTML → consent-advarsel, ikke «sett opp»', () => {
+    const grounded = groundMarketingSetupWithAudit(base, [{ key: 'meta_pixel', status: 'partial' }]);
+    const pixelItem = grounded.adTech.find((a) => /Meta Pixel/.test(a))!;
+    expect(pixelItem).toContain('FINNES allerede');
+    expect(pixelItem).toContain('marketing-samtykke');
+    expect(grounded.rationale).toContain('site-audit');
+  });
+
+  it('pixel ikke observert → consent-gatet oppsett; GA4/GEO/sitemap-funn blir tiltak', () => {
+    const grounded = groundMarketingSetupWithAudit(base, [
+      { key: 'meta_pixel', status: 'unknown' },
+      { key: 'ga4', status: 'implemented' },
+      { key: 'bot_serving', status: 'missing' },
+      { key: 'sitemap', status: 'missing' },
+    ]);
+    expect(grounded.adTech.find((a) => /Meta Pixel/.test(a))).toContain('ikke observert');
+    expect(grounded.adTech.some((a) => a.includes('GA4 er allerede'))).toBe(true);
+    expect(grounded.adTech.some((a) => a.includes('prerender'))).toBe(true);
+    expect(grounded.adTech.some((a) => a.includes('Sitemap mangler'))).toBe(true);
+  });
+
+  it('alt på plass → ingen støy-tillegg, kun rationale-sporing', () => {
+    const grounded = groundMarketingSetupWithAudit(base, [
+      { key: 'ga4', status: 'unknown' },
+      { key: 'bot_serving', status: 'implemented' },
+      { key: 'sitemap', status: 'implemented' },
+    ]);
+    expect(grounded.adTech.length).toBe(base.adTech.length);
   });
 });

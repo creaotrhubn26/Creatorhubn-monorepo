@@ -423,7 +423,7 @@ export function registerLeadMapResearchRoutes({
           name: scan.name,
         });
       } catch (err) {
-        return res.status(500).json({ error: "start_failed", detail: String(err) });
+        return res.status(500).json({ error: "start_failed", detail: "internal_error" });
       }
     },
   );
@@ -452,7 +452,7 @@ export function registerLeadMapResearchRoutes({
         });
         return res.json({ ok: true, started: true });
       } catch (err) {
-        return res.status(500).json({ error: "run_failed", detail: String(err) });
+        return res.status(500).json({ error: "run_failed", detail: "internal_error" });
       }
     },
   );
@@ -467,7 +467,7 @@ export function registerLeadMapResearchRoutes({
         if (!progress) return res.status(404).json({ error: "not_found" });
         return res.json({ research: progress });
       } catch (err) {
-        return res.status(500).json({ error: "status_failed", detail: String(err) });
+        return res.status(500).json({ error: "status_failed", detail: "internal_error" });
       }
     },
   );
@@ -495,7 +495,7 @@ export function registerLeadMapResearchRoutes({
         );
         return res.json({ runs: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );

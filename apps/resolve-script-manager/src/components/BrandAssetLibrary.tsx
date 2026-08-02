@@ -113,7 +113,7 @@ export function BrandAssetLibrary({
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 6500,
-        background: "rgba(8,4,20,0.85)", backdropFilter: "blur(8px)",
+        background: "rgba(8,4,20,0.85)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
       onClick={onClose}

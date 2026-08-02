@@ -150,7 +150,7 @@ export const ROLE_ROOM_TIERS: Record<
     name: 'Role Room Spotlight',
     shortName: 'Spotlight',
     tagline: 'Kom i gang med kundeanalyse og feed-planlegging.',
-    accentHex: '#22d3ee',
+    accentHex: 'var(--role-cyan, #22d3ee)',
     level: 1,
   },
   headliner: {

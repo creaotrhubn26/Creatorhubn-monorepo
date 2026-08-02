@@ -230,7 +230,8 @@ export const AdminConsole: React.FC = () => {
 
     try {
       const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+      const wsUrl = `${protocol}//${window.location.host}/ws${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {

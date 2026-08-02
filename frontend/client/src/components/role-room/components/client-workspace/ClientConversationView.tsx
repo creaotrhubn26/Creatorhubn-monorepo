@@ -75,7 +75,7 @@ const ICON_MAP = {
   approval: ApprovalIcon, delivery: DeliveryIcon, meeting: MeetingIcon, activity: ActivityIcon,
 } as const;
 const ICON_COLOR = {
-  message: '#c4b5fd', request: '#fbbf24', upload: '#7dd3fc',
+  message: '#c4b5fd', request: '#fbbf24', upload: 'var(--role-cyan, #7dd3fc)',
   approval: '#86efac', delivery: '#f0abfc', meeting: '#a5b4fc', activity: 'rgba(226,232,240,0.7)',
 } as const;
 
@@ -557,13 +557,13 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           {[
             { q: 'start google meet nå instant video', icon: <InstantMeetIcon sx={{ color: '#86efac' }} />, primary: 'Start Google Meet nå', secondary: 'Instant videomøte + del lenke', run: () => void startInstantMeet() },
             { q: 'foreslå book møte tid kalender', icon: <ScheduleIcon sx={{ color: '#a5b4fc' }} />, primary: 'Foreslå & book møte', secondary: 'Velg tid → Google Meet', run: () => { setActionAnchor(null); setProposeOpen(true); } },
-            { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
-            { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
+            { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
+            { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
             { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#f0abfc' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
             { q: 'referer til leveranse fil møte video godkjenn', icon: <ReferenceIcon sx={{ color: '#fcd34d' }} />, primary: 'Referer til …', secondary: 'Leveranse, fil eller møte → klikkbart kort', run: () => void openReferencePicker() },
             // Produsent-only handlinger (vises kun når canUseInternal).
-            { q: 'ai utkast svar forslag claude', icon: <AiIcon sx={{ color: '#22d3ee' }} />, primary: 'AI: foreslå svar', secondary: 'Claude skriver et utkast i feltet', run: () => void runAiAssist('draft') },
-            { q: 'ai oppsummer sammendrag hva venter', icon: <SummaryIcon sx={{ color: '#22d3ee' }} />, primary: 'AI: oppsummer samtalen', secondary: 'Hva er status / hva venter på meg', run: () => void runAiAssist('summary') },
+            { q: 'ai utkast svar forslag claude', icon: <AiIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />, primary: 'AI: foreslå svar', secondary: 'Claude skriver et utkast i feltet', run: () => void runAiAssist('draft') },
+            { q: 'ai oppsummer sammendrag hva venter', icon: <SummaryIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />, primary: 'AI: oppsummer samtalen', secondary: 'Hva er status / hva venter på meg', run: () => void runAiAssist('summary') },
             // Produsent-only handlinger (vises kun når canUseInternal).
             ...(canUseInternal ? [
               { q: 'del budsjett økonomi publiser klient', icon: <BudgetIcon sx={{ color: '#86efac' }} />, primary: 'Del budsjett med klient', secondary: 'Publiser budsjettlinjer → klientens Økonomi', run: () => void shareBudget() },
@@ -613,7 +613,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
               ))}
               {refTab === 1 && refMaterials.map((m) => (
                 <ListItemButton key={m.id} onClick={() => void pickReference('material', m.id, m.originalName ?? m.title, { originalName: m.originalName })} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon><FileIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
+                  <ListItemIcon><FileIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} /></ListItemIcon>
                   <ListItemText primary={m.originalName ?? m.title} secondary={m.entryType} />
                 </ListItemButton>
               ))}

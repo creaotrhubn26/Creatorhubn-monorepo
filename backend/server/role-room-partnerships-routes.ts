@@ -211,6 +211,18 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
   // Body: { agency_org_id, production_user_id, message? }
   // Sjekker proposer ER agency-admin på agency_org_id ELLER ER production_user_id.
   app.post("/api/role-room/partnerships/propose", async (req, res) => {
+    // Sikkerhet: demo-modus (?demo=1) gir en syntetisk demo-agency-sesjon for
+    // LESE-utforsking. `propose` er den eneste mutasjonen som tar en motpart-id
+    // (production_user_id) fra body, og det finnes ingen demo-produksjonsbruker
+    // å foreslå til — så et demo-forslag ville uunngåelig skrevet en EKTE
+    // partnership-rad mot en vilkårlig ekte bruker + trigget en ekte e-post,
+    // uautentisert. Det bryter demo-invariansen ("kan ikke endre prod-data").
+    // Blokker derfor propose i demo-modus (ingen legitim demo-flyt bruker den).
+    if (isDemoRequest(req)) {
+      return res
+        .status(403)
+        .json({ error: "Partnership-forslag er ikke tilgjengelig i demo-modus" });
+    }
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -335,7 +347,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(201).json({ partnership });
     } catch (err) {
       console.error("[partnerships/propose] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å foreslå partnership", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å foreslå partnership", detail: "internal_error" });
     }
   });
 
@@ -717,6 +729,24 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
           .status(403)
           .json({ error: "Kun produksjonsteam-eier kan invitere byrået til prosjekter" });
       }
+      // IDOR-gate: verifiser at prosjektet faktisk eies av innlogget bruker.
+      // Uten dette kan produksjonsteam-eieren invitere byrået til ET HVILKET
+      // SOM HELST casting_project_id — også en ANNEN produsents prosjekt — som
+      // (a) lekker prosjekt-metadata (navn/type/datoer) tilbake via
+      // GET /:id/invitations + e-post til byrået, og (b) lar byrået foreslå
+      // talenter som ved aksept injiseres som casting_candidates i det fremmede
+      // prosjektet. Speiler eierskaps-sjekken i
+      // GET /casting-projects/:projectId/incoming-talent-proposals.
+      const ownedProj = await pool.query(
+        `SELECT created_by FROM casting_projects WHERE id = $1 LIMIT 1`,
+        [casting_project_id],
+      );
+      if (!ownedProj.rows[0]) {
+        return res.status(404).json({ error: "Prosjekt ikke funnet" });
+      }
+      if (ownedProj.rows[0].created_by !== session.userId) {
+        return res.status(403).json({ error: "Du eier ikke prosjektet" });
+      }
       // Sjekk også byrå-side global pause/stenging
       const agencyCheck = await fetchQualifiedAgency(pool, partnership.agency_org_id);
       if (agencyCheck) {
@@ -817,7 +847,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(201).json({ invitation });
     } catch (err) {
       console.error("[partnerships/invite-project] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å invitere prosjekt", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å invitere prosjekt", detail: "internal_error" });
     }
   });
 
@@ -1290,7 +1320,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("[partnerships/availability/close] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å stenge", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å stenge", detail: "internal_error" });
     } finally {
       client.release();
     }
@@ -1558,7 +1588,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(201).json({ proposal });
     } catch (err) {
       console.error("[partnerships/talent-proposals POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å foreslå talent", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å foreslå talent", detail: "internal_error" });
     }
   });
 
@@ -1978,7 +2008,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       });
     } catch (err) {
       console.error("[partnerships/talent-proposals/bulk] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å foreslå bulk", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å foreslå bulk", detail: "internal_error" });
     }
   });
 

@@ -36,6 +36,7 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import PersonIcon from "@mui/icons-material/Person";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import InsightsIcon from "@mui/icons-material/Insights";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import DevicesIcon from "@mui/icons-material/Devices";
@@ -102,6 +103,7 @@ interface Props {
   onOpenShortFilmAgent: () => void;
   onOpenAdFilmAgent: () => void;
   onOpenDemoStudio: () => void;
+  onOpenInfographicStudio: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -166,7 +168,7 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours} t siden`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} d siden`;
-  return new Date(ts).toLocaleDateString();
+  return new Date(ts).toLocaleDateString('nb-NO');
 }
 
 export function HomeView({
@@ -184,6 +186,7 @@ export function HomeView({
   onOpenShortFilmAgent,
   onOpenAdFilmAgent,
   onOpenDemoStudio,
+  onOpenInfographicStudio,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -472,7 +475,7 @@ export function HomeView({
           disabled={!signedIn}
           title={signedIn ? "Scene-basert produktdemo fra URL — Mac/iPad/iPhone-mockups, manus, teleprompter og guided opptak. Krever Demo Studio-abonnement." : "Logg inn først"}
         >
-          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef8a5d, #a030c0)" }}>
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #8b5cf6, #a030c0)" }}>
             <DevicesIcon sx={{ fontSize: 28, color: "white" }} />
           </div>
           <div className="home-action-body">
@@ -480,6 +483,27 @@ export function HomeView({
             <div className="home-action-desc">
               Lim inn en URL og lag en styrt produktdemo i Mac/iPad/iPhone-mockups
               — scener, manus, teleprompter og guided opptak
+            </div>
+            <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenInfographicStudio}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/demo.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
+          disabled={!signedIn}
+          title={signedIn ? "Lag animerte infographics — maler, «Mine infographics»-bibliotek, sosiale formater og eksport. Krever Demo Studio-abonnement." : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}>
+            <InsightsIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Infographic Studio</div>
+            <div className="home-action-desc">
+              Animerte data-infographics fra maler — stat-callouts, diagrammer og
+              sosiale formater med eget bibliotek og eksport
             </div>
             <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
           </div>

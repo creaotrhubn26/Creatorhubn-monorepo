@@ -3785,14 +3785,28 @@ async function runGfpganService(params: {
     PHOTO_ENHANCER_MODEL_TIMEOUT_MS,
   );
 
+  // RunPod Serverless speaks a job API (POST /v2/<endpointId>/runsync with
+  // {input:…} -> {output:…}) instead of the runner's native /enhance. Detect it
+  // from the endpoint host and adapt the envelope + bearer auth; the CPU Render
+  // runner, the GPU Pod and Modal all speak the native contract unchanged.
+  // Fully gated by PHOTO_ENHANCER_GFPGAN_URL — prod is untouched until that env
+  // var points at api.runpod.ai.
+  let isRunpodServerless = false;
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
+    isRunpodServerless = new URL(endpoint).host.endsWith("api.runpod.ai");
+  } catch {
+    isRunpodServerless = false;
+  }
+  const runpodApiKey = process.env.RUNPOD_API_KEY || process.env.RUNPOD_KEY || "";
+  const runnerHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (isRunpodServerless && runpodApiKey) {
+    runnerHeaders.Authorization = `Bearer ${runpodApiKey}`;
+  }
+
+  try {
+    const runnerRequestBody = {
         filename: params.file.originalname,
         mimeType: params.file.mimetype,
         preset: params.preset,
@@ -3848,11 +3862,37 @@ async function runGfpganService(params: {
           weightsKey: params.model.weights?.key || params.model.r2Key,
         },
         imageBase64: params.file.buffer.toString("base64"),
-      }),
+    };
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: runnerHeaders,
+      signal: controller.signal,
+      body: JSON.stringify(
+        isRunpodServerless ? { input: runnerRequestBody } : runnerRequestBody,
+      ),
     });
 
     if (!response.ok) return null;
-    const payload = (await response.json()) as Record<string, unknown>;
+    let payload = (await response.json()) as Record<string, unknown>;
+    // RunPod runsync wraps the handler's return in { output, status, error }.
+    // Unwrap to the runner's native dict; treat job- or handler-level errors as
+    // a runner miss so the caller falls back to the CPU path instead of 5xx-ing.
+    if (isRunpodServerless) {
+      const jobError = readString((payload as { error?: unknown }).error);
+      if (jobError) {
+        console.warn("[photo-enhancer] RunPod serverless job error:", jobError);
+        return null;
+      }
+      const out = (payload as { output?: unknown }).output;
+      if (out && typeof out === "object") {
+        payload = out as Record<string, unknown>;
+      }
+      const handlerError = readString((payload as { error?: unknown }).error);
+      if (handlerError) {
+        console.warn("[photo-enhancer] RunPod handler error:", handlerError);
+        return null;
+      }
+    }
     const directUrl =
       readString(payload.enhancedImageUrl) ||
       readString(payload.imageUrl) ||
@@ -3983,7 +4023,8 @@ async function persistEnhancedBuffer(params: {
   settings: PhotoEnhancerSettings;
   namePrefix?: string;
 }): Promise<PhotoEnhancerSavedFile> {
-  const projectDirectory = path.join(projectFileStorageRoot, params.projectId);
+  const safeProjectId = sanitizeR2KeySegment(params.projectId || "photo-enhancer", "photo-enhancer");
+  const projectDirectory = path.join(projectFileStorageRoot, safeProjectId);
   await fs.mkdir(projectDirectory, { recursive: true });
   const id = crypto.randomUUID();
   const extension = extensionForMime(params.mimeType);
@@ -5220,11 +5261,25 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         ? keywordsRaw.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
 
+      const SAFE_IMAGE_MIMES: Record<string, string> = {
+        "image/jpeg": "image/jpeg",
+        "image/jpg": "image/jpeg",
+        "image/png": "image/png",
+        "image/webp": "image/webp",
+        "image/tiff": "image/tiff",
+        "image/heic": "image/heic",
+        "image/heif": "image/heif",
+      };
+      const safeContentType =
+        SAFE_IMAGE_MIMES[(req.file.mimetype || "").toLowerCase()] ||
+        "application/octet-stream";
+
       if (!copyright && !artist && !creator && keywords.length === 0) {
         // Nothing to stamp — send the input back unchanged so the
         // frontend can use the same code path whether or not the user
         // configured metadata.
-        res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+        res.setHeader("Content-Type", safeContentType);
+        res.setHeader("Content-Disposition", "attachment");
         return res.status(200).end(req.file.buffer);
       }
 
@@ -5244,10 +5299,8 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         // Don't fail the export just because exiftool isn't on the
         // dev box — fall back to passing through untouched.
         if (result.error === "exiftool_unavailable") {
-          res.setHeader(
-            "Content-Type",
-            req.file.mimetype || "application/octet-stream",
-          );
+          res.setHeader("Content-Type", safeContentType);
+          res.setHeader("Content-Disposition", "attachment");
           res.setHeader("X-Exif-Stamp", "skipped_exiftool_unavailable");
           return res.status(200).end(req.file.buffer);
         }
@@ -5257,8 +5310,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           detail: result.detail,
         });
       }
-      res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+      res.setHeader("Content-Type", safeContentType);
       res.setHeader("Content-Length", result.bytes.length.toString());
+      res.setHeader("Content-Disposition", "attachment");
       res.setHeader("X-Exif-Stamp", "applied");
       return res.status(200).end(result.bytes);
     },
@@ -5410,7 +5464,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         meta = parseCubeMetadata(text);
       } catch (err) {
         if (err instanceof CubeParseError) {
-          return res.status(400).json({ success: false, error: err.code, detail: err.message });
+          return res.status(400).json({ success: false, error: err.code, detail: "internal_error" });
         }
         return res.status(400).json({ success: false, error: "parse_failed" });
       }

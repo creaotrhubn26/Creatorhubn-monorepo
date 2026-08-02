@@ -31,6 +31,11 @@ import {
   type TerritoryRow,
   type BreachKind,
 } from "./leadgrid-territory-service.js";
+import { fetchTettstederForKommune } from "./leadgrid-tettsted-service.js";
+import {
+  assertAnyEntitled,
+  LEADGRID_OMRADE_FEATURE_KEYS,
+} from "./leadgrid-entitlement-guard.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -120,6 +125,40 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
   const permManage = requireLeadMapPermission("territories.manage", common);
   const permBreaches = requireLeadMapPermission("territories.view_breaches", common);
 
+  // ─── GET /api/leadgrid/territories/tettsteder?kommune=NNNN ────────
+  // SSB-tettsteder («tettbygde strøk») innenfor en kommune — katalogen
+  // bak «Tildel område → Tettsted» (teamleder tildeler tettsted til
+  // selger; tildelingen selv går via POST /territories m/ geometri).
+  // RBAC: territories.manage (kun ledere skal se fordelings-katalogen).
+  // Entitlement: omradeTildeling (feature-matrisen, tilleggstjeneste).
+  app.get(
+    "/api/leadgrid/territories/tettsteder",
+    permManage,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+      const entitled = await assertAnyEntitled(
+        pool, session.userId, LEADGRID_OMRADE_FEATURE_KEYS, res,
+      );
+      if (!entitled) return;
+
+      const kommune = typeof req.query.kommune === "string" ? req.query.kommune.trim() : "";
+      if (!/^\d{4}$/.test(kommune)) {
+        return res.status(400).json({ error: "ugyldig_kommunenummer" });
+      }
+      try {
+        const tettsteder = await fetchTettstederForKommune(kommune);
+        if (!tettsteder) {
+          return res.status(502).json({ error: "tettsted_oppslag_feilet" });
+        }
+        return res.json({ kommunenummer: kommune, aargang: 2025, tettsteder });
+      } catch (err) {
+        console.warn("[leadgrid-territory] tettsteder failed:", (err as Error).message);
+        return res.status(500).json({ error: "tettsteder_failed" });
+      }
+    },
+  );
+
   // ─── GET /api/leadgrid/territories ────────────────────────────────
   app.get("/api/leadgrid/territories", permView, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
@@ -141,7 +180,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.json({ territories: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      return res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -173,7 +212,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.json({ territories: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "mine_failed", detail: String(err) });
+      return res.status(500).json({ error: "mine_failed", detail: "internal_error" });
     }
   });
 
@@ -218,7 +257,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.status(201).json({ id: r.rows[0].id, overlaps });
     } catch (err) {
-      return res.status(500).json({ error: "create_failed", detail: String(err) });
+      return res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 
@@ -255,7 +294,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       return res.json({ id: r.rows[0].id });
     } catch (err) {
-      return res.status(500).json({ error: "update_failed", detail: String(err) });
+      return res.status(500).json({ error: "update_failed", detail: "internal_error" });
     }
   });
 
@@ -270,7 +309,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       return res.json({ ok: true });
     } catch (err) {
-      return res.status(500).json({ error: "delete_failed", detail: String(err) });
+      return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
     }
   });
 
@@ -284,7 +323,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       const all = await loadOrgTerritories(pool, orgId);
       return res.json({ overlaps: detectAdminOverlaps(all) });
     } catch (err) {
-      return res.status(500).json({ error: "overlaps_failed", detail: String(err) });
+      return res.status(500).json({ error: "overlaps_failed", detail: "internal_error" });
     }
   });
 
@@ -303,9 +342,14 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       if (leadId) {
         lead = await loadLeadGeo(pool, leadId);
       } else if (req.query.lat && req.query.lng) {
+        const lat = Number(req.query.lat);
+        const lng = Number(req.query.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return res.status(400).json({ error: "Ugyldig lat/lng" });
+        }
         lead = {
-          latitude: Number(req.query.lat),
-          longitude: Number(req.query.lng),
+          latitude: lat,
+          longitude: lng,
           postalCode: typeof req.query.postal_code === "string" ? req.query.postal_code : null,
           municipalityCode: typeof req.query.municipality_code === "string" ? req.query.municipality_code : null,
         };
@@ -353,7 +397,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
         conflicting_user_id: inGrid ? null : best?.assignedUserId ?? null,
       });
     } catch (err) {
-      return res.status(500).json({ error: "check_failed", detail: String(err) });
+      return res.status(500).json({ error: "check_failed", detail: "internal_error" });
     }
   });
 
@@ -397,7 +441,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       const coverage = computeCoverage(leads, territories);
       return res.json({ coverage, adminOverlaps: detectAdminOverlaps(territories) });
     } catch (err) {
-      return res.status(500).json({ error: "coverage_failed", detail: String(err) });
+      return res.status(500).json({ error: "coverage_failed", detail: "internal_error" });
     }
   });
 
@@ -492,7 +536,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
 
       return res.json({ period, sellers });
     } catch (err) {
-      return res.status(500).json({ error: "dashboard_failed", detail: String(err) });
+      return res.status(500).json({ error: "dashboard_failed", detail: "internal_error" });
     }
   });
 
@@ -519,7 +563,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.json({ breaches: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "breaches_failed", detail: String(err) });
+      return res.status(500).json({ error: "breaches_failed", detail: "internal_error" });
     }
   });
 }

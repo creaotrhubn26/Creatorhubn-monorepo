@@ -71,13 +71,13 @@ export function TravelCostsCard({ productionDay, projectId }: TravelCostsCardPro
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CarIcon sx={{ color: '#00d4ff' }} />
+            <CarIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
             Reisekostnader
           </Typography>
           <Chip
             label={`Total: ${totalCosts.toFixed(0)} NOK`}
             sx={{
-              bgcolor: '#00d4ff',
+              bgcolor: 'var(--role-cyan, #00d4ff)',
               color: '#000',
               fontWeight: 700,
               fontSize: '14px',
@@ -148,8 +148,8 @@ export function TravelCostsCard({ productionDay, projectId }: TravelCostsCardPro
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'space-between' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <MoneyIcon sx={{ fontSize: 16, color: '#00d4ff' }} />
-                            <Typography variant="body1" sx={{ color: '#00d4ff', fontWeight: 600 }}>
+                            <MoneyIcon sx={{ fontSize: 16, color: 'var(--role-cyan, #00d4ff)' }} />
+                            <Typography variant="body1" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}>
                               Total: {travelCost.breakdown.totalCost.toFixed(0)} NOK
                             </Typography>
                           </Box>

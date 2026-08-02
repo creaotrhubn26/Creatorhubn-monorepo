@@ -15,6 +15,7 @@ import {
   ensureIntegrationPhase2Tables,
   type IntegrationUserContext,
 } from "./role-room-integrations-v1-routes.js";
+import { validateAccessToken, OAUTH_TOKEN_PREFIX } from "./role-room-mcp-oauth.js";
 
 export type McpAuthResult =
   | { ok: true; user: IntegrationUserContext }
@@ -28,9 +29,24 @@ export type McpAuthResult =
  */
 export async function authenticateMcpKey(pool: Pool, rawKey: string | undefined): Promise<McpAuthResult> {
   if (typeof rawKey !== "string" || rawKey.trim().length === 0) {
-    return { ok: false, status: 401, code: "missing_api_key", message: "En Role Room integrasjons-API-nøkkel (rri_…) kreves." };
+    return { ok: false, status: 401, code: "missing_api_key", message: "En Role Room integrasjons-API-nøkkel (rri_…) eller OAuth-token kreves." };
   }
-  const keyHash = hashApiKey(rawKey.trim());
+  const trimmed = rawKey.trim();
+
+  // 0) OAuth 2.1 access-token («Sign in with The Role Room») → bruker + scopes.
+  if (trimmed.startsWith(OAUTH_TOKEN_PREFIX)) {
+    const tok = await validateAccessToken(pool, trimmed);
+    if (!tok) return { ok: false, status: 401, code: "invalid_token", message: "OAuth-token er ugyldig eller utløpt." };
+    return {
+      ok: true,
+      user: {
+        apiKeyId: `oauth:${tok.clientId}`, apiKeyName: "oauth", userId: tok.userId,
+        scopes: tok.scope, rateLimitPerMinute: 120, isLegacyKey: false,
+      },
+    };
+  }
+
+  const keyHash = hashApiKey(trimmed);
   await ensureIntegrationPhase2Tables(pool);
 
   // 1) Integrasjons-konto-nøkkel (ny modell)

@@ -1,4 +1,5 @@
 import React from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEditor';
 // import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
 
@@ -2353,12 +2354,14 @@ const LandingMobile: React.FC = () => {
 
       {/* Login Modal - Lazy loaded */}
       {modalState.showLoginModal && (
+        <ErrorBoundary componentName="landing-mobile-login-modal">
         <React.Suspense fallback={<div>Loading...</div>}>
           <LoginModal
             open={modalState.showLoginModal}
             onClose={() => setModalState((prev) => ({ ...prev, showLoginModal: false }))}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* Invite Request Modal */}
@@ -2377,6 +2380,7 @@ const LandingMobile: React.FC = () => {
       >
         <DialogContent sx={{ p: 0 }}>
           {modalState.showInviteRequest && (
+            <ErrorBoundary componentName="landing-mobile-invite-request">
             <React.Suspense fallback={<div>Loading...</div>}>
               <InviteRequestForm
                 isOpen={modalState.showInviteRequest}
@@ -2386,6 +2390,7 @@ const LandingMobile: React.FC = () => {
                 onCancel={handleCloseModals}
               />
             </React.Suspense>
+            </ErrorBoundary>
           )}
         </DialogContent>
       </Dialog>

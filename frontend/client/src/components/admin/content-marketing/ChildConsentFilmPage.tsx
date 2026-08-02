@@ -1,6 +1,9 @@
 import { Box, Container, Stack, Typography } from '@mui/material';
 import GavelIcon from '@mui/icons-material/Gavel';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Compliance & Legal-pillar — synlig content-side for forhåndssamtykke
@@ -53,6 +56,12 @@ const KEY_FACTS = [
 ];
 
 export function ChildConsentFilmPage() {
+  const cmsBlocks = useCmsBlocks('barn-samtykke-film');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

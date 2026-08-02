@@ -24,6 +24,15 @@ import Stripe from "stripe";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { notifyAdmins } from "./admin-notify.js";
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 interface Deps {
   app: Express;
   pool: Pool;
@@ -251,7 +260,7 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
             to: email,
             subject: `Velkommen til Leadgrid${contactName ? `, ${contactName}` : ""}`,
             html: `<p>Velkommen til Leadgrid.</p>
-             <p>Vi har satt opp <strong>${orgName}</strong> for deg.
+             <p>Vi har satt opp <strong>${escapeHtml(orgName)}</strong> for deg.
              Trykk lenken under for å logge inn og legge til din første kunde:</p>
              <p><a href="${url}">${url}</a></p>`,
             text: `Velkommen til Leadgrid. Vi har satt opp ${orgName} for deg. Logg inn her: ${url}`,

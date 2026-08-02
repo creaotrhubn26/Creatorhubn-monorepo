@@ -18,7 +18,7 @@
  *   backend/server/coverage-take-service.ts
  */
 
-import type { Express, Request, Response } from "express";
+import type { Express } from "express";
 import type { Pool } from "pg";
 import {
   createTakeUploadUrl,
@@ -30,26 +30,11 @@ import {
   updateTake,
   deleteTake,
   presignTakeReadUrl,
+  type CastingTake,
   type CreateUploadUrlInput,
   type UpdateTakeInput,
 } from "./coverage-take-service.js";
-
-const HEADER_USER = "x-role-room-user-id";
-
-function readUserId(req: Request): string | null {
-  const header = req.header(HEADER_USER);
-  if (typeof header === "string" && header.trim().length > 0) return header.trim();
-  return null;
-}
-
-function requireUser(req: Request, res: Response): string | null {
-  const userId = readUserId(req);
-  if (!userId) {
-    res.status(401).json({ error: "user-id-header mangler" });
-    return null;
-  }
-  return userId;
-}
+import { canAccessProject } from "./project-team-routes";
 
 function parsePositiveInt(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
@@ -71,15 +56,49 @@ export interface CoverageTakeRoutesDeps {
 export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  // Autentiser fra ekte sesjon (IKKE en klient-styrt header) og hent userId.
+  // Skriver 401 selv om sesjon mangler.
+  function authUserId(req: any, res: any): string | null {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    const uid = session.userId ?? session.user_id ?? null;
+    if (!uid) {
+      res.status(401).json({ error: "ikke autentisert" });
+      return null;
+    }
+    return String(uid);
+  }
+
+  // Filtrer takes til kun de prosjektene brukeren har tilgang til (eier/team).
+  async function filterAccessibleTakes(
+    userId: string,
+    takes: CastingTake[],
+  ): Promise<CastingTake[]> {
+    const cache = new Map<string, boolean>();
+    const out: CastingTake[] = [];
+    for (const t of takes) {
+      let ok = cache.get(t.projectId);
+      if (ok === undefined) {
+        ok = await canAccessProject(pool, userId, t.projectId);
+        cache.set(t.projectId, ok);
+      }
+      if (ok) out.push(t);
+    }
+    return out;
+  }
+
   // ── Upload URL ────────────────────────────────────────────────────
   app.post("/api/role-room/takes/upload-url", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    const userId = requireUser(req, res);
+    const userId = authUserId(req, res);
     if (!userId) return;
 
     const body = (req.body ?? {}) as Partial<CreateUploadUrlInput>;
     if (!body.projectId || typeof body.projectId !== "string") {
       res.status(400).json({ error: "projectId er påkrevd" });
+      return;
+    }
+    if (!(await canAccessProject(pool, userId, body.projectId))) {
+      res.status(403).json({ error: "ingen tilgang til prosjektet" });
       return;
     }
     if (!body.filename || typeof body.filename !== "string") {
@@ -124,14 +143,18 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Confirm upload ────────────────────────────────────────────────
   app.post("/api/role-room/takes/:id/confirm", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    const userId = requireUser(req, res);
+    const userId = authUserId(req, res);
     if (!userId) return;
 
     const takeId = req.params.id;
     const body = (req.body ?? {}) as { durationSec?: number; capturedAt?: string };
 
     try {
+      const existing = await getTake(pool, takeId);
+      if (!existing || !(await canAccessProject(pool, userId, existing.projectId))) {
+        res.status(404).json({ error: "Take ikke funnet" });
+        return;
+      }
       const take = await confirmTakeUpload(pool, takeId, {
         durationSec: typeof body.durationSec === "number" ? body.durationSec : undefined,
         capturedAt: typeof body.capturedAt === "string" ? body.capturedAt : undefined,
@@ -149,7 +172,12 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── List per prosjekt ─────────────────────────────────────────────
   app.get("/api/role-room/projects/:projectId/takes", async (req, res) => {
-    if (!requireUser(req, res)) return;
+    const userId = authUserId(req, res);
+    if (!userId) return;
+    if (!(await canAccessProject(pool, userId, req.params.projectId))) {
+      res.status(403).json({ error: "ingen tilgang til prosjektet" });
+      return;
+    }
     try {
       const takes = await listTakesForProject(pool, req.params.projectId);
       res.json(takes);
@@ -161,9 +189,13 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── List per scene ────────────────────────────────────────────────
   app.get("/api/role-room/scenes/:sceneId/takes", async (req, res) => {
-    if (!requireUser(req, res)) return;
+    const userId = authUserId(req, res);
+    if (!userId) return;
     try {
-      const takes = await listTakesForScene(pool, req.params.sceneId);
+      const takes = await filterAccessibleTakes(
+        userId,
+        await listTakesForScene(pool, req.params.sceneId),
+      );
       res.json(takes);
     } catch (err) {
       console.error("[coverage-take-routes] list-scene error:", err);
@@ -173,14 +205,18 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── List per shot ─────────────────────────────────────────────────
   app.get("/api/role-room/shots/:shotListId/:shotIndex/takes", async (req, res) => {
-    if (!requireUser(req, res)) return;
+    const userId = authUserId(req, res);
+    if (!userId) return;
     const shotIndex = parsePositiveInt(req.params.shotIndex);
     if (shotIndex === undefined) {
       res.status(400).json({ error: "shotIndex må være et positivt tall" });
       return;
     }
     try {
-      const takes = await listTakesForShot(pool, req.params.shotListId, shotIndex);
+      const takes = await filterAccessibleTakes(
+        userId,
+        await listTakesForShot(pool, req.params.shotListId, shotIndex),
+      );
       res.json(takes);
     } catch (err) {
       console.error("[coverage-take-routes] list-shot error:", err);
@@ -190,10 +226,11 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Get one + signed read URL ─────────────────────────────────────
   app.get("/api/role-room/takes/:id", async (req, res) => {
-    if (!requireUser(req, res)) return;
+    const userId = authUserId(req, res);
+    if (!userId) return;
     try {
       const take = await getTake(pool, req.params.id);
-      if (!take) {
+      if (!take || !(await canAccessProject(pool, userId, take.projectId))) {
         res.status(404).json({ error: "Take ikke funnet" });
         return;
       }
@@ -209,8 +246,19 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Patch (tagging, notater, circled) ─────────────────────────────
   app.patch("/api/role-room/takes/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const userId = authUserId(req, res);
+    if (!userId) return;
+    try {
+      const existing = await getTake(pool, req.params.id);
+      if (!existing || !(await canAccessProject(pool, userId, existing.projectId))) {
+        res.status(404).json({ error: "Take ikke funnet" });
+        return;
+      }
+    } catch (err) {
+      console.error("[coverage-take-routes] update access-check error:", err);
+      res.status(500).json({ error: "Kunne ikke oppdatere take" });
+      return;
+    }
     const body = (req.body ?? {}) as Partial<UpdateTakeInput>;
     const patch: UpdateTakeInput = {};
     if (body.shotListId !== undefined) {
@@ -246,9 +294,14 @@ export function setupCoverageTakeRoutes(deps: CoverageTakeRoutesDeps): void {
 
   // ── Delete ────────────────────────────────────────────────────────
   app.delete("/api/role-room/takes/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const userId = authUserId(req, res);
+    if (!userId) return;
     try {
+      const existing = await getTake(pool, req.params.id);
+      if (!existing || !(await canAccessProject(pool, userId, existing.projectId))) {
+        res.status(404).json({ error: "Take ikke funnet" });
+        return;
+      }
       const deleted = await deleteTake(pool, req.params.id);
       if (!deleted) {
         res.status(404).json({ error: "Take ikke funnet" });

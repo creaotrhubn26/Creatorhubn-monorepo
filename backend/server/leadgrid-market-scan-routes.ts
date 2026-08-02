@@ -6,9 +6,12 @@
  * Leadgrid-kartet.
  *
  * Dette er den markedsfokuserte inngangen til samme orkestratoren som
- * lead-map-research-routes.ts (research → leads-flyt). Vi gjenbruker
- * `runResearchOrchestrator()` implisitt via `runMarketScan()` + samme
- * auto-create-leads-flag og target_org_id-scope.
+ * lead-map-research-routes.ts (research → leads-flyt). Fila er en TYNN
+ * wrapper over den kanoniske market-scan-servicen (CTO-audit P1,
+ * Migration Plan steg 4): all lesing/oppdatering av market_scans går
+ * via market-intelligence/market-scan-service.ts — ingen egne queries
+ * over scan-tabellene her. Det Leadgrid-spesifikke som blir igjen er
+ * lead-opprettelsen (crm_customers) og RBAC.
  *
  * Mount: /api/leadgrid/market-scan/*
  *
@@ -38,8 +41,8 @@
  *            (lead_source='lead_research' + linket til scan via geo-flow).
  *
  *   GET    /api/leadgrid/market-scan
- *          → { scans } — alle Market Scan-økter for innlogget bruker
- *            (auto_create_leads=true), sortert nyest først.
+ *          → { scans } — alle Market Scan-økter for innlogget bruker,
+ *            sortert nyest først.
  *
  *   POST   /api/leadgrid/market-scan/:id/create-leads
  *          → { created_count } — manuell trigger hvis scan ble kjørt
@@ -55,7 +58,14 @@ import {
   getMarketScan,
   runMarketScan,
   getScanCompetitors,
+  getScanCompetitorsWithPlaces,
   getScanOpportunities,
+  getScanProgress,
+  listScanProgressForUser,
+  setScanPhase,
+  setScanRunFlags,
+  markScanFailed,
+  addScanLeadsCreatedCount,
 } from "./market-intelligence/market-scan-service.js";
 import { searchPlaces } from "./lead-map-service.js";
 
@@ -121,58 +131,10 @@ function getSession(
   return null;
 }
 
-async function setPhase(
-  pool: Pool, scanId: string, phase: string, message?: string,
-): Promise<void> {
-  await pool.query(
-    `UPDATE market_scans
-        SET phase = $2, phase_message = $3
-      WHERE id = $1::uuid`,
-    [scanId, phase, message ?? null],
-  );
-}
-
-interface ScanProgressRow {
-  id: string;
-  name: string;
-  phase: string;
-  phase_message: string | null;
-  status: string;
-  total_competitors: number;
-  total_opportunities: number;
-  leads_created_count: number;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-  region: string | null;
-  industry: string | null;
-  target_audience: string | null;
-  goal: string | null;
-  auto_create_leads: boolean;
-  target_org_id: string | null;
-  created_at: string;
-}
-
-async function loadScanProgress(
-  pool: Pool, scanId: string,
-): Promise<ScanProgressRow | null> {
-  const r = await pool.query<ScanProgressRow>(
-    `SELECT id::text, name, phase, phase_message, status,
-            total_competitors, total_opportunities, leads_created_count,
-            started_at::text, completed_at::text, error_message,
-            region, industry, target_audience, goal,
-            auto_create_leads, target_org_id::text, created_at::text
-       FROM market_scans WHERE id = $1::uuid`,
-    [scanId],
-  );
-  return r.rows[0] ?? null;
-}
-
 // ─────────────────────────────────────────────────────────────────
 // Geocode + lead-opprettelse (gjenbruker mønsteret fra
-// lead-map-research-routes.ts geocodeAndCreateLeads — vi vil ikke
-// dupliserer logikken i en delt service for nå da det er en intern
-// implementasjons-detalj som kan flyttes senere).
+// lead-map-research-routes.ts geocodeAndCreateLeads — Leadgrid-domene
+// (crm_customers), hører hjemme her og ikke i MI-servicen).
 // ─────────────────────────────────────────────────────────────────
 
 interface CompetitorForGeocode {
@@ -193,7 +155,7 @@ async function geocodeAndCreateLeads(
 
   for (const comp of competitors) {
     processed++;
-    await setPhase(
+    await setScanPhase(
       pool, scanId, "geocode_competitors",
       `Geokoder ${processed} av ${competitors.length}: ${comp.name}`,
     );
@@ -263,7 +225,7 @@ async function runOrchestrator(
   if (!scan) return;
 
   try {
-    await setPhase(pool, scanId, "claude_scan",
+    await setScanPhase(pool, scanId, "claude_scan",
       "Leadgrid lytter til markedet …");
 
     // 1. Market Scan — Claude finner konkurrenter (+ deres bedrifts-info,
@@ -272,29 +234,15 @@ async function runOrchestrator(
     try {
       await runMarketScan(pool, scanId);
     } catch (err) {
-      await setPhase(pool, scanId, "failed", `Market Scan feilet: ${String(err)}`);
-      await pool.query(
-        `UPDATE market_scans SET status='failed', error_message=$2
-          WHERE id=$1::uuid`,
-        [scanId, String(err).slice(0, 500)],
-      );
+      await setScanPhase(pool, scanId, "failed", `Market Scan feilet: ${String(err)}`);
+      await markScanFailed(pool, scanId, String(err));
       return;
     }
 
     // 2. Auto-opprette leads hvis flagget er satt
-    const scanRow = await pool.query<{
-      auto_create_leads: boolean;
-      target_org_id: string | null;
-      region: string | null;
-      workspace_owner_user_id: string;
-    }>(
-      `SELECT auto_create_leads, target_org_id::text, region,
-              workspace_owner_user_id
-         FROM market_scans WHERE id = $1::uuid`,
-      [scanId],
-    );
+    const progress = await getScanProgress(pool, scanId);
 
-    if (scanRow.rows[0]?.auto_create_leads) {
+    if (progress?.auto_create_leads) {
       const competitors = await getScanCompetitors(pool, scanId);
       const eligible: CompetitorForGeocode[] = competitors.map((c) => ({
         id: c.id,
@@ -302,28 +250,24 @@ async function runOrchestrator(
         domain: c.domain,
       }));
 
-      await setPhase(pool, scanId, "geocode_competitors",
+      await setScanPhase(pool, scanId, "geocode_competitors",
         `Setter koordinater for ${eligible.length} pins …`);
 
       const created = await geocodeAndCreateLeads(
         pool, scanId,
-        scanRow.rows[0].workspace_owner_user_id,
-        scanRow.rows[0].region ?? "",
+        scan.workspaceOwnerUserId,
+        progress.region ?? "",
         eligible,
       );
 
-      await pool.query(
-        `UPDATE market_scans SET leads_created_count = $2
-          WHERE id = $1::uuid`,
-        [scanId, created],
-      );
-      await setPhase(pool, scanId, "creating_leads",
+      await addScanLeadsCreatedCount(pool, scanId, { created, mode: "set" });
+      await setScanPhase(pool, scanId, "creating_leads",
         `Plottet ${created} pins på kartet`);
     }
 
-    await setPhase(pool, scanId, "done", undefined);
+    await setScanPhase(pool, scanId, "done", undefined);
   } catch (err) {
-    await setPhase(pool, scanId, "failed", String(err).slice(0, 500));
+    await setScanPhase(pool, scanId, "failed", String(err).slice(0, 500));
   }
 }
 
@@ -368,14 +312,10 @@ export function registerLeadgridMarketScanRoutes({
         });
 
         // Sett auto-create-leads + target-org
-        await pool.query(
-          `UPDATE market_scans
-              SET auto_create_leads = $2,
-                  target_org_id = $3,
-                  phase = 'pending'
-            WHERE id = $1::uuid`,
-          [scan.id, validated.auto_create_leads, validated.organization_id ?? null],
-        );
+        await setScanRunFlags(pool, scan.id, {
+          autoCreateLeads: validated.auto_create_leads,
+          targetOrgId: validated.organization_id ?? null,
+        });
 
         // Fire-and-forget — iPad poller GET /:id
         void runOrchestrator(pool, scan.id).catch((err) => {
@@ -402,7 +342,7 @@ export function registerLeadgridMarketScanRoutes({
     requireLeadMapPermission("leadgrid.market_scan.run", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       try {
-        const progress = await loadScanProgress(pool, req.params.id);
+        const progress = await getScanProgress(pool, req.params.id);
         if (!progress) return res.status(404).json({ error: "not_found" });
         return res.json({ scan: progress });
       } catch (err) {
@@ -420,37 +360,8 @@ export function registerLeadgridMarketScanRoutes({
     requireLeadMapPermission("leadgrid.market_scan.run", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       try {
-        const competitors = await getScanCompetitors(pool, req.params.id);
-        // Berike med Places-data fra market_scan_competitors (lat/lng/rating)
-        const r = await pool.query<{
-          id: string;
-          latitude: number | null;
-          longitude: number | null;
-          google_place_id: string | null;
-          google_address: string | null;
-          google_phone: string | null;
-          google_rating: number | null;
-        }>(
-          `SELECT id::text, latitude, longitude, google_place_id,
-                  google_address, google_phone, google_rating
-             FROM market_scan_competitors
-            WHERE market_scan_id = $1::uuid`,
-          [req.params.id],
-        );
-        const placeById = new Map(r.rows.map((row) => [row.id, row]));
-        const enriched = competitors.map((c) => {
-          const p = placeById.get(c.id);
-          return {
-            ...c,
-            latitude: p?.latitude != null ? Number(p.latitude) : null,
-            longitude: p?.longitude != null ? Number(p.longitude) : null,
-            googlePlaceId: p?.google_place_id ?? null,
-            googleAddress: p?.google_address ?? null,
-            googlePhone: p?.google_phone ?? null,
-            googleRating: p?.google_rating != null ? Number(p.google_rating) : null,
-          };
-        });
-        return res.json({ competitors: enriched });
+        const competitors = await getScanCompetitorsWithPlaces(pool, req.params.id);
+        return res.json({ competitors });
       } catch (err) {
         return res.status(500).json({
           error: "fetch_failed",
@@ -543,17 +454,11 @@ export function registerLeadgridMarketScanRoutes({
       const session = getSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const r = await pool.query(
-          `SELECT id::text, name, phase, phase_message, status,
-                  total_competitors, total_opportunities, leads_created_count,
-                  started_at::text, completed_at::text, created_at::text,
-                  region, industry, error_message
-             FROM market_scans
-            WHERE workspace_owner_user_id = $1
-            ORDER BY created_at DESC LIMIT 30`,
-          [session.userId],
-        );
-        return res.json({ scans: r.rows });
+        const scans = await listScanProgressForUser(pool, {
+          workspaceOwnerUserId: session.userId,
+          limit: 30,
+        });
+        return res.json({ scans });
       } catch (err) {
         return res.status(500).json({
           error: "list_failed",
@@ -573,7 +478,7 @@ export function registerLeadgridMarketScanRoutes({
       const session = getSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const scan = await loadScanProgress(pool, req.params.id);
+        const scan = await getScanProgress(pool, req.params.id);
         if (!scan) return res.status(404).json({ error: "not_found" });
         if (scan.status !== "completed") {
           return res.status(409).json({ error: "scan_not_completed" });
@@ -589,11 +494,9 @@ export function registerLeadgridMarketScanRoutes({
             domain: c.domain,
           })),
         );
-        await pool.query(
-          `UPDATE market_scans SET leads_created_count = leads_created_count + $2
-            WHERE id = $1::uuid`,
-          [req.params.id, created],
-        );
+        await addScanLeadsCreatedCount(pool, req.params.id, {
+          created, mode: "increment",
+        });
         return res.json({ created_count: created });
       } catch (err) {
         return res.status(500).json({

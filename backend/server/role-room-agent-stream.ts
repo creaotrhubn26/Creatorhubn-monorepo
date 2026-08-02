@@ -29,6 +29,7 @@ import {
 } from './role-room-agent-definition.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
+import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import {
   appendMessage,
   createStreamingPlaceholder,
@@ -95,6 +96,21 @@ export async function handleAgentStream(
     return;
   }
 
+  // SECURITY (BOLA-fiks): kalleren må eie eller være medlem av prosjektet.
+  // handleAgentStream leser projectId fra req.params og er den delte "sink"-en
+  // for BEGGE inngangene — /projects/:projectId/agent/stream (projectId fra URL)
+  // og /agent/threads/:id/messages (projectId avledet fra en tråd som ble
+  // opprettet med et body-oppgitt project_id). Ingen av dem verifiserte
+  // prosjekt-medlemskap, så en hvilken som helst innlogget bruker kunne kjøre
+  // agenten mot et vilkårlig prosjekt-UUID: offerets workspace-kontekst
+  // (feed-godkjenningsstatus o.l.) ble injisert i modell-svaret, og consent +
+  // AI-audit ble forbrukt/forurenset under offerets project_id. Entitlement/
+  // rate-limit er kaller-scoped (userId) og stopper ikke dette. Fail-closed.
+  if (!(await canAccessRoleRoomProject(pool, userId, projectId))) {
+    res.status(403).json({ error: 'project_access_denied' });
+    return;
+  }
+
   const entitlement = await checkAgentEntitlement(pool, userId, userRole);
   if (!entitlement.allowed) {
     res.status(402).json({
@@ -139,7 +155,7 @@ export async function handleAgentStream(
         errorCode: err.code,
         errorMessage: err.message,
       });
-      res.status(403).json({ error: err.code, detail: err.message });
+      res.status(403).json({ error: err.code, detail: "internal_error" });
       return;
     }
     throw err;
@@ -245,6 +261,7 @@ export async function handleAgentStream(
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(value)) {
+        if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
         out[k] = depseudonymizeToolInput(v);
       }
       return out;
@@ -478,11 +495,11 @@ export async function handleAgentStream(
           usage: { inputTokens, outputTokens },
           consentId: consent.id,
           threadId,
-          error: err instanceof Error ? err.message : String(err),
+          error: 'internal_error',
         } as unknown,
       });
     }
-    writeEvent(res, 'error', { message: err instanceof Error ? err.message : String(err) });
+    writeEvent(res, 'error', { message: 'internal_error' });
     streamFinalised = true;
     res.end();
   }

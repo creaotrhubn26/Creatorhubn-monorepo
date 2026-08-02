@@ -21,6 +21,7 @@
 import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
+import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface AdminUsersRoutesDeps {
@@ -259,6 +260,21 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
         });
       }
 
+      // Revoke all active sessions when the account is deactivated OR when its
+      // role changes. Live sessions carry a role snapshot and are only ever
+      // upgraded (never downgraded) by reconcileSessionAdminRole, so a demoted
+      // admin would otherwise retain admin access in their existing session
+      // indefinitely (there is no session TTL). Forcing re-login rebuilds a
+      // fresh snapshot from the persisted role.
+      const roleChanged =
+        nextRole !== undefined && nextRole !== currentRole;
+      if ((nextIsActive === false || roleChanged) && accountUserId) {
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
+        }
+        await deletePersistedAuthSessionsByUserId(pool, accountUserId);
+      }
+
       const updatedUser = await resolveAdminUserView(req.params.id, email);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
@@ -486,6 +502,13 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       const targetRole = normalizeAdminRoleId(
         targetAccount.role || userView?.role || "user",
       );
+
+      if (targetRole === "super_admin") {
+        return res.status(403).json({ error: "Kan ikke impersonere super_admin." });
+      }
+
+      const callingAdmin = requireAdminSession(req, res);
+      if (!callingAdmin) return;
       const targetRoleEntry = buildAdminRoleEntry(targetRole);
       const targetProfession =
         toAdminString(targetAccount.profession) ||
@@ -520,12 +543,20 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           String(userView?.email || "").split("@")[0] ||
           "CreatorHub User",
         impersonatedByAdmin: true,
+        impersonatorId: callingAdmin.userId,
+        impersonationExpiresAt: Date.now() + 30 * 60 * 1000,
         isAdmin: ADMIN_SESSION_ROLES.has(targetRole),
         loginAt: new Date().toISOString(),
       };
 
       activeSessions.set(targetSessionToken, targetSession);
       await persistAuthSession(pool, targetSessionToken, targetSession);
+      await pool.query(
+        `INSERT INTO org_audit_log (actor_user_id, action, target_user_id, metadata, created_at)
+         VALUES ($1, 'admin_impersonate_start', $2, $3, now())
+         ON CONFLICT DO NOTHING`,
+        [callingAdmin.userId, targetSession.userId, JSON.stringify({ targetEmail: targetSession.email, targetRole })],
+      ).catch(() => { /* audit failure must not block impersonation */ });
 
       res.json({
         success: true,
@@ -554,11 +585,11 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       if (!requireAdminSession(req, res)) {
         return;
       }
-      const days = parseInt(req.query.days as string) || 30;
+      const days = Math.min(365, Math.max(1, parseInt(req.query.days as string) || 30));
       const result = await pool.query(
         `SELECT * FROM invite_requests
          WHERE status = 'approved' AND processed_at > NOW() - INTERVAL '1 day' * $1
-         ORDER BY processed_at DESC`,
+         ORDER BY processed_at DESC LIMIT 500`,
         [days],
       );
       res.json(
@@ -604,7 +635,7 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
         "SELECT id, email, role FROM users WHERE id::text = $1",
         [targetId],
       );
-      if (targetRes.rowCount === 0) {
+      if (!targetRes.rows.length) {
         return res.status(404).json({ error: "Fant ingen bruker med denne ID-en." });
       }
       const target = targetRes.rows[0];
@@ -643,11 +674,17 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       }
       const del = await client.query("DELETE FROM users WHERE id::text = $1", [targetId]);
       await client.query("COMMIT");
+      // Evict all in-memory sessions for deleted user
+      for (const [tok, sess] of activeSessions.entries()) {
+        if (String(sess?.userId) === targetId) activeSessions.delete(tok);
+      }
+      // Evict persisted sessions so they aren't rehydrated on restart
+      await deletePersistedAuthSessionsByUserId(pool, targetId);
       return res.json({ success: true, deletedEmail: target.email, deleted: del.rowCount });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       console.error("Error deleting user:", error);
-      return res.status(500).json({ error: "Kunne ikke slette bruker.", detail: String(error) });
+      return res.status(500).json({ error: "Kunne ikke slette bruker." });
     } finally {
       client.release();
     }

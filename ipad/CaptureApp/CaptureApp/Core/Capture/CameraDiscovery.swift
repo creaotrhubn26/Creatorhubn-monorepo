@@ -54,6 +54,23 @@ final class CameraDiscovery: ObservableObject {
         permissionDenied = false
         isSearching = true
 
+        #if DEBUG
+        // QA/skjermbilde: `--fake-cameras` seeder to funn så flerkamera-UI-et kan
+        // verifiseres uten ekte kameraer på nettverket.
+        if ProcessInfo.processInfo.arguments.contains("--fake-cameras") {
+            cameras = [
+                Found(id: "fake1", serviceName: "Studio R5",
+                      baseURL: URL(string: "https://192.168.1.11")!,
+                      deviceName: "Canon EOS R5", firmware: "1.8.1", serial: "013021000123"),
+                Found(id: "fake2", serviceName: "Backup R6",
+                      baseURL: URL(string: "https://192.168.1.12")!,
+                      deviceName: "Canon EOS R6 Mark II", firmware: "1.6.0", serial: "023041000456")
+            ]
+            isSearching = false
+            return
+        }
+        #endif
+
         // Bonjour first. Most Canon bodies don't advertise via mDNS in
         // CCAPI mode (verified against R5 + R6 mkII 2026-04-18), but
         // running the browser is essentially free and catches bodies that
@@ -264,12 +281,17 @@ final class CameraDiscovery: ObservableObject {
     private func reconcile(results: [NWBrowser.Result]) {
         let activeKeys = Set(results.compactMap(Self.key(for:)))
 
-        // Drop probes + cameras for services that vanished.
+        // Drop probes + cameras for BONJOUR services that vanished.
         for (key, task) in probes where !activeKeys.contains(key) {
             task.cancel()
             probes.removeValue(forKey: key)
         }
-        cameras.removeAll { !activeKeys.contains($0.id) }
+        // 🔑 IKKE rør IP-skannede kameraer (id «ip:<host>») — de eies av subnett-
+        // skanningen, ikke Bonjour. Før tømte `removeAll` alle IP-funn ved ethvert
+        // Bonjour-delta (Canon annonserer ikke via mDNS i CCAPI-modus → IP-skann ER
+        // funn-stien), så kameraet forsvant fra lista i det en urelatert mDNS-tjeneste
+        // dukket opp/forsvant. Fjern kun VANISHED Bonjour-oppføringer.
+        cameras.removeAll { !$0.id.hasPrefix("ip:") && !activeKeys.contains($0.id) }
 
         // Start a probe for each new service we haven't seen yet.
         for result in results {

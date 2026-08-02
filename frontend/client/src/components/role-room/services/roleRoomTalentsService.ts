@@ -5,6 +5,21 @@
  * Backend-routes: /api/role-room/talents/me + /me/consents (migrasjon 209+210).
  */
 
+import authSessionService from './authSessionService';
+
+/**
+ * Konkret tilgjengelighets-vindu på en talent-profil. Marketplace-signal
+ * («åpen for jobb fra–til»), IKKE en produksjonskalender — samtykke-gated via
+ * scope 'availability'.
+ */
+export interface TalentAvailabilityWindow {
+  id?: string;
+  status: 'open' | 'limited';
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  notes?: string;
+}
+
 export interface RoleRoomTalent {
   id: string;
   owner_user_id: string | null;
@@ -36,6 +51,9 @@ export interface RoleRoomTalent {
   dialects: string[];
   availability_status: 'open' | 'limited' | 'unavailable';
   availability_notes: string | null;
+  availability_windows: TalentAvailabilityWindow[];
+  /** Sist bekreftet av talenten (ferskhets-stempel). Null = aldri bekreftet. */
+  availability_confirmed_at: string | null;
   willing_to_travel: boolean;
   external_links: Array<{ label: string; url: string }>;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
@@ -115,7 +133,16 @@ const BASE = '/api/role-room/talents';
 const AGENCY_BASE = '/api/role-room';
 
 async function authFetch(path: string, init?: RequestInit) {
-  return fetch(path, { ...init, credentials: 'include' });
+  // theroleroom.com autentiserer på Bearer-header (readActiveSessionToken leser
+  // IKKE cookies). Den globale fetch-patchen i main.tsx injiserer bare
+  // `creatorhub_auth_token` — som IKKE settes av role-room-login (den bruker
+  // `role_room_auth_token`). Uten eksplisitt header 401-et derfor talents på
+  // standalone theroleroom.com. Legg på Bearer eksplisitt via authSessionService.
+  return fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: { ...(init?.headers ?? {}), ...authSessionService.getAuthHeadersSync() },
+  });
 }
 
 const roleRoomTalentsService = {
@@ -145,6 +172,14 @@ const roleRoomTalentsService = {
     });
     const payload = await r.json().catch(() => null);
     if (!r.ok) return { error: payload?.error || 'Kunne ikke oppdatere profil' };
+    return payload.talent as RoleRoomTalent;
+  },
+
+  /** Re-bekreft tilgjengelighet uten å endre den (bumper ferskhets-stempelet). */
+  async confirmMyAvailability(): Promise<RoleRoomTalent | { error: string }> {
+    const r = await authFetch(`${BASE}/me/availability/confirm`, { method: 'POST' });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke bekrefte tilgjengelighet' };
     return payload.talent as RoleRoomTalent;
   },
 
@@ -680,7 +715,12 @@ export interface TalentSearchHit {
   playing_age_min?: number | null;
   playing_age_max?: number | null;
   gender?: string | null;
+  /** True hvis talenten har delt 'availability'-scope. Alltid satt (samtykke-transparens). */
+  availability_visible?: boolean;
   availability_status?: 'open' | 'limited' | 'unavailable';
+  availability_notes?: string | null;
+  availability_windows?: TalentAvailabilityWindow[];
+  availability_confirmed_at?: string | null;
   agency_name?: string | null;
 }
 

@@ -65,7 +65,7 @@ export function setupPhotographerGalleriesRoutes(
         WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
       [opts.galleryId, opts.photographerId],
     );
-    if (galleryQ.rowCount === 0) {
+    if (!galleryQ.rows.length) {
       return { sent: false, reason: 'send_failed', recipient: null, shareUrl: null };
     }
     const g = galleryQ.rows[0];
@@ -393,7 +393,7 @@ export function setupPhotographerGalleriesRoutes(
          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const currentSettings = (owned.rows[0].gallery_settings ?? {}) as Record<string, unknown>;
       const next: Record<string, unknown> = { ...currentSettings };
 
@@ -612,7 +612,7 @@ export function setupPhotographerGalleriesRoutes(
          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const row = owned.rows[0];
       const settings = (row.gallery_settings ?? {}) as Record<string, unknown>;
       const linkedProjectId = typeof settings.projectId === 'string' ? settings.projectId : null;
@@ -649,8 +649,8 @@ export function setupPhotographerGalleriesRoutes(
                    to_jsonb($2::text),
                    true
                  )
-             WHERE id = $1`,
-            [linkedProjectId, galleryId],
+             WHERE id = $1 AND user_id = $3`,
+            [linkedProjectId, galleryId, session.userId],
           );
           projectCallbackOk = (updateResult.rowCount ?? 0) > 0;
         } catch (projectErr) {
@@ -750,7 +750,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (galleryQ.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!galleryQ.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
       const g = galleryQ.rows[0];
 
       const imagesQ = await pool.query(
@@ -814,7 +814,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       const [commentsQ, selectionsQ] = await Promise.all([
         pool.query(
@@ -906,7 +906,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
 
       // Bygg UPDATE-fragmenter dynamisk så vi bare oppdaterer feltene
       // som faktisk ble sendt inn.
@@ -1011,7 +1011,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       if (contractId) {
         // Verifiser at fotografen eier kontrakten
@@ -1019,7 +1019,7 @@ export function setupPhotographerGalleriesRoutes(
           `SELECT 1 FROM contracts WHERE id = $1 AND user_id = $2 LIMIT 1`,
           [contractId, session.userId],
         );
-        if (contractCheck.rowCount === 0) {
+        if (!contractCheck.rows.length) {
           return res.status(403).json({ error: 'contract_not_owned' });
         }
       }
@@ -1053,7 +1053,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
       const g = owned.rows[0];
       const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
       const contractedImages = Math.max(0, Number(settings.contractedImages) || 0);
@@ -1224,7 +1224,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       // Generér unique kode med opp til 5 forsøk
       let code = '';
@@ -1234,7 +1234,7 @@ export function setupPhotographerGalleriesRoutes(
           `SELECT 1 FROM gallery_access_codes WHERE code = $1 AND is_active = true LIMIT 1`,
           [candidate],
         );
-        if (exists.rowCount === 0) {
+        if (!exists.rows.length) {
           code = candidate;
           break;
         }
@@ -1282,7 +1282,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       const r = await pool.query(
         `SELECT id, code, label, expires_at, max_uses, use_count,
@@ -1329,7 +1329,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       const r = await pool.query(
         `UPDATE gallery_access_codes
@@ -1348,7 +1348,42 @@ export function setupPhotographerGalleriesRoutes(
   // GET /api/portal/lookup?code=XXXXXX — public-endepunkt for /portal-siden.
   // Validerer kode + returnerer access_token slik at frontend kan redirecte
   // til /client-gallery/:token. Ingen auth nødvendig.
+  //
+  // Kodene er korte (4–12 tegn) og dette er et uautentisert endepunkt, så en
+  // angriper kan ellers brute-force kode-rommet for å høste gyldige gallery
+  // access_tokens. Per-IP rate-limiter (in-memory, sliding window) kutter den
+  // vektoren uten å påvirke ekte klienter (som slår opp én kode).
+  const portalLookupHits = new Map<string, number[]>();
+  const PORTAL_LOOKUP_WINDOW_MS = 60_000;
+  const PORTAL_LOOKUP_MAX = 20;
+  const portalLookupRateLimited = (ip: string): boolean => {
+    const now = Date.now();
+    const prior = (portalLookupHits.get(ip) || []).filter(
+      (t) => now - t < PORTAL_LOOKUP_WINDOW_MS,
+    );
+    prior.push(now);
+    portalLookupHits.set(ip, prior);
+    // Opportunistisk opprydding så mappet ikke vokser ubegrenset.
+    if (portalLookupHits.size > 5000) {
+      for (const [key, hits] of portalLookupHits) {
+        if (hits.every((t) => now - t >= PORTAL_LOOKUP_WINDOW_MS)) {
+          portalLookupHits.delete(key);
+        }
+      }
+    }
+    return prior.length > PORTAL_LOOKUP_MAX;
+  };
+
   app.get("/api/portal/lookup", async (req, res) => {
+    const clientIp = String(
+      req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+    )
+      .split(',')[0]
+      .trim();
+    if (portalLookupRateLimited(clientIp)) {
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+
     const code = String(req.query?.code || '').trim().toUpperCase();
     if (!code || code.length < 4 || code.length > 12) {
       return res.status(400).json({ error: 'invalid_code_format' });
@@ -1365,7 +1400,7 @@ export function setupPhotographerGalleriesRoutes(
           LIMIT 1`,
         [code],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: 'code_not_found' });
+      if (!r.rows.length) return res.status(404).json({ error: 'code_not_found' });
       const row = r.rows[0];
 
       // Sjekk utløp
@@ -1527,7 +1562,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       await ensureVideoTimecodeCommentsSchema();
       const rows = await pool.query(
         `SELECT id, chapter_id, timecode_sec, end_timecode_sec,
@@ -1588,7 +1623,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const updated = await pool.query(
         `UPDATE video_timecode_comments
             SET status = $1,
@@ -1626,13 +1661,13 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const parent = await pool.query(
         `SELECT chapter_id, timecode_sec FROM video_timecode_comments
           WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
         [parentId, galleryId],
       );
-      if (parent.rowCount === 0) return res.status(404).json({ error: "parent_not_found" });
+      if (!parent.rows.length) return res.status(404).json({ error: "parent_not_found" });
       const { chapter_id, timecode_sec } = parent.rows[0];
       const inserted = await pool.query(
         `INSERT INTO video_timecode_comments
@@ -1668,7 +1703,7 @@ export function setupPhotographerGalleriesRoutes(
          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
 
       const result = await pool.query(
         `(SELECT 'comment' AS event_type, id::text, image_id::text, client_name, client_email,

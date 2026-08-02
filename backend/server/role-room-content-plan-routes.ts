@@ -199,7 +199,7 @@ export function registerRoleRoomContentPlanRoutes(app: Express, deps: Deps): voi
       const itemRes = await pool.query(
         `SELECT * FROM role_room_content_plan WHERE id = $1 AND project_id = $2`, [id, projectId],
       );
-      if (itemRes.rowCount === 0) { res.status(404).json({ error: 'fant_ikke' }); return; }
+      if (!itemRes.rows.length) { res.status(404).json({ error: 'fant_ikke' }); return; }
       const item = itemRes.rows[0] as Record<string, unknown>;
       const platform = String(item.platform ?? '');
       if (!isSupportedPlatform(platform)) {

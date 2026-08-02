@@ -112,6 +112,36 @@ struct ChatMessage: Sendable, Identifiable, Hashable {
     var fromMe: Bool
     /// Attachments — top-level `attachments` or nested under `metadata`.
     var attachments: [MessageAttachment] = []
+    /// Strukturert shot-oppdatering (auto-huk fra Capture-appen), fra
+    /// `metadata.shotUpdate`. Driver ShotUpdateCard med ekte backup/antall.
+    var shotUpdate: ShotUpdateMeta?
+}
+
+/// Speiler `metadata.shotUpdate` iPad-en poster (who/scenes/next/count/backup).
+struct ShotUpdateMeta: Decodable, Sendable, Hashable {
+    var who: String?
+    var scenes: [String]
+    var next: [String]
+    var count: Int?
+    var backup: Double?
+    var thumbs: [ShotThumbMeta]
+
+    private enum CodingKeys: String, CodingKey { case who, scenes, next, count, backup, thumbs }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        who = (try? c.decodeIfPresent(String.self, forKey: .who)) ?? nil
+        scenes = ((try? c.decodeIfPresent([String].self, forKey: .scenes)) ?? nil) ?? []
+        next = ((try? c.decodeIfPresent([String].self, forKey: .next)) ?? nil) ?? []
+        count = (try? c.decodeIfPresent(Int.self, forKey: .count)) ?? nil
+        backup = (try? c.decodeIfPresent(Double.self, forKey: .backup)) ?? nil
+        thumbs = ((try? c.decodeIfPresent([ShotThumbMeta].self, forKey: .thumbs)) ?? nil) ?? []
+    }
+}
+
+/// Én thumbnail i `metadata.shotUpdate.thumbs` — stabil preview-URL + valgfri caption.
+struct ShotThumbMeta: Decodable, Sendable, Hashable {
+    var url: String
+    var caption: String?
 }
 
 extension ChatMessage: Decodable {
@@ -124,7 +154,10 @@ extension ChatMessage: Decodable {
         case attachments, metadata
     }
 
-    private struct MetadataBox: Decodable { var attachments: [MessageAttachment]? }
+    private struct MetadataBox: Decodable {
+        var attachments: [MessageAttachment]?
+        var shotUpdate: ShotUpdateMeta?
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -146,13 +179,15 @@ extension ChatMessage: Decodable {
             ?? (try? c.decodeIfPresent(Bool.self, forKey: .isMine)).flatMap { $0 }
             ?? false
 
+        let metaBox = (try? c.decodeIfPresent(MetadataBox.self, forKey: .metadata)) ?? nil
         if let top = try? c.decodeIfPresent([MessageAttachment].self, forKey: .attachments) {
             attachments = top
-        } else if let meta = try? c.decodeIfPresent(MetadataBox.self, forKey: .metadata), let list = meta.attachments {
+        } else if let list = metaBox?.attachments {
             attachments = list
         } else {
             attachments = []
         }
+        shotUpdate = metaBox?.shotUpdate
     }
 }
 

@@ -21,6 +21,7 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 	import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useCommunityLocale } from '../community/communityLocale';
 
 interface AnalyticsData {
   totals: {
@@ -35,6 +36,7 @@ interface AnalyticsData {
 }
 
 	function CoursePostAnalyticsWidget() {
+  const { tt } = useCommunityLocale();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +97,10 @@ interface AnalyticsData {
             Community Post Analytics
           </Typography>
           <Alert severity="info">
-            Ingen data tilgjengelig ennå. Publiser et kurs til community for å se analytikk.
+            {tt(
+              'Ingen data tilgjengelig ennå. Publiser et kurs til community for å se analytikk.',
+              'No data available yet. Publish a course to the community to see analytics.',
+            )}
           </Alert>
         </CardContent>
       </Card>
@@ -111,7 +116,7 @@ interface AnalyticsData {
           <Typography variant="h6">
             Community Post Analytics
           </Typography>
-          <Tooltip title="Oppdater data">
+          <Tooltip title={tt('Oppdater data', 'Refresh data')}>
             <IconButton size="small" onClick={fetchAnalytics}>
               <RefreshIcon />
             </IconButton>
@@ -127,7 +132,7 @@ interface AnalyticsData {
                 {totals.total_views}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Totale visninger
+                {tt('Totale visninger', 'Total views')}
               </Typography>
             </Box>
           </Grid>
@@ -140,7 +145,7 @@ interface AnalyticsData {
                 {totals.total_clicks}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Totale klikk
+                {tt('Totale klikk', 'Total clicks')}
               </Typography>
             </Box>
           </Grid>
@@ -153,7 +158,7 @@ interface AnalyticsData {
                 {totals.total_enrollments}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Påmeldinger
+                {tt('Påmeldinger', 'Enrollments')}
               </Typography>
             </Box>
           </Grid>
@@ -166,7 +171,7 @@ interface AnalyticsData {
                 {totals.total_posts}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Publiserte innlegg
+                {tt('Publiserte innlegg', 'Published posts')}
               </Typography>
             </Box>
           </Grid>
@@ -178,9 +183,9 @@ interface AnalyticsData {
               <Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                   <Typography variant="body2" color="text.secondary">
-                    Gjennomsnittlig klikkrate (CTR)
+                    {tt('Gjennomsnittlig klikkrate (CTR)', 'Average click-through rate (CTR)')}
                   </Typography>
-                  <Tooltip title="Prosentandel av visninger som resulterte i klikk">
+                  <Tooltip title={tt('Prosentandel av visninger som resulterte i klikk', 'Percentage of views that resulted in clicks')}>
                     <InfoIcon fontSize="small" color="action" />
                   </Tooltip>
                 </Box>
@@ -200,9 +205,9 @@ interface AnalyticsData {
               <Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                   <Typography variant="body2" color="text.secondary">
-                    Gjennomsnittlig konverteringsrate
+                    {tt('Gjennomsnittlig konverteringsrate', 'Average conversion rate')}
                   </Typography>
-                  <Tooltip title="Prosentandel av klikk som resulterte i påmeldinger">
+                  <Tooltip title={tt('Prosentandel av klikk som resulterte i påmeldinger', 'Percentage of clicks that resulted in enrollments')}>
                     <InfoIcon fontSize="small" color="action" />
                   </Tooltip>
                 </Box>
@@ -225,7 +230,7 @@ interface AnalyticsData {
           {data.analytics.length > 0 && (
             <Grid item xs={12}>
               <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
-                Beste innlegg
+                {tt('Beste innlegg', 'Top posts')}
               </Typography>
               <Stack spacing={1}>
                 {data.analytics
@@ -251,12 +256,12 @@ interface AnalyticsData {
                       </Box>
                       <Stack direction="row" spacing={1}>
                         <Chip
-                          label={`${post.views_count} visninger`}
+                          label={`${post.views_count} ${tt('visninger', 'views')}`}
                           size="small"
                           variant="outlined"
                         />
                         <Chip
-                          label={`${post.enrollments_from_post} påmeldinger`}
+                          label={`${post.enrollments_from_post} ${tt('påmeldinger', 'enrollments')}`}
                           size="small"
                           color="success"
                         />

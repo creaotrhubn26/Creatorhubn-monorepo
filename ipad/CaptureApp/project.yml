@@ -4,7 +4,10 @@ options:
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
-  developmentLanguage: en
+  # Norsk-only produkt (all tekst er hardkodet norsk, ingen .lproj). Sett
+  # utviklingsspråk til Bokmål → CFBundleDevelopmentRegion=nb: VoiceOver leser
+  # med norsk uttale og system-formattering (dato/tall) faller til nb som standard.
+  developmentLanguage: nb
 
 packages:
   GRDB:
@@ -37,6 +40,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - target: CaptureWidgets
+        embed: true
     info:
       path: CaptureApp/Generated/Info.plist
       properties:
@@ -46,6 +51,7 @@ targets:
         # er bygget VALID men «not in internally testable state» til noen svarer
         # på export-compliance manuelt i App Store Connect.
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
         UILaunchScreen:
           UIColorName: LaunchSplashBackground
           UIImageName: CreatorHubOneLogo
@@ -67,7 +73,9 @@ targets:
         NSCameraUsageDescription: Not used. Present only to satisfy App Store review when tethering to external cameras.
         NSPhotoLibraryAddUsageDescription: Used only when you explicitly export a captured session to Photos.
         NSMicrophoneUsageDescription: Record short voice memos attached to individual shots so you can dictate retouch + delivery instructions while shooting continues.
+        NSSpeechRecognitionUsageDescription: Transcribe your voice memos on-device so dictated retouch and delivery notes become searchable text.
         NSLocationWhenInUseUsageDescription: Used to show accurate golden-hour and weather for your current shoot location on the "I dag" dashboard.
+        NSCalendarsWriteOnlyAccessUsageDescription: Add a shoot to your calendar. Write-only — the app never reads your existing events.
         # Google OAuth — one-time setup per Google Cloud project:
         #   1. Register an OAuth 2.0 Client ID of type "iOS" with bundle
         #      identifier `com.creatorhubn.capture`.
@@ -84,12 +92,33 @@ targets:
             CFBundleURLName: com.creatorhubn.capture.google-oauth
             CFBundleURLSchemes:
               - com.googleusercontent.apps.256648631702-s96ihgei36g0pgc11t4o27arcjoc35g5
+    entitlements:
+      path: CaptureApp/Generated/CaptureApp.entitlements
+      properties:
+        # WeatherKit: golden hour / vær on-device. Krever at WeatherKit-
+        # capability aktiveres for App ID-en i Apple Developer-portalen før
+        # TestFlight-signering lykkes (se aktiverings-sjekklisten).
+        com.apple.developer.weatherkit: true
+        # Push: leverer kunde-/redigerer-hendelser når appen er lukket. Krever
+        # Push Notifications-capability på App ID-en (aktiveres i portalen).
+        aps-environment: development
+        # Når vi først har en entitlements-fil MÅ keychain-gruppa deklareres
+        # eksplisitt, ellers mister appen default-tilgangen (errSecMissing-
+        # Entitlement -34018 på innlogging i simulator).
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.creatorhubn.capture
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture
         TARGETED_DEVICE_FAMILY: "2"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        # Manuell signering for App Store (cloud signing feiler «Cloud signing
+        # permission error» uten Apple-managed cert — samme som LeadMap).
+        # Simulator-bygg signerer ikke, så dette påvirker kun archive/export.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "CreatorHub Capture AppStore"
 
   CaptureAppTests:
     type: bundle.unit-test
@@ -101,3 +130,28 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+
+  # Widget-extension: «shoot i gang»-Live Activity (låseskjerm + Dynamic
+  # Island). Deler ShootActivityAttributes.swift med app-target-et.
+  # NB (provisioning): egen bundle-id må registreres for TestFlight-signering —
+  # fastlane -allowProvisioningUpdates + ASC-nøkkel oppretter den vanligvis auto.
+  CaptureWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: CaptureWidgets
+      - path: CaptureApp/Core/LiveActivity/ShootActivityAttributes.swift
+    info:
+      path: CaptureWidgets/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: CreatorHub Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.capture.widgets
+        TARGETED_DEVICE_FAMILY: "2"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "CreatorHub Widgets AppStore"

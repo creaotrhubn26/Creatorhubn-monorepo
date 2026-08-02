@@ -326,7 +326,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] positions POST failed:", err);
       return res
         .status(500)
-        .json({ error: "positions_save_failed", detail: String((err as Error).message) });
+        .json({ error: "positions_save_failed", detail: String("internal_error") });
     }
   });
 
@@ -459,7 +459,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] my-route GET failed:", err);
       return res
         .status(500)
-        .json({ error: "my_route_failed", detail: String((err as Error).message) });
+        .json({ error: "my_route_failed", detail: String("internal_error") });
     }
   });
 
@@ -502,7 +502,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] assignments POST failed:", err);
       return res
         .status(500)
-        .json({ error: "assignment_create_failed", detail: String((err as Error).message) });
+        .json({ error: "assignment_create_failed", detail: String("internal_error") });
     }
   });
 
@@ -578,7 +578,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] assignments PATCH failed:", err);
       return res
         .status(500)
-        .json({ error: "assignment_update_failed", detail: String((err as Error).message) });
+        .json({ error: "assignment_update_failed", detail: String("internal_error") });
     }
   });
 
@@ -637,7 +637,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] visits POST failed:", err);
       return res
         .status(500)
-        .json({ error: "visit_log_failed", detail: String((err as Error).message) });
+        .json({ error: "visit_log_failed", detail: String("internal_error") });
     }
   });
 
@@ -769,7 +769,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] team-nearby GET failed:", err);
       return res
         .status(500)
-        .json({ error: "team_nearby_failed", detail: String((err as Error).message) });
+        .json({ error: "team_nearby_failed", detail: String("internal_error") });
     }
   });
 
@@ -855,7 +855,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] adherence-report GET failed:", err);
       return res
         .status(500)
-        .json({ error: "adherence_report_failed", detail: String((err as Error).message) });
+        .json({ error: "adherence_report_failed", detail: String("internal_error") });
     }
   });
 
@@ -925,7 +925,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] team-summary GET failed:", err);
       return res
         .status(500)
-        .json({ error: "team_summary_failed", detail: String((err as Error).message) });
+        .json({ error: "team_summary_failed", detail: String("internal_error") });
     }
   });
 
@@ -980,7 +980,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] leads/at-position failed:", err);
       return res
         .status(500)
-        .json({ error: "lead_create_failed", detail: String((err as Error).message) });
+        .json({ error: "lead_create_failed", detail: String("internal_error") });
     }
   });
 
@@ -1012,7 +1012,7 @@ export function registerRoutesAdherenceRoutes(
       console.error("[routes-adherence] positions DELETE failed:", err);
       return res
         .status(500)
-        .json({ error: "positions_cleanup_failed", detail: String((err as Error).message) });
+        .json({ error: "positions_cleanup_failed", detail: String("internal_error") });
     }
   });
 }

@@ -120,6 +120,11 @@ final class CullTheaterModel {
     private(set) var sentCount = 0
     var errorMessage: String?
     private(set) var hasAutoCulled = false
+    /// On-device (Vision) smart-cull-oppsummering, f.eks. «2 duplikat-grupper».
+    private(set) var smartCullSummary: String?
+    /// #6 Scene-/oppsett-klynger (asset-UUID-er) i opptaksrekkefølge — lar UI-et
+    /// culle én scene av gangen. Fylt av `runSmartCull`.
+    private(set) var sceneGroups: [[UUID]] = []
 
     init(sessionId: UUID, jobId: String, pricePerImage: Double?, ownerUserId: String) {
         self.sessionId = sessionId
@@ -137,6 +142,16 @@ final class CullTheaterModel {
     var savingKr: Int? {
         guard let p = pricePerImage, p > 0 else { return nil }
         return Int((Double(droppedCount) * p).rounded())
+    }
+
+    /// Delt per-bilde-analyse for cull-berikelse (øyne/ansikts-skarphet) — måles
+    /// én gang og persisteres, så Kvalitetssjekk/HUD/forslag gjenbruker den.
+    private let assetAnalyzer = AssetAnalyzer()
+
+    private func sessionStore() throws -> SessionStore {
+        let url = try AppDatabase.defaultDiskURL()
+        let db = try AppDatabase.openOnDisk(at: url)
+        return SessionStore(database: db)
     }
 
     private func cullStore() throws -> CullStore {
@@ -187,6 +202,59 @@ final class CullTheaterModel {
         } catch {
             errorMessage = (error as? DashboardError)?.localizedDescription ?? "Auto-cull feilet."
         }
+    }
+
+    /// On-device smart cull (gratis, offline): Vision rangerer etter estetikk +
+    /// ansikts-fangst og deduperer nesten-identiske frames. Beholder beste av
+    /// hver duplikat-gruppe og dropper «utility»-shots. Komplement til den
+    /// backend-drevne auto-cullen — fungerer uten nett.
+    @available(iOS 18, *)
+    func runSmartCull() async {
+        culling = true; defer { culling = false }
+        errorMessage = nil
+        let store = try? sessionStore()
+        var items: [(id: String, image: CGImage, analysis: AssetAnalysis?)] = []
+        for a in assets {
+            guard let path = a.displayPreviewKey,
+                  let ui = UIImage(contentsOfFile: path),
+                  let cg = ui.cgImage else { continue }
+            // Delt analyse: gjenbruk persistert, ellers MÅL én gang + persister
+            // (øyne/ansikts-skarphet beriker rangeringen; Kvalitetssjekk/HUD/
+            // forslag gjenbruker den samme målingen etterpå).
+            var analysis = a.signals.analysis
+            if analysis == nil, let src = a.previewKey ?? a.displayPreviewKey,
+               FileManager.default.fileExists(atPath: src) {
+                analysis = await assetAnalyzer.analyze(imageURL: URL(fileURLWithPath: src))
+                if let measured = analysis, let idx = assets.firstIndex(where: { $0.id == a.id }) {
+                    var signals = assets[idx].signals
+                    signals.analysis = measured
+                    signals.faceCount = measured.faces.count
+                    if let face = measured.primaryFace { signals.eyesOpen = face.eyesOpen ?? signals.eyesOpen }
+                    assets[idx].signals = signals
+                    try? await store?.updateAssetSignals(id: a.id, signals: signals)
+                }
+            }
+            items.append((id: a.id.uuidString, image: cg, analysis: analysis))
+        }
+        guard !items.isEmpty else { errorMessage = "Ingen bilder å analysere."; return }
+
+        let service = CullingService()
+        await service.cull(items)
+        guard let result = service.result else { return }
+
+        // Behold anbefalte keepers (beste av hver duplikat-gruppe), minus utility.
+        let utilityIds = Set(result.ranked.filter(\.isUtility).map(\.id))
+        let keepSet = Set(result.keep).subtracting(utilityIds)
+        keptIds = Set(assets.filter { keepSet.contains($0.id.uuidString) }.map(\.id))
+        RedigeringEditStore.saveKept(sessionId, keptIds)
+        hasAutoCulled = true
+
+        // #6 Map scene-klyngene (id-strenger) → asset-UUID-er, i rekkefølge.
+        let byUuid = Dictionary(uniqueKeysWithValues: assets.map { ($0.id.uuidString, $0.id) })
+        sceneGroups = result.scenes.map { $0.compactMap { byUuid[$0] } }.filter { !$0.isEmpty }
+
+        let sceneText = sceneGroups.count > 1 ? " fordelt på \(sceneGroups.count) scener" : ""
+        smartCullSummary = "På enheten: \(result.duplicates.count) duplikat-grupper funnet\(sceneText), beholder \(keptIds.count) av \(items.count)."
     }
 
     func toggle(_ asset: Asset) {
@@ -318,8 +386,28 @@ struct CullTheaterView: View {
             .controlSize(.large)
             .tint(CHTheme.accent)
             .disabled(model.culling || model.total == 0)
-            Text("Auto-cull bruker skarphet, øyne, eksponering og duplikat-grupper. Du kan flytte hvert bilde manuelt etterpå — du har siste ord.")
+            if #available(iOS 18, *) {
+                Button {
+                    Task { await model.runSmartCull() }
+                } label: {
+                    HStack {
+                        if model.culling { ProgressView().controlSize(.small) }
+                        Image(systemName: "sparkles")
+                        Text("Smart cull på enheten")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(CHTheme.accent)
+                .disabled(model.culling || model.total == 0)
+            }
+            Text("Auto-cull bruker skarphet, øyne, eksponering og duplikat-grupper. «Smart cull på enheten» kjører helt lokalt (Vision) uten nett. Du kan flytte hvert bilde manuelt etterpå — du har siste ord.")
                 .font(.caption2).foregroundStyle(CHTheme.textMuted)
+            if let summary = model.smartCullSummary {
+                Label(summary, systemImage: "checkmark.seal")
+                    .font(.caption).foregroundStyle(CHTheme.accent)
+            }
             if let msg = model.errorMessage {
                 Text(msg).font(.caption).foregroundStyle(CHTheme.warning)
             }

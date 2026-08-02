@@ -16,6 +16,8 @@ struct NewMessageComposer: View {
     @State private var messageBody = ""
     @State private var sending = false
     @State private var errorMessage: String?
+    @State private var ai = TextGenerationIntelligenceFactory.make()
+    @State private var drafting = false
 
     private var isEmail: Bool { channel == .gmail }
 
@@ -42,7 +44,16 @@ struct NewMessageComposer: View {
                 Section("Melding") {
                     TextField("Skriv melding…", text: $messageBody, axis: .vertical)
                         .lineLimit(4...10)
+                        .appWritingTools(.complete)
                         .listRowBackground(CHTheme.surface)
+                    if ai.isAvailable {
+                        Button { draft() } label: {
+                            Label(drafting ? "Skriver…" : "Skriv utkast med AI (på enheten)",
+                                  systemImage: "sparkles")
+                        }
+                        .disabled(drafting || recipient.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .listRowBackground(CHTheme.surface)
+                    }
                 }
                 if let errorMessage {
                     Text(errorMessage).font(.caption).foregroundStyle(CHTheme.danger)
@@ -82,6 +93,20 @@ struct NewMessageComposer: View {
             dismiss()
         } catch {
             errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
+    }
+
+    /// On-device e-postutkast fra mottaker/emne/stikkord (Foundation Models).
+    private func draft() {
+        drafting = true
+        Task {
+            do {
+                messageBody = try await ai.generate(
+                    .emailDraft(recipient: recipient, subject: subject, notes: messageBody))
+            } catch {
+                errorMessage = "Kunne ikke lage utkast akkurat nå."
+            }
+            drafting = false
         }
     }
 }

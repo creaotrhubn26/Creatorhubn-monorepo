@@ -32,7 +32,7 @@ export interface RoleRoomAgencySearchRoutesDeps {
 }
 
 /** Hent agency for innlogget user. Returnerer null hvis ikke koblet. */
-async function fetchAgencyForUser(pool: Pool, userId: string) {
+export async function fetchAgencyForUser(pool: Pool, userId: string) {
   const r = await pool.query(
     `SELECT a.id, a.type, a.name, a.slug, u.agency_role
        FROM users u JOIN agency_orgs a ON a.id = u.agency_org_id
@@ -124,7 +124,7 @@ type SearchFilters = {
   offset?: number;
 };
 
-function parseFilters(query: Record<string, unknown>): SearchFilters {
+export function parseFilters(query: Record<string, unknown>): SearchFilters {
   const arrFromCsv = (v: unknown): string[] | undefined => {
     if (Array.isArray(v)) return v.map(String).filter(Boolean);
     if (typeof v === "string" && v.trim().length > 0) {
@@ -155,7 +155,7 @@ function parseFilters(query: Record<string, unknown>): SearchFilters {
  * til denne agency-en for å være synlige. Felter maskeres etter scopes
  * agency-en har — basic_profile gir minimum, media_portfolio gir bilder etc.
  */
-function buildSearchSql(
+export function buildSearchSql(
   agencyType: string,
   agencyId: string,
   filters: SearchFilters,
@@ -260,8 +260,11 @@ function buildSearchSql(
       t.headshot_url, t.showreel_url, t.resume_url,
       t.playing_age_min, t.playing_age_max, t.gender,
       t.skills, t.languages, t.dialects,
-      t.availability_status, t.willing_to_travel,
+      t.availability_status, t.availability_notes,
+      t.availability_windows, t.availability_confirmed_at,
+      t.willing_to_travel,
       t.represented, t.agency_name,
+      t.badges, t.metadata,
       t.created_at, t.updated_at,
       array_agg(DISTINCT c.scope) AS granted_scopes,
       MAX(c.granted_at) AS last_consent_at
@@ -282,7 +285,7 @@ function buildSearchSql(
   return { sql, params, countSql };
 }
 
-function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
+export function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
   const scopes = new Set<string>(Array.isArray(row.granted_scopes) ? row.granted_scopes as string[] : []);
   const has = (s: string) => scopes.has("full_profile") || scopes.has(s);
   const masked: Record<string, unknown> = {
@@ -302,6 +305,12 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
     masked.skills = row.skills;
     masked.languages = row.languages;
     masked.dialects = row.dialects;
+    // Skole-verifisert utdanning + NSF-medlemskap = tillitssignaler.
+    const badges = Array.isArray(row.badges) ? row.badges as string[] : [];
+    masked.education_verified = badges.includes("education_verified");
+    masked.nsf_member = badges.includes("nsf_member");
+    const edu = (row.metadata as { education?: { institution?: string | null; program?: string | null; year?: number | null } } | null)?.education;
+    if (edu) masked.education = { institution: edu.institution ?? null, program: edu.program ?? null, year: edu.year ?? null };
   }
   if (has("media_portfolio")) {
     masked.headshot_url = row.headshot_url;
@@ -313,8 +322,14 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
     masked.playing_age_max = row.playing_age_max;
     masked.gender = row.gender;
   }
+  // availability_visible gjøres ALLTID eksplisitt slik at UI kan vise «skjult
+  // (ikke delt)» i stedet for stille å utelate feltet — samtykke-transparens.
+  masked.availability_visible = has("availability");
   if (has("availability")) {
     masked.availability_status = row.availability_status;
+    masked.availability_notes = row.availability_notes;
+    masked.availability_windows = row.availability_windows;
+    masked.availability_confirmed_at = row.availability_confirmed_at;
     masked.willing_to_travel = row.willing_to_travel;
   }
   if (has("contact_info")) {
@@ -373,7 +388,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
       });
     } catch (err) {
       console.error("[agency/talents/search] failed", err);
-      return res.status(500).json({ error: "Søk feilet", detail: String(err) });
+      return res.status(500).json({ error: "Søk feilet", detail: "internal_error" });
     }
   });
 
@@ -534,7 +549,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
       return res.status(201).json({ search: r.rows[0] });
     } catch (err) {
       console.error("[saved-searches POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre søket", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre søket", detail: "internal_error" });
     }
   });
 

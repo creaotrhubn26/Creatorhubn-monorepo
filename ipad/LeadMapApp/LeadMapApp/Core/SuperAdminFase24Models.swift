@@ -342,6 +342,10 @@ struct OutreachTemplate: Codable, Hashable, Identifiable {
     let isDefault: Bool?
     let createdAt: String?
     let updatedAt: String?
+    /// Multi-produkt (PR #827/#829): hvilket produkt template-en tilhører.
+    /// Backend filtrerer på `?product=role_room|leadgrid`, men feltet
+    /// dekodes også for chips/UI-bekreftelse.
+    let productKey: String?
 
     var name: String { title ?? slug ?? "(uten navn)" }
     var subjectTemplate: String? { description }

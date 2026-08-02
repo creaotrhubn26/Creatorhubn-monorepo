@@ -352,6 +352,71 @@ export function registerLeadgridQualityRoutes(deps: {
          templateId, s.userId, s.name],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+
+      // «Flagg som eksempel» (2026-07-17): kontrolløren hørte en samtale
+      // verdt å lære av → opprett draft i Leadbook-eksempel-køen med
+      // CRM-kontekst. Idempotent via unik indeks på source_verification_id
+      // (mig 0379); leder kurerer og publiserer i Eksempler-fanen.
+      if (b.flagAsExample === true || b.flag_as_example === true) {
+        try {
+          const v = await pool.query(
+            `SELECT customer_name, seller_user_id, seller_name, deal_amount, won_at
+               FROM leadgrid_sales_verifications
+              WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+            [id, s.orgId],
+          );
+          const row = v.rows[0];
+          if (row) {
+            await pool.query(
+              `INSERT INTO leadbook_examples
+                 (id, organization_id, status, title, customer_label, outcome,
+                  seller_user_id, seller_name, happened_on, deal_value_nok,
+                  summary, source_verification_id, created_by, created_by_name)
+               VALUES ($1, $2, 'draft', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+               ON CONFLICT (source_verification_id) WHERE source_verification_id IS NOT NULL
+               DO NOTHING`,
+              [
+                (globalThis.crypto as { randomUUID: () => string }).randomUUID(), s.orgId,
+                `Samtale: ${row.customer_name || "kunde"}`,
+                String(row.customer_name ?? ""),
+                status === "verified" ? "won" : "lost",
+                row.seller_user_id, String(row.seller_name ?? ""),
+                row.won_at ?? null,
+                row.deal_amount != null ? Math.trunc(Number(row.deal_amount)) : null,
+                String(b.note ?? ""),
+                id, s.userId, s.name,
+              ],
+            );
+          }
+        } catch (flagErr) {
+          // Flagget skal aldri velte verdiktet — logg og fortsett.
+          console.warn("[leadgrid-quality] flag-as-example failed:",
+            (flagErr as Error).message);
+        }
+      }
+
+      // Dørsalg-kobling (mig 0400): verifisert dørsalg = kontrolløren fikk
+      // kunden på tråden → salget flippes til telefon_bekreftet (med mindre
+      // det alt er BankID-signert). Best effort — velter aldri verdiktet.
+      if (status === "verified") {
+        try {
+          await pool.query(
+            `UPDATE leadgrid_dorsalg_sales ds SET
+               verifisering = CASE WHEN ds.verifisering IN ('uverifisert', 'kunde_bekreftet')
+                                   THEN 'telefon_bekreftet' ELSE ds.verifisering END,
+               updated_at = now()
+             FROM leadgrid_sales_verifications v
+            WHERE v.id = $1 AND v.organization_id = $2
+              AND v.customer_id LIKE 'dorsalg:%'
+              AND ds.org_id = v.organization_id
+              AND ds.adresse_id = SUBSTRING(v.customer_id FROM 9)`,
+            [id, s.orgId],
+          );
+        } catch (dsErr) {
+          console.warn("[leadgrid-quality] dorsalg-flip failed:", (dsErr as Error).message);
+        }
+      }
+
       return res.json({ ok: true });
     } catch (err) {
       console.warn("[leadgrid-quality] verdict failed:", (err as Error).message);

@@ -1,0 +1,46 @@
+name: GEO Visibility weekly probe
+
+# Kjører alle godkjente GEO-prompt-sett ukentlig (docs/integration-audit/08).
+# Token-gated via GEO_VISIBILITY_CRON_TOKEN (GitHub secret + Render env).
+# Endepunktet fire-and-forget-er kjøringene sekvensielt på serveren.
+
+on:
+  schedule:
+    # Mandager 05:15 UTC — før arbeidsdagen, utenom andre cron-topper
+    - cron: '15 5 * * 1'
+  workflow_dispatch: # manuell trigger for testing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geo-visibility-weekly
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-approved:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/geo-visibility/cron/run-approved
+        env:
+          GEO_VISIBILITY_CRON_TOKEN: ${{ secrets.GEO_VISIBILITY_CRON_TOKEN }}
+        run: |
+          if [ -z "$GEO_VISIBILITY_CRON_TOKEN" ]; then
+            echo "::error::GEO_VISIBILITY_CRON_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $GEO_VISIBILITY_CRON_TOKEN" \
+            "$BACKEND_URL/api/geo-visibility/cron/run-approved")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::GEO-cron feilet (HTTP $CODE)"
+            exit 1
+          fi

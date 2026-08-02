@@ -21,6 +21,43 @@ import type express from "express";
 import { notifyPlanBActivation, notifyPlanBDeactivation } from "./wedding-notifications-helper";
 import { broadcastEventToRoom } from "./websocket-chat";
 import { sendPushToUser } from "./web-push-routes";
+import { canAccessProject } from "./project-team-routes";
+
+/**
+ * Authorize the session user against a wedding before mutating its locations /
+ * timeline and pushing plan-B events into its `wedding:<id>` realtime room.
+ *
+ * Mirrors the round-37 WS room predicate (canAccessWeddingRoom, photographer
+ * path): the caller must own the wedding_timelines row (user_id / photographer_id)
+ * or have team access to the linked project. Fail closed on any error.
+ *
+ * Prior to this, the endpoints in this file were unauthorized against the
+ * wedding: activate/deactivate/alternatives/weather-flags required only *a*
+ * logged-in session (IDOR — mutate another couple's locations/timeline and
+ * inject spoofed plan_b events into their room), and the two GETs were fully
+ * public (leaking location addresses and notification-recipient PII). All are
+ * now gated on this predicate. The couple portal is token-based
+ * (/api/wedding/client/:token/…) and never held a session, so it never reached
+ * these endpoints; this guard adds no regression.
+ */
+async function callerOwnsWedding(pool: any, weddingId: string, userId: string): Promise<boolean> {
+  if (!userId || !weddingId) return false;
+  try {
+    const r = await pool.query(
+      `SELECT user_id, photographer_id, project_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const row = r.rows[0];
+    if (!row) return false;
+    if (row.user_id && String(row.user_id) === userId) return true;
+    if (row.photographer_id && String(row.photographer_id) === userId) return true;
+    if (row.project_id && (await canAccessProject(pool, userId, String(row.project_id)))) return true;
+    return false;
+  } catch (e) {
+    console.error("[plan-b] callerOwnsWedding error:", e);
+    return false;
+  }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -81,8 +118,14 @@ export function setupWeddingLocationAlternativesRoutes(
 
   // ─── GET /api/wedding/:weddingId/locations-with-alternatives ───
   app.get("/api/wedding/:weddingId/locations-with-alternatives", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
+      // Authorize the caller against THIS wedding — previously this read was
+      // fully public, leaking any couple's location list (addresses, notes).
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const r = await pool.query(
         `SELECT * FROM wedding_locations WHERE wedding_id = $1 ORDER BY sort_order, created_at`,
         [req.params.weddingId],
@@ -106,6 +149,10 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       const { primaryId, weddingId } = req.params;
+      // Authorize the caller against THIS wedding before inserting a location.
+      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const { label, address, postalCode, city, notes, isIndoor } = req.body || {};
       if (!label || !String(label).trim()) {
         return res.status(400).json({ error: "label er påkrevd" });
@@ -115,7 +162,7 @@ export function setupWeddingLocationAlternativesRoutes(
         `SELECT id FROM wedding_locations WHERE id = $1 AND wedding_id = $2 AND alternative_for_location_id IS NULL`,
         [primaryId, weddingId],
       );
-      if (p.rowCount === 0) {
+      if (!p.rows.length) {
         return res.status(404).json({ error: "Primary location finnes ikke for dette bryllupet" });
       }
       const ins = await pool.query(
@@ -148,6 +195,10 @@ export function setupWeddingLocationAlternativesRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
+      // Authorize the caller against THIS wedding before updating a location.
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const { isIndoor, weatherDependent } = req.body || {};
       const r = await pool.query(
         `UPDATE wedding_locations
@@ -177,14 +228,18 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       const uid = getPricingUserId(req);
-      const triggeredBy = (req.body?.triggeredBy as string) || (uid ? "photographer" : "couple");
       const { weddingId, altId } = req.params;
+      // Authorize the caller against THIS wedding before any mutation/broadcast.
+      if (!(await callerOwnsWedding(pool, weddingId, uid))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
+      const triggeredBy = (req.body?.triggeredBy as string) || (uid ? "photographer" : "couple");
 
       const alt = await pool.query(
         `SELECT * FROM wedding_locations WHERE id = $1 AND wedding_id = $2`,
         [altId, weddingId],
       );
-      if (alt.rowCount === 0) return res.status(404).json({ error: "Alternativ finnes ikke" });
+      if (!alt.rows.length) return res.status(404).json({ error: "Alternativ finnes ikke" });
       const altRow = alt.rows[0];
       const primaryId = altRow.alternative_for_location_id;
       if (!primaryId) {
@@ -306,11 +361,15 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       const { weddingId, altId } = req.params;
+      // Authorize the caller against THIS wedding before any mutation/broadcast.
+      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const alt = await pool.query(
         `SELECT alternative_for_location_id FROM wedding_locations WHERE id = $1 AND wedding_id = $2`,
         [altId, weddingId],
       );
-      if (alt.rowCount === 0) return res.status(404).json({ error: "Alternativ finnes ikke" });
+      if (!alt.rows.length) return res.status(404).json({ error: "Alternativ finnes ikke" });
       const primaryId = alt.rows[0].alternative_for_location_id;
       if (!primaryId) return res.status(400).json({ error: "Ikke en plan B" });
 
@@ -368,7 +427,13 @@ export function setupWeddingLocationAlternativesRoutes(
   // ─── GET /api/wedding/:weddingId/notifications ────────────────
   // Logg over varsler sendt for dette bryllupet.
   app.get("/api/wedding/:weddingId/notifications", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
+      // Authorize the caller against THIS wedding — previously this read was
+      // fully public, leaking recipient names / emails / phone numbers (PII).
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const r = await pool.query(
         `SELECT id, notification_type, recipient_type, recipient_name,
                 recipient_email, recipient_phone, channel, subject, status,

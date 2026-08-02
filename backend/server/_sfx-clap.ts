@@ -119,7 +119,12 @@ export async function loadSfxLibraryFromDisk(filePath: string): Promise<LoadedLi
     }
     throw err;
   }
-  const parsed = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { embeddingModel: 'Xenova/clap-htsat-unfused', embeddingDim: 512, builtAt: new Date().toISOString(), samples: [] };
+  }
   const validation = validatePayload(parsed);
   if (!validation.ok) {
     throw new Error(`SFX-library ${absolute} er ugyldig: ${validation.errors.join('; ')}`);

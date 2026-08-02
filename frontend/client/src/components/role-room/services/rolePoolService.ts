@@ -19,12 +19,19 @@ export interface PoolImportOptions {
   auditNote?: string;
 }
 
+import authSessionService from './authSessionService';
+
 const API_BASE = '/api/casting';
+
+// Pool-endepunktene er session-gated (requireUserSession) og theroleroom.com
+// autentiserer via Bearer-header — uten dette får kallene 401.
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 export const rolePoolService = {
   async getPoolRoles(): Promise<PoolRole[]> {
     try {
-      const response = await fetch(`${API_BASE}/role-pool`);
+      const response = await fetch(`${API_BASE}/role-pool`, { headers: getAuthHeaders() });
       const data = await response.json();
       return data.success ? data.roles : [];
     } catch (error) {
@@ -37,7 +44,7 @@ export const rolePoolService = {
     try {
       const response = await fetch(`${API_BASE}/role-pool`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(role),
       });
       const data = await response.json();
@@ -52,6 +59,7 @@ export const rolePoolService = {
     try {
       const response = await fetch(`${API_BASE}/role-pool/${roleId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       const data = await response.json();
       return data.success;
@@ -69,7 +77,7 @@ export const rolePoolService = {
     try {
       const response = await fetch(`${API_BASE}/role-pool/import-to-project`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ poolRoleId, targetProjectId, options }),
       });
       const data = await response.json();
@@ -84,7 +92,7 @@ export const rolePoolService = {
     try {
       const response = await fetch(`${API_BASE}/roles/save-to-pool`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ roleId }),
       });
       const data = await response.json();

@@ -1,6 +1,30 @@
 import express from "express";
+import crypto from "crypto";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
+
+// Client-facing quote portal links (`GET /api/quotes/:id`, `/:id/pdf`,
+// `/status/:clientId`) are unauthenticated by design — the recipient is not a
+// logged-in user. To stop a bare UUID from being a permanent, enumerable
+// bearer, quotes issued a `share_token` at send time must present it as `?t=`.
+// Constant-time compared, length-guarded, and expiry-checked. Quotes with no
+// token (legacy rows, or drafts never sent) fall through to a grace path so
+// links handed out before this rollout keep working.
+function isQuoteShareAllowed(row: any, req: any): boolean {
+  const shareToken = row?.share_token;
+  if (!shareToken) return true; // legacy / never-sent grace path
+  const provided = typeof req.query?.t === "string" ? req.query.t : "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(String(shareToken));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  if (
+    row.share_expires_at &&
+    new Date(row.share_expires_at).getTime() < Date.now()
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export interface QuotesRoutesDeps {
   app: express.Application;
@@ -48,9 +72,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     if (headerUserId) {
       return String(headerUserId);
     }
-
-    const fallback = await pool.query("SELECT id FROM users LIMIT 1");
-    return fallback.rows[0]?.id || "default-user";
+    return null;
   }
 
   function buildSharedQuoteWhereClause(options: {
@@ -441,11 +463,16 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
 
 
   app.get("/api/quotes/templates", async (req, res) => {
+    // SECURITY: session-scope only. Templates expose the caller's private
+    // pricing catalog (package names, base_price, included_services). This
+    // previously took `?userId=` / x-user-id (spoofable) with no session gate,
+    // so `?userId=<victim>` leaked another photographer's price list. The sole
+    // caller (QuoteTemplatesDialog) sends its own id via a Bearer request, so
+    // binding to the session changes nothing for legit use.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = session.userId;
       const professionVariants = buildQuoteProfessionVariants(
         req.query.profession,
       );
@@ -520,11 +547,13 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/reminders/config", async (req, res) => {
+    // SECURITY: previously read `?userId=` first with no session → passing
+    // ?userId=<victim> returned another tenant's reminder config. Derive the
+    // owner strictly from the authenticated session.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = session.userId;
       const stored = await compatStoreGet<unknown>(
         buildQuoteReminderConfigStoreKey(userId),
       );
@@ -543,10 +572,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   app.put("/api/quotes/reminders/config", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     try {
-      const userId =
-        typeof req.body?.userId === "string" && req.body.userId.trim()
-          ? req.body.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = await resolveQuoteUserId(req);
       const config = normalizeQuoteReminderConfig(req.body?.config);
       await compatStoreSet(buildQuoteReminderConfigStoreKey(userId), config);
       res.json({ success: true, config });
@@ -559,11 +585,12 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/reminders/status", async (req, res) => {
+    // SECURITY: same as reminders/config — was `?userId=`-first with no
+    // session, leaking another tenant's reminder-run status. Session-only.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = session.userId;
       const storedStatus = await compatStoreGet<{ lastCheck?: string }>(
         buildQuoteReminderStatusStoreKey(userId),
       );
@@ -590,10 +617,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.body?.userId === "string" && req.body.userId.trim()
-          ? req.body.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = await resolveQuoteUserId(req);
       const config = normalizeQuoteReminderConfig(
         await compatStoreGet<unknown>(buildQuoteReminderConfigStoreKey(userId)),
       );
@@ -800,13 +824,12 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/all", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : getPricingUserId(req);
+      const userId = session.userId;
       const status =
         typeof req.query.status === "string" ? req.query.status.trim() : "";
       const quoteType =
@@ -836,13 +859,12 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/stats/overview", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : getPricingUserId(req);
+      const userId = session.userId;
 
       const { params, whereSql } = buildSharedQuoteWhereClause({ userId });
       const result = await pool.query(`SELECT * FROM quotes ${whereSql}`, params);
@@ -881,13 +903,19 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes", async (req, res) => {
+    // SECURITY: scope to the authenticated session only. This endpoint
+    // previously derived the owner from `?userId=` / x-user-id (both
+    // client-spoofable) with NO session gate, so any caller could list a
+    // victim's quotes (client names, e-post, beløp) via `?userId=<victim>` —
+    // and with no userId at all the WHERE clause collapsed to empty, dumping
+    // EVERY tenant's quotes. Now identical to `/api/quotes/all`: session-bound
+    // `created_by` scope, spoofable inputs ignored.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : getPricingUserId(req);
+      const userId = session.userId;
       const status =
         typeof req.query.status === "string" ? req.query.status.trim() : "";
       const signatureStatus =
@@ -933,6 +961,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         [req.params.id],
       );
       if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Quote not found" });
+      }
+
+      if (!isQuoteShareAllowed(result.rows[0], req)) {
         return res.status(404).json({ error: "Quote not found" });
       }
 
@@ -1055,6 +1087,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         return res.status(404).json({ error: "Quote not found" });
       }
 
+      if (!isQuoteShareAllowed(result.rows[0], req)) {
+        return res.status(404).json({ error: "Quote not found" });
+      }
+
       res.json({ data: mapQuoteCompatibilityRecord(result.rows[0]) });
     } catch (error) {
       console.error("Quote fetch error:", error);
@@ -1063,7 +1099,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id/status", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1078,8 +1115,9 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       params.push(req.params.id);
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE quotes SET ${updates.join(", ")} WHERE id = $2 RETURNING *`,
+        `UPDATE quotes SET ${updates.join(", ")} WHERE id = $2 AND created_by = $3 RETURNING *`,
         params,
       );
 
@@ -1114,7 +1152,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id/link-project", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1124,8 +1163,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       const result = await pool.query(
-        "UPDATE quotes SET project_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-        [projectId, req.params.id],
+        "UPDATE quotes SET project_id = $1, updated_at = NOW() WHERE id = $2 AND created_by = $3 RETURNING *",
+        [projectId, req.params.id, session.userId],
       );
 
       if (result.rows.length === 0) {
@@ -1143,13 +1182,14 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/:id/create-chat", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
       const result = await pool.query(
-        "SELECT * FROM quotes WHERE id = $1 LIMIT 1",
-        [req.params.id],
+        "SELECT * FROM quotes WHERE id = $1 AND created_by = $2 LIMIT 1",
+        [req.params.id, session.userId],
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Quote not found" });
@@ -1186,23 +1226,33 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/:id/send-email", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
+      // Mint a share token the first time a quote is sent (kept stable on
+      // re-send via COALESCE so an already-shared link isn't invalidated) and
+      // (re)extend its validity window. The client portal link is built as
+      // `/quote/<id>?t=<shareToken>`.
+      const newShareToken = crypto.randomBytes(32).toString("hex");
       const result = await pool.query(
         `UPDATE quotes
          SET sent_at = NOW(),
              status = CASE WHEN COALESCE(status, 'draft') = 'draft' THEN 'pending' ELSE status END,
+             share_token = COALESCE(share_token, $3),
+             share_expires_at = NOW() + INTERVAL '90 days',
              updated_at = NOW()
-         WHERE id = $1
+         WHERE id = $1 AND created_by = $2
          RETURNING *`,
-        [req.params.id],
+        [req.params.id, session.userId, newShareToken],
       );
 
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Quote not found" });
       }
+
+      const shareToken = result.rows[0].share_token;
 
       console.log("📧 Quote email marked as sent:", {
         quoteId: req.params.id,
@@ -1214,6 +1264,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         success: true,
         emailId: `quote-email-${Date.now()}`,
         sentAt: new Date().toISOString(),
+        shareToken,
         quote: mapQuoteCompatibilityRecord(result.rows[0]),
       });
     } catch (error) {
@@ -1223,7 +1274,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1269,18 +1321,24 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       if (req.body?.validUntil !== undefined) {
+        const validUntil = req.body.validUntil ? new Date(req.body.validUntil) : null;
+        if (validUntil && isNaN(validUntil.getTime())) return res.status(400).json({ error: "Ugyldig dato for validUntil" });
         setClauses.push(`valid_until = $${idx++}`);
-        params.push(req.body.validUntil ? new Date(req.body.validUntil) : null);
+        params.push(validUntil);
       }
 
       if (req.body?.fikenSyncedAt !== undefined) {
+        const fikenSyncedAt = req.body.fikenSyncedAt ? new Date(req.body.fikenSyncedAt) : null;
+        if (fikenSyncedAt && isNaN(fikenSyncedAt.getTime())) return res.status(400).json({ error: "Ugyldig dato for fikenSyncedAt" });
         setClauses.push(`fiken_synced_at = $${idx++}`);
-        params.push(req.body.fikenSyncedAt ? new Date(req.body.fikenSyncedAt) : null);
+        params.push(fikenSyncedAt);
       }
 
       if (req.body?.tripletexSyncedAt !== undefined) {
+        const tripletexSyncedAt = req.body.tripletexSyncedAt ? new Date(req.body.tripletexSyncedAt) : null;
+        if (tripletexSyncedAt && isNaN(tripletexSyncedAt.getTime())) return res.status(400).json({ error: "Ugyldig dato for tripletexSyncedAt" });
         setClauses.push(`tripletex_synced_at = $${idx++}`);
-        params.push(req.body.tripletexSyncedAt ? new Date(req.body.tripletexSyncedAt) : null);
+        params.push(tripletexSyncedAt);
       }
 
       if (req.body?.totalAmount !== undefined) {
@@ -1353,8 +1411,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       params.push(req.params.id);
+      const idParamIdx = idx;
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE quotes SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE quotes SET ${setClauses.join(", ")} WHERE id = $${idParamIdx} AND created_by = $${idParamIdx + 1} RETURNING *`,
         params,
       );
 
@@ -1388,15 +1448,16 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.delete("/api/quotes/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
       const result = await pool.query(
-        "DELETE FROM quotes WHERE id = $1 RETURNING id",
-        [req.params.id],
+        "DELETE FROM quotes WHERE id = $1 AND created_by = $2 RETURNING id",
+        [req.params.id, session.userId],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Quote not found" });
       }
 
@@ -1421,6 +1482,19 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       );
 
       if (result.rows.length === 0) {
+        return res.json({ accepted: false, projectId: null, clientInfo: null });
+      }
+
+      // E-post-oppslag må presentere en gyldig share-token. isQuoteShareAllowed
+      // sin no-token-nådesti (`if(!shareToken) return true`) gjelder KUN for det
+      // ugjettbare client_id-UUID-et — ellers kunne hvem som helst enumerere en
+      // annens quote (status/beløp/PII) på gjettbar e-post (broken-auth).
+      const r0 = result.rows[0];
+      const key = String(clientId);
+      const matchedByEmailOnly =
+        key.toLowerCase() === String(r0.client_email || "").toLowerCase() &&
+        key !== String(r0.client_id || "");
+      if (!isQuoteShareAllowed(r0, req) || (matchedByEmailOnly && !r0.share_token)) {
         return res.json({ accepted: false, projectId: null, clientInfo: null });
       }
 

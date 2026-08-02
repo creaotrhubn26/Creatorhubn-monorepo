@@ -1429,7 +1429,7 @@ const StoryboardView: React.FC<{
   showCreativeStudio = true,
 }) => {
   const device = useDeviceDetection();
-  const { showSuccess, showInfo } = useToast();
+  const { showSuccess, showInfo, showError } = useToast();
   const { user } = useAuth();
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
@@ -1476,61 +1476,13 @@ const StoryboardView: React.FC<{
   // Default: 'storyboard' (klassisk svart-hvit blyantskisse).
   const [stylePresetId, setStylePresetId] = useState<StylePresetId>('storyboard');
   const stylePreset = STYLE_PRESETS[stylePresetId];
-  const handleGenerateAIImage = useCallback(async () => {
-    if (!activeFrame || !projectId) return;
-    setAiGenerating(true);
-    try {
-      const { upsertStoryboard, generateAIImage } = await import('../services/storyboardApiService');
-      // Sørg for at det finnes en server-rad for dette framet (idempotent
-      // upsert på frame_id). Vi trenger en uuid for å trigge DALL-E-routen.
-      const sbRow = await upsertStoryboard(projectId, {
-        sceneId,
-        frameId: activeFrame.id,
-        title: activeFrame.shotNumber
-          ? `${activeFrame.shotNumber} — ${activeFrame.description ?? ''}`.trim()
-          : (activeFrame.description ?? sceneLabel),
-        width: 1792,
-        height: 1024,
-        workflowLevel: activeFrame.detailLevel ?? 'idea',
-      });
-      const result = await generateAIImage(projectId, sbRow.id, {
-        sceneDescription: scene.description ?? scene.sceneHeading ?? sceneLabel,
-        intExt: scene.intExt,
-        timeOfDay: scene.timeOfDay,
-        locationName: scene.locationName ?? scene.location,
-        shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
-        cinematicFormat: projectCinemaFormat,
-        // Stil-preset overstyrer styleNote når den er valgt. AI-prompten
-        // får hele preset.aiPromptSuffix lagt på enden — slik blokkerer
-        // valg av Noir-preset hele framet til chiaroscuro-estetikk.
-        styleNote: [stylePreset.aiPromptSuffix, activeFrame.notes].filter(Boolean).join('. ') || undefined,
-        quality: 'standard',
-        aspectRatio: '1792x1024',
-      });
-      const imageUrl = result.storyboard.imageData ?? '';
-      if (imageUrl) {
-        // Sett som frame's imageUrl + imageSource så det vises som bakgrunn
-        // i FrameCard og kan tegnes over i FrameDrawingEditor.
-        patchFrame(activeFrame.id, {
-          imageUrl,
-          thumbnailUrl: imageUrl,
-          imageSource: 'ai-generated',
-          updatedAt: new Date().toISOString(),
-        });
-        showSuccess('AI-bilde generert. Klikk «Tegne» for å skissere over.');
-      }
-    } catch (err) {
-      showError(`Kunne ikke generere AI-bilde: ${(err as Error).message}`);
-    } finally {
-      setAiGenerating(false);
-    }
-  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, stylePreset, patchFrame, showSuccess, showError]);
-  const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
-  const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
-  const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
   const sceneLabel =
     sceneHeading?.trim() ||
     (sceneNumber !== undefined && sceneNumber !== null ? `Scene ${sceneNumber}` : `Scene ${sceneId}`);
+  // handleGenerateAIImage flyttet ned under patchFrame (dens dep) — se der.
+  const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
+  const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
+  const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
   const currentAuthorName = user?.displayName || user?.name || user?.email || 'Ukjent bruker';
   const currentAuthorId = user?.id || user?.email;
   const folderNameById = useMemo(() => {
@@ -1693,6 +1645,58 @@ const StoryboardView: React.FC<{
     },
     [frames, onUpdate]
   );
+
+  // Deklareres ETTER patchFrame (dens dependency) — ellers TDZ-krasj i
+  // dependency-arrayet ved render («Cannot access 'patchFrame' before initialization»).
+  const handleGenerateAIImage = useCallback(async () => {
+    if (!activeFrame || !projectId) return;
+    setAiGenerating(true);
+    try {
+      const { upsertStoryboard, generateAIImage } = await import('../services/storyboardApiService');
+      // Sørg for at det finnes en server-rad for dette framet (idempotent
+      // upsert på frame_id). Vi trenger en uuid for å trigge DALL-E-routen.
+      const sbRow = await upsertStoryboard(projectId, {
+        sceneId,
+        frameId: activeFrame.id,
+        title: activeFrame.shotNumber
+          ? `${activeFrame.shotNumber} — ${activeFrame.description ?? ''}`.trim()
+          : (activeFrame.description ?? sceneLabel),
+        width: 1792,
+        height: 1024,
+        workflowLevel: activeFrame.detailLevel ?? 'idea',
+      });
+      const result = await generateAIImage(projectId, sbRow.id, {
+        sceneDescription: scene.description ?? scene.sceneHeading ?? sceneLabel,
+        intExt: scene.intExt,
+        timeOfDay: scene.timeOfDay,
+        locationName: scene.locationName ?? scene.location,
+        shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
+        cinematicFormat: projectCinemaFormat,
+        // Stil-preset overstyrer styleNote når den er valgt. AI-prompten
+        // får hele preset.aiPromptSuffix lagt på enden — slik blokkerer
+        // valg av Noir-preset hele framet til chiaroscuro-estetikk.
+        styleNote: [stylePreset.aiPromptSuffix, activeFrame.notes].filter(Boolean).join('. ') || undefined,
+        quality: 'standard',
+        aspectRatio: '1792x1024',
+      });
+      const imageUrl = result.storyboard.imageData ?? '';
+      if (imageUrl) {
+        // Sett som frame's imageUrl + imageSource så det vises som bakgrunn
+        // i FrameCard og kan tegnes over i FrameDrawingEditor.
+        patchFrame(activeFrame.id, {
+          imageUrl,
+          thumbnailUrl: imageUrl,
+          imageSource: 'ai-generated',
+          updatedAt: new Date().toISOString(),
+        });
+        showSuccess('AI-bilde generert. Klikk «Tegne» for å skissere over.');
+      }
+    } catch (err) {
+      showError(`Kunne ikke generere AI-bilde: ${(err as Error).message}`);
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, stylePreset, patchFrame, showSuccess, showError]);
 
   const removeFrame = useCallback(
     (frameId: string) => {

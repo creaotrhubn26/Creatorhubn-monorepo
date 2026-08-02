@@ -113,7 +113,7 @@ const TikTokIcon = () => (
 );
 
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
-const CONSENT_DIALOG_ACCENT = '#b86bff';
+const CONSENT_DIALOG_ACCENT = 'var(--role-accent, #b86bff)';
 
 const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
   const current = typeof sourceText === 'string' ? sourceText : '';
@@ -286,7 +286,7 @@ const consentTypeConfig: Record<ConsentType, {
     IconComponent: PhotoIcon,
     label: 'Foto-samtykke',
     description: 'Tillater bruk av fotografier tatt under produksjonen',
-    color: '#00d4ff',
+    color: 'var(--role-cyan, #00d4ff)',
     defaultTitle: 'Samtykke for bruk av fotografier',
   },
   video_release: {
@@ -300,7 +300,7 @@ const consentTypeConfig: Record<ConsentType, {
     IconComponent: AudioIcon,
     label: 'Lyd-samtykke',
     description: 'Tillater bruk av lyd-opptak og stemme',
-    color: '#8b5cf6',
+    color: 'var(--role-violet, #8b5cf6)',
     defaultTitle: 'Samtykke for bruk av lyd-opptak',
   },
   location_release: {
@@ -1331,8 +1331,8 @@ return (
                   sx={{ 
                     mb: 2, 
                     bgcolor: 'rgba(0,212,255,0.1)', 
-                    color: '#00d4ff',
-                    '& .MuiAlert-icon': { color: '#00d4ff' },
+                    color: 'var(--role-cyan, #00d4ff)',
+                    '& .MuiAlert-icon': { color: 'var(--role-cyan, #00d4ff)' },
                   }}
                   action={
                     <Button 
@@ -1882,12 +1882,12 @@ return (
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <StorageIcon sx={{ color: '#8b5cf6' }} />
+                      <StorageIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                       <Typography fontWeight={600}>Lagringstid og sletting</Typography>
                       <Chip 
                         label="GDPR" 
                         size="small" 
-                        sx={{ bgcolor: '#8b5cf630', color: '#8b5cf6', fontSize: '0.7rem', height: 20 }} 
+                        sx={{ bgcolor: '#8b5cf630', color: 'var(--role-violet, #8b5cf6)', fontSize: '0.7rem', height: 20 }} 
                       />
                     </Box>
                   </AccordionSummary>
@@ -2358,13 +2358,13 @@ return (
                       </Box>
 
                       {sendMethod === 'email' && candidate?.contactInfo.email && (
-                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
                           Kontrakten sendes til: <strong>{candidate.contactInfo.email}</strong>
                         </Alert>
                       )}
 
                       {sendMethod === 'sms' && candidate?.contactInfo.phone && (
-                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
                           SMS sendes til: <strong>{candidate.contactInfo.phone}</strong>
                         </Alert>
                       )}

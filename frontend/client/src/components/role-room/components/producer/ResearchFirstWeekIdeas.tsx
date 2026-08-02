@@ -24,7 +24,7 @@ import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRo
 const FORMAT_META: Record<FirstWeekIdea['format'], { label: string; color: string; Icon: React.ComponentType<{ fontSize?: 'small' | 'medium' | 'large' | 'inherit' }> }> = {
   reel: { label: 'Reel', color: '#f472b6', Icon: ReelIcon },
   carousel: { label: 'Carousel', color: '#a78bfa', Icon: CarouselIcon },
-  image: { label: 'Bilde', color: '#22d3ee', Icon: ImageIcon },
+  image: { label: 'Bilde', color: 'var(--role-cyan, #22d3ee)', Icon: ImageIcon },
   story: { label: 'Story', color: '#fbbf24', Icon: StoryIcon },
 };
 

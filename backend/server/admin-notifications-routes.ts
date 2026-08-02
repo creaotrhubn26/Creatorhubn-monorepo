@@ -282,7 +282,10 @@ export function setupAdminNotificationsRoutes(deps: AdminNotificationsDeps): voi
         `SELECT n.*
            FROM admin_notifications n
            LEFT JOIN user_notification_acks a
-             ON a.notification_id = n.id AND a.user_id = $1
+             -- admin_notifications.id er varchar i (eldre) prod-DB men acks.notification_id
+             -- er uuid → «operator does not exist: uuid = character varying». Cast uuid→text
+             -- (alltid trygt) så joinen virker uansett skjemadrift.
+             ON a.notification_id::text = n.id AND a.user_id = $1
           WHERE a.user_id IS NULL
             AND (n.scheduled_for IS NULL OR n.scheduled_for <= NOW())
             AND (n.expires_at IS NULL OR n.expires_at > NOW())
@@ -341,7 +344,7 @@ export function setupAdminNotificationsRoutes(deps: AdminNotificationsDeps): voi
         `SELECT * FROM admin_notifications WHERE id = $1 LIMIT 1`,
         [req.params.id],
       );
-      if (n.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!n.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       const notif = n.rows[0];
 
       let result = "no_action";

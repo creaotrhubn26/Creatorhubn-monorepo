@@ -31,7 +31,9 @@ function redirectUri(): string {
 
 // ── State-signering (bærer userId trygt gjennom redirect uten å stole på cookie) ──
 function stateSecret(): string {
-  return process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.AUTH_SECRET || "ms-oauth-fallback";
+  const secret = process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.AUTH_SECRET;
+  if (!secret) throw new Error("No OAuth signing secret configured (SESSION_SECRET / JWT_SECRET / AUTH_SECRET)");
+  return secret;
 }
 export function signState(userId: string): string {
   const nonce = crypto.randomBytes(8).toString("hex");
