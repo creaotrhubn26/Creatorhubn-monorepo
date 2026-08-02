@@ -228,6 +228,16 @@ pub struct PhotoshopSetupStatus {
     pub plugin_manifest_exists: bool,
 }
 
+/// Mulige installasjons-stier for Adobe UXP Developer Tool(s). Adobe omdøpte den
+/// fra «Adobe UXP Developer Tool.app» (entall, direkte i /Applications) til
+/// «Adobe UXP Developer Tools» (flertall, nøstet i egen mappe) — så vi må sjekke
+/// flere kandidater, nyeste først, ellers rapporteres den som «ikke installert».
+const UDT_APP_CANDIDATES: &[&str] = &[
+    "/Applications/Adobe UXP Developer Tools/Adobe UXP Developer Tools.app",
+    "/Applications/Adobe UXP Developer Tools.app",
+    "/Applications/Adobe UXP Developer Tool.app",
+];
+
 #[tauri::command]
 fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
     // Photoshop — let etter de vanlige path-mønstrene
@@ -253,7 +263,7 @@ fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
     }
 
     // UXP Developer Tool
-    let udt_path = ["/Applications/Adobe UXP Developer Tool.app"]
+    let udt_path = UDT_APP_CANDIDATES
         .iter()
         .find(|p| std::path::Path::new(p).exists())
         .map(|p| p.to_string());
@@ -290,12 +300,12 @@ fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
 /// å lete etter den.
 #[tauri::command]
 async fn open_udt() -> Result<String, String> {
-    let udt_path = "/Applications/Adobe UXP Developer Tool.app";
-    if !std::path::Path::new(udt_path).exists() {
-        return Err(format!(
-            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først."
-        ));
-    }
+    let udt_path = UDT_APP_CANDIDATES
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .ok_or_else(|| {
+            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først.".to_string()
+        })?;
     let output = std::process::Command::new("open")
         .arg("-a")
         .arg(udt_path)
