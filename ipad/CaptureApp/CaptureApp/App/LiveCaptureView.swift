@@ -5579,31 +5579,43 @@ final class LiveCaptureModel {
                 }
             }
             if newCaptureArrived { shutterFlashToken = UUID() }
-            // Fire Claude Vision analysis the moment a preview lands. Once
-            // per asset; failures are silent so the on-device pipeline result
-            // remains the visible state if the backend is unreachable.
-            scheduleAIAnalyses(after: oldValue)
-            // Phase 2C activation gate. The CCAPI adapter only auto-enqueues
-            // `.preview` for new shots — `.raw` is opt-in. Without this hook
-            // every CR3 pick would land at deliver time with `rawKey == nil`
-            // and the RAWExportService would silently fall back to the
-            // display JPEG, defeating the whole pipeline. Diffing here (vs.
-            // hooking individual UI sites) covers both `togglePick` and the
-            // batch `CullStore.commit` path uniformly.
-            scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
-            // WYSIWYG hook (Block C). When `rawKey` flips nil → set on
-            // any asset, render a preview-quality JPEG via the same
-            // CIRAWFilter pipeline that produces the gallery deliverable
-            // and attach it as `enhancedKey`. Hero comparison-slider
-            // then shows the photographer the actual demosaic, not
-            // Canon's camera-baked JPEG with display-pipeline magic.
-            scheduleRAWPreviewRenders(previous: oldValue)
-            // P2 (E4): auto-påfør capture-edit-policyen (sync-forrige / preset) på
-            // nye preview-klare bilder. Idempotent — rører aldri manuelle edits.
-            applyCaptureEditPolicyForNewPreviews(previous: oldValue)
-            // P5 (E7 v1): mål hvert nytt bilde on-device → filmstrip-flagg + delt
-            // analyse for HUD/QC/cull/forslag.
-            scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
+            // #4-perf: ÉN O(N)-diff avgjør HVA som endret seg, i stedet for at hver
+            // av de fem planleggings-hookene under bygger sitt EGET id→felt-dict og
+            // skanner alle assets. På store økter re-emitter hver stjerne-/farge-/
+            // pick-interaksjon HELE arrayet; rating/farge rører ingen trigger-felt →
+            // da hoppes alle de tunge hookene (5× O(N) → 1× O(N)). Portene speiler
+            // hver hooks NØYAKTIGE trigger (verifisert mot hook-koden), så oppførsel
+            // er uendret — dette dropper kun arbeid som uansett ville funnet ingenting.
+            var previewGained = false, rawGained = false, flagGained = false
+            let prev = Dictionary(uniqueKeysWithValues: oldValue.map {
+                ($0.id, (hasPreview: $0.previewKey != nil, hasRaw: $0.rawKey != nil,
+                         flagged: $0.flaggedForClient))
+            })
+            for a in assets {
+                guard let p = prev[a.id] else { previewGained = true; continue }  // ny id
+                if a.previewKey != nil, !p.hasPreview { previewGained = true }
+                if a.rawKey != nil, !p.hasRaw { rawGained = true }
+                if a.flaggedForClient, !p.flagged { flagGained = true }
+            }
+            if previewGained {
+                // Alle tre drevet av previewKey nil→set (eller ny asset):
+                // Claude Vision (backend, idempotent per asset); P2/E4 capture-edit-
+                // policy (sync-forrige/preset, rører aldri manuelle edits); P5/E7
+                // on-device-analyse (filmstrip-flagg + delt HUD/QC/cull-analyse).
+                scheduleAIAnalyses(after: oldValue)
+                applyCaptureEditPolicyForNewPreviews(previous: oldValue)
+                scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
+            }
+            if flagGained {
+                // Phase 2C: hent RAW for NY-flaggede picks (togglePick + batch
+                // CullStore.commit). Uten dette lander CR3-picks med rawKey==nil.
+                scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
+            }
+            if rawGained {
+                // WYSIWYG (Block C): rawKey nil→set → render demosaic-preview via
+                // CIRAWFilter så heroen viser ekte demosaic, ikke Canons JPEG.
+                scheduleRAWPreviewRenders(previous: oldValue)
+            }
         }
     }
     var errorMessage: String?
