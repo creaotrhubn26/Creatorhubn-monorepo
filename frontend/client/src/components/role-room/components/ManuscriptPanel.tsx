@@ -4601,9 +4601,22 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     // Count scene headings
     const sceneHeadings = content.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/gim)?.length || 0;
     
-    // Count characters (uppercase lines followed by dialogue)
-    const characterMatches = content.match(/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/gm) || [];
-    const uniqueCharacters = [...new Set(characterMatches.map(c => c.replace(/\s*\(.*\)$/, '').trim()))];
+    // Karakter = ALL-CAPS-linje som FAKTISK er fulgt av dialog (Fountain-regelen).
+    // Ekskluder sceneoverskrifter (INT./EXT.) og overganger (KLIPP TIL SVART.,
+    // CUT TO:, FADE OUT, …) — ellers ble f.eks. «KLIPP TIL SVART.» talt som karakter.
+    const CHAR_LINE = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/;
+    const isHeadingLine = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l);
+    const isTransitionLine = (l: string) =>
+      /:\s*$/.test(l) || /\b(CUT TO|FADE|DISSOLVE|SMASH CUT|MATCH CUT|JUMP CUT|KLIPP|TONER UT|OVERTONING|SVART)\b/i.test(l);
+    const scriptLines = content.split('\n');
+    const foundCharacters: string[] = [];
+    for (let li = 0; li < scriptLines.length; li++) {
+      const line = scriptLines[li].trim();
+      if (!line || !CHAR_LINE.test(line) || isHeadingLine(line) || isTransitionLine(line)) continue;
+      if (!(scriptLines[li + 1] || '').trim()) continue; // må følges av en dialog-linje
+      foundCharacters.push(line.replace(/\s*\(.*\)$/, '').trim());
+    }
+    const uniqueCharacters = [...new Set(foundCharacters)];
     
     return { words, characters, lines, pages, estimatedMinutes, sceneHeadings, uniqueCharacters };
   }, [editorContent]);
