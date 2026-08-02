@@ -690,6 +690,42 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     return () => document.removeEventListener('keydown', handler);
   }, [isFullscreen]);
 
+  // Auto-skjul metadata/verktøy-raden når man skroller nedover i editoren (Safari-
+  // stil) → mer skriveplass. Vises igjen ved oppskroll/nær toppen. Kun i normal-modus
+  // (aldri i skrivemodus, så «Avslutt skrivemodus» aldri gjemmes). Lytteren festes på
+  // SELVE editor-scrolleren (.cm-scroller/textarea), ikke navigatoren — så navigator-
+  // skrolling ikke trigger den.
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const lastEditorScrollTopRef = useRef(0);
+  useEffect(() => {
+    if (isFullscreen) { setToolbarCollapsed(false); return; }
+    const host = containerRef.current;
+    if (!host) return;
+    let scroller: HTMLElement | null = null;
+    const onScroll = () => {
+      if (!scroller) return;
+      const st = scroller.scrollTop;
+      const last = lastEditorScrollTopRef.current;
+      if (st < 28) setToolbarCollapsed(false);
+      else if (st > last + 6) setToolbarCollapsed(true);
+      else if (st < last - 6) setToolbarCollapsed(false);
+      lastEditorScrollTopRef.current = st;
+    };
+    let tries = 0;
+    let timer = 0;
+    const attach = () => {
+      scroller = (host.querySelector('.cm-scroller') as HTMLElement | null)
+        ?? (host.querySelector('textarea') as HTMLElement | null);
+      if (scroller) { scroller.addEventListener('scroll', onScroll, { passive: true }); return; }
+      if (tries++ < 20) timer = window.setTimeout(attach, 150);
+    };
+    attach();
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (scroller) scroller.removeEventListener('scroll', onScroll);
+    };
+  }, [isFullscreen, editorKey]);
+
   useEffect(() => () => stopRightPanelResize(), [stopRightPanelResize]);
 
   const storyboardPanelBounds = useMemo(() => {
@@ -723,7 +759,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         }),
       }}
     >
-      {/* Toolbar */}
+      {/* Toolbar — kollapser mykt ved nedskroll i editoren (mer skriveplass) */}
       <Paper
         elevation={0}
         sx={{
@@ -735,6 +771,17 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           bgcolor: 'rgba(30,30,50,0.8)',
           flexWrap: 'wrap',
           position: 'relative',
+          flexShrink: 0,
+          transition: 'max-height .2s ease, opacity .2s ease, padding .2s ease, border-color .2s ease',
+          overflow: 'hidden',
+          ...(toolbarCollapsed && !isFullscreen && {
+            maxHeight: 0,
+            opacity: 0,
+            pt: 0,
+            pb: 0,
+            borderColor: 'transparent',
+            pointerEvents: 'none',
+          }),
         }}
       >
         {/* Mobile Menu Button for Sidebar */}
