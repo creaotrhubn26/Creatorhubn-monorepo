@@ -43,6 +43,22 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(refreshed?.state, .previewReady)
     }
 
+    /// P1: `updateCaptureTime` setter den EKTE opptakstiden (fra EXIF) i stedet for
+    /// nedlastings-Date()-fallbacken descriptoren ble opprettet med.
+    func testUpdateCaptureTimeSetsRealShootTime() async throws {
+        let store = try makeStore()
+        let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)
+        let fallback = Date(timeIntervalSince1970: 2_000_000_000)
+        let asset = try await store.createAsset(sessionId: session.id, descriptor: AssetDescriptor(
+            id: UUID(), originalFilename: "IMG.JPG", captureTime: fallback,
+            mime: "image/jpeg", sizeBytes: nil))
+        let realShot = Date(timeIntervalSince1970: 1_700_000_000)   // ekte EXIF-tid
+        try await store.updateCaptureTime(id: asset.id, captureTime: realShot)
+        let refreshed = try await store.fetchAsset(id: asset.id)
+        XCTAssertEqual(refreshed?.captureTime.timeIntervalSince1970 ?? 0,
+                       realShot.timeIntervalSince1970, accuracy: 1.0)
+    }
+
     /// En preview (liten, avledet variant) som lander SIST skal ikke overskrive
     /// full/raw-variantens `sizeBytes`/`checksum` (én kolonne, kanonisk vinner).
     func testAttachStorageKeyPreviewDoesNotClobberCanonicalSize() async throws {

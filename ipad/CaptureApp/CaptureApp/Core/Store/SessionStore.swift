@@ -137,6 +137,19 @@ actor SessionStore {
         }
     }
 
+    /// Sett asset-radens `captureTime` til den EKTE opptakstiden (EXIF
+    /// DateTimeOriginal), lest når previewen lander. Descriptoren ble opprettet
+    /// med en nedlastings-`Date()`-fallback (polling-rekkefølge ≠ opptaksrekkefølge);
+    /// dette retter rekkefølgen som cull/burst/«forrige bilde»-arv bygger på.
+    func updateCaptureTime(id: UUID, captureTime: Date) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.captureTime = captureTime
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
     func updateAssetSignals(id: UUID, signals: AssetSignals) async throws {
         try await database.dbWriter.write { db in
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }

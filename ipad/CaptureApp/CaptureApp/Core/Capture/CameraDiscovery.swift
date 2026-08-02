@@ -264,12 +264,17 @@ final class CameraDiscovery: ObservableObject {
     private func reconcile(results: [NWBrowser.Result]) {
         let activeKeys = Set(results.compactMap(Self.key(for:)))
 
-        // Drop probes + cameras for services that vanished.
+        // Drop probes + cameras for BONJOUR services that vanished.
         for (key, task) in probes where !activeKeys.contains(key) {
             task.cancel()
             probes.removeValue(forKey: key)
         }
-        cameras.removeAll { !activeKeys.contains($0.id) }
+        // 🔑 IKKE rør IP-skannede kameraer (id «ip:<host>») — de eies av subnett-
+        // skanningen, ikke Bonjour. Før tømte `removeAll` alle IP-funn ved ethvert
+        // Bonjour-delta (Canon annonserer ikke via mDNS i CCAPI-modus → IP-skann ER
+        // funn-stien), så kameraet forsvant fra lista i det en urelatert mDNS-tjeneste
+        // dukket opp/forsvant. Fjern kun VANISHED Bonjour-oppføringer.
+        cameras.removeAll { !$0.id.hasPrefix("ip:") && !activeKeys.contains($0.id) }
 
         // Start a probe for each new service we haven't seen yet.
         for result in results {

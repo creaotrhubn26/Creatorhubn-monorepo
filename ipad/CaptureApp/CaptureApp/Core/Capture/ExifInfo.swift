@@ -64,4 +64,28 @@ struct ExifInfo: Equatable, Sendable {
         }
         return info.hasData ? info : nil
     }
+
+    /// Les EXIF `DateTimeOriginal` (EKTE opptakstid) fra en fil (RAW/JPEG). Nil
+    /// hvis feltet mangler. Formatet er «yyyy:MM:dd HH:mm:ss» (kameraets lokale tid
+    /// uten sone → tolkes i gjeldende sone). Brukes til å sette `Asset.captureTime`
+    /// = ekte skuddtid i stedet for nedlastings-`Date()`, som driver opptaks-
+    /// rekkefølge + burst-gruppering + «forrige bilde»-arv.
+    static func captureDate(fromPath path: String?) -> Date? {
+        guard let path, !path.isEmpty,
+              let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        else { return nil }
+        let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+        let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+        guard let raw = (exif[kCGImagePropertyExifDateTimeOriginal] as? String)
+            ?? (tiff[kCGImagePropertyTIFFDateTime] as? String)
+        else { return nil }
+        // Lokal DateFormatter (kalles én gang per preview-nedlasting, ikke hot path)
+        // → unngår delt ikke-Sendable statisk formatter.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        return formatter.date(from: raw)
+    }
 }
