@@ -160,7 +160,8 @@ final class LeadbookLiveStore {
             used: used,
             conversion: conversion,
             status: status,
-            backendId: dto.id.uuidString.lowercased()
+            backendId: dto.id.uuidString.lowercased(),
+            isOrgMal: dto.orgId != nil
         )
     }
 }

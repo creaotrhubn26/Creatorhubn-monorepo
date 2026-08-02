@@ -17,6 +17,7 @@ struct AnbudView: View {
 
     @State private var searchText = ""
     @State private var selectedFylke: Fylke? = nil
+    @State private var selectedBransje: Bransje? = nil
     @State private var status: String = "ACTIVE"
     @State private var results: [DoffinKunngjoringDTO] = []
     @State private var total = 0
@@ -57,6 +58,43 @@ struct AnbudView: View {
             case .nordland: return "Nordland"
             case .troms: return "Troms"
             case .finnmark: return "Finnmark"
+            }
+        }
+    }
+
+    /// CPV-forslag fra bransje (2026-08-03): selgeren kjenner bransjen sin,
+    /// ikke CPV-systemet. Kuratert liste over vanlige feltsalg-bransjer →
+    /// CPV-hovedgrupper (verifisert mot Doffins CPV-koder).
+    enum Bransje: String, CaseIterable, Identifiable {
+        case elektro, bygg, rorlegger, renhold, sikkerhet, it
+        case transport, kantine, eiendomsdrift, maler
+        var id: String { rawValue }
+        var navn: String {
+            switch self {
+            case .elektro: return "Elektro"
+            case .bygg: return "Bygg og anlegg"
+            case .rorlegger: return "Rørlegger/VVS"
+            case .renhold: return "Renhold"
+            case .sikkerhet: return "Sikkerhet/vakt"
+            case .it: return "IT-tjenester"
+            case .transport: return "Transport"
+            case .kantine: return "Kantine/catering"
+            case .eiendomsdrift: return "Eiendomsdrift"
+            case .maler: return "Maler/overflate"
+            }
+        }
+        var cpv: String {
+            switch self {
+            case .elektro: return "45310000"
+            case .bygg: return "45000000"
+            case .rorlegger: return "45330000"
+            case .renhold: return "90910000"
+            case .sikkerhet: return "79710000"
+            case .it: return "72000000"
+            case .transport: return "60100000"
+            case .kantine: return "55500000"
+            case .eiendomsdrift: return "50700000"
+            case .maler: return "45440000"
             }
         }
     }
@@ -153,6 +191,29 @@ struct AnbudView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 8)
                     .background(LBrand.cardHi, in: Capsule())
+                }
+
+                // CPV-forslag fra bransje (2026-08-03): selgeren velger
+                // bransje, vi oversetter til CPV-hovedgruppe mot Doffin.
+                Menu {
+                    Button("Alle bransjer") { selectedBransje = nil; Task { await search() } }
+                    ForEach(Bransje.allCases) { b in
+                        Button(b.navn) { selectedBransje = b; Task { await search() } }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "wrench.and.screwdriver.fill").font(.appScaled(size: 10))
+                        Text(selectedBransje?.navn ?? "Alle bransjer")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                        Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(selectedBransje == nil ? .white : Color.indigo)
+                    .padding(.horizontal, 11).padding(.vertical, 8)
+                    .background(
+                        selectedBransje == nil
+                            ? AnyShapeStyle(LBrand.cardHi)
+                            : AnyShapeStyle(Color.indigo.opacity(0.18)),
+                        in: Capsule())
                 }
 
                 Picker("Status", selection: $status) {
@@ -364,14 +425,32 @@ struct AnbudView: View {
                         Button {
                             searchText = w.query.q ?? ""
                             selectedFylke = Fylke(rawValue: w.query.location ?? "")
+                            selectedBransje = Bransje.allCases.first { $0.cpv == w.query.cpv }
                             showWatches = false
+                            // Kjøring = sett: nullstill «nye treff»-badgen
+                            // (fire-and-forget — søket er hovedhandlingen).
+                            if (w.newHitsCount ?? 0) > 0 {
+                                Task { try? await appState.api?.markDoffinWatchSeen(id: w.id) }
+                            }
                             Task { await search() }
                         } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(w.name).font(.appScaled(size: 13, weight: .bold))
-                                Text([w.query.q, w.query.location].compactMap { $0 }
-                                        .filter { !$0.isEmpty }.joined(separator: " · "))
-                                    .font(.appScaled(size: 11)).foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(w.name).font(.appScaled(size: 13, weight: .bold))
+                                    Text([w.query.q, w.query.location].compactMap { $0 }
+                                            .filter { !$0.isEmpty }.joined(separator: " · "))
+                                        .font(.appScaled(size: 11)).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                // «Nye treff»-badge (2026-08-03) — fylles av
+                                // cron-sjekken, nullstilles ved kjøring.
+                                if let nye = w.newHitsCount, nye > 0 {
+                                    Text("\(nye) nye")
+                                        .font(.appScaled(size: 10, weight: .black))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8).padding(.vertical, 3)
+                                        .background(Color.indigo, in: Capsule())
+                                }
                             }
                         }
                     }
@@ -404,6 +483,26 @@ struct AnbudView: View {
     }
 
     private func search() async {
+        // Demo-modus (2026-08-03): fanen skal være testbar/demobar uten
+        // ekte innlogging + entitlement — statiske mock-kunngjøringer,
+        // lett filtrert så kontrollene kjennes ekte.
+        if DemoModeManager.isActiveNonisolated {
+            isLoading = false
+            errorText = nil
+            var demo = Self.demoKunngjoringer
+            if !searchText.isEmpty {
+                let q = searchText.lowercased()
+                demo = demo.filter {
+                    $0.tittel.lowercased().contains(q) || $0.beskrivelse.lowercased().contains(q)
+                }
+            }
+            if let b = selectedBransje {
+                demo = demo.filter { $0.cpvKoder.contains(where: { $0.hasPrefix(String(b.cpv.prefix(4))) }) }
+            }
+            results = demo
+            total = demo.count
+            return
+        }
         guard let api = appState.api else {
             errorText = "Ikke innlogget mot backend."
             return
@@ -414,6 +513,7 @@ struct AnbudView: View {
             let r = try await api.searchDoffin(
                 q: searchText.isEmpty ? nil : searchText,
                 location: selectedFylke?.rawValue,
+                cpv: selectedBransje?.cpv,
                 status: status
             )
             results = r.kunngjoringer
@@ -430,18 +530,23 @@ struct AnbudView: View {
     }
 
     private func reloadWatches() async {
+        if DemoModeManager.isActiveNonisolated {
+            watches = Self.demoWatches
+            return
+        }
         guard let api = appState.api else { return }
         watches = (try? await api.fetchDoffinWatches()) ?? []
     }
 
     private func saveCurrentAsWatch() async {
         guard let api = appState.api else { return }
-        let name = [searchText.isEmpty ? nil : searchText, selectedFylke?.navn]
+        let name = [searchText.isEmpty ? nil : searchText,
+                    selectedBransje?.navn, selectedFylke?.navn]
             .compactMap { $0 }.joined(separator: " · ")
         let query = DoffinWatchQueryDTO(
             q: searchText.isEmpty ? nil : searchText,
             location: selectedFylke?.rawValue,
-            cpv: nil
+            cpv: selectedBransje?.cpv
         )
         do {
             try await api.createDoffinWatch(name: name.isEmpty ? "Alle anbud" : name, query: query)
@@ -450,6 +555,47 @@ struct AnbudView: View {
             errorText = "Kunne ikke lagre overvåkning. (\(error.localizedDescription))"
         }
     }
+
+    // MARK: Demo-data (2026-08-03) — aldri backend i demo-modus.
+
+    private static let demoKunngjoringer: [DoffinKunngjoringDTO] = [
+        .init(id: "demo-1",
+              tittel: "Rammeavtale elektrikertjenester — kommunale bygg",
+              beskrivelse: "Løpende elektroarbeid, internkontroll og småoppdrag i kommunens formålsbygg. 2 år + opsjon 1+1.",
+              oppdragsgivere: [.init(navn: "Lørenskog kommune", orgnr: "842566142")],
+              verdi: .init(belop: 8_500_000, valuta: "NOK"),
+              type: "COMPETITION", status: "ACTIVE",
+              kunngjort: "2026-07-28", frist: "2026-08-25",
+              nutsKoder: ["NO084"], cpvKoder: ["45310000"],
+              url: "https://doffin.no"),
+        .init(id: "demo-2",
+              tittel: "Renholdstjenester for videregående skoler",
+              beskrivelse: "Daglig renhold og periodisk hovedrent for fire skoler i fylket.",
+              oppdragsgivere: [.init(navn: "Akershus fylkeskommune", orgnr: "930580694")],
+              verdi: .init(belop: 12_000_000, valuta: "NOK"),
+              type: "COMPETITION", status: "ACTIVE",
+              kunngjort: "2026-07-30", frist: "2026-08-18",
+              nutsKoder: ["NO084"], cpvKoder: ["90910000"],
+              url: "https://doffin.no"),
+        .init(id: "demo-3",
+              tittel: "Vakthold og alarmrespons — helsebygg",
+              beskrivelse: "Stasjonært vakthold, mobilpatrulje og alarmutrykning for tre lokasjoner.",
+              oppdragsgivere: [.init(navn: "Oslo universitetssykehus HF", orgnr: "993467049")],
+              verdi: nil,
+              type: "COMPETITION", status: "ACTIVE",
+              kunngjort: "2026-08-01", frist: "2026-09-05",
+              nutsKoder: ["NO081"], cpvKoder: ["79710000"],
+              url: "https://doffin.no"),
+    ]
+
+    private static let demoWatches: [DoffinWatchDTO] = [
+        .init(id: "demo-w1", name: "Elektro · Akershus",
+              query: .init(q: nil, location: "NO084", cpv: "45310000"),
+              createdAt: nil, newHitsCount: 2),
+        .init(id: "demo-w2", name: "rammeavtale",
+              query: .init(q: "rammeavtale", location: nil, cpv: nil),
+              createdAt: nil, newHitsCount: 0),
+    ]
 
     // MARK: Helpers
 

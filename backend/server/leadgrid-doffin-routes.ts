@@ -56,7 +56,8 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE leadgrid_doffin_watches
       ADD COLUMN IF NOT EXISTS seen_ids JSONB NOT NULL DEFAULT '[]',
-      ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ`);
+      ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS new_hits_count INT NOT NULL DEFAULT 0`);
   schemaReady = true;
 }
 
@@ -182,11 +183,32 @@ export function registerLeadgridDoffinRoutes(deps: {
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.json({ watches: [] }); return; }
       const r = await pool.query(
-        `SELECT id, name, query, created_at FROM leadgrid_doffin_watches
+        `SELECT id, name, query, created_at, new_hits_count FROM leadgrid_doffin_watches
           WHERE organization_id = $1 ORDER BY created_at DESC`, [orgId]);
       res.json({ watches: r.rows });
     } catch (e) {
       console.error("[doffin] watches failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Marker overvåkning som sett: nullstiller «nye treff»-telleren
+   *  (badgen på iPad). Kalles når brukeren kjører/åpner overvåkningen. */
+  app.post("/api/leadgrid/doffin/watches/:id/mark-seen", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      await pool.query(
+        `UPDATE leadgrid_doffin_watches SET new_hits_count = 0, updated_at = now()
+          WHERE id = $1 AND organization_id = $2`,
+        [String(req.params.id), orgId]);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("[doffin] mark-seen failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
@@ -270,9 +292,10 @@ export function registerLeadgridDoffinRoutes(deps: {
           ].slice(0, 300);
           await pool.query(
             `UPDATE leadgrid_doffin_watches
-                SET seen_ids = $2::jsonb, last_checked_at = now(), updated_at = now()
+                SET seen_ids = $2::jsonb, last_checked_at = now(), updated_at = now(),
+                    new_hits_count = CASE WHEN $3::boolean THEN new_hits_count ELSE new_hits_count + $4::int END
               WHERE id = $1`,
-            [w.id, JSON.stringify(nextSeen)]);
+            [w.id, JSON.stringify(nextSeen), isFirstRun, fresh.length]);
           if (isFirstRun) { seeded++; continue; }
           if (fresh.length === 0) continue;
           // Varsle oppretteren: in-app + push (best effort).

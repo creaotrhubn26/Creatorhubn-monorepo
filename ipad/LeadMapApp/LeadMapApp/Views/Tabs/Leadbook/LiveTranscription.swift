@@ -16,10 +16,20 @@ final class LiveTranscriptionEngine: ObservableObject {
     @Published var transcript: String = ""
     @Published var liveSegment: String = ""    // siste bit som ikke er commitet ennå
     @Published var isRecording: Bool = false
+    @Published var isPaused: Bool = false      // 2026-08-03: pause uten å miste økten
     @Published var audioLevel: Float = 0       // 0…1 for vu-meter
     @Published var elapsedSeconds: Int = 0
     @Published var permissionStatus: PermissionStatus = .notDetermined
     @Published var error: String?
+    /// 2026-08-03: on-device-gjenkjenning FEILET (typisk: nb-NO-modellen er
+    /// ikke lastet ned selv om enheten hevder støtte) → vi restartet
+    /// automatisk skybasert. UI-et viser ærlig banner.
+    @Published var usingCloudFallback: Bool = false
+
+    /// Har gjenkjenningen produsert noe tekst i det hele tatt denne økten?
+    /// Styrer auto-fallbacken: feil FØR første tekst = modellproblem.
+    private var receivedAnyText = false
+    private var didAutoFallback = false
 
     enum PermissionStatus {
         case notDetermined, authorized, denied, restricted
@@ -69,8 +79,22 @@ final class LiveTranscriptionEngine: ObservableObject {
     }
 
     func start() {
+        // 2026-08-03: før måtte brukeren trykke start TO ganger (første
+        // trykk bare ba om tillatelse og returnerte stille). Nå: be om
+        // tillatelse og fortsett automatisk når den gis; avslag gir
+        // konkret beskjed om Innstillinger.
         guard permissionStatus == .authorized else {
-            Task { await requestPermissions() }
+            Task {
+                await requestPermissions()
+                switch permissionStatus {
+                case .authorized:
+                    start()
+                case .denied, .restricted:
+                    error = "Mikrofon- eller taletilgang er avslått — åpne Innstillinger → Personvern → Mikrofon/Talegjenkjenning og slå på for Leadgrid."
+                case .notDetermined:
+                    break
+                }
+            }
             return
         }
         guard !isRecording else { return }
@@ -82,14 +106,36 @@ final class LiveTranscriptionEngine: ObservableObject {
         liveSegment = ""
         elapsedSeconds = 0
         error = nil
+        receivedAnyText = false
+        didAutoFallback = false
+        usingCloudFallback = false
+        isPaused = false
         do {
             try setupAudioSession()
-            try startEngine(with: recognizer)
+            try startEngine(with: recognizer, forceCloud: false)
             isRecording = true
             startTimer()
         } catch let e {
             error = "Kunne ikke starte opptak: \(e.localizedDescription)"
             cleanup()
+        }
+    }
+
+    /// Pause uten å avslutte gjenkjennings-økten: mikrofonen stoppes,
+    /// transkript og timer står — resume fortsetter samme økt.
+    func pause() {
+        guard isRecording, !isPaused else { return }
+        audioEngine.pause()
+        isPaused = true
+    }
+
+    func resume() {
+        guard isRecording, isPaused else { return }
+        do {
+            try audioEngine.start()
+            isPaused = false
+        } catch {
+            self.error = "Kunne ikke fortsette opptaket: \(error.localizedDescription)"
         }
     }
 
@@ -103,6 +149,7 @@ final class LiveTranscriptionEngine: ObservableObject {
         }
         cleanup()
         isRecording = false
+        isPaused = false
     }
 
     func reset() {
@@ -122,55 +169,89 @@ final class LiveTranscriptionEngine: ObservableObject {
         try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 
-    private func startEngine(with recognizer: SFSpeechRecognizer) throws {
+    private func startEngine(with recognizer: SFSpeechRecognizer, forceCloud: Bool) throws {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        if recognizer.supportsOnDeviceRecognition {
+        // 2026-08-03 ROT-FIKS: vi TVANG on-device-gjenkjenning når enheten
+        // hevdet støtte — men supportsOnDeviceRecognition garanterer IKKE
+        // at nb-NO-modellen faktisk er lastet ned. Da feiler gjenkjenningen
+        // uten at et ord kommer gjennom («fungerer ikke»). Nå: forsøk
+        // on-device først, og fall automatisk tilbake til skybasert når
+        // den feiler før første tekst (se handleRecognition).
+        if recognizer.supportsOnDeviceRecognition && !forceCloud {
             request.requiresOnDeviceRecognition = true
         }
         self.request = request
 
-        let inputNode = audioEngine.inputNode
-        let format = inputNode.outputFormat(forBus: 0)
-
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, err in
             Task { @MainActor in
-                guard let self else { return }
-                if let result {
-                    let text = result.bestTranscription.formattedString
-                    if result.isFinal {
-                        if !self.transcript.isEmpty { self.transcript += " " }
-                        self.transcript += text
-                        self.liveSegment = ""
-                    } else {
-                        self.liveSegment = text
-                    }
-                }
-                if let err {
-                    let nsErr = err as NSError
-                    // Kode 1110 = "No speech detected" — ignorer, brukeren har bare ikke begynt å snakke
-                    if nsErr.code != 1110 {
-                        self.error = err.localizedDescription
-                    }
-                }
+                self?.handleRecognition(result: result, err: err, recognizer: recognizer)
             }
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            self?.request?.append(buffer)
-            // Beregn audio level for vu-meter
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            let frames = Int(buffer.frameLength)
-            var sum: Float = 0
-            for i in 0..<frames { sum += abs(channelData[i]) }
-            let avg = sum / Float(frames)
-            Task { @MainActor [weak self] in
-                self?.audioLevel = min(1, avg * 5)  // scale opp så den er synlig
+        // Tap-en installeres kun ved FØRSTE oppstart — closuren leser
+        // `self?.request`, så en fallback-restart plukker opp ny request
+        // automatisk uten re-tap (dobbel-tap krasjer AVAudioEngine).
+        if !forceCloud {
+            let inputNode = audioEngine.inputNode
+            let format = inputNode.outputFormat(forBus: 0)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+                self?.request?.append(buffer)
+                // Beregn audio level for vu-meter
+                guard let channelData = buffer.floatChannelData?[0] else { return }
+                let frames = Int(buffer.frameLength)
+                var sum: Float = 0
+                for i in 0..<frames { sum += abs(channelData[i]) }
+                let avg = sum / Float(frames)
+                Task { @MainActor [weak self] in
+                    self?.audioLevel = min(1, avg * 5)  // scale opp så den er synlig
+                }
+            }
+
+            audioEngine.prepare()
+            try audioEngine.start()
+        }
+    }
+
+    /// Felles gjenkjennings-håndterer for både on-device og sky-fallback.
+    private func handleRecognition(
+        result: SFSpeechRecognitionResult?, err: Error?, recognizer: SFSpeechRecognizer
+    ) {
+        if let result {
+            let text = result.bestTranscription.formattedString
+            if !text.isEmpty { receivedAnyText = true }
+            if result.isFinal {
+                if !transcript.isEmpty { transcript += " " }
+                transcript += text
+                liveSegment = ""
+            } else {
+                liveSegment = text
             }
         }
-
-        audioEngine.prepare()
-        try audioEngine.start()
+        if let err {
+            let nsErr = err as NSError
+            // Kode 1110 = "No speech detected" — ignorer, brukeren har bare ikke begynt å snakke
+            guard nsErr.code != 1110 else { return }
+            if isRecording && !receivedAnyText && !didAutoFallback
+                && recognizer.supportsOnDeviceRecognition {
+                // On-device feilet før et eneste ord kom gjennom — typisk
+                // manglende/korrupt nb-NO-modell. Restart samme økt skybasert.
+                didAutoFallback = true
+                usingCloudFallback = true
+                recognitionTask?.cancel()
+                recognitionTask = nil
+                self.request?.endAudio()
+                self.request = nil
+                do {
+                    try startEngine(with: recognizer, forceCloud: true)
+                } catch {
+                    self.error = "Tale-gjenkjenning feilet: \(error.localizedDescription)"
+                    stop()
+                }
+            } else if isRecording {
+                error = err.localizedDescription
+            }
+        }
     }
 
     private func startTimer() {
@@ -178,7 +259,8 @@ final class LiveTranscriptionEngine: ObservableObject {
         timerTask = Task { @MainActor [weak self] in
             while !Task.isCancelled, let self, self.isRecording {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                if self.isRecording { self.elapsedSeconds += 1 }
+                // Pausede sekunder telles ikke (2026-08-03).
+                if self.isRecording && !self.isPaused { self.elapsedSeconds += 1 }
             }
         }
     }
@@ -416,16 +498,43 @@ struct LiveTranscriptionSheet: View {
                     }
                 }.buttonStyle(.plain)
             }
+            // Pause/fortsett (2026-08-03) — samme økt, timeren står stille.
+            if engine.isRecording {
+                Button {
+                    if engine.isPaused { engine.resume() } else { engine.pause() }
+                } label: {
+                    Label(engine.isPaused ? "Fortsett" : "Pause",
+                          systemImage: engine.isPaused ? "play.fill" : "pause.fill")
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(
+                            engine.isPaused ? LBrand.green : LBrand.cardHi,
+                            in: Capsule())
+                }.buttonStyle(.plain)
+            }
             VStack(spacing: 4) {
-                Text(engine.isRecording ? "Snakker — fortsett!" : (engine.transcript.isEmpty ? "Trykk for å starte" : "Opptak stoppet"))
+                Text(engine.isRecording
+                     ? (engine.isPaused ? "På pause — trykk Fortsett" : "Snakker — fortsett!")
+                     : (engine.transcript.isEmpty ? "Trykk for å starte" : "Opptak stoppet"))
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text(formatTime(engine.elapsedSeconds))
                     .font(.appScaled(size: 28, weight: .heavy, design: .monospaced))
-                    .foregroundStyle(engine.isRecording ? LBrand.red : .white)
+                    .foregroundStyle(engine.isRecording && !engine.isPaused ? LBrand.red : .white)
                     .monospacedDigit()
             }
-            if engine.isRecording {
+            // Ærlig fallback-info (2026-08-03): on-device feilet → skyen tok
+            // over automatisk, uten at økten gikk tapt.
+            if engine.usingCloudFallback {
+                HStack(spacing: 6) {
+                    Image(systemName: "icloud.fill").font(.appScaled(size: 10))
+                    Text("On-device-modellen feilet — gjenkjenningen fortsatte skybasert.")
+                        .font(.appScaled(size: 11))
+                }
+                .foregroundStyle(LBrand.orange)
+            }
+            if engine.isRecording && !engine.isPaused {
                 vuMeter
             }
             if let err = engine.error {
