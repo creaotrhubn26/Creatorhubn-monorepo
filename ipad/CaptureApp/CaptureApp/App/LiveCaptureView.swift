@@ -502,7 +502,9 @@ struct LiveCaptureView: View {
             }
             .frame(maxHeight: .infinity)
 
-            TelemetryFooter(telemetry: model.telemetry)
+            TelemetryFooter(telemetry: model.telemetry, shotsRemaining: model.estimatedShotsRemaining)
+
+            CapturePolicyBar(model: model)
 
             VStack(spacing: 0) {
                 FilmstripFilterBar(
@@ -4242,8 +4244,81 @@ private struct ShutterFlashOverlay: View {
 
 // MARK: - Telemetry footer
 
+/// P3 (E4): capture-edit-policy-chip m/ bytte-ark. Viser gjeldende policy
+/// (Ingen / Sync: forrige / Preset: navn) og lar fotografen bytte FØR/under økten.
+/// Kaller `model.setCapturePolicy` (persistert per sesjon).
+private struct CapturePolicyBar: View {
+    @Bindable var model: LiveCaptureModel
+    @State private var showSheet = false
+
+    var body: some View {
+        HStack {
+            Button { showSheet = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: model.capturePolicy.isActive ? "wand.and.stars" : "wand.and.stars.inverse")
+                    Text("Auto-edit: \(model.capturePolicy.label)").font(.caption.weight(.medium))
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }
+                .foregroundStyle(model.capturePolicy.isActive ? Color.captureAccent : .secondary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.captureChipBG.opacity(0.6), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 24).padding(.vertical, 6)
+        .sheet(isPresented: $showSheet) {
+            CapturePolicySheet(current: model.capturePolicy) { policy in
+                model.setCapturePolicy(policy)
+                showSheet = false
+            }
+            .presentationDetents([.medium])
+        }
+    }
+}
+
+/// Bytte-ark for capture-edit-policyen: Ingen / Sync forrige / hvert preset.
+private struct CapturePolicySheet: View {
+    let current: CaptureEditPolicy
+    let onSelect: (CaptureEditPolicy) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    row(.none, "Ingen", "Ingen automatisk redigering", "circle.slash")
+                    row(.syncPrevious, "Sync: forrige", "Nytt bilde arver forrige bildes look", "arrow.triangle.2.circlepath")
+                } header: { Text("Policy") }
+                Section {
+                    ForEach(RedigeringModel.presets, id: \.0) { name, _ in
+                        row(.preset(name), name, "Fast preset på hvert nytt bilde", "camera.filters")
+                    }
+                } header: { Text("Preset") }
+            }
+            .navigationTitle("Auto-edit ved capture")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func row(_ policy: CaptureEditPolicy, _ title: String, _ subtitle: String, _ icon: String) -> some View {
+        Button { onSelect(policy) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon).frame(width: 22).foregroundStyle(Color.captureAccent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if policy == current { Image(systemName: "checkmark").foregroundStyle(Color.captureAccent) }
+            }
+        }
+    }
+}
+
 private struct TelemetryFooter: View {
     let telemetry: CameraTelemetry
+    /// P3 (E3): estimert antall gjenstående bilder (nil = ikke kalibrert enda).
+    var shotsRemaining: Int?
 
     var body: some View {
         if telemetry.isEmpty { EmptyView() } else {
@@ -4263,9 +4338,20 @@ private struct TelemetryFooter: View {
                 if let iso = telemetry.isoValue {
                     TelemetryChip(icon: "s.square", text: "ISO \(iso)", color: .primary)
                 }
+                // Eksponeringskompensasjon (E2).
+                if let ec = telemetry.exposureCompensation, ec != "0" {
+                    TelemetryChip(icon: "plusminus", text: "\(ec) EV", color: .primary)
+                }
                 Spacer(minLength: 0)
+                if let count = telemetry.totalContentsCount {
+                    TelemetryChip(icon: "photo.stack", text: "\(count)", color: .secondary)
+                }
                 if let free = telemetry.freeSpaceBytes {
-                    TelemetryChip(icon: "externaldrive", text: formatBytes(free) + " free", color: .secondary)
+                    TelemetryChip(icon: "externaldrive", text: formatBytes(free) + " ledig", color: .secondary)
+                }
+                // «Bilder igjen» (E3) — kun når estimatet er kalibrert.
+                if let remaining = shotsRemaining {
+                    TelemetryChip(icon: "camera.badge.clock", text: "~\(remaining) igjen", color: .secondary)
                 }
             }
             .padding(.horizontal, 24)
@@ -7539,9 +7625,21 @@ final class LiveCaptureModel {
         if let v = diff.apertureValue { telemetry.apertureValue = v }
         if let v = diff.shutterSpeed { telemetry.shutterSpeed = v }
         if let v = diff.isoValue { telemetry.isoValue = v }
+        if let v = diff.exposureCompensation { telemetry.exposureCompensation = v }
         if let v = diff.lensName { telemetry.lensName = v }
         if let v = diff.freeSpaceBytes { telemetry.freeSpaceBytes = v }
         if let v = diff.totalContentsCount { telemetry.totalContentsCount = v }
+        // P3 (E3): oppdater «bilder igjen»-estimatet fra ledig-plass-/count-deltaer.
+        shotsRemaining.update(freeSpaceBytes: telemetry.freeSpaceBytes,
+                              totalContentsCount: telemetry.totalContentsCount)
+    }
+
+    /// P3 (E3): selv-kalibrerende «bilder igjen»-estimat — måler bytes-per-skudd
+    /// fra fallet i ledig kort-plass per nytt bilde (ekte RAW+JPEG-størrelse på
+    /// kortet), ikke fra små preview-nedlastinger. nil til kalibrert.
+    private var shotsRemaining = ShotsRemainingEstimator()
+    var estimatedShotsRemaining: Int? {
+        shotsRemaining.estimate(freeSpaceBytes: telemetry.freeSpaceBytes)
     }
 }
 
@@ -7918,4 +8016,6 @@ private extension Color {
     static let captureChipBG          = Color.white.opacity(0.07)
     static let captureFieldBG         = Color.white.opacity(0.10)
     static let captureSeparator       = Color.white.opacity(0.12)
+    /// Merkevare-oransje (samme aksent som Shoot-mockupen / CreatorHub One).
+    static let captureAccent          = Color(red: 0.96, green: 0.45, blue: 0.13)
 }
