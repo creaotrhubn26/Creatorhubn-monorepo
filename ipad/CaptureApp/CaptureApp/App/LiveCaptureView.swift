@@ -260,6 +260,19 @@ struct LiveCaptureView: View {
             // shutter triggers spaced 1.5 s apart so the connected UI
             // has assets to render. Used to capture screenshots without
             // driving the simulator through manual taps.
+            #if DEBUG
+            // `--demo-persons` — koble til demo-modus (så capture-UI-en m/ filmstrip
+            // vises) og seed EKTE bryllups-JPG-er → E8 person-gruppering kjører mot
+            // virkelige ansikter og «Personer»-raden fylles (for skjermbilder).
+            if ProcessInfo.processInfo.arguments.contains("--demo-persons"),
+               model.phase == .disconnected, !model.isConnecting {
+                await model.connect(to: LiveCaptureModel.demoBaseURL)
+                // Vent til «Tilkoblet»-bekreftelsen (1,3 s) har lagt seg FØR vi seeder,
+                // ellers kolliderer seed-kaskaden (analyse + re-render) med timeren.
+                try? await Task.sleep(for: .milliseconds(2200))
+                await model.seedPersonDemo()
+            }
+            #endif
             if ProcessInfo.processInfo.arguments.contains("--auto-demo"),
                model.phase == .disconnected,
                !model.isConnecting {
@@ -5807,6 +5820,66 @@ final class LiveCaptureModel {
         guard !trimmed.isEmpty, let i = personGroups.firstIndex(where: { $0.id == personId }) else { return }
         personGroups[i].label = trimmed
     }
+
+    #if DEBUG
+    /// DEBUG-only (`--demo-persons`): seed filmstripen med EKTE leverte bryllups-
+    /// JPG-er fra appens `Documents/persondemo/` (kopiert inn av screenshot-
+    /// harnessen), så on-device person-grupperingen (E8) kjøres mot VIRKELIGE
+    /// ansikter og «Personer»-raden fylles. Ikke i Release-binæret.
+    func seedPersonDemo() async {
+        let dir = URL.documentsDirectory.appendingPathComponent("persondemo", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil) else { return }
+        let jpgs = files.filter { $0.pathExtension.lowercased() == "jpg" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        guard !jpgs.isEmpty else { return }
+        let base = Date()
+        let seeded = jpgs.enumerated().map { i, url in
+            Asset(id: UUID(), sessionId: currentSessionId ?? UUID(),
+                  originalFilename: url.lastPathComponent,
+                  captureTime: base.addingTimeInterval(Double(i)),
+                  previewKey: url.path, fullKey: nil, rawKey: nil, enhancedKey: nil,
+                  voiceMemoKey: nil, serverEnhancedKey: nil, autoCleanedKey: nil,
+                  autoCleanedDetectionCount: nil, pendingDetections: nil,
+                  checksumSha256: nil, mime: "image/jpeg", sizeBytes: nil,
+                  state: .previewReady, signals: .empty, rating: 0, colorLabel: nil,
+                  flaggedForClient: false, rejected: false, createdAt: base, updatedAt: base)
+        }
+        assets.append(contentsOf: seeded)   // didSet → analyse (Vision) hvis tilgjengelig
+        applyPrecomputedPersonGroups(from: dir, seeded: seeded)
+    }
+
+    /// Vision-ansiktsdeteksjon er IKKE funksjonell i simulator-runtimen (returnerer
+    /// 0 ansikter selv om dekodingen er korrekt). For skjermbilder leser vi derfor
+    /// en `groups.json` som screenshot-harnessen har produsert HEADLESS med SAMME
+    /// `FacePrint` + `PersonClusterer` (terskel 0.35) på de samme bildene — altså
+    /// den EKTE algoritmens utdata, bare regnet utenfor simulatoren og vist via den
+    /// ekte «Personer»-flaten. No-op på enhet der live-grupperingen kjører selv.
+    private func applyPrecomputedPersonGroups(from dir: URL, seeded: [Asset]) {
+        let url = dir.appendingPathComponent("groups.json")
+        guard let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let personsArr = obj["persons"] as? [[String: Any]],
+              let assignments = obj["assignments"] as? [String: [Int]] else { return }
+        let byName = Dictionary(uniqueKeysWithValues: seeded.map { ($0.originalFilename, $0.id) })
+        var idForIndex: [Int: UUID] = [:]
+        var groups: [PersonGroup] = []
+        for (i, p) in personsArr.enumerated() {
+            let rr = p["repRect"] as? [Double] ?? [0, 0, 0.2, 0.2]
+            let id = UUID(); idForIndex[i] = id
+            groups.append(PersonGroup(
+                id: id, label: p["label"] as? String ?? "Person \(i + 1)",
+                representativeAssetId: byName[p["repFile"] as? String ?? ""] ?? seeded.first!.id,
+                representativeFaceRect: CGRect(x: rr[0], y: rr[1], width: rr[2], height: rr[3]),
+                photoCount: assignments.values.filter { $0.contains(i) }.count))
+        }
+        personGroups = groups
+        for (name, idxs) in assignments {
+            guard let aid = byName[name], let ai = assets.firstIndex(where: { $0.id == aid }) else { continue }
+            assets[ai].signals.personIds = idxs.compactMap { idForIndex[$0] }
+        }
+    }
+    #endif
 
     var canShoot: Bool {
         switch connectionState {
