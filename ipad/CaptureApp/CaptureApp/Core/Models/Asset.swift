@@ -113,5 +113,12 @@ struct AssetSignals: Hashable, Sendable, Codable {
     /// nil = ikke analysert enda.
     var analysis: AssetAnalysis?
 
+    /// Personer (``LiveCaptureModel.PersonGroup``-id-er) som opptrer på dette
+    /// bildet — driver «levering per-ansikt» (E8). Utledes on-device fra ansikts-
+    /// feature-prints (``FacePrint`` + ``PersonClusterer``) når analysen lander.
+    /// Lagres inline på signals (JSONB round-trip), samme mønster som `analysis`.
+    /// nil/tom = ingen ansikter gruppert enda.
+    var personIds: [UUID]?
+
     static let empty = AssetSignals()
 }
