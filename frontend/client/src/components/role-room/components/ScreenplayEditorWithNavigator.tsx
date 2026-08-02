@@ -18,6 +18,7 @@ import {
   Box,
   Paper,
   IconButton,
+  Button,
   Tooltip,
   Chip,
   CircularProgress,
@@ -903,20 +904,36 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           </IconButton>
         </Tooltip>
 
-        {/* Fullscreen Toggle */}
-        <Tooltip title={isFullscreen ? 'Avslutt fullskjerm (Esc)' : 'Fullskjerm'}>
-          <IconButton
-            onClick={handleFullscreenToggle}
-            size={responsive.buttonSize}
-            sx={{ color: isFullscreen ? 'primary.main' : 'text.secondary' }}
-          >
-            {isFullscreen ? (
-              <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} />
-            ) : (
-              <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />
-            )}
-          </IconButton>
-        </Tooltip>
+        {/* Skrivemodus (fullskjerm) — skjuler ALT annet chrome for distraksjonsfri
+            skriving. Tydelig, navngitt knapp på desktop; ikon på mobil/tablet. */}
+        {(isMobile || isTablet) ? (
+          <Tooltip title={isFullscreen ? 'Avslutt skrivemodus (Esc)' : 'Skrivemodus'}>
+            <IconButton
+              onClick={handleFullscreenToggle}
+              size={responsive.buttonSize}
+              aria-label={isFullscreen ? 'Avslutt skrivemodus' : 'Skrivemodus'}
+              sx={{ color: isFullscreen ? 'primary.main' : 'text.secondary' }}
+            >
+              {isFullscreen ? (
+                <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} />
+              ) : (
+                <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />
+              )}
+            </IconButton>
+          </Tooltip>
+        ) : (
+          <Tooltip title={isFullscreen ? 'Avslutt skrivemodus (Esc)' : 'Skjul alt annet og skriv distraksjonsfritt (Esc for å avslutte)'}>
+            <Button
+              onClick={handleFullscreenToggle}
+              size={responsive.buttonSize}
+              variant={isFullscreen ? 'contained' : 'outlined'}
+              startIcon={isFullscreen ? <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} /> : <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />}
+              sx={{ whiteSpace: 'nowrap', fontSize: responsive.bodyFontSize, color: isFullscreen ? undefined : 'text.secondary' }}
+            >
+              {isFullscreen ? 'Avslutt skrivemodus' : 'Skrivemodus'}
+            </Button>
+          </Tooltip>
+        )}
 
         {!isMobile && <Divider orientation="vertical" flexItem />}
 
