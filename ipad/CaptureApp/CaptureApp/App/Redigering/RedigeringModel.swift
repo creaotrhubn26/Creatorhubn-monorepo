@@ -586,6 +586,7 @@ final class RedigeringModel {
         let ev = exposureEV
         let crop = crops[asset.id]
         let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
+        let styleFlash = asset.signals.flashFired   // Del D: blits-dim til lært-stil-kNN
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             // «Min stil» krever en NØYTRAL rawpy-lignende base (den LUT-en ble lært
             // på). renderPreview gir en Picture-Style-baket/fargestyrt base → LUT
@@ -612,7 +613,7 @@ final class RedigeringModel {
             // valgte stilens scener.
             let scenes = manualScenes ?? (auto ? styles.flatMap { $0.scenes } : nil)
             if let scenes, !scenes.isEmpty {
-                ci = LearnedStyle.apply(scenes: scenes, to: ci)   // lært look
+                ci = LearnedStyle.apply(scenes: scenes, to: ci, flashFired: styleFlash)   // lært look
             }
             // Lokal per-ansikt-justering (normalisert rekt → piksler av ci.extent).
             if !faceAdj.isEmpty {
