@@ -2999,15 +2999,26 @@ private struct ImageFile: View {
     let path: String
     /// Bump to force a re-read of the file (same path, new bytes).
     var reload: Int = 0
+    /// Dekod JPEG-en ÉN gang i `.task` — IKKE i body. `ComparisonSlider` muterer
+    /// `divider` per drag-frame → body re-evalueres per frame; med decode-i-body
+    /// ble hele 2400px-JPEG-en dekodet på nytt hver frame (×2 for de to lagene).
+    /// Samme fiks som `BeforeAfterCompare`. Off-main dekode holder draggen jevn.
+    @State private var image: UIImage?
     var body: some View {
         Group {
-            if let img = UIImage(contentsOfFile: path) {
-                Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+            if let image {
+                Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
             } else {
                 Color.captureChipBG
             }
         }
-        .id("\(path)#\(reload)")
+        .task(id: "\(path)#\(reload)") {
+            let p = path
+            let loaded = await Task.detached(priority: .userInitiated) {
+                UIImage(contentsOfFile: p)
+            }.value
+            if !Task.isCancelled { image = loaded }
+        }
     }
 }
 
@@ -5383,6 +5394,24 @@ private struct AssetViewerPage: View {
                             lastCommittedScale = computed
                             offset = .zero
                             lastCommittedOffset = .zero
+                        }
+                        // Rotasjon/split-view endrer `geo.size` → fyll/tilpass-skalaen
+                        // ble ellers hengende på den GAMLE container-størrelsen (regnet
+                        // kun i onAppear). Regn på nytt; følg ny fyll-skala hvis brukeren
+                        // ikke har zoomet manuelt (ellers behold zoomen).
+                        .onChange(of: geo.size) { _, newSize in
+                            let old = fillScale ?? 1
+                            let computed = Self.computeFillScale(
+                                imageSize: image.size,
+                                containerSize: newSize,
+                            )
+                            fillScale = computed
+                            if abs(scale - old) < 0.01 {
+                                scale = computed
+                                lastCommittedScale = computed
+                                offset = .zero
+                                lastCommittedOffset = .zero
+                            }
                         }
                 } else {
                     Text("Preview unavailable")
