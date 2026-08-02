@@ -53,6 +53,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   ChatBubbleOutline as CommentIcon,
+  Movie as MovieIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
 import { SceneNavigatorSidebar, reorderScenesInContent, buildLineCommentAnchor, resolveLineCommentAnchor, type ParsedScene } from './SceneNavigatorSidebar';
@@ -443,6 +444,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     setCurrentLine(line);
     onCursorChange?.(line, column, element);
   }, [onCursorChange]);
+
+  // Gjeldende scene-overskrift (siste INT./EXT.-heading på eller før markør-linja).
+  // Vises som klistret «brødsmule» øverst i editoren så man alltid vet hvilken
+  // scene man er i når man skroller/skriver i en lang scene.
+  const currentSceneHeading = useMemo(() => {
+    const lines = value.split('\n');
+    const isHeading = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l.trim());
+    const upto = Math.min(Math.max(currentLine, 1), lines.length);
+    let heading = '';
+    for (let i = 0; i < upto; i++) { if (isHeading(lines[i])) heading = lines[i].trim(); }
+    return heading;
+  }, [value, currentLine]);
 
   const resolveEditorTextarea = useCallback(() => {
     if (editorTextareaRef.current && document.contains(editorTextareaRef.current)) {
@@ -1106,6 +1119,35 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                lockState === 'locked' ? (isMobile ? 'Låst' : 'Manuset er låst for redigering') :
                'Du har kun lesetilgang'}
             </Alert>
+          )}
+          {currentSceneHeading && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 4,
+                right: 12,
+                zIndex: 5,
+                pointerEvents: 'none',
+                maxWidth: '55%',
+                px: 1.25,
+                py: 0.25,
+                borderRadius: 1,
+                bgcolor: 'rgba(20,20,35,0.82)',
+                backdropFilter: 'blur(4px)',
+                border: '1px solid rgba(139,92,246,0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+              }}
+            >
+              <MovieIcon sx={{ fontSize: responsive.iconSize - 4, color: '#a78bfa', flexShrink: 0 }} />
+              <Typography
+                variant="caption"
+                sx={{ color: '#ddd6fe', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: responsive.captionFontSize }}
+              >
+                {currentSceneHeading}
+              </Typography>
+            </Box>
           )}
           <ScreenplayEditor
             key={editorKey}

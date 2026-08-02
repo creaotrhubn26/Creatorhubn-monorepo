@@ -1834,6 +1834,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     pendingContentRef.current = content;
     isDirtyRef.current = true;
     setManuscriptSaveStatus((previous) => (previous === 'unsaved' ? previous : 'unsaved'));
+
+    // Skjul «Hvor du var»-banneret så snart man begynner å skrive → mer skriveplass.
+    // Funksjonell oppdatering leser fersk state og skriver kun én gang (ingen re-render
+    // eller lagrings-skriv hvis allerede skjult).
+    setResumeDismissedMap((prev) => {
+      const mid = selectedManuscriptRef.current?.id;
+      if (mid && !prev[mid]) { dismissResumeBanner(mid); return { ...prev, [mid]: true }; }
+      return prev;
+    });
     
     // Debounce the save to avoid constant saves while typing
     if (autoSaveTimerRef.current) {
