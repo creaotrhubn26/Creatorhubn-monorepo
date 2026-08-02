@@ -145,6 +145,16 @@ final class CullTheaterModel {
         return Int((Double(droppedCount) * p).rounded())
     }
 
+    /// Delt per-bilde-analyse for cull-berikelse (øyne/ansikts-skarphet) — måles
+    /// én gang og persisteres, så Kvalitetssjekk/HUD/forslag gjenbruker den.
+    private let assetAnalyzer = AssetAnalyzer()
+
+    private func sessionStore() throws -> SessionStore {
+        let url = try AppDatabase.defaultDiskURL()
+        let db = try AppDatabase.openOnDisk(at: url)
+        return SessionStore(database: db)
+    }
+
     private func cullStore() throws -> CullStore {
         let url = try AppDatabase.defaultDiskURL()
         let db = try AppDatabase.openOnDisk(at: url)
@@ -203,12 +213,29 @@ final class CullTheaterModel {
     func runSmartCull() async {
         culling = true; defer { culling = false }
         errorMessage = nil
-        var items: [(id: String, image: CGImage)] = []
+        let store = try? sessionStore()
+        var items: [(id: String, image: CGImage, analysis: AssetAnalysis?)] = []
         for a in assets {
             guard let path = a.displayPreviewKey,
                   let ui = UIImage(contentsOfFile: path),
                   let cg = ui.cgImage else { continue }
-            items.append((id: a.id.uuidString, image: cg))
+            // Delt analyse: gjenbruk persistert, ellers MÅL én gang + persister
+            // (øyne/ansikts-skarphet beriker rangeringen; Kvalitetssjekk/HUD/
+            // forslag gjenbruker den samme målingen etterpå).
+            var analysis = a.signals.analysis
+            if analysis == nil, let src = a.previewKey ?? a.displayPreviewKey,
+               FileManager.default.fileExists(atPath: src) {
+                analysis = await assetAnalyzer.analyze(imageURL: URL(fileURLWithPath: src))
+                if let measured = analysis, let idx = assets.firstIndex(where: { $0.id == a.id }) {
+                    var signals = assets[idx].signals
+                    signals.analysis = measured
+                    signals.faceCount = measured.faces.count
+                    if let face = measured.primaryFace { signals.eyesOpen = face.eyesOpen ?? signals.eyesOpen }
+                    assets[idx].signals = signals
+                    try? await store?.updateAssetSignals(id: a.id, signals: signals)
+                }
+            }
+            items.append((id: a.id.uuidString, image: cg, analysis: analysis))
         }
         guard !items.isEmpty else { errorMessage = "Ingen bilder å analysere."; return }
 

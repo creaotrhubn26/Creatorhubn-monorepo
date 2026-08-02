@@ -20,13 +20,18 @@ import {
   createSegment,
   deleteSegment,
   getSegment,
+  getSegmentPerformance,
+  linkCampaign,
+  listLinkableCampaigns,
   listSegmentAudiences,
+  listSegmentCampaigns,
   listSegments,
   materializeToGoogleCustomerMatch,
   materializeToLinkedinMatchedAudience,
   materializeToMetaCustomAudience,
   refreshSyncedAudiences,
   resolveSegmentMembers,
+  unlinkCampaign,
   type MaterializeResult,
 } from "./marketing-segments-service.js";
 
@@ -45,10 +50,15 @@ export function setupAdminMarketingSegmentsRoutes(deps: AdminRoomRoutesDeps): vo
     if (!session) return;
     try {
       const items = await listSegments(pool, session.userId);
-      const withAudiences = await Promise.all(
-        items.map(async (s) => ({ ...s, audiences: await listSegmentAudiences(pool, s.id) })),
+      const enriched = await Promise.all(
+        items.map(async (s) => ({
+          ...s,
+          audiences: await listSegmentAudiences(pool, s.id),
+          campaigns: await listSegmentCampaigns(pool, s.id),
+          performance: await getSegmentPerformance(pool, s.id),
+        })),
       );
-      res.json({ items: withAudiences });
+      res.json({ items: enriched });
     } catch (err) {
       console.error("[marketing-segments] list error", err);
       res.status(500).json({ error: "list_failed" });
@@ -164,6 +174,59 @@ export function setupAdminMarketingSegmentsRoutes(deps: AdminRoomRoutesDeps): vo
     }
   });
 
+  // ── Attribusjon per segment (fase 4) ─────────────────────────────────
+
+  // Kampanjer som kan kobles (m/ akkumulert spend for kontekst).
+  app.get("/api/admin-room/marketing-segments/campaigns/linkable", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      res.json({ campaigns: await listLinkableCampaigns(pool) });
+    } catch (err) {
+      console.error("[marketing-segments] linkable-campaigns error", err);
+      res.status(500).json({ error: "campaigns_failed" });
+    }
+  });
+
+  // Koble en kampanje til et segment (→ ROAS ruller opp per segment).
+  app.post("/api/admin-room/marketing-segments/:id/campaigns", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    const campaignId = String(req.body?.campaignId ?? "").trim();
+    if (!campaignId) return res.status(400).json({ error: "campaignId_required" });
+    try {
+      const segment = await getSegment(pool, session.userId, req.params.id);
+      if (!segment) return res.status(404).json({ error: "not_found" });
+      await linkCampaign(pool, segment.id, campaignId);
+      await logAdminActivity({
+        userId: session.userId,
+        entityType: "marketing_segment",
+        entityId: segment.id,
+        action: "campaign_linked",
+        summary: `${segment.name} ← kampanje ${campaignId}`,
+      }).catch(() => {});
+      res.json({ ok: true, performance: await getSegmentPerformance(pool, segment.id) });
+    } catch (err) {
+      console.error("[marketing-segments] link-campaign error", err);
+      res.status(500).json({ error: "link_failed" });
+    }
+  });
+
+  // Fjern en kampanje-kobling.
+  app.delete("/api/admin-room/marketing-segments/:id/campaigns/:campaignId", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const segment = await getSegment(pool, session.userId, req.params.id);
+      if (!segment) return res.status(404).json({ error: "not_found" });
+      const removed = await unlinkCampaign(pool, segment.id, req.params.campaignId);
+      res.json({ removed, performance: await getSegmentPerformance(pool, segment.id) });
+    } catch (err) {
+      console.error("[marketing-segments] unlink-campaign error", err);
+      res.status(500).json({ error: "unlink_failed" });
+    }
+  });
+
   // ── POST cron/refresh (x-cron-token) ─────────────────────────────────
   //    Re-uploader medlemmer til alle synkroniserte audiences (holder dem
   //    ferske når segmentet endrer seg). Ukentlig GitHub Actions-cron.
@@ -178,7 +241,12 @@ export function setupAdminMarketingSegmentsRoutes(deps: AdminRoomRoutesDeps): vo
     }
     try {
       const result = await refreshSyncedAudiences(pool);
-      res.json({ ok: true, ...result });
+      res.json({
+        ok: true,
+        processed: result.processed,
+        refreshed: result.ok,
+        failed: result.failed,
+      });
     } catch (err) {
       console.error("[marketing-segments] refresh error", err);
       res.status(500).json({ error: "refresh_failed" });

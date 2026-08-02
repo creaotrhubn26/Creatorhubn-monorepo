@@ -237,6 +237,202 @@ export async function recordIphoneMirroring(
   return invoke<string>("record_iphone_mirroring", { projectId, sceneId, screenIndex, durationSec });
 }
 
+// ── iOS-simulator-styring (live-preview, launch, deep-link, autonom drift) ────
+
+/** En brukerinstallert app i simulatoren. */
+export interface SimApp {
+  bundleId: string;
+  name: string;
+}
+
+/** Ett element i iOS accessibility-treet (fra idb describe-all). */
+export interface SimElement {
+  label: string;
+  type: string;
+  /** Sentrum i punkt-koordinater (klar for tap). */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Boot simulatoren (idempotent) + bring Simulator.app til front. */
+export async function iosSimBoot(udid: string): Promise<boolean> {
+  return invoke<boolean>("ios_sim_boot", { udid });
+}
+
+/** Launch en app i simulatoren via bundle-id. Returnerer PID (0 = ukjent). */
+export async function iosSimLaunch(udid: string, bundleId: string): Promise<number> {
+  return invoke<number>("ios_sim_launch", { udid, bundleId });
+}
+
+/** Åpne en deep-link i simulatoren (driver appen til en scene-skjerm). */
+export async function iosSimOpenUrl(udid: string, url: string): Promise<boolean> {
+  return invoke<boolean>("ios_sim_openurl", { udid, url });
+}
+
+/** List brukerinstallerte apper i simulatoren. */
+export async function iosSimListApps(udid: string): Promise<SimApp[]> {
+  return invoke<SimApp[]>("ios_sim_list_apps", { udid });
+}
+
+/** Ett skjermbilde av simulatoren som base64 data-URL (til live-preview). */
+export async function iosSimScreenshot(udid: string): Promise<string> {
+  return invoke<string>("ios_sim_screenshot", { udid });
+}
+
+/** Trykk i simulatoren via idb (autonom drift). */
+export async function iosSimTap(udid: string, x: number, y: number): Promise<boolean> {
+  return invoke<boolean>("ios_sim_tap", { udid, x, y });
+}
+
+/** Sveip i simulatoren via idb (scroll under autonom gjennomgang). */
+export async function iosSimSwipe(udid: string, x1: number, y1: number, x2: number, y2: number): Promise<boolean> {
+  return invoke<boolean>("ios_sim_swipe", { udid, x1, y1, x2, y2 });
+}
+
+/** Accessibility-treet + skjermbounds (for å konvertere koordinater → hotspot-%). */
+export interface SimScreen {
+  elements: SimElement[];
+  screenWidth: number;
+  screenHeight: number;
+}
+
+/**
+ * Les accessibility-treet og normaliser til {label,type,x,y,width,height} med
+ * sentrum-koordinater klare for tap. Filtrerer til elementer med en label eller
+ * en meningsfull type (knapper/celler/lenker/tekstfelt). Returnerer også
+ * skjermbounds (største element-ramme = vindu/app-root).
+ */
+export async function iosSimDescribe(udid: string): Promise<SimScreen> {
+  const raw = await invoke<string>("ios_sim_describe", { udid });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // idb kan gi JSON-lines; prøv linje-for-linje.
+    parsed = raw.split("\n").filter((l) => l.trim().startsWith("{")).map((l) => {
+      try { return JSON.parse(l); } catch { return null; }
+    }).filter(Boolean);
+  }
+  const arr = Array.isArray(parsed) ? parsed : [];
+  const out: SimElement[] = [];
+  let screenWidth = 0;
+  let screenHeight = 0;
+  for (const el of arr as Array<Record<string, unknown>>) {
+    const frame = (el.frame ?? el.AXFrame) as Record<string, number> | undefined;
+    if (!frame) continue;
+    const x = Number(frame.x ?? 0);
+    const y = Number(frame.y ?? 0);
+    const w = Number(frame.width ?? 0);
+    const h = Number(frame.height ?? 0);
+    if (w <= 0 || h <= 0) continue;
+    // Skjermbounds = ytterste kant over alle elementer (vindu-root spenner hele skjermen).
+    screenWidth = Math.max(screenWidth, x + w);
+    screenHeight = Math.max(screenHeight, y + h);
+    const label = String(el.AXLabel ?? el.label ?? el.AXValue ?? "").trim();
+    const type = String(el.type ?? el.AXType ?? el.role ?? "").trim();
+    // Behold interaktive/navngitte elementer; hopp over rene layout-containere uten label.
+    const interactive = /button|cell|link|textfield|searchfield|tab|switch|slider|menuitem|statictext/i.test(type);
+    if (!label && !interactive) continue;
+    out.push({ label, type, x: x + w / 2, y: y + h / 2, width: w, height: h });
+  }
+  return { elements: out, screenWidth, screenHeight };
+}
+
+// ── AI-generert kinematisk footage (Higgsfield Seedance) ─────────────────────
+
+export type BrollResolution = "480p" | "720p" | "1080p" | "4k";
+
+/** Grovt kreditt-estimat (samme sats som generate_broll.py). Vises FØR generering. */
+export function estimateBrollCredits(resolution: BrollResolution, durationSec: number): number {
+  const perSec: Record<BrollResolution, number> = { "480p": 15, "720p": 25, "1080p": 12, "4k": 22 };
+  return (perSec[resolution] ?? 12) * Math.max(4, Math.min(15, Math.round(durationSec)));
+}
+
+/** Higgsfield konto-/kreditt-status (rå tekst). Kaster hvis CLI-en mangler. */
+export async function higgsfieldAccountStatus(): Promise<string> {
+  return invoke<string>("higgsfield_account_status");
+}
+
+/**
+ * Generér ett kinematisk klipp (Seedance 2.0) og få mp4-stien tilbake. Lagres
+ * som scenens recordingPath, så det flyter gjennom samme eksport som en fanget
+ * scene. startImage (valgfritt) = forankre i en ekte ramme (levende produkt-skjerm).
+ */
+export async function generateBrollClip(args: {
+  projectId: string;
+  sceneId: string;
+  prompt: string;
+  startImage?: string | null;
+  durationSec: number;
+  resolution: BrollResolution;
+  noPeople: boolean;
+}): Promise<string> {
+  return invoke<string>("generate_broll_clip", {
+    projectId: args.projectId,
+    sceneId: args.sceneId,
+    prompt: args.prompt,
+    startImage: args.startImage ?? null,
+    durationSec: args.durationSec,
+    resolution: args.resolution,
+    noPeople: args.noPeople,
+  });
+}
+
+export type BrollProvider = "higgsfield" | "fal";
+
+/** Grovt USD-estimat for fal Seedance (serverside) — ~$0.10/s. */
+export function estimateFalCostUsd(durationSec: number): number {
+  return Math.round(Math.max(4, Math.min(15, Math.round(durationSec))) * 0.1 * 100) / 100;
+}
+
+/**
+ * Generér ett kinematisk klipp SERVERSIDE via fal Seedance (Role Room-proxy) —
+ * ingen lokal higgsfield-CLI/kreditter. Seedance er image-to-video → en ekte
+ * fanget produkt-ramme (data-URL) KREVES som startImage.
+ */
+export async function generateBrollClipFal(args: {
+  projectId: string;
+  sceneId: string;
+  prompt: string;
+  imageDataUrl: string;
+  durationSec: number;
+  resolution: "480p" | "720p" | "1080p";
+}): Promise<string> {
+  return invoke<string>("generate_broll_clip_fal", {
+    projectId: args.projectId,
+    sceneId: args.sceneId,
+    prompt: args.prompt,
+    imageDataUrl: args.imageDataUrl,
+    durationSec: args.durationSec,
+    resolution: args.resolution,
+  });
+}
+
+/**
+ * Generér en SYNTETISK PRESENTØR — et talehode leppesynket til en voiceover
+ * (Seedance --start-image person + --audio-references voiceover). presenterImage
+ * er en lokal sti / data-URL / http-URL til personen; audioDataUrl er voiceoveren.
+ */
+export async function generatePresenterClip(args: {
+  projectId: string;
+  sceneId: string;
+  prompt: string;
+  presenterImage: string;
+  audioDataUrl: string;
+  resolution: BrollResolution;
+}): Promise<string> {
+  return invoke<string>("generate_presenter_clip", {
+    projectId: args.projectId,
+    sceneId: args.sceneId,
+    prompt: args.prompt,
+    presenterImage: args.presenterImage,
+    audioDataUrl: args.audioDataUrl,
+    resolution: args.resolution,
+  });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }

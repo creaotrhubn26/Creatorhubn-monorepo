@@ -71,6 +71,63 @@ enum LearnedStyle {
         return hist + [meanL / 255.0, stdL / 128.0, (sumA / n - 128) / 20.0, (sumB / n - 128) / 20.0]
     }
 
+    /// Snitt-luma (0…1) + andel utblåste høylys-piksler (luma ≥ ~252) fra et
+    /// 64×64-utsnitt — driver den absolutte høylys-/eksponerings-vakten.
+    static func lumaStats(_ cg: CGImage) -> (mean: Double, clipHi: Double) {
+        let w = 64, h = 64
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return (0.5, 0) }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var sum = 0.0, clip = 0.0
+        let n = Double(w * h)
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let l = 0.299 * Double(px[i]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i + 2])
+            sum += l
+            if l >= 252 { clip += 1 }
+        }
+        return (sum / n / 255.0, clip / n)
+    }
+
+    /// Replikér rawpy `no_auto_bright=False`: skalér bildet så 99-persentilen av
+    /// maks-kanalen treffer ~0.94 (near-white med ~1% klipp), klemt 1.0–3.0.
+    /// Normaliserer scene-eksponeringen som rawpy-basen LUT-ene ble trent på.
+    /// Nedskalert readback: skaler CIImage-en FØR createCGImage så vi ikke drar
+    /// hele full-res-bildet gjennom GPU→CPU bare for å regne en liten statistikk.
+    static func smallCG(_ image: CIImage, ctx: CIContext, side: Int) -> CGImage? {
+        let longEdge = max(image.extent.width, image.extent.height)
+        let scale = min(1, CGFloat(side) / max(1, longEdge))
+        let scaled = scale < 1 ? image.transformed(by: CGAffineTransform(scaleX: scale, y: scale)) : image
+        return ctx.createCGImage(scaled, from: scaled.extent)
+    }
+
+    static func autoBrightBase(_ image: CIImage, ctx: CIContext) -> CIImage {
+        let n = 128
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        guard let cg = smallCG(image, ctx: ctx, side: n),
+              let bmp = CGContext(data: &px, width: n, height: n, bitsPerComponent: 8,
+                                  bytesPerRow: n * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        bmp.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+        var maxes = [UInt8](); maxes.reserveCapacity(n * n)
+        var i = 0
+        while i < px.count { maxes.append(max(px[i], max(px[i + 1], px[i + 2]))); i += 4 }
+        maxes.sort()
+        let p99 = Double(maxes[Int(0.99 * Double(maxes.count))]) / 255.0
+        let scale = min(3.0, max(1.0, 0.94 / max(p99, 0.3)))
+        guard scale > 1.01 else { return image }
+        let m = CIFilter.colorMatrix()
+        m.inputImage = image
+        m.rVector = CIVector(x: CGFloat(scale), y: 0, z: 0, w: 0)
+        m.gVector = CIVector(x: 0, y: CGFloat(scale), z: 0, w: 0)
+        m.bVector = CIVector(x: 0, y: 0, z: CGFloat(scale), w: 0)
+        m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
+        return m.outputImage?.cropped(to: image.extent) ?? image
+    }
+
     /// sRGB(0…1) → OpenCV 8-bit Lab (L,a,b i 0…255, 128=nøytral for a/b).
     private static func labCV(r: CGFloat, g: CGFloat, b: CGFloat) -> (Double, Double, Double) {
         let a = SkinToneMath.aStar(r: r, g: g, b: b)          // CIE a*
@@ -140,11 +197,38 @@ enum LearnedStyle {
     /// (CIColorCurves) + a/b-skift, scene-matchet on-device.
     static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5) -> CIImage {
         guard !scenes.isEmpty else { return image }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cg = ctx.createCGImage(image, from: image.extent) else { return image }
+        // #3: eksplisitt sRGB arbeidsrom. Alle readbacks (autoBright/features/
+        // lumaStats) + LAB-cuben antar sRGB 0–1; uten dette kan default-konteksten
+        // tolke P3/lineære verdier → a/b-skift + Reinhard treffer litt feil på
+        // mettede farger. Låser hele kjeden til sRGB.
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)
+        let ctx = CIContext(options: [.useSoftwareRenderer: false,
+                                      .workingColorSpace: srgb as Any])
+        var out = image
+
+        // BASE AUTO-BRIGHT (CIRAWFilter → rawpy): rawpy-develop-en LUT-ene ble trent
+        // på bruker `no_auto_bright=False` — den normaliserer hver scenes eksponering
+        // via høylys-persentil (lyse scener løftes, mørke ned). CIRAWFilter gjør IKKE
+        // dette → base-luma spriker per scene (målt: lys scene 0.69 vs rawpy 0.83) →
+        // LUT-en (lyskurve) forsterker avviket. Replikér auto-bright: skalér så 99-
+        // persentilen treffer ~0.94, så LUT-en får samme normaliserte inngang.
+        out = autoBrightBase(out, ctx: ctx).cropped(to: image.extent)
+
+        // BASE-METNINGS-MATCH (CIRAWFilter → rawpy): CIRAWFilter-basen er mer
+        // konservativt mettet (~63) enn rawpy-basen (~93) LUT-en ble trent på.
+        // Ekte-LAB-overføringen nedenfor gjenoppretter det MESTE (portrett/lyse
+        // scener matcher fasiten på ×1.0); en LETT base-boost løfter i tillegg den
+        // avmettede mellomtone-looken til fasit-nivå. Etterprøvd mørk/lys/portrett.
+        let baseSat = CIFilter.colorControls()
+        baseSat.inputImage = out
+        baseSat.saturation = 1.1
+        baseSat.contrast = 1.0
+        baseSat.brightness = 0
+        out = baseSat.outputImage?.cropped(to: image.extent) ?? out
+
+        guard let cg = smallCG(out, ctx: ctx, side: 128) else { return image }
         let f = features(of: cg)
         guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
-        var out = image
 
         // Per-kanal 1D-LUT via CIColorCurves. cv2-LUT er BGR → map til RGB.
         var samples = [Float]()
@@ -161,70 +245,33 @@ enum LearnedStyle {
         curves.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
         out = curves.outputImage ?? out
 
-        // a/b-middel-skift approksimert i RGB (0.5× som motoren): +a = rød↔grønn,
-        // +b = gul↔blå. Skalert til RGB-enheter (LAB a/b ~ ±0..30 → små bias).
-        let da = blended.ab[0] * 0.5 / 255.0
-        let db = blended.ab[1] * 0.5 / 255.0
-        if abs(da) > 0.0005 || abs(db) > 0.0005 {
-            let m = CIFilter.colorMatrix()
-            m.inputImage = out
-            m.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
-            m.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
-            m.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
-            m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
-            // +a: rød opp, grønn ned. +b: rød/grønn opp, blå ned (gul).
-            m.biasVector = CIVector(x: da + db, y: -da + db, z: -db, w: 0)
-            out = m.outputImage ?? out
-        }
+        // EKTE-LAB FARGEOVERFØRING (erstatter RGB-a/b + global CIColorControls-
+        // Reinhard): a/b-middelskift + per-kanal Reinhard-std rundt kanalens snitt,
+        // i CIELAB — nøyaktig fotografens farge-/spredningsendring (L=kontrast,
+        // a/b=metning). Dette er den prinsipielle fiksen: RGB-approksimasjonen
+        // krasjet metningen; ekte LAB reproduserer motorens `apply_model`.
+        out = LabColorTransfer.apply(to: out, ab: blended.ab, std: blended.labStd, ctx: ctx)
+            .cropped(to: image.extent)
 
-        // (1) HØYLYS-RECOVERY FØRST (myk skulder) — henter tilbake utblåste hvite
-        // (bluse/ansikt/vindu) UTEN å mørkne skygger/mellomtoner/hår, i motsetning
-        // til en global eksponerings-reduksjon. Research: myk høylys-skulder er
-        // den viktigste tone-korreksjonen. Alltid en lett skulder + sterkere når
-        // toppen faktisk er utblåst.
-        let tc = CIFilter.toneCurve()
-        tc.inputImage = out
-        tc.point0 = CGPoint(x: 0, y: 0)
-        tc.point1 = CGPoint(x: 0.30, y: 0.30)
-        tc.point2 = CGPoint(x: 0.60, y: 0.60)
-        tc.point3 = CGPoint(x: 0.82, y: 0.79)     // begynn å komprimere
-        tc.point4 = CGPoint(x: 1.00, y: 0.90)     // dra hvitt ned → gjenopprett
-        out = tc.outputImage?.cropped(to: image.extent) ?? out
-
-        // (2) Reinhard-STD ETTER høylys-recovery: L-std → kontrast, a/b-std →
-        // metning. Metnings-GULV hevet til 0.9 så farger/hud beholder liv (ikke
-        // over-avmett), og kontrast klemt lavere så vi ikke hardner tonene.
-        let contrast = min(1.25, max(0.85, blended.labStd[0]))
-        let sat = min(1.30, max(0.9, (blended.labStd[1] + blended.labStd[2]) / 2))
-        if abs(contrast - 1) > 0.01 || abs(sat - 1) > 0.01 {
-            let cc = CIFilter.colorControls()
-            cc.inputImage = out
-            cc.contrast = Float(contrast)
-            cc.saturation = Float(sat)
-            cc.brightness = 0
-            out = cc.outputImage?.cropped(to: image.extent) ?? out
-        }
-
-        // (3) MILD global eksponerings-vakt — kun backstop mot base-mismatch-lift
-        // (app-nøytral lysere enn Python-nøytral). Dempet (40 %) + høyere terskel
-        // så den ikke mørkner hår/mellomtoner unødig; høylys-skulderen tar resten.
-        if let outCg = ctx.createCGImage(out, from: out.extent) {
-            let baseL = f[8], styledL = features(of: outCg)[8]   // OpenCV-L/255
-            if baseL > 0.02, styledL > baseL + 0.06 {
-                let ev = max(-0.7, min(0.0, 0.4 * log2(baseL / styledL)))
-                let e = CIFilter.exposureAdjust()
-                e.inputImage = out
-                e.ev = Float(ev)
-                out = e.outputImage?.cropped(to: image.extent) ?? out
+        // KLIPP-SIKRING (sjelden): kun når høylys FAKTISK er kraftig utblåst,
+        // komprimér lokalt (luminans-maskert) de utblåste flatene. Terskel hevet
+        // (0.04) så den ikke rører normalt eksponerte bilder — ingen global
+        // eksponerings-endring lenger (den kjempet mot den lærte looken).
+        if let outCg = smallCG(out, ctx: ctx, side: 64) {
+            let (_, clipHi) = lumaStats(outCg)
+            if clipHi > 0.04 {
+                out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 6))
             }
         }
 
         // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
-        // hud-tone (a*≈11 — fikser oransje/flekkete varme) + lett utjevning +
-        // ansikts-dodge. Uten dette går lys hud i varmt vinduslys ujevn.
-        out = SkinToneGuardFilter.apply(strength: 0.7, to: out)
-        out = SkinSmoothFilter.apply(amount: 0.4, to: out)
-        out = FaceDodgeFilter.apply(to: out)
+        // hud-tone (a*≈11) + lett utjevning + ansikts-dodge.
+        // #5: ÉN delt ansiktsdeteksjon for de tre hud-filtrene — de kjørte før tre
+        // separate CIDetector-pass på samme bilde.
+        let faces = FaceContext.detect(in: out)
+        out = SkinToneGuardFilter.apply(strength: 0.7, to: out, faces: faces)
+        out = SkinFinishFilter.apply(to: out, faces: faces)
+        out = FaceDodgeFilter.apply(to: out, faces: faces)
         return out.cropped(to: image.extent)
     }
 }

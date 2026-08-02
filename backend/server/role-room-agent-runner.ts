@@ -42,6 +42,7 @@ import {
   ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
 } from './role-room-agent-definition.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
+import { buildMarketingContextBlock } from './role-room-agent-marketing-context.js';
 import {
   buildBackendPseudonymMap,
   countScrubbed,
@@ -379,6 +380,11 @@ export async function invokeRoleRoomAgent(
   // questions (Inbox/Leads/Analytics/Feed) without the producer pasting numbers.
   // Best-effort: a null block simply omits it.
   const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+  // Markedsførings-/merkevare-bevissthet (Business DNA, katalog, segmenter+ROAS,
+  // GEO) — gjør agenten kjent med alt vi har bygd. Best-effort, null utelates.
+  const marketingBlock = await buildMarketingContextBlock(pool, { userId, projectId });
+  const freshSystemBlock =
+    [workspaceBlock, marketingBlock].filter(Boolean).join('\n\n') || undefined;
 
   // Spor B: attach ad-platform MCP connectors when enabled AND the producer has
   // a connected account. Read-only by default (reporting/get tools) — writes are
@@ -417,7 +423,7 @@ export async function invokeRoleRoomAgent(
   try {
     const raw = await runClaudeAgent({
       cachedSystem,
-      freshSystem: workspaceBlock ?? undefined,
+      freshSystem: freshSystemBlock,
       userMessage: pseudonymizedUserMessage,
       tools: ROLE_ROOM_AGENT_TOOLS,
       maxTokens: ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,

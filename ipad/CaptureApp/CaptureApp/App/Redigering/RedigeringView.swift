@@ -2,369 +2,6 @@ import SwiftUI
 import CoreImage
 import OutboxKit
 
-// MARK: - Model
-
-@MainActor
-@Observable
-final class RedigeringModel {
-    private(set) var sessions: [Session] = []
-    var session: Session?
-    private(set) var assets: [Asset] = []
-    var selectedId: UUID?
-
-    /// The recipe being tuned for the selected asset (per-asset, kept locally).
-    var recipe: MagicRecipe = .product
-    var presetName: String = "Produkt Clean"
-    /// Exposure in EV stops (-2…+2) — a true exposure control, applied on top
-    /// of the recipe so it brightens/darkens the whole frame (not just shadows).
-    var exposureEV: Double = 0
-
-    /// AI-retusj toggles (distraction/dust/reflection removal).
-    var dustRemoval = true
-    var backgroundClean = true
-    var reflectionRemoval = false
-
-    /// «Min stil (lært)» — påfør fotografens arkiv-lærte profil (per-kanal-LUT +
-    /// a/b, scene-matchet on-device) oppå den valgte recipen. Kun tilgjengelig
-    /// når en profil er bundlet/lastet (``LearnedStyleStore``).
-    /// Valgt lært stil (indeks i ``LearnedStyleStore.styles``); nil = av.
-    var learnedStyleIndex: Int? = LearnedStyleStore.demoForceStyleIndex
-    /// Auto: motoren velger looken som passer bildets lys (per bilde).
-    var learnedStyleAuto: Bool = LearnedStyleStore.demoForceAuto
-    var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
-    var learnedStyleNames: [String] { LearnedStyleStore.shared.styleNames }
-
-    /// Rendered "Etter" preview for the selected asset + current recipe.
-    private(set) var afterImage: UIImage?
-    private(set) var rendering = false
-
-    private(set) var loading = true
-    var errorMessage: String?
-
-    /// Per-asset recipes applied via "Bruk på serie" / individual edits.
-    private var applied: [UUID: MagicRecipe] = [:]
-    /// Per-asset crop (normalised rect, origin top-left).
-    private var crops: [UUID: CGRect] = [:]
-    /// Full-series batch progress.
-    private(set) var seriesProgress = 0
-    private(set) var seriesTotal = 0
-    /// Undo/redo stacks of the recipe for the selected asset.
-    private var undo: [MagicRecipe] = []
-    private var redo: [MagicRecipe] = []
-
-    private var ownerUserId: String? { SignInService.shared.session?.userId }
-
-    var selected: Asset? { assets.first { $0.id == selectedId } }
-    var canUndo: Bool { !undo.isEmpty }
-    var canRedo: Bool { !redo.isEmpty }
-    var appliedCount: Int { applied.count }
-
-    static let presets: [(String, MagicRecipe)] = [
-        ("Bryllup", .wedding),
-        ("Portra Clean", .portraClean),
-        ("Reception Warm", .receptionWarm),
-        ("Bright & Airy", .brightAiry),
-        ("Portrett", .portrait),
-        ("Produkt Clean", .product),
-        ("Mat", .food),
-        ("Landskap", .landscape),
-        ("Nøytral", .neutral)
-    ]
-
-    func loadSessions() async {
-        guard let ownerUserId else { errorMessage = "Ikke innlogget"; loading = false; return }
-        #if DEBUG
-        await RedigeringSampleSeeder.seedIfNeeded(ownerUserId: ownerUserId)
-        #endif
-        do {
-            let url = try AppDatabase.defaultDiskURL()
-            let db = try AppDatabase.openOnDisk(at: url)
-            sessions = try await SessionStore(database: db).listSessions(ownerUserId: ownerUserId)
-            if session == nil { session = sessions.first }
-            if let s = session { await loadAssets(s) }
-        } catch { errorMessage = "Kunne ikke laste økter" }
-        loading = false
-    }
-
-    func pick(_ s: Session) async { session = s; await loadAssets(s) }
-
-    private func loadAssets(_ s: Session) async {
-        guard let ownerUserId else { return }
-        do {
-            let url = try AppDatabase.defaultDiskURL()
-            let db = try AppDatabase.openOnDisk(at: url)
-            assets = try await CullStore(database: db, outbox: Outbox(database: db))
-                .assets(sessionId: s.id, ownerUserId: ownerUserId)
-            selectedId = assets.first?.id
-            loadRecipeForSelection()
-            await render()
-        } catch { errorMessage = "Kunne ikke laste bilder" }
-    }
-
-    func select(_ asset: Asset) {
-        selectedId = asset.id
-        undo.removeAll(); redo.removeAll()
-        loadRecipeForSelection()
-        Task { await render() }
-    }
-
-    private func loadRecipeForSelection() {
-        guard let id = selectedId else { return }
-        // Restore persisted edit (survives crash/teardown), else the in-memory
-        // cache, else defaults.
-        if let saved = RedigeringEditStore.load(id) {
-            recipe = saved.recipe; exposureEV = saved.exposureEV
-            crops[id] = saved.crop
-            applied[id] = saved.recipe
-            syncPresetName(to: saved.recipe)
-        } else if let r = applied[id] {
-            recipe = r
-            syncPresetName(to: r)
-        } else {
-            exposureEV = 0
-        }
-    }
-
-    /// Hold preset-etiketten i takt med recipen som lastes (persistert edit) så
-    /// UI-en viser «Bryllup» i stedet for standard-navnet når recipen matcher.
-    private func syncPresetName(to r: MagicRecipe) {
-        if let match = Self.presets.first(where: { $0.1 == r }) { presetName = match.0 }
-    }
-
-    /// Persist the selected asset's current edit state to disk.
-    private func persistEdit() {
-        guard let id = selectedId else { return }
-        applied[id] = recipe
-        RedigeringEditStore.save(id, .init(recipe: recipe, exposureEV: exposureEV, crop: crops[id]))
-    }
-
-    func applyPreset(_ name: String, _ r: MagicRecipe) {
-        pushUndo(); presetName = name; recipe = r
-        persistEdit()
-        Task { await render() }
-    }
-
-    /// Call when a slider commits (on release) — renders the real pipeline.
-    func recipeChanged() { persistEdit(); Task { await render() } }
-    func beginEdit() { pushUndo() }
-
-    func undoEdit() {
-        guard let prev = undo.popLast() else { return }
-        redo.append(recipe); recipe = prev; persistEdit(); Task { await render() }
-    }
-    func redoEdit() {
-        guard let next = redo.popLast() else { return }
-        undo.append(recipe); recipe = next; persistEdit(); Task { await render() }
-    }
-
-    private func pushUndo() { undo.append(recipe); redo.removeAll() }
-
-    /// Apply the current recipe to every asset, then render + persist each one
-    /// full-res in the background (real batch). Crop is per-asset; the recipe +
-    /// exposure + reflection apply to all.
-    func applyToSeries() {
-        for a in assets { applied[a.id] = recipe }
-        Task { await persistSeries() }
-    }
-
-    private func persistSeries() async {
-        guard let svc = services() else { return }
-        working = true; seriesTotal = assets.count; seriesProgress = 0
-        defer { working = false; seriesTotal = 0 }
-        let r = effectiveRecipe(); let ev = exposureEV
-        var failed: [String] = []
-        for a in assets {
-            let useRaw = a.autoCleanedKey == nil ? a.rawKey : nil
-            let jpeg = a.displayPreviewKey
-            let crop = crops[a.id]
-            let data = await Task.detached(priority: .utility) {
-                RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
-            }.value
-            var ok = false
-            if let data {
-                let dest = svc.dir.appendingPathComponent("\(a.id.uuidString)-enhanced.jpg")
-                if (try? data.write(to: dest, options: .atomic)) != nil {
-                    try? await svc.store.attachEnhancedKey(id: a.id, key: dest.path)
-                    ok = true
-                }
-            }
-            if !ok { failed.append(a.originalFilename) }
-            seriesProgress += 1
-        }
-        let saved = assets.count - failed.count
-        statusMessage = failed.isEmpty
-            ? "Lagret \(saved) bilder."
-            : "Lagret \(saved), feilet \(failed.count): \(failed.prefix(3).joined(separator: ", "))\(failed.count > 3 ? "…" : "")"
-    }
-
-    var working = false
-    var statusMessage: String?
-
-    private func services() -> (store: SessionStore, backend: BackendClient, dir: URL)? {
-        guard let stored = SignInService.shared.session,
-              let url = try? AppDatabase.defaultDiskURL(),
-              let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
-        let store = SessionStore(database: db)
-        let backend = BackendClient(baseURL: stored.backendBaseURL, authHeaders: SignInService.shared.authHeaders)
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("redigering", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return (store, backend, dir)
-    }
-
-    /// Real AI-retusj: detect distractions (Claude Vision) + inpaint via the
-    /// existing native AutoCleanService, then reload so the cleaned image
-    /// becomes the working base. Gated by the dust/background toggles.
-    func runAIRetouch() async {
-        guard dustRemoval || backgroundClean else { statusMessage = "Skru på Støvfjerning eller Bakgrunnsrydd først."; return }
-        guard let asset = selected, let svc = services() else { return }
-        working = true; statusMessage = "Analyserer og fjerner distraksjoner…"; defer { working = false }
-        let auto = AutoCleanService(store: svc.store, backend: svc.backend)
-        await auto.processAsset(asset, downloadDir: svc.dir, mode: .autoClean)
-        await reloadSelected(svc.store, assetId: asset.id)
-        let count = selected?.autoCleanedDetectionCount ?? 0
-        statusMessage = count > 0 ? "Fjernet \(count) distraksjoner." : "Ingen distraksjoner funnet."
-        await render()
-    }
-
-    /// Persist the current edit as the asset's enhanced variant (full-res),
-    /// so other surfaces show "Etter".
-    func persistSelected() async {
-        guard let asset = selected, let svc = services() else { return }
-        working = true; defer { working = false }
-        let useRaw = asset.autoCleanedKey == nil ? asset.rawKey : nil
-        let jpeg = asset.displayPreviewKey
-        let r = effectiveRecipe(); let ev = exposureEV; let crop = crops[asset.id]
-        let data = await Task.detached(priority: .userInitiated) {
-            RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
-        }.value
-        guard let data else { statusMessage = "Kunne ikke lagre — bildet lot seg ikke dekode/rendre."; return }
-        let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-enhanced.jpg")
-        do {
-            try data.write(to: dest, options: .atomic)
-            try await svc.store.attachEnhancedKey(id: asset.id, key: dest.path)
-            statusMessage = "Lagret forbedret versjon."
-        } catch { statusMessage = "Kunne ikke lagre." }
-    }
-
-    /// Masker tool: remove whatever the photographer marked. Builds a PNG mask
-    /// (white = remove) from a normalised rect and runs the real inpaint
-    /// endpoint, then makes the cleaned image the working base.
-    func runManualInpaint(normalizedRect: CGRect) async {
-        guard let asset = selected, let svc = services() else { return }
-        guard let srcPath = asset.displayPreviewKey,
-              let imageData = try? Data(contentsOf: URL(fileURLWithPath: srcPath)),
-              let img = UIImage(data: imageData), let cg = img.cgImage else { return }
-        working = true; statusMessage = "Fjerner markert område…"; defer { working = false }
-        let w = cg.width, h = cg.height
-        let rectPx = CGRect(x: normalizedRect.minX * CGFloat(w), y: normalizedRect.minY * CGFloat(h),
-                            width: normalizedRect.width * CGFloat(w), height: normalizedRect.height * CGFloat(h))
-        let format = UIGraphicsImageRendererFormat.default(); format.scale = 1; format.opaque = true
-        let maskPng = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { _ in
-            UIColor.black.setFill(); UIBezierPath(rect: CGRect(x: 0, y: 0, width: w, height: h)).fill()
-            UIColor.white.setFill(); UIBezierPath(rect: rectPx).fill()
-        }.pngData()
-        guard let maskPng else { return }
-        do {
-            let resp = try await svc.backend.requestPhotoEnhancerInpaint(
-                imageData: imageData, imageMimeType: "image/jpeg", maskPngData: maskPng, intensity: 1.0)
-            guard let bytes = Data(base64Encoded: resp.imageBase64) else { statusMessage = "Inpaint feilet."; return }
-            let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-masked.jpg")
-            try bytes.write(to: dest, options: .atomic)
-            try await svc.store.attachAutoCleanedKey(id: asset.id, key: dest.path, detectionCount: 1)
-            await reloadSelected(svc.store, assetId: asset.id)
-            statusMessage = "Område fjernet."
-            await render()
-        } catch { statusMessage = "Inpaint feilet." }
-    }
-
-    private func reloadSelected(_ store: SessionStore, assetId: UUID) async {
-        if let fresh = try? await store.fetchAsset(id: assetId),
-           let idx = assets.firstIndex(where: { $0.id == assetId }) {
-            assets[idx] = fresh
-        }
-    }
-
-    /// Reload the selected asset from disk + re-render (after a Sky enhance).
-    func refreshSelected() async {
-        guard let id = selectedId, let svc = services() else { return }
-        await reloadSelected(svc.store, assetId: id)
-        await render()
-    }
-
-    /// Persist the current recipe as a named local preset.
-    func saveAsPreset(_ name: String) {
-        if let data = try? JSONEncoder().encode(recipe) {
-            UserDefaults.standard.set(data, forKey: "creatorhub.redigering.preset.\(name)")
-        }
-        presetName = name
-    }
-
-    private func render() async {
-        guard let asset = selected else { afterImage = nil; return }
-        rendering = true
-        // Working base priority: server "sky" enhance → AI-cleaned → RAW.
-        // Local recipe/exposure/crop layer on top of whichever base.
-        let serverEnhanced = asset.serverEnhancedKey
-        let cleaned = asset.autoCleanedKey
-        let raw = (serverEnhanced == nil && cleaned == nil) ? asset.rawKey : nil
-        let jpeg = serverEnhanced ?? cleaned ?? asset.displayPreviewKey
-        let styles = LearnedStyleStore.shared.styles
-        let manualScenes: [LearnedStyleProfile.Scene]? = {
-            guard let i = learnedStyleIndex, styles.indices.contains(i) else { return nil }
-            return styles[i].scenes
-        }()
-        let auto = learnedStyleAuto && !styles.isEmpty
-        // Lært stil er en KOMPLETT look (nøytral→levert). Stables den oppå en
-        // annen recipe dobbelt-prosesserer den → bruk en NØYTRAL base når en stil
-        // (eller auto) er aktiv, så den lærte tonekurven+fargen er primærlaget.
-        let r = (manualScenes != nil || auto) ? MagicRecipe.neutral : effectiveRecipe()
-        let ev = exposureEV
-        let crop = crops[asset.id]
-        let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-            guard let base = RedigeringPipeline.renderPreview(
-                rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop) else { return nil }
-            guard let ci = CIImage(image: base) else { return base }
-            // Auto → la motoren velge stilen som passer bildets lys.
-            var scenes = manualScenes
-            if scenes == nil, auto, let cg = CIContext().createCGImage(ci, from: ci.extent) {
-                let idx = LearnedStyle.autoSelectStyleIndex(features: LearnedStyle.features(of: cg), styles: styles)
-                scenes = idx.flatMap { styles.indices.contains($0) ? styles[$0].scenes : nil }
-            }
-            guard let scenes else { return base }
-            // Påfør fotografens (valgte/auto) lærte look på den nøytrale basen.
-            let styled = LearnedStyle.apply(scenes: scenes, to: ci)
-            let ctx = CIContext(options: [.useSoftwareRenderer: false])
-            guard let cg = ctx.createCGImage(styled, from: styled.extent) else { return base }
-            return UIImage(cgImage: cg)
-        }.value
-        afterImage = img
-        rendering = false
-    }
-
-    /// Reflection removal isn't a separate model — it's a strong highlight/
-    /// specular tame layered on the recipe (recovers blown reflections +
-    /// a touch of dehaze for glare).
-    private func effectiveRecipe() -> MagicRecipe {
-        var r = recipe
-        if reflectionRemoval {
-            r.highlightRecovery = max(r.highlightRecovery, 0.7)
-            r.dehaze = max(r.dehaze, 0.2)
-        }
-        return r
-    }
-
-    // MARK: - Crop
-
-    var currentCrop: CGRect? { selectedId.flatMap { crops[$0] } }
-    func setCrop(_ rect: CGRect?) {
-        guard let id = selectedId else { return }
-        if let rect { crops[id] = rect } else { crops[id] = nil }
-        persistEdit()
-        Task { await render() }
-    }
-}
-
 // MARK: - View
 
 struct RedigeringView: View {
@@ -372,6 +9,18 @@ struct RedigeringView: View {
     @State private var zoom: CGFloat = 1
     @State private var showCrop = false
     @State private var showMask = false
+    /// Kvalitetssjekk-review (steg 4) — flagg leveranse-blokkere over serien.
+    @State private var showQualityReview = false
+    /// Bilde-først: skjul inspector-panelet så bildet fyller bredden.
+    @State private var inspectorOpen = true
+    /// Histogram + clipping-varsel-overlegg på sammenlignings-bildet.
+    @State private var showHistogram = false
+    /// Vis motiv-maske-overlegg (hva AI segmenterer/behandler lokalt).
+    @State private var showMaskOverlay = ProcessInfo.processInfo.arguments.contains("--mask-on")
+    @State private var maskOverlay: UIImage?
+    /// Vis «AI-endringer»-heatmap (hvor + hvor mye redigeringen endret bildet).
+    @State private var showDiff = ProcessInfo.processInfo.arguments.contains("--diff-on")
+    @State private var diffOverlay: UIImage?
 
     var body: some View {
         NavigationStack {
@@ -389,7 +38,51 @@ struct RedigeringView: View {
             .background(CHTheme.bg.ignoresSafeArea())
             .navigationTitle("Redigering")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { sessionMenu } }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 14) {
+                        Button {
+                            model.localFaceMode.toggle()
+                            if model.localFaceMode { model.detectFacesForLocal() }
+                        } label: {
+                            Image(systemName: "person.crop.circle.badge.checkmark")
+                                .foregroundStyle(model.localFaceMode ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Trykk-på-ansikt (lokal justering)")
+                        Button {
+                            showMaskOverlay.toggle()
+                            Task { await updateMaskOverlay() }
+                        } label: {
+                            Image(systemName: "person.crop.rectangle.stack")
+                                .foregroundStyle(showMaskOverlay ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis motiv-maske (per-region)")
+                        Button {
+                            showDiff.toggle()
+                            Task { await updateDiffOverlay() }
+                        } label: {
+                            Image(systemName: "square.on.square.dashed")
+                                .foregroundStyle(showDiff ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis AI-endringer (heatmap)")
+                        Button {
+                            showHistogram.toggle()
+                        } label: {
+                            Image(systemName: "waveform.path.ecg.rectangle")
+                                .foregroundStyle(showHistogram ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Histogram + clipping")
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.22)) { inspectorOpen.toggle() }
+                        } label: {
+                            Image(systemName: inspectorOpen ? "sidebar.right" : "slider.horizontal.3")
+                                .foregroundStyle(inspectorOpen ? CHTheme.textSecondary : CHTheme.accent)
+                        }
+                        .help(inspectorOpen ? "Skjul panel (større bilde)" : "Vis verktøy-panel")
+                        sessionMenu
+                    }
+                }
+            }
         }
         .task { await model.loadSessions() }
         .sheet(isPresented: $showCrop) {
@@ -407,6 +100,9 @@ struct RedigeringView: View {
                 }
             }
         }
+        .sheet(isPresented: $showQualityReview) {
+            QualityReviewSheet(model: model)
+        }
         .chBranded()
     }
 
@@ -422,16 +118,33 @@ struct RedigeringView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        GeometryReader { geo in
+            // Bildet dominerer: ~70 % av høyden med inspector åpen, ~82 % lukket.
+            let imageH = geo.size.height * (inspectorOpen ? 0.70 : 0.82)
+            VStack(alignment: .leading, spacing: 12) {
                 subtitle
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 12) { compareCard; toolbarRow }
-                    SmartEditPanel(model: model).frame(width: 320)
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(spacing: 10) {
+                        compareCard(height: imageH)
+                        if model.localFaceMode, let fi = model.activeFace { localFaceControl(fi) }
+                        toolbarRow
+                    }
+                    .frame(maxWidth: .infinity)
+                    if inspectorOpen {
+                        ScrollView { SmartEditPanel(model: model) }
+                            .frame(width: 340)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
-                queueStrip
-                StepFlow()
-                bottomCards
+                // Sekundært (prosjekt/status) — komprimert nederst, ikke i veien.
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        queueStrip
+                        StepFlow(qualityDone: model.qualityDidRun) { showQualityReview = true }
+                        bottomCards
+                    }
+                }
+                .frame(maxHeight: geo.size.height * 0.22)
             }
             .padding(16)
         }
@@ -445,15 +158,113 @@ struct RedigeringView: View {
         }
     }
 
-    private var compareCard: some View {
+    private func compareCard(height: CGFloat) -> some View {
         BeforeAfterCompare(
             beforePath: model.selected?.previewKey ?? model.selected?.displayPreviewKey,
             after: model.afterImage,
             rendering: model.rendering,
             zoom: $zoom,
+            showHistogram: showHistogram,
+            maskOverlay: showMaskOverlay ? maskOverlay : nil,
+            diffOverlay: showDiff ? diffOverlay : nil,
+            faceDots: model.localFaceMode ? model.faceRectsNorm : [],
+            activeFace: model.activeFace,
+            onTapFace: { model.activeFace = $0 },
         )
-        .frame(height: 460)
+        .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(alignment: .bottomLeading) { exifBadge }
+        .overlay(alignment: .top) { degradedBaseWarning }
+        .onChange(of: model.afterImage) { _, _ in
+            Task { await updateMaskOverlay(); await updateDiffOverlay() }
+            if model.localFaceMode { model.detectFacesForLocal() }
+        }
+    }
+
+    /// #4: advar når redigering + eksport nå skjer fra en ~2400px preview-JPEG
+    /// (etter AI-retusj) i stedet for kamera-RAW — et kvalitetstap ellers usett.
+    @ViewBuilder private var degradedBaseWarning: some View {
+        if model.baseIsDegraded {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
+                Text("Videre redigering skjer fra ~2400px-preview (ikke RAW) etter AI-retusj")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.orange.opacity(0.9), in: Capsule())
+            .padding(8)
+        }
+    }
+
+    /// Opptaksdata-merke (kamera-EXIF): ISO/blender/lukker/brennvidde + kamera/
+    /// objektiv, lest fra RAW/JPEG. Diskret nederst-venstre i compare-kortet.
+    @ViewBuilder private var exifBadge: some View {
+        if let exif = model.exif, exif.hasData {
+            VStack(alignment: .leading, spacing: 1) {
+                if !exif.techLine.isEmpty {
+                    Text(exif.techLine)
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.white)
+                }
+                if let cam = exif.camera {
+                    Text(exif.lens.map { "\(cam) · \($0)" } ?? cam)
+                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+            .padding(10)
+        }
+    }
+
+    /// Beregn «AI-endringer»-heatmap fra Før (preview) vs Etter (off-main).
+    private func updateDiffOverlay() async {
+        guard showDiff, let after = model.afterImage,
+              let path = model.selected?.previewKey ?? model.selected?.displayPreviewKey,
+              let before = UIImage(contentsOfFile: path) else { diffOverlay = nil; return }
+        diffOverlay = await Task.detached(priority: .userInitiated) {
+            DiffHeatmap.overlay(before: before, after: after)
+        }.value
+    }
+
+    /// Lokal justerings-kontroll for det tappede ansiktet (lys + varme, maskert).
+    private func localFaceControl(_ i: Int) -> some View {
+        let adj = model.faceAdjust[i] ?? .init()
+        return HStack(spacing: 14) {
+            Text("Ansikt \(i + 1)").font(.caption.weight(.bold)).foregroundStyle(CHTheme.accent)
+            faceSlider("Lys", systemImage: "sun.max", value: adj.brightness) { v in
+                var a = adj; a.brightness = v; model.setFaceAdjust(a, for: i)
+            }
+            faceSlider("Varme", systemImage: "thermometer.medium", value: adj.warmth) { v in
+                var a = adj; a.warmth = v; model.setFaceAdjust(a, for: i)
+            }
+            Button {
+                model.setFaceAdjust(.init(), for: i)
+            } label: { Image(systemName: "arrow.counterclockwise").font(.caption) }
+                .buttonStyle(.plain).foregroundStyle(CHTheme.textMuted)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func faceSlider(_ title: String, systemImage: String, value: Double, onChange: @escaping (Double) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Label("\(title)  \(String(format: "%+.0f", value * 100))", systemImage: systemImage)
+                .font(.caption2).foregroundStyle(CHTheme.textSecondary)
+            Slider(value: Binding(get: { value }, set: onChange), in: -1...1)
+                .tint(CHTheme.accent).frame(width: 150)
+        }
+    }
+
+    /// Beregn motiv-maske-overlegget fra «Etter»-bildet (Vision, off-main).
+    private func updateMaskOverlay() async {
+        guard showMaskOverlay, let after = model.afterImage, let cg = after.cgImage else {
+            maskOverlay = nil; return
+        }
+        maskOverlay = await Task.detached(priority: .userInitiated) {
+            SubjectSegmentation.subjectOverlay(
+                for: cg, extent: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        }.value
     }
 
     private var toolbarRow: some View {
@@ -503,7 +314,42 @@ struct RedigeringView: View {
 
     private var bottomCards: some View {
         HStack(alignment: .top, spacing: 12) {
-            batchCard; suggestionsCard; deliveryCard
+            batchCard; qualityCard; suggestionsCard; deliveryCard
+        }
+    }
+
+    /// Kvalitetssjekk-kort (steg 4) — kjør passet og se antall flaggede; trykk
+    /// for full review-liste (hopp til hvert problembilde).
+    private var qualityCard: some View {
+        InfoCard(title: "Kvalitetssjekk", icon: "checkmark.seal") {
+            if model.qualityRunning {
+                row("hourglass", "Analyserer \(model.qualityProgress)/\(model.qualityTotal)…", CHTheme.accent)
+                ProgressView(value: Double(model.qualityProgress), total: Double(max(1, model.qualityTotal)))
+                    .tint(CHTheme.accent)
+            } else if model.qualityDidRun {
+                if model.qualityFindings.isEmpty {
+                    row("checkmark.circle.fill", "Ingen blokkere", CHTheme.success)
+                } else {
+                    if model.qualityBlockerCount > 0 {
+                        row("exclamationmark.triangle.fill", "\(model.qualityBlockerCount) blokkere", Color(hex: 0xE0606A))
+                    }
+                    if model.qualityWarningCount > 0 {
+                        row("eye.trianglebadge.exclamationmark", "\(model.qualityWarningCount) svake", .orange)
+                    }
+                }
+                Button { showQualityReview = true } label: {
+                    Label("Se gjennomgang", systemImage: "list.bullet.rectangle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered).controlSize(.small).tint(CHTheme.accent)
+            } else {
+                row("sparkle.magnifyingglass", "Lukkede øyne · fokus · motiv-klipp", CHTheme.textMuted)
+                Button { showQualityReview = true } label: {
+                    Label("Kjør kvalitetssjekk", systemImage: "checkmark.seal")
+                        .font(.caption.weight(.semibold)).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small).tint(CHTheme.accent)
+            }
         }
     }
 
@@ -526,9 +372,30 @@ struct RedigeringView: View {
 
     private var suggestionsCard: some View {
         InfoCard(title: "AI forslag", icon: "lightbulb") {
-            suggestion("Match lys mot referanse")
-            suggestion("Fjern støv på utvalgte bilder")
-            suggestion("Lag web-versjon 2048px")
+            let items = model.editSuggestions
+            if items.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal").foregroundStyle(CHTheme.success)
+                    Text("Ingen justeringer foreslått").font(.caption).foregroundStyle(CHTheme.textSecondary)
+                }
+            } else {
+                // Data-drevet: hvert forslag leser AssetAnalysis for det valgte
+                // bildet og bærer en ETT-KLIKKS recipe-delta.
+                ForEach(items) { s in
+                    Button { model.applySuggestion(s) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: s.icon).foregroundStyle(CHTheme.accent).frame(width: 18)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(s.title).font(.caption.weight(.semibold)).foregroundStyle(CHTheme.textPrimary)
+                                Text(s.detail).font(.caption2).foregroundStyle(CHTheme.textMuted)
+                            }
+                            Spacer()
+                            Image(systemName: "plus.circle").font(.caption).foregroundStyle(CHTheme.accent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -550,415 +417,69 @@ struct RedigeringView: View {
     private func row(_ icon: String, _ text: String, _ tint: Color) -> some View {
         Label(text, systemImage: icon).font(.caption).foregroundStyle(tint)
     }
-    private func suggestion(_ text: String) -> some View {
-        HStack {
-            Image(systemName: "sparkles").foregroundStyle(CHTheme.accent)
-            Text(text).font(.caption).foregroundStyle(CHTheme.textSecondary)
-            Spacer()
-            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CHTheme.textMuted)
-        }
-    }
 }
 
-// MARK: - Before/After compare
+// MARK: - Histogram + clipping
 
-struct BeforeAfterCompare: View {
-    let beforePath: String?
-    let after: UIImage?
-    let rendering: Bool
-    @Binding var zoom: CGFloat
-    @State private var split: CGFloat = 0.5
-    @GestureState private var pinch: CGFloat = 1
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .topLeading) {
-                CHTheme.surfaceElevated
-                if let beforePath, let before = UIImage(contentsOfFile: beforePath) {
-                    Image(uiImage: before).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height).clipped()
-                }
-                if let after {
-                    Image(uiImage: after).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height).clipped()
-                        .mask(alignment: .leading) {
-                            Rectangle().frame(width: geo.size.width * split)
-                        }
-                }
-                labels
-                handle(in: geo)
-                if rendering {
-                    ProgressView().padding(8).background(.black.opacity(0.4), in: Circle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .scaleEffect(max(1, zoom * pinch))
-            .contentShape(Rectangle())
-            .gesture(DragGesture().onChanged { v in
-                split = min(1, max(0, v.location.x / geo.size.width))
-            })
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .updating($pinch) { value, state, _ in state = value }
-                    .onEnded { value in zoom = min(4, max(1, zoom * value)) }
-            )
-        }
-    }
-
-    private var labels: some View {
-        VStack {
-            HStack {
-                tag("Før"); Spacer(); tag("Etter")
-            }.padding(10)
-            Spacer()
-        }
-    }
-    private func tag(_ t: String) -> some View {
-        Text(t).font(.caption.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 5)
-            .background(.black.opacity(0.45), in: Capsule()).foregroundStyle(.white)
-    }
-    private func handle(in geo: GeometryProxy) -> some View {
-        ZStack {
-            Rectangle().fill(.white.opacity(0.8)).frame(width: 1.5)
-            Image(systemName: "arrow.left.and.right.circle.fill")
-                .font(.title).foregroundStyle(.white).background(Circle().fill(CHTheme.accent))
-        }
-        .position(x: geo.size.width * split, y: geo.size.height / 2)
-    }
-}
-
-// MARK: - Smart Edit panel
-
-struct SmartEditPanel: View {
-    @Bindable var model: RedigeringModel
-    @State private var showSavePreset = false
-    @State private var presetDraft = ""
-    @State private var showSky = false
+/// Kompakt luma-histogram + clipping-varsel (utblåste høylys / knuste skygger)
+/// beregnet fra «Etter»-bildet — proft vurderingsverktøy fotografen etterlyste.
+struct HistogramOverlay: View {
+    let image: UIImage
+    @State private var bins: [Double] = []
+    @State private var clipHi = 0.0
+    @State private var clipLo = 0.0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("Smart Edit", systemImage: "sparkles").font(.headline).foregroundStyle(CHTheme.textPrimary)
-                Spacer()
-                Image(systemName: "ellipsis").foregroundStyle(CHTheme.textMuted)
-            }
-            Menu {
-                ForEach(RedigeringModel.presets, id: \.0) { name, r in
-                    Button(name) { model.applyPreset(name, r) }
-                }
-            } label: {
-                HStack {
-                    Text("Preset: \(model.presetName)").foregroundStyle(CHTheme.textPrimary)
-                    Spacer(); Image(systemName: "chevron.down").foregroundStyle(CHTheme.textMuted)
-                }
-                .padding(10).background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
-            }
-
-            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, signed: true)
-            slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, signed: true)
-            slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, signed: false)
-            slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, signed: true)
-
-            warmthRow
-            toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
-                .onChange(of: model.recipe.autoStraighten) { _, _ in model.recipeChanged() }
-            Divider().overlay(CHTheme.border)
-            toggleRow("Støvfjerning", systemImage: "sparkle", isOn: $model.dustRemoval)
-            toggleRow("Bakgrunnsrydd", systemImage: "scissors", isOn: $model.backgroundClean)
-            toggleRow("Fjern refleks", systemImage: "circle.dashed", isOn: $model.reflectionRemoval)
-                .onChange(of: model.reflectionRemoval) { _, _ in model.recipeChanged() }
-            if model.hasLearnedStyle {
-                learnedStylePicker
-            }
-
-            Button { Task { await model.runAIRetouch() } } label: {
-                HStack {
-                    if model.working { ProgressView().controlSize(.small) }
-                    Label("Kjør AI-retusj", systemImage: "wand.and.stars.inverse")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
-            .disabled(model.working)
-
-            if let msg = model.statusMessage {
-                Text(msg).font(.caption2).foregroundStyle(CHTheme.textMuted)
-            }
-
-            Button { showSky = true } label: {
-                Label("AI-forbedring (sky)", systemImage: "cloud.bolt")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
-            .disabled(model.selected == nil)
-
-            Button { model.applyToSeries() } label: {
-                Label("Bruk på serie", systemImage: "sparkles").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent).controlSize(.large).tint(CHTheme.accent)
-
-            Button { showSavePreset = true } label: {
-                Label("Lagre som preset", systemImage: "bookmark").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
-        }
-        .padding(14)
-        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .alert("Lagre preset", isPresented: $showSavePreset) {
-            TextField("Navn", text: $presetDraft)
-            Button("Lagre") { if !presetDraft.isEmpty { model.saveAsPreset(presetDraft); presetDraft = "" } }
-            Button("Avbryt", role: .cancel) {}
-        }
-        .sheet(isPresented: $showSky) {
-            if let asset = model.selected {
-                SkyEnhanceView(asset: asset) { Task { await model.refreshSelected() } }
-            }
-        }
-    }
-
-    private func slider(_ title: String, systemImage: String, value: Binding<Double>, range: ClosedRange<Double>, signed: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Label(title, systemImage: systemImage).font(.subheadline).foregroundStyle(CHTheme.textPrimary)
-                Spacer()
-                Text(displayValue(value.wrappedValue, range: range, signed: signed))
-                    .font(.caption).foregroundStyle(CHTheme.accentSoft)
-            }
-            Slider(value: value, in: range) { editing in
-                if editing { model.beginEdit() } else { model.recipeChanged() }
-            }
-            .tint(CHTheme.accent)
-        }
-    }
-
-    private func displayValue(_ v: Double, range: ClosedRange<Double>, signed: Bool) -> String {
-        if signed { return String(format: "%+.0f", v * 100 / max(1, range.upperBound) * range.upperBound) }
-        return "\(Int(v * 100)) %"
-    }
-
-    private var warmthRow: some View {
-        HStack {
-            Label("Fargebalanse", systemImage: "thermometer.medium").font(.subheadline).foregroundStyle(CHTheme.textPrimary)
-            Spacer()
-            Menu {
-                Button("Kald") { model.beginEdit(); model.recipe.warmth = -0.25; model.recipeChanged() }
-                Button("Nøytral") { model.beginEdit(); model.recipe.warmth = 0; model.recipeChanged() }
-                Button("Varm") { model.beginEdit(); model.recipe.warmth = 0.25; model.recipeChanged() }
-            } label: {
-                Text(model.recipe.warmth > 0.05 ? "Varm" : (model.recipe.warmth < -0.05 ? "Kald" : "Nøytral"))
-                    .foregroundStyle(CHTheme.accentSoft)
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CHTheme.textMuted)
-            }
-        }
-    }
-
-    private func toggleRow(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
-            Label(title, systemImage: systemImage).font(.subheadline).foregroundStyle(CHTheme.textPrimary)
-        }
-        .tint(CHTheme.accent)
-    }
-
-    /// «Min stil (lært)» — velg blant fotografens arkiv-lærte, navngitte looker
-    /// (fler-stil-profil), eller «Av». Påføres on-device oppå nøytral base.
-    private var learnedStylePicker: some View {
-        let names = model.learnedStyleNames
-        let current: String = model.learnedStyleAuto
-            ? "Auto"
-            : (model.learnedStyleIndex.flatMap { names.indices.contains($0) ? names[$0] : nil } ?? "Av")
-        let isOn = model.learnedStyleAuto || model.learnedStyleIndex != nil
-        return HStack {
-            Label("Min stil (lært)", systemImage: "brain.head.profile")
-                .font(.subheadline).foregroundStyle(CHTheme.textPrimary)
-            Spacer()
-            Menu {
-                Button("Av") { model.learnedStyleIndex = nil; model.learnedStyleAuto = false; model.recipeChanged() }
-                Button("Auto (per bilde)") { model.learnedStyleAuto = true; model.learnedStyleIndex = nil; model.recipeChanged() }
-                ForEach(Array(names.enumerated()), id: \.offset) { i, name in
-                    Button(name) { model.learnedStyleIndex = i; model.learnedStyleAuto = false; model.recipeChanged() }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(current).font(.subheadline.weight(.semibold))
-                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
-                }
-                .foregroundStyle(isOn ? CHTheme.accent : CHTheme.textMuted)
-            }
-        }
-    }
-}
-
-// MARK: - Queue thumb / step flow / info card
-
-private struct QueueThumb: View {
-    let asset: Asset
-    let selected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            ZStack(alignment: .bottomLeading) {
-                Group {
-                    if let path = asset.displayPreviewKey, let ui = UIImage(contentsOfFile: path) {
-                        Image(uiImage: ui).resizable().scaledToFill()
-                    } else {
-                        ZStack { CHTheme.surfaceElevated; Image(systemName: "photo").foregroundStyle(CHTheme.textMuted) }
+        VStack(alignment: .leading, spacing: 4) {
+            if clipHi > 0.005 || clipLo > 0.005 {
+                HStack(spacing: 8) {
+                    if clipHi > 0.005 {
+                        Label("Høylys klippet \(Int(clipHi * 100))%", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color(hex: 0xE0606A))
+                    }
+                    if clipLo > 0.005 {
+                        Label("Skygger klippet \(Int(clipLo * 100))%", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color(hex: 0x4A90E2))
                     }
                 }
-                .frame(width: 92, height: 92).clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? CHTheme.accent : .clear, lineWidth: 2))
-
-                if asset.signals.faceCount ?? 0 > 0 {
-                    Text("AI").font(.system(size: 8, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(CHTheme.accent.opacity(0.85), in: Capsule()).foregroundStyle(.white).padding(4)
-                }
+                .font(.caption2.weight(.semibold))
             }
-            .overlay(alignment: .topTrailing) {
-                if asset.rating >= 4 || asset.flaggedForClient {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(CHTheme.success)
-                        .background(Circle().fill(.black.opacity(0.4))).padding(4)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct StepFlow: View {
-    private let steps = ["Cull", "Preset", "AI Retusj", "Kvalitetssjekk", "Eksporter"]
-    private let current = 2
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { idx, label in
-                HStack(spacing: 6) {
-                    if idx < current {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(CHTheme.success)
-                    } else if idx == current {
-                        Text("\(idx + 1)").font(.caption.weight(.bold)).foregroundStyle(.white)
-                            .frame(width: 20, height: 20).background(Circle().fill(CHTheme.accent))
-                    } else {
-                        Text("\(idx + 1)").font(.caption).foregroundStyle(CHTheme.textMuted)
-                            .frame(width: 20, height: 20).overlay(Circle().strokeBorder(CHTheme.border))
-                    }
-                    Text(label).font(.caption).foregroundStyle(idx <= current ? CHTheme.textPrimary : CHTheme.textMuted)
-                }
-                if idx < steps.count - 1 { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CHTheme.textMuted).frame(maxWidth: .infinity) }
-            }
-        }
-        .padding(14)
-        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-private struct InfoCard<Content: View>: View {
-    let title: String
-    let icon: String
-    @ViewBuilder var content: Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon).font(.subheadline.weight(.semibold)).foregroundStyle(CHTheme.textPrimary)
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-// MARK: - Rectangle marquee (shared by Beskjær + Masker)
-
-/// Draw a rectangle over the fitted image and return it in normalised image
-/// coordinates (origin top-left, 0…1). Used for crop and for marking a region
-/// to inpaint.
-struct RectMarqueeSheet: View {
-    let imagePath: String
-    let title: String
-    let applyLabel: String
-    let initialRect: CGRect?
-    let allowReset: Bool
-    let onReset: () -> Void
-    let onApply: (CGRect) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var startPoint: CGPoint?
-    @State private var currentRect: CGRect?   // in container coords
-
-    var body: some View {
-        NavigationStack {
             GeometryReader { geo in
-                let image = UIImage(contentsOfFile: imagePath)
-                let fitted = fittedRect(image: image?.size ?? .zero, in: geo.size)
-                ZStack {
-                    CHTheme.bg
-                    if let image {
-                        Image(uiImage: image).resizable().scaledToFit()
-                    }
-                    if let r = displayRect(in: fitted) {
-                        Rectangle().path(in: r).stroke(CHTheme.accent, lineWidth: 2)
-                        Rectangle().path(in: r).fill(CHTheme.accent.opacity(0.12))
+                let maxV = max(bins.max() ?? 1, 0.0001)
+                HStack(alignment: .bottom, spacing: 1) {
+                    ForEach(bins.indices, id: \.self) { i in
+                        Rectangle().fill(.white.opacity(0.75))
+                            .frame(height: geo.size.height * CGFloat(bins[i] / maxV))
                     }
                 }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 4)
-                        .onChanged { v in
-                            let s = startPoint ?? v.startLocation
-                            startPoint = s
-                            let r = CGRect(x: min(s.x, v.location.x), y: min(s.y, v.location.y),
-                                           width: abs(v.location.x - s.x), height: abs(v.location.y - s.y))
-                                .intersection(fitted)
-                            currentRect = r
-                            if fitted.width > 0, fitted.height > 0 {
-                                normalized = CGRect(x: (r.minX - fitted.minX) / fitted.width,
-                                                    y: (r.minY - fitted.minY) / fitted.height,
-                                                    width: r.width / fitted.width,
-                                                    height: r.height / fitted.height)
-                            }
-                        }
-                        .onEnded { _ in startPoint = nil }
-                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            .background(CHTheme.bg.ignoresSafeArea())
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Avbryt") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(applyLabel) { apply() }.disabled(currentRect == nil || (currentRect?.width ?? 0) < 8)
-                }
-                if allowReset {
-                    ToolbarItem(placement: .bottomBar) {
-                        Button("Tilbakestill", role: .destructive) { onReset(); dismiss() }
-                    }
-                }
-            }
+            .frame(width: 220, height: 56)
+            .padding(6)
+            .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         }
-        .chBranded()
+        .task(id: image) { compute() }
     }
 
-    private func fittedRect(image: CGSize, in container: CGSize) -> CGRect {
-        guard image.width > 0, image.height > 0 else { return CGRect(origin: .zero, size: container) }
-        let scale = min(container.width / image.width, container.height / image.height)
-        let w = image.width * scale, h = image.height * scale
-        return CGRect(x: (container.width - w) / 2, y: (container.height - h) / 2, width: w, height: h)
-    }
-
-    private func displayRect(in fitted: CGRect) -> CGRect? {
-        if let currentRect { return currentRect }
-        if let initialRect {
-            return CGRect(x: fitted.minX + initialRect.minX * fitted.width,
-                          y: fitted.minY + initialRect.minY * fitted.height,
-                          width: initialRect.width * fitted.width, height: initialRect.height * fitted.height)
+    private func compute() {
+        guard let cg = image.cgImage else { return }
+        let w = 96, h = 96
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var b = [Double](repeating: 0, count: 48)
+        var hi = 0.0, lo = 0.0
+        let n = Double(w * h)
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let l = 0.299 * Double(px[i]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i + 2])
+            b[min(47, Int(l / 256.0 * 48))] += 1
+            if l >= 252 { hi += 1 }
+            if l <= 3 { lo += 1 }
         }
-        return nil
+        bins = b.map { $0 / n }
+        clipHi = hi / n
+        clipLo = lo / n
     }
-
-    private func apply() {
-        guard let norm = normalized else { return }
-        onApply(norm.intersection(CGRect(x: 0, y: 0, width: 1, height: 1)))
-        dismiss()
-    }
-
-    /// Normalised rect (0…1, image space) computed live during the drag.
-    @State private var normalized: CGRect?
 }

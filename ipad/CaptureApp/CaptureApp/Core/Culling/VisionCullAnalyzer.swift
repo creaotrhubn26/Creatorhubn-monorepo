@@ -22,13 +22,16 @@ struct VisionCullAnalyzer: Sendable {
     /// helt setup (antrekk/bakgrunn). Heuristikk — finjuster på ekte shoot.
     var sceneThreshold: Double = 0.62
 
-    /// Analyser en hel batch (id + bilde) → rangert + dedupet resultat.
-    func analyze(_ items: [(id: String, image: CGImage)]) async -> CullingResult {
+    /// Analyser en hel batch (id + bilde + valgfri delt ``AssetAnalysis``) →
+    /// rangert + dedupet resultat. Når `analysis` er gitt brukes øyne/ansikts-
+    /// softness i rangeringen OG face-quality gjenbrukes derfra (hopper over et
+    /// redundant DetectFaceCaptureQuality-kall).
+    func analyze(_ items: [(id: String, image: CGImage, analysis: AssetAnalysis?)]) async -> CullingResult {
         var scores: [PhotoScore] = []
         var prints: [(String, FeaturePrintObservation)] = []
 
         for item in items {
-            scores.append(await score(item.image, id: item.id))
+            scores.append(await score(item.image, id: item.id, analysis: item.analysis))
             if let fingerprint = await featurePrint(item.image) {
                 prints.append((item.id, fingerprint))
             }
@@ -50,10 +53,23 @@ struct VisionCullAnalyzer: Sendable {
         return CullingResult(ranked: base.ranked, keep: base.keep, duplicates: base.duplicates, scenes: scenes)
     }
 
-    private func score(_ cg: CGImage, id: String) async -> PhotoScore {
+    private func score(_ cg: CGImage, id: String, analysis: AssetAnalysis?) async -> PhotoScore {
         let aesthetics = await aesthetics(cg)
-        let face = await bestFaceQuality(cg)
-        return PhotoScore(id: id, aesthetics: aesthetics.score, isUtility: aesthetics.isUtility, faceQuality: face)
+        // Gjenbruk face-quality fra den delte analysen (den kjørte alt et
+        // capture-quality-pass) → unngå et redundant Vision-kall. Ellers her.
+        let face: Float?
+        if let a = analysis {
+            face = a.primaryFace?.captureQuality.map(Float.init)
+        } else {
+            face = await bestFaceQuality(cg)
+        }
+        var score = PhotoScore(id: id, aesthetics: aesthetics.score,
+                               isUtility: aesthetics.isUtility, faceQuality: face)
+        if let a = analysis, let primary = a.primaryFace {
+            score.eyesOpen = primary.eyesOpen
+            score.faceSoft = primary.isSoft(globalSharpness: a.globalSharpness)
+        }
+        return score
     }
 
     private func aesthetics(_ cg: CGImage) async -> (score: Float, isUtility: Bool) {
@@ -85,7 +101,7 @@ final class CullingService {
     private(set) var isRunning = false
     var analyzer = VisionCullAnalyzer()
 
-    func cull(_ items: [(id: String, image: CGImage)]) async {
+    func cull(_ items: [(id: String, image: CGImage, analysis: AssetAnalysis?)]) async {
         isRunning = true
         defer { isRunning = false }
         result = await analyzer.analyze(items)

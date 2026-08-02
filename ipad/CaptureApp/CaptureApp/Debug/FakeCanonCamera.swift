@@ -21,6 +21,9 @@ final class FakeCanonCamera: @unchecked Sendable {
 
     private(set) var pollCount = 0
     private(set) var seenRequests: [String] = []
+    /// RÅ absoluteString per request — bevarer prosent-koding (`url.path` dekoder
+    /// `%3F`→`?`, som ellers ville MASKERT long-poll-enkodings-bugen i test).
+    private(set) var seenRawURLs: [String] = []
 
     init(initialAssetCount: Int = 2) {
         // Pre-populate N assets that already exist on the card at boot.
@@ -88,6 +91,7 @@ final class FakeCanonCamera: @unchecked Sendable {
 
         lock.lock()
         seenRequests.append(pathWithQuery)
+        seenRawURLs.append(url.absoluteString)
         lock.unlock()
 
         switch pathWithQuery {

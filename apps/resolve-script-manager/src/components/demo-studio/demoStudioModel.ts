@@ -177,6 +177,16 @@ export interface DemoScene {
   verifiedAt?: string;
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
+  /**
+   * Footage-kilde for scenen. 'capture' (default) = ekte opptak (web/Mac/iOS/
+   * simulator). 'broll' = AI-generert kinematisk klipp (Higgsfield/fal Seedance)
+   * — kroken/konteksten/outroen som et skjermopptak ikke kan gi. En broll-scene
+   * lagrer det genererte klippet i recordingPath, så den flyter gjennom nøyaktig
+   * samme eksport (mockupRenderVideo) som en fanget scene — ingen egen rørledning.
+   */
+  source?: 'capture' | 'broll';
+  /** Prompt brukt til å generere broll-klippet (for re-generering + sporbarhet). */
+  brollPrompt?: string;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
    *  capture-screenshot. Når tomt viser kortet en live mini-preview. */
   thumbnailDataUrl?: string;
@@ -312,6 +322,20 @@ export interface DemoProject {
    *  iPhone/iPad-preview og fallback, så portrett-enheter viser mobil-layouten
    *  i stedet for en nedskalert desktop-side. */
   scanShotsMobile?: Array<{ scrollPct: number; dataUrl: string }>;
+  /**
+   * «Product Brain» — dyp produkt-kontekst fra et FLERSIDES skann (forside +
+   * /features + /pricing + /about …), hentet ÉN gang og delt av ALLE AI-
+   * generatorene: manus, AI-regi, b-roll-prompter. Forankrer hele studioet i hva
+   * produktet FAKTISK er (funksjoner, målgruppe, differensiatorer) — ikke bare
+   * forsidens første avsnitt, og aldri gjetting ut fra navnet.
+   */
+  productBrain?: string;
+  /** URL-en Product Brain ble bygget for (invalideres hvis prosjekt-URL endres). */
+  productBrainUrl?: string;
+  /** Om Product Brain inkluderte vision av FAKTISKE app-skjermer (ofte innlogget)
+   *  — ikke bare markedsføringstekst. Lar den oppgraderes marketing-only → dyp
+   *  når brukeren har fanget ekte skjermer fra inne i produktet. */
+  productBrainHasScreens?: boolean;
   /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
    *  required action automatisk. Default 'manual'. */
   continueMode?: 'manual' | 'auto';

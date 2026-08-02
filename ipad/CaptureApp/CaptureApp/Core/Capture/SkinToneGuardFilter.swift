@@ -27,39 +27,71 @@ enum SkinToneGuardFilter {
     }
 
     /// Direkte styrke-inngang (for LearnedStyle-banen som ikke har en recipe).
-    static func apply(strength: Double, to image: CIImage) -> CIImage {
+    /// PER-ANSIKT + MASKERT: hvert ansikt måles og korrigeres UAVHENGIG (ulik hud/
+    /// lys → «Ansikt 1 vs Ansikt 2»), maskert til sitt eget område så bakgrunnen
+    /// ikke tones. Håndterer grupper/reception med flere personer riktig.
+    static func apply(strength: Double, to image: CIImage, faces: [CGRect]? = nil) -> CIImage {
         guard strength > 0 else { return image }
         let extent = image.extent
-        guard let faceRect = detectFaceRect(in: image, extent: extent) else { return image }
-        // Prøvetak KJERNEN av ansiktet (kinn/panne) — krymp rekt til 60 % så vi
-        // unngår hår/øyne/bakgrunn.
-        let inner = faceRect.insetBy(dx: faceRect.width * 0.2, dy: faceRect.height * 0.2)
-        guard let mean = areaAverage(of: image, in: inner.width > 2 ? inner : faceRect) else { return image }
+        // #5: bruk delte ansikts-rekter når de er gitt (LearnedStyle-kjeden), ellers
+        // detektér selv.
+        let faces = faces ?? detectFaces(in: image, extent: extent)
+        guard !faces.isEmpty else { return image }
 
-        let aStar = SkinToneMath.aStar(r: mean.r, g: mean.g, b: mean.b)
-        let bias = SkinToneMath.redGreenBias(aStar: aStar, intensity: strength)
-        guard abs(bias) > 0.001 else { return image }
+        var out = image
+        for faceRect in faces {
+            // Prøvetak KJERNEN (kinn/panne) — unngå hår/øyne/bakgrunn.
+            let inner = faceRect.insetBy(dx: faceRect.width * 0.2, dy: faceRect.height * 0.2)
+            guard let mean = areaAverage(of: out, in: inner.width > 2 ? inner : faceRect) else { continue }
+            let aStar = SkinToneMath.aStar(r: mean.r, g: mean.g, b: mean.b)
+            let bias = SkinToneMath.redGreenBias(aStar: aStar, intensity: strength)
+            guard abs(bias) > 0.001 else { continue }
 
-        // Rød↔grønn-akse: +bias hever a* (rød opp, grønn ned) — motbalansert så
-        // luma holdes ~konstant. Blå urørt (b*/gulhet bevart).
-        let m = CIFilter.colorMatrix()
-        m.inputImage = image
-        m.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
-        m.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
-        m.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
-        m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
-        m.biasVector = CIVector(x: CGFloat(bias), y: CGFloat(-bias), z: 0, w: 0)
-        return m.outputImage?.cropped(to: extent) ?? image
+            // Rød↔grønn-akse (motbalansert → luma bevart, blå/gulhet urørt).
+            let m = CIFilter.colorMatrix()
+            m.inputImage = out
+            m.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
+            m.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
+            m.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
+            m.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
+            m.biasVector = CIVector(x: CGFloat(bias), y: CGFloat(-bias), z: 0, w: 0)
+            guard let corrected = m.outputImage else { continue }
+            // Bland kun inn i DETTE ansiktets myke maske.
+            guard let mask = faceMask(extent: extent, faceRect: faceRect) else { continue }
+            let blend = CIFilter.blendWithMask()
+            blend.inputImage = corrected
+            blend.backgroundImage = out
+            blend.maskImage = mask
+            out = blend.outputImage?.cropped(to: extent) ?? out
+        }
+        return out
     }
 
     // MARK: - Deteksjon + prøvetaking (samme primitiver som SkinToneUnifyFilter)
 
-    private static func detectFaceRect(in image: CIImage, extent: CGRect) -> CGRect? {
+    private static func detectFaces(in image: CIImage, extent: CGRect) -> [CGRect] {
         let detector = CIDetector(
             ofType: CIDetectorTypeFace, context: nil,
             options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-        guard let first = detector?.features(in: image).first as? CIFaceFeature else { return nil }
-        return first.bounds.intersection(extent)
+        return (detector?.features(in: image) ?? [])
+            .compactMap { ($0 as? CIFaceFeature)?.bounds.intersection(extent) }
+            .filter { $0.width > 2 && $0.height > 2 }
+    }
+
+    /// Myk ansikts-/hals-oval (hvit inni → svart ute) for maskert korreksjon.
+    private static func faceMask(extent: CGRect, faceRect: CGRect) -> CIImage? {
+        let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: extent)
+        let g = CIFilter.radialGradient()
+        g.center = CGPoint(x: faceRect.midX, y: faceRect.midY)
+        g.radius0 = Float(min(faceRect.width, faceRect.height) * 0.5)
+        g.radius1 = Float(max(faceRect.width, faceRect.height) * 0.85)
+        g.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 1)
+        g.color1 = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        guard let grad = g.outputImage?.cropped(to: extent) else { return nil }
+        let comp = CIFilter.sourceOverCompositing()
+        comp.inputImage = grad
+        comp.backgroundImage = black
+        return comp.outputImage?.cropped(to: extent)
     }
 
     private static func areaAverage(of image: CIImage, in rect: CGRect) -> (r: CGFloat, g: CGFloat, b: CGFloat)? {

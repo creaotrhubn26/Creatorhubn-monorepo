@@ -306,13 +306,16 @@ export async function generateSceneScript(params: {
   meta: ScriptMeta;
   /** Skjermbilde (data-URL) av scenen → Claude vision skriver presist det som vises. */
   screenshot?: string;
+  /** Faktisk nettside-innhold (tittel/beskrivelse/tekst) — forankrer manuset i
+   *  HVA produktet faktisk er, så AI-en ikke gjetter ut fra navnet/URL-en. */
+  siteContext?: string;
 }): Promise<GeneratedScript> {
-  const { url, demoType, scene, meta, screenshot } = params;
+  const { url, demoType, scene, meta, screenshot, siteContext } = params;
   const user = `Produkt-URL: ${url}
 Demo-type: ${demoType}
 Scene: "${scene.title}" (scene ${scene.index + 1}), enhet: ${scene.device}
 Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
-
+${siteContext ? `\nFAKTISK NETTSIDE-INNHOLD (dette er hva produktet ER — bruk dette, ikke antakelser fra navnet):\n${siteContext}\n` : ''}
 Skriv manus for DENNE scenen. Svar med JSON:
 {
   "narration": "hva som sies (1-3 setninger, ${meta.length})",
@@ -325,8 +328,11 @@ Skriv manus for DENNE scenen. Svar med JSON:
   const content: string | ClaudeContentBlock[] = img
     ? [img, { type: 'text', text: user }]
     : user;
+  const grounding = ' Skriv manuset UTELUKKENDE ut fra det faktiske nettside-innholdet' +
+    (img ? ' og skjermbildet du ser' : '') +
+    '. IKKE anta hva produktet gjør ut fra navnet eller URL-en — hvis navnet antyder én ting men innholdet viser noe annet, følg ALLTID innholdet.';
   const raw = await claudeProxyService.send({
-    systemPrompt: SYSTEM + (img ? ' Du SER et skjermbilde av denne scenen — beskriv presist det som faktisk vises på skjermen.' : ''),
+    systemPrompt: SYSTEM + grounding + (img ? ' Du SER et skjermbilde av denne scenen — beskriv presist det som faktisk vises på skjermen.' : ''),
     messages: [{ role: 'user', content }],
     maxTokens: 700,
   });
@@ -451,6 +457,44 @@ export async function fetchSiteContext(url: string): Promise<string> {
 }
 
 /**
+ * Destillér en DYP «Product Brain» fra markedsføringstekst + FAKTISKE app-skjermer
+ * (vision). Skjermene er ofte skjermer INNE i produktet (etter innlogging), så
+ * dette fanger hva produktet virkelig gjør — ikke bare hva landingssiden påstår.
+ * Ett Claude-vision-kall; kjøres én gang og caches på prosjektet.
+ */
+export async function synthesizeProductBrain(params: {
+  url: string;
+  marketingContext: string;
+  /** data-URL-er av ekte produkt-skjermer (scene-thumbnails / scan). */
+  screenshots: string[];
+}): Promise<string> {
+  const { url, marketingContext, screenshots } = params;
+  const imgs = screenshots.slice(0, 6).map(imageBlock).filter((b): b is ClaudeContentBlock => b !== null);
+  const textPart = `Demo-URL (det SPESIFIKKE produktet vi lager demo for): ${url}
+${marketingContext ? `Markedsføring (offentlige sider):\n${marketingContext}\n` : ''}
+Du får ${imgs.length} FAKTISKE app-skjermer (ofte skjermer INNE i appen, etter innlogging).
+
+VIKTIG — hold TO nivåer, ikke bland dem sammen:
+1. DET SPESIFIKKE PRODUKTET på denne URL-en/forsiden, ved navn slik det står på siden — DETTE er hva demoen handler om, og det du skal forankre manuset i.
+2. Hvis skjermene/appen viser at det er DEL AV en større plattform/økosystem, noter den moder-plattformen som KONTEKST — men IKKE bytt ut det spesifikke produktet med moder-plattformen. En modul i en større suite er fortsatt sin egen ting.
+
+Svar som kompakt norsk punktliste (maks ~220 ord):
+- Produkt (spesifikt, ved navn fra siden): … — hva det er (én setning)
+- Del av plattform (hvis relevant, ellers utelat): …
+- Kjernefunksjoner (hva brukeren FAKTISK kan gjøre — fra skjermene, ikke bare påstander): …
+- Nøkkel-skjermer / flyter du ser: …
+- Målgruppe: …
+Dette blir «Product Brain» som forankrer alt manus og all regi i DET SPESIFIKKE produktet.`;
+  const content: string | ClaudeContentBlock[] = imgs.length ? [...imgs, { type: 'text', text: textPart }] : textPart;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du destillerer en dyp, konkret produkt-forståelse fra FAKTISKE app-skjermer + markedsføring. Forankre i DET SPESIFIKKE produktet på demo-URL-en (navnet fra siden) — ikke generaliser til moder-plattformen selv om app-chromet viser en større suite; nevn suiten kun som kontekst. Beskriv det du SER (funksjoner, flyter), ikke bare påstander. Svar kompakt, ingen forklaring rundt.',
+    messages: [{ role: 'user', content }],
+    maxTokens: 750,
+  });
+  return raw.trim();
+}
+
+/**
  * AI self-healing: når en scenes mål-element ikke lenger finnes (brutt selector),
  * la Claude velge elementet i dagens katalog som best matcher den opprinnelige
  * intensjonen. Returnerer katalog-indeks, eller null hvis ingen passer.
@@ -520,6 +564,75 @@ Svar med KUN ett JSON-objekt:
       sceneIndex: typeof i.sceneIndex === 'number' ? i.sceneIndex : undefined,
     })).filter((i) => i.message),
   };
+}
+
+/** Ett AI-forslag om en kinematisk (AI-generert) scene å flette inn i demoen. */
+export interface CinematicSuggestion {
+  /** Hvor scenen hører hjemme. 'after' bruker afterIndex (0-basert scene-indeks). */
+  position: 'intro' | 'outro' | 'after';
+  afterIndex?: number;
+  /** Kort norsk tittel på scenen. */
+  title: string;
+  /** Engelsk Seedance-prompt (kroken/konteksten/overgangen/outroen). */
+  prompt: string;
+  /** Norsk voiceover for scenen (kan være tom for ren b-roll). */
+  narration: string;
+  /** Kort begrunnelse (hvorfor akkurat her). */
+  reason: string;
+}
+
+/**
+ * Kinematisk regi: Director ser HELE storyboardet + produkt-konteksten og
+ * foreslår hvor AI-generert footage (Higgsfield/Seedance) styrker demoen —
+ * krok, menneskelig kontekst, overgang, outro. Ekte opptak er beviset; disse er
+ * innrammingen. Returnerer forslag (ikke generert ennå) som brukeren kan flette
+ * inn og generere med kreditt-vokteren.
+ */
+export async function suggestCinematicScenes(params: {
+  url: string;
+  demoType: DemoType;
+  goal?: string;
+  meta: ScriptMeta;
+  scenes: DemoScene[];
+  /** Dyp produkt-kontekst (Product Brain) — så prompt-ene forankres i hva
+   *  produktet faktisk er, ikke gjettes ut fra navnet. */
+  siteContext?: string;
+}): Promise<CinematicSuggestion[]> {
+  const { url, demoType, goal, meta, scenes, siteContext } = params;
+  const sceneList = scenes.map((s, i) => `${i}: "${s.title}" (${s.source === 'broll' ? 'AI-klipp' : 'ekte opptak'}) — ${(s.narration || '(tomt)').slice(0, 80)}`).join('\n');
+  const user = `Du regisserer en produktdemo. De ekte opptakene er BEVISET; du legger til AI-generert kinematisk footage der det løfter filmen — men bare der det faktisk hjelper (ikke overdriv, ekte skjermer skal dominere).
+
+Produkt-URL: ${url}
+Demo-type: ${demoType}
+${goal ? `Konverteringsmål: ${goal}\n` : ''}Tone: ${meta.tone} · Publikum: ${meta.audience}
+${siteContext ? `\nHVA PRODUKTET FAKTISK ER (bruk dette — ikke gjett ut fra navnet):\n${siteContext}\n` : ''}
+Nåværende storyboard:
+${sceneList}
+
+Foreslå 1–4 kinematiske scener (krok/etablering/overgang/outro) som styrker demoen. For hver:
+- prompt: en ENGELSK Seedance-prompt (kinematisk, konkret, produktfilm-kvalitet) forankret i HVA produktet er.
+- narration: kort NORSK voiceover (kan være "" for ren b-roll).
+- position: "intro" (start), "outro" (slutt) eller "after" med afterIndex = scene-indeksen den skal ligge etter.
+Svar med KUN ett JSON-objekt:
+{ "suggestions": [ { "position": "intro|outro|after", "afterIndex": <tall når after>, "title": "kort norsk tittel", "prompt": "engelsk seedance-prompt", "narration": "norsk voiceover eller tom", "reason": "kort hvorfor" } ] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en kresen produktfilm-regissør. Du legger bare til AI-footage der det virkelig hjelper, aldri som fyll. Du svarer ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 1400,
+  });
+  const parsed = extractJson<{ suggestions?: Array<Partial<CinematicSuggestion>> }>(raw);
+  if (!parsed?.suggestions) return [];
+  const pos = (p: unknown): CinematicSuggestion['position'] => (p === 'intro' || p === 'outro' || p === 'after' ? p : 'intro');
+  return parsed.suggestions
+    .filter((s) => (s.prompt || '').trim())
+    .map((s) => ({
+      position: pos(s.position),
+      afterIndex: typeof s.afterIndex === 'number' ? s.afterIndex : undefined,
+      title: (s.title || 'Kinematisk klipp').trim(),
+      prompt: (s.prompt || '').trim(),
+      narration: (s.narration || '').trim(),
+      reason: (s.reason || '').trim(),
+    }));
 }
 
 /** Oversett manus-linjer for voiceover (Resolve-stemmer er engelske). Beholder

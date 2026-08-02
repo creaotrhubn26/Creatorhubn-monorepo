@@ -437,6 +437,7 @@ struct LiveCaptureView: View {
                         recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
                         recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
                         analysis: model.showHUD ? model.focusedAnalysis : nil,
+                        faceAnalysis: model.showHUD ? model.focusedAssetAnalysis : nil,
                         aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
                         aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
                         showMagic: model.showMagic,
@@ -1308,6 +1309,7 @@ private struct HeroStage: View {
     let recipe: MagicRecipe
     let recipeSource: LiveCaptureModel.RecipeSource
     let analysis: ImageAnalysis?
+    let faceAnalysis: AssetAnalysis?
     let aiAnalysis: BackendPhotoAnalysis?
     let aiNotesDismissed: Bool
     let showMagic: Bool
@@ -1345,7 +1347,7 @@ private struct HeroStage: View {
                         }
                         .overlay(alignment: .topLeading) {
                             if let analysis {
-                                HUDOverlay(analysis: analysis)
+                                HUDOverlay(analysis: analysis, faceAnalysis: faceAnalysis)
                                     .padding(.top, 28)
                                     .padding(.leading, 36)
                                     .allowsHitTesting(false)
@@ -2945,6 +2947,9 @@ private struct ColorLabelControls: View {
 /// or underexposed shadows without leaving the shooting screen.
 private struct HUDOverlay: View {
     let analysis: ImageAnalysis
+    /// Samlet per-bilde-analyse — driver ansikts-varsler (soft/lukkede øyne) og
+    /// motiv-klipping. nil = ikke ferdig analysert enda.
+    var faceAnalysis: AssetAnalysis?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2953,6 +2958,12 @@ private struct HUDOverlay: View {
                 .padding(8)
                 .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.1), lineWidth: 0.5))
+
+            // De varslene fotografen faktisk kan handle på MENS bildet kan tas om
+            // igjen: ansiktet ute av fokus, lukkede øyne, utbrent MOTIV.
+            ForEach(faceWarnings, id: \.self) { warning in
+                CaptureWarningChip(warning: warning)
+            }
 
             if analysis.highlightClipping > 0.005 || analysis.shadowClipping > 0.005 {
                 ClippingBadges(highlight: analysis.highlightClipping, shadow: analysis.shadowClipping)
@@ -2966,6 +2977,59 @@ private struct HUDOverlay: View {
                 SharpnessIndicator(reading: sharpness)
             }
         }
+    }
+
+    /// Leveranse-kritiske ansikts-/motiv-advarsler, avledet av `faceAnalysis`.
+    private var faceWarnings: [CaptureWarning] {
+        guard let a = faceAnalysis else { return [] }
+        var out: [CaptureWarning] = []
+        if let face = a.primaryFace {
+            if face.isSoft(globalSharpness: a.globalSharpness) { out.append(.faceSoft) }
+            if face.eyesOpen == false { out.append(.eyesClosed) }
+        }
+        if let sub = a.subjectHighlightClip, sub > 0.02 { out.append(.subjectClipped) }
+        return out
+    }
+}
+
+/// De handlingsbare on-set-advarslene — separate fra histogram/klipp fordi de
+/// gjelder MOTIVET spesifikt (det eneste fotografen virkelig trenger å reagere på
+/// mens hen fortsatt står på location).
+enum CaptureWarning: Hashable {
+    case faceSoft, eyesClosed, subjectClipped
+
+    var label: String {
+        switch self {
+        case .faceSoft:       return "Ansikt uskarpt"
+        case .eyesClosed:     return "Lukkede øyne"
+        case .subjectClipped: return "Motiv utbrent"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .faceSoft:       return "camera.metering.spot"
+        case .eyesClosed:     return "eye.slash"
+        case .subjectClipped: return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+private struct CaptureWarningChip: View {
+    let warning: CaptureWarning
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: warning.icon)
+                .font(.caption2.weight(.bold))
+            Text(warning.label)
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Color.orange.opacity(0.9), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 0.5))
     }
 }
 
@@ -4950,6 +5014,9 @@ final class LiveCaptureModel {
     }
     var assets: [Asset] = [] {
         didSet {
+            // Ved teardown settes `assets = []` ETTER at store/backend/kamera er
+            // nilet — ikke re-fyr planleggings-/fokus-hooks mot nilede avhengigheter.
+            guard !isTearingDown else { return }
             // Follow latest unless the user has pinned focus to a specific
             // asset. Pinning is a UX affordance for reviewing while shooting
             // continues — without it every new capture would steal focus.
@@ -4981,6 +5048,9 @@ final class LiveCaptureModel {
             // then shows the photographer the actual demosaic, not
             // Canon's camera-baked JPEG with display-pipeline magic.
             scheduleRAWPreviewRenders(previous: oldValue)
+            // P2 (E4): auto-påfør capture-edit-policyen (sync-forrige / preset) på
+            // nye preview-klare bilder. Idempotent — rører aldri manuelle edits.
+            applyCaptureEditPolicyForNewPreviews(previous: oldValue)
         }
     }
     var errorMessage: String?
@@ -5031,6 +5101,35 @@ final class LiveCaptureModel {
         compareAnchorAssetId = nil
     }
 
+    /// P2 (E4): capture-edit-policy — auto-påføres nye bilder når de lander.
+    /// Persisteres per sesjon; endring lagres umiddelbart.
+    private(set) var capturePolicy: CaptureEditPolicy = .none
+    func setCapturePolicy(_ policy: CaptureEditPolicy) {
+        capturePolicy = policy
+        if let sid = currentSessionId { CaptureEditPolicyStore.save(sid, policy) }
+    }
+
+    /// Auto-påfør capture-edit-policyen på nye PREVIEW-klare bilder (E4). Kalles
+    /// fra `assets.didSet`. Idempotent — skriver aldri over en manuell edit, så
+    /// en reconnect/re-emit ikke tramper på fotografens arbeid. «Forrige bilde»
+    /// er elementet før i den captureTime-sorterte lista (ekte rekkefølge fra P1).
+    private func applyCaptureEditPolicyForNewPreviews(previous: [Asset]) {
+        guard capturePolicy.isActive else { return }
+        let hadPreview: [UUID: Bool] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.previewKey != nil) })
+        for (idx, asset) in assets.enumerated() {
+            // Kun bilder som NETTOPP ble preview-klare (var det ikke før).
+            guard asset.previewKey != nil, hadPreview[asset.id] != true else { continue }
+            let previousAsset = idx > 0 ? assets[idx - 1] : nil
+            let edit = CaptureEditPolicyEngine.editToApply(
+                policy: capturePolicy,
+                existingEdit: RedigeringEditStore.load(asset.id),
+                previousEdit: previousAsset.flatMap { RedigeringEditStore.load($0.id) },
+                presetLookup: { name in RedigeringModel.presets.first { $0.0 == name }?.1 })
+            if let edit { RedigeringEditStore.save(asset.id, edit) }
+        }
+    }
+
     /// Kick off a background analysis pass whenever the focused asset
     /// changes. Uses the UNenhanced preview so HUD reports the actual
     /// camera capture, not the post-Magic result.
@@ -5041,15 +5140,43 @@ final class LiveCaptureModel {
               FileManager.default.fileExists(atPath: key)
         else {
             focusedAnalysis = nil
+            focusedAssetAnalysis = nil
             return
         }
         let url = URL(fileURLWithPath: key)
         let analyser = self.analyser
+        let assetAnalyzer = self.assetAnalyzer
         analysisTask = Task { [weak self] in
-            let result = await analyser.analyze(imageURL: url)
+            // Histogram-/klipp-HUD (rask) og den samlede per-bilde-analysen
+            // (ansikter/motiv-klipp/skarphet) kjøres i parallell.
+            async let hud = analyser.analyze(imageURL: url)
+            async let full = assetAnalyzer.analyze(imageURL: url)
+            let (result, assetResult) = await (hud, full)
             guard !Task.isCancelled, self?.focusedAssetId == asset.id else { return }
-            await MainActor.run { self?.focusedAnalysis = result }
+            await MainActor.run {
+                self?.focusedAnalysis = result
+                self?.focusedAssetAnalysis = assetResult
+            }
+            if let assetResult { await self?.persistAnalysis(assetResult, for: asset.id) }
         }
+    }
+
+    /// Persister den samlede analysen inline på asset-radens signals (JSONB) —
+    /// måles én gang, tilgjengelig for cull/Kvalitetssjekk/synk lenge etter at
+    /// HUD-et er lukket. Oppdaterer også in-memory-asseten så en re-render er
+    /// konsistent. Feiler stille (analyse er en berikelse, ikke en blokker).
+    func persistAnalysis(_ analysis: AssetAnalysis, for id: UUID) async {
+        guard let idx = assets.firstIndex(where: { $0.id == id }) else { return }
+        var signals = assets[idx].signals
+        guard signals.analysis != analysis else { return }
+        signals.analysis = analysis
+        // Fyll også de eksisterende cull-signalene fra samme måling (én kilde).
+        if let face = analysis.primaryFace {
+            signals.eyesOpen = face.eyesOpen ?? signals.eyesOpen
+        }
+        signals.faceCount = analysis.faces.count
+        assets[idx].signals = signals
+        try? await store?.updateAssetSignals(id: id, signals: signals)
     }
 
     var canShoot: Bool {
@@ -5064,7 +5191,13 @@ final class LiveCaptureModel {
     private var store: SessionStore?
     private var currentSessionId: UUID?
     private let analyser = ImageAnalyser()
+    /// Samlet per-bilde-analyse (ansikter/motiv-klipp/skarphet/scene) — kjøres
+    /// sammen med histogram-HUD-en, persisteres på signals, deles av cull/QC.
+    private let assetAnalyzer = AssetAnalyzer()
     private var analysisTask: Task<Void, Never>?
+    /// Sann mens ``teardown`` rydder — `assets.didSet`-kjeden (AI-/RAW-planlegging,
+    /// fokus) skal ikke re-fyre mot alt-nilede avhengigheter ved `assets = []`.
+    private var isTearingDown = false
     /// Configured at connect time from UserDefaults. Nil = no backend, in
     /// which case the on-device pipeline is the only source of truth and
     /// no Claude Vision call is ever attempted.
@@ -5079,6 +5212,9 @@ final class LiveCaptureModel {
     /// On-set coaching signals for the currently focused asset. Cleared
     /// when focus changes; refreshed in background. Nil = no reading yet.
     var focusedAnalysis: ImageAnalysis?
+    /// Samlet per-bilde-analyse for fokusert asset (ansikts-varsler, motiv-klipp).
+    /// Cleared ved fokusbytte; oppdateres i bakgrunn parallelt med `focusedAnalysis`.
+    var focusedAssetAnalysis: AssetAnalysis?
     var showHUD: Bool = true
     /// Slice 4 + 7 — auto-clean mode picker. `.off` does nothing.
     /// `.autoClean` (Slice 4) auto-removes every detected distraction
@@ -5443,6 +5579,9 @@ final class LiveCaptureModel {
             self.cameraSession = camera
             self.downloadDirectory = tempDir
             self.currentSessionId = dbSession.id
+            // P2 (E4): last capture-edit-policyen for økten (persistert per sesjon)
+            // — valget overlever restart/reconnect.
+            self.capturePolicy = CaptureEditPolicyStore.load(dbSession.id)
             self.sessionName = dbSession.name
             if #available(iOS 16.1, *) {
                 ShootActivityManager.shared.start(sessionName: dbSession.name)
@@ -7273,6 +7412,12 @@ final class LiveCaptureModel {
     }
 
     private func teardown() async {
+        isTearingDown = true
+        defer { isTearingDown = false }
+        // Fang presence-avhengighetene FØR de nulles — broadcasten under leste dem
+        // ETTER nulling (statisk død kode), så peers slapp oss først ved 5-min-timeout.
+        let leavingBackend = backendClient
+        let leavingSessionId = currentSessionId
         if let cameraSession {
             await cameraSession.stop()
         }
@@ -7281,6 +7426,10 @@ final class LiveCaptureModel {
         for task in aiAnalyseTasks.values { task.cancel() }
         aiAnalyseTasks.removeAll()
         aiAnalyseDispatched.removeAll()
+        // Bakgrunns-analyse (histogram + samlet AssetAnalysis) — ellers lever
+        // compute-tasken videre etter frakobling (lekkasje per økt).
+        analysisTask?.cancel()
+        analysisTask = nil
         backendClient = nil
         deliveryService = nil
         lastDelivery = nil
@@ -7292,6 +7441,13 @@ final class LiveCaptureModel {
         aiAnalyses.removeAll()
         recipeSource.removeAll()
         dismissedNoteAssets.removeAll()
+        // Per-asset-tilstand som ellers vokser monotont over en heldags-økt
+        // (modellen er langlivet på tvers av connect/disconnect-sykluser).
+        autoCleanDispatched.removeAll()
+        autoCheckedShotAssetIds.removeAll()
+        tunedRecipes.removeAll()
+        autoCheckLog.removeAll()
+        voiceMemoTranscripts.removeAll()
         if let downloadDirectory {
             try? FileManager.default.removeItem(at: downloadDirectory)
         }
@@ -7319,9 +7475,10 @@ final class LiveCaptureModel {
         }
         realtimeService = nil
         realtimeObserverId = nil
-        // Phase 5.3 — fire presence-leave so peer iPads drop us
-        // immediately rather than waiting for the 5-min stale-cleanup.
-        if let backend = backendClient, let sessionId = currentSessionId {
+        // Phase 5.3 — fire presence-leave so peer iPads drop us immediately
+        // rather than waiting for the 5-min stale-cleanup. Bruker de FANGEDE
+        // verdiene (backendClient/currentSessionId er alt nilet på dette punktet).
+        if let backend = leavingBackend, let sessionId = leavingSessionId {
             Task { [backend, sessionId] in
                 try? await backend.broadcastPresence(
                     sessionId: sessionId, joining: false, displayName: nil,

@@ -50,6 +50,20 @@ export const GEN_MODELS: Record<string, GenModel> = {
     imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
+  // Seedance v1 Pro i2v — den PRODUKSJONS-BEVISTE stien (samme som ad-film-Python).
+  // 🔑 Har `fal-ai/`-prefiks (queue.fal.run krever eier-prefiks); uten den svarer
+  // fal 403. Brukes av Post Agent Demo Studio sin /ai/generate-video-rute.
+  "seedance-i2v-pro": {
+    key: "seedance-i2v-pro",
+    label: "Seedance v1 Pro — bilde→video",
+    falPath: "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+    kind: "image-to-video",
+    provider: "bytedance",
+    estCostUsd: 0.5,
+    costPerSecondUsd: 0.12,
+    imageField: "image_url", outputField: "video",
+    sendsPersonalData: true,
+  },
   // Photo enhancer (GFPGAN/Real-ESRGAN) — kjører på VÅR infra (CPU/RunPod-GPU),
   // ikke fal. «Kost» = compute; margin via påslag. Egen kø (enqueuePhotoEnhancer…).
   "photo-enhance": {
@@ -83,6 +97,19 @@ export const GEN_MODELS: Record<string, GenModel> = {
     provider: "beeble",
     estCostUsd: 0.8,            // ~240 frames @720p ≈ 8×$0.10
     costPerSecondUsd: 0.08,    // ~24fps/30×$0.10
+    sendsPersonalData: true,
+  },
+  // Higgsfield DoP — bilde→video med kinematisk kamera-bevegelse. Egen provider
+  // (ikke fal), samme async-jobb-mønster som Seedance/Beeble.
+  "higgsfield-dop-i2v": {
+    key: "higgsfield-dop-i2v",
+    label: "Higgsfield DoP — bilde→video (kinematisk)",
+    falPath: "", // bruker higgsfield-helperne, ikke fal
+    kind: "image-to-video",
+    provider: "higgsfield",
+    estCostUsd: 0.5,
+    costPerSecondUsd: 0.10,
+    imageField: "input_images", outputField: "video",
     sendsPersonalData: true,
   },
 };
@@ -122,6 +149,47 @@ export async function beeblePoll(generationId: string): Promise<{ status: string
     if (raw === "failed" || raw === "error" || raw === "canceled" || raw === "cancelled") return { status: "ERROR", error: j?.error?.message || raw };
     return { status: raw ? raw.toUpperCase() : "IN_PROGRESS" };
   } catch (e: any) { return { status: "ERROR", error: `beeble_poll_threw:${e?.message || e}` }; }
+}
+
+// ─── Higgsfield DoP-klient (bilde→video, kinematisk kamera) ──────────────────
+// Verifisert skjema (offisiell SDK v2, https://platform.higgsfield.ai):
+//   POST /v1/image2video/dop  m/ Authorization: Key KEY_ID:KEY_SECRET
+//   body { input: { model, prompt, input_images:[{type:'image_url',image_url}] } }
+//   submit → { request_id, status_url }; poll status_url → jobs[0].results.raw.url
+// HIGGSFIELD_API_KEY settes som "KEY_ID:KEY_SECRET" (samme streng SDK-en bruker).
+const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
+
+export function higgsfieldConfigured(): boolean { return !!process.env.HIGGSFIELD_API_KEY; }
+
+export async function higgsfieldSubmit(opts: { imageUrl: string; prompt: string; model?: string }): Promise<{ id?: string; statusUrl?: string; error?: string }> {
+  const key = process.env.HIGGSFIELD_API_KEY;
+  if (!key) return { error: "higgsfield_not_configured" };
+  try {
+    const body = { input: { model: opts.model || "dop-turbo", prompt: opts.prompt, input_images: [{ type: "image_url", image_url: opts.imageUrl }] } };
+    const r = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/dop`, { method: "POST", headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { error: j?.error?.message || j?.detail || `higgsfield_${r.status}` };
+    const id = j.request_id || j.requestId || j.id;
+    const statusUrl = j.status_url || j.statusUrl || (id ? `${HIGGSFIELD_BASE}/requests/${id}/status` : undefined);
+    return id ? { id, statusUrl } : { error: "higgsfield_no_id" };
+  } catch (e: any) { return { error: `higgsfield_submit_threw:${e?.message || e}` }; }
+}
+
+export async function higgsfieldPoll(statusUrlOrId: string): Promise<{ status: string; outputUrl?: string | null; error?: string }> {
+  const key = process.env.HIGGSFIELD_API_KEY;
+  if (!key) return { status: "ERROR", error: "higgsfield_not_configured" };
+  try {
+    const url = statusUrlOrId.startsWith("http") ? statusUrlOrId : `${HIGGSFIELD_BASE}/requests/${statusUrlOrId}/status`;
+    const r = await fetch(url, { headers: { Authorization: `Key ${key}` } });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { status: "ERROR", error: j?.error?.message || `higgsfield_${r.status}` };
+    const jobs = Array.isArray(j.jobs) ? j.jobs : [];
+    const raw = String(j.status || jobs[0]?.status || "").toLowerCase();
+    const out = jobs[0]?.results?.raw?.url || jobs[0]?.results?.min?.url || j.results?.raw?.url || j.output?.url || j.video?.url || null;
+    if (raw === "completed" || raw === "succeeded" || raw === "success" || out) return { status: "COMPLETED", outputUrl: out };
+    if (raw === "failed" || raw === "error" || raw === "nsfw" || raw === "canceled" || raw === "cancelled") return { status: "ERROR", error: j?.error?.message || raw };
+    return { status: raw ? raw.toUpperCase() : "IN_PROGRESS" };
+  } catch (e: any) { return { status: "ERROR", error: `higgsfield_poll_threw:${e?.message || e}` }; }
 }
 
 // Hent ut resultat-URL fra en fal-respons (bilde vs video).

@@ -153,12 +153,14 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [animDuration, setAnimDuration] = useState(5);
   const [animJob, setAnimJob] = useState<any | null>(null);
   const [animBusy, setAnimBusy] = useState(false);
-  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setSuggestions([]); setAnimOpen(true); };
+  // Video-leverandør: Seedance 2.0 (fal, standard) vs Higgsfield DoP (kinematisk).
+  const [videoModel, setVideoModel] = useState<'seedance' | 'higgsfield'>('seedance');
+  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setVideoModel('seedance'); setSuggestions([]); setAnimOpen(true); };
   const startAnimate = async () => {
     if (!sel?.id || !animPrompt.trim() || animBusy) return;
     setAnimBusy(true); setAnimJob({ status: 'queued' });
     try {
-      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-to-video`, { method: 'POST', body: { assetId: sel.id, prompt: animPrompt.trim(), duration: animDuration } });
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-to-video`, { method: 'POST', body: { assetId: sel.id, prompt: animPrompt.trim(), duration: animDuration, model: videoModel === 'higgsfield' ? 'higgsfield' : 'seedance-2-i2v' } });
       if (!r?.jobId) throw new Error('Kunne ikke starte');
       // Video tar minutter — poll tålmodig (~4 min), ellers fortsetter i bakgrunnen.
       for (let i = 0; i < 48; i++) {
@@ -485,6 +487,14 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             {suggestions.length > 0 && <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
               {suggestions.map((q) => <Box key={q} onClick={() => setAnimPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
             </Stack>}
+            {aiCfg?.higgsfieldConfigured && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography sx={{ fontSize: 12, color: ws.textDim }}>Motor:</Typography>
+                {([['seedance', 'Seedance 2.0'], ['higgsfield', 'Higgsfield DoP']] as const).map(([v, lbl]) => (
+                  <Box key={v} onClick={() => setVideoModel(v)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: videoModel === v ? 700 : 500, color: videoModel === v ? ws.accentContrast : ws.textDim, bgcolor: videoModel === v ? ws.accent : 'rgba(255,255,255,0.05)' }}>{lbl}</Box>
+                ))}
+              </Stack>
+            )}
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontSize: 12, color: ws.textDim }}>Lengde:</Typography>
               {[4, 5, 8, 10].map((d) => <Box key={d} onClick={() => setAnimDuration(d)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: animDuration === d ? 700 : 500, color: animDuration === d ? ws.accentContrast : ws.textDim, bgcolor: animDuration === d ? ws.accent : 'rgba(255,255,255,0.05)' }}>{d}s</Box>)}

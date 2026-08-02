@@ -74,6 +74,20 @@ export async function executeSetupAgentTool(
       return `Audit av ${url}: ${parts.join(" · ")}. Full detalj i Research-fanen («Finn ut alt om kunden»).`;
     }
 
+    case "run_brand_scan": {
+      const url = str(input.url) ?? str(input.website_url);
+      if (!url) throw new Error("Merkevare-scannen mangler URL.");
+      if (!projectId) throw new Error("Mangler prosjektkontekst for merkevare-scan.");
+      const r = await post(`/api/role-room/projects/${projectId}/brand-scan`, { url });
+      if (!r.ok) throw new Error(`Merkevare-scan feilet (${r.data?.error ?? r.status}).`);
+      const b = r.data?.brandKit?.effective as
+        | { businessName?: string; toneOfVoice?: string; colors?: { primary?: string; accent?: string } }
+        | undefined;
+      return b
+        ? `Merkevaren skannet: ${b.businessName ?? "(uten navn)"} — tone «${b.toneOfVoice}», farger ${b.colors?.primary}/${b.colors?.accent}. Rediger i Business DNA / Brand-kit.`
+        : `Merkevare-scan kjørt for ${url}.`;
+    }
+
     case "generate_event_plan": {
       const goals = strArr(input.goals);
       if (goals.length === 0) throw new Error("Event-planen mangler mål.");

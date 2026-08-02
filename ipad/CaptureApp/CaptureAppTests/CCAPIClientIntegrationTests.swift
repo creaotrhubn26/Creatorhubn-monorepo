@@ -67,6 +67,21 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         XCTAssertNil(response.addedcontents)
     }
 
+    /// P1-regresjon: `get(path:)` brukte `appendingPathComponent` som prosent-kodet
+    /// «?» → «%3F», så et EKTE kamera aldri så `continue=on`. Assert på RÅ URL
+    /// (absoluteString bevarer koding; `url.path` dekoder %3F og ville maskert det).
+    func testLongPollUrlPreservesQueryEncoding() async throws {
+        let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
+        _ = try await client.connect()
+        _ = try await client.longPollEvents(timeout: 5)
+        let pollingURLs = camera.seenRawURLs.filter { $0.contains("event/polling") }
+        XCTAssertFalse(pollingURLs.isEmpty, "long-poll-kallet ble aldri sendt")
+        XCTAssertTrue(pollingURLs.contains { $0.contains("event/polling?continue=on") },
+                      "query-strengen ble ikke bevart: \(pollingURLs)")
+        XCTAssertFalse(pollingURLs.contains { $0.contains("%3F") },
+                      "«?» ble prosent-kodet til %3F: \(pollingURLs)")
+    }
+
     func testConnectThrowsOn503() async throws {
         // Override handler to return a 503 for /ccapi.
         MockURLProtocol.handler = { request in

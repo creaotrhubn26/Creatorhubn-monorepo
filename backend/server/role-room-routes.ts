@@ -137,6 +137,7 @@ import {
   normalizeUrl,
 } from './role-room-website-analyzer.js';
 import { generateWeekPlan } from './role-room-content-strategist.js';
+import { runBrandScan } from './brand-kit-service.js';
 import { getBestTimesForProject } from './role-room-best-time.js';
 import { applyDataDrivenPostTimes } from './role-room-best-time-to-post.js';
 import {
@@ -22501,6 +22502,39 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Role Room Agent (Claude) — protected endpoint that runs every call
   // through consent → pseudonymize → audit. Scope defaults to 'brief_only'
   // but the caller can request more via the body.
+  // Produsent-nåbar brand-scan (agentens run_brand_scan-verktøy treffer denne).
+  // Skiller seg fra den admin-guardede /api/role-room/brand-kit/:id/scan ved å
+  // bruke prosjekt-tilgang (canReadProducerData) i stedet for requireAdmin.
+  router.post(
+    '/projects/:projectId/brand-scan',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const brandScanRole = await getProjectRoleRecord(
+          req.params.projectId,
+          getUserIdentifiers(req),
+        );
+        if (!canReadProducerData(req, brandScanRole)) {
+          return res
+            .status(403)
+            .json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+        if (!url) return res.status(400).json({ error: 'url_required' });
+        const kit = await runBrandScan(pool, {
+          projectId: req.params.projectId,
+          workspaceOwnerUserId: userId,
+          url,
+        });
+        return res.json({ brandKit: kit });
+      } catch (err) {
+        console.error('[brand-scan producer] failed', err);
+        return res.status(500).json({ error: 'brand_scan_failed' });
+      }
+    },
+  );
+
   router.post(
     '/projects/:projectId/agent/query',
     apiKeyAuth(pool, activeSessions),
@@ -25263,7 +25297,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { url, weekStarting, skipClaude, projectId: bestTimeProjectId } = req.body ?? {};
+        const { url, weekStarting, skipClaude, focus, projectId: bestTimeProjectId } = req.body ?? {};
         if (!url || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -25301,8 +25335,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           analysisId = inserted.rows[0].id;
         }
 
-        // 2) Strategist
-        const plan = await generateWeekPlan(brandProfile, weekStarting);
+        // 2) Strategist (valgfritt kampanje-fokus fra katalog-produkt)
+        const plan = await generateWeekPlan(brandProfile, weekStarting, {
+          focus: typeof focus === 'string' ? focus : undefined,
+        });
         await applyBestTimeOverride(pool, plan, bestTimeProjectId);
 
         // 3) Generator (DB transaction inside)

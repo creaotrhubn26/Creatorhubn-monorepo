@@ -350,8 +350,15 @@ extension CullSuggestionCache: FetchableRecord, PersistableRecord {
 
 extension AssetSignals: DatabaseValueConvertible {
     public var databaseValue: DatabaseValue {
+        // SIKKERHETSNETT: en non-finite Double (nan/inf) i EN nøstet verdi (f.eks.
+        // AssetAnalysis) fikk før JSONEncoder til å kaste → hele signals-bloben
+        // kollapset stille til «{}» (sharpness/faceCount/analysis/markup borte).
+        // `convertToString` skriver den som en streng i stedet for å drepe bloben.
+        let enc = JSONEncoder()
+        enc.nonConformingFloatEncodingStrategy = .convertToString(
+            positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
         guard
-            let data = try? JSONEncoder().encode(self),
+            let data = try? enc.encode(self),
             let json = String(data: data, encoding: .utf8)
         else {
             return "{}".databaseValue
@@ -364,9 +371,15 @@ extension AssetSignals: DatabaseValueConvertible {
             let string = String.fromDatabaseValue(dbValue),
             let data = string.data(using: .utf8)
         else {
-            return nil
+            return .empty
         }
-        return try? JSONDecoder().decode(AssetSignals.self, from: data)
+        let dec = JSONDecoder()
+        dec.nonConformingFloatDecodingStrategy = .convertFromString(
+            positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        // Fall til `.empty` (ikke nil) ved dekode-feil — signals-kolonnen er
+        // NOT NULL og `Asset.signals` er ikke-valgfri, så en nil ville feilet
+        // dekodingen av HELE asset-raden → assets forsvant stille fra lista.
+        return (try? dec.decode(AssetSignals.self, from: data)) ?? .empty
     }
 }
 

@@ -142,9 +142,15 @@ enum TeethWhiteningFilter {
         mouths: [[CGPoint]],
     ) -> CIImage? {
         let extent = image.extent
-        let w = Int(extent.width)
-        let h = Int(extent.height)
-        guard w > 0, h > 0 else { return nil }
+        guard extent.width > 0, extent.height > 0 else { return nil }
+
+        // #3: tegn masken på LAV oppløsning (cap ~1024 px lang side) i stedet for en
+        // full-res gråtone-bitmap (≈45 MB på en 8192-bred R5-fil) PER RENDER. Skalér
+        // opp etterpå — den myke featheren (blur) skjuler nedskaleringen uansett.
+        let cap: CGFloat = 1024
+        let s = min(1, cap / max(extent.width, extent.height))
+        let w = max(1, Int(extent.width * s))
+        let h = max(1, Int(extent.height * s))
 
         let cs = CGColorSpaceCreateDeviceGray()
         guard let context = CGContext(
@@ -154,16 +160,16 @@ enum TeethWhiteningFilter {
         ) else { return nil }
 
         // Black background, white-fill polygon = standard alpha-style
-        // mask convention CIBlendWithMask reads.
+        // mask convention CIBlendWithMask reads. Punkter skaleres med `s`.
         context.setFillColor(CGColor(gray: 0, alpha: 1))
-        context.fill(CGRect(origin: .zero, size: CGSize(width: w, height: h)))
+        context.fill(CGRect(x: 0, y: 0, width: w, height: h))
         context.setFillColor(CGColor(gray: 1, alpha: 1))
 
         for polygon in mouths where polygon.count >= 3 {
             context.beginPath()
-            context.move(to: polygon[0])
+            context.move(to: CGPoint(x: polygon[0].x * s, y: polygon[0].y * s))
             for i in 1..<polygon.count {
-                context.addLine(to: polygon[i])
+                context.addLine(to: CGPoint(x: polygon[i].x * s, y: polygon[i].y * s))
             }
             context.closePath()
             context.fillPath()
@@ -171,14 +177,12 @@ enum TeethWhiteningFilter {
 
         guard let cg = context.makeImage() else { return nil }
 
-        // Soft feather so the correction doesn't terminate at a hard
-        // pixel edge. ~0.4% of long edge tested as the sweet spot
-        // between "can see the mask edge" and "bleed onto lip skin".
-        let dim = max(extent.width, extent.height)
-        let blurRadius = Float(dim * 0.004)
+        // Skalér masken opp til full extent + myk feather (~0.4 % av lang side).
+        var mask = CIImage(cgImage: cg)
+        if s < 1 { mask = mask.transformed(by: CGAffineTransform(scaleX: 1 / s, y: 1 / s)) }
         let blur = CIFilter.gaussianBlur()
-        blur.inputImage = CIImage(cgImage: cg)
-        blur.radius = blurRadius
+        blur.inputImage = mask
+        blur.radius = Float(max(extent.width, extent.height) * 0.004)
         return blur.outputImage?.cropped(to: extent)
     }
 }

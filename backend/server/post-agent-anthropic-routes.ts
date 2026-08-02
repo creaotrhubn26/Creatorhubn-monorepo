@@ -33,6 +33,7 @@ import { enqueueCampaignPosts } from './post-agent-campaign-enqueue.js';
 import { fetchUpdateManifest } from './post-agent-update-manifest.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
+import { falSubmit, falPoll, falOutputUrl, falConfigured, GEN_MODELS } from './generative-media.js';
 import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
 import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
@@ -788,6 +789,75 @@ Tidspunkt: ${new Date().toISOString()}
       });
     }
   });
+
+  // ---- AI video (fal Seedance) — serverside provider for Demo Studio broll ----
+  //
+  // Lar Post Agent generere kinematiske klipp UTEN lokal higgsfield-CLI/kreditter:
+  // FAL_KEY bor på serveren. Seedance-modellen er image-to-video, så en start-
+  // ramme (image_url) KREVES — passer med «forankre i produkt-ramme» i klienten.
+  // Kø-basert: submit returnerer en responseUrl klienten poller til COMPLETED.
+  //
+  // POST /ai/generate-video  { prompt, imageUrl, durationSec?, resolution? }
+  //   → 202 { responseUrl }
+  router.post('/ai/generate-video', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 12, label: 'post-agent-video-gen' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const userId = (req as AuthedRequest).userId;
+      // Entitlement-gate (som /ai/generate-image) — dette kaller betalt fal Seedance.
+      {
+        const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+        const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+        if (!entitlement.allowed && !(await userHasActiveTeamSeat(pool, userId))) {
+          res.status(402).json({ error: 'subscription_required', detail: entitlement.reason });
+          return;
+        }
+      }
+      if (!falConfigured()) {
+        res.status(503).json({ error: 'video_provider_not_configured', detail: 'FAL_KEY ikke satt på serveren.' });
+        return;
+      }
+      const body = (req.body ?? {}) as { prompt?: string; imageUrl?: string; durationSec?: number; resolution?: string };
+      const prompt = (body.prompt ?? '').toString().trim();
+      const imageUrl = (body.imageUrl ?? '').toString().trim();
+      if (!prompt) { res.status(400).json({ error: 'prompt_required' }); return; }
+      // Seedance er image-to-video → start-ramme kreves (data-URI eller http-URL).
+      if (!imageUrl) { res.status(400).json({ error: 'image_required', detail: 'fal Seedance er image-to-video — send imageUrl (forankre i en produkt-ramme).' }); return; }
+      const duration = Math.max(4, Math.min(15, Math.round(Number(body.durationSec) || 6)));
+      const resolution = ['480p', '720p', '1080p'].includes(String(body.resolution)) ? String(body.resolution) : '720p';
+      // Seedance v1 Pro i2v — den produksjons-beviste stien (fal-ai/-prefiks).
+      // Speiler ad-film-Python sitt kall {image_url, prompt}; duration er en
+      // enum ("5"/"10") på denne modellen, så vi mapper i stedet for å sende sek.
+      const model = GEN_MODELS['seedance-i2v-pro'];
+      const durEnum = duration <= 7 ? '5' : '10';
+      const sub = await falSubmit(model.falPath, { prompt, image_url: imageUrl, resolution, duration: durEnum });
+      if (sub.error || !sub.responseUrl) {
+        res.status(502).json({ error: 'video_submit_failed', detail: sub.error ?? 'ingen responseUrl' });
+        return;
+      }
+      res.status(202).json({ responseUrl: sub.responseUrl, requestId: sub.requestId ?? null, estCostUsd: duration * (model.costPerSecondUsd ?? 0.1) });
+    });
+
+  // POST /ai/generate-video/poll  { responseUrl }
+  //   → { status } | { status: 'COMPLETED', videoUrl }
+  router.post('/ai/generate-video/poll', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 120, label: 'post-agent-video-poll' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const responseUrl = String((req.body ?? {}).responseUrl ?? '').trim();
+      // Kun fal-kø-URL-er tillates (SSRF-vakt) — ikke poll vilkårlige verter.
+      if (!/^https:\/\/queue\.fal\.run\//.test(responseUrl)) {
+        res.status(400).json({ error: 'invalid_response_url' });
+        return;
+      }
+      const r = await falPoll(responseUrl);
+      if (r.status === 'COMPLETED') {
+        const out = falOutputUrl(r.result);
+        if (!out.url) { res.status(502).json({ error: 'no_video_in_result' }); return; }
+        res.json({ status: 'COMPLETED', videoUrl: out.url });
+        return;
+      }
+      if (r.status === 'ERROR') { res.status(502).json({ error: 'video_poll_failed', detail: r.error }); return; }
+      res.json({ status: r.status });
+    });
 
   // ---- Tekst-til-tale (ElevenLabs) ----
   //

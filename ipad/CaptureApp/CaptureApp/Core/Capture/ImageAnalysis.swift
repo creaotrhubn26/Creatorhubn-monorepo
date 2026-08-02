@@ -32,7 +32,7 @@ struct ImageAnalysis: Sendable, Equatable {
         /// means we're inside the professional skin-tone range.
         var cast: Cast
 
-        enum Cast: String, Sendable, CaseIterable {
+        enum Cast: String, Sendable, CaseIterable, Codable, Hashable {
             case neutral, tooWarm, tooCool, tooGreen, tooMagenta
         }
     }
@@ -63,20 +63,40 @@ struct ImageAnalysis: Sendable, Equatable {
 /// instance, cancels superseded calls, and caches the most recent result
 /// so a view reappearing doesn't re-run the pipeline unnecessarily.
 actor ImageAnalyser {
+    // #8: LRU med tak — en heldags-økt med tusenvis av previews vokste ellers
+    // ubegrenset. `order` = URL-er, MRU sist; eldste kastes over `maxEntries`.
     private var cache: [URL: ImageAnalysis] = [:]
+    private var order: [URL] = []
+    private let maxEntries = 200
 
     func analyze(imageURL: URL) async -> ImageAnalysis? {
-        if let cached = cache[imageURL] { return cached }
+        if let cached = cache[imageURL] { touch(imageURL); return cached }
         let result = await Task.detached(priority: .userInitiated) {
             Self.run(imageURL: imageURL)
         }.value
-        if let result { cache[imageURL] = result }
+        if let result {
+            cache[imageURL] = result
+            touch(imageURL)
+            while cache.count > maxEntries, let oldest = order.first {
+                order.removeFirst()
+                cache.removeValue(forKey: oldest)
+            }
+        }
         return result
+    }
+
+    private func touch(_ url: URL) {
+        if let idx = order.firstIndex(of: url) { order.remove(at: idx) }
+        order.append(url)
     }
 
     func invalidate(imageURL: URL) {
         cache.removeValue(forKey: imageURL)
+        if let idx = order.firstIndex(of: imageURL) { order.remove(at: idx) }
     }
+
+    // #8: delt CIContext (var opprettet per run — dyrt).
+    nonisolated static let sharedContext = CIContext(options: [.useSoftwareRenderer: false])
 
     nonisolated private static func run(imageURL: URL) -> ImageAnalysis? {
         guard let data = try? Data(contentsOf: imageURL),
@@ -84,7 +104,7 @@ actor ImageAnalyser {
         else { return nil }
         let extent = ciImage.extent
         guard extent.width > 0, extent.height > 0 else { return nil }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        let ctx = sharedContext
 
         let histogram = computeHistogram(ciImage: ciImage, extent: extent, ctx: ctx)
         let clipping = computeClipping(ciImage: ciImage, extent: extent, ctx: ctx)
@@ -241,16 +261,18 @@ actor ImageAnalyser {
         filter.setValue(ciImage, forKey: kCIInputImageKey)
         filter.setValue(CIVector(cgRect: extent), forKey: "inputExtent")
         guard let output = filter.outputImage else { return 0 }
-        var buffer = [UInt8](repeating: 0, count: 4)
+        // Float-readback (som histogrammet) — klipp-fraksjonen er ofte < 1/255, så
+        // en UInt8-readback kvantiserte den til 0 (0,4 % oppløsning).
+        var buffer = [Float](repeating: 0, count: 4)
         ctx.render(
             output,
             toBitmap: &buffer,
-            rowBytes: 4,
+            rowBytes: 4 * MemoryLayout<Float>.size,
             bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
+            format: .RGBAf,
             colorSpace: nil
         )
-        return (Double(buffer[0]) + Double(buffer[1]) + Double(buffer[2])) / 3.0 / 255.0
+        return (Double(buffer[0]) + Double(buffer[1]) + Double(buffer[2])) / 3.0
     }
 
     // MARK: - Skin tone

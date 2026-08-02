@@ -137,6 +137,19 @@ actor SessionStore {
         }
     }
 
+    /// Sett asset-radens `captureTime` til den EKTE opptakstiden (EXIF
+    /// DateTimeOriginal), lest når previewen lander. Descriptoren ble opprettet
+    /// med en nedlastings-`Date()`-fallback (polling-rekkefølge ≠ opptaksrekkefølge);
+    /// dette retter rekkefølgen som cull/burst/«forrige bilde»-arv bygger på.
+    func updateCaptureTime(id: UUID, captureTime: Date) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.captureTime = captureTime
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
     func updateAssetSignals(id: UUID, signals: AssetSignals) async throws {
         try await database.dbWriter.write { db in
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
@@ -160,8 +173,15 @@ actor SessionStore {
             case .full:    asset.fullKey = key
             case .raw:     asset.rawKey = key
             }
-            asset.checksumSha256 = checksumSha256
-            asset.sizeBytes = sizeBytes
+            // Ikke la en preview (liten, avledet variant) overskrive full/raw-
+            // variantens `sizeBytes`/`checksum` — det er ÉN kolonne, og en preview
+            // som landet SIST rapporterte ellers 120 KB i stedet for original-
+            // størrelsen. Preview fyller bare inn når ingenting er registrert enda;
+            // full/raw (kanoniske) vinner alltid, uansett ankomstrekkefølge.
+            if kind != .preview || asset.sizeBytes == nil {
+                asset.checksumSha256 = checksumSha256
+                asset.sizeBytes = sizeBytes
+            }
             asset.updatedAt = Date()
             try asset.update(db)
         }
@@ -307,7 +327,9 @@ actor SessionStore {
 
     nonisolated func sessionsStream(ownerUserId: String) -> AsyncStream<[Session]> {
         let writer = database.dbWriter
-        return AsyncStream { continuation in
+        // Kun DEN SISTE øyeblikksbilde-lista er relevant; default `.unbounded`-buffer
+        // lot fulle lister hope seg opp ved rask endring (burst-fangst) → minnevekst.
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let observation = ValueObservation.tracking { db in
                 try Session
                     .filter(Column("ownerUserId") == ownerUserId)
@@ -329,7 +351,9 @@ actor SessionStore {
 
     nonisolated func assetsStream(sessionId: UUID) -> AsyncStream<[Asset]> {
         let writer = database.dbWriter
-        return AsyncStream { continuation in
+        // Kun SISTE asset-liste er relevant; `.bufferingNewest(1)` hindrer at fulle
+        // lister hoper seg opp under rask burst-fangst (default var `.unbounded`).
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let observation = ValueObservation.tracking { db in
                 try Asset
                     .filter(Column("sessionId") == sessionId.uuidString.uppercased())
