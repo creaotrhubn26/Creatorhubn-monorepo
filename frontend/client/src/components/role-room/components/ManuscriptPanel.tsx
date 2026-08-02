@@ -4575,18 +4575,23 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     onContentChange(val);
   }, [onContentChange]);
   
-  // CRITICAL: Only sync when document ID changes (switching documents)
-  // DO NOT sync when manuscript.content changes - that would create feedback loops with parent
-  // EditorTab content is the source of truth, not the parent's manuscript object
+  // Sync editor-innhold ved (a) dokument-bytte ELLER (b) EKSTERN innholdsendring
+  // (mal-innsetting, import) — dvs. når prop-en avviker fra det editoren SIST
+  // emitterte. lastChangeValueRef-sjekken hindrer feedback-loop: når editoren
+  // selv skriver, matcher incoming lastChangeValueRef → vi hopper over.
+  // (Tidligere synket denne KUN på id → «Bruk mal» satte content men editoren
+  //  re-rendret aldri → så tom ut.)
   useEffect(() => {
-    if (manuscript.id !== lastSyncedIdRef.current) {
-      const newContent = manuscript.content || '';
-      setEditorContent(newContent);
-      lastChangeValueRef.current = newContent;
+    const incoming = manuscript.content || '';
+    const idChanged = manuscript.id !== lastSyncedIdRef.current;
+    const externalContentChange = incoming !== lastChangeValueRef.current;
+    if (idChanged || externalContentChange) {
+      setEditorContent(incoming);
+      lastChangeValueRef.current = incoming;
       lastSyncedIdRef.current = manuscript.id;
-      setSelectedRoleMention(null);
+      if (idChanged) setSelectedRoleMention(null);
     }
-  }, [manuscript.id]); // ONLY depend on ID, NOT content
+  }, [manuscript.id, manuscript.content]);
   
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
