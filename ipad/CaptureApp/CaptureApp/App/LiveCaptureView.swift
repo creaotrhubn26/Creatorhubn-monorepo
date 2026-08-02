@@ -804,7 +804,13 @@ private struct DisconnectedOverlay: View {
     }
 
     private var discoveredList: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(Color.captureSuccess)
+                Text(discovery.cameras.count == 1 ? "1 kamera funnet — trykk for å koble til"
+                     : "\(discovery.cameras.count) kameraer funnet — velg ett")
+                    .font(.subheadline.weight(.medium)).foregroundStyle(Color.captureTextSecondary)
+            }
             ForEach(discovery.cameras) { camera in
                 DiscoveredCameraCard(camera: camera, onTap: { onPickDiscovered(camera) })
             }
@@ -958,32 +964,34 @@ private struct DiscoveredCameraCard: View {
             HStack(spacing: 14) {
                 Image(systemName: "camera.fill")
                     .font(.title2)
-                    .foregroundStyle(.tint)
-                    .frame(width: 40, height: 40)
-                    .background(Color.tint.opacity(0.15), in: Circle())
+                    .foregroundStyle(Color.captureSuccess)
+                    .frame(width: 44, height: 44)
+                    .background(Color.captureSuccess.opacity(0.15), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(camera.displayName)
-                        .font(.body.weight(.semibold))
+                        .font(.body.weight(.semibold)).foregroundStyle(.white)
                     HStack(spacing: 6) {
                         if let firmware = camera.firmware {
                             Text("fw \(firmware)").font(.caption2.monospaced())
                         }
                         if let host = camera.baseURL.host {
-                            if camera.firmware != nil { Text("·").foregroundStyle(.tertiary) }
+                            if camera.firmware != nil { Text("·").foregroundStyle(Color.captureTextMuted) }
                             Text(host).font(.caption2.monospaced())
                         }
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.captureTextSecondary)
                     .lineLimit(1)
                 }
                 Spacer()
+                Text("Koble til")
+                    .font(.caption.weight(.semibold)).foregroundStyle(Color.captureSuccess)
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.captureSuccess)
             }
-            .padding(12)
-            .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.tint.opacity(0.25), lineWidth: 1))
+            .padding(14)
+            .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.captureSuccess.opacity(0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
