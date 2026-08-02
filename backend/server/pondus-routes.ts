@@ -73,6 +73,27 @@ function isPlatformAdmin(session: SessionUser): boolean {
   return ADMIN_ROLES.has(session.role);
 }
 
+// Org-scopede maler (2026-08-02): salgssjef/teamleder/admin i en org kan
+// opprette og vedlikeholde ORG-EGNE maler (org_id = deres org) — «lagre
+// for teamet» fra iPad-mal-editoren. Leadgrid-GLOBALE maler (org_id NULL)
+// er fortsatt SuperAdmin-only.
+const ORG_TEMPLATE_ROLES = new Set(["admin", "salgssjef", "teamleder"]);
+
+async function canManageOrgTemplates(
+  pool: Pool, orgId: string, userId: string,
+): Promise<boolean> {
+  try {
+    const r = await pool.query<{ role: string }>(
+      `SELECT role FROM organization_members
+        WHERE organization_id = $1::uuid AND user_id = $2 LIMIT 1`,
+      [orgId, userId],
+    );
+    return ORG_TEMPLATE_ROLES.has(r.rows[0]?.role ?? "");
+  } catch {
+    return false;
+  }
+}
+
 function coerceScore(v: unknown, fallback = 0): number {
   const n = Number(v);
   if (!Number.isFinite(n)) return fallback;
@@ -272,8 +293,17 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
   app.post("/api/leadgrid/pondus/templates", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isPlatformAdmin(session)) {
-      return res.status(403).json({ error: "forbidden_superadmin_only" });
+    const admin = isPlatformAdmin(session);
+    // Org-leder (2026-08-02): kan opprette ORG-EGEN mal — org_id tvinges
+    // fra sesjonens org (aldri fra body), og malen publiseres direkte
+    // (deling med teamet er hele poenget).
+    let forcedOrgId: string | null = null;
+    if (!admin) {
+      const userOrgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!userOrgId || !(await canManageOrgTemplates(pool, userOrgId, session.userId))) {
+        return res.status(403).json({ error: "forbidden_superadmin_only" });
+      }
+      forcedOrgId = userOrgId;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = readString(body.name).trim();
@@ -290,22 +320,30 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
     // Per-akse analyse (mig 0356). Godtar delvis payload — normalizeAnalysis
     // klemmer manglende akser til overall score som fallback.
     const analysis = normalizeAnalysis(body.analysis, score);
-    // org_id: null (Leadgrid-global, standard) eller en gyldig UUID.
-    let orgIdParam: string | null = null;
-    if (body.org_id !== undefined && body.org_id !== null) {
+    // org_id: SuperAdmin kan sette null (Leadgrid-global) eller gyldig UUID;
+    // org-leder tvinges til egen org (body ignoreres).
+    let orgIdParam: string | null = forcedOrgId;
+    if (admin && body.org_id !== undefined && body.org_id !== null) {
       const raw = String(body.org_id);
       if (!isUuid(raw)) {
         return res.status(400).json({ error: "invalid_org_id" });
       }
       orgIdParam = raw;
     }
+    // Org-leder-maler publiseres direkte (deling er poenget);
+    // SuperAdmin beholder utkast-flyten (publish-steget).
+    const publishNow = !admin;
 
     try {
       const r = await pool.query(
         `INSERT INTO pondus_templates
            (name, description, category, kind, score, steps, objections, analysis,
-            created_by, org_id, is_published, version)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::uuid, FALSE, 1)
+            created_by, org_id, is_published, published_at, published_by, version)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::uuid,
+                 $11::boolean,
+                 CASE WHEN $11::boolean THEN NOW() ELSE NULL END,
+                 CASE WHEN $11::boolean THEN $9 ELSE NULL END,
+                 1)
          RETURNING id, name, description, category, kind, score, steps, objections, analysis,
                    created_by, org_id, is_published, published_at, published_by,
                    version, created_at, updated_at`,
@@ -320,6 +358,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           JSON.stringify(analysis),
           session.userId,
           orgIdParam,
+          publishNow,
         ],
       );
       const row = r.rows[0] as Record<string, unknown>;
@@ -338,9 +377,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
   app.patch("/api/leadgrid/pondus/templates/:id", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isPlatformAdmin(session)) {
-      return res.status(403).json({ error: "forbidden_superadmin_only" });
-    }
+    const admin = isPlatformAdmin(session);
     const id = readString(req.params.id);
     if (!isUuid(id)) return res.status(400).json({ error: "invalid_id" });
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -349,7 +386,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       // Snapshot først (FØR endringen)
       const existing = await pool.query(
         `SELECT id, name, description, category, kind, score, steps, objections,
-                is_published, version
+                is_published, version, org_id
            FROM pondus_templates
           WHERE id = $1
           LIMIT 1`,
@@ -357,6 +394,19 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       );
       if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
       const currentRow = existing.rows[0] as Record<string, unknown>;
+
+      // Autorisasjon (2026-08-02): SuperAdmin ELLER org-leder på org-egen
+      // mal. Globale maler (org_id NULL) er fortsatt SuperAdmin-only.
+      if (!admin) {
+        const templateOrg = currentRow.org_id == null ? null : String(currentRow.org_id);
+        const userOrgId = await resolveOrgIdForUser(pool, session.userId);
+        const allowed = templateOrg != null && userOrgId != null
+          && templateOrg === userOrgId
+          && (await canManageOrgTemplates(pool, userOrgId, session.userId));
+        if (!allowed) {
+          return res.status(403).json({ error: "forbidden_superadmin_only" });
+        }
+      }
 
       // Audit-snapshot: forrige versjon slik den lå
       await pool.query(
@@ -430,15 +480,27 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
   app.post("/api/leadgrid/pondus/templates/:id/publish", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isPlatformAdmin(session)) {
-      return res.status(403).json({ error: "forbidden_superadmin_only" });
-    }
+    const admin = isPlatformAdmin(session);
     const id = readString(req.params.id);
     if (!isUuid(id)) return res.status(400).json({ error: "invalid_id" });
     const body = (req.body ?? {}) as { published?: boolean };
     const shouldPublish = body.published !== false;
 
     try {
+      // Org-leder kan (av)publisere org-egen mal (2026-08-02).
+      if (!admin) {
+        const own = await pool.query<{ org_id: string | null }>(
+          `SELECT org_id FROM pondus_templates WHERE id = $1 LIMIT 1`, [id]);
+        if (!own.rows.length) return res.status(404).json({ error: "not_found" });
+        const templateOrg = own.rows[0].org_id == null ? null : String(own.rows[0].org_id);
+        const userOrgId = await resolveOrgIdForUser(pool, session.userId);
+        const allowed = templateOrg != null && userOrgId != null
+          && templateOrg === userOrgId
+          && (await canManageOrgTemplates(pool, userOrgId, session.userId));
+        if (!allowed) {
+          return res.status(403).json({ error: "forbidden_superadmin_only" });
+        }
+      }
       const r = await pool.query(
         shouldPublish
           ? `UPDATE pondus_templates
@@ -477,19 +539,31 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
   app.delete("/api/leadgrid/pondus/templates/:id", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isPlatformAdmin(session)) {
-      return res.status(403).json({ error: "forbidden_superadmin_only" });
-    }
+    const admin = isPlatformAdmin(session);
     const id = readString(req.params.id);
     if (!isUuid(id)) return res.status(400).json({ error: "invalid_id" });
 
     try {
       const existing = await pool.query(
-        `SELECT created_by FROM pondus_templates WHERE id = $1 LIMIT 1`,
+        `SELECT created_by, org_id FROM pondus_templates WHERE id = $1 LIMIT 1`,
         [id],
       );
       if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
       const createdBy = existing.rows[0]?.created_by;
+
+      // Org-leder kan slette org-egen mal (2026-08-02) — globale er
+      // fortsatt SuperAdmin-only.
+      if (!admin) {
+        const templateOrg = existing.rows[0]?.org_id == null
+          ? null : String(existing.rows[0].org_id);
+        const userOrgId = await resolveOrgIdForUser(pool, session.userId);
+        const allowed = templateOrg != null && userOrgId != null
+          && templateOrg === userOrgId
+          && (await canManageOrgTemplates(pool, userOrgId, session.userId));
+        if (!allowed) {
+          return res.status(403).json({ error: "forbidden_superadmin_only" });
+        }
+      }
 
       if (createdBy && String(createdBy) === session.userId) {
         // Ekte DELETE — kaskader til pondus_template_versions + pondus_content_by_step.

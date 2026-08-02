@@ -506,10 +506,17 @@ export function setupLeadMapRoutes(deps: Deps): void {
         website?: string;
         raw_text?: string;
         project_id?: string | null;
+        lead_source?: string;
       };
       if (!body.name?.trim()) {
         return res.status(400).json({ error: "mangler_navn" });
       }
+      // Anbud-gjenbruk (2026-08-02): «Opprett lead fra anbud» på iPad
+      // sender org.nr i raw_text (→ sikker BRREG-kobling + full berikelse
+      // via samme løype) men skal spores som egen kilde.
+      const leadSource = ["business_card_scan", "doffin_anbud"].includes(body.lead_source ?? "")
+        ? (body.lead_source as string)
+        : "business_card_scan";
 
       try {
         // BRREG-kobling FØR insert: org.nr fra OCR-teksten (mod11-validert,
@@ -540,7 +547,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
              created_at, updated_at
            ) VALUES (
              gen_random_uuid(), $1, $2, $3, $4, $5,
-             'unvisited', 'business_card_scan',
+             'unvisited', $10,
              $6::text, $6::text, NOW(), $6::text, $7, $8, $9,
              NOW(), NOW()
            ) RETURNING id::text`,
@@ -554,6 +561,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
             body.project_id ?? null,
             notes,
             brregLink.status === "linked" ? brregLink.orgNr : null,
+            leadSource,
           ],
         );
         // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
