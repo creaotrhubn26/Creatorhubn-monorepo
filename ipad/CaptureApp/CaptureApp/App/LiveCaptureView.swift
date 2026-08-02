@@ -4357,17 +4357,27 @@ private struct FilmstripTile: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    // P5 (E7 v1): on-set-flagg (uskarp / svakt ansikt) fra den samlede
-                    // analysen — det fotografen kan ta om igjen mens hen står der.
-                    if let flag = asset.signals.analysis?.onSetFlag {
-                        Label(flag == .blurry ? "Uskarp" : "Svakt",
-                              systemImage: flag == .blurry ? "camera.metering.spot" : "person.fill.questionmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.red.opacity(0.85), in: Capsule())
-                            .padding(6)
+                    // Cull-signaler fra den samlede analysen — det fotografen kan
+                    // reagere på mens hen står der. Stablet: duplikat over on-set-flagg.
+                    VStack(alignment: .trailing, spacing: 3) {
+                        // E7 v2: nesten-duplikat av forrige ramme (dHash) → redundant.
+                        if asset.signals.duplicateGroupId != nil {
+                            Label("Duplikat", systemImage: "square.on.square.dashed")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.purple.opacity(0.85), in: Capsule())
+                        }
+                        // P5 (E7 v1): uskarp / lukkede øyne / svakt ansikt.
+                        if let flag = asset.signals.analysis?.onSetFlag {
+                            Label(flag.label, systemImage: flag.icon)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.red.opacity(0.85), in: Capsule())
+                        }
                     }
+                    .padding(6)
                 }
 
                 // Top-right: error, enhanced, or reject marker
@@ -5564,6 +5574,33 @@ final class LiveCaptureModel {
         signals.faceCount = analysis.faces.count
         assets[idx].signals = signals
         try? await store?.updateAssetSignals(id: id, signals: signals)
+
+        // Nesten-duplikat-deteksjon (E7 v2): sammenlign dHash med opptaket rett før
+        // OG rett etter i tid (etterfølgeren backfilles hvis dens analyse landet
+        // først — resultatene kommer ofte ute av rekkefølge). @MainActor → trygt.
+        let ordered = assets.sorted { $0.captureTime < $1.captureTime }
+        if let p = ordered.firstIndex(where: { $0.id == id }) {
+            if p > 0 { await markDuplicateIfNeeded(curId: id, prevId: ordered[p - 1].id) }
+            if p + 1 < ordered.count { await markDuplicateIfNeeded(curId: ordered[p + 1].id, prevId: id) }
+        }
+    }
+
+    /// Merk `curId` som nesten-duplikat av forrige opptak `prevId` når dHash-ene er
+    /// innenfor terskel. Keeperen (først i en burst) forblir umerket — kun de
+    /// redundante rammene får «Duplikat»-badge, kjedet via delt `duplicateGroupId`.
+    /// Leser ferske signals fra `assets` (ikke et snapshot) så kjeding er korrekt.
+    private func markDuplicateIfNeeded(curId: UUID, prevId: UUID) async {
+        guard let ci = assets.firstIndex(where: { $0.id == curId }),
+              let pi = assets.firstIndex(where: { $0.id == prevId }),
+              assets[ci].signals.duplicateGroupId == nil,
+              let curHash = assets[ci].signals.analysis?.perceptualHash, curHash != 0,
+              let prevHash = assets[pi].signals.analysis?.perceptualHash, prevHash != 0,
+              PerceptualHash.isDuplicate(prevHash, curHash) else { return }
+        let groupId = assets[pi].signals.duplicateGroupId ?? UUID()
+        var signals = assets[ci].signals
+        signals.duplicateGroupId = groupId
+        assets[ci].signals = signals
+        try? await store?.updateAssetSignals(id: curId, signals: signals)
     }
 
     var canShoot: Bool {

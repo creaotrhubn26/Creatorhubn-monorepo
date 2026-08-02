@@ -121,6 +121,27 @@ final class AssetAnalysisTests: XCTestCase {
         XCTAssertNil(makeAnalysis(faces: [good]).onSetFlag)
     }
 
+    func testOnSetFlagEyesClosedForClosedEyes() {
+        // Lukkede øyne på et ellers skarpt, høy-kvalitets ansikt → .eyesClosed.
+        let closed = FaceAnalysis(rect: .zero, sizeFraction: 0.2, luma: 0.5, eyesOpen: false,
+                                  captureQuality: 0.9, sharpness: 0.01, skinCast: .neutral)
+        XCTAssertEqual(makeAnalysis(faces: [closed]).onSetFlag, .eyesClosed)
+    }
+
+    func testOnSetFlagEyesClosedBeatsBlurry() {
+        // Både lukkede øyne OG soft fokus → øyne prioriteres (sterkest signal).
+        let both = FaceAnalysis(rect: .zero, sizeFraction: 0.2, luma: 0.5, eyesOpen: false,
+                                captureQuality: 0.9, sharpness: 0.0005, skinCast: .neutral)
+        XCTAssertEqual(makeAnalysis(faces: [both]).onSetFlag, .eyesClosed)
+    }
+
+    func testOnSetFlagNilWhenEyesOpennessUnknown() {
+        // eyesOpen == nil (ingen landmarks) skal IKKE flagge lukkede øyne.
+        let unknown = FaceAnalysis(rect: .zero, sizeFraction: 0.2, luma: 0.5, eyesOpen: nil,
+                                   captureQuality: 0.9, sharpness: 0.01, skinCast: .neutral)
+        XCTAssertNil(makeAnalysis(faces: [unknown]).onSetFlag)
+    }
+
     // MARK: - Codable round-trip (persistering på signals)
 
     func testAnalysisRoundTripsThroughCodable() throws {
