@@ -73,6 +73,20 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
     var hasFaces: Bool { !faces.isEmpty }
     /// Største ansikt (etter areal) — «hovedpersonen» i de fleste portretter.
     var primaryFace: FaceAnalysis? { faces.max { $0.sizeFraction < $1.sizeFraction } }
+
+    /// P5 (E7 v1): on-set-flagg for filmstripen — det fotografen kan reagere på
+    /// mens bildet kan tas om. nil = ok. Ren, testbar.
+    enum OnSetFlag: String, Hashable { case blurry, lowFaceQuality }
+    var onSetFlag: OnSetFlag? {
+        if let face = primaryFace {
+            if face.isSoft(globalSharpness: globalSharpness) { return .blurry }
+            if let q = face.captureQuality, q < 0.35 { return .lowFaceQuality }
+        } else if globalSharpness < 0.0006 {
+            // Ingen ansikt (landskap/produkt) → global uskarphet.
+            return .blurry
+        }
+        return nil
+    }
 }
 
 /// Per-ansikt-metrikker fra det ene deteksjonspasset. Rekt i NORMALISERTE
