@@ -170,6 +170,7 @@ actor CCAPIAdapter: IngestAdapter {
                     apertureValue: payload.apertureValue,
                     shutterSpeed: payload.shutterSpeed,
                     isoValue: payload.isoValue,
+                    exposureCompensation: payload.exposureCompensation,
                     lensName: payload.lensName,
                     freeSpaceBytes: payload.freeSpaceBytes,
                     totalContentsCount: payload.totalContentsCount
