@@ -58,6 +58,15 @@ struct CreatorHubOneRootView: View {
 
     @State private var selected: Tab = .today
 
+    init() {
+        #if DEBUG
+        // QA/skjermbilde-hook: `--tab-shoot` åpner Shoot-fanen direkte.
+        if ProcessInfo.processInfo.arguments.contains("--tab-shoot") {
+            _selected = State(initialValue: .shoot)
+        }
+        #endif
+    }
+
     /// Build a WebView-backed tab that points at a path on the
     /// signed-in photographer's backend. Falls back to the given
     /// placeholder when the user isn't signed in yet — without a

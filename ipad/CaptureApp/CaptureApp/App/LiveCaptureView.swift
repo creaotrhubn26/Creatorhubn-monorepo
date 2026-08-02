@@ -591,101 +591,249 @@ private struct DisconnectedOverlay: View {
     let onDemo: () -> Void
     let onPickDiscovered: (CameraDiscovery.Found) -> Void
 
+    enum ConnectTab { case autoDetect, manual }
+
     @State private var url: String = ""
+    @State private var tab: ConnectTab = .autoDetect
     @StateObject private var discovery = CameraDiscovery()
     @FocusState private var urlFocused: Bool
 
+    private var canConnect: Bool { URL(string: url)?.host != nil }
+
+    /// Hero går grønt når et kamera er funnet. `--hero-linked` tvinger grønt for
+    /// QA/skjermbilde (DEBUG).
+    private var heroLinked: Bool {
+        if !discovery.cameras.isEmpty { return true }
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--hero-linked")
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 12) {
-                Image("CreatorHubOneLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .accessibilityLabel("CreatorHub One")
-                Text("CreatorHub One")
-                    .font(.largeTitle.weight(.semibold))
-                Text("Tethered shoot over Canon CCAPI")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(spacing: 28) {
+                header
+                ConnectHeroGraphic(linked: heroLinked)
+                    .frame(height: 216)
+                connectCard
+                if !discovery.cameras.isEmpty {
+                    discoveredList
+                } else {
+                    statusPill
+                }
+                OnboardingStepsCard()
+                connectButton
+                #if DEBUG
+                demoButton
+                #endif
+                setupGuideLink
             }
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 32)
+        }
+        .background(
+            RadialGradient(colors: [Color.captureAccent.opacity(0.10), .clear],
+                           center: .init(x: 0.5, y: 0.26), startRadius: 8, endRadius: 360)
+                .background(Color.captureDeepBG)
+                .ignoresSafeArea()
+        )
+        .onAppear {
+            url = defaultURL
+            discovery.start()
+        }
+        .onDisappear { discovery.stop() }
+    }
 
-            DiscoveredCamerasSection(
-                cameras: discovery.cameras,
-                isSearching: discovery.isSearching,
-                permissionDenied: discovery.permissionDenied,
-                onPick: onPickDiscovered
-            )
-            .frame(maxWidth: 440)
+    // MARK: - Header
 
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Or enter manually", systemImage: "network")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+    private var header: some View {
+        VStack(spacing: 12) {
+            Image("CreatorHubOneLogo")
+                .resizable().scaledToFit()
+                .frame(width: 100, height: 100)
+                .shadow(color: Color.captureAccent.opacity(0.55), radius: 34, y: 8)
+                .accessibilityLabel("CreatorHub One")
+            Text("CreatorHub One")
+                .font(.system(size: 44, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Tethered shoot over Canon CCAPI")
+                .font(.callout)
+                .foregroundStyle(Color.captureTextSecondary)
+        }
+    }
+
+    // MARK: - Connect card (tabs + søk + IP)
+
+    private var connectCard: some View {
+        VStack(spacing: 20) {
+            tabBar
+            if tab == .autoDetect { autoDetectContent; orDivider }
+            manualField
+        }
+        .padding(24)
+        .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 26))
+        .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.captureBorder.opacity(0.6), lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            tabButton("Auto-detect", icon: "magnifyingglass", value: .autoDetect)
+            tabButton("Manuelt", icon: "keyboard", value: .manual)
+        }
+    }
+
+    private func tabButton(_ title: String, icon: String, value: ConnectTab) -> some View {
+        let active = tab == value
+        return Button { withAnimation(.easeInOut(duration: 0.15)) { tab = value } } label: {
+            VStack(spacing: 8) {
+                Label(title, systemImage: icon)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(active ? Color.captureAccent : Color.captureTextMuted)
+                Rectangle()
+                    .fill(active ? Color.captureAccent : .clear)
+                    .frame(height: 2)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var autoDetectContent: some View {
+        let found = !discovery.cameras.isEmpty
+        return HStack(alignment: .top, spacing: 14) {
+            Group {
+                if found {
+                    Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Color.captureSuccess)
+                } else if discovery.isSearching {
+                    ProgressView().controlSize(.regular).tint(Color.captureAccent)
+                } else {
+                    Image(systemName: "wifi").font(.title3).foregroundStyle(Color.captureAccent)
+                }
+            }
+            .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(found ? (discovery.cameras.count == 1 ? "Kamera funnet" : "\(discovery.cameras.count) kameraer funnet")
+                     : (discovery.isSearching ? "Søker etter kameraer…" : "Klar til å søke"))
+                    .font(.headline).foregroundStyle(.white)
+                Text(found ? "Velg kameraet under, eller trykk Koble til."
+                     : "Kontroller at kameraet er på, koblet til samme nettverk og at CCAPI er aktivert.")
+                    .font(.caption).foregroundStyle(Color.captureTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 5) {
+                Circle().fill(discovery.permissionDenied ? Color.orange : Color.captureSuccess).frame(width: 7, height: 7)
+                Text(discovery.permissionDenied ? "Ingen tilgang" : "Nettverk OK")
+                    .font(.caption2).foregroundStyle(Color.captureTextSecondary)
+            }
+        }
+        .padding(14)
+        .background(Color.captureDeepBG.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .strokeBorder((found ? Color.captureSuccess : Color.captureBorder).opacity(found ? 0.5 : 0.5), lineWidth: 1))
+    }
+
+    private var orDivider: some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(Color.captureBorder.opacity(0.6)).frame(height: 1)
+            Text("ELLER").font(.caption2.weight(.semibold)).foregroundStyle(Color.captureTextMuted)
+            Rectangle().fill(Color.captureBorder.opacity(0.6)).frame(height: 1)
+        }
+    }
+
+    private var manualField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Koble til kamera via IP-adresse eller URL")
+                .font(.subheadline.weight(.medium)).foregroundStyle(.white)
+            HStack(spacing: 10) {
+                Image(systemName: "globe").foregroundStyle(Color.captureTextMuted)
                 TextField("https://192.168.1.2", text: $url)
                     .textFieldStyle(.plain)
-                    .padding(12)
-                    .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .focused($urlFocused)
                     .submitLabel(.go)
                     .onSubmit(connect)
-                Text("Join the camera's Access Point first, then paste the URL from MENU → Wi-Fi settings → Camera Control API.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: 440)
-
-            if let lastError {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label(lastError, systemImage: "exclamationmark.triangle")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.red)
-                    Text("Usual causes:")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    FailureGuideItem(icon: "wifi", text: "Your Mac or iPad must be on the camera's Access Point.")
-                    FailureGuideItem(icon: "camera", text: "CCAPI must be enabled: MENU → Wi-Fi → Camera Control API.")
-                    FailureGuideItem(icon: "network", text: "The URL must match what the camera's screen shows exactly.")
-                }
-                .padding(14)
-                .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
-                .frame(maxWidth: 440)
-            }
-
-            Button(action: connect) {
-                HStack(spacing: 8) {
-                    if isConnecting { ProgressView().controlSize(.small) }
-                    Text(isConnecting ? "Connecting…" : "Connect")
-                        .font(.body.weight(.semibold))
-                }
-                .frame(maxWidth: 440, minHeight: 52)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(isConnecting || URL(string: url)?.host == nil)
-
-            #if DEBUG
-            Button(action: onDemo) {
-                Label("Try demo camera", systemImage: "wand.and.stars")
-                    .font(.footnote.weight(.medium))
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(isConnecting)
-            #endif
+            .padding(14)
+            .background(Color.captureDeepBG.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.captureBorder.opacity(0.6), lineWidth: 1))
+            Text("F.eks. https://192.168.1.2")
+                .font(.caption2).foregroundStyle(Color.captureTextMuted)
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            url = defaultURL
-            discovery.start()
+    }
+
+    // MARK: - Status / funnet kameraer
+
+    private var statusPill: some View {
+        HStack(spacing: 8) {
+            Image(systemName: lastError == nil ? "info.circle" : "exclamationmark.triangle.fill")
+                .foregroundStyle(lastError == nil ? Color.captureTextMuted : .orange)
+            Text(lastError ?? "Ingen kamera funnet ennå")
+                .font(.caption).foregroundStyle(Color.captureTextSecondary)
+                .lineLimit(2)
         }
-        .onDisappear { discovery.stop() }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(Color.captureChipBG, in: Capsule())
+    }
+
+    private var discoveredList: some View {
+        VStack(spacing: 8) {
+            ForEach(discovery.cameras) { camera in
+                DiscoveredCameraCard(camera: camera, onTap: { onPickDiscovered(camera) })
+            }
+        }
+    }
+
+    // MARK: - Knapper
+
+    private var connectButton: some View {
+        Button(action: connect) {
+            HStack(spacing: 10) {
+                if isConnecting { ProgressView().controlSize(.small).tint(.white) } else {
+                    Image(systemName: "link")
+                }
+                Text(isConnecting ? "Kobler til…" : "Koble til").font(.title3.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 66)
+            .background(
+                LinearGradient(colors: [Color.captureAccent, Color.captureAccentDeep],
+                               startPoint: .leading, endPoint: .trailing),
+                in: RoundedRectangle(cornerRadius: 18))
+            .shadow(color: Color.captureAccent.opacity(0.35), radius: 16, y: 6)
+            .opacity(canConnect && !isConnecting ? 1 : 0.5)
+        }
+        .buttonStyle(.plain)
+        .disabled(isConnecting || !canConnect)
+    }
+
+    private var demoButton: some View {
+        Button(action: onDemo) {
+            Label("Prøv demo-kamera", systemImage: "camera")
+                .font(.headline.weight(.semibold)).foregroundStyle(Color.captureAccent)
+                .frame(maxWidth: .infinity, minHeight: 62)
+                .background(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.captureAccent.opacity(0.7), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .disabled(isConnecting)
+    }
+
+    private var setupGuideLink: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "questionmark.circle")
+            Text("Se oppsettguide").font(.subheadline.weight(.medium))
+            Image(systemName: "chevron.right").font(.caption2)
+        }
+        .foregroundStyle(Color.captureTextSecondary)
+        .padding(.top, 2)
     }
 
     private func connect() {
@@ -695,58 +843,90 @@ private struct DisconnectedOverlay: View {
     }
 }
 
-private struct DiscoveredCamerasSection: View {
-    let cameras: [CameraDiscovery.Found]
-    let isSearching: Bool
-    let permissionDenied: Bool
-    let onPick: (CameraDiscovery.Found) -> Void
+/// Hero-grafikk: kameraet (transparent PNG) koblet via glødende lenke til nettbrettet
+/// — samme motiv som Shoot-mockupen.
+private struct ConnectHeroGraphic: View {
+    /// Sann når et kamera er funnet på nettverket → hele koblings-motivet går fra
+    /// oransje «søker» til grønt «kamera funnet, klar».
+    var linked: Bool = false
+    @State private var pulse = false
+
+    /// Aksentfargen for koblingen — grønn ved funnet kamera, ellers merkevare-oransje.
+    private var tint: Color { linked ? .captureSuccess : .captureAccent }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                if isSearching && cameras.isEmpty {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: "wifi")
-                        .foregroundStyle(.tint)
-                }
-                Text(header)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
+        HStack(spacing: 14) {
+            // scaledToFill + clip fjerner kameraets transparente vertikal-utfylling
+            // → kameraet fyller rammen (større, ingen tomme sidegap).
+            Image("ConnectHero")
+                .resizable().scaledToFill()
+                .frame(width: 210, height: 150)
+                .clipped()
+            dots
+            ZStack {
+                Circle().fill(tint.opacity(0.22)).frame(width: 68, height: 68)
+                    .scaleEffect(pulse ? 1.2 : 0.82).blur(radius: 2)
+                Circle().strokeBorder(tint, lineWidth: 1.5).frame(width: 52, height: 52)
+                Image(systemName: linked ? "checkmark" : "link")
+                    .font(.title2.weight(.semibold)).foregroundStyle(tint)
             }
-
-            if permissionDenied {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "lock.shield")
-                        .foregroundStyle(.yellow)
-                    Text("Local-network permission was denied. Enable it in Settings → CreatorHub One → Local Network to find cameras automatically.")
-                        .font(.caption)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .background(Color.captureChipBG, in: RoundedRectangle(cornerRadius: 8))
-            } else if cameras.isEmpty && isSearching {
-                Text("Checking the network for cameras… make sure the camera is on and CCAPI is enabled.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(cameras) { camera in
-                        DiscoveredCameraCard(camera: camera, onTap: { onPick(camera) })
-                    }
-                }
-            }
+            .shadow(color: tint.opacity(0.75), radius: 20)
+            dots
+            Image("ConnectTablet")
+                .resizable().scaledToFit()
+                .frame(height: 178)
+        }
+        .background(alignment: .bottom) {
+            // Ren, samlet «flate»-glød under scenen (mockupens refleksjon) — tettere
+            // enn skjerm-gløden så det ikke blir en bred brun vask.
+            Ellipse().fill(tint.opacity(0.22))
+                .frame(width: 300, height: 70).blur(radius: 45).offset(y: 34)
+        }
+        .animation(.easeInOut(duration: 0.3), value: linked)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 
-    private var header: String {
-        if permissionDenied { return "Local-network permission needed" }
-        if cameras.isEmpty && isSearching { return "Searching for cameras…" }
-        if cameras.isEmpty { return "No cameras on the network yet" }
-        if cameras.count == 1 { return "1 camera found" }
-        return "\(cameras.count) cameras found"
+    private var dots: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { _ in
+                Circle().fill(tint.opacity(0.6)).frame(width: 5, height: 5)
+            }
+        }
+    }
+}
+
+/// «Kom i gang på 3 enkle steg»-kort fra mockupen.
+private struct OnboardingStepsCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Kom i gang på 3 enkle steg")
+                .font(.headline.weight(.semibold)).foregroundStyle(.white)
+            HStack(alignment: .top, spacing: 14) {
+                step(1, "wifi", "Koble til kameraets Wi-Fi", "Koble iPad til kameraets Wi-Fi-nettverk.")
+                step(2, "camera", "Aktiver CCAPI i kameraet", "Gå til nettverksinnstillinger og aktiver CCAPI.")
+                step(3, "link", "Trykk Koble til", "Velg auto-detect eller angi IP/URL og trykk Koble til.")
+            }
+        }
+        .padding(18)
+        .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.captureBorder.opacity(0.5), lineWidth: 1))
+    }
+
+    private func step(_ n: Int, _ icon: String, _ title: String, _ body: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("\(n)").font(.caption.weight(.bold)).foregroundStyle(.white)
+                    .frame(width: 22, height: 22).background(Circle().fill(Color.captureAccent))
+                Image(systemName: icon).foregroundStyle(Color.captureAccent)
+            }
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(body).font(.caption2).foregroundStyle(Color.captureTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -8016,6 +8196,13 @@ private extension Color {
     static let captureChipBG          = Color.white.opacity(0.07)
     static let captureFieldBG         = Color.white.opacity(0.10)
     static let captureSeparator       = Color.white.opacity(0.12)
-    /// Merkevare-oransje (samme aksent som Shoot-mockupen / CreatorHub One).
-    static let captureAccent          = Color(red: 0.96, green: 0.45, blue: 0.13)
+    // Design-tokens fra CreatorHub One-pakken (Shoot-mockup).
+    static let captureAccent          = Color(red: 1.0, green: 0.42, blue: 0.17)   // #FF6B2C
+    static let captureAccentDeep      = Color(red: 0.91, green: 0.29, blue: 0.05)  // #E94B0C
+    static let captureDeepBG          = Color(red: 0.016, green: 0.035, blue: 0.07) // #040912
+    static let captureSurface         = Color(red: 0.067, green: 0.098, blue: 0.153) // #111927
+    static let captureBorder          = Color(red: 0.188, green: 0.235, blue: 0.314) // #303C50
+    static let captureSuccess         = Color(red: 0.133, green: 0.773, blue: 0.369) // #22C55E
+    static let captureTextSecondary   = Color(red: 0.655, green: 0.686, blue: 0.753) // #A7AFC0
+    static let captureTextMuted       = Color(red: 0.435, green: 0.471, blue: 0.533) // #6F7888
 }
