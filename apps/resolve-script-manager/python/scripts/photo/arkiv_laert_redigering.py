@@ -103,6 +103,42 @@ def features(img):
                             (lab[:, :, 2].mean() - 128) / 20.0]]).astype(np.float32)
 
 
+def flash_fired(jpg_path, raw_path):
+    """Fyrte blitsen? EXIF Flash-tag (0x9209), bit 0 = «fired». Del D: lar
+    stil-modellen SKILLE blits-scener fra ambient (gelet blits ≠ tungsten selv om
+    begge er «varme»). Best-effort, INGEN hard ny avhengighet:
+      1) PIL på den leverte JPG-en (bevart av de fleste eksportører),
+      2) exiftool på JPG → RAW (leser CR3/ARW som PIL ikke kan).
+    None når ukjent → scenen forblir 12-dim (Del D inert for den scenen)."""
+    try:
+        from PIL import Image
+        ex = getattr(Image.open(jpg_path), "_getexif", lambda: None)() or {}
+        v = ex.get(0x9209)
+        if v is not None:
+            return bool(int(v) & 0x1)
+    except Exception:
+        pass
+    import subprocess
+    for p in (jpg_path, raw_path):
+        try:
+            r = subprocess.run(["exiftool", "-s3", "-n", "-Flash", p],
+                               capture_output=True, text=True, timeout=10)
+            s = r.stdout.strip()
+            if not s:
+                continue
+            try:
+                return bool(int(float(s)) & 0x1)     # -n → numerisk Flash-verdi
+            except ValueError:
+                low = s.lower()                       # tekst-fallback
+                if "did not fire" in low or "no flash" in low or "not fire" in low:
+                    return False
+                if "fire" in low:
+                    return True
+        except Exception:
+            pass
+    return None
+
+
 def learn(raw_roots, lev_roots, model_path, max_pairs=250):
     raw_index = {}
     for root in raw_roots:
@@ -119,7 +155,7 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
     step = max(1, len(pairs) // max_pairs)
     pairs = pairs[::step]
     print(f"{len(pairs)} RAW↔JPG-par til læring", flush=True)
-    feats, luts, ab_shifts, lab_std, names = [], [], [], [], []
+    feats, luts, ab_shifts, lab_std, names, flash = [], [], [], [], [], []
     for i, (rp, jp) in enumerate(pairs):
         try:
             neutral = develop(rp)
@@ -138,6 +174,10 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
             lab_std.append([_std_ratio(e_lab[:, :, c], n_lab[:, :, c]) for c in range(3)])
             feats.append(features(neutral))
             names.append(os.path.basename(jp))
+            # Del D: blits-flagg fra EXIF (1=fyrte, 0=ikke, nan=ukjent). MÅ append-
+            # es HER, i lås med feats, så indeksene holder linja.
+            ff = flash_fired(jp, rp)
+            flash.append(1.0 if ff is True else (0.0 if ff is False else np.nan))
         except Exception as e:
             print(f"  hopp: {os.path.basename(rp)} ({str(e)[:40]})", flush=True)
         if (i + 1) % 25 == 0:
@@ -145,8 +185,12 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
     os.makedirs(os.path.dirname(os.path.expanduser(model_path)), exist_ok=True)
     np.savez_compressed(os.path.expanduser(model_path), feats=np.array(feats),
                         luts=np.array(luts), ab=np.array(ab_shifts),
-                        lab_std=np.array(lab_std), names=np.array(names))
-    print(f"MODELL LAGRET: {len(feats)} scener → {model_path}", flush=True)
+                        lab_std=np.array(lab_std), names=np.array(names),
+                        flash=np.array(flash, dtype=np.float32))
+    known = int(np.count_nonzero(~np.isnan(flash)))
+    fired = int(np.nansum(np.array(flash, dtype=np.float32)))
+    print(f"MODELL LAGRET: {len(feats)} scener → {model_path} "
+          f"(blits kjent for {known}, fyrte {fired})", flush=True)
 
 
 def face_boxes(img):
@@ -281,6 +325,27 @@ def apply_model(raw_path, model, out_dir, k=5):
     return base, f"{dlog} | lært av: {refs}"
 
 
+def _flash_value(model):
+    """Hent blits-arrayet fra en modell (nan-fylt hvis fraværende → gamle .npz).
+    Returnerer None når modellen ikke har blits-data i det hele tatt."""
+    if "flash" not in model:
+        return None
+    fl = np.asarray(model["flash"], dtype=np.float32).ravel()
+    return fl if np.any(~np.isnan(fl)) else None
+
+
+def _flash_dim(flash, sel):
+    """13. feature-element for en scene-klynge: snitt av de KJENTE blits-verdiene
+    i utvalget `sel` (0..1 = andel blits). None når ingen kjent → behold 12-dim."""
+    if flash is None:
+        return None
+    vals = flash[np.asarray(sel, dtype=int)]
+    known = vals[~np.isnan(vals)]
+    if known.size == 0:
+        return None
+    return round(float(known.mean()), 4)
+
+
 def export_profile(model_path, out_json, clusters=32):
     """Destillér en .npz-stilmodell til en kompakt, bærbar JSON-profil for
     on-device-bruk (iOS CaptureApp). Klynger scenene til ~`clusters` sentroider
@@ -292,6 +357,7 @@ def export_profile(model_path, out_json, clusters=32):
     luts = m["luts"].astype(np.float32)
     ab = m["ab"].astype(np.float32)
     lab_std = m["lab_std"].astype(np.float32) if "lab_std" in m else np.ones((len(feats), 3), np.float32)
+    flash = _flash_value(m)
     n = len(feats)
     if n > clusters:
         crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5)
@@ -302,29 +368,41 @@ def export_profile(model_path, out_json, clusters=32):
         labels = np.arange(n)
         groups = range(n)
     scenes = []
+    flash_aware = False
     for g in groups:
         sel = np.where(labels == g)[0]
         if len(sel) == 0:
             continue
+        feat = [round(float(v), 5) for v in feats[sel].mean(0)]
+        # Del D: append 13. blits-element når klyngen har kjent blits (→ 13-dim v3-
+        # scene); ellers behold 12-dim. App-en itererer minste dim, så miks er trygt.
+        fd = _flash_dim(flash, sel)
+        if fd is not None:
+            feat.append(fd)
+            flash_aware = True
         scenes.append({
-            "feat": [round(float(v), 5) for v in feats[sel].mean(0)],
+            "feat": feat,
             "lut": [[int(round(v)) for v in luts[sel, c].mean(0)] for c in range(3)],
             "ab": [round(float(v), 4) for v in ab[sel].mean(0)],
             "labStd": [round(float(v), 4) for v in lab_std[sel].mean(0)],
             "weight": int(len(sel)),
         })
     import json
-    prof = {"version": 1, "source": os.path.basename(model_path), "scenes": scenes}
+    prof = {"version": 3 if flash_aware else 1,
+            "source": os.path.basename(model_path), "scenes": scenes}
     with open(os.path.expanduser(out_json), "w") as fh:
         json.dump(prof, fh, separators=(",", ":"))
     size = os.path.getsize(os.path.expanduser(out_json))
     print(f"PROFIL LAGRET: {len(scenes)} sentroider (fra {n} scener) → {out_json} ({size//1024} KB)", flush=True)
 
 
-def _scene_dicts(feats, luts, ab, lab_std, sel, clusters):
+def _scene_dicts(feats, luts, ab, lab_std, sel, clusters, flash=None):
     """Bygg scene-sentroide-liste for et utvalg scene-indekser (`sel`), klynget
-    på scene-features til ~`clusters` sentroider. Delt av eksport-veiene."""
+    på scene-features til ~`clusters` sentroider. Delt av eksport-veiene. Når
+    `flash` (globalt array) er gitt appendes 13. blits-dim per sub-klynge (Del D)."""
     fs, ls, ab_s, std_s = feats[sel], luts[sel], ab[sel], lab_std[sel]
+    sel = np.asarray(sel, dtype=int)
+    fl_s = flash[sel] if flash is not None else None
     if len(sel) > clusters:
         crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5)
         _c, lab, _cen = cv2.kmeans(fs.astype(np.float32), clusters, None, crit, 4, cv2.KMEANS_PP_CENTERS)
@@ -338,8 +416,12 @@ def _scene_dicts(feats, luts, ab, lab_std, sel, clusters):
         idx = np.where(lab == g)[0]
         if len(idx) == 0:
             continue
+        feat = [round(float(v), 5) for v in fs[idx].mean(0)]
+        fd = _flash_dim(fl_s, idx) if fl_s is not None else None
+        if fd is not None:
+            feat.append(fd)
         out.append({
-            "feat": [round(float(v), 5) for v in fs[idx].mean(0)],
+            "feat": feat,
             "lut": [[int(round(v)) for v in ls[idx, c].mean(0)] for c in range(3)],
             "ab": [round(float(v), 4) for v in ab_s[idx].mean(0)],
             "labStd": [round(float(v), 4) for v in std_s[idx].mean(0)],
@@ -384,6 +466,7 @@ def export_styles(model_path, out_json, n_styles=4, per_style=24):
     m = dict(np.load(os.path.expanduser(model_path), allow_pickle=True))
     feats, luts, ab = m["feats"].astype(np.float32), m["luts"].astype(np.float32), m["ab"].astype(np.float32)
     lab_std = m["lab_std"].astype(np.float32) if "lab_std" in m else np.ones((len(feats), 3), np.float32)
+    flash = _flash_value(m)
     sig = _style_signature(luts, ab, lab_std)
     z = (sig - sig.mean(0)) / (sig.std(0) + 1e-6)       # normalisér akser
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.3)
@@ -397,12 +480,16 @@ def export_styles(model_path, out_json, n_styles=4, per_style=24):
             continue
         name = _style_name(float(cen[g, 2]), float(cen[g, 0]), float(cen[g, 1]), used)
         styles.append({"name": name, "count": int(len(sel)),
-                       "scenes": _scene_dicts(feats, luts, ab, lab_std, sel, per_style)})
-    prof = {"version": 2, "source": os.path.basename(model_path), "styles": styles}
+                       "scenes": _scene_dicts(feats, luts, ab, lab_std, sel, per_style, flash=flash)})
+    # Del D: v3 når noen scene fikk en 13. blits-dim (ellers uendret v2).
+    flash_aware = any(len(sc["feat"]) >= 13 for s in styles for sc in s["scenes"])
+    prof = {"version": 3 if flash_aware else 2,
+            "source": os.path.basename(model_path), "styles": styles}
     with open(os.path.expanduser(out_json), "w") as fh:
         json.dump(prof, fh, separators=(",", ":"))
     size = os.path.getsize(os.path.expanduser(out_json))
-    print(f"FLER-STIL LAGRET: {len(styles)} stiler → {out_json} ({size//1024} KB)", flush=True)
+    print(f"FLER-STIL LAGRET: {len(styles)} stiler → {out_json} ({size//1024} KB, "
+          f"v{prof['version']})", flush=True)
     for s in styles:
         print(f"  • «{s['name']}» ({s['count']} scener, {len(s['scenes'])} sentroider)", flush=True)
 
